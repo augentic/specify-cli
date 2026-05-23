@@ -132,16 +132,6 @@ fn write_adapter_tools(adapter: &Path, tools: &str) {
     fs::write(adapter.join("tools.yaml"), format!("tools:\n{tools}")).expect("write tools.yaml");
 }
 
-fn json_tool_list(project: &Path, cache: &Path) -> Value {
-    let assert = specify()
-        .current_dir(project)
-        .env("SPECIFY_TOOLS_CACHE", cache)
-        .args(["--format", "json", "tool", "list"])
-        .assert()
-        .success();
-    parse_json(&assert.get_output().stdout)
-}
-
 fn run_json_failure(project: &Path, cache: &Path, args: &[&str], code: i32) -> Value {
     let assert = specify()
         .current_dir(project)
@@ -164,82 +154,12 @@ fn assert_validation_rule(value: &Value, rule_id: &str) {
 }
 
 #[test]
-fn help_lists_chunk_five_verbs() {
+fn help_lists_active_verbs() {
     let assert = specify().args(["tool", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    for verb in ["run", "list", "fetch", "show", "gc"] {
+    for verb in ["run", "fetch", "gc"] {
         assert!(stdout.contains(verb), "tool --help must list `{verb}`, got:\n{stdout}");
     }
-}
-
-#[test]
-fn list_outside_project_preserves_error() {
-    let tmp = tempdir().expect("tempdir");
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "tool", "list"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stderr);
-    assert_eq!(value["error"], "not-initialized");
-}
-
-#[test]
-fn list_discovers_root_from_nested() {
-    let fixtures = ToolFixtures::new();
-    let nested = fixtures.project().join("nested/deeper");
-    fs::create_dir_all(&nested).expect("create nested project dir");
-
-    let value = json_tool_list(&nested, &cache_dir("nested-list"));
-    let tools = value["tools"].as_array().expect("tools array");
-    let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["echo", "read-only", "read-write"]);
-    assert!(tools.iter().all(|tool| tool["scope-detail"] == "tools-test"));
-}
-
-#[test]
-fn project_scope_lists_three_tools() {
-    let fixtures = ToolFixtures::new();
-    let value = json_tool_list(&fixtures.project(), &cache_dir("project-list"));
-    let tools = value["tools"].as_array().expect("tools array");
-    let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["echo", "read-only", "read-write"]);
-    assert!(tools.iter().all(|tool| tool["scope"] == "project"));
-    assert!(tools.iter().all(|tool| tool["scope-detail"] == "tools-test"));
-    assert!(tools.iter().all(|tool| tool["cache-status"] == "miss-not-found"));
-}
-
-#[test]
-fn scalar_package_declaration_lists_derived_fields() {
-    let fixtures = ToolFixtures::new();
-    let project = fixtures.project();
-    write_project_manifest(
-        &project,
-        "name: tools-test\nhub: true\ntools:\n  - \"specify:contract@0.3.0\"\n",
-    );
-
-    let value = json_tool_list(&project, &cache_dir("scalar-package-list"));
-    let tools = value["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 1, "{value}");
-    assert_eq!(tools[0]["name"], "contract");
-    assert_eq!(tools[0]["version"], "0.3.0");
-    assert_eq!(tools[0]["source"], "specify:contract@0.3.0");
-}
-
-#[test]
-fn adapter_scope_lists_sidecar_tool() {
-    let fixtures = ToolFixtures::new();
-    let cap_yaml =
-        fs::read_to_string(fixtures.adapter().join("adapter.yaml")).expect("read adapter.yaml");
-    assert!(!cap_yaml.contains("\ntools:"), "adapter.yaml must stay closed");
-
-    let value = json_tool_list(&fixtures.cap_project(), &cache_dir("adapter-list"));
-    let tools = value["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 1, "{value}");
-    assert_eq!(tools[0]["name"], "exit-seven");
-    assert_eq!(tools[0]["scope"], "plugin");
-    assert_eq!(tools[0]["scope-detail"], "tools-test-adp");
 }
 
 #[test]
@@ -287,7 +207,7 @@ fn project_manifest_validation_reports_rule_ids() {
 
     for (entry, rule_id) in cases {
         write_project_manifest(&project, &project_manifest(&entry));
-        let value = run_json_failure(&project, &cache, &["tool", "list"], 2);
+        let value = run_json_failure(&project, &cache, &["tool", "run", "echo"], 2);
         assert_validation_rule(&value, rule_id);
     }
 }
@@ -312,7 +232,7 @@ fn adapter_manifest_reports_sidecar_rules() {
 
     for (entry, rule_id) in cases {
         write_adapter_tools(&fixtures.adapter(), &entry);
-        let value = run_json_failure(&fixtures.cap_project(), &cache, &["tool", "list"], 2);
+        let value = run_json_failure(&fixtures.cap_project(), &cache, &["tool", "run", "exit-seven"], 2);
         assert_validation_rule(&value, rule_id);
         let cap_yaml =
             fs::read_to_string(fixtures.adapter().join("adapter.yaml")).expect("read adapter.yaml");
@@ -325,9 +245,6 @@ fn cache_miss_hit_and_override_observable() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("cache-flow");
-
-    let cold = json_tool_list(&project, &cache);
-    assert_eq!(cold["tools"][0]["cache-status"], "miss-not-found");
 
     let first = specify()
         .current_dir(&project)
@@ -356,9 +273,6 @@ fn cache_miss_hit_and_override_observable() {
         "cache hit must not rewrite fetched-at"
     );
 
-    let hit = json_tool_list(&project, &cache);
-    assert_eq!(hit["tools"][0]["cache-status"], "hit");
-
     let pinned = tool_entry(
         "echo",
         "0.1.0",
@@ -367,8 +281,6 @@ fn cache_miss_hit_and_override_observable() {
         None,
     );
     write_project_manifest(&project, &project_manifest(&pinned));
-    let changed = json_tool_list(&project, &cache);
-    assert_eq!(changed["tools"][0]["cache-status"], "miss-changed");
 
     specify()
         .current_dir(&project)
@@ -541,18 +453,6 @@ fn name_collision_project_scope_wins() {
     write_project_manifest(&project, &adapter_project_manifest(Some(&project_echo)));
     write_adapter_tools(&fixtures.adapter(), &format!("{cap_echo}{cap_exit}"));
 
-    let value = json_tool_list(&project, &cache);
-    let warnings = value["warnings"].as_array().expect("warnings array");
-    assert_eq!(warnings.len(), 1, "{value}");
-    assert_eq!(warnings[0]["code"], "tool-name-collision");
-    let echo = value["tools"]
-        .as_array()
-        .expect("tools array")
-        .iter()
-        .find(|tool| tool["name"] == "echo")
-        .expect("echo row");
-    assert_eq!(echo["scope"], "project");
-
     let run = specify()
         .current_dir(&project)
         .env("SPECIFY_TOOLS_CACHE", &cache)
@@ -561,4 +461,6 @@ fn name_collision_project_scope_wins() {
         .success();
     let stdout = String::from_utf8(run.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("echo: project-wins"), "{stdout}");
+    let stderr = String::from_utf8(run.get_output().stderr.clone()).expect("utf8 stderr");
+    assert!(stderr.contains("tool-name-collision"), "{stderr}");
 }

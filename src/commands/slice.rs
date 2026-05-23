@@ -10,17 +10,13 @@ use specify_domain::slice::LifecycleStatus;
 use specify_error::{Error, Result};
 
 pub mod cli;
-mod fusion;
 mod lifecycle;
-mod list;
 mod merge;
-mod outcome;
 mod task;
 mod touched;
 mod validate;
 
-use cli::{OutcomeAction, SliceAction, SliceFusionAction, SliceMergeAction, SliceTaskAction};
-pub(super) use list::{StatusEntry, collect_status, list_slice_names};
+use cli::{SliceAction, SliceMergeAction, SliceTaskAction};
 
 use crate::context::Ctx;
 
@@ -52,7 +48,6 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             target,
             if_exists,
         } => lifecycle::create(ctx, &name, target, if_exists),
-        SliceAction::Status { name } => list::status_one(ctx, &name),
         SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {
             SliceMergeAction::Run { name } => merge::run(ctx, &name),
@@ -63,12 +58,6 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             SliceTaskAction::Progress { name } => task::progress(ctx, &name),
             SliceTaskAction::Mark { name, task_number } => task::mark(ctx, &name, task_number),
         },
-        SliceAction::Outcome {
-            action: OutcomeAction::Show { name },
-        } => outcome::show(ctx, name),
-        SliceAction::Fusion {
-            action: SliceFusionAction::Show { name },
-        } => fusion::show(ctx, &name),
         SliceAction::Transition { name, target } => {
             if matches!(target, LifecycleStatus::Merged) {
                 return Err(Error::Argument {

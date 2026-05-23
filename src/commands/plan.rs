@@ -6,8 +6,6 @@
 pub mod cli;
 mod create;
 mod lifecycle;
-mod lock;
-pub(super) mod status;
 
 use std::path::{Path, PathBuf};
 
@@ -17,7 +15,7 @@ use specify_domain::config::Layout;
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
-use self::cli::{LockAction, PlanAction};
+use self::cli::PlanAction;
 use crate::context::Ctx;
 
 pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
@@ -33,7 +31,6 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
         }
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
-        PlanAction::Status => status::run(ctx),
         PlanAction::Add {
             name,
             depends_on,
@@ -90,11 +87,6 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
         ),
         PlanAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),
-        PlanAction::Lock { action } => match action {
-            LockAction::Acquire { pid } => lock::acquire(ctx, pid),
-            LockAction::Release { pid } => lock::release(ctx, pid),
-            LockAction::Status => lock::status(ctx),
-        },
     }
 }
 

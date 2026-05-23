@@ -130,17 +130,15 @@ surfaces match the prior cross-crate `pub use` exports.
 
 `specify-validate` was a Phase 1B re-extraction that owned the
 baseline-contract validation primitives (`ContractFinding`,
-`validate_baseline`) and was shared between `specify-domain` (for
-compatibility classification) and the `wasi-tools/contract` carve-out.
-The 2026-05 architecture-inversion pass collapsed it into the
-carve-out: a adapter's validation logic belongs inside its WASI
-tool, not as a `specify-*` workspace crate the host can link
-against. The host's `compatibility::classify_project` no longer
-short-circuits on contract baseline failures — operators run
-`specify tool run contract -- "$PWD/contracts"` as a pre-flight when
-they need that gate, identical to every other adapter. The
-carve-out is now self-contained; `wasi-tools/Cargo.toml` no longer
-has a path bridge into the host workspace.
+`validate_baseline`) and was shared between `specify-domain` and the
+`wasi-tools/contract` carve-out. The 2026-05 architecture-inversion
+pass collapsed it into the carve-out: an adapter's validation logic
+belongs inside its WASI tool, not as a `specify-*` workspace crate the
+host can link against. Operators run `specify tool run contract --
+"$PWD/contracts"` as a pre-flight when they need that gate, identical
+to every other adapter. The carve-out is now self-contained;
+`wasi-tools/Cargo.toml` no longer has a path bridge into the host
+workspace.
 
 Rule: new functionality lands in an existing module by default. New
 workspace crates require a paragraph in this file justifying why an

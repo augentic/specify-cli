@@ -78,25 +78,6 @@ impl ContractToolFixture {
 }
 
 #[test]
-fn lists_from_adapter_sidecar() {
-    let fixture = ContractToolFixture::new();
-
-    let assert = specify()
-        .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
-        .args(["--format", "json", "tool", "list"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let tools = value["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 1, "{value}");
-    assert_eq!(tools[0]["name"], "contract");
-    assert_eq!(tools[0]["version"], "0.2.0");
-    assert_eq!(tools[0]["scope"], "plugin");
-    assert_eq!(tools[0]["scope-detail"], "contracts");
-}
-
-#[test]
 fn preserves_validator_json_for_clean() {
     let fixture = ContractToolFixture::new();
     fixture.write_contract(

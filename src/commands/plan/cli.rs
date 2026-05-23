@@ -68,8 +68,6 @@ pub enum PlanAction {
     /// `Pending` entry to `InProgress` and return it. `plan next` is the
     /// only writer of per-entry `in-progress` (RFC-25 §CLI surface).
     Next,
-    /// Show change progress report
-    Status,
     /// Add a new plan entry (status: pending)
     Add {
         /// Kebab-case change name
@@ -269,29 +267,4 @@ pub enum PlanAction {
         #[arg(long)]
         force: bool,
     },
-    /// Driver-lock primitives — `.specify/plan.lock` PID stamp used by
-    /// `/spec:execute` to serialise concurrent drivers.
-    Lock {
-        #[command(subcommand)]
-        action: LockAction,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum LockAction {
-    /// Acquire the plan.lock PID stamp. Fails when another live PID holds
-    /// it; stale stamps are reclaimed silently.
-    Acquire {
-        /// PID to stamp; defaults to `std::process::id()`.
-        #[arg(long)]
-        pid: Option<u32>,
-    },
-    /// Release the stamp when we hold it. Refuses to clobber another PID's.
-    Release {
-        /// PID that expects to own the stamp; defaults to `std::process::id()`.
-        #[arg(long)]
-        pid: Option<u32>,
-    },
-    /// Report the current lock state (holder PID, stale flag).
-    Status,
 }

@@ -113,8 +113,8 @@ fn resolve_candidate_token(token: &str, discovery: Option<&Discovery>) -> Result
             "discovery-candidate-unknown",
             "--sources <key>=<value> must resolve to a candidate in discovery.md",
             format!(
-                "no candidate in discovery.md has an id or alias matching `{token}`; run \
-                 `specify discovery show` to inspect the inventory"
+                "no candidate in discovery.md has an id or alias matching `{token}`; inspect \
+                 discovery.md directly to review the inventory"
             ),
         )),
         Err(DiscoveryResolveError::Collision { token, candidates }) => {

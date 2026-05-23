@@ -1,4 +1,4 @@
-//! Render-input assembly for `specify context *`. Walks the project
+//! Render-input assembly for init-time AGENTS.md generation. Walks the project
 //! (adapter, registry, slices, root markers) and emits a
 //! [`render::Input`] plus the per-input fingerprint set.
 

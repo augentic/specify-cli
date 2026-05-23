@@ -6,17 +6,13 @@ pub mod cli;
 mod dto;
 mod fetch;
 mod gc;
-mod list;
 mod run;
-mod show;
 
 use std::collections::{HashMap, HashSet};
 
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
-pub(super) use list::run as list;
 pub(super) use run::run;
-pub(super) use show::run as show;
 use specify_domain::adapter::{Adapter, Axis, ResolvedAdapter};
 use specify_domain::codex::adapter_name_from_value;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};

@@ -5,7 +5,6 @@ mod add;
 pub mod cli;
 mod dto;
 mod remove;
-mod show;
 mod validate;
 
 use specify_error::Result;
@@ -15,7 +14,6 @@ use crate::context::Ctx;
 
 pub fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
     match action {
-        RegistryAction::Show => show::run(ctx),
         RegistryAction::Validate => validate::run(ctx),
         RegistryAction::Add {
             name,

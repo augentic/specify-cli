@@ -5,7 +5,6 @@
 //!
 //! - `specify plan add --sources <key>=<alias>` rewrites the alias to
 //!   the canonical candidate id before persisting `plan.yaml`.
-//! - `specify discovery show --aliases` prints the alias map.
 //! - `specify plan amend --add-alias` / `--remove-alias` mutate
 //!   `discovery.md` and refuse the whole amend on any
 //!   `discovery-alias-collision`.
@@ -18,7 +17,7 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_stderr, parse_stdout, specify};
+use common::{Project, parse_stderr, specify};
 
 /// Discovery document with one candidate per source key plus a
 /// kebab-case alias for the password-reset candidate. Mirrors the
@@ -182,61 +181,6 @@ fn plan_add_without_discovery_md_skips_alias_resolution() {
     assert!(
         saved.contains("candidate: opaque-candidate-id"),
         "expected verbatim candidate value without discovery.md, got:\n{saved}"
-    );
-}
-
-#[test]
-fn discovery_show_aliases_prints_alias_map_json() {
-    let project = Project::init();
-    seed_discovery(&project, DISCOVERY_MD);
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "discovery", "show", "--aliases"])
-        .assert()
-        .success();
-    let body = parse_stdout(&assert.get_output().stdout, project.root());
-
-    let rows = body["aliases"].as_array().expect("aliases array");
-    assert_eq!(rows.len(), 1, "only the password-reset candidate has aliases");
-    assert_eq!(rows[0]["id"], "password-reset-request");
-    let aliases: Vec<&str> =
-        rows[0]["aliases"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
-    assert_eq!(aliases, vec!["password-reset"]);
-}
-
-#[test]
-fn discovery_show_aliases_prints_alias_map_text() {
-    let project = Project::init();
-    seed_discovery(&project, DISCOVERY_MD);
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["discovery", "show", "--aliases"])
-        .assert()
-        .success();
-    let out = String::from_utf8_lossy(&assert.get_output().stdout);
-    assert!(
-        out.contains("password-reset-request -> [password-reset]"),
-        "expected alias map line in text output, got:\n{out}"
-    );
-}
-
-#[test]
-fn discovery_show_default_renders_inventory() {
-    let project = Project::init();
-    seed_discovery(&project, DISCOVERY_MD);
-
-    let assert =
-        specify().current_dir(project.root()).args(["discovery", "show"]).assert().success();
-    let out = String::from_utf8_lossy(&assert.get_output().stdout);
-    // Default output is the per-candidate inventory view, not the
-    // alias-map view.
-    assert!(out.contains("user-registration"), "expected first candidate in output, got:\n{out}");
-    assert!(out.contains("password-reset-request"), "expected second candidate in output");
-    assert!(
-        out.contains("aliases: [password-reset]"),
-        "default view still surfaces aliases inline, got:\n{out}"
     );
 }
 
@@ -504,20 +448,9 @@ fn plan_amend_alias_survives_reapplied_discovery() {
 ",
     );
 
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "discovery", "show", "--aliases"])
-        .assert()
-        .success();
-    let body = parse_stdout(&assert.get_output().stdout, project.root());
-    let aliases: Vec<&str> = body["aliases"][0]["aliases"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|v| v.as_str().unwrap())
-        .collect();
+    let discovery = fs::read_to_string(project.root().join("discovery.md")).expect("read discovery");
     assert!(
-        aliases.contains(&"pwd-reset") && aliases.contains(&"password-reset"),
-        "post-re-enumerate union must preserve both adapter and operator aliases, got: {aliases:?}"
+        discovery.contains("aliases: [password-reset, pwd-reset]"),
+        "post-re-enumerate union must preserve both adapter and operator aliases, got:\n{discovery}"
     );
 }

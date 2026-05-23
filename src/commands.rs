@@ -1,13 +1,9 @@
-pub mod codex;
-pub mod compatibility;
 pub mod context;
-pub mod discovery;
 mod init;
 pub mod plan;
 pub mod registry;
 pub mod slice;
 pub mod source;
-mod status;
 pub mod target;
 pub mod tool;
 pub mod workspace;
@@ -21,7 +17,7 @@ use specify_domain::adapter::{Adapter, Axis};
 use specify_error::Result;
 
 use crate::cli::{Cli, Commands, Format};
-use crate::commands::source::cli::{SourceAction, SourceCacheAction};
+use crate::commands::source::cli::SourceAction;
 use crate::commands::target::cli::TargetAction;
 use crate::commands::tool::cli::ToolAction;
 use crate::commands::workspace::cli::WorkspaceAction;
@@ -39,8 +35,6 @@ pub fn run(cli: Cli) -> Exit {
         } => dispatch(format, || {
             init::run(format, adapter.as_deref(), name.as_deref(), domain.as_deref(), hub)
         }),
-        Commands::Status => scoped(format, status::run),
-        Commands::Context { action } => scoped(format, |ctx| context::run(ctx, &action)),
         Commands::Source { action } => match action {
             SourceAction::Resolve {
                 name,
@@ -53,32 +47,19 @@ pub fn run(cli: Cli) -> Exit {
                     resolve_adapter(format, Axis::Source, &name, &project_dir)
                 }
             }),
-            SourceAction::Cache { action } => match action {
-                SourceCacheAction::Lookup { fp } => {
-                    dispatch(format, || source::cache::lookup(format, fp))
-                }
-                SourceCacheAction::Write { fp, payload } => {
-                    dispatch(format, || source::cache::write(format, fp, &payload))
-                }
-            },
         },
         Commands::Target { action } => match action {
             TargetAction::Resolve { value, project_dir } => {
                 dispatch(format, || resolve_adapter(format, Axis::Target, &value, &project_dir))
             }
         },
-        Commands::Codex { action } => scoped(format, |ctx| codex::run(ctx, action)),
-        Commands::Compatibility { action } => scoped(format, |ctx| compatibility::run(ctx, action)),
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => run_tool(format, &name, args),
-            ToolAction::List => scoped(format, tool::list),
             ToolAction::Fetch { name } => scoped(format, |ctx| tool::fetch(ctx, name.as_deref())),
-            ToolAction::Show { name } => scoped(format, |ctx| tool::show(ctx, &name)),
             ToolAction::Gc => scoped(format, tool::gc),
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
-        Commands::Discovery { action } => scoped(format, |ctx| discovery::run(ctx, &action)),
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
@@ -89,17 +70,12 @@ pub fn run(cli: Cli) -> Exit {
             WorkspaceAction::Sync { projects } => {
                 scoped(format, |ctx| workspace::sync(ctx, &projects))
             }
-            WorkspaceAction::Status { projects } => {
-                scoped(format, |ctx| workspace::status(ctx, &projects))
-            }
-            WorkspaceAction::PrepareBranch {
+            WorkspaceAction::Prepare {
                 project,
                 change,
                 sources,
                 outputs,
-            } => scoped(format, |ctx| {
-                workspace::prepare_branch(ctx, &project, change, sources, outputs)
-            }),
+            } => scoped(format, |ctx| workspace::prepare(ctx, &project, change, sources, outputs)),
             WorkspaceAction::Push { projects, dry_run } => {
                 scoped(format, |ctx| workspace::push(ctx, &projects, dry_run))
             }

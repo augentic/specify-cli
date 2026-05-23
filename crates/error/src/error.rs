@@ -86,7 +86,7 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    /// `specify workspace prepare-branch` refused to land a branch
+    /// `specify workspace prepare` refused to land a branch
     /// because `specify_registry::branch::prepare` returned a
     /// diagnostic. The renderer surfaces the diagnostic key + paths
     /// alongside the human-readable detail.

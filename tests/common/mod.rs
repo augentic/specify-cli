@@ -53,8 +53,8 @@ pub fn specify() -> Command {
 /// Stamp a phase outcome on `<project>/slices/<name>/.metadata.yaml`
 /// through the domain writer merge uses (`stamp_outcome`).
 ///
-/// Integration tests call this instead of the removed
-/// `specify slice outcome set` CLI verb.
+/// Integration tests call this directly because outcome inspection is no
+/// longer exposed as CLI product surface.
 pub fn stamp_slice_outcome(
     project: &Project, name: &str, phase: specify_domain::adapter::Operation,
     kind: specify_domain::slice::OutcomeKind, summary: &str, context: Option<&str>,

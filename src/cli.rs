@@ -8,10 +8,6 @@ use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use specify_domain::evidence::ClaimKind;
 
-use crate::commands::codex::cli::CodexAction;
-use crate::commands::compatibility::cli::CompatibilityAction;
-use crate::commands::context::cli::ContextAction;
-use crate::commands::discovery::cli::DiscoveryAction;
 use crate::commands::plan::cli::PlanAction;
 use crate::commands::registry::cli::RegistryAction;
 use crate::commands::slice::cli::SliceAction;
@@ -70,15 +66,6 @@ pub enum Commands {
         hub: bool,
     },
 
-    /// Project dashboard — registry summary, plan progress, active changes
-    Status,
-
-    /// Refresh AGENTS.md and check whether generated context is current.
-    Context {
-        #[command(subcommand)]
-        action: ContextAction,
-    },
-
     /// Source adapter operations (RFC-25). Source adapters provide
     /// `enumerate` + `extract` capabilities and are resolved against
     /// `adapters/sources/<name>/adapter.yaml` (in-repo) or
@@ -97,22 +84,10 @@ pub enum Commands {
         action: TargetAction,
     },
 
-    /// Codex rule catalogue operations
-    Codex {
-        #[command(subcommand)]
-        action: CodexAction,
-    },
-
     /// WASI tool runner.
     Tool {
         #[command(subcommand)]
         action: ToolAction,
-    },
-
-    /// Cross-project contract compatibility reports.
-    Compatibility {
-        #[command(subcommand)]
-        action: CompatibilityAction,
     },
 
     /// Slice lifecycle operations — one `define → build → merge` loop.
@@ -126,14 +101,6 @@ pub enum Commands {
     Plan {
         #[command(subcommand)]
         action: PlanAction,
-    },
-
-    /// Read access to `<project_dir>/discovery.md` — the candidate
-    /// inventory authored by `/spec:plan`'s `propose` sub-step
-    /// (RFC-27 §D6). Alias edits live on `specify plan amend`.
-    Discovery {
-        #[command(subcommand)]
-        action: DiscoveryAction,
     },
 
     /// Platform registry at `registry.yaml` (repo root)

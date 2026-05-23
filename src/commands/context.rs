@@ -1,14 +1,12 @@
-//! `specify context {generate, check}` dispatcher. Heavy lifting lives
-//! in submodules; this module owns the small set of helpers
-//! (`render_document` plus IO/error-mapping shims) shared by both verbs.
+//! Init-time AGENTS.md context generation. Heavy lifting lives in
+//! submodules; this module owns the small set of helpers
+//! (`render_document` plus IO/error-mapping shims) used by init.
 
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 mod assemble;
-mod check;
-pub mod cli;
 mod detect;
 mod fences;
 mod fingerprint;
@@ -21,15 +19,7 @@ pub(super) use generate::for_init as generate_for_init;
 use specify_domain::config::Layout;
 use specify_error::{Error, Result};
 
-use self::cli::ContextAction;
 use crate::context::Ctx;
-
-pub fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {
-    match action {
-        ContextAction::Generate { check, force } => generate::run(ctx, *check, *force),
-        ContextAction::Check => check::run(ctx),
-    }
-}
 
 fn render_document(ctx: &Ctx) -> Result<(String, fingerprint::ContextFingerprint)> {
     let assembly = assemble::render_input(ctx)?;

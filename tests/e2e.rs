@@ -51,35 +51,6 @@ fn assert_golden(name: &str, actual: Value) {
     assert_golden_at(&goldens_dir(), name, actual);
 }
 
-/// Replace any RFC3339 `YYYY-MM-DDTHH:MM:SS(Z|±HH:MM)` timestamp in JSON
-/// strings with the placeholder `<ISO8601>` so goldens stay stable
-/// across test runs. Mirrors
-/// `plan_orchestrate.rs::strip_date_stamps` for the timestamp
-/// case.
-fn strip_iso8601(value: &mut Value) {
-    fn visit(re: &regex::Regex, v: &mut Value) {
-        match v {
-            Value::String(s) if re.is_match(s) => {
-                *s = re.replace_all(s, "<ISO8601>").into_owned();
-            }
-            Value::Array(items) => {
-                for item in items {
-                    visit(re, item);
-                }
-            }
-            Value::Object(map) => {
-                for (_k, v) in map.iter_mut() {
-                    visit(re, v);
-                }
-            }
-            _ => {}
-        }
-    }
-    let re = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})")
-        .expect("regex compiles");
-    visit(&re, value);
-}
-
 // ---------------------------------------------------------------------------
 // 1. validate — good fixture
 // ---------------------------------------------------------------------------
@@ -319,69 +290,3 @@ fn task_mark_is_idempotent() {
     assert_golden("task-mark.json", second_value);
 }
 
-// ---------------------------------------------------------------------------
-// 8. slice outcome show
-// ---------------------------------------------------------------------------
-
-/// End-to-end read path for `slice outcome show --format json` after a
-/// domain `stamp_outcome` write. Also covers the unstamped case where
-/// `outcome` must be `null`.
-#[test]
-fn phase_outcome_round_trip_via_slice() {
-    let project = Project::init();
-
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    common::stamp_slice_outcome(
-        &project,
-        "foo",
-        specify_domain::adapter::Operation::Build,
-        specify_domain::slice::OutcomeKind::Success,
-        "5/5 tasks",
-        Some("trailing newline"),
-    );
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-    assert_eq!(assert.get_output().status.code(), Some(0));
-
-    let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
-
-    assert_eq!(actual["name"], "foo");
-    let outcome = &actual["outcome"];
-    assert_eq!(outcome["phase"], "build");
-    assert_eq!(outcome["outcome"], "success");
-    assert_eq!(outcome["summary"], "5/5 tasks");
-    assert_eq!(outcome["context"], "trailing newline");
-    let at = outcome["at"].as_str().expect("at is a string");
-    let at_re =
-        regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$").expect("regex compiles");
-    assert!(
-        at_re.is_match(at),
-        "at must match ^\\d{{4}}-\\d{{2}}-\\d{{2}}T\\d{{2}}:\\d{{2}}:\\d{{2}}Z$, got {at}"
-    );
-
-    strip_iso8601(&mut actual);
-    assert_golden("slice-outcome.json", actual);
-
-    let unstamped =
-        specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
-    assert_eq!(unstamped.get_output().status.code(), Some(0));
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "bar"])
-        .assert()
-        .success();
-    assert_eq!(assert.get_output().status.code(), Some(0));
-
-    let value = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(value["name"], "bar");
-    assert!(
-        value["outcome"].is_null(),
-        "unstamped slice must emit outcome == null, got: {}",
-        value["outcome"]
-    );
-}

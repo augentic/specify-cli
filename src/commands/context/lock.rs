@@ -1,9 +1,10 @@
-//! YAML sidecar for `specify context` drift checks.
+//! YAML sidecar for init-time AGENTS.md generation fingerprints.
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
+#[cfg(test)]
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use specify_domain::slice::atomic::yaml_write;
@@ -37,6 +38,7 @@ pub(super) struct Fences {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(test)]
 pub(super) struct InputDiff {
     pub(super) changed: Vec<String>,
     pub(super) added: Vec<String>,
@@ -117,6 +119,7 @@ pub(super) fn save(path: &Path, lock: &ContextLock) -> Result<(), Error> {
     yaml_write(path, lock)
 }
 
+#[cfg(test)]
 pub(super) fn diff_inputs(expected: &[Input], actual: &[Input]) -> InputDiff {
     let expected_by_path = inputs_by_path(expected);
     let actual_by_path = inputs_by_path(actual);
@@ -148,6 +151,7 @@ pub(super) fn diff_inputs(expected: &[Input], actual: &[Input]) -> InputDiff {
     }
 }
 
+#[cfg(test)]
 fn inputs_by_path(inputs: &[Input]) -> BTreeMap<String, String> {
     inputs.iter().map(|input| (input.path.clone(), input.sha256.clone())).collect()
 }

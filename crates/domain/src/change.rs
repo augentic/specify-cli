@@ -15,4 +15,3 @@ pub use plan::doctor::{
     DiagnosticPayload as PlanDoctorPayload, ORPHAN_SOURCE, STALE_CLONE, StaleReason,
     doctor as plan_doctor,
 };
-pub use plan::lock::{Acquired, Released as PlanLockReleased, Stamp, State as PlanLockState};

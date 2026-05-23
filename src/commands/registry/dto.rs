@@ -7,31 +7,6 @@ use specify_domain::registry::{Registry, RegistryProject};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(super) struct ShowBody {
-    pub(super) registry: Option<Registry>,
-    pub(super) path: String,
-}
-
-pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
-    let Some(reg) = body.registry.as_ref() else {
-        return writeln!(w, "no registry declared at registry.yaml");
-    };
-    writeln!(w, "registry.yaml: {}", body.path)?;
-    writeln!(w, "version: {}", reg.version)?;
-    if reg.projects.is_empty() {
-        return writeln!(w, "projects: (none)");
-    }
-    writeln!(w, "projects:")?;
-    for project in &reg.projects {
-        writeln!(w, "  - name: {}", project.name)?;
-        writeln!(w, "    url: {}", project.url)?;
-        writeln!(w, "    adapter: {}", project.adapter)?;
-    }
-    Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
 pub(super) struct ValidateBody {
     pub(super) registry: Option<Registry>,
     pub(super) path: String,

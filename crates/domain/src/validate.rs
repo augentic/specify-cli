@@ -16,15 +16,10 @@ use specify_error::ValidationSummary;
 use crate::spec::ParsedSpec;
 use crate::task::Progress;
 
-pub mod compatibility;
 mod primitives;
 mod registry;
 mod run;
 
-pub use compatibility::{
-    CompatibilityClassification, CompatibilityFinding, CompatibilityReport, CompatibilitySummary,
-    classify_project as classify_project_compatibility,
-};
 pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
 

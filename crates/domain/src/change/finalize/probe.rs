@@ -124,7 +124,7 @@ pub(super) fn probe_one(
         } else {
             format!(
                 "workspace clone `{}` has uncommitted work; refusing. \
-                 Triage with `specify workspace status`, then re-run.",
+                 Inspect the clone with `git status`, then re-run.",
                 project_path.display()
             )
         }),
