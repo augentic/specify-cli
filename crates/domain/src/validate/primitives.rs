@@ -30,6 +30,13 @@ fn req_id_ref_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"REQ-[0-9]{3}").expect("req id regex is valid"))
 }
 
+pub fn screen_slug_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$").expect("screen slug regex is valid")
+    })
+}
+
 /// Return `true` when `heading` appears AND at least one non-empty,
 /// non-whitespace line follows it before the next `##`-or-higher heading.
 /// Blank lines between the heading and prose are fine.

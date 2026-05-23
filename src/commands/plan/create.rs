@@ -48,21 +48,6 @@ pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, Sour
     Ok(map)
 }
 
-/// Validate `name` is kebab-case. Mirrors the diagnostic code that
-/// `specify plan create` surfaces.
-pub fn require_kebab_change_name(name: &str) -> Result<()> {
-    if !is_kebab(name) {
-        return Err(Error::Diag {
-            code: "change-name-not-kebab",
-            detail: format!(
-                "change: name `{name}` must be kebab-case \
-                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
-            ),
-        });
-    }
-    Ok(())
-}
-
 /// Materialise CLI `--sources` / `--add-source` arguments into the
 /// on-disk [`SliceSourceBinding`] shape, preferring the bare-string
 /// shorthand when the candidate id equals the slice's name (RFC-25
@@ -556,7 +541,15 @@ pub(super) fn create(
     ctx: &Ctx, name: String, sources: Vec<SourceArg>, divergence_likely: &[String],
     auto_review: bool, authority_override: &[String],
 ) -> Result<()> {
-    require_kebab_change_name(&name)?;
+    if !is_kebab(&name) {
+        return Err(Error::Diag {
+            code: "change-name-not-kebab",
+            detail: format!(
+                "change: name `{name}` must be kebab-case \
+                 (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens)"
+            ),
+        });
+    }
     let source_map = build_source_map(sources)?;
     let plan_path = ctx.layout().plan_path();
     if plan_path.exists() {
@@ -708,34 +701,34 @@ pub(super) fn add(
         move |plan| {
             plan.create(entry)?;
             validate_plan(plan)?;
-            let created =
-                plan.entries.last().expect("Plan::create appended an entry that is now missing");
-            // Build the journal payload from the persisted entry so
-            // the wire shape stays in lockstep with what landed on
-            // disk.
+            let plan_name = plan.name.clone();
             let now = jiff::Timestamp::now();
-            let events: Vec<journal::Event> = created
-                .authority_override
-                .by_kind
-                .iter()
-                .map(|(kind, key)| {
-                    journal::Event::new(
-                        now,
-                        journal::EventKind::PlanAmendAuthorityOverride {
-                            plan_name: plan.name.clone(),
-                            slice_name: created.name.clone(),
-                            action: AuthorityOverrideAction::Set,
-                            claim_kind: Some(kind.to_string()),
-                            source_key: Some(key.clone()),
-                        },
-                    )
-                })
-                .collect();
+            let (events, created_entry) = {
+                let created = entry_mut(plan, &plan_name, name)?;
+                let events: Vec<journal::Event> = created
+                    .authority_override
+                    .by_kind
+                    .iter()
+                    .map(|(kind, key)| {
+                        journal::Event::new(
+                            now,
+                            journal::EventKind::PlanAmendAuthorityOverride {
+                                plan_name: plan_name.clone(),
+                                slice_name: created.name.clone(),
+                                action: AuthorityOverrideAction::Set,
+                                claim_kind: Some(kind.to_string()),
+                                source_key: Some(key.clone()),
+                            },
+                        )
+                    })
+                    .collect();
+                (events, created.clone())
+            };
             Ok((
                 EntryBody {
                     plan: plan_ref(plan, &plan_path),
                     action: Action::Create,
-                    entry: created.clone(),
+                    entry: created_entry,
                 },
                 events,
             ))
@@ -843,11 +836,7 @@ pub(super) fn amend(
             // `amend` so additive edits compose cleanly with a
             // simultaneous `--sources` replacement.
             if !add_bindings.is_empty() || !remove_source.is_empty() {
-                let entry = plan
-                    .entries
-                    .iter_mut()
-                    .find(|c| c.name == name)
-                    .expect("amended entry present");
+                let entry = entry_mut(plan, &plan_name, &name)?;
                 for key in &remove_source {
                     let before = entry.sources.len();
                     entry.sources.retain(|b| b.key() != key.as_str());
@@ -890,8 +879,11 @@ pub(super) fn amend(
             refuse_orphan_authority_overrides(plan)?;
 
             validate_plan(plan)?;
-            let amended =
-                plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
+            let amended = plan
+                .entries
+                .iter()
+                .find(|c| c.name == name)
+                .ok_or_else(|| unknown_slice_err(&plan_name, &name))?;
 
             // Build the journal event only when --divergence flipped
             // the slice's `divergence` (RFC-25 §Observability — every

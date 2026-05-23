@@ -493,16 +493,13 @@ fn extract_claim_ids(doc: &JsonValue) -> BTreeSet<String> {
 mod tests {
     use super::*;
     use crate::evidence::ClaimKind;
-
-    fn ts(raw: &str) -> Timestamp {
-        raw.parse().expect("valid rfc3339 timestamp in test fixture")
-    }
+    use crate::journal::test_timestamp;
 
     fn sample() -> FusionIndex {
         FusionIndex {
             version: 1,
             slice: "identity-user-registration".to_string(),
-            generated_at: ts("2026-05-22T13:15:00Z"),
+            generated_at: test_timestamp("2026-05-22T13:15:00Z"),
             generator: "specify@2.1.0".to_string(),
             requirements: vec![
                 FusionRequirement {

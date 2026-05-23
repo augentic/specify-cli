@@ -1,12 +1,10 @@
 //! Cycle detection for the `cycle-in-depends-on` diagnostic.
 
-use std::collections::HashMap;
-
 use petgraph::algo::tarjan_scc;
-use petgraph::graph::DiGraph;
 
 use super::{CYCLE, Diagnostic, DiagnosticPayload, Severity};
 use crate::change::plan::core::Entry;
+use crate::change::plan::core::validate::entry_dependency_graph;
 
 /// One [`CYCLE`] diagnostic per cycle in the depends-on graph.
 ///
@@ -16,7 +14,7 @@ use crate::change::plan::core::Entry;
 /// end — matches the convention used by validate's `dependency-cycle`
 /// text.
 pub(super) fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
-    let (graph, _) = build_graph(changes);
+    let graph = entry_dependency_graph(changes);
 
     let mut out = Vec::new();
     for scc in tarjan_scc(&graph) {
@@ -48,22 +46,4 @@ pub(super) fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
         });
     }
     out
-}
-
-fn build_graph(slices: &[Entry]) -> (DiGraph<&str, ()>, HashMap<&str, petgraph::graph::NodeIndex>) {
-    let mut graph: DiGraph<&str, ()> = DiGraph::new();
-    let mut idx = HashMap::new();
-    for entry in slices {
-        let node = graph.add_node(entry.name.as_str());
-        idx.insert(entry.name.as_str(), node);
-    }
-    for entry in slices {
-        let to = idx[entry.name.as_str()];
-        for dep in &entry.depends_on {
-            if let Some(&from) = idx.get(dep.as_str()) {
-                graph.add_edge(from, to, ());
-            }
-        }
-    }
-    (graph, idx)
 }

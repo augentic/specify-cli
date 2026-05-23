@@ -337,15 +337,96 @@ fn slice_transition_to_built_appends_no_refined_event() {
     );
 }
 
-// -- agent-emit helper (slice.synthesis.*, slice.extract.completed,
-// -- plan.propose.divergence) ---------------------------------------
+// -- slice.synthesis.* (specify slice validate) ----------------------
+
+const PLAN_WITH_LEGACY_MONOLITH: &str = "\
+name: rfc25-prov
+lifecycle: pending
+sources:
+  legacy-monolith:
+    adapter: code-typescript
+    path: ./legacy
+slices:
+  - name: my-slice
+    status: pending
+    sources:
+      - { key: legacy-monolith, candidate: my-slice }
+";
+
+const TAGGED_SPEC_UNKNOWN: &str = "# Login Specification
+
+## Purpose
+
+Password reset flow for registered users.
+
+### Requirement: Password reset request [unknown]
+
+ID: REQ-001
+Sources: [legacy-monolith]
+Status: unknown
+
+The system lets a registered user request a password reset link by email.
+
+#### Scenario: Reset requested
+
+- **WHEN** a user submits a registered email
+- **THEN** the system acknowledges the request
+";
+
+fn stage_slice_for_synthesis_journal() -> Project {
+    let project = Project::init().with_schemas();
+    project.stage_slice("good-slice");
+    project.seed_plan(PLAN_WITH_LEGACY_MONOLITH);
+    let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
+    fs::write(&spec_path, TAGGED_SPEC_UNKNOWN).expect("write tagged spec.md");
+    project
+}
+
+#[test]
+fn slice_validate_appends_synthesis_journal_on_success() {
+    let project = stage_slice_for_synthesis_journal();
+    specify()
+        .current_dir(project.root())
+        .args(["slice", "validate", "my-slice"])
+        .assert()
+        .success();
+
+    let events = normalise_timestamps(read_journal(project.root()));
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event"], "slice.synthesis.unknown");
+    assert_eq!(events[0]["payload"]["slice-name"], "my-slice");
+    assert_eq!(events[0]["payload"]["requirement-id"], "REQ-001");
+    assert_journal_golden("slice-validate-synthesis-unknown.json", events);
+}
+
+#[test]
+fn slice_validate_provenance_failure_writes_no_synthesis_journal() {
+    let project = stage_slice_for_synthesis_journal();
+    let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
+    let bad = TAGGED_SPEC_UNKNOWN.replace("Status: unknown", "Status: agreed");
+    fs::write(&spec_path, bad).expect("rewrite spec with tag/status mismatch");
+
+    specify()
+        .current_dir(project.root())
+        .args(["slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+
+    assert!(
+        !journal_path(project.root()).exists(),
+        "provenance failure must not append slice.synthesis.* events"
+    );
+}
+
+// -- agent-emit helper (slice.extract.completed, plan.propose.divergence)
 
 #[test]
 fn agent_emit_helper_writes_one_event_per_jsonl_line() {
-    // Exercises the public Rust helper W3.1 / W3.2 skill bodies call
-    // for the agent-driven events. The harness drives `append`
-    // directly because the CLI does not own a `journal append` verb
-    // (RFC-25 §"What was cut and why").
+    // Exercises the public Rust helper skill bodies call for
+    // agent-driven events. The harness drives `append` directly
+    // because the CLI does not own a `journal append` verb
+    // (RFC-25 §"What was cut and why"). `slice.synthesis.*` is
+    // CLI-owned via `specify slice validate` instead.
     let project = Project::init();
     let layout = Layout::new(project.root());
     let fixed: jiff::Timestamp =
@@ -366,27 +447,6 @@ fn agent_emit_helper_writes_one_event_per_jsonl_line() {
                 source_key: "monolith".to_string(),
             },
         ),
-        Event::new(
-            fixed,
-            EventKind::SliceSynthesisConflict {
-                slice_name: "checkout".to_string(),
-                requirement_id: "REQ-001".to_string(),
-            },
-        ),
-        Event::new(
-            fixed,
-            EventKind::SliceSynthesisDivergence {
-                slice_name: "checkout".to_string(),
-                requirement_id: "REQ-002".to_string(),
-            },
-        ),
-        Event::new(
-            fixed,
-            EventKind::SliceSynthesisUnknown {
-                slice_name: "checkout".to_string(),
-                requirement_id: "REQ-003".to_string(),
-            },
-        ),
     ];
     for event in &events {
         journal::append_batch(layout, std::slice::from_ref(event)).expect("append helper succeeds");
@@ -394,7 +454,7 @@ fn agent_emit_helper_writes_one_event_per_jsonl_line() {
 
     let raw = fs::read_to_string(journal_path(project.root())).expect("read journal");
     let lines: Vec<&str> = raw.lines().collect();
-    assert_eq!(lines.len(), 5, "expected five JSON lines, got {}", lines.len());
+    assert_eq!(lines.len(), 2, "expected two JSON lines, got {}", lines.len());
     for line in &lines {
         let parsed: Map<String, Value> = serde_json::from_str(line).expect("each line is JSON");
         assert!(parsed.contains_key("timestamp"), "line missing timestamp: {line}");

@@ -68,30 +68,37 @@ fn duplicate_names(changes: &[Entry]) -> Vec<Finding> {
     out
 }
 
+/// Build a `depends_on -> entry` dependency graph for plan entries.
+///
+/// Every entry becomes a node (in declaration order). For each
+/// `entry.depends_on` target that names another entry, an edge runs
+/// from the dependency node to `entry`.
+pub fn entry_dependency_graph(entries: &[Entry]) -> DiGraph<&str, ()> {
+    let mut graph: DiGraph<&str, ()> = DiGraph::new();
+    let mut idx = HashMap::new();
+    for entry in entries {
+        let node = graph.add_node(entry.name.as_str());
+        idx.insert(entry.name.as_str(), node);
+    }
+    for entry in entries {
+        let to = idx[entry.name.as_str()];
+        for dep in &entry.depends_on {
+            if let Some(&from) = idx.get(dep.as_str()) {
+                graph.add_edge(from, to, ());
+            }
+        }
+    }
+    graph
+}
+
 /// Build a `depends_on -> self` DAG and emit one `dependency-cycle`
 /// result per cycle (including self-edges). Uses `petgraph::toposort`
 /// to detect the existence of a cycle, then `tarjan_scc` to enumerate
 /// every strongly-connected component larger than one node plus any
 /// self-edges (which are their own SCC of size 1 with a loop).
 fn detect_cycles(changes: &[Entry]) -> Vec<Finding> {
-    let mut graph: DiGraph<&str, ()> = DiGraph::new();
-    let mut idx = HashMap::new();
-    for entry in changes {
-        let node = graph.add_node(entry.name.as_str());
-        idx.insert(entry.name.as_str(), node);
-    }
-    let mut has_self_loop = false;
-    for entry in changes {
-        let to = idx[entry.name.as_str()];
-        for dep in &entry.depends_on {
-            if let Some(&from) = idx.get(dep.as_str()) {
-                graph.add_edge(from, to, ());
-                if from == to {
-                    has_self_loop = true;
-                }
-            }
-        }
-    }
+    let graph = entry_dependency_graph(changes);
+    let has_self_loop = graph.node_indices().any(|n| graph.find_edge(n, n).is_some());
 
     if toposort(&graph, None).is_ok() && !has_self_loop {
         return Vec::new();

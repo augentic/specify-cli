@@ -109,9 +109,6 @@ pub enum StaleReason {
     SignatureChanged,
     /// Slot materialisation does not match the registry URL class or target.
     SlotMismatch,
-    /// Retained for old JSON consumers. Doctor no longer emits this
-    /// reason because sync does not write `.specify-sync.yaml`.
-    MissingSyncStamp,
 }
 
 /// Snapshot of the registry or slot signature for staleness comparison.

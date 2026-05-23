@@ -256,10 +256,7 @@ pub use crate::journal::CacheMissReason;
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn ts(raw: &str) -> Timestamp {
-        raw.parse().expect("valid rfc3339 timestamp in test fixture")
-    }
+    use crate::journal::test_timestamp;
 
     fn sample(adapter: &str, candidate: Option<&str>) -> CacheFingerprint {
         CacheFingerprint::new(
@@ -312,7 +309,7 @@ mod tests {
     #[test]
     fn cache_index_entry_round_trips() {
         let entry = CacheIndexEntry {
-            timestamp: ts("2026-05-22T13:15:00Z"),
+            timestamp: test_timestamp("2026-05-22T13:15:00Z"),
             fingerprint: "sha256:cafef00d".to_string(),
             slice: "identity-user-registration".to_string(),
             source_key: "runtime".to_string(),

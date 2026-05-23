@@ -6,11 +6,13 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use jiff::Timestamp;
 use specify_domain::change::{Plan, authority_override_orphan_source_keys};
 use specify_domain::discovery::Discovery;
+use specify_domain::journal::{Event, EventKind, append_batch};
 use specify_domain::schema::validate_evidence_dir;
 use specify_domain::slice::fusion::{self, FusionIndex};
-use specify_domain::spec::provenance;
+use specify_domain::spec::provenance::{self, RequirementTag};
 use specify_domain::validate::validate_slice;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
@@ -67,6 +69,10 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         Ok(())
     })?;
     if passed {
+        // DECISIONS.md — `slice.synthesis.{conflict,divergence,unknown}`
+        // emit once per tagged requirement after a successful validate
+        // (same posture as `slice.transition.refined` on transition).
+        append_synthesis_journal(ctx, name, &slice_dir)?;
         Ok(())
     } else {
         Err(Error::validation_failed(
@@ -75,6 +81,63 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
             format!("slice `{name}` failed validation"),
         ))
     }
+}
+
+/// Scan every annotated `spec.md` under `<slice>/specs/` and append
+/// one `slice.synthesis.*` journal line per `(requirement-id, tag)`
+/// pair. Skipped when the slice has no tagged requirements.
+fn append_synthesis_journal(ctx: &Ctx, slice_name: &str, slice_dir: &Path) -> Result<()> {
+    let tags = collect_synthesis_tags(slice_dir)?;
+    if tags.is_empty() {
+        return Ok(());
+    }
+    let now = Timestamp::now();
+    let events: Vec<Event> = tags
+        .into_iter()
+        .map(|(requirement_id, tag)| {
+            let kind = match tag {
+                RequirementTag::Unknown => EventKind::SliceSynthesisUnknown {
+                    slice_name: slice_name.to_string(),
+                    requirement_id,
+                },
+                RequirementTag::Conflict => EventKind::SliceSynthesisConflict {
+                    slice_name: slice_name.to_string(),
+                    requirement_id,
+                },
+                RequirementTag::Divergence => EventKind::SliceSynthesisDivergence {
+                    slice_name: slice_name.to_string(),
+                    requirement_id,
+                },
+            };
+            Event::new(now, kind)
+        })
+        .collect();
+    append_batch(ctx.layout(), &events)
+}
+
+/// Gather tagged requirements across all `*.md` files under
+/// `<slice>/specs/`, in stable path-then-document order.
+fn collect_synthesis_tags(slice_dir: &Path) -> Result<Vec<(String, RequirementTag)>> {
+    let specs_dir = slice_dir.join("specs");
+    if !specs_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut out: Vec<(String, RequirementTag)> = Vec::new();
+    for path in collect_spec_files(&specs_dir)? {
+        let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
+            op: "read",
+            path: path.clone(),
+            source,
+        })?;
+        let parsed = provenance::parse_spec_md(&text);
+        if parsed.is_unannotated() {
+            continue;
+        }
+        for (id, tag) in parsed.synthesis_tags() {
+            out.push((id.to_string(), tag));
+        }
+    }
+    Ok(out)
 }
 
 /// Bundle the three pre-adapter gates that fire on a single slice:

@@ -330,15 +330,11 @@ fn digest_dir_name(digest: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use jiff::Timestamp;
     use tempfile::tempdir;
 
     use super::*;
     use crate::adapter::cache::{FingerprintSource, FingerprintToolVersion};
-
-    fn ts(raw: &str) -> Timestamp {
-        raw.parse().expect("valid rfc3339 timestamp in test fixture")
-    }
+    use crate::journal::test_timestamp;
 
     fn fp(adapter: &str) -> CacheFingerprint {
         CacheFingerprint::new(
@@ -357,7 +353,7 @@ mod tests {
 
     fn index_entry(layout_adapter: &str, digest: &str) -> CacheIndexEntry {
         CacheIndexEntry {
-            timestamp: ts("2026-05-22T13:15:00Z"),
+            timestamp: test_timestamp("2026-05-22T13:15:00Z"),
             fingerprint: digest.to_string(),
             slice: "identity-user-registration".to_string(),
             source_key: "legacy".to_string(),

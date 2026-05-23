@@ -6,10 +6,11 @@ use std::collections::{BinaryHeap, HashMap};
 
 use petgraph::Direction;
 use petgraph::algo::{tarjan_scc, toposort};
-use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::graph::NodeIndex;
 use specify_error::Error;
 
 use super::model::{Entry, Plan, Status};
+use super::validate::entry_dependency_graph;
 
 impl Plan {
     /// First entry in list order whose dependencies are all `done` and
@@ -97,20 +98,8 @@ impl Plan {
     ///
     /// Errors with `Error::Diag` when the dependency graph has a cycle.
     pub fn topological_order(&self) -> Result<Vec<&Entry>, Error> {
-        let mut graph: DiGraph<&str, ()> = DiGraph::new();
-        let mut idx = HashMap::new();
-        for entry in &self.entries {
-            let node = graph.add_node(entry.name.as_str());
-            idx.insert(entry.name.as_str(), node);
-        }
-        for entry in &self.entries {
-            let to = idx[entry.name.as_str()];
-            for dep in &entry.depends_on {
-                if let Some(&from) = idx.get(dep.as_str()) {
-                    graph.add_edge(from, to, ());
-                }
-            }
-        }
+        let graph = entry_dependency_graph(&self.entries);
+        let idx: HashMap<&str, NodeIndex> = graph.node_indices().map(|n| (graph[n], n)).collect();
 
         if toposort(&graph, None).is_err() {
             let offender = tarjan_scc(&graph)

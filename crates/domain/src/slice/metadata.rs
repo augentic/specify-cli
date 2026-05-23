@@ -182,19 +182,16 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+    use crate::journal::test_timestamp;
     use crate::slice::LifecycleStatus;
-
-    fn parse_stamp(raw: &str) -> Timestamp {
-        raw.parse().expect("valid rfc3339 timestamp in test fixture")
-    }
 
     fn sample() -> SliceMetadata {
         SliceMetadata {
             target: "omnia".to_string(),
             status: LifecycleStatus::Refined,
-            created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
-            defined_at: Some(parse_stamp("2024-08-01T12:00:00Z")),
-            completed_at: Some(parse_stamp("2024-08-03T15:45:00Z")),
+            created_at: Some(test_timestamp("2024-08-01T10:00:00Z")),
+            defined_at: Some(test_timestamp("2024-08-01T12:00:00Z")),
+            completed_at: Some(test_timestamp("2024-08-03T15:45:00Z")),
             merged_at: None,
             dropped_at: None,
             drop_reason: None,

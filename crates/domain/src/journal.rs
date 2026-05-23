@@ -115,9 +115,9 @@ pub enum EventKind {
         /// Source key from `plan.yaml.sources.<key>`.
         source_key: String,
     },
-    /// Synthesis wrote `[conflict]` on a requirement in `spec.md` —
-    /// same-authority disagreement that the operator must reconcile.
-    /// Agent-driven.
+    /// `[conflict]` on a requirement in `spec.md` — same-authority
+    /// disagreement the operator must reconcile. Emitted by
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.conflict", rename_all = "kebab-case")]
     SliceSynthesisConflict {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -125,9 +125,9 @@ pub enum EventKind {
         /// `ID:` value on the tagged requirement block.
         requirement_id: String,
     },
-    /// Synthesis wrote `[divergence]` on a requirement in `spec.md` —
-    /// cross-authority disagreement preserved as inline commentary.
-    /// Agent-driven.
+    /// `[divergence]` on a requirement in `spec.md` — cross-authority
+    /// disagreement preserved as inline commentary. Emitted by
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.divergence", rename_all = "kebab-case")]
     SliceSynthesisDivergence {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -135,9 +135,9 @@ pub enum EventKind {
         /// `ID:` value on the tagged requirement block.
         requirement_id: String,
     },
-    /// Synthesis wrote `[unknown]` on a requirement in `spec.md` — a
-    /// gap the operator must close before the requirement is
-    /// meaningful. Agent-driven.
+    /// `[unknown]` on a requirement in `spec.md` — a gap the operator
+    /// must close before the requirement is meaningful. Emitted by
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.unknown", rename_all = "kebab-case")]
     SliceSynthesisUnknown {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -378,15 +378,17 @@ pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
     Ok(())
 }
 
+/// Parses a fixed RFC3339 timestamp for test fixtures.
+#[cfg(test)]
+pub(crate) fn test_timestamp(raw: &str) -> Timestamp {
+    raw.parse().expect("valid rfc3339 timestamp in test fixture")
+}
+
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
 
     use super::*;
-
-    fn ts(raw: &str) -> Timestamp {
-        raw.parse().expect("valid rfc3339 timestamp in test fixture")
-    }
 
     fn read_lines(layout: Layout<'_>) -> Vec<String> {
         let raw = std::fs::read_to_string(path(layout)).expect("read journal");
@@ -400,7 +402,7 @@ mod tests {
         assert!(!layout.specify_dir().exists(), "precondition: .specify must not exist yet");
 
         let event = Event::new(
-            ts("2026-05-21T20:02:00Z"),
+            test_timestamp("2026-05-21T20:02:00Z"),
             EventKind::SliceTransitionRefined {
                 slice_name: "checkout".to_string(),
             },
@@ -421,14 +423,14 @@ mod tests {
         let layout = Layout::new(dir.path());
         let events = vec![
             Event::new(
-                ts("2026-05-22T13:30:00Z"),
+                test_timestamp("2026-05-22T13:30:00Z"),
                 EventKind::PlanProposeDivergence {
                     plan_name: "fresh".to_string(),
                     slice_name: "checkout".to_string(),
                 },
             ),
             Event::new(
-                ts("2026-05-22T13:30:00Z"),
+                test_timestamp("2026-05-22T13:30:00Z"),
                 EventKind::PlanTransitionReviewed {
                     plan_name: "fresh".to_string(),
                 },
@@ -471,7 +473,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         let event = Event::new(
-            ts("2026-05-22T13:15:00Z"),
+            test_timestamp("2026-05-22T13:15:00Z"),
             EventKind::SliceExtractCacheHit {
                 slice_name: "identity-user-registration".to_string(),
                 source_key: "runtime".to_string(),
@@ -493,7 +495,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         let event = Event::new(
-            ts("2026-05-22T13:15:01Z"),
+            test_timestamp("2026-05-22T13:15:01Z"),
             EventKind::SliceExtractCacheMiss {
                 slice_name: "identity-user-registration".to_string(),
                 source_key: "runtime".to_string(),
@@ -528,7 +530,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         let event = Event::new(
-            ts("2026-05-22T13:16:00Z"),
+            test_timestamp("2026-05-22T13:16:00Z"),
             EventKind::SliceFusionWritten {
                 slice_name: "identity-user-registration".to_string(),
                 generator: "specify@2.1.0".to_string(),
@@ -547,7 +549,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         let event = Event::new(
-            ts("2026-05-22T13:18:42Z"),
+            test_timestamp("2026-05-22T13:18:42Z"),
             EventKind::SliceFixtureReplayCompleted {
                 slice_name: "identity-user-registration".to_string(),
                 runner: "omnia-target@1.4 (cargo nextest)".to_string(),
@@ -570,7 +572,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         let event = Event::new(
-            ts("2026-05-22T13:20:00Z"),
+            test_timestamp("2026-05-22T13:20:00Z"),
             EventKind::PlanAmendAuthorityOverride {
                 plan_name: "identity-revamp".to_string(),
                 slice_name: "identity-user-registration".to_string(),
@@ -592,7 +594,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         let event = Event::new(
-            ts("2026-05-22T13:20:01Z"),
+            test_timestamp("2026-05-22T13:20:01Z"),
             EventKind::PlanAmendAuthorityOverride {
                 plan_name: "identity-revamp".to_string(),
                 slice_name: "identity-user-registration".to_string(),
@@ -639,7 +641,7 @@ mod tests {
         ] {
             append_batch(
                 layout,
-                std::slice::from_ref(&Event::new(ts("2026-05-21T20:05:00Z"), kind)),
+                std::slice::from_ref(&Event::new(test_timestamp("2026-05-21T20:05:00Z"), kind)),
             )
             .expect("append ok");
         }

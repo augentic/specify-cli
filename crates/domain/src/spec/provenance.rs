@@ -207,6 +207,14 @@ impl ParsedSpec {
     pub fn is_unannotated(&self) -> bool {
         self.requirements.iter().all(|r| !r.sources_line_present() && r.status_raw.is_none())
     }
+
+    /// Non-empty `ID:` values paired with heading tags for
+    /// `slice.synthesis.*` journal emission after successful validate.
+    pub fn synthesis_tags(&self) -> impl Iterator<Item = (&str, RequirementTag)> + '_ {
+        self.requirements.iter().filter_map(|r| {
+            if r.id.is_empty() { None } else { r.tag.map(|tag| (r.id.as_str(), tag)) }
+        })
+    }
 }
 
 impl Requirement {
