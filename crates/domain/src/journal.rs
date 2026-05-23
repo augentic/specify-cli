@@ -231,6 +231,42 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source_key: Option<String>,
     },
+    /// Build phase failed — `/spec:build` (or the matching slice-
+    /// build CLI surface) detected an unrecoverable failure and is
+    /// parking the slice. The per-entry `plan.yaml.slices[].status`
+    /// stays `in-progress`; v1 has no `failed` state (see
+    /// `change/plan/core/model.rs`). Observers tailing the journal
+    /// see this row instead of silence until the operator retries
+    /// `/spec:build` or runs `/spec:drop`. Emitter sites land
+    /// post-2.0; the wire shape is locked here.
+    #[serde(rename = "slice.build.failed", rename_all = "kebab-case")]
+    SliceBuildFailed {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// Merge phase hit an unresolvable conflict against the
+    /// baseline — `/spec:merge` (or `specify slice merge`) refused
+    /// to fold the slice's deltas in. The per-entry
+    /// `plan.yaml.slices[].status` stays `in-progress`; v1 has no
+    /// `conflicted` state. Operators reconcile and re-run
+    /// `/spec:merge` or `/spec:drop`. Emitter sites land post-2.0;
+    /// the wire shape is locked here.
+    #[serde(rename = "slice.merge.conflicted", rename_all = "kebab-case")]
+    SliceMergeConflicted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// Plan archived — `specify plan finalize` moved `change.md`
+    /// and `plan.yaml` into `.specify/archive/`. Archive is a
+    /// filesystem operation, not a lifecycle state (the plan stays
+    /// stamped `reviewed`); this event makes the move observable
+    /// without a corresponding lifecycle row. Emitter sites land
+    /// post-2.0; the wire shape is locked here.
+    #[serde(rename = "plan.transition.archived", rename_all = "kebab-case")]
+    PlanTransitionArchived {
+        /// Plan name from `plan.yaml.name`.
+        plan_name: String,
+    },
 }
 
 /// Closed `reason` enum on [`EventKind::SliceExtractCacheMiss`].

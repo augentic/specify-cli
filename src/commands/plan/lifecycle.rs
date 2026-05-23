@@ -141,7 +141,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
                 Some(entry) => NextBody {
                     next: Some(entry.name.clone()),
                     project: entry.project.clone(),
-                    target: entry.target.clone(),
+                    target: entry.target.as_ref().map(ToString::to_string),
                     description: entry.description.clone(),
                     sources: Some(entry.sources.clone()),
                     ..NextBody::default()

@@ -14,7 +14,7 @@ use specify_domain::change::finalize::{
     Inputs, Landing, ProjectResult, Refusal, classify_pr, combine, is_terminal, outstanding, run,
     summarise,
 };
-use specify_domain::change::{Entry, Lifecycle, Plan, SliceAuthorityOverride, Status};
+use specify_domain::change::{Entry, Lifecycle, Plan, SliceAuthorityOverride, Status, TargetRef};
 use specify_domain::registry::forge::{PrState, PrView};
 use specify_domain::registry::{Registry, RegistryProject};
 use tempfile::TempDir;
@@ -113,7 +113,7 @@ fn entry(name: &str, status: Status) -> Entry {
     Entry {
         name: name.to_string(),
         project: None,
-        target: Some("omnia@v1".to_string()),
+        target: Some(TargetRef::new("omnia", 1)),
         status,
         depends_on: Vec::new(),
         sources: Vec::new(),

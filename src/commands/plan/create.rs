@@ -5,7 +5,8 @@ use std::str::FromStr;
 use serde::Serialize;
 use specify_domain::change::{
     Divergence, Entry, EntryPatch, Lifecycle, Patch, Plan, Severity, SliceAuthorityOverride,
-    SliceSourceBinding, Status, authority_override_orphan_source_keys,
+    SliceSourceBinding, SourceBinding, Status, TargetRef, TargetRefParseError,
+    authority_override_orphan_source_keys,
 };
 use specify_domain::config::{InitPolicy, with_state};
 use specify_domain::discovery::{Discovery, DiscoveryResolveError};
@@ -18,19 +19,31 @@ use super::{Ref, check_project, plan_ref};
 use crate::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 use crate::context::Ctx;
 
-/// Validate `--source key=value` arguments and collapse them into the
-/// `BTreeMap` shape `Plan::init` expects. Refuses duplicate keys with
-/// the stable `plan-source-duplicate-key` diagnostic.
-pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, String>> {
-    let mut map: BTreeMap<String, String> = BTreeMap::new();
-    for SourceArg { key, value } in sources {
+/// Validate `--source <key>=<adapter>:<binding>` arguments and
+/// collapse them into the structured [`SourceBinding`] map
+/// `Plan::init` expects. Refuses duplicate keys with the stable
+/// `plan-source-duplicate-key` diagnostic.
+///
+/// Wire grammar (parsed in [`crate::cli::SourceArg::from_str`]):
+///
+/// - `<key>=<adapter>:<path>` → `SourceBinding { adapter, path: Some(_), value: None }`.
+/// - `<key>=<adapter>:value:<literal>` → `SourceBinding { adapter, path: None, value: Some(_) }`.
+pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, SourceBinding>> {
+    let mut map: BTreeMap<String, SourceBinding> = BTreeMap::new();
+    for SourceArg {
+        key,
+        adapter,
+        path,
+        value,
+    } in sources
+    {
         if map.contains_key(&key) {
             return Err(Error::Diag {
                 code: "plan-source-duplicate-key",
                 detail: format!("duplicate key `{key}` in --source arguments"),
             });
         }
-        map.insert(key, value);
+        map.insert(key, SourceBinding { adapter, path, value });
     }
     Ok(map)
 }
@@ -77,6 +90,23 @@ fn binding_from_arg(
             key: arg.key,
             candidate,
         },
+    })
+}
+
+/// Parse a CLI `--target <name@vN>` flag into a [`TargetRef`].
+///
+/// The schema regex on `plan.yaml.slices[].target` is the primary
+/// gate; this helper is the matching gate at the CLI boundary so an
+/// `Error::Argument` surfaces ahead of any plan I/O. The kebab
+/// discriminant on the resulting argument-error is `plan-target-malformed`
+/// per `DECISIONS.md §"Target adapter suffix policy"`.
+fn parse_target_flag(raw: &str) -> Result<TargetRef> {
+    TargetRef::from_str(raw).map_err(|err: TargetRefParseError| Error::Argument {
+        flag: "--target",
+        detail: format!(
+            "{err}. Expected `<name>@v<version>` with kebab `<name>` and a non-negative integer `<version>` (e.g. `omnia@v1`). \
+             Discriminant: plan-target-malformed."
+        ),
     })
 }
 
@@ -658,6 +688,7 @@ pub(super) fn add(
             .map(|a| (a.kind, a.source_key.clone()))
             .collect::<BTreeMap<_, _>>(),
     };
+    let target = target.map(|raw| parse_target_flag(&raw)).transpose()?;
     let entry = Entry {
         name: name.to_string(),
         project,
@@ -796,7 +827,7 @@ pub(super) fn amend(
                 target: match target.clone() {
                     None => Patch::Keep,
                     Some(s) if s.is_empty() => Patch::Clear,
-                    Some(s) => Patch::Set(s),
+                    Some(s) => Patch::Set(parse_target_flag(&s)?),
                 },
                 description: match description.clone() {
                     None => Patch::Keep,

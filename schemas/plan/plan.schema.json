@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/plan/plan.schema.json",
   "title": "Specify plan.yaml",
-  "description": "Validates the structure of `plan.yaml` (at the repo root): the change name, the optional plan-level `lifecycle` (`pending | reviewed` per RFC-25 \u00a7Workflow vocabulary), the optional named-sources map, and the ordered list of plan slices with their dependencies, status, and (per RFC-25) structured source bindings plus the optional `divergence` enum. Strict schema \u2014 unknown top-level and per-slice fields are rejected.\n\nRFC-25: each slice carries the `target` field (target-adapter identifier \u2014 renamed from `adapter` in W0.2) and an optional `divergence` enum (`likely | accepted | rejected`); `slices[].sources[]` items accept either a bare-string source key (shorthand for `{ key: <key>, candidate: <slice.name> }`) or the structured `{ key, candidate }` object form; the top-level `sources` map accepts either a bare string (1.x backward-compat) or a `{ adapter, path?, value? }` object per source key. The per-entry status enum is the RFC-25-collapsed `{pending, in-progress, done}` (v1 has no `blocked`/`failed`/`skipped`); the plan-level `lifecycle` enum is the collapsed `{pending, reviewed}` \u2014 `drained` and `currently executing` are computed from per-entry status at read time.\n\nRFC-27 \u00a7D3: each slice MAY carry an optional `authority-override` map keyed by claim kind whose values are source keys present in the slice's own `sources[]` list \u2014 orphan keys are rejected by `specify slice validate` with `slice-authority-override-orphan-source-key`. RFC-27 \u00a7D5: every `divergence` value (including `likely`) is CLI-written via `specify plan create --divergence-likely` / `specify plan amend --divergence`; the plan skill no longer patches the file directly.",
+  "description": "Validates the structure of `plan.yaml` (at the repo root): the change name, the optional plan-level `lifecycle` (`pending | reviewed` per RFC-25 \u00a7Workflow vocabulary), the optional named-sources map, and the ordered list of plan slices with their dependencies, status, and (per RFC-25) structured source bindings plus the optional `divergence` enum. Strict schema \u2014 unknown top-level and per-slice fields are rejected.\n\nRFC-25: each slice carries the `target` field (target-adapter identifier \u2014 renamed from `adapter` in W0.2) and an optional `divergence` enum (`likely | accepted | rejected`); `slices[].sources[]` items accept either a bare-string source key (shorthand for `{ key: <key>, candidate: <slice.name> }`) or the structured `{ key, candidate }` object form; the top-level `sources` map carries the structured `{ adapter, path?, value? }` object per source key — the 1.x bare-string shorthand was dropped at the 2.0 cut and exactly one of `path` or `value` is required. The per-entry status enum is the RFC-25-collapsed `{pending, in-progress, done}` (v1 has no `blocked`/`failed`/`skipped`); the plan-level `lifecycle` enum is the collapsed `{pending, reviewed}` \u2014 `drained` and `currently executing` are computed from per-entry status at read time.\n\nRFC-27 \u00a7D3: each slice MAY carry an optional `authority-override` map keyed by claim kind whose values are source keys present in the slice's own `sources[]` list \u2014 orphan keys are rejected by `specify slice validate` with `slice-authority-override-orphan-source-key`. RFC-27 \u00a7D5: every `divergence` value (including `likely`) is CLI-written via `specify plan create --divergence-likely` / `specify plan amend --divergence`; the plan skill no longer patches the file directly.",
   "type": "object",
   "required": [
     "name",
@@ -16,7 +16,7 @@
     },
     "sources": {
       "type": "object",
-      "description": "Named source bindings. Keys are kebab-case identifiers referenced by each slice's `sources` list. Values are either a bare string (1.x backward-compat: a path or URL) or the RFC-25 structured object `{ adapter, path?, value? }`.",
+      "description": "Named source bindings. Keys are kebab-case identifiers referenced by each slice's `sources` list. Values are the structured RFC-25 object `{ adapter, path?, value? }` — exactly one of `path` or `value` is required. The pre-2.0 bare-string shorthand was dropped at the 2.0 cut.",
       "propertyNames": {
         "$ref": "#/$defs/kebabName"
       },
@@ -67,37 +67,32 @@
       "description": "Closed claim-kind enum mirrored from `evidence.schema.json#/$defs/claimKind`. Kept byte-identical so the per-slice `authority-override` keys validate against the same closed set."
     },
     "sourceBinding": {
-      "oneOf": [
-        {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter"
+      ],
+      "properties": {
+        "adapter": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Kebab-case source-adapter name (e.g. `intent`, `documentation`, `code-typescript`, `screenshots`)."
+        },
+        "path": {
           "type": "string",
           "minLength": 1,
-          "description": "1.x backward-compat: bare string carries a path or URL; the adapter is inferred by the caller."
+          "description": "Filesystem path or repo location the adapter binds against. Mutually exclusive with `value`."
         },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "adapter"
-          ],
-          "properties": {
-            "adapter": {
-              "$ref": "#/$defs/kebabName",
-              "description": "Kebab-case source-adapter name (e.g. `intent`, `documentation`, `code-typescript`, `screenshots`)."
-            },
-            "path": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Filesystem path or repo location the adapter binds against. Mutually exclusive with `value`."
-            },
-            "value": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Literal value supplied directly to the adapter (e.g. the operator brief text for `intent`). Mutually exclusive with `path`."
-            }
-          }
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Literal value supplied directly to the adapter (e.g. the operator brief text for `intent`). Mutually exclusive with `path`."
         }
+      },
+      "oneOf": [
+        { "required": ["path"], "not": { "required": ["value"] } },
+        { "required": ["value"], "not": { "required": ["path"] } }
       ],
-      "description": "RFC-25 \u00a7Source \u2014 a plan-level source binding."
+      "description": "RFC-25 \u00a7Source \u2014 a plan-level source binding. The 1.x bare-string shorthand was dropped at the 2.0 cut; every entry is now the structured object form with exactly one of `path` or `value`."
     },
     "sliceSourceBinding": {
       "oneOf": [
@@ -133,6 +128,14 @@
         "status"
       ],
       "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": ["project"],
+          "properties": { "project": { "type": "string" } }
+        },
+        { "required": ["target"] }
+      ],
+      "description": "Per RFC-25 §Adapter vocabulary, every slice entry must declare at least one of `project` (target registry project, non-null string) or `target` (target-adapter `name@vN` identifier). The cross-field rule lives in the schema so external consumers get the same gate as the Rust loader.",
       "properties": {
         "name": {
           "$ref": "#/$defs/kebabName",
@@ -147,7 +150,8 @@
         },
         "target": {
           "type": "string",
-          "description": "RFC-25 target-adapter identifier (e.g. `omnia`, `contracts@v1`). Renamed from `adapter` in the W0.2 type rename; the pre-RFC-25 `adapter` field was retired in the same change."
+          "pattern": "^[a-z][a-z0-9-]*@v\\d+$",
+          "description": "RFC-25 target-adapter identifier carrying a required `@vN` suffix (e.g. `omnia@v1`, `contracts@v1`). The integer `N` is parsed at deserialisation time and reconciled against the resolved target adapter manifest's `version: u32` field — mismatches surface as `plan-target-version-mismatch`. Renamed from `adapter` in the W0.2 type rename; the pre-RFC-25 `adapter` field and the decorative bare-name shorthand were both retired at the 2.0 cut."
         },
         "status": {
           "type": "string",

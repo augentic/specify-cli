@@ -1,12 +1,15 @@
 //! Adapter cache management plus the on-disk
 //! `.specify/.cache/.cache-meta.yaml` representation.
 //!
-//! `cache_adapter` copies a resolved source into
-//! `.specify/.cache/adapters/targets/<name>/`, mirrors the bundled `default`
-//! sibling under the same `adapters/targets/` axis, and stamps `cache-meta.yaml`
-//! with the resolved URI. The agent owns writes to the cache; the CLI
-//! reads `.cache-meta.yaml` (via [`CacheMeta::load`]) only to decide
-//! whether the cache matches `.specify/project.yaml:adapter`.
+//! `cache_adapter` copies a resolved source into the manifest cache at
+//! `.specify/.cache/manifests/targets/<name>/`, mirrors the bundled
+//! `default` sibling under the same `manifests/targets/` axis, and
+//! stamps `cache-meta.yaml` with the resolved URI. The agent owns
+//! writes to the manifest cache; the CLI reads `.cache-meta.yaml` (via
+//! [`CacheMeta::load`]) only to decide whether the cache matches
+//! `.specify/project.yaml:adapter`. The RFC-27 §D8 extraction cache at
+//! `.specify/.cache/extractions/<adapter>/` lives in a sibling tree and
+//! is managed by [`crate::adapter::cache`].
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,7 +18,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-use crate::adapter::{Axis, cache_dir as adapter_cache_dir};
+use crate::adapter::{Axis, cache_dir as adapter_cache_dir, check_axis_unique_for_name};
 use crate::codex::DEFAULT_CODEX_ADAPTER;
 use crate::init::adapter_uri::{AdapterUri, ensure_adapter_dir};
 
@@ -51,6 +54,13 @@ pub(super) fn cache_adapter(
     }
 
     let source = AdapterUri::parse(adapter, project_dir)?;
+    // Cross-axis uniqueness: a target adapter being cached must not
+    // collide with an in-repo `adapters/sources/<name>/` (or its
+    // cached mirror). See DECISIONS.md §"Adapter name uniqueness".
+    // Probing here gives the operator a clean diagnostic before the
+    // cache directory is rewritten and ahead of the downstream
+    // `TargetAdapter::resolve` call in `init/regular.rs`.
+    check_axis_unique_for_name(Axis::Target, &source.adapter_name, project_dir)?;
     let target = adapter_cache_dir(project_dir, Axis::Target, &source.adapter_name);
     refresh_cached_adapter(&source.source_dir, &target)?;
     cache_sibling_default_adapter(&source.source_dir, project_dir)?;

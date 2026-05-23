@@ -5,7 +5,9 @@ use std::process::Command;
 use tempfile::tempdir;
 
 use super::*;
-use crate::change::plan::core::{Entry, Plan, SliceAuthorityOverride, SliceSourceBinding, Status};
+use crate::change::plan::core::{
+    Entry, Plan, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
+};
 use crate::registry::{Registry, RegistryProject};
 
 fn change(name: &str, status: Status) -> Entry {
@@ -41,7 +43,7 @@ fn plan_with(changes: Vec<Entry>) -> Plan {
 fn plan_with_sources(sources: Vec<(&str, &str)>, changes: Vec<Entry>) -> Plan {
     let mut map = BTreeMap::new();
     for (k, v) in sources {
-        map.insert(k.to_string(), v.to_string());
+        map.insert(k.to_string(), SourceBinding::path("code-typescript", v));
     }
     Plan {
         name: "test".into(),

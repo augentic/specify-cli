@@ -56,7 +56,7 @@ pub fn specify() -> Command {
 /// Integration tests call this directly because outcome inspection is no
 /// longer exposed as CLI product surface.
 pub fn stamp_slice_outcome(
-    project: &Project, name: &str, phase: specify_domain::adapter::Operation,
+    project: &Project, name: &str, phase: specify_domain::adapter::TargetOperation,
     kind: specify_domain::slice::OutcomeKind, summary: &str, context: Option<&str>,
 ) {
     use jiff::Timestamp;
@@ -319,10 +319,11 @@ impl Project {
     }
 
     /// Populate the cache instead of the local `targets/` tree so
-    /// `Adapter::resolve` picks the `AdapterLocation::Cached` branch.
+    /// `TargetAdapter::resolve` picks the `AdapterLocation::Cached`
+    /// branch.
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
-        copy_dir(&omnia_schema_dir(), &self.root.join(".specify/.cache/adapters/targets/omnia"));
+        copy_dir(&omnia_schema_dir(), &self.root.join(".specify/.cache/manifests/targets/omnia"));
         self
     }
 

@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
 pub(super) use run::run;
-use specify_domain::adapter::{Adapter, Axis, ResolvedAdapter};
+use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
 use specify_domain::codex::adapter_name_from_value;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
@@ -55,12 +55,12 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     })
 }
 
-fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedAdapter>> {
+fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedTargetAdapter>> {
     let Some(value) = ctx.config.adapter.as_deref() else {
         return Ok(None);
     };
     let name = adapter_name_from_value(value);
-    Adapter::resolve(Axis::Target, name, &ctx.project_dir).map(Some)
+    TargetAdapter::resolve(name, &ctx.project_dir).map(Some)
 }
 
 fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {

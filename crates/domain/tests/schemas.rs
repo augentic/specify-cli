@@ -50,27 +50,26 @@ const PLUGIN_VALID_SOURCE: &str = r"
 name: code-typescript
 version: 1
 axis: source
-operations: [enumerate, extract]
 briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
+description: Extracts behavioural evidence from TypeScript codebases.
 ";
 
 const PLUGIN_VALID_TARGET: &str = r"
 name: omnia
 version: 1
 axis: target
-operations: [shape, build, merge]
 briefs:
   shape: briefs/shape.md
   build: briefs/build.md
   merge: briefs/merge.md
+description: Omnia Rust WASM target adapter.
 ";
 
 const PLUGIN_INVALID_NO_AXIS: &str = r"
 name: code-typescript
 version: 1
-operations: [enumerate, extract]
 briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
@@ -80,7 +79,6 @@ const PLUGIN_INVALID_BAD_AXIS: &str = r"
 name: code-typescript
 version: 1
 axis: lens
-operations: [enumerate, extract]
 briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
@@ -90,7 +88,6 @@ const PLUGIN_INVALID_NAME_NOT_KEBAB: &str = r"
 name: CodeTypeScript
 version: 1
 axis: source
-operations: [enumerate, extract]
 briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
@@ -100,7 +97,6 @@ const PLUGIN_INVALID_VERSION_FLOAT: &str = r"
 name: code-typescript
 version: 1.5
 axis: source
-operations: [enumerate, extract]
 briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
@@ -128,27 +124,25 @@ const SOURCE_INVALID_AXIS_TARGET: &str = r"
 name: code-typescript
 version: 1
 axis: target
-operations: [enumerate, extract]
 briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
 ";
 
-const SOURCE_INVALID_OPS_WRONG: &str = r"
+const SOURCE_INVALID_EXTRA_BRIEF: &str = r"
 name: code-typescript
 version: 1
 axis: source
-operations: [enumerate, shape]
 briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
+  shape: briefs/shape.md
 ";
 
 const SOURCE_INVALID_MISSING_BRIEF: &str = r"
 name: code-typescript
 version: 1
 axis: source
-operations: [enumerate, extract]
 briefs:
   enumerate: briefs/enumerate.md
 ";
@@ -160,10 +154,14 @@ fn source_accepts_canonical_shape() {
 }
 
 #[test]
-fn source_rejects_axis_mismatch_ops_mismatch_and_missing_brief() {
+fn source_rejects_axis_mismatch_extra_brief_and_missing_brief() {
+    // With the dedicated `operations[]` field collapsed (review 1.A1),
+    // brief-key validity is the only thing closing the operation set.
+    // Cover both "extra key under briefs:" and "required brief
+    // missing" to pin that surface.
     let v = load("source.schema.json");
     assert_invalid(&v, &yaml(SOURCE_INVALID_AXIS_TARGET), "source/axis-target");
-    assert_invalid(&v, &yaml(SOURCE_INVALID_OPS_WRONG), "source/ops-wrong");
+    assert_invalid(&v, &yaml(SOURCE_INVALID_EXTRA_BRIEF), "source/extra-brief");
     assert_invalid(&v, &yaml(SOURCE_INVALID_MISSING_BRIEF), "source/missing-brief");
 }
 
@@ -173,29 +171,27 @@ const TARGET_INVALID_AXIS_SOURCE: &str = r"
 name: omnia
 version: 1
 axis: source
-operations: [shape, build, merge]
 briefs:
   shape: briefs/shape.md
   build: briefs/build.md
   merge: briefs/merge.md
 ";
 
-const TARGET_INVALID_OPS_INCLUDES_EXTRACT: &str = r"
+const TARGET_INVALID_BRIEFS_INCLUDE_EXTRACT: &str = r"
 name: omnia
 version: 1
 axis: target
-operations: [shape, build, extract]
 briefs:
   shape: briefs/shape.md
   build: briefs/build.md
   merge: briefs/merge.md
+  extract: briefs/extract.md
 ";
 
 const TARGET_INVALID_MISSING_MERGE_BRIEF: &str = r"
 name: omnia
 version: 1
 axis: target
-operations: [shape, build, merge]
 briefs:
   shape: briefs/shape.md
   build: briefs/build.md
@@ -208,10 +204,18 @@ fn target_accepts_canonical_shape() {
 }
 
 #[test]
-fn target_rejects_axis_ops_and_brief_violations() {
+fn target_rejects_axis_brief_set_and_brief_violations() {
+    // With the dedicated `operations[]` field collapsed (review 1.A1),
+    // the `briefs.*` key set is what closes the target operation set.
+    // Cover an axis-mismatch fixture, an extra source-axis brief key,
+    // and a missing required brief.
     let v = load("target.schema.json");
     assert_invalid(&v, &yaml(TARGET_INVALID_AXIS_SOURCE), "target/axis-source");
-    assert_invalid(&v, &yaml(TARGET_INVALID_OPS_INCLUDES_EXTRACT), "target/ops-includes-extract");
+    assert_invalid(
+        &v,
+        &yaml(TARGET_INVALID_BRIEFS_INCLUDE_EXTRACT),
+        "target/briefs-include-extract",
+    );
     assert_invalid(&v, &yaml(TARGET_INVALID_MISSING_MERGE_BRIEF), "target/missing-merge-brief");
 }
 
@@ -418,7 +422,7 @@ fn plan_schema_rejects_slice_source_missing_candidate_field() {
 name: bad
 slices:
   - name: only
-    target: omnia
+    target: omnia@v1
     sources:
       - key: docs
     status: pending

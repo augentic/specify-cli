@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-use crate::adapter::Operation;
+use crate::adapter::TargetOperation;
 use crate::slice::OutcomeKind;
 
 /// Basename of the slice working directory under `.specify/`.
@@ -84,7 +84,7 @@ pub struct SliceMetadata {
 #[serde(rename_all = "kebab-case")]
 pub struct Outcome {
     /// Which target-adapter operation produced this outcome.
-    pub phase: Operation,
+    pub phase: TargetOperation,
     /// Success, failure, or deferred classification. The wire field
     /// name stays `outcome` for back-compat with existing
     /// `.metadata.yaml` files and skill JSON consumers; the Rust name

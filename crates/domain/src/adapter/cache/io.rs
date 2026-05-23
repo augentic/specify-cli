@@ -3,12 +3,18 @@
 //! Cache directory layout (RFC-27 §D8):
 //!
 //! ```text
-//! .specify/.cache/adapters/sources/<adapter>/
+//! .specify/.cache/extractions/<adapter>/
 //!     <fingerprint>/
 //!         evidence.yaml      # or candidate-set.md for enumerate
 //!         fingerprint.json   # full input record for audit
 //!     index.jsonl            # one row per cache write; append-only
 //! ```
+//!
+//! The extraction cache is per-adapter only (not per-axis) — only
+//! source adapters extract — and lives in its own root, disjoint from
+//! the per-axis manifest cache at
+//! `.specify/.cache/manifests/{sources,targets}/<name>/`. See
+//! [DECISIONS.md §"Cache layout"].
 //!
 //! Atomic writes mirror [DECISIONS.md §"Atomic writes"]: the cache
 //! directory body uses [`bytes_write`] (tempfile + rename), while the
@@ -16,6 +22,7 @@
 //! `journal::append_batch`.
 //!
 //! [DECISIONS.md §"Atomic writes"]: ../../../../DECISIONS.md#atomic-writes
+//! [DECISIONS.md §"Cache layout"]: ../../../../DECISIONS.md#cache-layout
 //! [`bytes_write`]: crate::slice::atomic::bytes_write
 
 use std::io::Write as _;
@@ -26,6 +33,7 @@ use specify_error::Error;
 
 use crate::adapter::CacheMode;
 use crate::adapter::cache::{CacheFingerprint, CacheIndexEntry, CacheMissReason, SourceOperation};
+use crate::adapter::core::EXTRACTIONS_CACHE_DIR;
 use crate::slice::atomic::bytes_write;
 
 const INDEX_FILE_NAME: &str = "index.jsonl";
@@ -49,36 +57,35 @@ impl<'a> CacheLayout<'a> {
         Self { project_dir, adapter }
     }
 
-    /// `.specify/.cache/adapters/sources/<adapter>/`.
+    /// `.specify/.cache/extractions/<adapter>/`.
     #[must_use]
     pub fn adapter_dir(&self) -> PathBuf {
         self.project_dir
             .join(".specify")
             .join(".cache")
-            .join("adapters")
-            .join("sources")
+            .join(EXTRACTIONS_CACHE_DIR)
             .join(self.adapter)
     }
 
-    /// `.specify/.cache/adapters/sources/<adapter>/<fingerprint-sha256>/`.
+    /// `.specify/.cache/extractions/<adapter>/<fingerprint-sha256>/`.
     #[must_use]
     pub fn fingerprint_dir(&self, digest: &str) -> PathBuf {
         self.adapter_dir().join(digest_dir_name(digest))
     }
 
-    /// `.specify/.cache/adapters/sources/<adapter>/<fp>/fingerprint.json`.
+    /// `.specify/.cache/extractions/<adapter>/<fp>/fingerprint.json`.
     #[must_use]
     pub fn fingerprint_record_path(&self, digest: &str) -> PathBuf {
         self.fingerprint_dir(digest).join(FINGERPRINT_RECORD_NAME)
     }
 
-    /// `.specify/.cache/adapters/sources/<adapter>/<fp>/<artifact-name>`.
+    /// `.specify/.cache/extractions/<adapter>/<fp>/<artifact-name>`.
     #[must_use]
     pub fn artifact_path(&self, digest: &str, artifact_name: &str) -> PathBuf {
         self.fingerprint_dir(digest).join(artifact_name)
     }
 
-    /// `.specify/.cache/adapters/sources/<adapter>/index.jsonl`.
+    /// `.specify/.cache/extractions/<adapter>/index.jsonl`.
     #[must_use]
     pub fn index_path(&self) -> PathBuf {
         self.adapter_dir().join(INDEX_FILE_NAME)
@@ -134,7 +141,7 @@ pub enum LookupOutcome {
 pub struct CacheLookup {
     /// sha256 hex digest of the current inputs.
     pub digest: String,
-    /// `.specify/.cache/adapters/sources/<adapter>/<fp>/` regardless of hit /
+    /// `.specify/.cache/extractions/<adapter>/<fp>/` regardless of hit /
     /// miss. Operators see the path even on a miss so they know where
     /// the upcoming write will land.
     pub cache_dir: PathBuf,
@@ -259,7 +266,7 @@ pub fn write(
 }
 
 /// Append one [`CacheIndexEntry`] to
-/// `.specify/.cache/adapters/sources/<adapter>/index.jsonl`.
+/// `.specify/.cache/extractions/<adapter>/index.jsonl`.
 ///
 /// Mirrors `journal::append_batch`: the directory is created on first write,
 /// the row is emitted as a single JSON line followed by `\n`, and the

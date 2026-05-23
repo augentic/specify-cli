@@ -426,7 +426,9 @@ const PLAN_WITH_LEGACY_MONOLITH: &str = "\
 name: rfc25-prov
 lifecycle: pending
 sources:
-  legacy-monolith: ./legacy
+  legacy-monolith:
+    adapter: code-typescript
+    path: ./legacy
 slices:
   - name: my-slice
     status: pending

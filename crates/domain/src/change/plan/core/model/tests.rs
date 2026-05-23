@@ -6,10 +6,18 @@ use super::*;
 /// `blocked`, `failed`, or `skipped` state.
 const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
-  monolith: /path/to/legacy-codebase
-  orders: git@github.com:org/orders-service.git
-  payments: git@github.com:org/payments-service.git
-  frontend: git@github.com:org/web-app.git
+  monolith:
+    adapter: code-typescript
+    path: /path/to/legacy-codebase
+  orders:
+    adapter: code-typescript
+    path: git@github.com:org/orders-service.git
+  payments:
+    adapter: code-typescript
+    path: git@github.com:org/payments-service.git
+  frontend:
+    adapter: code-typescript
+    path: git@github.com:org/web-app.git
 slices:
   - name: user-registration
     project: platform
@@ -142,14 +150,22 @@ slices:
     status: pending
 ";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-    assert_eq!(plan.entries[0].target.as_deref(), Some("contracts@v1"));
+    let zero_target = plan.entries[0].target.as_ref().expect("target present");
+    assert_eq!(zero_target.name(), "contracts");
+    assert_eq!(zero_target.version(), 1);
     assert_eq!(plan.entries[0].project, None);
-    assert_eq!(plan.entries[1].target.as_deref(), Some("omnia@v1"));
+    let one_target = plan.entries[1].target.as_ref().expect("target present");
+    assert_eq!(one_target.name(), "omnia");
+    assert_eq!(one_target.version(), 1);
     assert_eq!(plan.entries[1].project.as_deref(), Some("auth-service"));
 
     let rendered = serde_saphyr::to_string(&plan).expect("serialize");
     let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
     assert_eq!(plan, reparsed, "plan must survive a YAML round-trip");
+    assert!(
+        rendered.contains("target: contracts@v1") && rendered.contains("target: omnia@v1"),
+        "TargetRef must serialise back to the `name@vN` wire form, got:\n{rendered}",
+    );
 }
 
 #[test]
@@ -203,11 +219,11 @@ fn slice_source_binding_round_trips_both_shapes() {
 name: bindings
 slices:
   - name: pure-intent
-    target: omnia
+    target: omnia@v1
     sources: [intent]
     status: pending
   - name: combined
-    target: omnia
+    target: omnia@v1
     sources:
       - key: docs
         candidate: account-pwd-reset
@@ -320,7 +336,7 @@ fn authority_override_round_trips() {
     let yaml = r"name: rfc-27
 slices:
   - name: identity-user-registration
-    target: omnia
+    target: omnia@v1
     project: identity-svc
     status: pending
     sources:
@@ -355,7 +371,7 @@ fn empty_authority_override_elides() {
     let yaml = r"name: tiny
 slices:
   - name: x
-    target: omnia
+    target: omnia@v1
     status: pending
 ";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");

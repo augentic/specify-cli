@@ -67,16 +67,18 @@ Never put domain logic in the binary. If a function needs unit tests, it belongs
 
 `source resolve <name>` and `target resolve <value>` are format-only
 handlers — both clap arms in `src/commands.rs` dispatch to a single
-private `commands::resolve_plugin(format, axis, value, project_dir)`
-helper that takes a bare `Format` plus the project dir, calls
-`specify_domain::adapter::Adapter::resolve(axis, name, project_dir)?`,
-and emits a `ResolveBody { axis, name, resolved_path, location,
+private `commands::resolve_adapter(format, axis, value, project_dir)`
+helper that takes a bare `Format` plus the project dir, switches on
+`axis` to invoke `specify_domain::adapter::SourceAdapter::resolve(name,
+project_dir)?` or `TargetAdapter::resolve(name, project_dir)?`, and
+emits a `ResolveBody { axis, name, resolved_path, location,
 operations, description }` via the direct `output::emit` path
-described above. They never load a `Ctx`, because plugin resolution
+described above. They never load a `Ctx`, because adapter resolution
 is read-only and runs before any project mutation. The unified helper
 peels an opaque `@version` suffix only on `Axis::Target` (per RFC-25
 §CLI surface); the axis discriminator is otherwise the sole branch,
-so adding a third axis later is a one-line clap addition.
+so adding a third axis later is a one-extra-arm addition to the
+existing `match`.
 
 `plan amend` extends the canonical `with_state::<Plan, _, _>(...)`
 handler shape with three RFC-25 flag families on the `--sources`

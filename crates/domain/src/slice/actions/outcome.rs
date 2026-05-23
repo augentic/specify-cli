@@ -5,7 +5,7 @@ use std::path::Path;
 use jiff::Timestamp;
 use specify_error::Error;
 
-use crate::slice::{Operation, Outcome, OutcomeKind, SliceMetadata};
+use crate::slice::{Outcome, OutcomeKind, SliceMetadata, TargetOperation};
 
 /// Stamp the outcome of a phase run on `<slice_dir>/.metadata.yaml`.
 ///
@@ -30,8 +30,8 @@ use crate::slice::{Operation, Outcome, OutcomeKind, SliceMetadata};
 ///
 /// Propagates load / save failures from `SliceMetadata`.
 pub fn stamp_outcome(
-    slice_dir: &Path, phase: Operation, outcome: OutcomeKind, summary: &str, context: Option<&str>,
-    now: Timestamp,
+    slice_dir: &Path, phase: TargetOperation, outcome: OutcomeKind, summary: &str,
+    context: Option<&str>, now: Timestamp,
 ) -> Result<SliceMetadata, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.outcome = Some(Outcome {

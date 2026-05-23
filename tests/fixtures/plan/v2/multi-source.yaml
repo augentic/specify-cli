@@ -10,7 +10,7 @@ sources:
 
 slices:
   - name: identity-user-registration
-    target: omnia
+    target: omnia@v1
     project: identity-svc
     sources:
       - key: identity-design-notes

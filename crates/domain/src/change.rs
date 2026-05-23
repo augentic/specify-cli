@@ -8,7 +8,8 @@ mod plan;
 pub use finalize::summarise;
 pub use plan::core::{
     Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, Severity,
-    SliceAuthorityOverride, SliceSourceBinding, Status, authority_override_orphan_source_keys,
+    SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
+    TargetRefParseError, authority_override_orphan_source_keys, check_target_adapter_versions,
 };
 pub use plan::doctor::{
     CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,

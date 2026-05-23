@@ -6,7 +6,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use specify_domain::adapter::{ADAPTER_FILENAME, ResolvedAdapter};
+use specify_domain::adapter::{ADAPTER_FILENAME, ResolvedTargetAdapter};
 use specify_domain::config::{Layout, ProjectConfig};
 use specify_domain::registry::Registry;
 use specify_domain::slice::SliceMetadata;
@@ -67,7 +67,7 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
 }
 
 fn collect_adapter_inputs(
-    collector: &mut fingerprint::InputCollector, adapter: &ResolvedAdapter,
+    collector: &mut fingerprint::InputCollector, adapter: &ResolvedTargetAdapter,
 ) -> Result<()> {
     let manifest = adapter.root_dir.join(ADAPTER_FILENAME);
     if manifest.is_file() {
@@ -82,15 +82,18 @@ fn collect_adapter_inputs(
     Ok(())
 }
 
-fn adapter_summary(adapter: &ResolvedAdapter) -> render::Adapter {
+fn adapter_summary(adapter: &ResolvedTargetAdapter) -> render::Adapter {
     let mut briefs: Vec<render::Brief> = adapter
         .manifest
         .briefs
         .keys()
-        .map(|operation| render::Brief {
-            phase: operation.clone(),
-            id: operation.clone(),
-            description: String::new(),
+        .map(|operation| {
+            let label = operation.to_string();
+            render::Brief {
+                phase: label.clone(),
+                id: label,
+                description: String::new(),
+            }
         })
         .collect();
     briefs.sort_by(|left, right| {

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use jiff::Timestamp;
 use specify_error::Error;
 
-use crate::adapter::{Adapter, Axis};
+use crate::adapter::TargetAdapter;
 use crate::codex::adapter_name_from_value;
 use crate::config::{Layout, ProjectConfig};
 use crate::init::cache::{CacheMeta, cache_adapter};
@@ -59,7 +59,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
 
     let adapter_value = cache_adapter(adapter, opts.project_dir, now)?;
     let adapter_name_in_value = adapter_name_from_value(&adapter_value).to_string();
-    let resolved = Adapter::resolve(Axis::Target, &adapter_name_in_value, opts.project_dir)?;
+    let resolved = TargetAdapter::resolve(&adapter_name_in_value, opts.project_dir)?;
     let adapter_name = resolved.manifest.name;
     let scaffolded_rule_keys: Vec<String> =
         SCAFFOLDED_RULE_KEYS.iter().map(|key| (*key).to_string()).collect();
@@ -335,6 +335,48 @@ mod tests {
         assert!(!result.wasm_pkg_config_written, "re-init must not report writing the file");
         let contents = fs::read_to_string(&path).expect("read after re-init");
         assert_eq!(contents, edited, "operator edits must be preserved byte-for-byte");
+    }
+
+    #[test]
+    fn init_rejects_cross_axis_name_collision() {
+        // DECISIONS.md §"Adapter name uniqueness": initialising a
+        // project as `<adapter>` (target axis) when a source-axis
+        // sibling of the same name already exists in-repo must fail
+        // before any cache directory is rewritten.
+        use specify_error::Error;
+
+        let tmp = tempdir().unwrap();
+        let target_dir = omnia_target_dir();
+        // Plant a colliding source adapter under `adapters/sources/omnia/`.
+        let source_root = tmp.path().join("adapters").join("sources").join("omnia");
+        fs::create_dir_all(&source_root).expect("create colliding source dir");
+        fs::write(
+            source_root.join("adapter.yaml"),
+            r"name: omnia
+version: 1
+axis: source
+briefs:
+  enumerate: briefs/enumerate.md
+  extract: briefs/extract.md
+description: Colliding source adapter for the init-time uniqueness check.
+",
+        )
+        .expect("write colliding source manifest");
+
+        let err = init(base_opts(tmp.path(), &target_dir), fixed_now())
+            .expect_err("cross-axis name collision must fail init");
+        let Error::Validation { results } = err else {
+            panic!("expected Error::Validation, got: {err:?}");
+        };
+        assert_eq!(results[0].rule_id, "adapter-name-axis-collision");
+        // Cache must not have been clobbered: the target cache dir
+        // should be absent because the check fires before the copy.
+        let cache_dir = tmp.path().join(".specify/.cache/manifests/targets/omnia");
+        assert!(
+            !cache_dir.exists(),
+            "init must reject the collision before writing {}",
+            cache_dir.display()
+        );
     }
 
     #[test]

@@ -3,6 +3,8 @@
 //! the sibling submodules.
 
 use std::collections::BTreeMap;
+use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -94,15 +96,15 @@ pub struct Plan {
     /// without a `lifecycle:` field load cleanly.
     #[serde(default)]
     pub lifecycle: Lifecycle,
-    /// Named source locations referenced by [`Entry::sources`].
+    /// Named source bindings referenced by [`Entry::sources`].
     /// Optional in the YAML; defaults to an empty map.
     ///
-    /// The on-disk shape is currently a bare-string value per key
-    /// (1.x backward-compat). RFC-25 widens this to a structured
-    /// `{ adapter, path?, value? }` object — that loader change is
-    /// W0.3's responsibility, not W0.2's.
+    /// Each value is a structured [`SourceBinding`] carrying the
+    /// kebab-case source adapter name plus exactly one of `path`
+    /// (filesystem path or repo location) or `value` (literal payload
+    /// supplied directly to the adapter — used by `intent`).
     #[serde(default)]
-    pub sources: BTreeMap<String, String>,
+    pub sources: BTreeMap<String, SourceBinding>,
     /// Ordered list of plan entries. Order is the *intended* execution
     /// order; the authoritative dependency-respecting order comes from
     /// [`Plan::topological_order`].
@@ -124,14 +126,23 @@ pub struct Entry {
     /// `project` is `None`; optional override when `project` is
     /// `Some`. Mutually enriching with `project`: `project` identifies
     /// the target codebase; `target` identifies the target adapter
-    /// directly.
+    /// directly. The cross-field "at least one of `project` /
+    /// `target`" rule is enforced by `plan.schema.json` (see
+    /// [DECISIONS.md §"Target adapter suffix policy"]).
+    ///
+    /// On the wire the value is the kebab `name@vN` form — the
+    /// integer suffix is parsed at deserialisation time into the
+    /// [`TargetRef`] newtype and reconciled at plan-validation time
+    /// against the resolved target adapter's `version` field.
     ///
     /// Renamed from `adapter` in RFC-25 W0.2 — the on-disk and
     /// in-memory field is now `target`. The pre-RFC-25 `adapter`
     /// alias was dropped together with the schema tightening that
     /// shipped in the same change.
+    ///
+    /// [DECISIONS.md §"Target adapter suffix policy"]: ../../../../../DECISIONS.md#target-adapter-suffix-policy
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
+    pub target: Option<TargetRef>,
     /// Current lifecycle state of this entry.
     pub status: Status,
     /// Names of other plan entries that must reach `done` before this
@@ -236,6 +247,219 @@ pub struct SliceAuthorityOverride {
 fn slice_authority_override_is_empty(o: &SliceAuthorityOverride) -> bool {
     o.by_kind.is_empty()
 }
+
+/// One top-level [`Plan::sources`] binding.
+///
+/// Carries the kebab-case source adapter name plus exactly one of
+/// `path` (filesystem path or repo location) or `value` (literal
+/// payload supplied directly to the adapter, used by the `intent`
+/// source).
+///
+/// On the wire (RFC-25 §Source) the binding is always the structured
+/// `{ adapter, path?, value? }` object form — 2.0 dropped the
+/// 1.x bare-string shorthand. The `oneOf` exclusion between `path`
+/// and `value` is enforced by `plan.schema.json` and re-checked at
+/// the loader boundary via [`crate::schema::validate_plan`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct SourceBinding {
+    /// Kebab-case source-adapter name (e.g. `intent`, `documentation`,
+    /// `code-typescript`, `screenshots`).
+    pub adapter: String,
+    /// Filesystem path or repo location the adapter binds against.
+    /// Mutually exclusive with `value`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Literal value supplied directly to the adapter (e.g. the
+    /// operator brief text for `intent`). Mutually exclusive with
+    /// `path`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+impl SourceBinding {
+    /// Construct a path-bound binding for the named adapter.
+    #[must_use]
+    pub fn path(adapter: impl Into<String>, path: impl Into<String>) -> Self {
+        Self {
+            adapter: adapter.into(),
+            path: Some(path.into()),
+            value: None,
+        }
+    }
+
+    /// Construct a value-bound binding for the named adapter.
+    #[must_use]
+    pub fn value(adapter: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            adapter: adapter.into(),
+            path: None,
+            value: Some(value.into()),
+        }
+    }
+}
+
+/// Parsed `<name>@v<version>` target-adapter identifier (RFC-25 §Adapter
+/// vocabulary) used by [`Entry::target`].
+///
+/// Wire form is the single kebab string `name@vN` (e.g. `omnia@v1`),
+/// with `name` matching `^[a-z][a-z0-9-]*$` and `N` a non-negative
+/// integer. Deserialisation goes through [`TargetRef::parse`] so any
+/// payload that survives serde already has the `@vN` suffix in valid
+/// form; the `plan.schema.json` regex is the primary defence, and
+/// `FromStr` is the in-process belt-and-braces re-check.
+///
+/// The integer [`TargetRef::version`] is reconciled against the
+/// resolved target adapter's `version: u32` field by
+/// [`super::validate::check_target_adapter_versions`]; mismatches
+/// surface as the kebab discriminant `plan-target-version-mismatch`.
+/// See [DECISIONS.md §"Target adapter suffix policy"] for the policy
+/// rationale.
+///
+/// Construct in-process via [`TargetRef::new`] (already-validated
+/// components, infallible) or via [`FromStr`] / serde
+/// [`Deserialize`] (string parse, fallible). Components are private so
+/// every `TargetRef` value satisfies the wire regex by construction.
+///
+/// [DECISIONS.md §"Target adapter suffix policy"]: ../../../../../DECISIONS.md#target-adapter-suffix-policy
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TargetRef {
+    name: String,
+    version: u32,
+}
+
+impl TargetRef {
+    /// Construct a [`TargetRef`] from already-validated components.
+    ///
+    /// `name` must satisfy the wire regex `^[a-z][a-z0-9-]*$`; the
+    /// debug assertion catches accidental in-process construction with
+    /// a non-kebab name. In release builds the value is still
+    /// round-trippable through serde because the schema regex is the
+    /// primary defence.
+    #[must_use]
+    pub fn new(name: impl Into<String>, version: u32) -> Self {
+        let name = name.into();
+        debug_assert!(
+            is_kebab_target_name(&name),
+            "TargetRef::new received non-kebab name `{name}`",
+        );
+        Self { name, version }
+    }
+
+    /// Kebab-case adapter name (before the `@v` suffix).
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Integer version (after the `@v` suffix).
+    #[must_use]
+    pub const fn version(&self) -> u32 {
+        self.version
+    }
+
+    /// Parse a wire-form `<name>@v<version>` string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TargetRefParseError`] when the string does not match
+    /// the wire regex `^[a-z][a-z0-9-]*@v\d+$` — wrong shape, empty
+    /// segment, mixed case, missing `@v`, non-digit version, etc.
+    pub fn parse(input: &str) -> Result<Self, TargetRefParseError> {
+        let (name, version_part) =
+            input.split_once("@v").ok_or_else(|| TargetRefParseError::new(input))?;
+        if !is_kebab_target_name(name) {
+            return Err(TargetRefParseError::new(input));
+        }
+        if version_part.is_empty() || !version_part.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(TargetRefParseError::new(input));
+        }
+        let version: u32 = version_part.parse().map_err(|_err| TargetRefParseError::new(input))?;
+        Ok(Self {
+            name: name.to_string(),
+            version,
+        })
+    }
+}
+
+fn is_kebab_target_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    if !first.is_ascii_lowercase() {
+        return false;
+    }
+    let mut prev_hyphen = false;
+    for b in bytes {
+        match b {
+            b'a'..=b'z' | b'0'..=b'9' => prev_hyphen = false,
+            b'-' if !prev_hyphen => prev_hyphen = true,
+            _ => return false,
+        }
+    }
+    !prev_hyphen
+}
+
+impl fmt::Display for TargetRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}@v{}", self.name, self.version)
+    }
+}
+
+impl FromStr for TargetRef {
+    type Err = TargetRefParseError;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        Self::parse(input)
+    }
+}
+
+impl Serialize for TargetRef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for TargetRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse(&raw).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Error returned by [`TargetRef::parse`] / [`TargetRef::from_str`]
+/// when the input does not match the `name@vN` wire form.
+///
+/// Carries the offending input verbatim so callers can surface it in
+/// diagnostics without re-formatting; the [`fmt::Display`] body is
+/// already the kebab discriminant prose used by
+/// `plan-target-malformed`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TargetRefParseError {
+    /// The original (rejected) input.
+    pub input: String,
+}
+
+impl TargetRefParseError {
+    fn new(input: &str) -> Self {
+        Self {
+            input: input.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for TargetRefParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "target `{}` is not of the form `<name>@v<version>` (kebab name, lowercase `v`, integer version)",
+            self.input,
+        )
+    }
+}
+
+impl std::error::Error for TargetRefParseError {}
 
 /// One `(source-key, candidate-id)` binding under [`Entry::sources`].
 ///
@@ -355,8 +579,10 @@ pub struct EntryPatch {
     /// Three-way patch over `project`.
     pub project: Patch<String>,
     /// Three-way patch over `target` (the RFC-25 target-adapter
-    /// identifier — renamed from `adapter`).
-    pub target: Patch<String>,
+    /// identifier — renamed from `adapter`). The CLI parses the
+    /// raw `--target name@vN` flag into [`TargetRef`] before
+    /// materialising the patch.
+    pub target: Patch<TargetRef>,
     /// Three-way patch over `description`.
     pub description: Patch<String>,
     /// Replace `context` wholesale when `Some`.

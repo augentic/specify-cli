@@ -88,7 +88,7 @@ mod tests {
         fs::create_dir_all(&briefs_dir).expect("create adapter dirs");
         fs::write(
             adapter_dir.join("adapter.yaml"),
-            "name: mini\nversion: 1\naxis: target\noperations: [shape, build, merge]\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Mini adapter\n",
+            "name: mini\nversion: 1\naxis: target\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Mini adapter\n",
         )
         .expect("write adapter");
         for op in ["shape", "build", "merge"] {

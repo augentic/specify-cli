@@ -1332,7 +1332,7 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["plan", "create", "rfc3a-planning", "--source", "app=."])
+        .args(["plan", "create", "rfc3a-planning", "--source", "app=code-typescript:."])
         .assert()
         .success();
     specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
@@ -1369,8 +1369,12 @@ fn plan_validate_reports_all_three_health_diagnostics() {
         tmp.path().join("plan.yaml"),
         "name: demo\n\
              sources:\n\
-             \x20\x20monolith: /tmp/legacy\n\
-             \x20\x20orphaned: /tmp/elsewhere\n\
+             \x20\x20monolith:\n\
+             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20path: /tmp/legacy\n\
+             \x20\x20orphaned:\n\
+             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20path: /tmp/elsewhere\n\
              slices:\n\
              \x20\x20- name: cyclic-a\n\
              \x20\x20\x20\x20target: omnia@v1\n\
@@ -1500,7 +1504,9 @@ fn plan_validate_payloads_round_trip_typed() {
         tmp.path().join("plan.yaml"),
         "name: demo\n\
              sources:\n\
-             \x20\x20orphan-key: /tmp/somewhere\n\
+             \x20\x20orphan-key:\n\
+             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20path: /tmp/somewhere\n\
              slices:\n\
              \x20\x20- name: cyc-a\n\
              \x20\x20\x20\x20target: omnia@v1\n\
@@ -1577,8 +1583,12 @@ fn plan_validate_healthy_exits_zero() {
 const W11_PLAN: &str = "\
 name: w11
 sources:
-  intent: \"Demo intent value.\"
-  identity-design-notes: ./docs
+  intent:
+    adapter: intent
+    value: \"Demo intent value.\"
+  identity-design-notes:
+    adapter: documentation
+    path: ./docs
 slices: []
 ";
 
@@ -1596,7 +1606,7 @@ fn plan_add_structured_sources_round_trips() {
             "add",
             "foo",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "identity-design-notes=user-registration",
         ])
@@ -1627,7 +1637,7 @@ fn plan_add_bare_source_round_trips_when_slice_name_matches_implied_candidate() 
             "add",
             "add-search-filter",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "intent",
         ])
@@ -1661,7 +1671,7 @@ fn plan_add_structured_form_preserved_when_candidate_differs_from_slice_name() {
             "add",
             "foo",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "intent=different-candidate",
         ])
@@ -1689,7 +1699,7 @@ fn plan_add_rejects_dangling_equals_in_sources() {
             "add",
             "foo",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "intent=",
         ])
@@ -1706,7 +1716,7 @@ fn plan_amend_add_source_appends_binding() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia", "--sources", "intent"])
+        .args(["plan", "add", "foo", "--target", "omnia@v1", "--sources", "intent"])
         .assert()
         .success();
 
@@ -1735,7 +1745,7 @@ fn plan_amend_remove_source_drops_binding() {
             "add",
             "foo",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "intent",
             "--sources",
@@ -1762,7 +1772,7 @@ fn plan_amend_remove_source_unknown_key_errors() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia", "--sources", "intent"])
+        .args(["plan", "add", "foo", "--target", "omnia@v1", "--sources", "intent"])
         .assert()
         .success();
 
@@ -1782,7 +1792,7 @@ fn plan_amend_divergence_accepted_writes_field() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia"])
+        .args(["plan", "add", "foo", "--target", "omnia@v1"])
         .assert()
         .success();
 
@@ -1806,7 +1816,7 @@ fn plan_amend_divergence_rejected_writes_field() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia"])
+        .args(["plan", "add", "foo", "--target", "omnia@v1"])
         .assert()
         .success();
 
@@ -1833,7 +1843,7 @@ fn plan_amend_divergence_likely_writes_field() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia"])
+        .args(["plan", "add", "foo", "--target", "omnia@v1"])
         .assert()
         .success();
 
@@ -1857,7 +1867,7 @@ fn plan_amend_divergence_none_refused() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia"])
+        .args(["plan", "add", "foo", "--target", "omnia@v1"])
         .assert()
         .success();
 
@@ -1877,12 +1887,16 @@ fn plan_amend_divergence_none_refused() {
 const AUTHORITY_OVERRIDE_PLAN: &str = "\
 name: identity-revamp
 sources:
-  legacy: ./legacy-monolith
-  runtime: ./runtime-fixtures
+  legacy:
+    adapter: code-typescript
+    path: ./legacy-monolith
+  runtime:
+    adapter: code-runtime
+    path: ./runtime-fixtures
 slices:
   - name: identity-user-registration
     project: default
-    target: omnia
+    target: omnia@v1
     status: pending
     sources:
       - key: legacy
@@ -2196,8 +2210,12 @@ fn plan_add_authority_override_seeds_map_on_new_slice() {
     project.seed_plan(
         "name: identity-revamp\n\
         sources:\n\
-        \x20\x20legacy: ./legacy\n\
-        \x20\x20runtime: ./runtime\n\
+        \x20\x20legacy:\n\
+        \x20\x20\x20\x20adapter: code-typescript\n\
+        \x20\x20\x20\x20path: ./legacy\n\
+        \x20\x20runtime:\n\
+        \x20\x20\x20\x20adapter: code-runtime\n\
+        \x20\x20\x20\x20path: ./runtime\n\
         slices: []\n",
     );
 
@@ -2208,7 +2226,7 @@ fn plan_add_authority_override_seeds_map_on_new_slice() {
             "add",
             "identity-user-registration",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "legacy=user-registration",
             "--sources",

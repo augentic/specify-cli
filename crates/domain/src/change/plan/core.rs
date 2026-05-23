@@ -16,6 +16,7 @@ mod test_support;
 
 pub use model::{
     Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, Severity,
-    SliceAuthorityOverride, SliceSourceBinding, Status,
+    SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
+    TargetRefParseError,
 };
-pub use validate::authority_override_orphan_source_keys;
+pub use validate::{authority_override_orphan_source_keys, check_target_adapter_versions};

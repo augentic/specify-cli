@@ -11,10 +11,18 @@ use super::model::{Entry, Lifecycle, Plan, SliceAuthorityOverride, Status};
 /// surviving three-state enum.
 pub(super) const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
-  monolith: /path/to/legacy-codebase
-  orders: git@github.com:org/orders-service.git
-  payments: git@github.com:org/payments-service.git
-  frontend: git@github.com:org/web-app.git
+  monolith:
+    adapter: code-typescript
+    path: /path/to/legacy-codebase
+  orders:
+    adapter: code-typescript
+    path: git@github.com:org/orders-service.git
+  payments:
+    adapter: code-typescript
+    path: git@github.com:org/payments-service.git
+  frontend:
+    adapter: code-typescript
+    path: git@github.com:org/web-app.git
 slices:
   - name: user-registration
     project: platform

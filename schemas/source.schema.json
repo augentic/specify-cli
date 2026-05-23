@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/source.schema.json",
   "title": "Specify source adapter manifest",
-  "description": "Refines `adapter.schema.json` for source adapters per RFC-25 §Source adapter contract. Locks `axis` to the literal `source`, locks `operations` to the closed set `[enumerate, extract]`, and requires both `briefs.enumerate` and `briefs.extract`. The `kebabName` and `toolDeclaration` `$defs` are intentionally inlined (rather than `$ref`-resolved against `adapter.schema.json`) so the schema compiles without a registry lookup; the embedded `name` pattern MUST stay byte-identical to `adapter.schema.json#/$defs/kebabName.pattern`.",
+  "description": "Refines `adapter.schema.json` for source adapters per RFC-25 §Source adapter contract. Locks `axis` to the literal `source` and requires both `briefs.enumerate` and `briefs.extract` — together these close the operation set to `{enumerate, extract}` (the canonical iterator is `briefs.keys()`). The `kebabName` and `toolDeclaration` `$defs` are intentionally inlined (rather than `$ref`-resolved against `adapter.schema.json`) so the schema compiles without a registry lookup; the embedded `name` pattern MUST stay byte-identical to `adapter.schema.json#/$defs/kebabName.pattern`.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "version", "axis", "operations", "briefs"],
+  "required": ["name", "version", "axis", "description", "briefs"],
   "properties": {
     "name": { "$ref": "#/$defs/kebabName" },
     "version": {
@@ -16,17 +16,6 @@
       "type": "string",
       "const": "source",
       "description": "Locked to `source` for source-adapter manifests."
-    },
-    "operations": {
-      "type": "array",
-      "uniqueItems": true,
-      "minItems": 2,
-      "maxItems": 2,
-      "items": {
-        "type": "string",
-        "enum": ["enumerate", "extract"]
-      },
-      "description": "Closed set: source adapters declare exactly `enumerate` and `extract` in any order."
     },
     "briefs": {
       "type": "object",
@@ -68,10 +57,13 @@
     "toolDeclaration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": ["name", "version"],
       "properties": {
         "name": { "$ref": "#/$defs/kebabName" },
-        "version": { "type": "string", "minLength": 1 },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+        },
         "permissions": {
           "type": "array",
           "uniqueItems": true,

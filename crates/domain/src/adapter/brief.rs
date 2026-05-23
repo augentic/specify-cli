@@ -3,7 +3,11 @@
 //! RFC-25 briefs carry only `id` and `description` — the legacy
 //! 1.x cross-brief contract (`generates`, `needs`, `tracks`) was
 //! retired with the move to operation-keyed `briefs.<op>` (see
-//! `Adapter` in `crates/domain/src/adapter/core.rs`).
+//! [`SourceAdapter`] / [`TargetAdapter`] in
+//! `crates/domain/src/adapter/core.rs`).
+//!
+//! [`SourceAdapter`]: crate::adapter::SourceAdapter
+//! [`TargetAdapter`]: crate::adapter::TargetAdapter
 
 use std::path::{Path, PathBuf};
 

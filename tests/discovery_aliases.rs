@@ -44,8 +44,12 @@ const DISCOVERY_MD: &str = "\
 const PLAN_WITH_SOURCES: &str = "\
 name: identity-revamp
 sources:
-  legacy: ./legacy
-  runtime: ./runtime
+  legacy:
+    adapter: code-typescript
+    path: ./legacy
+  runtime:
+    adapter: code-runtime
+    path: ./runtime
 slices: []
 ";
 
@@ -69,7 +73,7 @@ fn plan_add_resolves_alias_to_canonical_id() {
             "add",
             "password-reset-request",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "legacy=password-reset",
         ])
@@ -107,7 +111,7 @@ fn plan_add_structured_form_persists_canonical_id_when_slice_differs() {
             "add",
             "password-reset-flow", // slice name differs from candidate id
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "legacy=password-reset",
         ])
@@ -140,7 +144,7 @@ fn plan_add_unknown_candidate_in_discovery_refused() {
             "add",
             "ghost",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "legacy=never-heard-of-it",
         ])
@@ -170,7 +174,7 @@ fn plan_add_without_discovery_md_skips_alias_resolution() {
             "add",
             "wholly-unrelated-slice",
             "--target",
-            "omnia",
+            "omnia@v1",
             "--sources",
             "legacy=opaque-candidate-id",
         ])
@@ -197,7 +201,7 @@ fn plan_amend_add_alias_mutates_discovery_md() {
     // the plan; create one so the orthogonal alias edits land.
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia"])
+        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
         .assert()
         .success();
 
@@ -235,7 +239,7 @@ fn plan_amend_add_alias_refused_on_collision() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia"])
+        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
         .assert()
         .success();
 
@@ -272,7 +276,7 @@ fn plan_amend_remove_alias_is_idempotent() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "password-reset-request", "--target", "omnia"])
+        .args(["plan", "add", "password-reset-request", "--target", "omnia@v1"])
         .assert()
         .success();
 
@@ -320,7 +324,7 @@ fn plan_amend_add_alias_then_resolves_in_same_invocation() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia"])
+        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
         .assert()
         .success();
 
@@ -410,7 +414,7 @@ fn plan_amend_alias_survives_reapplied_discovery() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "password-reset-request", "--target", "omnia"])
+        .args(["plan", "add", "password-reset-request", "--target", "omnia@v1"])
         .assert()
         .success();
 

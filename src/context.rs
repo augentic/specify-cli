@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use specify_domain::adapter::{Adapter, Axis, ResolvedAdapter};
+use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
 use specify_domain::codex::adapter_name_from_value;
 use specify_domain::config::{Layout, ProjectConfig};
 use specify_error::Error;
@@ -37,13 +37,14 @@ impl Ctx {
         })
     }
 
-    /// Resolve this project's target adapter into a [`ResolvedAdapter`].
+    /// Resolve this project's target adapter into a
+    /// [`ResolvedTargetAdapter`].
     ///
     /// Hub projects (`hub: true`, `adapter:` omitted) do not declare
     /// an adapter, so this returns a `hub-no-adapter` diagnostic
     /// naming the hub case rather than a stray adapter-resolution
     /// error lower down the stack.
-    pub(crate) fn resolve_target_adapter(&self) -> Result<ResolvedAdapter, Error> {
+    pub(crate) fn resolve_target_adapter(&self) -> Result<ResolvedTargetAdapter, Error> {
         let Some(adapter_value) = self.config.adapter.as_deref() else {
             return Err(Error::Diag {
                 code: "hub-no-adapter",
@@ -54,7 +55,7 @@ impl Ctx {
             });
         };
         let name = adapter_name_from_value(adapter_value);
-        Adapter::resolve(Axis::Target, name, &self.project_dir)
+        TargetAdapter::resolve(name, &self.project_dir)
     }
 
     /// Typed view over `.specify/`-anchored paths. Hand this to

@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/adapter.schema.json",
   "title": "Specify adapter manifest",
-  "description": "Shared shape for source and target adapter manifests (`adapter.yaml`) per RFC-25 §Adapter implementation shape. Carries the kebab-case `name`, integer `version`, the `axis` discriminator (`source` or `target`), the closed list of `operations`, the `briefs.<operation>` map of relative brief paths, and an optional `tools[]` declaration. Source and target schemas refine this shape with axis-specific `operations` and `briefs` constraints.",
+  "description": "Shared shape for source and target adapter manifests (`adapter.yaml`) per RFC-25 §Adapter implementation shape. Carries the kebab-case `name`, integer `version`, the `axis` discriminator (`source` or `target`), the `briefs.<operation>` map of relative brief paths, and an optional `tools[]` declaration. The set of operations is closed by the per-axis `briefs` constraints in `source.schema.json` and `target.schema.json` — `briefs.keys()` is the canonical operation iterator.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "version", "axis", "operations", "briefs"],
+  "required": ["name", "version", "axis", "description", "briefs"],
   "properties": {
     "name": {
       "$ref": "#/$defs/kebabName",
@@ -21,13 +21,6 @@
       "enum": ["source", "target"],
       "description": "Adapter role. `source` adapters enumerate candidates and extract evidence; `target` adapters supply `shape`, `build`, and `merge` briefs."
     },
-    "operations": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1 },
-      "description": "Closed list of operations this adapter declares. Source adapters: `enumerate`, `extract`. Target adapters: `shape`, `build`, `merge`."
-    },
     "briefs": {
       "type": "object",
       "additionalProperties": {
@@ -35,7 +28,7 @@
         "minLength": 1,
         "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://).+$"
       },
-      "description": "Map from operation name (matching an `operations[]` entry) to a relative path to the brief markdown file. Absolute paths and URIs are rejected."
+      "description": "Map from operation name to a relative path to the brief markdown file. Absolute paths and URIs are rejected. The per-axis schemas (`source.schema.json`, `target.schema.json`) close the legal key set."
     },
     "tools": {
       "type": "array",
@@ -46,7 +39,7 @@
     "description": {
       "type": "string",
       "minLength": 1,
-      "description": "Optional human-readable, single-sentence summary of the adapter's role."
+      "description": "Human-readable, single-sentence summary of the adapter's role. Required."
     },
     "cache": {
       "type": "string",
@@ -63,7 +56,7 @@
     "toolDeclaration": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name"],
+      "required": ["name", "version"],
       "properties": {
         "name": {
           "$ref": "#/$defs/kebabName",
@@ -71,8 +64,8 @@
         },
         "version": {
           "type": "string",
-          "minLength": 1,
-          "description": "Tool version pin (semver or sha256:<digest>)."
+          "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+          "description": "Required semver pin (`x.y.z` with optional `-prerelease`). Tools without a release must cut one before being declared; the cache fingerprint (RFC-27 \u00a7D8) folds declared-tool versions in, so an absent pin would silently drop tool-version from the cache key."
         },
         "permissions": {
           "type": "array",

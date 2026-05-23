@@ -1,5 +1,5 @@
 //! RFC-27 §D8 cache fingerprint inputs and the per-write index entry
-//! persisted at `.specify/.cache/adapters/sources/<adapter>/index.jsonl`.
+//! persisted at `.specify/.cache/extractions/<adapter>/index.jsonl`.
 //!
 //! Lookup / write helpers the source-resolution code path uses.
 //!
@@ -211,7 +211,7 @@ pub struct FingerprintToolVersion {
     pub version: Option<String>,
 }
 
-/// One row appended to `.specify/.cache/adapters/sources/<adapter>/index.jsonl`
+/// One row appended to `.specify/.cache/extractions/<adapter>/index.jsonl`
 /// on every cache write (RFC-27 §D8).
 ///
 /// The slot is `(timestamp, fingerprint-sha256, slice, source-key,
@@ -239,38 +239,16 @@ pub struct CacheIndexEntry {
     pub operation: SourceOperation,
 }
 
-/// Closed source-adapter operation set (`enumerate | extract`).
+/// Closed source-adapter operation set re-exported from the shared
+/// `adapter::operation` module so cache consumers reach the type via
+/// the same import they use for [`CacheIndexEntry`].
 ///
-/// Source adapters declare exactly these two operations per
-/// RFC-25 §Source adapter contract; the cache write surface (RFC-27
-/// §D8) records which one drove a given index row so
-/// `specify source resolve --explain` can attribute hits and misses.
-/// Target adapters use the sibling [`crate::adapter::Operation`] enum
+/// The cache write surface (RFC-27 §D8) records which one drove a
+/// given index row so `specify source resolve --explain` can
+/// attribute hits and misses. Target adapters use the sibling
+/// [`TargetOperation`](crate::adapter::TargetOperation) enum
 /// (`shape | build | merge`).
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display, clap::ValueEnum,
-)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-pub enum SourceOperation {
-    /// Plan-time candidate discovery.
-    Enumerate,
-    /// Slice-time evidence extraction.
-    Extract,
-}
-
-impl SourceOperation {
-    /// Default cached-artifact filename per operation:
-    /// `evidence.yaml` for `extract`, `candidate-set.md` for `enumerate`.
-    #[must_use]
-    pub const fn artifact_name(self) -> &'static str {
-        match self {
-            Self::Enumerate => "candidate-set.md",
-            Self::Extract => "evidence.yaml",
-        }
-    }
-}
-
+pub use crate::adapter::operation::SourceOperation;
 /// Closed `reason` enum re-exported here so callers reach for the
 /// cache surface without importing the journal crate.
 pub use crate::journal::CacheMissReason;

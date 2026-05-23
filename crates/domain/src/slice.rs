@@ -14,4 +14,4 @@ pub use lifecycle::LifecycleStatus;
 pub use metadata::{Outcome, SLICES_DIR_NAME, SliceMetadata, SpecKind, TouchedSpec};
 pub use outcome::Kind as OutcomeKind;
 
-pub use crate::adapter::Operation;
+pub use crate::adapter::TargetOperation;

@@ -73,7 +73,7 @@ pub enum Commands {
     /// Source adapter operations (RFC-25). Source adapters provide
     /// `enumerate` + `extract` capabilities and are resolved against
     /// `adapters/sources/<name>/adapter.yaml` (in-repo) or
-    /// `.specify/.cache/adapters/sources/<name>/` (agent cache).
+    /// `.specify/.cache/manifests/sources/<name>/` (agent manifest cache).
     Source {
         #[command(subcommand)]
         action: SourceAction,
@@ -82,7 +82,7 @@ pub enum Commands {
     /// Target adapter operations (RFC-25). Target adapters provide
     /// `shape` + `build` + `merge` capabilities and are resolved
     /// against `adapters/targets/<name>/adapter.yaml` (in-repo) or
-    /// `.specify/.cache/adapters/targets/<name>/` (agent cache).
+    /// `.specify/.cache/manifests/targets/<name>/` (agent manifest cache).
     Target {
         #[command(subcommand)]
         action: TargetAction,
@@ -131,32 +131,85 @@ pub enum Commands {
     },
 }
 
-/// Typed `--source <key>=<path-or-url>` CLI value (top-level plan source binding).
+/// Typed `--source <key>=<adapter>:<binding>` CLI value (top-level
+/// plan source binding).
 ///
-/// The [`FromStr`] impl returns a `String` error on malformed input so
-/// clap surfaces a standard usage diagnostic (exit code 2). Call sites
-/// read `arg.key` / `arg.value` instead of unpacking a positional tuple.
+/// Wire grammar (locked at Specify 2.0):
+///
+/// - `--source <key>=<adapter>:<path>` — path-bound binding. The
+///   adapter is the substring up to the first `:` after `=`; the
+///   path is everything after that first `:` (URLs containing
+///   `:` such as `git@github.com:org/foo.git` round-trip cleanly).
+/// - `--source <key>=<adapter>:value:<literal>` — value-bound
+///   binding. The `value:` sentinel after the adapter switches the
+///   parser to literal mode; the literal payload is everything
+///   after the second `:` and may contain anything (newlines,
+///   colons, equals signs).
+///
+/// Materialises as [`specify_domain::change::SourceBinding`] under
+/// the structured `{ adapter, path?, value? }` wire form. The 1.x
+/// bare-string `--source <key>=<path>` form was dropped at the 2.0
+/// cut — every binding now carries an explicit adapter name.
+///
+/// The [`FromStr`] impl returns a `String` error on malformed input
+/// so clap surfaces a standard usage diagnostic (exit code 2).
 #[derive(Clone)]
 pub struct SourceArg {
     /// Source key (left of `=`).
     pub(crate) key: String,
-    /// Source value — path or URL (right of `=`).
-    pub(crate) value: String,
+    /// Kebab-case source-adapter name (parsed out of the `<adapter>:…`
+    /// prefix after `=`).
+    pub(crate) adapter: String,
+    /// Mutually exclusive with `value`. `Some(path)` for the
+    /// `<adapter>:<path>` form.
+    pub(crate) path: Option<String>,
+    /// Mutually exclusive with `path`. `Some(literal)` for the
+    /// `<adapter>:value:<literal>` form.
+    pub(crate) value: Option<String>,
 }
 
 impl FromStr for SourceArg {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (k, v) = s
-            .split_once('=')
-            .ok_or_else(|| format!("--source must be <key>=<path-or-url>, got `{s}`"))?;
-        if k.is_empty() || v.is_empty() {
-            return Err(format!("--source key and value must be non-empty, got `{s}`"));
+        let (key, rest) = s.split_once('=').ok_or_else(|| {
+            format!(
+                "--source must be <key>=<adapter>:<path> or <key>=<adapter>:value:<literal>, got \
+                 `{s}`"
+            )
+        })?;
+        if key.is_empty() {
+            return Err(format!("--source key must be non-empty, got `{s}`"));
         }
+        let (adapter, body) = rest.split_once(':').ok_or_else(|| {
+            format!(
+                "--source value must be <adapter>:<path> or <adapter>:value:<literal>, got \
+                 `{rest}` for key `{key}`"
+            )
+        })?;
+        if adapter.is_empty() {
+            return Err(format!("--source adapter must be non-empty, got `{s}`"));
+        }
+        if body.is_empty() {
+            return Err(format!(
+                "--source binding (path or `value:<literal>`) must be non-empty, got `{s}`"
+            ));
+        }
+        let (path, value) = if let Some(literal) = body.strip_prefix("value:") {
+            if literal.is_empty() {
+                return Err(format!(
+                    "--source value-literal must be non-empty after `value:`, got `{s}`"
+                ));
+            }
+            (None, Some(literal.to_string()))
+        } else {
+            (Some(body.to_string()), None)
+        };
         Ok(Self {
-            key: k.to_string(),
-            value: v.to_string(),
+            key: key.to_string(),
+            adapter: adapter.to_string(),
+            path,
+            value,
         })
     }
 }

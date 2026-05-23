@@ -76,7 +76,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::super::model::{
-        Entry, Lifecycle, Patch, SliceAuthorityOverride, SliceSourceBinding, Status,
+        Entry, Lifecycle, Patch, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
+        TargetRef,
     };
     use super::super::test_support::{change, plan_with_changes};
     use super::*;
@@ -154,7 +155,7 @@ mod tests {
             lifecycle: Lifecycle::Pending,
             sources: {
                 let mut m = BTreeMap::new();
-                m.insert("a".to_string(), "/path/a".to_string());
+                m.insert("a".to_string(), SourceBinding::path("code-typescript", "/path/a"));
                 m
             },
             entries: vec![
@@ -289,7 +290,7 @@ mod tests {
             "foo",
             EntryPatch {
                 project: Patch::Clear,
-                target: Patch::Set("contracts@v1".into()),
+                target: Patch::Set(TargetRef::new("contracts", 1)),
                 ..EntryPatch::default()
             },
         )
@@ -302,7 +303,7 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            target: Some("omnia@v1".into()),
+            target: Some(TargetRef::new("omnia", 1)),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -314,7 +315,7 @@ mod tests {
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
         assert_eq!(
-            plan.entries[0].target.as_deref(),
+            plan.entries[0].target.as_ref().map(ToString::to_string).as_deref(),
             Some("omnia@v1"),
             "None must leave target unchanged"
         );
@@ -322,13 +323,13 @@ mod tests {
         plan.amend(
             "foo",
             EntryPatch {
-                target: Patch::Set("contracts@v1".into()),
+                target: Patch::Set(TargetRef::new("contracts", 1)),
                 ..EntryPatch::default()
             },
         )
         .expect("amend replace ok");
         assert_eq!(
-            plan.entries[0].target.as_deref(),
+            plan.entries[0].target.as_ref().map(ToString::to_string).as_deref(),
             Some("contracts@v1"),
             "Patch::Set(s) must replace target"
         );

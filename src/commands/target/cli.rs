@@ -10,8 +10,9 @@ pub enum TargetAction {
     /// Resolve a target-adapter manifest by kebab name (or
     /// `name@version` value).
     ///
-    /// Probe order: `.specify/.cache/adapters/targets/<name>/adapter.yaml`
-    /// (agent-populated cache), then `<project-dir>/adapters/targets/<name>/adapter.yaml`
+    /// Probe order: `.specify/.cache/manifests/targets/<name>/adapter.yaml`
+    /// (agent-populated manifest cache), then
+    /// `<project-dir>/adapters/targets/<name>/adapter.yaml`
     /// (in-repo). Emits the resolved directory path plus the
     /// manifest's declared operations.
     Resolve {

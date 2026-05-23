@@ -35,7 +35,7 @@ impl ContractToolFixture {
         .expect("write project.yaml");
         fs::write(
             adapter.join("adapter.yaml"),
-            "name: contracts\nversion: 1\naxis: target\noperations: [shape, build, merge]\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test contracts adapter\n",
+            "name: contracts\nversion: 1\naxis: target\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test contracts adapter\n",
         )
         .expect("write adapter.yaml");
         for op in ["shape", "build", "merge"] {

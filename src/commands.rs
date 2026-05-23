@@ -13,7 +13,7 @@ use std::path::Path;
 
 use clap::CommandFactory;
 use serde::Serialize;
-use specify_domain::adapter::{Adapter, Axis};
+use specify_domain::adapter::{Axis, SourceAdapter, TargetAdapter};
 use specify_error::Result;
 
 use crate::cli::{Cli, Commands, Format};
@@ -157,29 +157,40 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 }
 
 /// Resolve a source- or target-adapter manifest by kebab name and emit
-/// the wire-stable [`ResolveBody`] envelope. Probe order matches
-/// [`Adapter::resolve`]: agent-populated cache at
-/// `<project_dir>/.specify/.cache/{sources,targets}/<name>/` first, then
-/// the in-repo `<project_dir>/{sources,targets}/<name>/`.
+/// the wire-stable [`ResolveBody`] envelope. Probe order matches the
+/// axis-specific resolver: agent-populated manifest cache at
+/// `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`
+/// first, then the in-repo `<project_dir>/adapters/{sources,targets}/<name>/`.
 ///
 /// For [`Axis::Target`], `value` accepts either `<name>` or
 /// `<name>@<version>`; the `@version` suffix is treated as an opaque
 /// identifier and stripped to leave the kebab name for the lookup
 /// (RFC-25 §CLI surface).
 fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) -> Result<()> {
-    let name = if matches!(axis, Axis::Target) {
-        value.split_once('@').map_or(value, |(n, _)| n)
-    } else {
-        value
-    };
-    let resolved = Adapter::resolve(axis, name, project_dir)?;
-    let body = ResolveBody {
-        axis: axis.dir_segment(),
-        name: resolved.manifest.name.clone(),
-        resolved_path: resolved.root_dir.display().to_string(),
-        location: resolved.location.label(),
-        operations: resolved.manifest.operations.clone(),
-        description: resolved.manifest.description.clone(),
+    let body = match axis {
+        Axis::Source => {
+            let resolved = SourceAdapter::resolve(value, project_dir)?;
+            ResolveBody {
+                axis: axis.dir_segment(),
+                name: resolved.manifest.name.clone(),
+                resolved_path: resolved.root_dir.display().to_string(),
+                location: resolved.location.label(),
+                operations: resolved.manifest.operations().map(ToString::to_string).collect(),
+                description: resolved.manifest.description.clone(),
+            }
+        }
+        Axis::Target => {
+            let name = value.split_once('@').map_or(value, |(n, _)| n);
+            let resolved = TargetAdapter::resolve(name, project_dir)?;
+            ResolveBody {
+                axis: axis.dir_segment(),
+                name: resolved.manifest.name.clone(),
+                resolved_path: resolved.root_dir.display().to_string(),
+                location: resolved.location.label(),
+                operations: resolved.manifest.operations().map(ToString::to_string).collect(),
+                description: resolved.manifest.description.clone(),
+            }
+        }
     };
     output::emit(Box::new(std::io::stdout().lock()), format, &body, write_resolve_text)?;
     Ok(())

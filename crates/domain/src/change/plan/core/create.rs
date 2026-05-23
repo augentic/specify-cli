@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use specify_error::Error;
 
-use super::model::{Entry, Lifecycle, Plan, Severity, Status};
+use super::model::{Entry, Lifecycle, Plan, Severity, SourceBinding, Status};
 use crate::slice::actions::validate_name;
 
 impl Plan {
@@ -21,7 +21,7 @@ impl Plan {
     /// # Errors
     ///
     /// Errors when `name` is not kebab-case.
-    pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Self, Error> {
+    pub fn init(name: &str, sources: BTreeMap<String, SourceBinding>) -> Result<Self, Error> {
         validate_name(name)?;
         Ok(Self {
             name: name.to_string(),
@@ -275,9 +275,18 @@ mod tests {
     #[test]
     fn init_preserves_sources() {
         let mut sources = BTreeMap::new();
-        sources.insert("monolith".to_string(), "/path/to/legacy".to_string());
-        sources.insert("orders".to_string(), "git@github.com:org/orders.git".to_string());
-        sources.insert("payments".to_string(), "git@github.com:org/payments.git".to_string());
+        sources.insert(
+            "monolith".to_string(),
+            SourceBinding::path("code-typescript", "/path/to/legacy"),
+        );
+        sources.insert(
+            "orders".to_string(),
+            SourceBinding::path("code-typescript", "git@github.com:org/orders.git"),
+        );
+        sources.insert(
+            "payments".to_string(),
+            SourceBinding::path("code-typescript", "git@github.com:org/payments.git"),
+        );
 
         let plan = Plan::init("big", sources.clone()).expect("init ok");
         assert_eq!(plan.sources, sources, "init must preserve the sources map verbatim");

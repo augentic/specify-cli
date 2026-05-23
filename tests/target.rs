@@ -2,7 +2,7 @@
 //!
 //! Mirrors the RFC-25 target-adapter loader exposed by
 //! `crates/domain/src/adapter/`. The CLI verb is a thin
-//! `Adapter::resolve(Axis::Target, …)` wrapper.
+//! `TargetAdapter::resolve(name, project_dir)` wrapper.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -37,9 +37,9 @@ fn stage_target_fixture(project: &Project, name: &str) {
 #[test]
 fn target_resolve_local_returns_resolved_manifest() {
     let project = Project::init();
-    // `Project::init()` seeds `.specify/.cache/adapters/targets/omnia/`; remove
+    // `Project::init()` seeds `.specify/.cache/manifests/targets/omnia/`; remove
     // it so the local probe wins for this test.
-    let cached = project.root().join(".specify/.cache/adapters/targets/omnia");
+    let cached = project.root().join(".specify/.cache/manifests/targets/omnia");
     if cached.exists() {
         fs::remove_dir_all(&cached).expect("clear cached omnia");
     }
@@ -59,7 +59,10 @@ fn target_resolve_local_returns_resolved_manifest() {
     assert_eq!(actual["location"], "local");
     let ops: Vec<&str> =
         actual["operations"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
-    assert_eq!(ops, vec!["shape", "build", "merge"]);
+    // After the `operations[]` collapse (review 1.A1), the envelope
+    // derives operations from `briefs.keys()` — a BTreeMap, so order is
+    // ascending kebab-name: build < merge < shape.
+    assert_eq!(ops, vec!["build", "merge", "shape"]);
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
         resolved.ends_with("adapters/targets/omnia"),

@@ -11,7 +11,7 @@ use specify_error::Error;
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
 use crate::merge::merge::MergeResult;
 use crate::slice::{
-    LifecycleStatus, Operation, Outcome, OutcomeKind, SliceMetadata, SpecKind, actions,
+    LifecycleStatus, Outcome, OutcomeKind, SliceMetadata, SpecKind, TargetOperation, actions,
 };
 
 mod parse;
@@ -202,7 +202,7 @@ pub fn commit(
         metadata.merged_at = Some(now);
     }
     metadata.outcome = Some(Outcome {
-        phase: Operation::Merge,
+        phase: TargetOperation::Merge,
         kind: OutcomeKind::Success,
         at: now,
         summary: build_merge_summary(&merged, &opaque_counts),

@@ -28,6 +28,25 @@ run` WASI passthrough.
 | 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the RFC-27 §D3/D4/D6 kebab discriminants `slice-authority-override-orphan-source-key`, `slice-fusion-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
+The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
+for WASI tool passthrough) which collapse onto these four wire codes
+via `Exit::from(&Error)`:
+
+| Variant                  | Code |
+|--------------------------|------|
+| `Exit::Success`          | `0`  |
+| `Exit::GenericFailure`   | `1`  |
+| `Exit::ValidationFailed` | `2`  |
+| `Exit::ArgumentError`    | `2`  |
+| `Exit::VersionTooOld`    | `3`  |
+
+`Exit::ArgumentError` and `Exit::ValidationFailed` share code `2` so the
+wire contract stays four-slot; the named distinction exists for
+dispatcher-side clarity (`Error::Argument` flags malformed CLI input
+shape; `Error::Validation` carries a `ValidationSummary` payload). The
+two never need separate exit codes — anything actionable by the
+operator is in the JSON envelope's `code` discriminant.
+
 ## Atomic writes
 
 Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a
@@ -271,18 +290,20 @@ the single entry point for loading a source or target adapter manifest.
 Probe order is path-agnostic and matches RFC-25 §"Resolver and cache"
 verbatim:
 
-1. `<project_dir>/.specify/.cache/{sources,targets}/<name>/` —
-   agent-populated cache, fetched by the plan/slice flow.
-2. `<project_dir>/{sources,targets}/<name>/` — in-repo manifests
-   checked into the project's source tree.
+1. `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/` —
+   agent-populated manifest cache, fetched by the plan/slice flow.
+2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo
+   manifests checked into the project's source tree.
 
 The axis segment (`sources` for `Axis::Source`, `targets` for
 `Axis::Target`) keeps source and target adapters with colliding names
 disambiguated by axis. Cache placement matches the probe layout —
 `cache_dir(axis, name)` returns
-`<project_dir>/.specify/.cache/{sources,targets}/<name>/`. Refer to
-RFC-25 §"Resolver and cache" before changing the probe order or cache
-layout.
+`<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`.
+The sibling RFC-27 §D8 extraction cache lives in a disjoint tree under
+`<project_dir>/.specify/.cache/extractions/<adapter>/`; see §"Cache
+layout". Refer to RFC-25 §"Resolver and cache" before changing the
+probe order or manifest-cache layout.
 
 ## Plan lifecycle: two stored states
 
@@ -299,6 +320,23 @@ operator-only — the CLI does not gate it (the call is ungated so
 operators can run it from any shell), but the `--help` text documents
 the rule and `/spec:plan` skill bodies MUST NOT call it. Refer to
 RFC-25 §"Execution model" for the full state diagram.
+
+`Status::Done` is absorbing in v1: per-entry `done` is the terminal
+state and no CLI verb walks it back. There is no `plan transition
+--undo`, no `Status::Reopened`, and no "rebuild" sub-flow — a merged
+slice stays merged unless the operator hand-edits `plan.yaml` (an
+explicit escape hatch, not a supported flow). If an upstream revert
+demands a redo, author a fresh slice that captures the redo work; the
+original slice's `done` row stays as the historical record.
+
+Archive is a filesystem operation, not a lifecycle state. `specify
+plan finalize` moves `change.md` + `plan.yaml` into
+`.specify/archive/<plan-name>/` and emits a `plan.transition.archived`
+journal event (see §"Journal event names"), but the plan-level
+lifecycle stamp inside the archived `plan.yaml` stays at `reviewed`.
+There is no `archived` enum variant on `plan.yaml.lifecycle` — the
+on-disk location of the file is the archived signal, not a stored
+state.
 
 ## `SliceSourceBinding`: bare shorthand plus structured form
 
@@ -387,6 +425,7 @@ variants are `snake_case` and bridge to the wire via
 | Wire id | Emitted by |
 |---|---|
 | `plan.transition.reviewed` | `specify plan transition <plan> reviewed` (Gate 1 stamp). |
+| `plan.transition.archived` | `specify plan finalize` when it moves `change.md` + `plan.yaml` into `.specify/archive/`. Archive is a filesystem operation, not a lifecycle state — the plan stays stamped `reviewed`. Wire shape locked at 2.0; emitter wiring lands post-2.0. |
 | `plan.propose.divergence` | `/spec:plan` `propose` sub-step when it flips a slice to `divergence: likely`. |
 | `plan.amend.divergence` | `specify plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
 | `slice.transition.refined` | `specify slice transition <slice> refined`. |
@@ -395,6 +434,8 @@ variants are `snake_case` and bridge to the wire via
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). RFC-27 §D8. |
 | `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). RFC-27 §D4. |
 | `slice.fixture-replay.completed` | Target adapter's `build` step when it consumes `code-runtime` fixtures; optional in v1. RFC-27 §D1. |
+| `slice.build.failed` | `/spec:build` (or the matching slice-build CLI surface) when the slice fails to build. Per-entry status stays `in-progress`; v1 has no `failed` state. Wire shape locked at 2.0; emitter wiring lands post-2.0. |
+| `slice.merge.conflicted` | `/spec:merge` (or `specify slice merge`) when baseline merge hits an unresolvable conflict. Per-entry status stays `in-progress`; v1 has no `conflicted` state. Wire shape locked at 2.0; emitter wiring lands post-2.0. |
 | `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. RFC-27 §D3. |
 
 Events persist as newline-delimited JSON at
@@ -407,9 +448,10 @@ and the per-event row table.
 
 The WASI tool runner's plugin-scope substitution variable is
 `$CAPABILITY_DIR`. It expands to the resolved plugin's root directory
-(`<project_dir>/.specify/.cache/{sources,targets}/<name>/` or the
-in-repo equivalent) and is only valid in `permissions.{read,write}`
-entries (and the `source:` URI of a plugin-scope tool); project-scope
+(`<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`
+or the in-repo equivalent) and is only valid in
+`permissions.{read,write}` entries (and the `source:` URI of a
+plugin-scope tool); project-scope
 references are rejected as `tool.capability-dir-out-of-scope` /
 `tool.source-capability-dir-out-of-scope`. The tool cache scope
 segment that pairs with it is `plugin--<axis>--<slug>` — e.g.
@@ -435,3 +477,155 @@ The plan-level `reviewed` row is the lightest-touch shape the RFC
 allows: a wholly operator-driven stamp with no CLI-side authentication.
 Skills that drift from this contract get caught at review time. Refer
 to RFC-25 §"CLI surface" and §"Writer ownership".
+
+## Plan source bindings
+
+The on-disk shape of `plan.yaml.sources.<key>` is the structured
+`{ adapter, path?, value? }` object — the 1.x bare-string shorthand
+was dropped at the Specify 2.0 cut and the `oneOf` branch that
+documented it is gone from `schemas/plan/plan.schema.json`. Every
+binding now carries an explicit kebab-case `adapter` and exactly one
+of `path` (filesystem path or repo location) or `value` (literal
+payload supplied directly to the adapter — used by `intent`). The
+`oneOf [path, value]` exclusion is enforced in both the JSON Schema
+and the Rust loader (`specify_domain::change::SourceBinding`).
+
+The `specify plan create --source` flag grammar mirrors the wire
+shape:
+
+| Form | Materialises as |
+|---|---|
+| `--source <key>=<adapter>:<path>` | `SourceBinding { adapter, path: Some(<path>), value: None }` |
+| `--source <key>=<adapter>:value:<literal>` | `SourceBinding { adapter, path: None, value: Some(<literal>) }` |
+
+The adapter is the substring up to the first `:` after `=`; the
+binding payload is everything after that first `:`. URLs that
+contain `:` (e.g. `git@github.com:org/foo.git`) round-trip through
+the path form unchanged. The `value:` sentinel switches the parser
+to literal mode, so the literal payload may contain any character
+(including `:`, `=`, and newlines) without further escaping. No
+shorthand exists for "the adapter name equals the key"; every flag
+invocation carries both. Refer to RFC-25 §Source and
+`crates/domain/src/change/plan/core/model.rs::SourceBinding`.
+
+Source keys are plan-scoped; each key maps to exactly one binding
+under `Plan::sources`, but slices may reference the same key with
+different candidates.
+
+## Adapter manifest requireds
+
+`description` is required at the top level of every adapter manifest —
+sources and targets alike — alongside the existing `name`, `version`,
+`axis`, and `briefs`. `tools[].version` is required for every declared
+tool. The accepted shape is semver only: `x.y.z` with an optional
+`-prerelease` suffix, locked by the schema pattern
+`^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`. No `v` prefix, no `sha256:` digest,
+no free-form strings. Tools without a release must cut one before being
+declared. The reproducibility argument is the RFC-27 §D8 cache
+fingerprint: it folds `sorted declared-tool versions` into the
+extraction cache key, so an absent or non-semver pin would silently
+drop tool-version from the fingerprint and let two adapter revisions
+share a cache slot. Enforced uniformly by `adapter.schema.json`,
+`source.schema.json`, and `target.schema.json`.
+
+## Adapter name uniqueness
+
+Adapter names are unique across axes — a name is declared under
+`adapters/sources/<name>/` xor `adapters/targets/<name>/`, never both
+(and the same applies to their
+`.specify/.cache/manifests/{sources,targets}/<name>/` manifest-cache
+mirrors). Enforced at `specify init` time (inside
+`crates/domain/src/init/cache.rs::cache_adapter`, before the target
+cache directory is rewritten) and at `*Adapter::resolve` /
+`*Adapter::locate` time (inside
+`crates/domain/src/adapter/core.rs::locate_axis`; the public
+`check_axis_unique_for_name(axis, name, project_dir)` helper is the
+one-sided variant `init` calls before the side it is about to
+install exists on disk). Collisions surface as
+`Error::Validation` with the kebab-case discriminant
+`adapter-name-axis-collision`; the wire body names both the axis the
+loader was asked for and the colliding sibling axis so operators can
+rename or delete one side without grepping the manifest tree.
+
+## Cache layout
+
+`.specify/.cache/` hosts two distinct, root-disjoint caches:
+
+- `manifests/{sources,targets}/<name>/` — adapter manifest cache. The
+  agent-populated mirror of `adapters/{sources,targets}/<name>/`
+  (`adapter.yaml` plus the brief markdown files it references). Per-axis
+  because adapter names are unique per axis. Resolved by
+  `crates/domain/src/adapter/core.rs::cache_dir`.
+- `extractions/<adapter>/<fingerprint>/` — RFC-27 §D8 per-source
+  extraction result cache, with the append-only `index.jsonl` at the
+  adapter root (`extractions/<adapter>/index.jsonl`). Per-adapter only —
+  not per-axis — because extraction is a source-axis operation; the
+  adapter name carries enough identity. Resolved by
+  `crates/domain/src/adapter/cache/io.rs::CacheLayout`.
+
+Each cache owns its own root, so the loader no longer probes for an
+`adapter.yaml` inside the cache directory to disambiguate manifest vs.
+extraction co-tenancy — a manifest-cache directory is always a manifest
+mirror, and the extraction tree never carries `adapter.yaml` at any
+level. Refer to RFC-27 §D8 for the extraction-cache fingerprint
+contract.
+
+## Target adapter suffix policy
+
+`plan.yaml.slices[].target` carries the `name@vN` form (e.g.
+`omnia@v1`) and the integer `N` is a load-bearing wire field, not
+decorative metadata:
+
+- `schemas/plan/plan.schema.json` pins the wire shape with the regex
+  `^[a-z][a-z0-9-]*@v\d+$`; bare names and non-kebab variants are
+  rejected at schema-validation time.
+- `crates/domain/src/change/plan/core/model.rs::TargetRef` is the
+  parsed in-memory representation. Serde routes
+  `Option<TargetRef>` through `TargetRef::parse`, so any value that
+  reaches the validator already carries a typed `(name, version)`
+  pair.
+- `crates/domain/src/change/plan/core/validate.rs::check_target_adapter_versions`
+  iterates `plan.entries`, calls
+  `TargetAdapter::resolve(target.name(), project_dir)`, and asserts
+  `target.version() == adapter.version`. Mismatches surface as
+  `Error::Validation` with the kebab discriminant
+  `plan-target-version-mismatch`; the detail string names both the
+  plan-side and the adapter-manifest-side integers.
+- The cross-field "at least one of `project` / `target`" rule lives
+  inside the schema as a per-slice `anyOf`, so external consumers
+  (Cursor IDE renderers, CI linters) get the same gate as the Rust
+  loader without having to mirror the Rust-only
+  `plan.entry-needs-project-or-target` finding.
+- `plan-target-malformed` is the discriminant reserved for the
+  CLI-flag parser (`--target <raw>`); the schema regex prevents it
+  from being reachable through on-disk YAML.
+
+## Operations typed at parse boundary
+
+Adapter operations are typed Rust enums by the time YAML parsing
+finishes; string operation names never survive past the manifest loader.
+
+- Task A (review 1.A1) removed the decorative `operations:` array from
+  every `adapter.yaml`, `schemas/adapter.schema.json`,
+  `schemas/source.schema.json`, and `schemas/target.schema.json`.
+  `briefs.keys()` is the canonical iterator over an adapter's declared
+  operations; `Adapter::operations()` derives from it if a caller needs
+  the typed iterator.
+- Task E (review 1.B1) split the legacy axis-generic `Adapter` struct
+  into `SourceAdapter` and `TargetAdapter` with
+  `briefs: BTreeMap<SourceOperation, String>` and
+  `BTreeMap<TargetOperation, String>` respectively. The closed
+  `{Source,Target}Operation` enums in
+  `crates/domain/src/adapter/operation.rs` are the typed `briefs.keys()`
+  carried by each manifest struct; `brief_path` is enum-keyed and string
+  literals at call sites are gone.
+- **Wire invariant.** The `specify source resolve` and
+  `specify target resolve` JSON envelopes' `operations: [...]` arrays
+  iterate in kebab-alphabetical order (e.g. `["enumerate", "extract"]`,
+  `["build", "merge", "shape"]`). `BTreeMap` ordering combined with
+  manual `Ord` / `PartialOrd` impls on `{Source,Target}Operation`
+  (sorting by kebab string, not by Rust variant declaration order)
+  preserves this contract end-to-end. Future refactors must not
+  re-derive `Ord` on these enums without preserving the kebab-string
+  sort — derived `Ord` follows declaration order and would silently
+  break the wire.

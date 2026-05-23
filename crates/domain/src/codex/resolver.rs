@@ -10,7 +10,7 @@ use std::path::{Component, Path, PathBuf};
 use serde::Serialize;
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::adapter::{Adapter, Axis, ResolvedAdapter};
+use crate::adapter::{ResolvedTargetAdapter, TargetAdapter};
 use crate::codex::rule::CodexRule;
 
 /// Foundational adapter name resolved before the project adapter.
@@ -81,8 +81,7 @@ impl ResolvedCodex {
     /// `project_adapter` is the value from `project.yaml.adapter` —
     /// either a kebab adapter name or a `file://` / `https://` URI
     /// whose last path component is the kebab name. The resolver
-    /// extracts the name and routes through
-    /// [`Adapter::resolve`] with [`Axis::Target`].
+    /// extracts the name and routes through [`TargetAdapter::resolve`].
     ///
     /// # Errors
     ///
@@ -139,7 +138,7 @@ impl CodexResolver {
 
         if let Some(adapter_value) = self.project_adapter.as_deref() {
             let name = adapter_name_from_value(adapter_value);
-            let project = Adapter::resolve(Axis::Target, name, &self.project_dir)?;
+            let project = TargetAdapter::resolve(name, &self.project_dir)?;
             if project.root_dir != default_root {
                 rules.extend(load_adapter_rules(&project)?);
             }
@@ -198,8 +197,8 @@ fn strip_ref_suffix(value: &str) -> &str {
     value
 }
 
-fn resolve_default(project_dir: &Path) -> Result<ResolvedAdapter, Error> {
-    match Adapter::resolve(Axis::Target, DEFAULT_CODEX_ADAPTER, project_dir) {
+fn resolve_default(project_dir: &Path) -> Result<ResolvedTargetAdapter, Error> {
+    match TargetAdapter::resolve(DEFAULT_CODEX_ADAPTER, project_dir) {
         Ok(adapter) => Ok(adapter),
         Err(err @ Error::Diag { .. }) => {
             let detail = err.to_string();
@@ -215,7 +214,7 @@ fn resolve_default(project_dir: &Path) -> Result<ResolvedAdapter, Error> {
     }
 }
 
-fn load_adapter_rules(adapter: &ResolvedAdapter) -> Result<Vec<ResolvedCodexRule>, Error> {
+fn load_adapter_rules(adapter: &ResolvedTargetAdapter) -> Result<Vec<ResolvedCodexRule>, Error> {
     let provenance = CodexProvenance::Adapter {
         name: adapter.manifest.name.clone(),
         version: adapter.manifest.version,

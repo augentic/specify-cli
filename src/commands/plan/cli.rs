@@ -14,8 +14,12 @@ pub enum PlanAction {
     Create {
         /// Kebab-case change name
         name: String,
-        /// Named source, repeated: --source `<key>`=`<path-or-url>`.
-        /// Recorded in the plan's `sources:` map.
+        /// Named source binding, repeatable. Wire grammar:
+        /// `--source <key>=<adapter>:<path>` for path-bound bindings,
+        /// or `--source <key>=<adapter>:value:<literal>` for
+        /// value-bound bindings (used by `intent`). Recorded in the
+        /// plan's `sources:` map as the structured
+        /// `{ adapter, path?, value? }` shape per RFC-25 §Source.
         #[arg(long = "source")]
         sources: Vec<SourceArg>,
         /// Pre-stage `slices[].divergence: likely` on the named slice
