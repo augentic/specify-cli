@@ -7,10 +7,8 @@ use std::path::Path;
 
 use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::DiGraph;
-use specify_error::Error;
 
 use super::model::{Entry, Finding, Plan, Severity, Status};
-use crate::adapter::TargetAdapter;
 use crate::registry::Registry;
 
 impl Plan {
@@ -354,62 +352,6 @@ fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Finding> {
     }
 
     out
-}
-
-/// Reconcile every slice's parsed `target` version against the resolved
-/// target adapter's manifest `version: u32` field.
-///
-/// Iterates [`Plan::entries`] in declaration order; for each entry that
-/// declares a [`super::model::TargetRef`], resolves the matching
-/// adapter via [`TargetAdapter::resolve`] and asserts
-/// `target.version() == manifest.version`. Returns the first mismatch
-/// as [`Error::Validation`] with the kebab discriminant
-/// `plan-target-version-mismatch` so the CLI exits with code 2.
-///
-/// Adapter-resolution errors (`adapter-not-found`,
-/// `adapter-schema-violation`, …) are propagated verbatim — they fall
-/// outside the version-reconciliation contract and surface their own
-/// kebab discriminants.
-///
-/// The `@vN` suffix is parsed at deserialisation time by
-/// [`super::model::TargetRef::parse`]; any value reaching this checker
-/// is already well-formed, so the `plan-target-malformed` discriminant
-/// is reserved for the in-process construction path (where the type
-/// system already prevents it). Separation of the two discriminants is
-/// load-bearing for the wire contract documented in
-/// `DECISIONS.md §"Target adapter suffix policy"`.
-///
-/// # Errors
-///
-/// - `plan-target-version-mismatch` — the first slice whose
-///   `target.version()` disagrees with the resolved manifest.
-/// - Any error variant returned by [`TargetAdapter::resolve`] is
-///   forwarded as-is.
-pub fn check_target_adapter_versions(plan: &Plan, project_dir: &Path) -> Result<(), Error> {
-    for entry in &plan.entries {
-        let Some(target) = entry.target.as_ref() else {
-            continue;
-        };
-        let resolved = TargetAdapter::resolve(target.name(), project_dir)?;
-        let adapter_version = resolved.manifest.version;
-        if target.version() != adapter_version {
-            return Err(Error::validation_failed(
-                "plan-target-version-mismatch",
-                format!(
-                    "slice `{slice}` target adapter version matches `adapters/targets/{name}/adapter.yaml` `version` field",
-                    slice = entry.name,
-                    name = target.name(),
-                ),
-                format!(
-                    "slice `{slice}` declares target `{name}@v{plan_version}` but adapter `{name}` ships `version: {adapter_version}`",
-                    slice = entry.name,
-                    name = target.name(),
-                    plan_version = target.version(),
-                ),
-            ));
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

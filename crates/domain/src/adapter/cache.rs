@@ -130,21 +130,6 @@ pub fn sha256_prefixed(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
-/// Hash the file at `path` and return its `sha256:<hex>` digest.
-///
-/// # Errors
-///
-/// Propagates I/O failures as `Error::Diag` with the
-/// `cache-fingerprint-input-read-failed` discriminant so the cache
-/// layer's diagnostics stay distinct from generic filesystem errors.
-pub fn sha256_file(path: &Path) -> Result<String, specify_error::Error> {
-    let bytes = std::fs::read(path).map_err(|err| specify_error::Error::Diag {
-        code: "cache-fingerprint-input-read-failed",
-        detail: format!("failed to read {} for sha256 hashing: {err}", path.display()),
-    })?;
-    Ok(sha256_prefixed(&bytes))
-}
-
 /// Closed two-form `source:` shape inside a [`CacheFingerprint`].
 ///
 /// Mirrors RFC-25 §`Source` — bindings are either path-style or
@@ -313,7 +298,7 @@ mod tests {
             fingerprint: "sha256:cafef00d".to_string(),
             slice: "identity-user-registration".to_string(),
             source_key: "runtime".to_string(),
-            adapter: "code-runtime".to_string(),
+            adapter: "runtime-fixtures".to_string(),
             operation: SourceOperation::Extract,
         };
         let json = serde_json::to_string(&entry).expect("serialise");

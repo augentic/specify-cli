@@ -435,7 +435,7 @@ variants are `snake_case` and bridge to the wire via
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). RFC-27 §D8. |
 | `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). RFC-27 §D4. |
-| `slice.fixture-replay.completed` | Target adapter's `build` step when it consumes `code-runtime` fixtures; optional in v1. RFC-27 §D1. |
+| `slice.fixture-replay.completed` | Target adapter's `build` step when it consumes fixtures from `runtime-fixtures`; optional in v1. RFC-27 §D1. |
 | `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. RFC-27 §D3. |
 
 Events persist as newline-delimited JSON at
@@ -584,13 +584,6 @@ decorative metadata:
   `Option<TargetRef>` through `TargetRef::parse`, so any value that
   reaches the validator already carries a typed `(name, version)`
   pair.
-- `crates/domain/src/change/plan/core/validate.rs::check_target_adapter_versions`
-  iterates `plan.entries`, calls
-  `TargetAdapter::resolve(target.name(), project_dir)`, and asserts
-  `target.version() == adapter.version`. Mismatches surface as
-  `Error::Validation` with the kebab discriminant
-  `plan-target-version-mismatch`; the detail string names both the
-  plan-side and the adapter-manifest-side integers.
 - The cross-field "at least one of `project` / `target`" rule lives
   inside the schema as a per-slice `anyOf`, so external consumers
   (Cursor IDE renderers, CI linters) get the same gate as the Rust

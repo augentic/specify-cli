@@ -309,10 +309,10 @@ impl SourceBinding {
 /// `FromStr` is the in-process belt-and-braces re-check.
 ///
 /// The integer [`TargetRef::version`] is reconciled against the
-/// resolved target adapter's `version: u32` field by
-/// [`super::validate::check_target_adapter_versions`]; mismatches
-/// surface as the kebab discriminant `plan-target-version-mismatch`.
-/// See [DECISIONS.md §"Target adapter suffix policy"] for the policy
+/// resolved target adapter's `version: u32` field at plan-validation
+/// time; mismatches surface as the kebab discriminant
+/// `plan-target-version-mismatch`. See
+/// [DECISIONS.md §"Target adapter suffix policy"] for the policy
 /// rationale.
 ///
 /// Construct in-process via [`TargetRef::new`] (already-validated

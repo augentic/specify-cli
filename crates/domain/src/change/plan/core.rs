@@ -19,4 +19,4 @@ pub use model::{
     SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
     TargetRefParseError,
 };
-pub use validate::{authority_override_orphan_source_keys, check_target_adapter_versions};
+pub use validate::authority_override_orphan_source_keys;

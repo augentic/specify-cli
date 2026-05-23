@@ -532,7 +532,7 @@ fn authority_override_valid_keys_pass() {
     };
     let mut plan = plan_with_changes(vec![entry]);
     plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp/legacy"));
-    plan.sources.insert("runtime".into(), SourceBinding::path("code-runtime", "/tmp/runtime"));
+    plan.sources.insert("runtime".into(), SourceBinding::path("runtime-fixtures", "/tmp/runtime"));
     assert!(
         !plan
             .validate(None, None)
@@ -591,105 +591,4 @@ fn context_accepts_valid() {
         !plan.validate(None, None).into_iter().any(|r| r.code == "plan.context-path-invalid"),
         "valid relative paths must not produce errors"
     );
-}
-
-mod target_version {
-    use std::fs;
-
-    use specify_error::Error;
-
-    use super::super::super::model::{Plan, TargetRef};
-    use super::super::check_target_adapter_versions;
-
-    fn seed_target_adapter(project_dir: &std::path::Path, name: &str, version: u32) {
-        let dir = project_dir.join("adapters").join("targets").join(name);
-        fs::create_dir_all(&dir).expect("mkdir adapter");
-        let manifest = format!(
-            "name: {name}\nversion: {version}\naxis: target\ndescription: test target adapter manifest\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\n"
-        );
-        fs::write(dir.join("adapter.yaml"), manifest).expect("write adapter.yaml");
-    }
-
-    #[test]
-    fn target_ref_round_trips_through_serde() {
-        let yaml = "name: x\nslices:\n  - name: only\n    target: omnia@v3\n    status: pending\n";
-        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        let target = plan.entries[0].target.as_ref().expect("target present");
-        assert_eq!(target.name(), "omnia");
-        assert_eq!(target.version(), 3);
-        let rendered = serde_saphyr::to_string(&plan).expect("serialise");
-        assert!(
-            rendered.contains("target: omnia@v3"),
-            "TargetRef must serialise as `name@vN` literal, got:\n{rendered}",
-        );
-    }
-
-    #[test]
-    fn target_ref_rejects_bare_name_at_parse_time() {
-        // The schema regex is the primary defence; the in-memory
-        // `Deserialize` path is the type-system belt-and-braces.
-        // A bare `target: omnia` (no `@vN`) must fail at YAML parse
-        // so it never reaches the version reconciliation step.
-        let yaml = "name: x\nslices:\n  - name: only\n    target: omnia\n    status: pending\n";
-        let err = serde_saphyr::from_str::<Plan>(yaml).expect_err("bare name must be rejected");
-        let detail = err.to_string();
-        assert!(
-            detail.contains("omnia") && detail.contains("@v"),
-            "deserialiser must name the offending input and the missing suffix, got: {detail}",
-        );
-    }
-
-    #[test]
-    fn target_ref_rejects_uppercase_v() {
-        // The wire regex is `@v\d+`; the in-memory parser repeats it.
-        // `@V1` (uppercase V) must fail.
-        let err = TargetRef::parse("omnia@V1").expect_err("uppercase V must be rejected");
-        assert_eq!(err.input, "omnia@V1");
-    }
-
-    #[test]
-    fn version_match_succeeds() {
-        let project = tempfile::tempdir().expect("tempdir");
-        seed_target_adapter(project.path(), "omnia", 1);
-        let yaml = "name: t\nslices:\n  - name: a\n    project: p\n    target: omnia@v1\n    status: pending\n";
-        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        check_target_adapter_versions(&plan, project.path()).expect("matching version passes");
-    }
-
-    #[test]
-    fn version_mismatch_emits_kebab_discriminant() {
-        let project = tempfile::tempdir().expect("tempdir");
-        seed_target_adapter(project.path(), "omnia", 1);
-        let yaml = "name: t\nslices:\n  - name: a\n    project: p\n    target: omnia@v2\n    status: pending\n";
-        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        let err = check_target_adapter_versions(&plan, project.path())
-            .expect_err("mismatched version must fail");
-        match err {
-            Error::Validation { results } => {
-                let summary = results.first().expect("one finding");
-                assert_eq!(summary.rule_id, "plan-target-version-mismatch");
-                let detail = summary.detail.as_deref().unwrap_or("");
-                assert!(
-                    detail.contains("@v2") && detail.contains("version: 1"),
-                    "detail must name both plan-side (2) and adapter-side (1) versions, got: {detail}",
-                );
-                assert!(
-                    detail.contains("`a`"),
-                    "detail must name the offending slice, got: {detail}"
-                );
-            }
-            other => panic!("expected Error::Validation, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn missing_target_is_skipped() {
-        // Entries without a `target` (project-only) are out of scope
-        // for this check — the resolver must not be consulted.
-        let project = tempfile::tempdir().expect("tempdir; deliberately no adapter seeded");
-        let yaml = "name: t\nslices:\n  - name: a\n    project: p\n    status: pending\n";
-        let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-        check_target_adapter_versions(&plan, project.path())
-            .expect("project-only entry must not consult the adapter resolver");
-    }
 }

@@ -11,7 +11,6 @@ use std::path::Path;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-use specify_error::Error;
 
 use crate::change::plan::core::Plan;
 use crate::cmd::CmdRunner;
@@ -200,15 +199,6 @@ pub enum Refusal {
     NonTerminalEntries(Vec<String>),
 }
 
-/// Result of loading the optional finalize plan.
-#[derive(Debug)]
-pub enum PlanLoad {
-    /// Plan file exists and parsed.
-    Present(Plan),
-    /// Plan file is absent; finalize treats this as already closed.
-    Missing,
-}
-
 // ---------------------------------------------------------------------------
 // Orchestration — generic over Probe for testability
 // ---------------------------------------------------------------------------
@@ -216,8 +206,8 @@ pub enum PlanLoad {
 /// Run the whole finalize pipeline.
 ///
 /// Order:
-/// 1. Plan-presence guard (caller's responsibility — call
-///    [`load_plan`] first; the `Plan` arrives here loaded).
+/// 1. Plan-presence guard is the caller's responsibility — the
+///    `Plan` arrives here already loaded.
 /// 2. Plan terminal-state guard (returns
 ///    [`Refusal::NonTerminalEntries`] when not satisfied).
 /// 3. Per-project probes — PR state + dirty clone.
@@ -286,19 +276,4 @@ pub fn run(inputs: Inputs<'_>, runner: CmdRunner<'_>) -> Result<Outcome, Refusal
 
     outcome.finalized = true;
     Ok(outcome)
-}
-
-/// Plan-presence guard: load `plan.yaml` (at the repo root) or return
-/// [`PlanLoad::Missing`].
-///
-/// # Errors
-///
-/// Bubbles up `Plan::load` errors verbatim — a malformed plan is a
-/// real failure, not a "plan absent" sentinel.
-pub fn load_plan(project_dir: &Path) -> Result<PlanLoad, Error> {
-    let plan_file = Layout::new(project_dir).plan_path();
-    if !plan_file.exists() {
-        return Ok(PlanLoad::Missing);
-    }
-    Ok(PlanLoad::Present(Plan::load(&plan_file)?))
 }

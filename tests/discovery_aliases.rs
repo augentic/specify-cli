@@ -48,7 +48,7 @@ sources:
     adapter: code-typescript
     path: ./legacy
   runtime:
-    adapter: code-runtime
+    adapter: runtime-fixtures
     path: ./runtime
 slices: []
 ";

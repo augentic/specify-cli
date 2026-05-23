@@ -791,7 +791,7 @@ rogue: true
         std::fs::write(
             evidence_dir.join("runtime.yaml"),
             r"source: runtime
-adapter: code-runtime
+adapter: runtime-fixtures
 authority: behaviour
 candidate: user-registration
 claims:

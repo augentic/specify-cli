@@ -20,7 +20,6 @@ mod primitives;
 mod registry;
 mod run;
 
-pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
 
 /// Structured result of running every applicable rule over a slice dir.
@@ -118,6 +117,7 @@ pub struct CrossContext<'a> {
 
 #[cfg(test)]
 mod tests {
+    use super::registry::{cross_rules, rules_for};
     use super::*;
 
     /// `rules_for` returns empty for unknown brief ids.

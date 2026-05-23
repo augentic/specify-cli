@@ -1,4 +1,4 @@
-//! RFC-27 §D1 — `kind: example` claim shape (`code-runtime` adapter).
+//! RFC-27 §D1 — `kind: example` claim shape (`runtime-fixtures` adapter).
 //!
 //! Captured runtime fixtures join the closed `claimKind` enum as
 //! `example`. The body carries `claim-id`, optional `path`, a

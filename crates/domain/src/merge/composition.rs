@@ -12,11 +12,6 @@ use crate::merge::merge::{MergeOperation, MergeResult};
 /// `delta_text` is the per-change `composition.yaml` — may have `screens` (new baseline)
 /// or `delta` (screen-level operations).
 ///
-/// # Panics
-///
-/// Panics if the hardcoded fallback YAML literal fails to parse (should
-/// never happen).
-///
 /// # Errors
 ///
 /// Returns an error if the operation fails.
@@ -54,7 +49,10 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
 
     let baseline_text = baseline.unwrap_or("");
     let mut baseline_doc: Value = if baseline_text.trim().is_empty() {
-        serde_saphyr::from_str("version: 1\nscreens: {}").unwrap()
+        serde_saphyr::from_str("version: 1\nscreens: {}").map_err(|e| Error::Diag {
+            code: "composition-baseline-fallback-malformed",
+            detail: format!("hardcoded empty baseline failed to parse: {e}"),
+        })?
     } else {
         serde_saphyr::from_str(baseline_text).map_err(|e| Error::Diag {
             code: "composition-baseline-malformed",

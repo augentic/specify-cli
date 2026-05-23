@@ -437,7 +437,7 @@ mod tests {
             EventKind::SliceExtractCacheHit {
                 slice_name: "identity-user-registration".to_string(),
                 source_key: "runtime".to_string(),
-                adapter: "code-runtime".to_string(),
+                adapter: "runtime-fixtures".to_string(),
                 fingerprint: "sha256:cafef00d".to_string(),
             },
         );
@@ -446,7 +446,7 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(
             lines[0],
-            r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source-key":"runtime","adapter":"code-runtime","fingerprint":"sha256:cafef00d"}}"#
+            r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source-key":"runtime","adapter":"runtime-fixtures","fingerprint":"sha256:cafef00d"}}"#
         );
     }
 
@@ -459,7 +459,7 @@ mod tests {
             EventKind::SliceExtractCacheMiss {
                 slice_name: "identity-user-registration".to_string(),
                 source_key: "runtime".to_string(),
-                adapter: "code-runtime".to_string(),
+                adapter: "runtime-fixtures".to_string(),
                 fingerprint: "sha256:beef".to_string(),
                 reason: CacheMissReason::AdapterVersionChanged,
             },

@@ -15,7 +15,6 @@ use self::remote::{
 use super::git::{self, git_output_ok, git_status_porcelain, git_stdout_trimmed};
 use super::workspace_base;
 use crate::cmd::{CmdRunner, real_cmd};
-use crate::registry::Registry;
 use crate::registry::catalog::RegistryProject;
 use crate::registry::forge::project_path;
 
@@ -78,24 +77,6 @@ pub fn github_slug(url: &str) -> Option<String> {
         return Some(slug.to_string());
     }
     None
-}
-
-/// Core implementation of `specify workspace push`.
-///
-/// `change_name` is `plan.name` from the binary side; the registry
-/// crate cannot depend on `specify-slice` (which already depends on
-/// `specify-registry`), so callers flatten the field at the boundary.
-///
-/// # Errors
-///
-/// Surfaces unknown selectors from `Registry::select` before any per-project
-/// push work runs.
-pub fn push_all(
-    project_dir: &Path, change_name: &str, registry: &Registry, filter_projects: &[String],
-    dry_run: bool,
-) -> Result<Vec<PushResult>, Error> {
-    let target_projects = registry.select(filter_projects)?;
-    push_projects(project_dir, change_name, &target_projects, dry_run)
 }
 
 /// Core implementation of `specify workspace push` for pre-resolved projects.

@@ -40,7 +40,7 @@ pub enum AuthorityClass {
 /// [`AuthorityOverrides`] and the per-slice authority override map
 /// in `plan.yaml.slices[]` validate against the same closed set.
 /// `example` (RFC-27 §D1) is the runtime-fixture kind emitted by the
-/// `code-runtime` source adapter.
+/// `runtime-fixtures` source adapter.
 #[derive(
     Debug,
     Clone,
@@ -73,7 +73,7 @@ pub enum ClaimKind {
     Diagram,
     /// `kind: contract` — interface contract excerpt.
     Contract,
-    /// `kind: example` — runtime fixture (RFC-27 §D1, `code-runtime`).
+    /// `kind: example` — runtime fixture (RFC-27 §D1, `runtime-fixtures`).
     Example,
     /// `kind: excerpt` — code excerpt.
     Excerpt,
