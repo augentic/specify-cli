@@ -263,9 +263,13 @@ crate project-scope and adapter-scope tool declarations.
 
 Wave 0.2 (`cli/W0.2`) renamed `Adapter*` → `Target*` for the output-role
 domain types (`Target`, the `Slice.target` field, the
-`init-requires-target-or-workspace` / `slice-create-target-missing` /
-`plan.entry-needs-project-or-target` error discriminants, plus every
-fixture, JSON envelope, and call site). Wave 0.3 (`cli/W0.3`) moved the
+`slice-create-target-missing` / `plan.entry-needs-project-or-target`
+error discriminants, plus every fixture, JSON envelope, and call site).
+Specify 2.0 then settled the regular/hub init guard on its documented
+spelling `init-requires-adapter-or-hub` (the Wave 0.2-era
+`init-requires-target-or-workspace` is gone — both the [`docs/init.md`](./docs/init.md)
+contract and the in-repo `Error::Diag { code, .. }` arm carry the
+new kebab). Wave 0.3 (`cli/W0.3`) moved the
 shared manifest *shape* into a new axis-aware loader. The F9 collapse
 then retired the legacy axis-agnostic `crate::adapter` module
 (`Adapter` / `Pipeline` / `PipelineEntry` / `PipelineView` / `Phase` /

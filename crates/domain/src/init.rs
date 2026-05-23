@@ -83,7 +83,7 @@ pub struct InitResult {
 ///
 /// Pre-condition: regular (non-hub) init requires
 /// [`InitOptions::adapter`] to be set; the CLI dispatcher enforces
-/// the `init-requires-target-or-workspace` invariant ahead of this call,
+/// the `init-requires-adapter-or-hub` invariant ahead of this call,
 /// but `init` re-validates as a defence in depth. Bubbles up
 /// filesystem, adapter resolution, and serialisation errors from
 /// the underlying calls.
@@ -168,7 +168,7 @@ mod tests {
             matches!(
                 &err,
                 Error::Diag {
-                    code: "init-requires-target-or-workspace",
+                    code: "init-requires-adapter-or-hub",
                     ..
                 }
             ),
@@ -197,7 +197,7 @@ mod tests {
             matches!(
                 &err,
                 Error::Diag {
-                    code: "init-requires-target-or-workspace",
+                    code: "init-requires-adapter-or-hub",
                     ..
                 }
             ),

@@ -5,7 +5,7 @@ use serde::Serialize;
 use specify_domain::change::{
     Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, plan_doctor,
 };
-use specify_domain::config::{InitPolicy, ProjectConfig, with_state};
+use specify_domain::config::{ProjectConfig, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -106,49 +106,45 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let slices_dir = ctx.layout().slices_dir();
 
-    let body = with_state::<Plan, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("plan.yaml"),
-        move |plan| {
-            let validate_results = plan.validate(Some(&slices_dir), None);
-            if validate_results.iter().any(|r| matches!(r.level, Severity::Error)) {
-                return Err(Error::validation_failed(
-                    "plan-structural-errors",
-                    "plan must be free of structural errors",
-                    "run 'specify plan validate' for detail",
-                ));
-            }
+    let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        let validate_results = plan.validate(Some(&slices_dir), None);
+        if validate_results.iter().any(|r| matches!(r.level, Severity::Error)) {
+            return Err(Error::validation_failed(
+                "plan-structural-errors",
+                "plan must be free of structural errors",
+                "run 'specify plan validate' for detail",
+            ));
+        }
 
-            // RFC-25 §CLI surface: "plan next returns the active
-            // in-progress entry before selecting a new pending entry,
-            // and reports drained only when no active or pending
-            // entries remain."
-            let was_executing = plan.is_executing();
-            let advanced = plan.advance_next()?;
-            Ok(match advanced {
-                None => {
-                    let reason = if plan.is_drained() { "drained" } else { "stuck" };
-                    NextBody {
-                        reason: Some(reason.into()),
-                        ..NextBody::default()
-                    }
+        // RFC-25 §CLI surface: "plan next returns the active
+        // in-progress entry before selecting a new pending entry,
+        // and reports drained only when no active or pending
+        // entries remain."
+        let was_executing = plan.is_executing();
+        let advanced = plan.advance_next()?;
+        Ok(match advanced {
+            None => {
+                let reason = if plan.is_drained() { "drained" } else { "stuck" };
+                NextBody {
+                    reason: Some(reason.into()),
+                    ..NextBody::default()
                 }
-                Some(entry) if was_executing => NextBody {
-                    reason: Some("in-progress".into()),
-                    active: Some(entry.name.clone()),
-                    ..NextBody::default()
-                },
-                Some(entry) => NextBody {
-                    next: Some(entry.name.clone()),
-                    project: entry.project.clone(),
-                    target: entry.target.as_ref().map(ToString::to_string),
-                    description: entry.description.clone(),
-                    sources: Some(entry.sources.clone()),
-                    ..NextBody::default()
-                },
-            })
-        },
-    )?;
+            }
+            Some(entry) if was_executing => NextBody {
+                reason: Some("in-progress".into()),
+                active: Some(entry.name.clone()),
+                ..NextBody::default()
+            },
+            Some(entry) => NextBody {
+                next: Some(entry.name.clone()),
+                project: entry.project.clone(),
+                target: entry.target.as_ref().map(ToString::to_string),
+                description: entry.description.clone(),
+                sources: Some(entry.sources.clone()),
+                ..NextBody::default()
+            },
+        })
+    })?;
     ctx.write(&body, write_next_text)?;
     Ok(())
 }
@@ -165,11 +161,9 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 /// fire `plan.transition.reviewed`.
 pub(super) fn transition(ctx: &Ctx, name: String, target: String) -> Result<()> {
     let plan_path = ctx.layout().plan_path();
-    let body = with_state::<Plan, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("plan.yaml"),
-        move |plan| dispatch_transition(plan, &plan_path, &name, &target),
-    )?;
+    let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        dispatch_transition(plan, &plan_path, &name, &target)
+    })?;
     // RFC-25 §Observability: Gate-1 stamp emits a journal event when
     // the lifecycle actually changed. The same-state no-op path
     // (already `reviewed`) flags `changed = false` so we skip the

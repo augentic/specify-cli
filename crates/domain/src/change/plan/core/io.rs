@@ -15,16 +15,6 @@ impl AtomicYaml for Plan {
         layout.plan_path()
     }
 
-    /// `plan.yaml` is created by `specify change draft` (alongside
-    /// `change.md`), never synthesised implicitly. Mutation handlers
-    /// (`add`, `amend`,
-    /// `transition`) should drive `with_state` with
-    /// [`crate::config::InitPolicy::RequireExisting`] to surface
-    /// absence as a typed [`Error::ArtifactNotFound`].
-    fn default_for_load() -> Option<Self> {
-        None
-    }
-
     /// Trait-side loader: `Ok(None)` when the file is absent, mirroring
     /// the contract documented on [`AtomicYaml::load`]. Disambiguated
     /// from the inherent [`Plan::load`] (which returns

@@ -8,7 +8,7 @@ use specify_domain::change::{
     SliceSourceBinding, SourceBinding, Status, TargetRef, TargetRefParseError,
     authority_override_orphan_source_keys,
 };
-use specify_domain::config::{InitPolicy, with_state};
+use specify_domain::config::with_state;
 use specify_domain::discovery::{Discovery, DiscoveryResolveError};
 use specify_domain::evidence::ClaimKind;
 use specify_domain::journal::{self, AuthorityOverrideAction};
@@ -241,9 +241,7 @@ fn parse_divergence(raw: &str) -> Result<Divergence> {
 /// `FromStr` impl, so the closed enum (`ClaimKind`) and the
 /// composite assign (`AuthorityOverrideKindAssign`) share one
 /// implementation.
-fn parse_slice_pair_args<T>(
-    raw: &[String], flag: &'static str, _value_names: &str,
-) -> Result<Vec<(String, T)>>
+fn parse_slice_pair_args<T>(raw: &[String], flag: &'static str) -> Result<Vec<(String, T)>>
 where
     T: FromStr<Err = String>,
 {
@@ -263,26 +261,6 @@ where
     Ok(out)
 }
 
-/// Collapse `--authority-override` repeats: later occurrences win
-/// on the same `(slice, kind)` pair.
-fn dedup_sets(sets: &[(String, ClaimKind, String)]) -> BTreeMap<(String, ClaimKind), String> {
-    let mut set_map: BTreeMap<(String, ClaimKind), String> = BTreeMap::new();
-    for (slice, kind, source_key) in sets {
-        set_map.insert((slice.clone(), *kind), source_key.clone());
-    }
-    set_map
-}
-
-/// Collapse `--clear-authority-override` repeats into a set of
-/// `(slice, kind)` pairs.
-fn dedup_clears(clears: &[(String, ClaimKind)]) -> BTreeSet<(String, ClaimKind)> {
-    let mut clear_set: BTreeSet<(String, ClaimKind)> = BTreeSet::new();
-    for (slice, kind) in clears {
-        clear_set.insert((slice.clone(), *kind));
-    }
-    clear_set
-}
-
 /// Refuse the whole CLI invocation if any flag references a slice
 /// not present on `plan`. Runs before any mutation so the
 /// `with_state` writer is never invoked with a partial result.
@@ -291,20 +269,14 @@ fn refuse_unknown_slices(
     clear_set: &BTreeSet<(String, ClaimKind)>, clear_all_set: &BTreeSet<String>,
 ) -> Result<()> {
     let known: BTreeSet<&str> = plan.entries.iter().map(|e| e.name.as_str()).collect();
-    for (slice, _) in set_map.keys() {
-        if !known.contains(slice.as_str()) {
-            return Err(unknown_slice_err(plan_name, slice));
-        }
-    }
-    for (slice, _) in clear_set {
-        if !known.contains(slice.as_str()) {
-            return Err(unknown_slice_err(plan_name, slice));
-        }
-    }
-    for slice in clear_all_set {
-        if !known.contains(slice.as_str()) {
-            return Err(unknown_slice_err(plan_name, slice));
-        }
+    let unknown = set_map
+        .keys()
+        .map(|(s, _)| s.as_str())
+        .chain(clear_set.iter().map(|(s, _)| s.as_str()))
+        .chain(clear_all_set.iter().map(String::as_str))
+        .find(|s| !known.contains(s));
+    if let Some(slice) = unknown {
+        return Err(unknown_slice_err(plan_name, slice));
     }
     Ok(())
 }
@@ -424,8 +396,9 @@ fn mutate_authority_overrides(
     plan: &mut Plan, plan_name: &str, sets: &[(String, ClaimKind, String)],
     clears: &[(String, ClaimKind)], clear_all: &[String], now: jiff::Timestamp,
 ) -> Result<Vec<journal::Event>> {
-    let set_map = dedup_sets(sets);
-    let clear_set = dedup_clears(clears);
+    let set_map: BTreeMap<(String, ClaimKind), String> =
+        sets.iter().cloned().map(|(s, k, v)| ((s, k), v)).collect();
+    let clear_set: BTreeSet<(String, ClaimKind)> = clears.iter().cloned().collect();
     let clear_all_set: BTreeSet<String> = clear_all.iter().cloned().collect();
 
     refuse_unknown_slices(plan, plan_name, &set_map, &clear_set, &clear_all_set)?;
@@ -553,7 +526,6 @@ pub(super) fn create(
         parse_slice_pair_args::<AuthorityOverrideKindAssign>(
             authority_override,
             "--authority-override",
-            "<slice> <kind>=<key>",
         )?
         .into_iter()
         .map(|(slice, assign)| (slice, assign.kind, assign.source_key))
@@ -685,10 +657,8 @@ pub(super) fn add(
         authority_override: authority_override_map,
     };
     let plan_path = ctx.layout().plan_path();
-    let (body, override_events) = with_state::<Plan, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("plan.yaml"),
-        move |plan| {
+    let (body, override_events) =
+        with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
             plan.create(entry)?;
             validate_plan(plan)?;
             let plan_name = plan.name.clone();
@@ -722,8 +692,7 @@ pub(super) fn add(
                 },
                 events,
             ))
-        },
-    )?;
+        })?;
 
     journal::append_batch(ctx.layout(), &override_events)?;
     ctx.write(&body, write_entry_text)?;
@@ -757,16 +726,12 @@ pub(super) fn amend(
         parse_slice_pair_args::<AuthorityOverrideKindAssign>(
             authority_override,
             "--authority-override",
-            "<slice> <kind>=<key>",
         )?
         .into_iter()
         .map(|(slice, assign)| (slice, assign.kind, assign.source_key))
         .collect();
-    let override_clears: Vec<(String, ClaimKind)> = parse_slice_pair_args::<ClaimKind>(
-        clear_authority_override,
-        "--clear-authority-override",
-        "<slice> <kind>",
-    )?;
+    let override_clears: Vec<(String, ClaimKind)> =
+        parse_slice_pair_args::<ClaimKind>(clear_authority_override, "--clear-authority-override")?;
     let override_clear_all: Vec<String> = clear_authority_overrides.to_vec();
     let plan_path = ctx.layout().plan_path();
     // RFC-27 §D6 — `--add-alias` / `--remove-alias` mutate
@@ -777,10 +742,8 @@ pub(super) fn amend(
     // refuses the amend (with `discovery-alias-collision`, exit 2)
     // before any write hits disk.
     let discovery = apply_alias_edits(ctx, add_alias, remove_alias)?;
-    let (body, journal_events) = with_state::<Plan, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("plan.yaml"),
-        move |plan| {
+    let (body, journal_events) =
+        with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
             // We materialise per-slice bindings here (rather than in
             // the dispatcher) so the slice-name resolution lines up
             // with the slice we're actually mutating. Aliases are
@@ -901,8 +864,7 @@ pub(super) fn amend(
                 },
                 journal_events,
             ))
-        },
-    )?;
+        })?;
     journal::append_batch(ctx.layout(), &journal_events)?;
 
     ctx.write(&body, write_entry_text)?;

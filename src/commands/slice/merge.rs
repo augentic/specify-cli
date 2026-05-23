@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::change::{Plan, Status};
-use specify_domain::config::{InitPolicy, Layout, is_workspace_clone, with_state};
+use specify_domain::config::{Layout, is_workspace_clone, with_state};
 use specify_domain::merge::{
     BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
 };
@@ -54,20 +54,16 @@ fn stamp_plan_entry_done(ctx: &Ctx, name: &str) -> Result<()> {
     if !ctx.layout().plan_path().exists() {
         return Ok(());
     }
-    with_state::<Plan, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("plan.yaml"),
-        move |plan| {
-            if !plan.entries.iter().any(|e| e.name == name) {
-                return Err(Error::Diag {
-                    code: "plan-entry-not-found",
-                    detail: format!("no slice named '{name}' in plan"),
-                });
-            }
-            plan.transition(name, Status::Done)?;
-            Ok(())
-        },
-    )?;
+    with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        if !plan.entries.iter().any(|e| e.name == name) {
+            return Err(Error::Diag {
+                code: "plan-entry-not-found",
+                detail: format!("no slice named '{name}' in plan"),
+            });
+        }
+        plan.transition(name, Status::Done)?;
+        Ok(())
+    })?;
     Ok(())
 }
 

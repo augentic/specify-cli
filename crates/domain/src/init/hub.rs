@@ -48,7 +48,7 @@ use crate::registry::Registry;
 pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.adapter.is_some() {
         return Err(Error::Diag {
-            code: "init-requires-target-or-workspace",
+            code: "init-requires-adapter-or-hub",
             detail: "pass <adapter> or --hub".to_string(),
         });
     }

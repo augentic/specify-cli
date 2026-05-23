@@ -7,7 +7,7 @@ mod atomic;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub use atomic::{AtomicYaml, InitPolicy, with_state};
+pub use atomic::{AtomicYaml, with_state};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
