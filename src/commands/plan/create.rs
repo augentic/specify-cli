@@ -61,8 +61,8 @@ pub fn require_kebab_change_name(name: &str) -> Result<()> {
 /// tokens or alias collisions surface as `Error::validation_failed`
 /// (exit 2) with the discriminants `discovery-candidate-unknown` and
 /// `discovery-alias-collision` respectively. With `discovery` `None`
-/// (no `discovery.md` on disk) the legacy behaviour applies — the
-/// supplied value is used verbatim.
+/// (no `discovery.md` on disk) the discovery-absent passthrough applies —
+/// the supplied value is used verbatim.
 fn binding_from_arg(
     arg: SliceSourceArg, slice_name: &str, discovery: Option<&Discovery>,
 ) -> Result<SliceSourceBinding> {
@@ -364,42 +364,51 @@ fn refuse_unknown_slices(
     Ok(())
 }
 
-fn entry_mut<'a>(plan: &'a mut Plan, slice: &str) -> &'a mut Entry {
-    plan.entries.iter_mut().find(|e| e.name == slice).expect("slice presence pre-checked above")
+fn entry_mut<'a>(plan: &'a mut Plan, plan_name: &str, slice: &str) -> Result<&'a mut Entry> {
+    plan.entries
+        .iter_mut()
+        .find(|e| e.name == slice)
+        .ok_or_else(|| unknown_slice_err(plan_name, slice))
 }
 
 /// Apply every survived `--authority-override <slice> <kind>=<key>`
 /// to the plan. Later sets on the same key already won via
 /// [`dedup_sets`].
-fn apply_sets(plan: &mut Plan, set_map: &BTreeMap<(String, ClaimKind), String>) {
+fn apply_sets(
+    plan: &mut Plan, plan_name: &str, set_map: &BTreeMap<(String, ClaimKind), String>,
+) -> Result<()> {
     for ((slice, kind), key) in set_map {
-        entry_mut(plan, slice).authority_override.by_kind.insert(*kind, key.clone());
+        entry_mut(plan, plan_name, slice)?.authority_override.by_kind.insert(*kind, key.clone());
     }
+    Ok(())
 }
 
 /// Apply every `--clear-authority-override <slice> <kind>` after
 /// the sets so set+clear on the same key resolves to the cleared
 /// state.
-fn apply_single_clears(plan: &mut Plan, clear_set: &BTreeSet<(String, ClaimKind)>) {
+fn apply_single_clears(
+    plan: &mut Plan, plan_name: &str, clear_set: &BTreeSet<(String, ClaimKind)>,
+) -> Result<()> {
     for (slice, kind) in clear_set {
-        entry_mut(plan, slice).authority_override.by_kind.remove(kind);
+        entry_mut(plan, plan_name, slice)?.authority_override.by_kind.remove(kind);
     }
+    Ok(())
 }
 
 /// Apply `--clear-authority-overrides <slice>` and remember the
 /// kinds that were present before the wipe so the journal carries
 /// per-kind Clear events (RFC-27 §D3 grain).
 fn apply_clear_all(
-    plan: &mut Plan, clear_all_set: &BTreeSet<String>,
-) -> BTreeMap<String, Vec<ClaimKind>> {
+    plan: &mut Plan, plan_name: &str, clear_all_set: &BTreeSet<String>,
+) -> Result<BTreeMap<String, Vec<ClaimKind>>> {
     let mut emitted: BTreeMap<String, Vec<ClaimKind>> = BTreeMap::new();
     for slice in clear_all_set {
-        let entry = entry_mut(plan, slice);
+        let entry = entry_mut(plan, plan_name, slice)?;
         let kinds: Vec<ClaimKind> = entry.authority_override.by_kind.keys().copied().collect();
         entry.authority_override.by_kind.clear();
         emitted.insert(slice.clone(), kinds);
     }
-    emitted
+    Ok(emitted)
 }
 
 /// Build the batched `plan.amend.authority-override` event list
@@ -408,25 +417,32 @@ fn apply_clear_all(
 /// cleared); per-kind Clear events are deduplicated across the
 /// `--clear-authority-override` and `--clear-authority-overrides`
 /// surfaces.
+type AuthorityOverrideSortKey = (String, Option<String>, AuthorityOverrideAction);
+
 fn emit_override_events(
     plan_name: &str, set_map: &BTreeMap<(String, ClaimKind), String>,
     clear_set: &BTreeSet<(String, ClaimKind)>, clear_all_set: &BTreeSet<String>,
     clear_all_emitted: &BTreeMap<String, Vec<ClaimKind>>, now: jiff::Timestamp,
 ) -> Vec<journal::Event> {
-    let mut events: Vec<journal::Event> = Vec::new();
+    let mut pending: Vec<(AuthorityOverrideSortKey, journal::Event)> = Vec::new();
     for ((slice, kind), key) in set_map {
         if clear_set.contains(&(slice.clone(), *kind)) || clear_all_set.contains(slice) {
             continue;
         }
-        events.push(journal::Event::new(
-            now,
-            journal::EventKind::PlanAmendAuthorityOverride {
-                plan_name: plan_name.to_string(),
-                slice_name: slice.clone(),
-                action: AuthorityOverrideAction::Set,
-                claim_kind: Some(kind.to_string()),
-                source_key: Some(key.clone()),
-            },
+        let action = AuthorityOverrideAction::Set;
+        let claim_kind = Some(kind.to_string());
+        pending.push((
+            (slice.clone(), claim_kind.clone(), action),
+            journal::Event::new(
+                now,
+                journal::EventKind::PlanAmendAuthorityOverride {
+                    plan_name: plan_name.to_string(),
+                    slice_name: slice.clone(),
+                    action,
+                    claim_kind,
+                    source_key: Some(key.clone()),
+                },
+            ),
         ));
     }
     for (slice, kind) in clear_set {
@@ -435,32 +451,46 @@ fn emit_override_events(
         {
             continue;
         }
-        events.push(journal::Event::new(
-            now,
-            journal::EventKind::PlanAmendAuthorityOverride {
-                plan_name: plan_name.to_string(),
-                slice_name: slice.clone(),
-                action: AuthorityOverrideAction::Clear,
-                claim_kind: Some(kind.to_string()),
-                source_key: None,
-            },
-        ));
-    }
-    for (slice, kinds) in clear_all_emitted {
-        for kind in kinds {
-            events.push(journal::Event::new(
+        let action = AuthorityOverrideAction::Clear;
+        let claim_kind = Some(kind.to_string());
+        pending.push((
+            (slice.clone(), claim_kind.clone(), action),
+            journal::Event::new(
                 now,
                 journal::EventKind::PlanAmendAuthorityOverride {
                     plan_name: plan_name.to_string(),
                     slice_name: slice.clone(),
-                    action: AuthorityOverrideAction::Clear,
-                    claim_kind: Some(kind.to_string()),
+                    action,
+                    claim_kind,
                     source_key: None,
                 },
+            ),
+        ));
+    }
+    for (slice, kinds) in clear_all_emitted {
+        for kind in kinds {
+            let action = AuthorityOverrideAction::Clear;
+            let claim_kind = Some(kind.to_string());
+            pending.push((
+                (slice.clone(), claim_kind.clone(), action),
+                journal::Event::new(
+                    now,
+                    journal::EventKind::PlanAmendAuthorityOverride {
+                        plan_name: plan_name.to_string(),
+                        slice_name: slice.clone(),
+                        action,
+                        claim_kind,
+                        source_key: None,
+                    },
+                ),
             ));
         }
     }
-    events
+    // Final sort gives a byte-stable batched append regardless of
+    // operator-issued flag order: `(slice, kind, action)` per the
+    // Change 2.3 prompt's "stable order" rule.
+    pending.sort_by(|(left, _), (right, _)| left.cmp(right));
+    pending.into_iter().map(|(_, event)| event).collect()
 }
 
 /// Apply the full `--authority-override` / `--clear-authority-override`
@@ -494,53 +524,18 @@ fn mutate_authority_overrides(
     let clear_all_set: BTreeSet<String> = clear_all.iter().cloned().collect();
 
     refuse_unknown_slices(plan, plan_name, &set_map, &clear_set, &clear_all_set)?;
-    apply_sets(plan, &set_map);
-    apply_single_clears(plan, &clear_set);
-    let clear_all_emitted = apply_clear_all(plan, &clear_all_set);
+    apply_sets(plan, plan_name, &set_map)?;
+    apply_single_clears(plan, plan_name, &clear_set)?;
+    let clear_all_emitted = apply_clear_all(plan, plan_name, &clear_all_set)?;
 
-    let mut events = emit_override_events(
+    Ok(emit_override_events(
         plan_name,
         &set_map,
         &clear_set,
         &clear_all_set,
         &clear_all_emitted,
         now,
-    );
-    // Final sort gives a byte-stable batched append regardless of
-    // operator-issued flag order: `(slice, kind, action)` per the
-    // Change 2.3 prompt's "stable order" rule. The
-    // `PlanAmendAuthorityOverride` payload is the only event kind
-    // produced here, so the sort key tuple is total.
-    events.sort_by_key(authority_override_event_key);
-    Ok(events)
-}
-
-/// Sort key for batched `plan.amend.authority-override` events.
-/// `(slice, kind, action)` matches the Change 2.3 prompt's stable
-/// order rule and yields byte-stable journal appends across
-/// reruns of the same operator command.
-///
-/// # Panics
-///
-/// Panics if `event.kind` is not a
-/// [`journal::EventKind::PlanAmendAuthorityOverride`]. The helper
-/// is only fed events `mutate_authority_overrides` synthesises,
-/// every one of which carries that variant — the panic surfaces
-/// any future misuse loudly at the call site.
-fn authority_override_event_key(
-    event: &journal::Event,
-) -> (String, Option<String>, AuthorityOverrideAction) {
-    if let journal::EventKind::PlanAmendAuthorityOverride {
-        slice_name,
-        claim_kind,
-        action,
-        ..
-    } = &event.kind
-    {
-        (slice_name.clone(), claim_kind.clone(), *action)
-    } else {
-        panic!("authority_override_event_key called on non-PlanAmendAuthorityOverride event");
-    }
+    ))
 }
 
 /// Run [`authority_override_orphan_source_keys`] on `plan` and
@@ -794,7 +789,7 @@ pub(super) fn add(
             Ok((
                 EntryBody {
                     plan: plan_ref(plan, &plan_path),
-                    action: "create",
+                    action: Action::Create,
                     entry: serde_json::to_value(created).expect("plan Entry serialises as JSON"),
                 },
                 events,
@@ -970,7 +965,7 @@ pub(super) fn amend(
             Ok((
                 EntryBody {
                     plan: plan_ref(plan, &plan_path),
-                    action: "amend",
+                    action: Action::Amend,
                     entry: serde_json::to_value(amended).expect("plan Entry serialises as JSON"),
                 },
                 journal_events,
@@ -1008,17 +1003,23 @@ fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
+enum Action {
+    Create,
+    Amend,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
 struct EntryBody {
     plan: Ref,
-    action: &'static str,
+    action: Action,
     entry: Value,
 }
 
 fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::Result<()> {
     let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
     match body.action {
-        "create" => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
-        "amend" => writeln!(w, "Amended plan entry '{name}'."),
-        other => unreachable!("unexpected EntryBody action: {other}"),
+        Action::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
+        Action::Amend => writeln!(w, "Amended plan entry '{name}'."),
     }
 }

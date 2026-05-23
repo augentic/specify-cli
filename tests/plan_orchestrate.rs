@@ -1775,6 +1775,56 @@ fn plan_validate_reports_all_three_health_diagnostics() {
 }
 
 #[test]
+fn plan_validate_reports_workspace_adapter_mismatch() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+
+    fs::write(
+        tmp.path().join("plan.yaml"),
+        "name: demo\n\
+             slices:\n\
+             \x20\x20- name: alpha-slice\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20project: alpha\n",
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+             projects:\n\
+             \x20\x20- name: alpha\n\
+             \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n",
+    )
+    .unwrap();
+
+    let slot_specify = tmp.path().join(".specify/workspace/alpha/.specify");
+    fs::create_dir_all(&slot_specify).unwrap();
+    fs::write(slot_specify.join("project.yaml"), "name: alpha\nadapter: vectis@v1\n").unwrap();
+
+    let assert =
+        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+    let value: Value =
+        serde_json::from_str(&String::from_utf8(assert.get_output().stdout.clone()).expect("utf8"))
+            .expect("stdout is JSON");
+    let results = value["results"].as_array().expect("results array");
+    let mismatch: Vec<&Value> =
+        results.iter().filter(|r| r["code"] == "adapter-mismatch-workspace").collect();
+    assert_eq!(
+        mismatch.len(),
+        1,
+        "expected one adapter-mismatch-workspace finding, got: {results:#?}"
+    );
+    assert_eq!(mismatch[0]["severity"], "warning");
+    let msg = mismatch[0]["message"].as_str().expect("message string");
+    assert!(msg.contains("alpha"), "expected clone name in message, got: {msg}");
+    assert!(msg.contains("vectis@v1"), "expected slot adapter in message, got: {msg}");
+    assert!(msg.contains("omnia@v1"), "expected registry adapter in message, got: {msg}");
+    assert_eq!(value["passed"], true, "adapter mismatch is warning-only");
+}
+
+#[test]
 fn plan_validate_payloads_round_trip_typed() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);

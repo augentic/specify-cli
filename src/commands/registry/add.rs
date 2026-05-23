@@ -48,6 +48,7 @@ pub(super) fn run(
                 });
             }
 
+            let added = candidate.clone();
             registry.projects.push(candidate);
 
             // Surface validate_shape / validate_shape_hub errors verbatim —
@@ -62,11 +63,6 @@ pub(super) fn run(
                 registry.validate_shape()?;
             }
 
-            let added = registry
-                .projects
-                .last()
-                .expect("we just pushed an entry; non-empty by construction")
-                .clone();
             Ok(AddBody {
                 registry: registry.clone(),
                 path,

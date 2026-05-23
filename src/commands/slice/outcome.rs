@@ -78,16 +78,11 @@ fn resolve_archived_metadata(project_dir: &Path, slice_name: &str) -> Result<Sli
         }
     }
 
-    if candidates.is_empty() {
-        return Err(Error::Diag {
+    match candidates.into_iter().max_by_key(|(created, _)| *created) {
+        Some((_, metadata)) => Ok(metadata),
+        None => Err(Error::Diag {
             code: "slice-not-found",
             detail: format!("slice '{slice_name}' not found"),
-        });
+        }),
     }
-
-    let (_, metadata) = candidates
-        .into_iter()
-        .max_by(|a, b| a.0.cmp(&b.0))
-        .expect("candidates is non-empty (checked above)");
-    Ok(metadata)
 }

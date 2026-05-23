@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::config::{Layout, is_workspace_clone};
+use specify_domain::change::{Plan, Status};
+use specify_domain::config::{InitPolicy, Layout, is_workspace_clone, with_state};
 use specify_domain::merge::{
     BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
 };
-use specify_error::Result;
+use specify_error::{Error, Result};
 
 use super::artifact_classes;
 use crate::context::Ctx;
@@ -31,6 +32,8 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         auto_commit(&ctx.project_dir, name);
     }
 
+    stamp_plan_entry_done(ctx, name)?;
+
     let today = Timestamp::now().strftime("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
@@ -40,6 +43,30 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
             archive_path,
         },
         write_run_text,
+    )?;
+    Ok(())
+}
+
+/// RFC-25 §Workflow: `/spec:merge` is the sole writer of per-entry
+/// `done`. Standalone merge fixtures without `plan.yaml` skip this
+/// step silently.
+fn stamp_plan_entry_done(ctx: &Ctx, name: &str) -> Result<()> {
+    if !ctx.layout().plan_path().exists() {
+        return Ok(());
+    }
+    with_state::<Plan, _, _>(
+        ctx.layout(),
+        InitPolicy::RequireExisting("plan.yaml"),
+        move |plan| {
+            if !plan.entries.iter().any(|e| e.name == name) {
+                return Err(Error::Diag {
+                    code: "plan-entry-not-found",
+                    detail: format!("no slice named '{name}' in plan"),
+                });
+            }
+            plan.transition(name, Status::Done)?;
+            Ok(())
+        },
     )?;
     Ok(())
 }

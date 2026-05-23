@@ -130,6 +130,15 @@ fn validate_bad_slice_fails_with_exit_two() {
 fn merge_two_spec_slice_produces_baselines() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
+    project.seed_plan(
+        "\
+name: merge-e2e
+slices:
+  - name: my-slice
+    project: default
+    status: in-progress
+",
+    );
 
     let assert = specify()
         .current_dir(project.root())
@@ -156,6 +165,12 @@ fn merge_two_spec_slice_produces_baselines() {
     assert!(
         !project.root().join(".specify/slices/my-slice").exists(),
         "original slice dir should be gone"
+    );
+
+    let plan_yaml = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(
+        plan_yaml.contains("status: done"),
+        "merge must stamp plan entry done, got:\n{plan_yaml}"
     );
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());

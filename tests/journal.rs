@@ -370,21 +370,21 @@ fn agent_emit_helper_writes_one_event_per_jsonl_line() {
             fixed,
             EventKind::SliceSynthesisConflict {
                 slice_name: "checkout".to_string(),
-                requirement_id: "R-01".to_string(),
+                requirement_id: "REQ-001".to_string(),
             },
         ),
         Event::new(
             fixed,
             EventKind::SliceSynthesisDivergence {
                 slice_name: "checkout".to_string(),
-                requirement_id: "R-02".to_string(),
+                requirement_id: "REQ-002".to_string(),
             },
         ),
         Event::new(
             fixed,
             EventKind::SliceSynthesisUnknown {
                 slice_name: "checkout".to_string(),
-                requirement_id: "R-03".to_string(),
+                requirement_id: "REQ-003".to_string(),
             },
         ),
     ];

@@ -5,7 +5,7 @@ use serde::Serialize;
 use specify_domain::change::{
     Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, plan_doctor,
 };
-use specify_domain::config::{InitPolicy, with_state};
+use specify_domain::config::{InitPolicy, ProjectConfig, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -37,25 +37,41 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     if let Some(reg) = &registry {
         let workspace_base = ctx.layout().specify_dir().join("workspace");
         for rp in &reg.projects {
-            let slot_project_yaml =
-                workspace_base.join(&rp.name).join(".specify").join("project.yaml");
-            if slot_project_yaml.exists()
-                && let Ok(content) = std::fs::read_to_string(&slot_project_yaml)
-                && let Ok(config) = serde_saphyr::from_str::<serde_json::Value>(&content)
-                && let Some(slot_adapter) = config.get("adapter").and_then(|v| v.as_str())
-                && slot_adapter != rp.adapter
-            {
-                results.push(PlanDoctorDiagnostic {
-                    severity: Severity::Warning,
-                    code: "adapter-mismatch-workspace".to_string(),
-                    message: format!(
-                        "workspace clone '{}' has adapter '{}' but registry declares '{}'; \
-                         the clone's project.yaml is authoritative at execution time",
-                        rp.name, slot_adapter, rp.adapter
-                    ),
-                    entry: None,
-                    data: None,
-                });
+            let slot_project_dir = workspace_base.join(&rp.name);
+            let slot_project_yaml = slot_project_dir.join(".specify").join("project.yaml");
+            if !slot_project_yaml.exists() {
+                continue;
+            }
+            match ProjectConfig::load(&slot_project_dir) {
+                Ok(cfg) => {
+                    if let Some(slot_adapter) = cfg.adapter.as_deref()
+                        && slot_adapter != rp.adapter
+                    {
+                        results.push(PlanDoctorDiagnostic {
+                            severity: Severity::Warning,
+                            code: "adapter-mismatch-workspace".to_string(),
+                            message: format!(
+                                "workspace clone '{}' has adapter '{}' but registry declares '{}'; \
+                                 the clone's project.yaml is authoritative at execution time",
+                                rp.name, slot_adapter, rp.adapter
+                            ),
+                            entry: None,
+                            data: None,
+                        });
+                    }
+                }
+                Err(err) => {
+                    results.push(PlanDoctorDiagnostic {
+                        severity: Severity::Error,
+                        code: "workspace-slot-config-unreadable".to_string(),
+                        message: format!(
+                            "workspace clone '{}' project.yaml could not be loaded: {err}",
+                            rp.name
+                        ),
+                        entry: None,
+                        data: None,
+                    });
+                }
             }
         }
     }

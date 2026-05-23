@@ -181,7 +181,7 @@ pub enum EventKind {
         reason: CacheMissReason,
     },
     /// RFC-27 §D4 — `/spec:refine` wrote `fusion.yaml` for a slice.
-    /// CLI-driven once the atomic writer lands in Change 2.6.
+    /// Agent-driven from `/spec:refine` step 5.
     #[serde(rename = "slice.fusion.written", rename_all = "kebab-case")]
     SliceFusionWritten {
         /// Slice id under `plan.yaml.slices[].name`.

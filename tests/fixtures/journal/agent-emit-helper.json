@@ -18,7 +18,7 @@
   {
     "event": "slice.synthesis.conflict",
     "payload": {
-      "requirement-id": "R-01",
+      "requirement-id": "REQ-001",
       "slice-name": "checkout"
     },
     "timestamp": "2026-05-21T20:00:00Z"
@@ -26,7 +26,7 @@
   {
     "event": "slice.synthesis.divergence",
     "payload": {
-      "requirement-id": "R-02",
+      "requirement-id": "REQ-002",
       "slice-name": "checkout"
     },
     "timestamp": "2026-05-21T20:00:00Z"
@@ -34,7 +34,7 @@
   {
     "event": "slice.synthesis.unknown",
     "payload": {
-      "requirement-id": "R-03",
+      "requirement-id": "REQ-003",
       "slice-name": "checkout"
     },
     "timestamp": "2026-05-21T20:00:00Z"
