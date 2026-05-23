@@ -17,14 +17,13 @@ use specify_error::{Error, Result};
 use crate::context::Ctx;
 
 pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
-    let registry = match Registry::load(&ctx.project_dir)? {
-        None if !projects.is_empty() => return Err(registry_missing()),
-        other => other,
-    };
+    let registry = Registry::load(&ctx.project_dir)?;
     let synced = if let Some(reg) = registry.as_ref() {
         let selected = reg.select(projects)?;
         sync_projects(&ctx.project_dir, &selected)?;
         true
+    } else if !projects.is_empty() {
+        return Err(registry_missing());
     } else {
         false
     };

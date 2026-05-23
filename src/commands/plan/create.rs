@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
+use std::str::FromStr;
 
 use serde::Serialize;
 use specify_domain::change::{
@@ -188,11 +189,7 @@ fn apply_alias_edits(
     for AliasAssign { candidate, alias } in remove_alias {
         discovery.remove_alias(candidate, alias)?;
     }
-    // Defensive second pass: `Discovery::add_alias` already runs the
-    // whole-document collision check, but operator-supplied
-    // `--add-alias` + `--remove-alias` in the same invocation can
-    // shuffle the namespace in ways that warrant a final sweep
-    // before the atomic write.
+    // Catch pre-existing collisions when the operator only ran --remove-alias; --add-alias already paid for itself.
     let collisions = discovery.check_alias_collisions();
     if !collisions.is_empty() {
         return Err(Discovery::collision_error(&collisions));
@@ -204,21 +201,15 @@ fn apply_alias_edits(
 /// Parse the `--divergence` flag value. `likely` / `accepted` /
 /// `rejected` are wire-legal — RFC-27 §D5 widens the operator
 /// surface so the CLI is the single writer of every variant
-/// reachable on disk. `none` (absent) is the implicit default and
-/// is rejected here; omit `--divergence` to leave the field
-/// unchanged.
+/// reachable on disk. The implicit default (absent on disk) has
+/// no flag spelling; any other token — including `none` — falls
+/// through to the catch-all and is rejected with the same
+/// actionable hint.
 fn parse_divergence(raw: &str) -> Result<Divergence> {
     match raw {
         "likely" => Ok(Divergence::Likely),
         "accepted" => Ok(Divergence::Accepted),
         "rejected" => Ok(Divergence::Rejected),
-        "none" => Err(Error::Argument {
-            flag: "--divergence",
-            detail:
-                "`none` is the implicit default (absent on disk) and cannot be set explicitly; \
-                    omit --divergence to leave the field unchanged"
-                    .to_string(),
-        }),
         other => Err(Error::Argument {
             flag: "--divergence",
             detail: format!(
@@ -229,67 +220,22 @@ fn parse_divergence(raw: &str) -> Result<Divergence> {
     }
 }
 
-/// One resolved `--authority-override <slice> <kind>=<key>` /
-/// `<slice> <kind>` argument pair. Used internally for the
-/// `Create`/`Amend` two-positional flags after chunking the raw
-/// `Vec<String>` clap produces.
-#[derive(Debug, Clone)]
-struct SliceKindAssign {
-    slice: String,
-    kind: ClaimKind,
-    source_key: String,
-}
-
-#[derive(Debug, Clone)]
-struct SliceKind {
-    slice: String,
-    kind: ClaimKind,
-}
-
 /// Chunk a clap `num_args = 2` flag payload (`Vec<String>` of
-/// interleaved `<slice>` and `<kind>=<key>` values) into typed
-/// [`SliceKindAssign`] entries. Refuses odd-length payloads with
+/// interleaved `<slice>` and `<value>` values) into typed
+/// `(slice, T)` pairs. Refuses odd-length payloads with
 /// `Error::Argument` — clap's own `num_args = 2` guard prevents
 /// this in practice, but the explicit check guards against
 /// future surface changes (e.g. switching to `num_args = 1..` for
-/// a more permissive layout). Kind values are parsed against the
-/// closed [`ClaimKind`] enum.
-fn parse_slice_kind_assign_args(
+/// a more permissive layout). The value half is parsed via `T`'s
+/// `FromStr` impl, so the closed enum (`ClaimKind`) and the
+/// composite assign (`AuthorityOverrideKindAssign`) share one
+/// implementation.
+fn parse_slice_pair_args<T>(
     raw: &[String], flag: &'static str, value_names: &str,
-) -> Result<Vec<SliceKindAssign>> {
-    if !raw.len().is_multiple_of(2) {
-        return Err(Error::Argument {
-            flag,
-            detail: format!("{flag} expects {value_names}; got an odd number of positional values"),
-        });
-    }
-    let mut out = Vec::with_capacity(raw.len() / 2);
-    for chunk in raw.chunks_exact(2) {
-        let slice = chunk[0].clone();
-        let kind_key = &chunk[1];
-        let assign: AuthorityOverrideKindAssign =
-            kind_key.parse().map_err(|detail: String| Error::Argument { flag, detail })?;
-        if slice.is_empty() {
-            return Err(Error::Argument {
-                flag,
-                detail: format!("{flag} <slice> must be non-empty"),
-            });
-        }
-        out.push(SliceKindAssign {
-            slice,
-            kind: assign.kind,
-            source_key: assign.source_key,
-        });
-    }
-    Ok(out)
-}
-
-/// Chunk a clap `num_args = 2` payload of (`<slice>`, `<kind>`)
-/// pairs into typed [`SliceKind`] entries. Kind is validated
-/// against the closed [`ClaimKind`] enum.
-fn parse_slice_kind_args(
-    raw: &[String], flag: &'static str, value_names: &str,
-) -> Result<Vec<SliceKind>> {
+) -> Result<Vec<(String, T)>>
+where
+    T: FromStr<Err = String>,
+{
     if !raw.len().is_multiple_of(2) {
         return Err(Error::Argument {
             flag,
@@ -305,23 +251,18 @@ fn parse_slice_kind_args(
                 detail: format!("{flag} <slice> must be non-empty"),
             });
         }
-        let kind: ClaimKind =
+        let value: T =
             chunk[1].parse().map_err(|detail: String| Error::Argument { flag, detail })?;
-        out.push(SliceKind { slice, kind });
+        out.push((slice, value));
     }
     Ok(out)
 }
 
 /// Collapse `--authority-override` repeats: later occurrences win
 /// on the same `(slice, kind)` pair.
-fn dedup_sets(sets: &[SliceKindAssign]) -> BTreeMap<(String, ClaimKind), String> {
+fn dedup_sets(sets: &[(String, ClaimKind, String)]) -> BTreeMap<(String, ClaimKind), String> {
     let mut set_map: BTreeMap<(String, ClaimKind), String> = BTreeMap::new();
-    for SliceKindAssign {
-        slice,
-        kind,
-        source_key,
-    } in sets
-    {
+    for (slice, kind, source_key) in sets {
         set_map.insert((slice.clone(), *kind), source_key.clone());
     }
     set_map
@@ -329,9 +270,9 @@ fn dedup_sets(sets: &[SliceKindAssign]) -> BTreeMap<(String, ClaimKind), String>
 
 /// Collapse `--clear-authority-override` repeats into a set of
 /// `(slice, kind)` pairs.
-fn dedup_clears(clears: &[SliceKind]) -> BTreeSet<(String, ClaimKind)> {
+fn dedup_clears(clears: &[(String, ClaimKind)]) -> BTreeSet<(String, ClaimKind)> {
     let mut clear_set: BTreeSet<(String, ClaimKind)> = BTreeSet::new();
-    for SliceKind { slice, kind } in clears {
+    for (slice, kind) in clears {
         clear_set.insert((slice.clone(), *kind));
     }
     clear_set
@@ -368,46 +309,6 @@ fn entry_mut<'a>(plan: &'a mut Plan, plan_name: &str, slice: &str) -> Result<&'a
         .iter_mut()
         .find(|e| e.name == slice)
         .ok_or_else(|| unknown_slice_err(plan_name, slice))
-}
-
-/// Apply every survived `--authority-override <slice> <kind>=<key>`
-/// to the plan. Later sets on the same key already won via
-/// [`dedup_sets`].
-fn apply_sets(
-    plan: &mut Plan, plan_name: &str, set_map: &BTreeMap<(String, ClaimKind), String>,
-) -> Result<()> {
-    for ((slice, kind), key) in set_map {
-        entry_mut(plan, plan_name, slice)?.authority_override.by_kind.insert(*kind, key.clone());
-    }
-    Ok(())
-}
-
-/// Apply every `--clear-authority-override <slice> <kind>` after
-/// the sets so set+clear on the same key resolves to the cleared
-/// state.
-fn apply_single_clears(
-    plan: &mut Plan, plan_name: &str, clear_set: &BTreeSet<(String, ClaimKind)>,
-) -> Result<()> {
-    for (slice, kind) in clear_set {
-        entry_mut(plan, plan_name, slice)?.authority_override.by_kind.remove(kind);
-    }
-    Ok(())
-}
-
-/// Apply `--clear-authority-overrides <slice>` and remember the
-/// kinds that were present before the wipe so the journal carries
-/// per-kind Clear events (RFC-27 §D3 grain).
-fn apply_clear_all(
-    plan: &mut Plan, plan_name: &str, clear_all_set: &BTreeSet<String>,
-) -> Result<BTreeMap<String, Vec<ClaimKind>>> {
-    let mut emitted: BTreeMap<String, Vec<ClaimKind>> = BTreeMap::new();
-    for slice in clear_all_set {
-        let entry = entry_mut(plan, plan_name, slice)?;
-        let kinds: Vec<ClaimKind> = entry.authority_override.by_kind.keys().copied().collect();
-        entry.authority_override.by_kind.clear();
-        emitted.insert(slice.clone(), kinds);
-    }
-    Ok(emitted)
 }
 
 /// Build the batched `plan.amend.authority-override` event list
@@ -515,17 +416,27 @@ fn emit_override_events(
 /// `plan amend`, so both paths emit byte-identical journal events
 /// for the same `(slice, kind)` set.
 fn mutate_authority_overrides(
-    plan: &mut Plan, plan_name: &str, sets: &[SliceKindAssign], clears: &[SliceKind],
-    clear_all: &[String], now: jiff::Timestamp,
+    plan: &mut Plan, plan_name: &str, sets: &[(String, ClaimKind, String)],
+    clears: &[(String, ClaimKind)], clear_all: &[String], now: jiff::Timestamp,
 ) -> Result<Vec<journal::Event>> {
     let set_map = dedup_sets(sets);
     let clear_set = dedup_clears(clears);
     let clear_all_set: BTreeSet<String> = clear_all.iter().cloned().collect();
 
     refuse_unknown_slices(plan, plan_name, &set_map, &clear_set, &clear_all_set)?;
-    apply_sets(plan, plan_name, &set_map)?;
-    apply_single_clears(plan, plan_name, &clear_set)?;
-    let clear_all_emitted = apply_clear_all(plan, plan_name, &clear_all_set)?;
+    for ((slice, kind), key) in &set_map {
+        entry_mut(plan, plan_name, slice)?.authority_override.by_kind.insert(*kind, key.clone());
+    }
+    for (slice, kind) in &clear_set {
+        entry_mut(plan, plan_name, slice)?.authority_override.by_kind.remove(kind);
+    }
+    let mut clear_all_emitted: BTreeMap<String, Vec<ClaimKind>> = BTreeMap::new();
+    for slice in &clear_all_set {
+        let entry = entry_mut(plan, plan_name, slice)?;
+        let kinds: Vec<ClaimKind> = entry.authority_override.by_kind.keys().copied().collect();
+        entry.authority_override.by_kind.clear();
+        clear_all_emitted.insert(slice.clone(), kinds);
+    }
 
     Ok(emit_override_events(
         plan_name,
@@ -625,11 +536,15 @@ pub(super) fn create(
         });
     }
 
-    let override_assigns = parse_slice_kind_assign_args(
-        authority_override,
-        "--authority-override",
-        "<slice> <kind>=<key>",
-    )?;
+    let override_assigns: Vec<(String, ClaimKind, String)> =
+        parse_slice_pair_args::<AuthorityOverrideKindAssign>(
+            authority_override,
+            "--authority-override",
+            "<slice> <kind>=<key>",
+        )?
+        .into_iter()
+        .map(|(slice, assign)| (slice, assign.kind, assign.source_key))
+        .collect();
 
     let mut plan = Plan::init(&name, source_map)?;
     apply_divergence_likely(&mut plan, divergence_likely)?;
@@ -824,12 +739,16 @@ pub(super) fn amend(
     }
 
     let divergence = divergence.map(parse_divergence).transpose()?;
-    let override_sets = parse_slice_kind_assign_args(
-        authority_override,
-        "--authority-override",
-        "<slice> <kind>=<key>",
-    )?;
-    let override_clears = parse_slice_kind_args(
+    let override_sets: Vec<(String, ClaimKind, String)> =
+        parse_slice_pair_args::<AuthorityOverrideKindAssign>(
+            authority_override,
+            "--authority-override",
+            "<slice> <kind>=<key>",
+        )?
+        .into_iter()
+        .map(|(slice, assign)| (slice, assign.kind, assign.source_key))
+        .collect();
+    let override_clears: Vec<(String, ClaimKind)> = parse_slice_pair_args::<ClaimKind>(
         clear_authority_override,
         "--clear-authority-override",
         "<slice> <kind>",

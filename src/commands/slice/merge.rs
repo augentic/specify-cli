@@ -222,8 +222,8 @@ fn operation_label(op: &MergeOperation) -> String {
 }
 
 fn summarise_ops(ops: &[MergeOperation]) -> String {
-    let mut counts: [(u32, &str, &str); 4] =
-        [(0, "added", "+"), (0, "modified", ""), (0, "removed", "-"), (0, "renamed", "")];
+    let mut counts: [(u32, &str); 4] =
+        [(0, "added"), (0, "modified"), (0, "removed"), (0, "renamed")];
     let mut created_baseline = None;
     for op in ops {
         match op {
@@ -239,11 +239,8 @@ fn summarise_ops(ops: &[MergeOperation]) -> String {
     if let Some(count) = created_baseline {
         return format!("created baseline with {count} requirement(s)");
     }
-    let parts: Vec<String> = counts
-        .iter()
-        .filter(|(c, _, _)| *c > 0)
-        .map(|(c, label, prefix)| format!("{prefix}{c} {label}"))
-        .collect();
+    let parts: Vec<String> =
+        counts.iter().filter(|(c, _)| *c > 0).map(|(c, label)| format!("{c} {label}")).collect();
     if parts.is_empty() { "no-op".to_string() } else { parts.join(", ") }
 }
 
@@ -277,23 +274,15 @@ fn auto_commit(project_dir: &Path, name: &str) {
     if pathspecs.is_empty() {
         return;
     }
-    let warn = |step: &str, msg: &str| eprintln!("warning: workspace auto-commit {step}: {msg}");
-    let run = |step: &str, args: &[&str]| -> Option<std::process::Output> {
-        match git(project_dir, args) {
-            Ok(output) => Some(output),
-            Err(err) => {
-                warn(step, &err.to_string());
-                None
-            }
-        }
-    };
-
     let mut add_args = vec!["add", "--"];
     add_args.extend(pathspecs.iter().copied());
-    let Some(add) = run("git-add", &add_args) else { return };
+    let add = match git(project_dir, &add_args) {
+        Ok(output) => output,
+        Err(err) => return eprintln!("warning: workspace auto-commit git-add: {err}"),
+    };
     if !add.status.success() {
-        warn("git-add", &String::from_utf8_lossy(&add.stderr));
-        return;
+        let stderr = String::from_utf8_lossy(&add.stderr);
+        return eprintln!("warning: workspace auto-commit git-add: {stderr}");
     }
 
     let mut diff_args = vec!["diff", "--cached", "--quiet", "--"];
@@ -301,17 +290,23 @@ fn auto_commit(project_dir: &Path, name: &str) {
     match git(project_dir, &diff_args).map(|o| o.status) {
         Ok(status) if status.success() => return,
         Ok(status) if status.code() == Some(1) => {}
-        Ok(status) => return warn("diff check", &format!("status {status}")),
-        Err(err) => return warn("diff check", &err.to_string()),
+        Ok(status) => {
+            eprintln!("warning: workspace auto-commit diff check: status {status}");
+            return;
+        }
+        Err(err) => return eprintln!("warning: workspace auto-commit diff check: {err}"),
     }
 
     let commit_msg = format!("specify: merge {name}");
     let mut commit_args = vec!["commit", "-m", &commit_msg, "--"];
     commit_args.extend(pathspecs.iter().copied());
-    if let Some(commit) = run("commit", &commit_args)
-        && !commit.status.success()
-    {
-        warn("commit", &String::from_utf8_lossy(&commit.stderr));
+    match git(project_dir, &commit_args) {
+        Ok(commit) if !commit.status.success() => {
+            let stderr = String::from_utf8_lossy(&commit.stderr);
+            eprintln!("warning: workspace auto-commit commit: {stderr}");
+        }
+        Ok(_) => {}
+        Err(err) => eprintln!("warning: workspace auto-commit commit: {err}"),
     }
 }
 
