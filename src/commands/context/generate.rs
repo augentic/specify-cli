@@ -49,10 +49,7 @@ fn body(ctx: &Ctx) -> Result<Body> {
         fences::WriteDisposition::ReplaceFencedBlock => "replace-fenced-block",
         fences::WriteDisposition::Unchanged => "unchanged",
     };
-    Ok(Body {
-        changed,
-        disposition,
-    })
+    Ok(Body { changed, disposition })
 }
 
 struct Body {

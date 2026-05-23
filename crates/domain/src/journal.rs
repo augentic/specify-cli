@@ -319,12 +319,8 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 /// # Errors
 ///
 /// Propagates I/O failures from the directory create / open /
-/// write / fsync chain.
-///
-/// # Panics
-///
-/// Panics only if [`serde_json::to_string`] fails for a
-/// closed-derive [`Event`]; unreachable in normal operation.
+/// write / fsync chain, plus JSON serialisation failures as
+/// `journal-event-serialise-failed`.
 pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
     if events.is_empty() {
         return Ok(());
@@ -333,7 +329,10 @@ pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
     let path = path(layout);
     let mut payload = String::new();
     for event in events {
-        let line = serde_json::to_string(event).expect("Event serialises as JSON");
+        let line = serde_json::to_string(event).map_err(|err| Error::Diag {
+            code: "journal-event-serialise-failed",
+            detail: format!("failed to serialise journal event: {err}"),
+        })?;
         payload.push_str(&line);
         payload.push('\n');
     }

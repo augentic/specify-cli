@@ -40,6 +40,10 @@ pub enum Format {
 }
 
 #[derive(Subcommand)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Top-level clap subcommands mirror the CLI surface; boxing one branch would add dispatch noise without improving runtime behavior."
+)]
 pub enum Commands {
     /// Initialize .specify/ in a project.
     ///

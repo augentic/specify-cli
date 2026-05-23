@@ -448,7 +448,8 @@ fn plan_amend_alias_survives_reapplied_discovery() {
 ",
     );
 
-    let discovery = fs::read_to_string(project.root().join("discovery.md")).expect("read discovery");
+    let discovery =
+        fs::read_to_string(project.root().join("discovery.md")).expect("read discovery");
     assert!(
         discovery.contains("aliases: [password-reset, pwd-reset]"),
         "post-re-enumerate union must preserve both adapter and operator aliases, got:\n{discovery}"

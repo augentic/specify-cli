@@ -15,8 +15,11 @@ fn source_resolve_explain_prints_empty_fingerprint_chain() {
         "name: code-typescript\nversion: 1\naxis: source\noperations: [enumerate, extract]\nbriefs:\n  enumerate: briefs/enumerate.md\n  extract: briefs/extract.md\n",
     )
     .expect("write adapter manifest");
-    fs::write(adapter_dir.join("enumerate.md"), "---\nid: enumerate\ndescription: enumerate\n---\n")
-        .expect("write enumerate brief");
+    fs::write(
+        adapter_dir.join("enumerate.md"),
+        "---\nid: enumerate\ndescription: enumerate\n---\n",
+    )
+    .expect("write enumerate brief");
     fs::write(adapter_dir.join("extract.md"), "---\nid: extract\ndescription: extract\n---\n")
         .expect("write extract brief");
 

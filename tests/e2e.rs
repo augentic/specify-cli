@@ -289,4 +289,3 @@ fn task_mark_is_idempotent() {
 
     assert_golden("task-mark.json", second_value);
 }
-

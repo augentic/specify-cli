@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use serde::Serialize;
-use serde_json::Value;
 use specify_domain::change::{
     Divergence, Entry, EntryPatch, Lifecycle, Patch, Plan, Severity, SliceAuthorityOverride,
     SliceSourceBinding, Status, authority_override_orphan_source_keys,
@@ -790,7 +789,7 @@ pub(super) fn add(
                 EntryBody {
                     plan: plan_ref(plan, &plan_path),
                     action: Action::Create,
-                    entry: serde_json::to_value(created).expect("plan Entry serialises as JSON"),
+                    entry: created.clone(),
                 },
                 events,
             ))
@@ -966,7 +965,7 @@ pub(super) fn amend(
                 EntryBody {
                     plan: plan_ref(plan, &plan_path),
                     action: Action::Amend,
-                    entry: serde_json::to_value(amended).expect("plan Entry serialises as JSON"),
+                    entry: amended.clone(),
                 },
                 journal_events,
             ))
@@ -1013,11 +1012,11 @@ enum Action {
 struct EntryBody {
     plan: Ref,
     action: Action,
-    entry: Value,
+    entry: Entry,
 }
 
 fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::Result<()> {
-    let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
+    let name = &body.entry.name;
     match body.action {
         Action::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
         Action::Amend => writeln!(w, "Amended plan entry '{name}'."),

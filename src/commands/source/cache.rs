@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::adapter::{CacheLayout, SourceOperation};
 use specify_domain::adapter as adapter_mod;
+use specify_domain::adapter::{CacheLayout, SourceOperation};
 use specify_error::Result;
 
 use crate::cli::Format;

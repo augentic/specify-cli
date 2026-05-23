@@ -230,17 +230,14 @@ fn dispatch_transition(
     // `blocked`/`failed`/`skipped` are not v1 states.
     match target {
         "done" => {
-            let previous = plan
-                .entries
-                .iter()
-                .find(|e| e.name == name)
-                .ok_or_else(|| Error::Diag {
+            let idx =
+                plan.entries.iter().position(|e| e.name == name).ok_or_else(|| Error::Diag {
                     code: "plan-entry-not-found",
                     detail: format!("no slice named '{name}' in plan"),
-                })?
-                .status;
+                })?;
+            let previous = plan.entries[idx].status;
             plan.transition(name, Status::Done)?;
-            let entry = plan.entries.iter().find(|e| e.name == name).expect("just transitioned");
+            let entry = &plan.entries[idx];
             Ok(TransitionBody {
                 plan: plan_ref(plan, plan_path),
                 kind: TransitionKind::Entry,

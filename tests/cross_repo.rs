@@ -480,15 +480,7 @@ fn replay_project_slice(
 
     let prepared = envs
         .command()
-        .args([
-            "--format",
-            "json",
-            "workspace",
-            "prepare",
-            project.name,
-            "--change",
-            CHANGE_NAME,
-        ])
+        .args(["--format", "json", "workspace", "prepare", project.name, "--change", CHANGE_NAME])
         .assert()
         .success();
     let prepared = parse_json(&prepared.get_output().stdout);

@@ -216,14 +216,6 @@ impl Discovery {
     /// - [`Error::Validation`] (`discovery-alias-collision`) when
     ///   the operator-supplied alias collides with an existing
     ///   namespace entry (self-shadow or cross-candidate).
-    ///
-    /// # Panics
-    ///
-    /// Panics if `candidate_id` vanishes between the initial
-    /// lookup and the collision-rollback step; impossible without
-    /// external concurrent mutation since `Discovery` owns its
-    /// state. The expect is documented rather than relaxed so a
-    /// future refactor that breaks the invariant fails loudly.
     pub fn add_alias(&mut self, candidate_id: &str, alias: &str) -> Result<()> {
         let Some(candidate) = self.candidate_mut(candidate_id) else {
             return Err(Error::Diag {
@@ -251,8 +243,9 @@ impl Discovery {
             // collisions can only involve this alias (every other
             // pair was clean before the mutation), so removing the
             // alias from this candidate is sufficient.
-            let candidate = self.candidate_mut(candidate_id).expect("candidate located above");
-            candidate.remove_alias(alias);
+            if let Some(candidate) = self.candidate_mut(candidate_id) {
+                candidate.remove_alias(alias);
+            }
             return Err(Self::collision_error(&collisions));
         }
         Ok(())

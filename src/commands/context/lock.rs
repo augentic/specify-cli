@@ -1,10 +1,10 @@
 //! YAML sidecar for init-time AGENTS.md generation fingerprints.
 
+#[cfg(test)]
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
-#[cfg(test)]
-use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use specify_domain::slice::atomic::yaml_write;

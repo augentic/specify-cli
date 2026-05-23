@@ -232,7 +232,8 @@ fn adapter_manifest_reports_sidecar_rules() {
 
     for (entry, rule_id) in cases {
         write_adapter_tools(&fixtures.adapter(), &entry);
-        let value = run_json_failure(&fixtures.cap_project(), &cache, &["tool", "run", "exit-seven"], 2);
+        let value =
+            run_json_failure(&fixtures.cap_project(), &cache, &["tool", "run", "exit-seven"], 2);
         assert_validation_rule(&value, rule_id);
         let cap_yaml =
             fs::read_to_string(fixtures.adapter().join("adapter.yaml")).expect("read adapter.yaml");

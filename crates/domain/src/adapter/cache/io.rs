@@ -269,17 +269,15 @@ pub fn write(
 /// # Errors
 ///
 /// Propagates I/O failures from the directory create, file open, or
-/// row write.
-///
-/// # Panics
-///
-/// Panics if [`serde_json::to_string`] fails for [`CacheIndexEntry`].
-/// The entry is a closed serde derive whose fields are owned `String`s
-/// and a flat enum; this branch is unreachable in normal operation.
+/// row write, plus JSON serialisation failures as
+/// `cache-index-entry-serialise-failed`.
 pub fn append_index(layout: CacheLayout<'_>, entry: &CacheIndexEntry) -> Result<(), Error> {
     std::fs::create_dir_all(layout.adapter_dir())?;
     let path = layout.index_path();
-    let line = serde_json::to_string(entry).expect("CacheIndexEntry serialises as JSON");
+    let line = serde_json::to_string(entry).map_err(|err| Error::Diag {
+        code: "cache-index-entry-serialise-failed",
+        detail: format!("failed to serialise cache index entry: {err}"),
+    })?;
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&path)?;
     writeln!(file, "{line}")?;
     file.sync_all()?;

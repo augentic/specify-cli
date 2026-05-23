@@ -98,7 +98,6 @@ fn rfc14_c01_workspace_sync_selects_projects_without_materialising_unselected_sl
         !tmp.path().join(".specify/workspace/inventory").exists(),
         "selected sync must not materialise unselected slots"
     );
-
 }
 
 #[test]
@@ -168,15 +167,7 @@ fn rfc14_c04_workspace_prepare_hidden_helper_returns_structured_json() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args([
-            "--format",
-            "json",
-            "workspace",
-            "prepare",
-            "alpha",
-            "--change",
-            "demo-change",
-        ])
+        .args(["--format", "json", "workspace", "prepare", "alpha", "--change", "demo-change"])
         .assert()
         .success();
     let value: serde_json::Value =
@@ -224,15 +215,7 @@ fn rfc14_c04_workspace_prepare_surfaces_origin_head_diagnostic_key() {
 
     let assert = specify()
         .current_dir(tmp.path())
-        .args([
-            "--format",
-            "json",
-            "workspace",
-            "prepare",
-            "alpha",
-            "--change",
-            "demo-change",
-        ])
+        .args(["--format", "json", "workspace", "prepare", "alpha", "--change", "demo-change"])
         .assert()
         .failure();
     let value: serde_json::Value =

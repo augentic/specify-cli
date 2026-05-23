@@ -26,5 +26,5 @@ pub fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
     }
     let runner = WasiRunner::new()?;
     let exit = runner.run(&resolved, &run_ctx)?;
-    Ok(u8::try_from(exit.clamp(0, 255)).expect("tool exit code is clamped to u8 range"))
+    Ok(exit.clamp(0, i32::from(u8::MAX)).try_into().unwrap_or_default())
 }
