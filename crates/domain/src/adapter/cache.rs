@@ -298,7 +298,7 @@ mod tests {
             fingerprint: "sha256:cafef00d".to_string(),
             slice: "identity-user-registration".to_string(),
             source_key: "runtime".to_string(),
-            adapter: "runtime-fixtures".to_string(),
+            adapter: "captures".to_string(),
             operation: SourceOperation::Extract,
         };
         let json = serde_json::to_string(&entry).expect("serialise");

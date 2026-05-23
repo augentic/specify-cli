@@ -435,7 +435,7 @@ variants are `snake_case` and bridge to the wire via
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). RFC-27 §D8. |
 | `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). RFC-27 §D4. |
-| `slice.fixture-replay.completed` | Target adapter's `build` step when it consumes fixtures from `runtime-fixtures`; optional in v1. RFC-27 §D1. |
+| `slice.fixture-replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. RFC-27 §D1. |
 | `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. RFC-27 §D3. |
 
 Events persist as newline-delimited JSON at

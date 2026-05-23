@@ -1891,8 +1891,8 @@ sources:
     adapter: code-typescript
     path: ./legacy-monolith
   runtime:
-    adapter: runtime-fixtures
-    path: ./runtime-fixtures
+    adapter: captures
+    path: ./captures/replays
 slices:
   - name: identity-user-registration
     project: default
@@ -2214,8 +2214,8 @@ fn plan_add_authority_override_seeds_map_on_new_slice() {
         \x20\x20\x20\x20adapter: code-typescript\n\
         \x20\x20\x20\x20path: ./legacy\n\
         \x20\x20runtime:\n\
-        \x20\x20\x20\x20adapter: runtime-fixtures\n\
-        \x20\x20\x20\x20path: ./runtime\n\
+        \x20\x20\x20\x20adapter: captures\n\
+        \x20\x20\x20\x20path: ./captures/replays\n\
         slices: []\n",
     );
 

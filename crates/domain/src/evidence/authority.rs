@@ -29,7 +29,7 @@ pub enum AuthorityClass {
     Intent,
     /// Written documentation, design notes, or briefs.
     Documentation,
-    /// Observed runtime behaviour (legacy code, captured fixtures).
+    /// Observed runtime behaviour (legacy code, runtime captures).
     Behaviour,
 }
 
@@ -39,8 +39,8 @@ pub enum AuthorityClass {
 /// Kept byte-identical with the schema enum so that
 /// [`AuthorityOverrides`] and the per-slice authority override map
 /// in `plan.yaml.slices[]` validate against the same closed set.
-/// `example` (RFC-27 §D1) is the runtime-fixture kind emitted by the
-/// `runtime-fixtures` source adapter.
+/// `example` (RFC-27 §D1) is the runtime capture kind emitted by the
+/// `captures` source adapter.
 #[derive(
     Debug,
     Clone,
@@ -73,7 +73,7 @@ pub enum ClaimKind {
     Diagram,
     /// `kind: contract` — interface contract excerpt.
     Contract,
-    /// `kind: example` — runtime fixture (RFC-27 §D1, `runtime-fixtures`).
+    /// `kind: example` — runtime capture (RFC-27 §D1, `captures`).
     Example,
     /// `kind: excerpt` — code excerpt.
     Excerpt,
@@ -441,7 +441,7 @@ mod tests {
 
     #[test]
     fn resolution_order_per_slice_overrides_dominate_per_evidence() {
-        // Operator intent: behaviour-class production fixtures
+        // Operator intent: behaviour-class runtime captures
         // (`runtime`) should win this slice, overriding the
         // documentation evidence's authority-override that would
         // otherwise pick `docs` via step 2.

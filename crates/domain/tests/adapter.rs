@@ -235,9 +235,9 @@ briefs:
 }
 
 #[test]
-fn resolves_runtime_fixtures_source_adapter_with_tools_array() {
+fn resolves_captures_source_adapter_with_tools_array() {
     // RFC-27 §Acceptance scenario #26-1 (release blocker, D1):
-    // pin the loader against the live `adapters/sources/runtime-fixtures/`
+    // pin the loader against the live `adapters/sources/captures/`
     // adapter shape shipped by the `plg` repo. The manifest carries
     // a `tools: [{ name: fixture-index }]` declaration and a free-
     // form `description:` field; both must round-trip through the
@@ -251,11 +251,11 @@ fn resolves_runtime_fixtures_source_adapter_with_tools_array() {
     // golden-fixture data shape (Evidence + fusion.yaml +
     // discovery.md) while this test pins the loader behaviour.
     let (_tmp, project) = local_project();
-    let manifest_dir = project.join("adapters").join("sources").join("runtime-fixtures");
-    fs::create_dir_all(manifest_dir.join("briefs")).expect("create runtime-fixtures adapter dir");
+    let manifest_dir = project.join("adapters").join("sources").join("captures");
+    fs::create_dir_all(manifest_dir.join("briefs")).expect("create captures adapter dir");
     fs::write(
         manifest_dir.join("adapter.yaml"),
-        r"name: runtime-fixtures
+        r"name: captures
 version: 1
 axis: source
 briefs:
@@ -265,23 +265,23 @@ tools:
   - name: fixture-index
     version: 0.1.0
 description: >-
-  Runtime-fixture source adapter. Walks a read-only fixture tree under
+  Runtime capture source adapter. Walks a read-only capture tree under
   `$SOURCE_DIR` and emits one candidate per observed handler entry point.
 ",
     )
-    .expect("write runtime-fixtures manifest");
+    .expect("write captures manifest");
     fs::write(manifest_dir.join("briefs/enumerate.md"), "# enumerate\n")
         .expect("enumerate brief stub");
     fs::write(manifest_dir.join("briefs/extract.md"), "# extract\n").expect("extract brief stub");
 
-    let resolved = SourceAdapter::resolve("runtime-fixtures", &project)
-        .expect("runtime-fixtures adapter loads via SourceAdapter::resolve");
-    assert_eq!(resolved.manifest.name, "runtime-fixtures");
+    let resolved = SourceAdapter::resolve("captures", &project)
+        .expect("captures adapter loads via SourceAdapter::resolve");
+    assert_eq!(resolved.manifest.name, "captures");
     assert_eq!(resolved.manifest.axis, Axis::Source);
     assert_eq!(
         resolved.manifest.operations().copied().collect::<Vec<_>>(),
         vec![SourceOperation::Enumerate, SourceOperation::Extract],
-        "runtime-fixtures declares enumerate + extract per RFC-27 §Runtime source adapter"
+        "captures declares enumerate + extract per RFC-27 §Runtime source adapter"
     );
     assert_eq!(
         resolved.manifest.briefs.get(&SourceOperation::Extract).map(String::as_str),
@@ -292,7 +292,7 @@ description: >-
         "live plg manifest resolves under adapters/sources/<name>/ (local axis)"
     );
     assert!(
-        resolved.root_dir.ends_with("adapters/sources/runtime-fixtures"),
+        resolved.root_dir.ends_with("adapters/sources/captures"),
         "resolver root must land on the plg-tree adapter directory, got: {}",
         resolved.root_dir.display()
     );

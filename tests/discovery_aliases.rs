@@ -48,8 +48,8 @@ sources:
     adapter: code-typescript
     path: ./legacy
   runtime:
-    adapter: runtime-fixtures
-    path: ./runtime
+    adapter: captures
+    path: ./captures/replays
 slices: []
 ";
 

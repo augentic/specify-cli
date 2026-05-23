@@ -532,7 +532,7 @@ fn authority_override_valid_keys_pass() {
     };
     let mut plan = plan_with_changes(vec![entry]);
     plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp/legacy"));
-    plan.sources.insert("runtime".into(), SourceBinding::path("runtime-fixtures", "/tmp/runtime"));
+    plan.sources.insert("runtime".into(), SourceBinding::path("captures", "/tmp/runtime"));
     assert!(
         !plan
             .validate(None, None)

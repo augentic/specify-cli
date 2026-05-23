@@ -1,6 +1,6 @@
-//! RFC-27 §D1 — `kind: example` claim shape (`runtime-fixtures` adapter).
+//! RFC-27 §D1 — `kind: example` claim shape (`captures` adapter).
 //!
-//! Captured runtime fixtures join the closed `claimKind` enum as
+//! Runtime captures join the closed `claimKind` enum as
 //! `example`. The body carries `claim-id`, optional `path`, a
 //! required `fixture-digest: sha256:<hex>`, and the open `input` /
 //! `output` JSON-shaped blocks the adapter records from the
@@ -15,7 +15,7 @@ use serde_json::Value as JsonValue;
 ///
 /// `input` and `output` are deliberately untyped per the schema's
 /// open per-kind body posture — the adapter records whatever the
-/// captured fixture carried (HTTP method/route/body, message topic /
+/// captured scenario carried (HTTP method/route/body, message topic /
 /// payload shape, scheduled-job arguments). Downstream code consults
 /// `fixture_digest` for cache fingerprinting and `path` for the
 /// on-disk location of the full body.
@@ -29,10 +29,10 @@ pub struct ExampleClaim {
     /// branch). Resolves the same id space the fusion table joins
     /// against.
     pub claim_id: String,
-    /// Optional `<path>#L<n>` anchor (the fixture's on-disk location).
+    /// Optional `<path>#L<n>` anchor (the capture's on-disk location).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
-    /// `sha256:<hex>` digest of the fixture bytes. The cache layer
+    /// `sha256:<hex>` digest of the capture bytes. The cache layer
     /// (RFC-27 §D8) keys against this value.
     pub fixture_digest: String,
     /// Optional inline input payload — typically the captured request.
@@ -43,7 +43,7 @@ pub struct ExampleClaim {
     /// response plus side-effects. Shape is open.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<JsonValue>,
-    /// Optional single-line statement describing the fixture's
+    /// Optional single-line statement describing the capture's
     /// behavioural meaning (the line synthesis lifts into `spec.md`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statement: Option<String>,
@@ -74,7 +74,7 @@ mod tests {
         ExampleClaim {
             kind: ExampleKind::Example,
             claim_id: "users.register.happy-path".to_string(),
-            path: Some("tests/data/replay/users-register/happy.json".to_string()),
+            path: Some("tests/data/replays/users-register/happy.json".to_string()),
             fixture_digest: "sha256:7a2b".to_string(),
             input: Some(json!({
                 "method": "POST",
