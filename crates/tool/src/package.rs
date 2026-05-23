@@ -1,6 +1,6 @@
 //! wasm-pkg package resolution for declared tools.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
@@ -83,50 +83,22 @@ pub fn persist_temp(temp: NamedTempFile, dest: &Path) -> Result<(), ToolError> {
     })
 }
 
-/// Pulls wasm-pkg package bytes for a package request.
-pub trait PackageClient {
-    /// Fetch package content into a sibling tempfile below `dest_hint`.
-    ///
-    /// # Errors
-    ///
-    /// Returns package resolution, registry, stream, or cache staging errors.
-    fn fetch(&self, request: &PackageRequest, dest_hint: &Path)
-    -> Result<AcquiredBytes, ToolError>;
-}
-
-/// Default wasm-pkg package client.
+/// Fetch package content into a sibling tempfile below `dest_hint`.
 ///
-/// Constructed by [`crate::resolver::resolve`] with the active project
-/// root so [`load_config`] can merge the project-local
-/// `.specify/wasm-pkg.toml` (when present) into the wasm-pkg config
-/// chain. Tests inject their own [`PackageClient`] via
-/// `resolver::resolve_with` and bypass this entirely.
-#[derive(Debug, Clone)]
-pub struct WasmPkgClient {
-    project_dir: PathBuf,
+/// # Errors
+///
+/// Returns package resolution, registry, stream, or cache staging errors.
+pub fn fetch(
+    project_dir: &Path, request: &PackageRequest, dest_hint: &Path,
+) -> Result<AcquiredBytes, ToolError> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| ToolError::package(request, format!("create tokio runtime: {err}")))?;
+    runtime.block_on(fetch_async(request, dest_hint, Some(project_dir)))
 }
 
-impl WasmPkgClient {
-    /// Build a client anchored at `project_dir`.
-    #[must_use]
-    pub const fn new(project_dir: PathBuf) -> Self {
-        Self { project_dir }
-    }
-}
-
-impl PackageClient for WasmPkgClient {
-    fn fetch(
-        &self, request: &PackageRequest, dest_hint: &Path,
-    ) -> Result<AcquiredBytes, ToolError> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|err| ToolError::package(request, format!("create tokio runtime: {err}")))?;
-        runtime.block_on(fetch(request, dest_hint, Some(&self.project_dir)))
-    }
-}
-
-async fn fetch(
+async fn fetch_async(
     request: &PackageRequest, dest_hint: &Path, project_dir: Option<&Path>,
 ) -> Result<AcquiredBytes, ToolError> {
     let temp_parent = dest_hint.parent().ok_or_else(|| {
@@ -148,10 +120,10 @@ async fn fetch(
     let version = Version::parse(&request.version)
         .map_err(|err| ToolError::package(request, format!("parse package version: {err}")))?;
     let config = load_config(&package, project_dir).await?;
-    let resolved_registry: Registry =
-        config.resolve_registry(&package).cloned().unwrap_or_else(|| {
-            FIRST_PARTY_REGISTRY.parse().expect("FIRST_PARTY_REGISTRY parses as a Registry")
-        });
+    let resolved_registry = match config.resolve_registry(&package).cloned() {
+        Some(registry) => registry,
+        None => first_party_registry(&package)?,
+    };
     let registry_string = resolved_registry.to_string();
     let client = Client::new(config);
     let release = client
@@ -249,12 +221,7 @@ async fn load_config(
     if package.namespace().to_string() == FIRST_PARTY_NAMESPACE
         && config.namespace_registry(package.namespace()).is_none()
     {
-        let registry: Registry = FIRST_PARTY_REGISTRY.parse().map_err(|err| {
-            ToolError::package_label(
-                package.to_string(),
-                format!("parse first-party registry default: {err}"),
-            )
-        })?;
+        let registry = first_party_registry(package)?;
         config.set_namespace_registry(
             package.namespace().clone(),
             RegistryMapping::Registry(registry),
@@ -263,9 +230,19 @@ async fn load_config(
     Ok(config)
 }
 
+fn first_party_registry(package: &PackageRef) -> Result<Registry, ToolError> {
+    FIRST_PARTY_REGISTRY.parse().map_err(|err| {
+        ToolError::package_label(
+            package.to_string(),
+            format!("parse first-party registry default: {err}"),
+        )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
 
     use super::*;
     use crate::test_support::{EnvGuard, env_lock, scratch_dir};

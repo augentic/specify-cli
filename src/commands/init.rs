@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::config::{ProjectConfig, is_workspace_clone};
-use specify_domain::init::{InitOptions, InitResult, VersionMode, init};
+use specify_domain::init::{InitOptions, InitResult, init};
 use specify_error::{Error, Result};
 
 use crate::cli::Format;
@@ -28,7 +28,6 @@ pub(super) fn run(
         adapter,
         name,
         domain,
-        version_mode: VersionMode::WriteCurrent,
         hub,
     };
 

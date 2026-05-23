@@ -16,7 +16,7 @@ use jiff::Timestamp;
 use specify_error::Error;
 use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
 
-use crate::config::{Layout, ProjectConfig};
+use crate::config::Layout;
 
 /// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
 /// build the struct without cloning path buffers.
@@ -33,8 +33,6 @@ pub struct InitOptions<'a> {
     pub name: Option<&'a str>,
     /// Optional project domain description.
     pub domain: Option<&'a str>,
-    /// Controls what `specify_version` gets written into `project.yaml`.
-    pub version_mode: VersionMode,
     /// When `true`, scaffold a registry-only platform **hub** instead
     /// of a regular project: writes `registry.yaml` at the repo root
     /// and `project.yaml { hub: true }` (with `adapter:` omitted)
@@ -42,17 +40,6 @@ pub struct InitOptions<'a> {
     /// already exists so it never clobbers a regular single-repo
     /// project.
     pub hub: bool,
-}
-
-/// How `init` determines the `specify_version` floor in `project.yaml`.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum VersionMode {
-    /// Write the running binary's version as the floor (fresh init and
-    /// `init --upgrade`).
-    WriteCurrent,
-    /// Preserve the existing `specify_version` in `project.yaml` when
-    /// present (reinitialize flow).
-    Preserve,
 }
 
 /// Structured summary of what `init` did, returned for downstream
@@ -117,26 +104,8 @@ pub(crate) fn resolved_name(project_dir: &Path, explicit: Option<&str>) -> Strin
         .map_or_else(|| "project".to_string(), str::to_string)
 }
 
-pub(crate) fn resolve_version(project_dir: &Path, mode: VersionMode) -> Result<String, Error> {
-    let current = env!("CARGO_PKG_VERSION").to_string();
-    if matches!(mode, VersionMode::WriteCurrent) {
-        return Ok(current);
-    }
-
-    // Preserve: keep the existing value when `project.yaml` already
-    // carries one. Reading the file directly avoids re-running the
-    // version-floor check inside `ProjectConfig::load` (which would
-    // reject the load when the existing floor is newer than the
-    // running binary — but `Preserve` is meant precisely for that
-    // case).
-    let path = Layout::new(project_dir).config_path();
-    let text = match fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(current),
-        Err(err) => return Err(Error::Io(err)),
-    };
-    let existing: ProjectConfig = serde_saphyr::from_str(&text)?;
-    Ok(existing.specify_version.unwrap_or(current))
+pub(crate) fn resolve_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 pub(crate) fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
@@ -190,7 +159,6 @@ mod tests {
                 adapter: None,
                 name: Some("demo"),
                 domain: None,
-                version_mode: VersionMode::WriteCurrent,
                 hub: false,
             },
             fixed_now(),
@@ -220,7 +188,6 @@ mod tests {
                 adapter: Some("omnia"),
                 name: Some("platform-hub"),
                 domain: None,
-                version_mode: VersionMode::WriteCurrent,
                 hub: true,
             },
             fixed_now(),

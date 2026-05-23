@@ -237,26 +237,16 @@ fn parse_divergence(raw: &str) -> Result<Divergence> {
 
 /// Chunk a clap `num_args = 2` flag payload (`Vec<String>` of
 /// interleaved `<slice>` and `<value>` values) into typed
-/// `(slice, T)` pairs. Refuses odd-length payloads with
-/// `Error::Argument` — clap's own `num_args = 2` guard prevents
-/// this in practice, but the explicit check guards against
-/// future surface changes (e.g. switching to `num_args = 1..` for
-/// a more permissive layout). The value half is parsed via `T`'s
+/// `(slice, T)` pairs. The value half is parsed via `T`'s
 /// `FromStr` impl, so the closed enum (`ClaimKind`) and the
 /// composite assign (`AuthorityOverrideKindAssign`) share one
 /// implementation.
 fn parse_slice_pair_args<T>(
-    raw: &[String], flag: &'static str, value_names: &str,
+    raw: &[String], flag: &'static str, _value_names: &str,
 ) -> Result<Vec<(String, T)>>
 where
     T: FromStr<Err = String>,
 {
-    if !raw.len().is_multiple_of(2) {
-        return Err(Error::Argument {
-            flag,
-            detail: format!("{flag} expects {value_names}; got an odd number of positional values"),
-        });
-    }
     let mut out = Vec::with_capacity(raw.len() / 2);
     for chunk in raw.chunks_exact(2) {
         let slice = chunk[0].clone();

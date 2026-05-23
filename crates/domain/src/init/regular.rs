@@ -64,7 +64,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     let scaffolded_rule_keys: Vec<String> =
         SCAFFOLDED_RULE_KEYS.iter().map(|key| (*key).to_string()).collect();
 
-    let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
+    let specify_version = resolve_version();
 
     let mut rules: BTreeMap<String, String> = BTreeMap::new();
     for key in &scaffolded_rule_keys {
@@ -108,9 +108,9 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use crate::config::{Layout, ProjectConfig};
+    use crate::config::ProjectConfig;
     use crate::init::cache::CacheMeta;
-    use crate::init::{InitOptions, VersionMode, fixed_now, init};
+    use crate::init::{InitOptions, fixed_now, init};
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -130,7 +130,6 @@ mod tests {
             adapter: Some(target_dir.to_str().expect("target path utf8")),
             name: Some("demo"),
             domain: None,
-            version_mode: VersionMode::WriteCurrent,
             hub: false,
         }
     }
@@ -277,33 +276,6 @@ mod tests {
     }
 
     #[test]
-    fn preserve_mode_keeps_existing_pinned_version() {
-        let tmp = tempdir().unwrap();
-        let target_dir = omnia_target_dir();
-        init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("fresh init");
-
-        // Manually edit the pinned version to an older one; Preserve
-        // should keep it on re-init.
-        let config_path = Layout::new(tmp.path()).config_path();
-        let original = fs::read_to_string(&config_path).expect("read");
-        let edited = original.replace(
-            &format!("specify_version: {}", env!("CARGO_PKG_VERSION")),
-            "specify_version: 0.0.1",
-        );
-        fs::write(&config_path, edited).expect("write edited");
-
-        let result = init(
-            InitOptions {
-                version_mode: VersionMode::Preserve,
-                ..base_opts(tmp.path(), &target_dir)
-            },
-            fixed_now(),
-        )
-        .expect("preserve init");
-        assert_eq!(result.specify_version, "0.0.1");
-    }
-
-    #[test]
     fn init_writes_default_wasm_pkg_config() {
         let tmp = tempdir().unwrap();
         let target_dir = omnia_target_dir();
@@ -392,7 +364,6 @@ description: Colliding source adapter for the init-time uniqueness check.
                 adapter: Some(target_dir.to_str().expect("target path utf8")),
                 name: None,
                 domain: None,
-                version_mode: VersionMode::WriteCurrent,
                 hub: false,
             },
             fixed_now(),

@@ -81,7 +81,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     fs::create_dir_all(&specify_dir)?;
     let directories_created: Vec<PathBuf> = vec![specify_dir];
 
-    let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
+    let specify_version = resolve_version();
 
     let cfg = ProjectConfig {
         name,
@@ -129,7 +129,7 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::config::ProjectConfig;
-    use crate::init::{InitOptions, VersionMode, fixed_now, init};
+    use crate::init::{InitOptions, fixed_now, init};
     use crate::registry::Registry;
 
     fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
@@ -138,7 +138,6 @@ mod tests {
             adapter: None,
             name: Some(name),
             domain: None,
-            version_mode: VersionMode::WriteCurrent,
             hub: true,
         }
     }
