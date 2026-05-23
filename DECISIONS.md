@@ -335,9 +335,8 @@ original slice's `done` row stays as the historical record.
 
 Archive is a filesystem operation, not a lifecycle state. `specify
 plan finalize` moves `change.md` + `plan.yaml` into
-`.specify/archive/<plan-name>/` and emits a `plan.transition.archived`
-journal event (see §"Journal event names"), but the plan-level
-lifecycle stamp inside the archived `plan.yaml` stays at `reviewed`.
+`.specify/archive/<plan-name>/`, but the plan-level lifecycle stamp
+inside the archived `plan.yaml` stays at `reviewed`.
 There is no `archived` enum variant on `plan.yaml.lifecycle` — the
 on-disk location of the file is the archived signal, not a stored
 state.
@@ -410,7 +409,7 @@ catches contributing-claim → Evidence-claim drift, both via the
 The closed list of fingerprint
 inputs (`source path canonicalised | adapter name@version | brief
 sha256 | sorted declared-tool versions | candidate id`) lives on
-[`crate::adapter::CacheFingerprint`]. CI that pins the four inputs
+[`crate::adapter::cache::CacheFingerprint`]. CI that pins the four inputs
 common across runs can re-run any prior `/spec:execute` and expect
 byte-stable cache hits; CI observing any of the five
 `slice.extract.cache-miss` reasons knows exactly which input
@@ -429,7 +428,6 @@ variants are `snake_case` and bridge to the wire via
 | Wire id | Emitted by |
 |---|---|
 | `plan.transition.reviewed` | `specify plan transition <plan> reviewed` (Gate 1 stamp). |
-| `plan.transition.archived` | `specify plan finalize` when it moves `change.md` + `plan.yaml` into `.specify/archive/`. Archive is a filesystem operation, not a lifecycle state — the plan stays stamped `reviewed`. Wire shape locked at 2.0; emitter wiring lands post-2.0. |
 | `plan.propose.divergence` | `/spec:plan` `propose` sub-step when it flips a slice to `divergence: likely`. |
 | `plan.amend.divergence` | `specify plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
 | `slice.transition.refined` | `specify slice transition <slice> refined`. |
@@ -438,8 +436,6 @@ variants are `snake_case` and bridge to the wire via
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). RFC-27 §D8. |
 | `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). RFC-27 §D4. |
 | `slice.fixture-replay.completed` | Target adapter's `build` step when it consumes `code-runtime` fixtures; optional in v1. RFC-27 §D1. |
-| `slice.build.failed` | `/spec:build` (or the matching slice-build CLI surface) when the slice fails to build. Per-entry status stays `in-progress`; v1 has no `failed` state. Wire shape locked at 2.0; emitter wiring lands post-2.0. |
-| `slice.merge.conflicted` | `/spec:merge` (or `specify slice merge`) when baseline merge hits an unresolvable conflict. Per-entry status stays `in-progress`; v1 has no `conflicted` state. Wire shape locked at 2.0; emitter wiring lands post-2.0. |
 | `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. RFC-27 §D3. |
 
 Events persist as newline-delimited JSON at
