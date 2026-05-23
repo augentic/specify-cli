@@ -105,9 +105,8 @@ pub struct Plan {
     /// supplied directly to the adapter — used by `intent`).
     #[serde(default)]
     pub sources: BTreeMap<String, SourceBinding>,
-    /// Ordered list of plan entries. Order is the *intended* execution
-    /// order; the authoritative dependency-respecting order comes from
-    /// [`Plan::topological_order`].
+    /// Ordered list of plan entries. Order is the intended execution
+    /// order; `Plan::next_eligible` applies dependency eligibility.
     #[serde(rename = "slices")]
     pub entries: Vec<Entry>,
 }

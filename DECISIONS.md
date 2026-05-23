@@ -622,8 +622,8 @@ finishes; string operation names never survive past the manifest loader.
   `BTreeMap<TargetOperation, String>` respectively. The closed
   `{Source,Target}Operation` enums in
   `crates/domain/src/adapter/operation.rs` are the typed `briefs.keys()`
-  carried by each manifest struct; `brief_path` is enum-keyed and string
-  literals at call sites are gone.
+  carried by each manifest struct; manifest brief maps are enum-keyed
+  and string literals at call sites are gone.
 - **Wire invariant.** The `specify source resolve` and
   `specify target resolve` JSON envelopes' `operations: [...]` arrays
   iterate in kebab-alphabetical order (e.g. `["enumerate", "extract"]`,

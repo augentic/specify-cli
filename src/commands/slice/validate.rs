@@ -195,11 +195,11 @@ fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<Validatio
 /// `refining` slices that haven't yet been driven through
 /// `/spec:refine` skip the check silently.
 fn collect_fusion_drift_findings(slice_dir: &Path) -> Result<Vec<ValidationSummary>> {
-    let fusion_path = fusion::fusion_path(slice_dir);
-    if !fusion_path.is_file() {
+    let index_path = slice_dir.join("fusion.yaml");
+    if !index_path.is_file() {
         return Ok(Vec::new());
     }
-    let fusion_index = FusionIndex::load(&fusion_path)?;
+    let fusion_index = FusionIndex::load(&index_path)?;
     let spec_req_ids = collect_spec_req_ids(slice_dir)?;
     let evidence = fusion::collect_evidence_claim_ids(slice_dir)?;
     let drift = fusion_index.detect_drift(&spec_req_ids, &evidence);

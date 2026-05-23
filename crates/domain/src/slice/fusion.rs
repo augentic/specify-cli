@@ -7,13 +7,11 @@
 //! audit-only — `spec.md` remains the authoritative artifact for
 //! downstream verbs.
 //!
-//! Change 2.6 wires up the YAML I/O envelope ([`FusionIndex::load`] /
-//! [`FusionIndex::write_atomic`]), drift detection
+//! Change 2.6 wires up the YAML read and validation envelope
+//! ([`FusionIndex::load`]) and drift detection
 //! ([`FusionIndex::detect_drift`]) consumed by `specify slice
-//! validate`, and the file-location helper ([`fusion_path`])
-//! consumed by the inspection verb. Agent-side authoring of
-//! `fusion.yaml` itself lands in Change 3.2; the CLI half owns
-//! validation and inspection only.
+//! validate`. Agent-side authoring of `fusion.yaml` itself lands in
+//! Change 3.2; the CLI half owns validation and inspection only.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -25,7 +23,6 @@ use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
 use crate::schema::{fusion_schema_source, validate_value};
-use crate::slice::atomic;
 use crate::spec::provenance::RequirementStatus;
 
 /// In-memory model of `fusion.yaml` (RFC-27 §Reconciliation index).
@@ -163,9 +160,7 @@ impl FusionIndex {
     ///
     /// Returns `Ok(())` on a clean validation; otherwise an
     /// [`Error::Validation`] whose single [`ValidationSummary`]
-    /// carries the rule id `"fusion-schema"`. Atomic-write callers
-    /// validate before persisting so a partially-shaped `fusion.yaml`
-    /// never lands on disk.
+    /// carries the rule id `"fusion-schema"`.
     ///
     /// # Errors
     ///
@@ -213,24 +208,6 @@ impl FusionIndex {
         let index: Self = serde_saphyr::from_str(&raw)?;
         index.validate()?;
         Ok(index)
-    }
-
-    /// Schema-validate `self` and atomically persist it as YAML at
-    /// `path`. The validation gate runs before any bytes hit disk so
-    /// a malformed `fusion.yaml` cannot land via this writer. Atomic
-    /// envelope follows [`atomic::yaml_write`] (temp file in the
-    /// same parent + `sync_all` + rename) so readers never observe a
-    /// partial write.
-    ///
-    /// # Errors
-    ///
-    /// - [`Error::Validation`] when `self` fails
-    ///   `schemas/slice/fusion.schema.json`.
-    /// - [`Error::YamlSer`] or [`Error::Io`] when serialisation or
-    ///   the temp-file write / rename fails.
-    pub fn write_atomic(&self, path: &Path) -> Result<()> {
-        self.validate()?;
-        atomic::yaml_write(path, self)
     }
 
     /// Compare `self` against the slice's `spec.md` `REQ-*` ids
@@ -292,16 +269,6 @@ impl FusionIndex {
         out.sort_by_key(FusionDrift::sort_key);
         out
     }
-}
-
-/// Canonical `<slice_dir>/fusion.yaml` location for the slice's
-/// reconciliation index.
-///
-/// Centralised so writers, the inspection verb, and `slice validate`
-/// all hit the same path without re-spelling the join.
-#[must_use]
-pub fn fusion_path(slice_dir: &Path) -> PathBuf {
-    slice_dir.join("fusion.yaml")
 }
 
 /// One drift finding produced by [`FusionIndex::detect_drift`].
@@ -610,31 +577,6 @@ rogue: true
     }
 
     #[test]
-    fn write_atomic_then_load_round_trips_byte_stable() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("fusion.yaml");
-        let original = sample();
-        original.write_atomic(&path).expect("write");
-        let first_bytes = std::fs::read(&path).expect("read first");
-        original.write_atomic(&path).expect("re-write");
-        let second_bytes = std::fs::read(&path).expect("read second");
-        assert_eq!(first_bytes, second_bytes, "atomic write must be byte-stable");
-        let reloaded = FusionIndex::load(&path).expect("load");
-        assert_eq!(original, reloaded);
-    }
-
-    #[test]
-    fn write_atomic_rejects_schema_invalid_index() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("fusion.yaml");
-        let mut bad = sample();
-        bad.requirements[0].id = "REQ-1".to_string(); // malformed: schema requires REQ-NNN
-        let err = bad.write_atomic(&path).expect_err("schema must reject");
-        assert!(matches!(err, Error::Validation { .. }), "expected Validation, got: {err}");
-        assert!(!path.exists(), "no file must land when validation fails");
-    }
-
-    #[test]
     fn load_reports_schema_failure_for_hand_edited_file() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("fusion.yaml");
@@ -893,11 +835,5 @@ claims:
         let dir = tempfile::tempdir().expect("tempdir");
         let map = collect_evidence_claim_ids(dir.path()).expect("collect");
         assert!(map.is_empty());
-    }
-
-    #[test]
-    fn fusion_path_anchors_under_slice_dir() {
-        let p = fusion_path(Path::new("/proj/.specify/slices/my-slice"));
-        assert_eq!(p, Path::new("/proj/.specify/slices/my-slice/fusion.yaml"));
     }
 }

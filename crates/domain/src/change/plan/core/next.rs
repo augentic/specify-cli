@@ -1,16 +1,10 @@
-//! [`Plan::next_eligible`] (single-step scheduler) and
-//! [`Plan::topological_order`] (full ordering).
+//! [`Plan::next_eligible`] (single-step scheduler).
 
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::HashMap;
 
-use petgraph::Direction;
-use petgraph::algo::{tarjan_scc, toposort};
-use petgraph::graph::NodeIndex;
 use specify_error::Error;
 
 use super::model::{Entry, Plan, Status};
-use super::validate::entry_dependency_graph;
 
 impl Plan {
     /// First entry in list order whose dependencies are all `done` and
@@ -18,8 +12,7 @@ impl Plan {
     /// eligible (plan finished, blocked, empty) **or when any entry is
     /// currently `in-progress`** — the driver must not pick a new
     /// change while one is active. The in-progress check runs before
-    /// any dependency walk, so this function is independent of
-    /// [`Plan::topological_order`] and safe to call on cyclic plans.
+    /// dependency eligibility checks.
     ///
     /// An unknown `depends_on` target is treated as "not done", so the
     /// entry is not eligible. Orphan-reference diagnostics belong to
@@ -66,78 +59,6 @@ impl Plan {
         };
         self.transition(&name, Status::InProgress)?;
         Ok(self.entries.iter().find(|e| e.name == name))
-    }
-
-    /// Entries in dependency-respecting order. Errors with an
-    /// `Error::Diag` describing the cycle when the `depends_on` graph
-    /// contains one.
-    ///
-    /// Tie-break rule: when two entries are simultaneously "ready"
-    /// (dependencies already emitted), the one earlier in
-    /// [`Plan::entries`] wins. This makes the output deterministic and
-    /// a pure function of list order.
-    ///
-    /// Unknown `depends_on` targets are treated as satisfied for
-    /// ordering purposes so orphan references cannot deadlock the sort;
-    /// surfacing them is [`Plan::validate`]'s job.
-    ///
-    /// Implementation: we build a `DiGraph`, use `petgraph::toposort`
-    /// (plus `tarjan_scc` on failure) for cycle detection and
-    /// offender-naming, then walk the graph via a priority-queue Kahn
-    /// where the priority is the original `NodeIndex` (which equals
-    /// each entry's list position, since we insert in list order).
-    /// That keeps the list-order tie-break contract while dropping
-    /// the old O(n²) "sweep until fixpoint" fallback.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the internal indegree map is inconsistent (should never
-    /// happen in practice since every node is inserted during init).
-    ///
-    /// # Errors
-    ///
-    /// Errors with `Error::Diag` when the dependency graph has a cycle.
-    pub fn topological_order(&self) -> Result<Vec<&Entry>, Error> {
-        let graph = entry_dependency_graph(&self.entries);
-        let idx: HashMap<&str, NodeIndex> = graph.node_indices().map(|n| (graph[n], n)).collect();
-
-        if toposort(&graph, None).is_err() {
-            let offender = tarjan_scc(&graph)
-                .into_iter()
-                .find(|scc| {
-                    scc.len() > 1 || (scc.len() == 1 && graph.find_edge(scc[0], scc[0]).is_some())
-                })
-                .map_or_else(|| "<unknown>".to_string(), |scc| graph[scc[0]].to_string());
-            return Err(Error::Diag {
-                code: "plan-dependency-cycle",
-                detail: format!("plan has dependency cycle involving '{offender}'"),
-            });
-        }
-
-        let mut indegree: HashMap<NodeIndex, usize> = graph
-            .node_indices()
-            .map(|n| (n, graph.neighbors_directed(n, Direction::Incoming).count()))
-            .collect();
-        let mut ready: BinaryHeap<Reverse<NodeIndex>> =
-            indegree.iter().filter_map(|(&n, &d)| (d == 0).then_some(Reverse(n))).collect();
-
-        let mut rank: HashMap<NodeIndex, usize> = HashMap::with_capacity(self.entries.len());
-        let mut next_rank = 0_usize;
-        while let Some(Reverse(node)) = ready.pop() {
-            rank.insert(node, next_rank);
-            next_rank += 1;
-            for downstream in graph.neighbors_directed(node, Direction::Outgoing) {
-                let entry = indegree.get_mut(&downstream).expect("indegree init covers every node");
-                *entry -= 1;
-                if *entry == 0 {
-                    ready.push(Reverse(downstream));
-                }
-            }
-        }
-
-        let mut output: Vec<&Entry> = self.entries.iter().collect();
-        output.sort_by_key(|c| rank[&idx[c.name.as_str()]]);
-        Ok(output)
     }
 }
 
@@ -255,86 +176,6 @@ mod tests {
     }
 
     #[test]
-    fn topo_order_rfc_example() {
-        let plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
-        let ordered: Vec<&str> = plan
-            .topological_order()
-            .expect("rfc plan has no cycles")
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect();
-        let expected = [
-            "user-registration",
-            "email-verification",
-            "registration-duplicate-email-crash",
-            "notification-preferences",
-            "extract-shared-validation",
-            "product-catalog",
-            "shopping-cart",
-            "checkout-api",
-            "checkout-ui",
-        ];
-        assert_eq!(
-            ordered, expected,
-            "topological_order should match next_eligible forward traversal"
-        );
-    }
-
-    #[test]
-    fn topo_order_cycle_errors() {
-        let plan = plan_with_changes(vec![
-            change_with_deps("a", Status::Pending, &["c"]),
-            change_with_deps("b", Status::Pending, &["a"]),
-            change_with_deps("c", Status::Pending, &["b"]),
-        ]);
-        let err = plan.topological_order().expect_err("cycle must surface as Err");
-        match err {
-            Error::Diag { code, detail } => {
-                assert_eq!(code, "plan-dependency-cycle");
-                assert!(
-                    detail.contains("cycle"),
-                    "Diag detail should mention 'cycle', got: {detail}"
-                );
-            }
-            other => panic!("expected Error::Diag, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn topo_order_deterministic_tiebreak() {
-        let alpha_first = plan_with_changes(vec![
-            change("alpha", Status::Pending),
-            change("beta", Status::Pending),
-        ]);
-        let order: Vec<&str> = alpha_first
-            .topological_order()
-            .expect("no cycle")
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect();
-        assert_eq!(order, ["alpha", "beta"]);
-
-        let beta_first = plan_with_changes(vec![
-            change("beta", Status::Pending),
-            change("alpha", Status::Pending),
-        ]);
-        let order: Vec<&str> = beta_first
-            .topological_order()
-            .expect("no cycle")
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect();
-        assert_eq!(
-            order,
-            ["beta", "alpha"],
-            "swapping list order must swap topo order when no deps constrain it"
-        );
-    }
-
-    /// `next_eligible` must not depend on `topological_order` succeeding:
-    /// even when the plan has a cycle, an in-progress entry short-circuits
-    /// selection to `None` without walking the dependency graph.
-    #[test]
     fn advance_next_writes_in_progress_then_returns_existing_active() {
         let mut plan = plan_with_changes(vec![
             change("a", Status::Pending),
@@ -359,16 +200,5 @@ mod tests {
         let next = plan.advance_next().expect("advance ok");
         assert!(next.is_none(), "drained plan must report None");
         assert!(plan.is_drained());
-    }
-
-    #[test]
-    fn next_eligible_with_cycle() {
-        let plan = plan_with_changes(vec![
-            change("busy", Status::InProgress),
-            change_with_deps("a", Status::Pending, &["b"]),
-            change_with_deps("b", Status::Pending, &["a"]),
-        ]);
-        assert!(plan.next_eligible().is_none());
-        assert!(plan.topological_order().is_err(), "cycle should surface from topological_order");
     }
 }

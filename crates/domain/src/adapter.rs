@@ -20,9 +20,9 @@
 //! (with `index.jsonl` at the adapter root) — see
 //! [DECISIONS.md §"Cache layout"].
 //!
-//! Brief bodies are read by the agent at the path returned by
-//! [`ResolvedSourceAdapter::brief_path`] / [`ResolvedTargetAdapter::brief_path`];
-//! the CLI never parses brief markdown. Per the plugin-repo standard
+//! Brief bodies are read by the agent from paths declared in each
+//! manifest's typed `briefs` map; the CLI never parses brief markdown.
+//! Per the plugin-repo standard
 //! ([`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md)
 //! §"Brief authoring"), briefs carry no YAML frontmatter.
 //!

@@ -344,28 +344,6 @@ impl SourceAdapter {
         })
     }
 
-    /// Locate the source-adapter directory `(Source, name)` resolves
-    /// to without reading the manifest. Mirrors
-    /// [`SourceAdapter::resolve`]'s probe order (cache → local).
-    ///
-    /// # Errors
-    ///
-    /// Returns `adapter-not-found` when neither cache nor local
-    /// directory exists.
-    pub fn locate(name: &str, project_dir: &Path) -> Result<(PathBuf, AdapterLocation), Error> {
-        locate_axis(Axis::Source, name, project_dir)
-    }
-
-    /// Resolve the manifest's brief path for `operation` against
-    /// `root_dir`. Returns `None` when the operation is not declared
-    /// by this manifest. Source manifests always declare both
-    /// operations after a successful schema-validated load, so this
-    /// returns `Some` in practice.
-    #[must_use]
-    pub fn brief_path(&self, root_dir: &Path, operation: SourceOperation) -> Option<PathBuf> {
-        self.briefs.get(&operation).map(|relative| root_dir.join(relative))
-    }
-
     /// Iterator over the source operations this adapter declares, in
     /// ascending kebab-name order (`enumerate < extract`). After the
     /// collapse of the dedicated `operations[]` field (review 1.A1)
@@ -417,28 +395,6 @@ impl TargetAdapter {
         })
     }
 
-    /// Locate the target-adapter directory `(Target, name)` resolves
-    /// to without reading the manifest. Mirrors
-    /// [`TargetAdapter::resolve`]'s probe order (cache → local).
-    ///
-    /// # Errors
-    ///
-    /// Returns `adapter-not-found` when neither cache nor local
-    /// directory exists.
-    pub fn locate(name: &str, project_dir: &Path) -> Result<(PathBuf, AdapterLocation), Error> {
-        locate_axis(Axis::Target, name, project_dir)
-    }
-
-    /// Resolve the manifest's brief path for `operation` against
-    /// `root_dir`. Returns `None` when the operation is not declared
-    /// by this manifest. Target manifests always declare all three
-    /// operations after a successful schema-validated load, so this
-    /// returns `Some` in practice.
-    #[must_use]
-    pub fn brief_path(&self, root_dir: &Path, operation: TargetOperation) -> Option<PathBuf> {
-        self.briefs.get(&operation).map(|relative| root_dir.join(relative))
-    }
-
     /// Iterator over the target operations this adapter declares, in
     /// ascending kebab-name order (`build < merge < shape`). After
     /// the collapse of the dedicated `operations[]` field (review
@@ -446,24 +402,6 @@ impl TargetAdapter {
     /// `briefs.keys()` is the canonical typed operation source.
     pub fn operations(&self) -> impl Iterator<Item = &TargetOperation> {
         self.briefs.keys()
-    }
-}
-
-impl ResolvedSourceAdapter {
-    /// Convenience accessor combining [`SourceAdapter::brief_path`]
-    /// and the resolved [`ResolvedSourceAdapter::root_dir`].
-    #[must_use]
-    pub fn brief_path(&self, operation: SourceOperation) -> Option<PathBuf> {
-        self.manifest.brief_path(&self.root_dir, operation)
-    }
-}
-
-impl ResolvedTargetAdapter {
-    /// Convenience accessor combining [`TargetAdapter::brief_path`]
-    /// and the resolved [`ResolvedTargetAdapter::root_dir`].
-    #[must_use]
-    pub fn brief_path(&self, operation: TargetOperation) -> Option<PathBuf> {
-        self.manifest.brief_path(&self.root_dir, operation)
     }
 }
 
@@ -585,9 +523,9 @@ fn axis_collision_error(
 /// so the operator hits a clear collision diagnostic ahead of the
 /// downstream `TargetAdapter::resolve` call. The same invariant fires
 /// inside the private `locate_axis` helper used by
-/// [`SourceAdapter::resolve`] / [`TargetAdapter::resolve`] for every
-/// loader path; this one-sided helper is the cheap "the side I'm about
-/// to install on may not yet exist on disk" variant.
+/// [`SourceAdapter::resolve`] / [`TargetAdapter::resolve`]; this
+/// one-sided helper is the cheap "the side I'm about to install on may
+/// not yet exist on disk" variant.
 ///
 /// # Errors
 ///

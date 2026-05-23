@@ -222,8 +222,7 @@ pub enum EventKind {
         /// Closed action discriminator.
         action: AuthorityOverrideAction,
         /// Claim kind the action touched (the closed-enum key under
-        /// `slices[].authority-override`). `None` only when `action`
-        /// is [`AuthorityOverrideAction::ClearAll`].
+        /// `slices[].authority-override`).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         claim_kind: Option<String>,
         /// Source key the override now points at, when `action` is
@@ -296,15 +295,14 @@ pub enum CacheMissReason {
 
 /// Closed `action` enum on [`EventKind::PlanAmendAuthorityOverride`].
 ///
-/// Mirrors the CLI surface (`--authority-override`,
-/// `--clear-authority-override`, `--clear-authority-overrides`) so
-/// operators reading the journal see which flag drove each row.
+/// Mirrors the per-kind mutations emitted by the CLI surface
+/// (`--authority-override`, `--clear-authority-override`, and the
+/// per-kind expansion of `--clear-authority-overrides`).
 /// `Ord` is derived so batched-append callers can sort
 /// `(slice, kind, action)` keys for byte-stable journal output —
-/// the declaration order (`Set < Clear < ClearAll`) is also the
-/// dispatch order in `mutate_authority_overrides`, so a stable
-/// alphabetical-by-action sort happens to match operator intent
-/// out of the box.
+/// the declaration order (`Set < Clear`) is also the dispatch order
+/// in `mutate_authority_overrides`, so a stable alphabetical-by-action
+/// sort happens to match operator intent out of the box.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, strum::Display,
 )]
@@ -315,8 +313,6 @@ pub enum AuthorityOverrideAction {
     Set,
     /// `--clear-authority-override <slice> <kind>` removed one entry.
     Clear,
-    /// `--clear-authority-overrides <slice>` removed every entry.
-    ClearAll,
 }
 
 /// Absolute path to the journal at `<project_dir>/.specify/journal.jsonl`.
@@ -587,27 +583,6 @@ mod tests {
         assert!(line.contains(r#""action":"set""#));
         assert!(line.contains(r#""claim-kind":"criterion""#));
         assert!(line.contains(r#""source-key":"runtime""#));
-    }
-
-    #[test]
-    fn plan_amend_authority_override_clear_all_elides_optional_fields() {
-        let dir = tempdir().expect("tempdir");
-        let layout = Layout::new(dir.path());
-        let event = Event::new(
-            test_timestamp("2026-05-22T13:20:01Z"),
-            EventKind::PlanAmendAuthorityOverride {
-                plan_name: "identity-revamp".to_string(),
-                slice_name: "identity-user-registration".to_string(),
-                action: AuthorityOverrideAction::ClearAll,
-                claim_kind: None,
-                source_key: None,
-            },
-        );
-        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
-        let line = read_lines(layout).pop().expect("line");
-        assert!(line.contains(r#""action":"clear-all""#));
-        assert!(!line.contains("claim-kind"), "absent claim-kind must elide, got:\n{line}");
-        assert!(!line.contains("source-key"), "absent source-key must elide, got:\n{line}");
     }
 
     #[test]
