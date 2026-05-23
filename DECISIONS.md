@@ -272,10 +272,15 @@ then retired the legacy axis-agnostic `crate::adapter` module
 `AdapterSource` / `ResolvedAdapter` / the legacy `adapter.schema.json`)
 and renamed the axis-aware loader back into `crates/domain/src/adapter/`
 under the cleaner `Adapter` / `Axis` / `ResolvedAdapter` /
-`AdapterLocation` type names. `Brief` and `BriefFrontmatter` now live
-under `crates/domain/src/adapter/brief.rs` (with `needs:` / `tracks:` /
-`generates:` retired — RFC-25 briefs only carry `id` and `description`),
-`CacheMeta` was rehomed inside `crates/domain/src/init/cache.rs`, and
+`AdapterLocation` type names. The 1.x brief-frontmatter parser
+(`Brief` / `BriefFrontmatter` with `id` / `description` / `needs` /
+`tracks` / `generates` fields) was retired together with the
+`schemas/brief/schema.json` schema: RFC-25 briefs are resolved by path
+through `briefs.<op>` on the adapter manifest and the CLI never reads
+their bodies, so the parser was dead code. The plugin repo's
+[`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md)
+§"Brief authoring" now requires briefs carry no YAML frontmatter at
+all. `CacheMeta` was rehomed inside `crates/domain/src/init/cache.rs`, and
 `CodexRule` / `CodexResolver` / `ResolvedCodex` moved into a new
 `crates/domain/src/codex/` module. The `Phase` enum was replaced by
 `Operation { Shape, Build, Merge }` on the slice-metadata wire (`phase:

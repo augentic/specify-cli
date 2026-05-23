@@ -1,4 +1,4 @@
-//! Adapter manifest resolution and brief frontmatter parsing.
+//! Adapter manifest resolution.
 //!
 //! RFC-25 §"Adapter implementation shape" / §"Resolver and cache".
 //! Source and target adapters share the `adapter.yaml` wire shape but
@@ -20,10 +20,15 @@
 //! (with `index.jsonl` at the adapter root) — see
 //! [DECISIONS.md §"Cache layout"].
 //!
+//! Brief bodies are read by the agent at the path returned by
+//! [`ResolvedSourceAdapter::brief_path`] / [`ResolvedTargetAdapter::brief_path`];
+//! the CLI never parses brief markdown. Per the plugin-repo standard
+//! ([`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md)
+//! §"Brief authoring"), briefs carry no YAML frontmatter.
+//!
 //! [DECISIONS.md §"Operations typed at parse boundary"]: ../../../DECISIONS.md#operations-typed-at-parse-boundary
 //! [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
 
-mod brief;
 pub mod cache;
 mod core;
 pub(crate) mod operation;
@@ -34,7 +39,6 @@ pub use core::{
     SourceAdapter, TargetAdapter, adapter_axis_dir, cache_dir, check_axis_unique_for_name,
 };
 
-pub use brief::{Brief, BriefFrontmatter, split_on_closing_delimiter};
 pub use cache::{
     CacheFingerprint, CacheIndexEntry, CacheLayout, CacheLookup, CacheMissReason,
     FingerprintRecord, FingerprintSource, FingerprintToolVersion, LookupOutcome, SourceOperation,

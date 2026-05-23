@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::adapter::split_on_closing_delimiter;
 use crate::schema::validate_value;
 
 const CODEX_RULE_JSON_SCHEMA: &str = include_str!("../../../../schemas/codex-rule.schema.json");
@@ -186,6 +185,23 @@ fn frontmatter_parts<'a>(path: &Path, contents: &'a str) -> Result<(&'a str, &'a
         code: "codex-rule-frontmatter-unclosed",
         detail: format!("{} has an opening `---` but no closing `---` delimiter", path.display()),
     })
+}
+
+/// Given the text *after* the leading `---\n`, split it into
+/// `(frontmatter, body)` at the first closing `---` on its own line.
+fn split_on_closing_delimiter(after_open: &str) -> Option<(&str, &str)> {
+    let mut offset = 0;
+    for line in after_open.split_inclusive('\n') {
+        let trimmed = line.trim_end_matches(['\n', '\r']);
+        if trimmed == "---" {
+            let frontmatter = &after_open[..offset];
+            let body_start = offset + line.len();
+            let body = &after_open[body_start..];
+            return Some((frontmatter, body));
+        }
+        offset += line.len();
+    }
+    None
 }
 
 fn validate_rule_heading(path: &Path, body: &str) -> ValidationSummary {

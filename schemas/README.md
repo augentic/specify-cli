@@ -12,7 +12,6 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 | [`tool.schema.json`](tool.schema.json) | Validates the standalone WASI `tools[]` declaration block — kebab-case names, strict-semver versions, source URIs with the `$PROJECT_DIR` / `$CAPABILITY_DIR` prefixes, and `permissions.{read,write}` paths that may not target `.specify/`. |
 | [`evidence.schema.json`](evidence.schema.json) | Validates per-source `Evidence` files written by `source.extract` per RFC-25 §Source adapter contract; closed `kind` enum includes the spatial `region` / `container` / `leaf` kinds from day one. |
 | [`discovery/candidate.schema.json`](discovery/candidate.schema.json) | Validates a single candidate block under `## Candidate inventory` in `discovery.md` per RFC-25 §Discovery handshake. |
-| [`brief/schema.json`](brief/schema.json) | Validates YAML frontmatter in adapter brief markdown files. |
 | [`codex-rule.schema.json`](codex-rule.schema.json) | Validates YAML frontmatter in codex rule markdown files. |
 | [`plan/plan.schema.json`](plan/plan.schema.json) | Validates `plan.yaml` structure, including the structured `sources[<key>]` binding shape and the `name@vN` target suffix reconciled against the resolved adapter's `version`. |
 | [`plan-validate-output/schema.json`](plan-validate-output/schema.json) | Validates `specify plan validate --format json` output. |
