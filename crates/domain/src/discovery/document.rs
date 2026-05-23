@@ -27,7 +27,7 @@
 //! and operator edits.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use specify_error::{Error, Result};
 
@@ -55,7 +55,7 @@ pub struct Discovery {
     suffix: String,
     /// `true` when the input file contained a `## Candidate inventory`
     /// heading. A discovery.md without the heading round-trips as
-    /// pure prose ([`Discovery::candidates`] is empty and the heading
+    /// pure prose (the `candidates` vector is empty and the heading
     /// is appended on write when candidates have been added).
     has_inventory_heading: bool,
 }
@@ -115,12 +115,6 @@ impl Discovery {
     pub fn write_atomic(&self, path: &Path) -> Result<()> {
         let body = self.render();
         atomic::bytes_write(path, body.as_bytes())
-    }
-
-    /// Read access to the parsed candidate inventory.
-    #[must_use]
-    pub fn candidates(&self) -> &[Candidate] {
-        &self.candidates
     }
 
     /// Locate a candidate by its `id` for mutation. RFC-27 §D6 calls
@@ -628,17 +622,6 @@ const fn parse_err(detail: String) -> Error {
     }
 }
 
-/// Canonical `<project_dir>/discovery.md` location for the
-/// candidate inventory.
-///
-/// RFC-27 §D6 anchors `discovery.md` at the repo root alongside
-/// `plan.yaml` and `change.md`; centralised here so writers and
-/// readers share a single path helper.
-#[must_use]
-pub fn discovery_path(project_dir: &Path) -> PathBuf {
-    project_dir.join("discovery.md")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -757,14 +740,14 @@ Some trailing prose.
                     sources: vec!["legacy".to_string()],
                     summary: "A.".to_string(),
                     tentative: None,
-                    aliases: CandidateAliases::new(),
+                    aliases: CandidateAliases::default(),
                 },
                 Candidate {
                     id: "a".to_string(),
                     sources: vec!["legacy".to_string()],
                     summary: "Duplicate id.".to_string(),
                     tentative: None,
-                    aliases: CandidateAliases::new(),
+                    aliases: CandidateAliases::default(),
                 },
             ],
         };

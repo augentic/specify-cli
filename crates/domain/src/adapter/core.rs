@@ -64,7 +64,7 @@ const TARGET_JSON_SCHEMA: &str = include_str!("../../../../schemas/target.schema
 ///
 /// Source vs target — see RFC-25 §Adapter axis. The closed enum is
 /// used by the resolver dispatcher (`commands::resolve_adapter`) and
-/// the manifest-cache helpers ([`cache_dir`], [`adapter_axis_dir`]);
+/// the manifest-cache helpers ([`cache_dir`], `adapter_axis_dir`);
 /// the in-memory manifests themselves are axis-typed
 /// ([`SourceAdapter`] / [`TargetAdapter`]) so internal call sites no
 /// longer carry the `axis` argument forward past the resolver
@@ -82,7 +82,7 @@ pub enum Axis {
 }
 
 impl Axis {
-    /// Axis segment under [`ADAPTERS_DIR`] — `"sources"` for source
+    /// Axis segment under `ADAPTERS_DIR` — `"sources"` for source
     /// adapters, `"targets"` for target adapters.
     #[must_use]
     pub const fn dir_segment(self) -> &'static str {

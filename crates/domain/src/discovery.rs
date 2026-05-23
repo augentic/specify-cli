@@ -14,6 +14,4 @@ pub mod candidate;
 pub mod document;
 
 pub use candidate::{AliasCollision, Candidate, CandidateAliases};
-pub use document::{
-    Discovery, DiscoveryAliasCollision, ResolveError as DiscoveryResolveError, discovery_path,
-};
+pub use document::{Discovery, DiscoveryAliasCollision, ResolveError as DiscoveryResolveError};

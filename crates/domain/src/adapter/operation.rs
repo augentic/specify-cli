@@ -35,7 +35,7 @@ use strum::EnumString;
 /// time) and the discriminant stamped onto every cache index row at
 /// `.specify/.cache/extractions/<adapter>/index.jsonl` so
 /// `specify source resolve --explain` can attribute hits and misses
-/// (see [`crate::adapter::CacheIndexEntry::operation`]).
+/// (see [`crate::adapter::cache::CacheIndexEntry::operation`]).
 ///
 /// `Ord` is implemented manually so [`std::collections::BTreeMap`]
 /// keyed on this enum iterates in kebab-alphabetical order

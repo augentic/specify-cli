@@ -51,12 +51,6 @@ pub struct CandidateAliases {
 }
 
 impl CandidateAliases {
-    /// Empty alias list.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self { names: Vec::new() }
-    }
-
     /// `true` when the alias list is empty (used by serde's
     /// `skip_serializing_if` to keep absent fields off the wire).
     #[must_use]
@@ -84,22 +78,14 @@ where
 }
 
 impl Candidate {
-    /// Resolve a binding's referenced candidate value against this
-    /// candidate's `id` or any alias.
+    /// `true` when `token` equals this candidate's `id` or any entry
+    /// in `aliases[]`.
     ///
     /// RFC-27 §D6 — `slices[].sources[].candidate` resolves first
     /// against `id`, then against `aliases[]`; case-sensitive.
     #[must_use]
-    pub fn matches(&self, needle: &str) -> bool {
-        self.id == needle || self.aliases.contains(needle)
-    }
-
-    /// `Candidate::resolves` mirrors [`Candidate::matches`] under the
-    /// name RFC-27 §D6 uses in prose. Kept as a thin alias so call
-    /// sites can read in the same vocabulary the RFC speaks.
-    #[must_use]
     pub fn resolves(&self, token: &str) -> bool {
-        self.matches(token)
+        self.id == token || self.aliases.contains(token)
     }
 
     /// Append `alias` to this candidate's `aliases[]`. Refuses when
@@ -220,7 +206,7 @@ aliases:
     }
 
     #[test]
-    fn matches_resolves_id_then_aliases() {
+    fn resolves_id_then_aliases() {
         let candidate = Candidate {
             id: "user-registration".to_string(),
             sources: vec!["legacy".to_string()],
@@ -228,25 +214,11 @@ aliases:
             tentative: None,
             aliases: CandidateAliases::from_iter(["account-registration", "user-signup"]),
         };
-        assert!(candidate.matches("user-registration"));
-        assert!(candidate.matches("account-registration"));
-        assert!(candidate.matches("user-signup"));
-        assert!(!candidate.matches("USER-REGISTRATION"), "case-sensitive per RFC-27 §D6");
-        assert!(!candidate.matches("password-reset"));
-    }
-
-    #[test]
-    fn resolves_is_alias_for_matches() {
-        let candidate = Candidate {
-            id: "password-reset-request".to_string(),
-            sources: vec!["legacy".to_string()],
-            summary: "Reset.".to_string(),
-            tentative: None,
-            aliases: CandidateAliases::from_iter(["password-reset"]),
-        };
-        assert!(candidate.resolves("password-reset-request"));
-        assert!(candidate.resolves("password-reset"));
-        assert!(!candidate.resolves("unknown"));
+        assert!(candidate.resolves("user-registration"));
+        assert!(candidate.resolves("account-registration"));
+        assert!(candidate.resolves("user-signup"));
+        assert!(!candidate.resolves("USER-REGISTRATION"), "case-sensitive per RFC-27 §D6");
+        assert!(!candidate.resolves("password-reset"));
     }
 
     #[test]
@@ -299,7 +271,7 @@ aliases:
             sources: vec!["legacy".to_string()],
             summary: "Registration.".to_string(),
             tentative: None,
-            aliases: CandidateAliases::new(),
+            aliases: CandidateAliases::default(),
         }
     }
 

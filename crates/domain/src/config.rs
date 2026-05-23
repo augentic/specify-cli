@@ -208,7 +208,7 @@ impl<'a> Layout<'a> {
     /// `--remove-alias` (RFC-27 §D6).
     #[must_use]
     pub fn discovery_path(&self) -> PathBuf {
-        crate::discovery::discovery_path(self.project_dir)
+        self.project_dir.join("discovery.md")
     }
 }
 

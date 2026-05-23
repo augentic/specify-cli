@@ -34,15 +34,9 @@ mod core;
 pub(crate) mod operation;
 
 pub use core::{
-    ADAPTER_FILENAME, ADAPTERS_DIR, AdapterLocation, AdapterToolDeclaration, Axis, CacheMode,
-    EXTRACTIONS_CACHE_DIR, MANIFESTS_CACHE_DIR, ResolvedSourceAdapter, ResolvedTargetAdapter,
-    SourceAdapter, TargetAdapter, adapter_axis_dir, cache_dir, check_axis_unique_for_name,
+    ADAPTER_FILENAME, AdapterLocation, Axis, CacheMode, ResolvedTargetAdapter, SourceAdapter,
+    TargetAdapter, cache_dir, check_axis_unique_for_name,
 };
 
-pub use cache::{
-    CacheFingerprint, CacheIndexEntry, CacheLayout, CacheLookup, CacheMissReason,
-    FingerprintRecord, FingerprintSource, FingerprintToolVersion, LookupOutcome, SourceOperation,
-    append_index, lookup as cache_lookup, read_index as cache_read_index, sha256_file,
-    sha256_prefixed, write as cache_write,
-};
+pub use cache::{CacheLayout, SourceOperation, read_index as cache_read_index};
 pub use operation::TargetOperation;
