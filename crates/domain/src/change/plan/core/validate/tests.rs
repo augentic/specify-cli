@@ -6,6 +6,7 @@ use super::super::model::{
     Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
 };
 use super::super::{RFC_EXAMPLE_YAML, change, plan_with_changes};
+use crate::change::{CYCLE, detect};
 use crate::evidence::ClaimKind;
 use crate::registry::{Registry, RegistryProject};
 
@@ -38,9 +39,8 @@ fn cycle_error() {
     let mut c = change("c", Status::Pending);
     c.depends_on = vec!["b".into()];
     let plan = plan_with_changes(vec![a, b, c]);
-    let results = plan.validate(None, None);
-    let cycles: Vec<_> = results.iter().filter(|r| r.code == "dependency-cycle").collect();
-    assert!(!cycles.is_empty(), "expected at least one dependency-cycle, got {results:#?}");
+    let cycles: Vec<_> = detect(&plan.entries).into_iter().filter(|d| d.code == CYCLE).collect();
+    assert!(!cycles.is_empty(), "expected at least one {CYCLE}, got {cycles:#?}");
     let msg = &cycles[0].message;
     assert!(msg.contains('a'), "cycle message should name a: {msg}");
     assert!(msg.contains('b'), "cycle message should name b: {msg}");
@@ -52,10 +52,10 @@ fn self_cycle_error() {
     let mut a = change("a", Status::Pending);
     a.depends_on = vec!["a".into()];
     let plan = plan_with_changes(vec![a]);
-    let results = plan.validate(None, None);
+    let cycles = detect(&plan.entries);
     assert!(
-        results.iter().any(|r| r.code == "dependency-cycle"),
-        "expected a dependency-cycle result for self-edge, got: {results:#?}"
+        cycles.iter().any(|d| d.code == CYCLE),
+        "expected a {CYCLE} result for self-edge, got: {cycles:#?}"
     );
 }
 

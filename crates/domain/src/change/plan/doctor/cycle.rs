@@ -11,9 +11,9 @@ use crate::change::plan::core::validate::entry_dependency_graph;
 /// Self-loops are emitted too. Cycles are deduplicated by sorted
 /// node-set so every distinct cycle surfaces exactly once. The cycle
 /// path is sorted alphabetically with the first node repeated at the
-/// end — matches the convention used by validate's `dependency-cycle`
-/// text.
-pub(super) fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
+/// end — matches the convention used by the doctor message text.
+#[must_use]
+pub fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
     let graph = entry_dependency_graph(changes);
 
     let mut out = Vec::new();

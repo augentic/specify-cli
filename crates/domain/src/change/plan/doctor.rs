@@ -14,14 +14,12 @@ mod cycle;
 mod orphan_source;
 mod stale_clone;
 
+pub use cycle::detect;
+
 #[cfg(test)]
 mod tests;
 
 /// Stable code for the cycle-detection diagnostic.
-///
-/// Distinct from validate's `dependency-cycle` so dashboards can route
-/// the doctor-only structured payload separately from validate's
-/// message-only string.
 pub const CYCLE: &str = "cycle-in-depends-on";
 /// Stable code for the orphan-source-key diagnostic — top-level
 /// `sources:` key declared but unreferenced by any entry.
@@ -167,7 +165,7 @@ pub fn doctor(
     let mut out: Vec<Diagnostic> =
         plan.validate(slices_dir, registry).iter().map(Diagnostic::from_finding).collect();
 
-    out.extend(cycle::detect(&plan.entries));
+    out.extend(detect(&plan.entries));
     out.extend(orphan_source::detect(plan));
     if let (Some(reg), Some(dir)) = (registry, project_dir) {
         out.extend(stale_clone::detect(reg, dir));

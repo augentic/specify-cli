@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use specify_error::Error;
 
 use super::model::{Entry, Lifecycle, Plan, Severity, SourceBinding, Status};
+use crate::change::detect;
 use crate::slice::actions::validate_name;
 
 impl Plan {
@@ -64,8 +65,11 @@ impl Plan {
         self.entries.push(change);
         let errors: Vec<_> =
             self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
-        if let Some(first) = errors.first() {
-            let msg = first.message.clone();
+        let failure_msg = errors
+            .first()
+            .map(|r| r.message.clone())
+            .or_else(|| detect(&self.entries).into_iter().next().map(|d| d.message));
+        if let Some(msg) = failure_msg {
             self.entries.pop();
             return Err(Error::Diag {
                 code: "plan-create-validation-failed",

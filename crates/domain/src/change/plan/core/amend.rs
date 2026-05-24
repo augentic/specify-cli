@@ -3,6 +3,7 @@
 use specify_error::Error;
 
 use super::model::{EntryPatch, Plan, Severity};
+use crate::change::detect;
 
 impl Plan {
     /// Apply `patch` to the entry named `name`. Wholesale-replacement
@@ -58,8 +59,11 @@ impl Plan {
 
         let errors: Vec<_> =
             self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
-        if let Some(first) = errors.first() {
-            let msg = first.message.clone();
+        let failure_msg = errors
+            .first()
+            .map(|r| r.message.clone())
+            .or_else(|| detect(&self.entries).into_iter().next().map(|d| d.message));
+        if let Some(msg) = failure_msg {
             self.entries[idx] = snapshot;
             return Err(Error::Diag {
                 code: "plan-amend-validation-failed",

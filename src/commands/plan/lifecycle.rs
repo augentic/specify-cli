@@ -3,7 +3,8 @@ use std::io::Write;
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_domain::change::{
-    Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, plan_doctor,
+    Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, detect,
+    plan_doctor,
 };
 use specify_domain::config::{ProjectConfig, with_state};
 use specify_domain::registry::Registry;
@@ -109,6 +110,13 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
         let validate_results = plan.validate(Some(&slices_dir), None);
         if validate_results.iter().any(|r| matches!(r.level, Severity::Error)) {
+            return Err(Error::validation_failed(
+                "plan-structural-errors",
+                "plan must be free of structural errors",
+                "run 'specify plan validate' for detail",
+            ));
+        }
+        if !detect(&plan.entries).is_empty() {
             return Err(Error::validation_failed(
                 "plan-structural-errors",
                 "plan must be free of structural errors",

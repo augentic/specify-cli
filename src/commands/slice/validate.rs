@@ -12,7 +12,7 @@ use specify_domain::discovery::Discovery;
 use specify_domain::journal::{Event, EventKind, append_batch};
 use specify_domain::schema::validate_evidence_dir;
 use specify_domain::slice::fusion::{self, FusionIndex};
-use specify_domain::spec::provenance::{self, RequirementTag};
+use specify_domain::spec::provenance::{self, ParsedSpec, RequirementTag};
 use specify_domain::validate::validate_slice;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
@@ -28,11 +28,17 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // malformed Evidence.
     validate_evidence_dir(&slice_dir)?;
 
-    // workflow §Requirement block contract — provenance metadata in
-    // `<slice>/specs/**/*.md`. Absent `spec.md` (e.g. slice still
-    // `refining`) is a valid intermediate state and is silently
-    // skipped.
-    validate_spec_provenance(ctx, &slice_dir, name)?;
+    // Single walk of `<slice>/specs/**/*.md` feeds provenance
+    // validation, fusion-drift REQ-id gathering, and post-pass
+    // synthesis journal emission.
+    let source_keys = resolve_slice_source_keys(ctx, name)?;
+    let (spec_req_ids, synthesis_tags, provenance_summaries) =
+        scan_slice_specs(&slice_dir, &source_keys)?;
+    if !provenance_summaries.is_empty() {
+        return Err(Error::Validation {
+            results: provenance_summaries,
+        });
+    }
 
     // workflow §D4 — when `fusion.yaml` exists, cross-check it against
     // `spec.md` REQ ids and per-source evidence claim ids. Absence
@@ -47,7 +53,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // structural issue before adapter rules surface downstream
     // breakage. Both checks share an error envelope when they
     // both fire so the operator can see every issue in one pass.
-    validate_pre_adapter_gates(ctx, &slice_dir, name)?;
+    validate_pre_adapter_gates(ctx, &slice_dir, name, &spec_req_ids)?;
 
     let report = validate_slice(&slice_dir)?;
     let passed = report.passed;
@@ -72,7 +78,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         // DECISIONS.md — `slice.synthesis.{conflict,divergence,unknown}`
         // emit once per tagged requirement after a successful validate
         // (same posture as `slice.transition.refined` on transition).
-        append_synthesis_journal(ctx, name, &slice_dir)?;
+        append_synthesis_journal(ctx, name, synthesis_tags)?;
         Ok(())
     } else {
         Err(Error::validation_failed(
@@ -83,11 +89,12 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     }
 }
 
-/// Scan every annotated `spec.md` under `<slice>/specs/` and append
-/// one `slice.synthesis.*` journal line per `(requirement-id, tag)`
-/// pair. Skipped when the slice has no tagged requirements.
-fn append_synthesis_journal(ctx: &Ctx, slice_name: &str, slice_dir: &Path) -> Result<()> {
-    let tags = collect_synthesis_tags(slice_dir)?;
+/// Append one `slice.synthesis.*` journal line per `(requirement-id,
+/// tag)` pair gathered during the spec scan. Skipped when the slice
+/// has no tagged requirements.
+fn append_synthesis_journal(
+    ctx: &Ctx, slice_name: &str, tags: Vec<(String, RequirementTag)>,
+) -> Result<()> {
     if tags.is_empty() {
         return Ok(());
     }
@@ -115,29 +122,64 @@ fn append_synthesis_journal(ctx: &Ctx, slice_name: &str, slice_dir: &Path) -> Re
     append_batch(ctx.layout(), &events)
 }
 
-/// Gather tagged requirements across all `*.md` files under
-/// `<slice>/specs/`, in stable path-then-document order.
-fn collect_synthesis_tags(slice_dir: &Path) -> Result<Vec<(String, RequirementTag)>> {
+/// One parsed `spec.md` from the slice specs walk.
+struct ScannedSpec {
+    path: PathBuf,
+    parsed: ParsedSpec,
+}
+
+type ScanSliceSpecsResult =
+    (BTreeSet<String>, Vec<(String, RequirementTag)>, Vec<ValidationSummary>);
+
+/// Walk `<slice>/specs/**/*.md` once, parse each file, and fan out
+/// REQ ids (all files), synthesis tags (annotated files only), and
+/// provenance validation summaries (annotated files only).
+fn scan_slice_specs(
+    slice_dir: &Path, source_keys: &BTreeSet<String>,
+) -> Result<ScanSliceSpecsResult> {
     let specs_dir = slice_dir.join("specs");
     if !specs_dir.is_dir() {
-        return Ok(Vec::new());
+        return Ok((BTreeSet::new(), Vec::new(), Vec::new()));
     }
-    let mut out: Vec<(String, RequirementTag)> = Vec::new();
-    for path in collect_spec_files(&specs_dir)? {
+    let spec_files = collect_spec_files(&specs_dir)?;
+    if spec_files.is_empty() {
+        return Ok((BTreeSet::new(), Vec::new(), Vec::new()));
+    }
+
+    let mut req_ids = BTreeSet::new();
+    let mut synthesis_tags = Vec::new();
+    let mut provenance_summaries = Vec::new();
+
+    for path in spec_files {
         let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
             op: "read",
             path: path.clone(),
             source,
         })?;
-        let parsed = provenance::parse_spec_md(&text);
-        if parsed.is_unannotated() {
+        let scanned = ScannedSpec {
+            path,
+            parsed: provenance::parse_spec_md(&text),
+        };
+
+        for req in &scanned.parsed.requirements {
+            if !req.id.is_empty() {
+                req_ids.insert(req.id.clone());
+            }
+        }
+        if scanned.parsed.is_unannotated() {
             continue;
         }
-        for (id, tag) in parsed.synthesis_tags() {
-            out.push((id.to_string(), tag));
+        for (id, tag) in scanned.parsed.synthesis_tags() {
+            synthesis_tags.push((id.to_string(), tag));
+        }
+        let path_hint = path_hint(&scanned.path, slice_dir);
+        let validation_findings = provenance::validate(&scanned.parsed, source_keys);
+        for f in scanned.parsed.findings.into_iter().chain(validation_findings) {
+            provenance_summaries.push(f.into_summary(&path_hint));
         }
     }
-    Ok(out)
+
+    Ok((req_ids, synthesis_tags, provenance_summaries))
 }
 
 /// Bundle the three pre-adapter gates that fire on a single slice:
@@ -155,9 +197,11 @@ fn collect_synthesis_tags(slice_dir: &Path) -> Result<Vec<(String, RequirementTa
 /// All three checks can fail independently; we collect every finding
 /// into a single [`Error::Validation`] so the operator sees the
 /// full surface in one pass instead of one error per re-run.
-fn validate_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<()> {
+fn validate_pre_adapter_gates(
+    ctx: &Ctx, slice_dir: &Path, name: &str, spec_req_ids: &BTreeSet<String>,
+) -> Result<()> {
     let mut findings: Vec<ValidationSummary> = Vec::new();
-    findings.extend(collect_fusion_drift_findings(slice_dir)?);
+    findings.extend(collect_fusion_drift_findings(slice_dir, spec_req_ids)?);
     findings.extend(collect_authority_override_orphan_findings(ctx, name)?);
     findings.extend(collect_discovery_alias_collision_findings(ctx)?);
     if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
@@ -194,15 +238,16 @@ fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<Validatio
 /// Absence of `fusion.yaml` is a legal state — older slices and
 /// `refining` slices that haven't yet been driven through
 /// `/spec:refine` skip the check silently.
-fn collect_fusion_drift_findings(slice_dir: &Path) -> Result<Vec<ValidationSummary>> {
+fn collect_fusion_drift_findings(
+    slice_dir: &Path, spec_req_ids: &BTreeSet<String>,
+) -> Result<Vec<ValidationSummary>> {
     let index_path = slice_dir.join("fusion.yaml");
     if !index_path.is_file() {
         return Ok(Vec::new());
     }
     let fusion_index = FusionIndex::load(&index_path)?;
-    let spec_req_ids = collect_spec_req_ids(slice_dir)?;
     let evidence = fusion::collect_evidence_claim_ids(slice_dir)?;
-    let drift = fusion_index.detect_drift(&spec_req_ids, &evidence);
+    let drift = fusion_index.detect_drift(spec_req_ids, &evidence);
     Ok(drift.into_iter().map(fusion::FusionDrift::into_summary).collect())
 }
 
@@ -236,73 +281,6 @@ fn collect_authority_override_orphan_findings(
             detail: Some(f.message),
         })
         .collect())
-}
-
-/// Gather every `REQ-NNN` id that appears in any `*.md` file under
-/// `<slice>/specs/`. Multiple spec files contribute to one fusion
-/// index per slice, so the drift gate joins all of them.
-fn collect_spec_req_ids(slice_dir: &Path) -> Result<BTreeSet<String>> {
-    let mut ids: BTreeSet<String> = BTreeSet::new();
-    let specs_dir = slice_dir.join("specs");
-    if !specs_dir.is_dir() {
-        return Ok(ids);
-    }
-    for path in collect_spec_files(&specs_dir)? {
-        let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
-            op: "read",
-            path: path.clone(),
-            source,
-        })?;
-        let parsed = provenance::parse_spec_md(&text);
-        for req in parsed.requirements {
-            if !req.id.is_empty() {
-                ids.insert(req.id);
-            }
-        }
-    }
-    Ok(ids)
-}
-
-/// Walk `<slice>/specs/**/*.md`, parse the workflow §Requirement block
-/// contract metadata, and surface every failure as a single
-/// [`Error::Validation`] payload so the operator can see all of them in
-/// one pass. The plan-level source bindings for the slice (when
-/// `plan.yaml` is present) feed the cross-validation rule
-/// `spec.requirement-source-key-undefined`; absent plan, the
-/// cross-validation is skipped and only structural rules run.
-fn validate_spec_provenance(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<()> {
-    let specs_dir = slice_dir.join("specs");
-    if !specs_dir.is_dir() {
-        return Ok(());
-    }
-    let spec_files = collect_spec_files(&specs_dir)?;
-    if spec_files.is_empty() {
-        return Ok(());
-    }
-    let source_keys = resolve_slice_source_keys(ctx, name)?;
-
-    let mut summaries: Vec<ValidationSummary> = Vec::new();
-    for path in spec_files {
-        let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
-            op: "read",
-            path: path.clone(),
-            source,
-        })?;
-        let parsed = provenance::parse_spec_md(&text);
-        let path_hint = path_hint(&path, slice_dir);
-        if parsed.is_unannotated() {
-            // pre-2.0 (or pre-synthesis) state — no provenance
-            // lines anywhere in the file. Skip silently per the
-            // workflow §Workflow vocabulary `refining` lifecycle.
-            continue;
-        }
-        let validation_findings = provenance::validate(&parsed, &source_keys);
-        for f in parsed.findings.into_iter().chain(validation_findings) {
-            summaries.push(f.into_summary(&path_hint));
-        }
-    }
-
-    if summaries.is_empty() { Ok(()) } else { Err(Error::Validation { results: summaries }) }
 }
 
 /// Path the operator sees in each finding's detail. Anchored at the

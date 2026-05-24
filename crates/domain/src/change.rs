@@ -14,6 +14,6 @@ pub use plan::core::{
 };
 pub use plan::doctor::{
     CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,
-    DiagnosticPayload as PlanDoctorPayload, ORPHAN_SOURCE, STALE_CLONE, StaleReason,
+    DiagnosticPayload as PlanDoctorPayload, ORPHAN_SOURCE, STALE_CLONE, StaleReason, detect,
     doctor as plan_doctor,
 };

@@ -5,7 +5,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
-use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::DiGraph;
 
 use super::model::{Entry, Finding, Plan, Severity, Status};
@@ -20,7 +19,7 @@ impl Plan {
     /// checks (`project-not-in-registry`, `project-missing-multi-repo`).
     ///
     /// Findings are accumulated — no check short-circuits another. Order
-    /// is structural checks first (duplicate names, cycles, unknown
+    /// is structural checks first (duplicate names, unknown
     /// depends-on / sources, multiple in-progress) followed by
     /// consistency checks against `slices_dir` when provided.
     ///
@@ -32,7 +31,6 @@ impl Plan {
     pub fn validate(&self, slices_dir: Option<&Path>, registry: Option<&Registry>) -> Vec<Finding> {
         let mut results = Vec::new();
         results.extend(duplicate_names(&self.entries));
-        results.extend(detect_cycles(&self.entries));
         results.extend(check_unknown_depends_on(&self.entries));
         results.extend(check_unknown_sources(self));
         results.extend(check_single_in_progress(&self.entries));
@@ -87,48 +85,6 @@ pub fn entry_dependency_graph(entries: &[Entry]) -> DiGraph<&str, ()> {
         }
     }
     graph
-}
-
-/// Build a `depends_on -> self` DAG and emit one `dependency-cycle`
-/// result per cycle (including self-edges). Uses `petgraph::toposort`
-/// to detect the existence of a cycle, then `tarjan_scc` to enumerate
-/// every strongly-connected component larger than one node plus any
-/// self-edges (which are their own SCC of size 1 with a loop).
-fn detect_cycles(changes: &[Entry]) -> Vec<Finding> {
-    let graph = entry_dependency_graph(changes);
-    let has_self_loop = graph.node_indices().any(|n| graph.find_edge(n, n).is_some());
-
-    if toposort(&graph, None).is_ok() && !has_self_loop {
-        return Vec::new();
-    }
-
-    let mut out = Vec::new();
-    for scc in tarjan_scc(&graph) {
-        if scc.len() > 1 {
-            let mut names: Vec<&str> = scc.iter().map(|&n| graph[n]).collect();
-            names.sort_unstable();
-            let mut path = names.clone();
-            path.push(names[0]);
-            out.push(Finding {
-                level: Severity::Error,
-                code: "dependency-cycle",
-                message: format!("cycle: {}", path.join(" → ")),
-                entry: None,
-            });
-        } else if scc.len() == 1 {
-            let node = scc[0];
-            if graph.find_edge(node, node).is_some() {
-                let name = graph[node];
-                out.push(Finding {
-                    level: Severity::Error,
-                    code: "dependency-cycle",
-                    message: format!("cycle: {name} → {name}"),
-                    entry: None,
-                });
-            }
-        }
-    }
-    out
 }
 
 fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Finding> {

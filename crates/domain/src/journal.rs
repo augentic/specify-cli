@@ -493,46 +493,92 @@ mod tests {
     }
 
     #[test]
-    fn slice_extract_cache_hit_wire_shape() {
+    fn event_wire_shapes_match_contract() {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
-        let event = Event::new(
-            test_timestamp("2026-05-22T13:15:00Z"),
-            EventKind::SliceExtractCacheHit {
-                slice_name: "identity-user-registration".to_string(),
-                source_key: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:cafef00d".to_string(),
-            },
-        );
-        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
-        let lines = read_lines(layout);
-        assert_eq!(lines.len(), 1);
-        assert_eq!(
-            lines[0],
-            r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source-key":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#
-        );
-    }
+        let rows: &[(EventKind, &[&str])] = &[
+            (
+                EventKind::SliceExtractCacheHit {
+                    slice_name: "identity-user-registration".to_string(),
+                    source_key: "runtime".to_string(),
+                    adapter: "captures".to_string(),
+                    fingerprint: "sha256:cafef00d".to_string(),
+                },
+                &[
+                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source-key":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
+                ],
+            ),
+            (
+                EventKind::SliceExtractCacheMiss {
+                    slice_name: "identity-user-registration".to_string(),
+                    source_key: "runtime".to_string(),
+                    adapter: "captures".to_string(),
+                    fingerprint: "sha256:beef".to_string(),
+                    reason: CacheMissReason::AdapterVersionChanged,
+                },
+                &[
+                    r#""event":"slice.extract.cache-miss""#,
+                    r#""reason":"adapter-version-changed""#,
+                    r#""source-key":"runtime""#,
+                ],
+            ),
+            (
+                EventKind::SliceFusionWritten {
+                    slice_name: "identity-user-registration".to_string(),
+                    generator: "specify@2.1.0".to_string(),
+                    requirement_count: 7,
+                },
+                &[
+                    r#""event":"slice.fusion.written""#,
+                    r#""generator":"specify@2.1.0""#,
+                    r#""requirement-count":7"#,
+                ],
+            ),
+            (
+                EventKind::SliceReplayCompleted {
+                    slice_name: "identity-user-registration".to_string(),
+                    runner: "omnia-target@1.4 (cargo nextest)".to_string(),
+                    passed: 47,
+                    failed: 0,
+                    skipped: 0,
+                },
+                &[
+                    r#""event":"slice.replay.completed""#,
+                    r#""passed":47"#,
+                    r#""failed":0"#,
+                    r#""skipped":0"#,
+                    r#""runner":"omnia-target@1.4 (cargo nextest)""#,
+                ],
+            ),
+            (
+                EventKind::PlanAmendAuthorityOverride {
+                    plan_name: "identity-revamp".to_string(),
+                    slice_name: "identity-user-registration".to_string(),
+                    action: AuthorityOverrideAction::Set,
+                    claim_kind: Some("criterion".to_string()),
+                    source_key: Some("runtime".to_string()),
+                },
+                &[
+                    r#""event":"plan.amend.authority-override""#,
+                    r#""action":"set""#,
+                    r#""claim-kind":"criterion""#,
+                    r#""source-key":"runtime""#,
+                ],
+            ),
+        ];
 
-    #[test]
-    fn slice_extract_cache_miss_wire_shape() {
-        let dir = tempdir().expect("tempdir");
-        let layout = Layout::new(dir.path());
-        let event = Event::new(
-            test_timestamp("2026-05-22T13:15:01Z"),
-            EventKind::SliceExtractCacheMiss {
-                slice_name: "identity-user-registration".to_string(),
-                source_key: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:beef".to_string(),
-                reason: CacheMissReason::AdapterVersionChanged,
-            },
-        );
-        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
-        let line = read_lines(layout).pop().expect("at least one line");
-        assert!(line.contains(r#""event":"slice.extract.cache-miss""#));
-        assert!(line.contains(r#""reason":"adapter-version-changed""#));
-        assert!(line.contains(r#""source-key":"runtime""#));
+        for (kind, required) in rows {
+            let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
+            append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
+            let line = read_lines(layout).pop().expect("at least one line");
+            if required.len() == 1 && required[0].starts_with('{') {
+                assert_eq!(line, required[0]);
+            } else {
+                for needle in *required {
+                    assert!(line.contains(needle), "line must contain `{needle}`, got:\n{line}");
+                }
+            }
+        }
     }
 
     #[test]
@@ -547,70 +593,6 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_string(&variant).expect("serialise"), format!("\"{wire}\""));
         }
-    }
-
-    #[test]
-    fn slice_fusion_written_wire_shape() {
-        let dir = tempdir().expect("tempdir");
-        let layout = Layout::new(dir.path());
-        let event = Event::new(
-            test_timestamp("2026-05-22T13:16:00Z"),
-            EventKind::SliceFusionWritten {
-                slice_name: "identity-user-registration".to_string(),
-                generator: "specify@2.1.0".to_string(),
-                requirement_count: 7,
-            },
-        );
-        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
-        let line = read_lines(layout).pop().expect("line");
-        assert!(line.contains(r#""event":"slice.fusion.written""#));
-        assert!(line.contains(r#""generator":"specify@2.1.0""#));
-        assert!(line.contains(r#""requirement-count":7"#));
-    }
-
-    #[test]
-    fn slice_fixture_replay_completed_wire_shape() {
-        let dir = tempdir().expect("tempdir");
-        let layout = Layout::new(dir.path());
-        let event = Event::new(
-            test_timestamp("2026-05-22T13:18:42Z"),
-            EventKind::SliceReplayCompleted {
-                slice_name: "identity-user-registration".to_string(),
-                runner: "omnia-target@1.4 (cargo nextest)".to_string(),
-                passed: 47,
-                failed: 0,
-                skipped: 0,
-            },
-        );
-        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
-        let line = read_lines(layout).pop().expect("line");
-        assert!(line.contains(r#""event":"slice.replay.completed""#));
-        assert!(line.contains(r#""passed":47"#));
-        assert!(line.contains(r#""failed":0"#));
-        assert!(line.contains(r#""skipped":0"#));
-        assert!(line.contains(r#""runner":"omnia-target@1.4 (cargo nextest)""#));
-    }
-
-    #[test]
-    fn plan_amend_authority_override_wire_shape() {
-        let dir = tempdir().expect("tempdir");
-        let layout = Layout::new(dir.path());
-        let event = Event::new(
-            test_timestamp("2026-05-22T13:20:00Z"),
-            EventKind::PlanAmendAuthorityOverride {
-                plan_name: "identity-revamp".to_string(),
-                slice_name: "identity-user-registration".to_string(),
-                action: AuthorityOverrideAction::Set,
-                claim_kind: Some("criterion".to_string()),
-                source_key: Some("runtime".to_string()),
-            },
-        );
-        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
-        let line = read_lines(layout).pop().expect("line");
-        assert!(line.contains(r#""event":"plan.amend.authority-override""#));
-        assert!(line.contains(r#""action":"set""#));
-        assert!(line.contains(r#""claim-kind":"criterion""#));
-        assert!(line.contains(r#""source-key":"runtime""#));
     }
 
     #[test]

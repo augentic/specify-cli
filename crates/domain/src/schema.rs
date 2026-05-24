@@ -14,6 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use jsonschema::Validator;
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
@@ -50,46 +51,29 @@ pub const fn fusion_schema_source() -> &'static str {
 /// unreachable in production — they exist to surface a corrupted
 /// binary).
 pub fn validate_plan(plan: &Plan) -> Result<()> {
-    let instance = serde_json::to_value(plan).map_err(|err| Error::Diag {
-        code: "plan-schema-serialise",
-        detail: format!("failed to serialise plan to JSON for schema validation: {err}"),
-    })?;
-    let results: Vec<ValidationSummary> = validate_value(
-        &instance,
+    validate_serialisable(
+        plan,
         PLAN_JSON_SCHEMA,
         "plan-schema",
         "plan.yaml conforms to schemas/plan/plan.schema.json",
+        "plan-schema-serialise",
+        "plan",
     )
-    .into_iter()
-    .filter(|s| s.status == ValidationStatus::Fail)
-    .collect();
-    if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
 }
 
-/// Validate every `*.yaml` file under `<slice_dir>/evidence/` against
-/// the embedded `schemas/evidence.schema.json`.
+/// Sorted paths to `.yaml`/`.yml` files under `<slice_dir>/evidence/`.
 ///
-/// `slice_dir` is the directory typically at
-/// `.specify/slices/<name>/`. The evidence subdirectory is optional —
-/// returning `Ok(())` when it is absent matches the workflow §Extraction
-/// reliability rule that an empty `claims: []` (or no Evidence at all
-/// before extract runs) is valid. The walk is non-recursive: only
-/// direct children of `evidence/` whose extension is `yaml` or `yml`
-/// are considered.
-///
-/// All findings are aggregated and returned in a single
-/// [`Error::Validation`] so the caller sees every malformed file in
-/// one pass.
+/// The walk is non-recursive: only direct children of `evidence/` whose
+/// extension is `yaml` or `yml` are considered. Returns an empty
+/// vector when `evidence/` is missing or not a directory.
 ///
 /// # Errors
 ///
 /// - [`Error::Filesystem`] if `evidence/` exists but cannot be read.
-/// - [`Error::Validation`] if any Evidence file fails YAML parse or
-///   schema validation.
-pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
+pub fn evidence_yaml_paths(slice_dir: &Path) -> Result<Vec<PathBuf>> {
     let evidence_dir = slice_dir.join("evidence");
     if !evidence_dir.is_dir() {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     let entries = fs::read_dir(&evidence_dir).map_err(|source| Error::Filesystem {
@@ -115,6 +99,29 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
         }
     }
     paths.sort();
+    Ok(paths)
+}
+
+/// Validate every `*.yaml` file under `<slice_dir>/evidence/` against
+/// the embedded `schemas/evidence.schema.json`.
+///
+/// `slice_dir` is the directory typically at
+/// `.specify/slices/<name>/`. The evidence subdirectory is optional —
+/// returning `Ok(())` when it is absent matches the workflow §Extraction
+/// reliability rule that an empty `claims: []` (or no Evidence at all
+/// before extract runs) is valid.
+///
+/// All findings are aggregated and returned in a single
+/// [`Error::Validation`] so the caller sees every malformed file in
+/// one pass.
+///
+/// # Errors
+///
+/// - [`Error::Filesystem`] if `evidence/` exists but cannot be read.
+/// - [`Error::Validation`] if any Evidence file fails YAML parse or
+///   schema validation.
+pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
+    let paths = evidence_yaml_paths(slice_dir)?;
 
     let mut summaries: Vec<ValidationSummary> = Vec::new();
     for path in &paths {
@@ -158,6 +165,35 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
         format!("{}: {}", path.display(), detail)
     });
     summary
+}
+
+/// Serialise `value` to JSON and validate against `schema_source`.
+///
+/// Returns `Ok(())` on a clean validation; otherwise an
+/// [`Error::Validation`] whose [`ValidationSummary`] entries carry
+/// `rule_id` and `rule`.
+///
+/// # Errors
+///
+/// - [`Error::Diag`] when `value` is not JSON-serialisable.
+/// - [`Error::Validation`] when the instance fails the schema.
+pub fn validate_serialisable<T: Serialize>(
+    value: &T, schema_source: &str, rule_id: &str, rule: &str, serialise_code: &'static str,
+    serialise_label: &str,
+) -> Result<(), Error> {
+    let instance = serde_json::to_value(value).map_err(|err| Error::Diag {
+        code: serialise_code,
+        detail: format!(
+            "failed to serialise {serialise_label} to JSON for schema validation: {err}"
+        ),
+    })?;
+    let mut results = Vec::new();
+    for summary in validate_value(&instance, schema_source, rule_id, rule) {
+        if summary.status == ValidationStatus::Fail {
+            results.push(summary);
+        }
+    }
+    if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
 }
 
 /// Validate `instance` against the embedded JSON Schema `schema_source`.

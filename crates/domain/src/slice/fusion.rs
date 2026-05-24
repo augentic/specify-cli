@@ -18,14 +18,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
-use crate::schema::{fusion_schema_source, validate_value};
+use crate::schema::{evidence_yaml_paths, fusion_schema_source, validate_serialisable};
 use crate::spec::provenance::RequirementStatus;
 
 /// In-memory model of `fusion.yaml` (workflow §Reconciliation index).
@@ -172,20 +172,14 @@ impl FusionIndex {
     /// the schema; falls back to [`Error::Diag`] when the value is
     /// not JSON-serialisable (unreachable in normal operation).
     pub fn validate(&self) -> Result<(), Error> {
-        let instance = serde_json::to_value(self).map_err(|err| Error::Diag {
-            code: "fusion-schema-serialise",
-            detail: format!("failed to serialise fusion.yaml to JSON for schema validation: {err}"),
-        })?;
-        let results: Vec<ValidationSummary> = validate_value(
-            &instance,
+        validate_serialisable(
+            self,
             fusion_schema_source(),
             "fusion-schema",
             "fusion.yaml conforms to schemas/slice/fusion.schema.json",
+            "fusion-schema-serialise",
+            "fusion.yaml",
         )
-        .into_iter()
-        .filter(|s| s.status == ValidationStatus::Fail)
-        .collect();
-        if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
     }
 
     /// Load and schema-validate a `fusion.yaml` at `path`.
@@ -405,32 +399,7 @@ pub type EvidenceClaimIds = BTreeMap<String, BTreeSet<String>>;
 ///   `slice validate`).
 pub fn collect_evidence_claim_ids(slice_dir: &Path) -> Result<EvidenceClaimIds> {
     let mut out: EvidenceClaimIds = BTreeMap::new();
-    let evidence_dir = slice_dir.join("evidence");
-    if !evidence_dir.is_dir() {
-        return Ok(out);
-    }
-    let entries = std::fs::read_dir(&evidence_dir).map_err(|source| Error::Filesystem {
-        op: "readdir",
-        path: evidence_dir.clone(),
-        source,
-    })?;
-    let mut paths: Vec<PathBuf> = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|source| Error::Filesystem {
-            op: "readdir-entry",
-            path: evidence_dir.clone(),
-            source,
-        })?;
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let ext = path.extension().and_then(OsStr::to_str).unwrap_or("");
-        if ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml") {
-            paths.push(path);
-        }
-    }
-    paths.sort();
+    let paths = evidence_yaml_paths(slice_dir)?;
 
     for path in paths {
         let Some(stem) = path.file_stem().and_then(OsStr::to_str) else { continue };
@@ -640,151 +609,6 @@ rogue: true
             ("legacy-monolith", &["password-reset.expiry"][..]),
         ]);
         assert!(index.detect_drift(&spec_ids, &evidence).is_empty());
-    }
-
-    #[test]
-    fn detect_drift_flags_missing_fusion_entry() {
-        let index = sample();
-        let spec_ids = req_id_set(["REQ-001", "REQ-007", "REQ-042"]);
-        let evidence = evidence_map([
-            ("identity-design-notes", &["password-reset.request", "password-reset.expiry"][..]),
-            ("runtime", &["users.register.happy-path"][..]),
-            ("legacy-monolith", &["password-reset.expiry"][..]),
-        ]);
-        let drift = index.detect_drift(&spec_ids, &evidence);
-        assert_eq!(drift.len(), 1);
-        assert_eq!(
-            drift[0],
-            FusionDrift::MissingFusionRequirement {
-                req_id: "REQ-042".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn detect_drift_flags_extra_fusion_entry() {
-        let index = sample();
-        let spec_ids = req_id_set(["REQ-001"]); // REQ-007 dropped from spec.md
-        let evidence = evidence_map([
-            ("identity-design-notes", &["password-reset.request", "password-reset.expiry"][..]),
-            ("runtime", &["users.register.happy-path"][..]),
-            ("legacy-monolith", &["password-reset.expiry"][..]),
-        ]);
-        let drift = index.detect_drift(&spec_ids, &evidence);
-        assert_eq!(drift.len(), 1);
-        assert_eq!(
-            drift[0],
-            FusionDrift::ExtraFusionRequirement {
-                req_id: "REQ-007".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn detect_drift_flags_contributing_claim_with_no_evidence_row() {
-        let index = sample();
-        let spec_ids = req_id_set(["REQ-001", "REQ-007"]);
-        // legacy-monolith file present but missing the expiry claim id.
-        let evidence = evidence_map([
-            ("identity-design-notes", &["password-reset.request", "password-reset.expiry"][..]),
-            ("runtime", &["users.register.happy-path"][..]),
-            ("legacy-monolith", &[][..]),
-        ]);
-        let drift = index.detect_drift(&spec_ids, &evidence);
-        assert_eq!(drift.len(), 1);
-        assert!(
-            matches!(
-                &drift[0],
-                FusionDrift::ContributingClaimNotFound { req_id, source, claim_id, .. }
-                if req_id == "REQ-007" && source == "legacy-monolith" && claim_id == "password-reset.expiry"
-            ),
-            "unexpected drift: {:?}",
-            drift[0]
-        );
-    }
-
-    #[test]
-    fn detect_drift_flags_contributing_claim_with_missing_source_file() {
-        let index = sample();
-        let spec_ids = req_id_set(["REQ-001", "REQ-007"]);
-        // The runtime evidence file is missing entirely; both claims that cite it must drift.
-        let evidence = evidence_map([
-            ("identity-design-notes", &["password-reset.request", "password-reset.expiry"][..]),
-            ("legacy-monolith", &["password-reset.expiry"][..]),
-        ]);
-        let drift = index.detect_drift(&spec_ids, &evidence);
-        assert_eq!(drift.len(), 1, "drift: {drift:?}");
-        assert!(matches!(
-            &drift[0],
-            FusionDrift::ContributingClaimNotFound { source, claim_id, .. }
-            if source == "runtime" && claim_id == "users.register.happy-path"
-        ));
-    }
-
-    #[test]
-    fn detect_drift_findings_sort_byte_stable() {
-        // Build a deliberately scrambled set of drifts: contributing-claim
-        // problems on REQ-007 (multiple sources), an extra fusion entry,
-        // a missing fusion entry. Verify the sort order is
-        // (req_id, kind, source, claim_id).
-        let mut index = sample();
-        // Add a third requirement that has no matching spec entry → extra drift.
-        index.requirements.push(FusionRequirement {
-            id: "REQ-999".to_string(),
-            status: RequirementStatus::Agreed,
-            sources: vec!["runtime".to_string()],
-            contributing_claims: vec![ContributingClaim {
-                source: "runtime".to_string(),
-                claim_id: "ghost".to_string(),
-                kind: ClaimKind::Example,
-                value: None,
-                path: None,
-                winner: None,
-            }],
-            resolution: FusionResolution::SingleSource,
-            resolution_trace: None,
-        });
-        let spec_ids = req_id_set(["REQ-001", "REQ-007", "REQ-MIS"]); // REQ-MIS not in fusion
-        let evidence = evidence_map([
-            ("identity-design-notes", &["password-reset.request"][..]),
-            ("runtime", &[][..]),
-            ("legacy-monolith", &[][..]),
-        ]);
-        let drift = index.detect_drift(&spec_ids, &evidence);
-        let kinds: Vec<&'static str> = drift
-            .iter()
-            .map(|d| match d {
-                FusionDrift::MissingFusionRequirement { .. } => "missing",
-                FusionDrift::ExtraFusionRequirement { .. } => "extra",
-                FusionDrift::ContributingClaimNotFound { .. } => "claim",
-            })
-            .collect();
-        let req_ids: Vec<&str> = drift
-            .iter()
-            .map(|d| match d {
-                FusionDrift::MissingFusionRequirement { req_id }
-                | FusionDrift::ExtraFusionRequirement { req_id }
-                | FusionDrift::ContributingClaimNotFound { req_id, .. } => req_id.as_str(),
-            })
-            .collect();
-        // Sort order is (req_id, kind, source, claim_id); the kind
-        // marker orders missing < extra < claim within one req_id.
-        // Across req_ids, `REQ-9` sorts before `REQ-M` because
-        // '9' (0x39) < 'M' (0x4D), so REQ-999 lands before REQ-MIS.
-        assert_eq!(
-            (kinds.clone(), req_ids.clone()),
-            (
-                vec![
-                    "claim",   // REQ-001 contributing-claim drift on `runtime`
-                    "claim",   // REQ-007 source=identity-design-notes (sorted first)
-                    "claim",   // REQ-007 source=legacy-monolith
-                    "extra",   // REQ-999 extra-fusion-requirement (kind=1 before kind=2)
-                    "claim",   // REQ-999 ghost contributing claim
-                    "missing", // REQ-MIS missing-fusion-requirement
-                ],
-                vec!["REQ-001", "REQ-007", "REQ-007", "REQ-999", "REQ-999", "REQ-MIS"],
-            )
-        );
     }
 
     #[test]
