@@ -3,8 +3,12 @@
     reason = "Plan dispatcher passes through clap-shaped argument tuples."
 )]
 
+mod add;
+mod amend;
+mod args;
 pub mod cli;
 mod create;
+mod entry;
 mod lifecycle;
 
 use std::path::{Path, PathBuf};
@@ -40,7 +44,7 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             target,
             context,
             authority_override,
-        } => create::add(
+        } => add::add(
             ctx,
             &name,
             depends_on,
@@ -67,7 +71,7 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             clear_authority_overrides,
             add_alias,
             remove_alias,
-        } => create::amend(
+        } => amend::amend(
             ctx,
             name,
             depends_on,

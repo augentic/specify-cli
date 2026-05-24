@@ -4,6 +4,7 @@
 
 pub mod amend;
 pub mod archive;
+pub mod authority_override;
 pub mod create;
 pub mod io;
 pub mod model;
@@ -11,6 +12,10 @@ pub mod next;
 pub mod transitions;
 pub mod validate;
 
+pub use authority_override::{
+    emit_seed_events as emit_authority_override_seed_events, entry_mut, mutate_authority_overrides,
+    refuse_orphan_authority_overrides, unknown_slice_err,
+};
 pub use model::{
     Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, Severity,
     SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
