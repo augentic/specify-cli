@@ -469,14 +469,47 @@ fn locate_axis(
         }
     };
     // Cross-axis uniqueness invariant — see DECISIONS.md
-    // §"Adapter name uniqueness". A name that also resolves on the
-    // opposite axis is rejected here so every loader entry point
-    // (resolve / locate / public callers) hits the same gate.
-    if let Some(sibling) = sibling_manifest_path(axis.opposite(), name, project_dir) {
-        return Err(axis_collision_error(name, axis, location.path(), &sibling));
-    }
+    // §"Adapter name uniqueness". The probe is process-memoised
+    // (per `(project_dir, axis, name)`) so the per-resolve hot path
+    // pays for the FS stat exactly once per session. `init` /
+    // `init --hub` and the manifest-cache write boundary both call
+    // [`check_axis_unique_for_name`] eagerly, so steady-state
+    // resolves usually hit the memo on first reach.
+    check_axis_unique_for_name_memo(axis, name, project_dir, location.path())?;
     let path = location.path().clone();
     Ok((path, location))
+}
+
+/// Per-session memo for the cross-axis uniqueness probe. Keyed by
+/// `(project_dir, axis, name)` so a re-resolve of the same adapter
+/// in the same process avoids re-walking `adapters/{sources,targets}/`
+/// and the matching cache mirrors. Only "verified clean" pairs are
+/// stored; collisions surface every time so callers always observe
+/// the diagnostic until the operator fixes the manifest tree.
+fn check_axis_unique_for_name_memo(
+    axis: Axis, name: &str, project_dir: &Path, located_path: &Path,
+) -> Result<(), Error> {
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+
+    type Memo = Mutex<HashSet<(PathBuf, Axis, String)>>;
+    static VERIFIED: OnceLock<Memo> = OnceLock::new();
+
+    let key = (project_dir.to_path_buf(), axis, name.to_string());
+    if let Ok(guard) = VERIFIED.get_or_init(|| Mutex::new(HashSet::new())).lock()
+        && guard.contains(&key)
+    {
+        return Ok(());
+    }
+
+    if let Some(sibling) = sibling_manifest_path(axis.opposite(), name, project_dir) {
+        return Err(axis_collision_error(name, axis, located_path, &sibling));
+    }
+
+    if let Ok(mut guard) = VERIFIED.get_or_init(|| Mutex::new(HashSet::new())).lock() {
+        guard.insert(key);
+    }
+    Ok(())
 }
 
 /// Probe the (axis, name) pair for an `adapter.yaml` under both the

@@ -522,18 +522,23 @@ Adapter names are unique across axes — a name is declared under
 `adapters/sources/<name>/` xor `adapters/targets/<name>/`, never both
 (and the same applies to their
 `.specify/.cache/manifests/{sources,targets}/<name>/` manifest-cache
-mirrors). Enforced at `specify init` time (inside
+mirrors). Eagerly enforced at `specify init` time (inside
 `crates/domain/src/init/cache.rs::cache_adapter`, before the target
-cache directory is rewritten) and at `*Adapter::resolve` /
-`*Adapter::locate` time (inside
-`crates/domain/src/adapter/core.rs::locate_axis`; the public
+cache directory is rewritten) and at `*Adapter::resolve` time. The
+resolve-time probe is process-memoised per `(project_dir, axis, name)`
+in `crates/domain/src/adapter/core.rs::check_axis_unique_for_name_memo`,
+so a re-resolve of the same adapter in the same session avoids
+re-walking `adapters/{sources,targets}/` and the matching cache
+mirrors — operators see the diagnostic on first reach but pay no FS
+stat cost on every subsequent resolve. The public
 `check_axis_unique_for_name(axis, name, project_dir)` helper is the
 one-sided variant `init` calls before the side it is about to
-install exists on disk). Collisions surface as
-`Error::Validation` with the kebab-case discriminant
-`adapter-name-axis-collision`; the wire body names both the axis the
-loader was asked for and the colliding sibling axis so operators can
-rename or delete one side without grepping the manifest tree.
+install exists on disk; it is unmemoised because each `init` is the
+once-per-install boundary. Collisions surface as `Error::Validation`
+with the kebab-case discriminant `adapter-name-axis-collision`; the
+wire body names both the axis the loader was asked for and the
+colliding sibling axis so operators can rename or delete one side
+without grepping the manifest tree.
 
 ## Cache layout
 
