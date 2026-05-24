@@ -10,18 +10,18 @@ use serde_json::Value;
 use crate::validate::error::VectisError;
 
 /// Embedded `tokens.schema.json`. Vendored from the upstream
-/// `capabilities/vectis/tokens.schema.json` in the `specify` repo; the
+/// `adapters/vectis/tokens.schema.json` in the `specify` repo; the
 /// upstream is canonical and any edit there must be mirrored here
 /// byte-for-byte.
 const TOKENS_SCHEMA_SOURCE: &str = include_str!("../../../embedded/tokens.schema.json");
 
 /// Embedded `assets.schema.json`. Vendored from the upstream
-/// `capabilities/vectis/assets.schema.json` in the `specify` repo;
+/// `adapters/vectis/assets.schema.json` in the `specify` repo;
 /// same byte-identity discipline as the tokens copy.
 const ASSETS_SCHEMA_SOURCE: &str = include_str!("../../../embedded/assets.schema.json");
 
 /// Embedded `composition.schema.json`. Vendored from the upstream
-/// `capabilities/vectis/composition.schema.json` in the `specify`
+/// `adapters/vectis/composition.schema.json` in the `specify`
 /// repo. Shared between `layout` mode (unwired-subset runtime) and
 /// `composition` mode (full lifecycle runtime); same byte-identity
 /// discipline as the tokens / assets copies.

@@ -432,3 +432,120 @@ assets:
         "expected at least one schema error for `Bad-Id`: {envelope}"
     );
 }
+
+/// A vector entry with both `variant_of` and `usage_hint` validates
+/// without errors.
+#[test]
+fn assets_variant_of_and_usage_hint_validate_cleanly() {
+    let yaml = r#"version: 1
+assets:
+  nav-lists-active:
+    kind: vector
+    role: icon
+    variant_of: nav-lists
+    usage_hint: "Outlined shapes with faint circular background halo"
+    source: assets/nav-lists-active.svg
+"#;
+    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/nav-lists-active.svg"]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "variant_of + usage_hint should validate cleanly: {envelope}"
+    );
+}
+
+/// A `variant_of` value that violates the kebab-case pattern is
+/// rejected by the schema.
+#[test]
+fn assets_variant_of_pattern_violation_is_a_schema_error() {
+    let yaml = r#"version: 1
+assets:
+  nav-lists-active:
+    kind: vector
+    role: icon
+    variant_of: Nav-Lists
+    source: assets/nav-lists-active.svg
+"#;
+    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/nav-lists-active.svg"]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        !errors_array(&envelope).is_empty(),
+        "expected schema error for non-kebab variant_of `Nav-Lists`: {envelope}"
+    );
+}
+
+/// All three entry kinds (raster, vector, symbol) accept `variant_of`
+/// and `usage_hint`. A single fixture with one of each validates
+/// cleanly.
+#[test]
+fn assets_variant_of_on_each_entry_kind() {
+    let yaml = r#"version: 1
+assets:
+  hero-active:
+    kind: raster
+    role: illustration
+    variant_of: hero
+    usage_hint: "Active state hero illustration"
+    sources:
+      ios:
+        1x: assets/hero-active.png
+
+  logo-active:
+    kind: vector
+    role: icon
+    variant_of: logo
+    usage_hint: "Active state logo"
+    source: assets/logo-active.svg
+
+  gear-active:
+    kind: symbol
+    role: icon
+    variant_of: gear
+    usage_hint: "Active state gear icon"
+    symbols:
+      ios: gearshape.fill
+"#;
+    let files = ["assets/hero-active.png", "assets/logo-active.svg"];
+    let (_tmp, assets_path) = write_assets_project(yaml, &files);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "variant_of on all three entry kinds should validate cleanly: {envelope}"
+    );
+}
+
+/// A `usage_hint` without `variant_of` is schema-valid (the fields
+/// are independently optional).
+#[test]
+fn assets_usage_hint_alone_validates_cleanly() {
+    let yaml = r#"version: 1
+assets:
+  brand-logo:
+    kind: vector
+    role: illustration
+    usage_hint: "Primary brand logo for splash and about screens"
+    source: assets/brand-logo.svg
+"#;
+    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/brand-logo.svg"]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "usage_hint alone should validate cleanly: {envelope}"
+    );
+}
