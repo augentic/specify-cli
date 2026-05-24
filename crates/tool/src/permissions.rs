@@ -6,18 +6,18 @@ use crate::error::ToolError;
 use crate::manifest::looks_like_windows_absolute;
 
 const PROJECT_DIR_VAR: &str = "PROJECT_DIR";
-const ADAPTER_DIR_VAR: &str = "ADAPTER_DIR";
+const CAPABILITY_DIR_VAR: &str = "CAPABILITY_DIR";
 const LIFECYCLE_RULE_ID: &str = "tool.lifecycle-state-write-denied";
 
-/// Substitute the permission variables (`$PROJECT_DIR`, `$ADAPTER_DIR`) in one manifest permission entry.
+/// Substitute the permission variables (`$PROJECT_DIR`, `$CAPABILITY_DIR`) in one manifest permission entry.
 ///
 /// # Errors
 ///
 /// Returns an error when the template references an unsupported variable,
-/// references `$ADAPTER_DIR` outside adapter scope, contains a parent
+/// references `$CAPABILITY_DIR` outside plugin scope, contains a parent
 /// segment, expands to a relative path, or uses a non-UTF-8 root path.
 pub fn substitute(
-    template: &str, project_dir: &Path, adapter_dir: Option<&Path>,
+    template: &str, project_dir: &Path, capability_dir: Option<&Path>,
 ) -> Result<String, ToolError> {
     if has_parent_segment(template) {
         return Err(ToolError::invalid_permission(
@@ -29,11 +29,11 @@ pub fn substitute(
     for variable in variables(template)? {
         match variable.as_str() {
             PROJECT_DIR_VAR => {}
-            ADAPTER_DIR_VAR if adapter_dir.is_some() => {}
-            ADAPTER_DIR_VAR => {
+            CAPABILITY_DIR_VAR if capability_dir.is_some() => {}
+            CAPABILITY_DIR_VAR => {
                 return Err(ToolError::invalid_permission(
                     template,
-                    "$ADAPTER_DIR is only available to adapter-scope tools",
+                    "$CAPABILITY_DIR is only available to plugin-scope tools",
                 ));
             }
             _ => {
@@ -47,9 +47,9 @@ pub fn substitute(
 
     let project = utf8_path(project_dir, "$PROJECT_DIR", template)?;
     let mut expanded = template.replace("$PROJECT_DIR", project);
-    if let Some(adapter_dir) = adapter_dir {
-        let adapter = utf8_path(adapter_dir, "$ADAPTER_DIR", template)?;
-        expanded = expanded.replace("$ADAPTER_DIR", adapter);
+    if let Some(capability_dir) = capability_dir {
+        let adapter = utf8_path(capability_dir, "$CAPABILITY_DIR", template)?;
+        expanded = expanded.replace("$CAPABILITY_DIR", adapter);
     }
 
     if has_parent_segment(&expanded) {
@@ -107,7 +107,7 @@ pub fn canonicalise_under(target: &Path, allowed_roots: &[&Path]) -> Result<Path
 
     Err(ToolError::permission_denied(
         canonical_target,
-        "canonical permission path escapes PROJECT_DIR/ADAPTER_DIR",
+        "canonical permission path escapes PROJECT_DIR/CAPABILITY_DIR",
     ))
 }
 
@@ -185,7 +185,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn substitute_expands_project_and_adapter_dirs() {
+    fn substitute_expands_project_and_capability_dirs() {
         let project = Path::new("/tmp/project");
         let adapter = Path::new("/tmp/adapter");
 
@@ -194,17 +194,17 @@ mod tests {
             "/tmp/project/contracts"
         );
         assert_eq!(
-            substitute("$ADAPTER_DIR/templates", project, Some(adapter)).expect("adapter"),
+            substitute("$CAPABILITY_DIR/templates", project, Some(adapter)).expect("adapter"),
             "/tmp/adapter/templates"
         );
     }
 
     #[test]
-    fn substitute_rejects_adapter_dir_outside_adapter_scope() {
-        let err = substitute("$ADAPTER_DIR/templates", Path::new("/tmp/project"), None)
-            .expect_err("project-scope adapter dir must fail");
+    fn substitute_rejects_capability_dir_outside_plugin_scope() {
+        let err = substitute("$CAPABILITY_DIR/templates", Path::new("/tmp/project"), None)
+            .expect_err("project-scope capability dir must fail");
         assert!(matches!(err, ToolError::InvalidPermission { .. }), "{err}");
-        assert!(err.to_string().contains("$ADAPTER_DIR"), "{err}");
+        assert!(err.to_string().contains("$CAPABILITY_DIR"), "{err}");
     }
 
     #[test]

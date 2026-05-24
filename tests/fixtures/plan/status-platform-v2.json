@@ -1,14 +1,11 @@
 {
-  "blocked": [],
   "counts": {
-    "blocked": 0,
     "done": 1,
-    "failed": 1,
     "in-progress": 1,
-    "pending": 6,
-    "skipped": 0,
+    "pending": 7,
     "total": 9
   },
+  "drained": false,
   "entries": [
     {
       "depends-on": [],
@@ -18,8 +15,7 @@
       "sources": [
         "monolith"
       ],
-      "status": "done",
-      "status-reason": null
+      "status": "done"
     },
     {
       "depends-on": [
@@ -31,8 +27,7 @@
       "sources": [
         "monolith"
       ],
-      "status": "in-progress",
-      "status-reason": null
+      "status": "in-progress"
     },
     {
       "depends-on": [],
@@ -40,8 +35,7 @@
       "lifecycle": null,
       "name": "registration-duplicate-email-crash",
       "sources": [],
-      "status": "pending",
-      "status-reason": null
+      "status": "pending"
     },
     {
       "depends-on": [
@@ -51,8 +45,7 @@
       "lifecycle": null,
       "name": "notification-preferences",
       "sources": [],
-      "status": "pending",
-      "status-reason": null
+      "status": "pending"
     },
     {
       "depends-on": [
@@ -62,8 +55,7 @@
       "lifecycle": null,
       "name": "extract-shared-validation",
       "sources": [],
-      "status": "pending",
-      "status-reason": null
+      "status": "pending"
     },
     {
       "depends-on": [
@@ -75,8 +67,7 @@
       "sources": [
         "monolith"
       ],
-      "status": "pending",
-      "status-reason": null
+      "status": "pending"
     },
     {
       "depends-on": [
@@ -89,8 +80,7 @@
       "sources": [
         "orders"
       ],
-      "status": "pending",
-      "status-reason": null
+      "status": "pending"
     },
     {
       "depends-on": [
@@ -102,8 +92,7 @@
       "sources": [
         "payments"
       ],
-      "status": "failed",
-      "status-reason": "Type mismatch between cart line-item schema and payment gateway contract. Needs design revision after shopping-cart specs are updated.\n"
+      "status": "pending"
     },
     {
       "depends-on": [
@@ -115,20 +104,14 @@
       "sources": [
         "frontend"
       ],
-      "status": "pending",
-      "status-reason": null
-    }
-  ],
-  "failed": [
-    {
-      "name": "checkout-api",
-      "reason": "Type mismatch between cart line-item schema and payment gateway contract. Needs design revision after shopping-cart specs are updated.\n"
+      "status": "pending"
     }
   ],
   "in-progress": {
     "lifecycle": null,
     "name": "email-verification"
   },
+  "lifecycle": "pending",
   "next-eligible": null,
   "order": "topological",
   "plan": {

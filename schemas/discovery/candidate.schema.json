@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/discovery/candidate.schema.json",
+  "title": "Specify discovery candidate",
+  "description": "Validates a single `Candidate` block under `## Candidate inventory` in `discovery.md` per workflow §Discovery handshake. Each block has a kebab-case `id`, a non-empty `sources[]` list of source keys, a one-line `summary`, an optional `tentative` boolean flag set by `/spec:plan`'s `propose` sub-step when the agent merged the candidate across sources with low confidence, and (workflow §D6) an optional `aliases[]` list of kebab-case aliases. `slices[].sources[].candidate` resolves first against `id`, then against any `aliases[]` entry; aliases are stable across re-enumeration. An alias MUST NOT collide with another candidate's `id` or `aliases[]` in the same `discovery.md` (`discovery-alias-collision` from `specify slice validate`).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "sources", "summary"],
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/kebabName",
+      "description": "Stable kebab-case candidate identifier. Re-enumeration replaces by id."
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/kebabName" },
+      "description": "Non-empty list of source keys that surfaced this candidate (each entry matches a top-level `plan.yaml.sources.<key>` binding)."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line human-readable summary."
+    },
+    "tentative": {
+      "type": "boolean",
+      "description": "Optional. Set to `true` by `/spec:plan`'s `propose` sub-step when the cross-source merge that produced this candidate is uncertain; the operator reconciles at Gate 1."
+    },
+    "aliases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/kebabName" },
+      "description": "workflow §D6 — optional kebab-case aliases for cross-source merge. `slices[].sources[].candidate` resolves a binding's candidate against the candidate's `id` or any `alias`. Authored by the source adapter at `enumerate` time or by `/spec:plan` at `propose` time when merging differently-named candidates across sources. Stable across re-enumeration; operator additions through `specify plan amend --add-alias` survive re-enumeration. Empty `aliases: []` and a missing field are equivalent."
+    }
+  },
+  "$defs": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    }
+  }
+}

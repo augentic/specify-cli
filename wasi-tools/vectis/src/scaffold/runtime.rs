@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::templates::{Params, android, core, ios, render, substitute_path, substitute_path_with};
+use super::templates::{Params, plan_assembly, registry};
 use super::{Capability, PlannedFile, ScaffoldError, ScaffoldPlan, Versions};
 
 /// Render and plan the core scaffold.
@@ -22,13 +22,7 @@ pub fn plan_core(
 ) -> Result<ScaffoldPlan, ScaffoldError> {
     validate_app_name(app_name)?;
     let params = build_params(app_name, android_package, versions);
-    let files = core::TEMPLATES
-        .iter()
-        .map(|entry| PlannedFile {
-            relative_path: entry.target.to_string(),
-            contents: render(entry.contents, &params, caps),
-        })
-        .collect();
+    let files = plan_assembly(registry::core::ENTRIES, &params, caps);
     Ok(scaffold_plan("core", app_name, android_package, caps, files))
 }
 
@@ -42,13 +36,7 @@ pub fn plan_ios(
 ) -> Result<ScaffoldPlan, ScaffoldError> {
     validate_app_name(app_name)?;
     let params = build_params(app_name, android_package, versions);
-    let files = ios::TEMPLATES
-        .iter()
-        .map(|entry| PlannedFile {
-            relative_path: substitute_path(entry.target, &params),
-            contents: render(entry.contents, &params, caps),
-        })
-        .collect();
+    let files = plan_assembly(registry::ios::ENTRIES, &params, caps);
     Ok(scaffold_plan("ios", app_name, android_package, caps, files))
 }
 
@@ -62,15 +50,7 @@ pub fn plan_android(
 ) -> Result<ScaffoldPlan, ScaffoldError> {
     validate_app_name(app_name)?;
     let params = build_params(app_name, android_package, versions);
-    let android_package_path = android_package_to_path(android_package);
-    let files = android::TEMPLATES
-        .iter()
-        .filter(|entry| entry.include_when.should_include(caps))
-        .map(|entry| PlannedFile {
-            relative_path: substitute_path_with(entry.target, &params, Some(&android_package_path)),
-            contents: render(entry.contents, &params, caps),
-        })
-        .collect();
+    let files = plan_assembly(registry::android::ENTRIES, &params, caps);
     Ok(scaffold_plan("android", app_name, android_package, caps, files))
 }
 
@@ -194,8 +174,4 @@ fn refuse_existing_root(
         });
     }
     Ok(())
-}
-
-fn android_package_to_path(pkg: &str) -> String {
-    pkg.replace('.', "/")
 }

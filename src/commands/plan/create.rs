@@ -1,49 +1,46 @@
-use std::collections::BTreeMap;
+//! `specify plan create` handler. Composes the shared CLI arg
+//! parsers in [`super::args`] with the domain authority-override
+//! engine in [`specify_domain::change::mutate_authority_overrides`]
+//! so the handler stays declarative.
+
 use std::io::Write;
-use std::path::Path;
 
 use serde::Serialize;
-use serde_json::Value;
-use specify_domain::change::{Entry, EntryPatch, Patch, Plan, Status};
-use specify_domain::config::{InitPolicy, with_state};
+use specify_domain::change::{
+    Divergence, Lifecycle, Plan, mutate_authority_overrides, refuse_orphan_authority_overrides,
+};
+use specify_domain::journal;
 use specify_error::{Error, Result, is_kebab};
 
-use super::{Ref, check_project, plan_ref};
+use super::args::{build_source_map, parse_authority_override_assigns};
 use crate::cli::SourceArg;
 use crate::context::Ctx;
 
-/// Convert a CLI-supplied optional string to a [`Patch<String>`]: an
-/// absent flag leaves the field unchanged, an empty value clears it,
-/// any other value replaces it.
-fn cli_patch(value: Option<String>) -> Patch<String> {
-    match value {
-        None => Patch::Keep,
-        Some(s) if s.is_empty() => Patch::Clear,
-        Some(s) => Patch::Set(s),
-    }
-}
-
-/// Validate `--source key=value` arguments and collapse them into the
-/// `BTreeMap` shape `Plan::init` expects. Refuses duplicate keys with
-/// the stable `plan-source-duplicate-key` diagnostic.
-pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, String>> {
-    let mut map: BTreeMap<String, String> = BTreeMap::new();
-    for SourceArg { key, value } in sources {
-        if map.contains_key(&key) {
-            return Err(Error::Diag {
-                code: "plan-source-duplicate-key",
-                detail: format!("duplicate key `{key}` in --source arguments"),
-            });
-        }
-        map.insert(key, value);
-    }
-    Ok(map)
-}
-
-/// Validate `name` is kebab-case. Mirrors the diagnostic code that
-/// `specify change draft` and `specify plan create` both surface.
-pub fn require_kebab_change_name(name: &str) -> Result<()> {
-    if !is_kebab(name) {
+/// `specify plan create <name> [--source ...] [--divergence-likely <slice>]... [--auto-review]`.
+///
+/// Scaffolds `plan.yaml` (workflow §The Plan), then stages every
+/// `--divergence-likely <slice>` value onto the named slice's
+/// `slices[].divergence` field (workflow §D5). The slice MUST already
+/// exist in the plan being created — an unknown name short-circuits
+/// with `plan-divergence-likely-unknown-slice` (`Error::Validation`,
+/// exit 2). One `plan.propose.divergence` journal event fires per
+/// applied slice, matching the post-`propose` happy path the
+/// `/spec:plan` skill drives.
+///
+/// When `--auto-review` is set (workflow §D7), the plan is constructed
+/// with `lifecycle: reviewed` *before* the single atomic
+/// `plan.save` — there is never a transient `lifecycle: pending`
+/// file on disk. The matching `plan.transition.reviewed` journal
+/// event is appended in the same batched write as any
+/// `plan.propose.divergence` events the same invocation produced;
+/// validation failures (kebab-case name, orphan source key,
+/// unknown `--divergence-likely` slice) refuse the create with or
+/// without the flag and leave the journal untouched.
+pub(super) fn create(
+    ctx: &Ctx, name: String, sources: Vec<SourceArg>, divergence_likely: &[String],
+    auto_review: bool, authority_override: &[String],
+) -> Result<()> {
+    if !is_kebab(&name) {
         return Err(Error::Diag {
             code: "change-name-not-kebab",
             detail: format!(
@@ -52,28 +49,6 @@ pub fn require_kebab_change_name(name: &str) -> Result<()> {
             ),
         });
     }
-    Ok(())
-}
-
-/// Build the in-memory [`Plan`] and write it atomically to `plan_path`.
-///
-/// Callers (`specify plan create` and `specify change draft`) own the
-/// "refuse if any conflicting file exists" pre-flight and the
-/// kebab-case validation; this helper is happy to overwrite and assumes
-/// `name` is already validated.
-pub fn write_scaffold(
-    plan_path: &Path, name: &str, sources: BTreeMap<String, String>,
-) -> Result<Plan> {
-    let plan = Plan::init(name, sources)?;
-    plan.save(plan_path)?;
-    Ok(plan)
-}
-
-/// `specify plan create <name> [--source ...]`. Scaffolds `plan.yaml`
-/// only — the joint scaffolder that also writes `change.md` is
-/// `specify change draft`, which delegates here for the plan half.
-pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result<()> {
-    require_kebab_change_name(&name)?;
     let source_map = build_source_map(sources)?;
     let plan_path = ctx.layout().plan_path();
     if plan_path.exists() {
@@ -82,93 +57,91 @@ pub(super) fn create(ctx: &Ctx, name: String, sources: Vec<SourceArg>) -> Result
             detail: format!("refusing to overwrite existing plan at {}", plan_path.display()),
         });
     }
-    write_scaffold(&plan_path, &name, source_map)?;
+
+    let override_assigns = parse_authority_override_assigns(authority_override)?;
+
+    let mut plan = Plan::init(&name, source_map)?;
+    apply_divergence_likely(&mut plan, divergence_likely)?;
+    // Route `--authority-override` through the shared mutation
+    // helper used by `plan amend` so create and amend produce
+    // byte-identical `plan.amend.authority-override` journal events
+    // and share the unknown-slice gate. Empty `clears` / `clear_all`
+    // slices keep the create path scoped to set-only semantics.
+    let now = jiff::Timestamp::now();
+    let plan_name = plan.name.clone();
+    let override_events =
+        mutate_authority_overrides(&mut plan, &plan_name, &override_assigns, &[], &[], now)?;
+    // Re-run the orphan-source-key gate after the override
+    // pre-seeding: `Plan::init` ran no validation against the
+    // override map (it didn't exist yet) and `validate_plan` only
+    // checks JSON Schema. The orphan check is the only workflow §D3
+    // gate that fires on this code path.
+    refuse_orphan_authority_overrides(&plan)?;
+    if auto_review {
+        plan.transition_lifecycle(Lifecycle::Reviewed)?;
+    }
+    plan.save(&plan_path)?;
+
+    // Collect every journal event the invocation produced, then
+    // hand the slice to `append_batch` so the post-save log write is
+    // a single fsynced append. Either every event lands or none
+    // does — `--auto-review`, `--divergence-likely`, and
+    // `--authority-override` compose without a partial-state window
+    // in the journal.
+    let mut events: Vec<journal::Event> = divergence_likely
+        .iter()
+        .map(|slice| {
+            journal::Event::new(
+                now,
+                journal::EventKind::PlanProposeDivergence {
+                    plan_name: plan_name.clone(),
+                    slice_name: slice.clone(),
+                },
+            )
+        })
+        .collect();
+    if auto_review {
+        events.push(journal::Event::new(
+            now,
+            journal::EventKind::PlanTransitionReviewed {
+                plan_name: plan_name.clone(),
+            },
+        ));
+    }
+    events.extend(override_events);
+    journal::append_batch(ctx.layout(), &events)?;
+
     ctx.write(
         &CreateBody {
             name,
             plan: plan_path.display().to_string(),
+            lifecycle: plan.lifecycle,
         },
         write_create_text,
     )?;
     Ok(())
 }
 
-pub(super) fn add(
-    ctx: &Ctx, name: String, depends_on: Vec<String>, sources: Vec<String>,
-    description: Option<String>, project: Option<String>, adapter: Option<String>,
-    context: Vec<String>,
-) -> Result<()> {
-    if let Some(proj) = &project {
-        check_project(&ctx.project_dir, proj)?;
+/// Stamp `divergence: likely` on every named slice in `plan`.
+/// Rejects unknown slice names with `Error::validation_failed` —
+/// `plan-divergence-likely-unknown-slice` (exit 2). Duplicate
+/// occurrences of the same slice are idempotent (the field re-sets
+/// to `Likely`).
+fn apply_divergence_likely(plan: &mut Plan, slices: &[String]) -> Result<()> {
+    for slice in slices {
+        let entry = plan.entries.iter_mut().find(|e| &e.name == slice).ok_or_else(|| {
+            Error::validation_failed(
+                "plan-divergence-likely-unknown-slice",
+                "--divergence-likely must reference a slice present in the plan",
+                format!(
+                    "no slice named '{slice}' in plan '{}'; add the slice (e.g. specify plan \
+                     add {slice}) before staging divergence: likely",
+                    plan.name
+                ),
+            )
+        })?;
+        entry.divergence = Some(Divergence::Likely);
     }
-
-    let entry = Entry {
-        name,
-        project,
-        adapter,
-        status: Status::Pending,
-        depends_on,
-        sources,
-        context,
-        description,
-        status_reason: None,
-    };
-    let plan_path = ctx.layout().plan_path();
-    let body = with_state::<Plan, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("plan.yaml"),
-        move |plan| {
-            plan.create(entry)?;
-            let created =
-                plan.entries.last().expect("Plan::create appended an entry that is now missing");
-            Ok(EntryBody {
-                plan: plan_ref(plan, &plan_path),
-                action: "create",
-                entry: serde_json::to_value(created).expect("plan Entry serialises as JSON"),
-            })
-        },
-    )?;
-
-    ctx.write(&body, write_entry_text)?;
-    Ok(())
-}
-
-pub(super) fn amend(
-    ctx: &Ctx, name: String, depends_on: Option<Vec<String>>, sources: Option<Vec<String>>,
-    description: Option<String>, project: Option<String>, adapter: Option<String>,
-    context: Option<Vec<String>>,
-) -> Result<()> {
-    if let Some(proj) = &project
-        && !proj.is_empty()
-    {
-        check_project(&ctx.project_dir, proj)?;
-    }
-
-    let patch = EntryPatch {
-        depends_on,
-        sources,
-        project: cli_patch(project),
-        adapter: cli_patch(adapter),
-        description: cli_patch(description),
-        context,
-    };
-    let plan_path = ctx.layout().plan_path();
-    let body = with_state::<Plan, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("plan.yaml"),
-        move |plan| {
-            plan.amend(&name, patch)?;
-            let amended =
-                plan.entries.iter().find(|c| c.name == name).expect("amended entry present");
-            Ok(EntryBody {
-                plan: plan_ref(plan, &plan_path),
-                action: "amend",
-                entry: serde_json::to_value(amended).expect("plan Entry serialises as JSON"),
-            })
-        },
-    )?;
-
-    ctx.write(&body, write_entry_text)?;
     Ok(())
 }
 
@@ -177,25 +150,20 @@ pub(super) fn amend(
 struct CreateBody {
     name: String,
     plan: String,
+    /// Final plan-level lifecycle persisted to disk — `pending` for
+    /// the default create, `reviewed` when `--auto-review` was set.
+    /// Exposed in the JSON envelope so skill bodies and tests can
+    /// branch on the on-disk state without re-reading `plan.yaml`.
+    lifecycle: Lifecycle,
 }
 
 fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
-    writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan)
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct EntryBody {
-    plan: Ref,
-    action: &'static str,
-    entry: Value,
-}
-
-fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::Result<()> {
-    let name = body.entry.get("name").and_then(Value::as_str).unwrap_or("");
-    match body.action {
-        "create" => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
-        "amend" => writeln!(w, "Amended plan entry '{name}'."),
-        other => unreachable!("unexpected EntryBody action: {other}"),
+    match body.lifecycle {
+        Lifecycle::Pending => writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan),
+        Lifecycle::Reviewed => writeln!(
+            w,
+            "Initialised plan '{}' at {} and stamped lifecycle: reviewed.",
+            body.name, body.plan
+        ),
     }
 }

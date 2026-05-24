@@ -7,25 +7,42 @@ use crate::error::ToolError;
 
 pub(super) fn read_file_uri(uri: &str) -> Result<Vec<u8>, ToolError> {
     let Some(rest) = uri.strip_prefix("file://") else {
-        return Err(ToolError::invalid_source(uri, "file URI sources must start with file://"));
+        return Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{uri}` is invalid: file URI sources must start with file://"
+            ),
+        });
     };
     if rest.is_empty() {
-        return Err(ToolError::invalid_source(uri, "file URI source path must not be empty"));
+        return Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{uri}` is invalid: file URI source path must not be empty"
+            ),
+        });
     }
     read_local_path(&PathBuf::from(rest), uri)
 }
 
 pub(super) fn read_local_path(path: &Path, source: &str) -> Result<Vec<u8>, ToolError> {
     if !path.is_absolute() {
-        return Err(ToolError::invalid_source(source, "local source path must be absolute"));
+        return Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{source}` is invalid: local source path must be absolute"
+            ),
+        });
     }
     let metadata =
         fs::metadata(path).map_err(|err| ToolError::cache_io("inspect local source", path, err))?;
     if !metadata.is_file() {
-        return Err(ToolError::invalid_source(
-            source,
-            "local source path must resolve to a regular file",
-        ));
+        return Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{source}` is invalid: local source path must resolve to a regular file"
+            ),
+        });
     }
     fs::read(path).map_err(|err| ToolError::cache_io("read local source", path, err))
 }
@@ -78,12 +95,20 @@ mod tests {
             &project_dir,
         )
         .expect_err("directory source must fail");
-        assert!(matches!(dir_err, ToolError::InvalidSource { .. }), "{dir_err}");
+        assert!(
+            matches!(&dir_err, ToolError::Diag { code: "tool-resolver", detail }
+                if detail.contains("must resolve to a regular file")),
+            "{dir_err}"
+        );
 
         let empty_err =
             resolve(&scope, &tool(ToolSource::LocalPath(empty), None), fixed_now(), &project_dir)
                 .expect_err("empty file");
-        assert!(matches!(empty_err, ToolError::EmptySource { .. }), "{empty_err}");
+        assert!(
+            matches!(&empty_err, ToolError::Diag { code: "tool-resolver", detail }
+                if detail.contains("produced empty bytes")),
+            "{empty_err}"
+        );
     }
 
     #[cfg(unix)]

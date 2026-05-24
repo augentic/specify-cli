@@ -1,9 +1,9 @@
 {
   "active": null,
-  "adapter": null,
   "description": null,
   "next": null,
   "project": null,
-  "reason": "all-done",
-  "sources": null
+  "reason": "drained",
+  "sources": null,
+  "target": null
 }

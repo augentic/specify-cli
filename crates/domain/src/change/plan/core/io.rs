@@ -15,16 +15,6 @@ impl AtomicYaml for Plan {
         layout.plan_path()
     }
 
-    /// `plan.yaml` is created by `specify change draft` (alongside
-    /// `change.md`), never synthesised implicitly. Mutation handlers
-    /// (`add`, `amend`,
-    /// `transition`) should drive `with_state` with
-    /// [`crate::config::InitPolicy::RequireExisting`] to surface
-    /// absence as a typed [`Error::ArtifactNotFound`].
-    fn default_for_load() -> Option<Self> {
-        None
-    }
-
     /// Trait-side loader: `Ok(None)` when the file is absent, mirroring
     /// the contract documented on [`AtomicYaml::load`]. Disambiguated
     /// from the inherent [`Plan::load`] (which returns
@@ -100,12 +90,10 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use tempfile::tempdir;
 
-    use super::super::model::{Entry, Status};
-    use super::super::test_support::RFC_EXAMPLE_YAML;
+    use super::super::model::Status;
+    use super::super::{RFC_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
     use super::*;
 
     #[test]
@@ -122,11 +110,8 @@ mod tests {
     fn save_emits_trailing_newline() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        let plan = Plan {
-            name: "init".to_string(),
-            sources: BTreeMap::new(),
-            entries: vec![],
-        };
+        let mut plan = plan_with_changes(vec![]);
+        plan.name = "init".into();
         plan.save(&path).expect("save ok");
 
         let bytes = std::fs::read(&path).expect("read ok");
@@ -146,21 +131,8 @@ mod tests {
         let path = dir.path().join("plan.yaml");
         std::fs::write(&path, "garbage that should be overwritten").expect("write garbage");
 
-        let plan = Plan {
-            name: "fresh".to_string(),
-            sources: BTreeMap::new(),
-            entries: vec![Entry {
-                name: "only-entry".to_string(),
-                project: Some("default".into()),
-                adapter: None,
-                status: Status::Pending,
-                depends_on: vec![],
-                sources: vec![],
-                context: vec![],
-                description: None,
-                status_reason: None,
-            }],
-        };
+        let mut plan = plan_with_changes(vec![change("only-entry", Status::Pending)]);
+        plan.name = "fresh".into();
         plan.save(&path).expect("save ok");
 
         let loaded = Plan::load(&path).expect("load ok");
@@ -201,21 +173,9 @@ mod tests {
     fn save_writes_kebab_case() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        let plan = Plan {
-            name: "demo".to_string(),
-            sources: BTreeMap::new(),
-            entries: vec![Entry {
-                name: "entry-one".to_string(),
-                project: Some("default".into()),
-                adapter: None,
-                status: Status::InProgress,
-                depends_on: vec!["foo".to_string()],
-                sources: vec![],
-                context: vec![],
-                description: None,
-                status_reason: None,
-            }],
-        };
+        let mut plan =
+            plan_with_changes(vec![change_with_deps("entry-one", Status::InProgress, &["foo"])]);
+        plan.name = "demo".into();
         plan.save(&path).expect("save ok");
 
         let content = std::fs::read_to_string(&path).expect("read ok");
@@ -242,28 +202,12 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
 
-        let first = Plan {
-            name: "first".to_string(),
-            sources: BTreeMap::new(),
-            entries: vec![],
-        };
+        let mut first = plan_with_changes(vec![]);
+        first.name = "first".into();
         first.save(&path).expect("save first ok");
 
-        let second = Plan {
-            name: "second".to_string(),
-            sources: BTreeMap::new(),
-            entries: vec![Entry {
-                name: "new-entry".to_string(),
-                project: Some("default".into()),
-                adapter: None,
-                status: Status::Pending,
-                depends_on: vec![],
-                sources: vec![],
-                context: vec![],
-                description: None,
-                status_reason: None,
-            }],
-        };
+        let mut second = plan_with_changes(vec![change("new-entry", Status::Pending)]);
+        second.name = "second".into();
         second.save(&path).expect("save second ok");
 
         let loaded = Plan::load(&path).expect("load ok");

@@ -1,4 +1,4 @@
-//! `specify workspace *` handlers — `sync`, `status`, `prepare-branch`, `push`.
+//! `specify workspace *` handlers — `sync`, `prepare`, `push`.
 
 pub mod cli;
 
@@ -8,23 +8,22 @@ use std::path::PathBuf;
 use serde::Serialize;
 use specify_domain::change::Plan;
 use specify_domain::registry::Registry;
-use specify_domain::registry::branch::{Prepared, Request as BranchRequest, prepare};
-use specify_domain::registry::workspace::{
-    PushOutcome, PushResult, SlotStatus, push_projects, status_projects, sync_projects,
+use specify_domain::registry::branch::{
+    Prepared, Request as BranchRequest, prepare as prepare_branch,
 };
+use specify_domain::registry::workspace::{PushOutcome, PushResult, push_projects, sync_projects};
 use specify_error::{Error, Result};
 
 use crate::context::Ctx;
 
 pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
-    let registry = match Registry::load(&ctx.project_dir)? {
-        None if !projects.is_empty() => return Err(registry_missing()),
-        other => other,
-    };
+    let registry = Registry::load(&ctx.project_dir)?;
     let synced = if let Some(reg) = registry.as_ref() {
         let selected = reg.select(projects)?;
         sync_projects(&ctx.project_dir, &selected)?;
         true
+    } else if !projects.is_empty() {
+        return Err(registry_missing());
     } else {
         false
     };
@@ -40,25 +39,7 @@ pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
     Ok(())
 }
 
-pub fn status(ctx: &Ctx, projects: &[String]) -> Result<()> {
-    let body = match Registry::load(&ctx.project_dir)? {
-        None => {
-            if !projects.is_empty() {
-                return Err(registry_missing());
-            }
-            StatusBody::Absent
-        }
-        Some(registry) => {
-            let selected = registry.select(projects)?;
-            let slots = status_projects(&ctx.project_dir, &selected);
-            StatusBody::Present { slots }
-        }
-    };
-    ctx.write(&body, write_status_text)?;
-    Ok(())
-}
-
-pub fn prepare_branch(
+pub fn prepare(
     ctx: &Ctx, project: &str, change: String, sources: Vec<PathBuf>, outputs: Vec<PathBuf>,
 ) -> Result<()> {
     let Some(registry) = Registry::load(&ctx.project_dir)? else {
@@ -68,8 +49,8 @@ pub fn prepare_branch(
     let selected = registry.select(&project_filter)?;
     let Some(project) = selected.first() else {
         return Err(Error::Diag {
-            code: "workspace-prepare-branch-no-project",
-            detail: "workspace prepare-branch resolved no project".to_string(),
+            code: "workspace-prepare-no-project",
+            detail: "workspace prepare resolved no project".to_string(),
         });
     };
     let request = BranchRequest {
@@ -78,14 +59,14 @@ pub fn prepare_branch(
         output_paths: outputs,
     };
 
-    match prepare(&ctx.project_dir, project, &request) {
+    match prepare_branch(&ctx.project_dir, project, &request) {
         Ok(prepared) => {
             ctx.write(
-                &PrepareBranchBody {
+                &PrepareBody {
                     prepared: true,
                     inner: &prepared,
                 },
-                write_prepare_branch_text,
+                write_prepare_text,
             )?;
             Ok(())
         }
@@ -108,9 +89,9 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     if !plan_path.exists() {
         return Err(Error::Diag {
             code: "workspace-push-no-plan",
-            detail: "No active plan found at plan.yaml. Run 'specify change draft <name>' \
-                     to scaffold change.md and plan.yaml together, or check whether the plan \
-                     was already archived."
+            detail: "No active plan found at plan.yaml. Run `/spec:plan <name>` (or \
+                     `specify plan create <name>`) to scaffold a fresh plan, or check whether \
+                     the plan was already archived."
                 .to_string(),
         });
     }
@@ -167,56 +148,14 @@ fn write_sync_text(w: &mut dyn Write, body: &SyncBody) -> std::io::Result<()> {
 }
 
 #[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-enum StatusBody {
-    Absent,
-    Present { slots: Vec<SlotStatus> },
-}
-
-fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()> {
-    match body {
-        StatusBody::Absent => writeln!(w, "no registry declared at registry.yaml"),
-        StatusBody::Present { slots } => {
-            for slot in slots {
-                render_slot_line(w, slot)?;
-            }
-            Ok(())
-        }
-    }
-}
-
-fn render_slot_line(w: &mut dyn Write, slot: &SlotStatus) -> std::io::Result<()> {
-    let symlink_target = slot.actual_symlink_target.as_ref().map(|p| p.display().to_string());
-    writeln!(
-        w,
-        "{}: kind={} path={} configured-{}={} target={} origin={} branch={} change-branch={} head={} dirty={} project.yaml={} active-slices={}",
-        slot.name,
-        slot.kind,
-        slot.slot_path.display(),
-        slot.configured_target_kind,
-        slot.configured_target,
-        symlink_target.as_deref().unwrap_or("-"),
-        slot.actual_origin.as_deref().unwrap_or("-"),
-        slot.current_branch.as_deref().unwrap_or("-"),
-        slot.branch_matches_change.map_or("-", |v| if v { "match" } else { "mismatch" }),
-        slot.head_sha.as_deref().unwrap_or("-"),
-        slot.dirty.map_or("-", |v| if v { "yes" } else { "no" }),
-        if slot.project_config_present { "present" } else { "missing" },
-        if slot.active_slices.is_empty() { "-".to_string() } else { slot.active_slices.join(",") },
-    )
-}
-
-#[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-struct PrepareBranchBody<'a> {
+struct PrepareBody<'a> {
     prepared: bool,
     #[serde(flatten)]
     inner: &'a Prepared,
 }
 
-fn write_prepare_branch_text(
-    w: &mut dyn Write, body: &PrepareBranchBody<'_>,
-) -> std::io::Result<()> {
+fn write_prepare_text(w: &mut dyn Write, body: &PrepareBody<'_>) -> std::io::Result<()> {
     let p = body.inner;
     writeln!(
         w,

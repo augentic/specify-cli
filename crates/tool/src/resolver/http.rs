@@ -35,19 +35,23 @@ const USER_AGENT: &str =
 
 pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredBytes, ToolError> {
     if !url.starts_with("https://") {
-        return Err(ToolError::invalid_source(
-            url,
-            "production network sources must use https://; http:// is not supported",
-        ));
+        return Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{url}` is invalid: production network sources must use https://; http:// is not supported"
+            ),
+        });
     }
 
     let mut response = https_agent().get(url).call().map_err(|err| map_network_error(url, err))?;
     let final_uri = response.get_uri().to_string();
     if !final_uri.starts_with("https://") {
-        return Err(ToolError::invalid_source(
-            url,
-            format!("redirect target must remain https://, got `{final_uri}`"),
-        ));
+        return Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{url}` is invalid: redirect target must remain https://, got `{final_uri}`"
+            ),
+        });
     }
 
     let status = response.status().as_u16();
@@ -118,7 +122,7 @@ fn stream_to_tempfile<R: Read>(
     temp.as_file()
         .sync_all()
         .map_err(|err| ToolError::cache_io("sync download tempfile", temp.path(), err))?;
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::hash::sha256_output_hex(hasher.finalize()))
 }
 
 fn https_agent() -> ureq::Agent {
@@ -145,7 +149,10 @@ fn map_network_error(url: &str, err: ureq::Error) -> ToolError {
         ureq::Error::BodyExceedsLimit(limit) => {
             ToolError::network_too_large(url, MAX_RESPONSE_BYTES, Some(limit))
         }
-        ureq::Error::RequireHttpsOnly(detail) => ToolError::invalid_source(url, detail),
+        ureq::Error::RequireHttpsOnly(detail) => ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!("tool source `{url}` is invalid: {detail}"),
+        },
         err => ToolError::network_other(url, err.to_string()),
     }
 }
@@ -181,7 +188,10 @@ mod tests {
 
         let err = resolve(&scope, &declared, fixed_now(), &project_dir)
             .expect_err("http must be rejected");
-        assert!(matches!(err, ToolError::InvalidSource { .. }), "{err}");
+        assert!(
+            matches!(&err, ToolError::Diag { code: "tool-resolver", detail } if detail.contains("https://")),
+            "{err}"
+        );
     }
 
     #[test]

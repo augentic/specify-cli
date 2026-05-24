@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/evidence.schema.json",
+  "title": "Specify source-adapter Evidence",
+  "description": "Validates a single source-adapter `Evidence` document per workflow §Source adapter contract — the per-source result of `extract`, persisted under `.specify/slices/<slice>/evidence/<source-key>.yaml`. Top-level fields: `source` (kebab-case source key), `adapter` (kebab-case adapter id), `authority` (closed enum `intent | documentation | behaviour`), `candidate` (kebab-case candidate id from `discovery.md`), `claims[]`, and (workflow §D2) the optional `authority-overrides` map keyed by claim kind whose values resolve a per-kind authority class for this Evidence document. Each claim carries a closed `kind` from {intent, requirement, criterion, decision, section, diagram, contract, example, excerpt, type, call, region, container, leaf} — `region`/`container`/`leaf` are the spatial kinds co-introduced with the `screenshots` source adapter (workflow §W2.4); `example` (workflow §D1) is the runtime capture kind emitted by the `captures` source adapter and carries open per-kind body fields `replay-digest` (`sha256:<hex>`), `input`, and `output`. `claim-id` is required on `requirement`, `criterion`, and `example` kinds and optional on others; `path` matches the grammar `<path>` | `<path>#L<n>` | `<path>#L<start>-L<end>`. Per-kind body fields (`statement`, `criterion`, `decision`, `replay-digest`, `input`, `output`, etc.) are intentionally open.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["source", "adapter", "authority", "candidate", "claims"],
+  "properties": {
+    "source": {
+      "$ref": "#/$defs/kebabName",
+      "description": "Source key (matches a top-level `plan.yaml.sources.<key>` binding) the Evidence was extracted from."
+    },
+    "adapter": {
+      "$ref": "#/$defs/kebabName",
+      "description": "Source-adapter name (e.g. `documentation`, `code-typescript`)."
+    },
+    "authority": {
+      "$ref": "#/$defs/authorityClass",
+      "description": "Document-level authority class for this Evidence per workflow §Authority hierarchy. Per-kind overrides land in `authority-overrides`."
+    },
+    "candidate": {
+      "$ref": "#/$defs/kebabName",
+      "description": "Candidate id (matches a `## Candidate inventory` block in `discovery.md`) the Evidence is bound to."
+    },
+    "claims": {
+      "type": "array",
+      "description": "Per-claim extraction records. Empty `claims: []` is valid; failure is signalled by not writing the Evidence file at all.",
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "authority-overrides": {
+      "type": "object",
+      "description": "workflow §D2 — optional per-(Evidence, claim-kind) authority overrides. Keys are the closed claim-kind enum; values are the closed authority-class enum. Synthesis consults this map first, then falls back to the document-level `authority:` field, then to the workflow default ordering. Both keys and values are closed enums; new kinds or classes require an RFC update.",
+      "propertyNames": { "$ref": "#/$defs/claimKind" },
+      "additionalProperties": { "$ref": "#/$defs/authorityClass" }
+    }
+  },
+  "$defs": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "authorityClass": {
+      "type": "string",
+      "enum": ["intent", "documentation", "behaviour"],
+      "description": "Closed authority class per workflow §Authority hierarchy. New classes require an RFC update."
+    },
+    "claimKind": {
+      "type": "string",
+      "enum": [
+        "intent",
+        "requirement",
+        "criterion",
+        "decision",
+        "section",
+        "diagram",
+        "contract",
+        "example",
+        "excerpt",
+        "type",
+        "call",
+        "region",
+        "container",
+        "leaf"
+      ],
+      "description": "Closed claim-kind enum. New kinds require an RFC update. `example` (workflow §D1) is the runtime capture kind emitted by `captures` and carries open `replay-digest` / `input` / `output` body fields."
+    },
+    "claimPath": {
+      "type": "string",
+      "pattern": "^[^\\s][^\\s]*(#L[1-9][0-9]*(-L[1-9][0-9]*)?)?$",
+      "description": "Per-claim path: `<path>`, `<path>#L<n>`, or `<path>#L<start>-L<end>`."
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/claimKind" },
+        "claim-id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable claim identifier. Required when `kind` is `requirement`, `criterion`, or `example`; optional on other kinds."
+        },
+        "path": { "$ref": "#/$defs/claimPath" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "requirement" } },
+            "required": ["kind"]
+          },
+          "then": { "required": ["claim-id"] }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "criterion" } },
+            "required": ["kind"]
+          },
+          "then": { "required": ["claim-id"] }
+        },
+        {
+          "if": {
+            "properties": { "kind": { "const": "example" } },
+            "required": ["kind"]
+          },
+          "then": { "required": ["claim-id"] }
+        }
+      ]
+    }
+  }
+}

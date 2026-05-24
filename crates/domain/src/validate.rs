@@ -1,34 +1,26 @@
 //! Validation rule registry and runner.
 //!
 //! `Rule` / `CrossRule` declare their `Classification`; [`validate_slice`]
-//! returns a `ValidationReport` with `Pass` / `Fail` / `Deferred` results.
+//! returns a `ValidationReport` whose entries are [`ValidationSummary`]
+//! values carrying a `Pass` / `Fail` / `Deferred` `ValidationStatus`.
 //! The report serialises directly via its `serde::Serialize` derive — the
 //! kebab-case wire shape (`brief-results`, `cross-checks`, `rule-id`) is
 //! produced by the `rename_all = "kebab-case"` attribute on the report and
-//! the matching attribute on `ValidationResult`.
+//! the matching attribute on `ValidationSummary`.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use specify_error as _; // dependency declared; re-exported via `Error` return type
+use specify_error::ValidationSummary;
 
-use crate::adapter::PipelineView;
 use crate::spec::ParsedSpec;
 use crate::task::Progress;
 
-pub mod compatibility;
 mod primitives;
 mod registry;
 mod run;
 
-pub use compatibility::{
-    CompatibilityClassification, CompatibilityFinding, CompatibilityReport, CompatibilitySummary,
-    classify_project as classify_project_compatibility,
-};
-pub use registry::{cross_rules, rules_for};
 pub use run::validate_slice;
-
-pub use crate::adapter::ValidationResult;
 
 /// Structured result of running every applicable rule over a slice dir.
 ///
@@ -41,9 +33,9 @@ pub use crate::adapter::ValidationResult;
 #[must_use]
 pub struct ValidationReport {
     /// Per-brief validation results, keyed by brief id or artifact path.
-    pub brief_results: BTreeMap<String, Vec<ValidationResult>>,
+    pub brief_results: BTreeMap<String, Vec<ValidationSummary>>,
     /// Cross-brief validation results.
-    pub cross_checks: Vec<ValidationResult>,
+    pub cross_checks: Vec<ValidationSummary>,
     /// `true` when no rule produced a `Fail` outcome.
     pub passed: bool,
 }
@@ -99,8 +91,6 @@ pub struct BriefContext<'a> {
     pub slice_dir: &'a Path,
     /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
-    /// Schema-inferred terminology (e.g. `"crate"` or `"feature"`).
-    pub terminology: &'a str,
 }
 
 /// A rule that spans multiple briefs.
@@ -123,14 +113,11 @@ pub struct CrossContext<'a> {
     pub slice_dir: &'a Path,
     /// Absolute path to the specs directory.
     pub specs_dir: &'a Path,
-    /// Resolved pipeline for the slice.
-    pub pipeline: &'a PipelineView,
-    /// Schema-inferred terminology.
-    pub terminology: &'a str,
 }
 
 #[cfg(test)]
 mod tests {
+    use super::registry::{cross_rules, rules_for};
     use super::*;
 
     /// `rules_for` returns empty for unknown brief ids.
@@ -153,32 +140,39 @@ mod tests {
 
     /// `ValidationReport` serialises with the canonical kebab-case wire
     /// shape — `passed` / `brief-results` / `cross-checks` at the top,
-    /// `status` / `rule-id` / `rule` (+ variant-specific fields) per
-    /// result. Pins the derive against accidental rename or reshape.
+    /// `status` / `rule-id` / `rule` (+ optional `detail`) per result.
+    /// Pins the derive against accidental rename or reshape. `Pass`
+    /// entries omit `detail` thanks to `skip_serializing_if`; `Fail`
+    /// and `Deferred` entries carry their explanation in the uniform
+    /// `detail` slot.
     #[test]
     fn report_serialises_kebab_case_shape() {
-        use crate::adapter::ValidationResult;
+        use specify_error::{ValidationStatus, ValidationSummary};
 
-        let mut brief_results: BTreeMap<String, Vec<ValidationResult>> = BTreeMap::new();
+        let mut brief_results: BTreeMap<String, Vec<ValidationSummary>> = BTreeMap::new();
         brief_results.insert(
             "proposal".to_string(),
-            vec![ValidationResult::Pass {
+            vec![ValidationSummary {
+                status: ValidationStatus::Pass,
                 rule_id: "proposal.why-has-content".into(),
                 rule: "Has a Why section with at least one sentence".into(),
+                detail: None,
             }],
         );
         let report = ValidationReport {
             brief_results,
             cross_checks: vec![
-                ValidationResult::Fail {
+                ValidationSummary {
+                    status: ValidationStatus::Fail,
                     rule_id: "cross.design-references-valid".into(),
                     rule: "Every requirement id referenced in design.md exists in specs".into(),
-                    detail: "REQ-999 not found".to_string(),
+                    detail: Some("REQ-999 not found".to_string()),
                 },
-                ValidationResult::Deferred {
+                ValidationSummary {
+                    status: ValidationStatus::Deferred,
                     rule_id: "specs.uses-normative-language".into(),
                     rule: "Uses SHALL/MUST language for normative requirements".into(),
-                    reason: "Semantic check — requires LLM judgment",
+                    detail: Some("Semantic check — requires LLM judgment".to_string()),
                 },
             ],
             passed: false,
@@ -188,10 +182,14 @@ mod tests {
         assert_eq!(value["passed"], false);
         assert_eq!(value["brief-results"]["proposal"][0]["status"], "pass");
         assert_eq!(value["brief-results"]["proposal"][0]["rule-id"], "proposal.why-has-content");
+        assert!(
+            value["brief-results"]["proposal"][0].get("detail").is_none(),
+            "pass entries must omit `detail` to preserve the historical wire shape"
+        );
         assert_eq!(value["cross-checks"][0]["status"], "fail");
         assert_eq!(value["cross-checks"][0]["detail"], "REQ-999 not found");
         assert_eq!(value["cross-checks"][1]["status"], "deferred");
-        assert_eq!(value["cross-checks"][1]["reason"], "Semantic check — requires LLM judgment");
+        assert_eq!(value["cross-checks"][1]["detail"], "Semantic check — requires LLM judgment");
     }
 
     /// Every rule carries a stable `<brief>.<kebab>` id.

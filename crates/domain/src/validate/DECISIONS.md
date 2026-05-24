@@ -6,7 +6,7 @@ decisionless statements; this file is the single citation point.
 
 ## Change A — Hardcoded rule registry, classification at definition site
 
-Source: `rfcs/archive/rfc-1a-validation.md` (registry of representative
+Source: `rfcs/done/rfc-1a-validation.md` (registry of representative
 rules, declared `Classification` per rule).
 
 The registry in `crates/validate/src/registry/` enumerates rules per
@@ -18,7 +18,7 @@ them and emits `Deferred`. A test enforces non-invocation.
 
 ## Change B — Top-level contract format detection by root key
 
-Source: `rfcs/archive/rfc-12-baseline-contracts.md`
+Source: `rfcs/done/rfc-12-baseline-contracts.md`
 §"Top-level contracts" and §Non-goals.
 
 `crates/validate/src/contracts/parse.rs` walks the supplied
@@ -32,7 +32,7 @@ diagnostic.
 
 ## Change C — Baseline-contract validation rules
 
-Source: `rfcs/archive/rfc-12-baseline-contracts.md` §Validation.
+Source: `rfcs/done/rfc-12-baseline-contracts.md` §Validation.
 
 The runner in `crates/validate/src/contracts/mod.rs` enforces three
 rules:
@@ -47,7 +47,7 @@ rules:
 
 ## Change D — Validate JSON body shape
 
-Source: `rfcs/archive/rfc-13-contract-validate-binary.md` §4.2a.
+Source: `rfcs/done/rfc-13-contract-validate-binary.md` §4.2a.
 
 The standalone `specify-contract` binary (in
 `wasi-tools/contract/src/main.rs`) renders a flat pretty-printed JSON

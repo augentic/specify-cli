@@ -1,9 +1,8 @@
 //! Integration tests for `specify_domain::change::finalize`.
 //!
 //! Substitutes the real `gh` / `git` shell-outs with a `MockCmd`
-//! [`CmdRunner`](specify_domain::cmd::CmdRunner) so the run loop's
-//! classification, refusal, and atomic archive behaviours can be
-//! exercised end-to-end without a forge.
+//! recorder so the run loop's classification, refusal, and atomic
+//! archive behaviours can be exercised end-to-end without a forge.
 
 mod common;
 
@@ -15,7 +14,7 @@ use specify_domain::change::finalize::{
     Inputs, Landing, ProjectResult, Refusal, classify_pr, combine, is_terminal, outstanding, run,
     summarise,
 };
-use specify_domain::change::{Entry, Plan, Status};
+use specify_domain::change::{Entry, Lifecycle, Plan, SliceAuthorityOverride, Status, TargetRef};
 use specify_domain::registry::forge::{PrState, PrView};
 use specify_domain::registry::{Registry, RegistryProject};
 use tempfile::TempDir;
@@ -25,17 +24,15 @@ use crate::common::{MockCmd, RecordedCall, fail_stderr, ok_stdout};
 // ---- pure helpers -----------------------------------------------------
 
 #[test]
-fn terminal_states_accept_done_failed_skipped() {
+fn terminal_states_accept_done_only() {
+    // Post-2.0 the only terminal per-entry state is `Done`.
     assert!(is_terminal(Status::Done));
-    assert!(is_terminal(Status::Failed));
-    assert!(is_terminal(Status::Skipped));
 }
 
 #[test]
-fn terminal_states_reject_pending_in_progress_blocked() {
+fn terminal_states_reject_pending_and_in_progress() {
     assert!(!is_terminal(Status::Pending));
     assert!(!is_terminal(Status::InProgress));
-    assert!(!is_terminal(Status::Blocked));
 }
 
 #[test]
@@ -88,13 +85,14 @@ fn combine_clean_passes_through() {
 fn outstanding_lists_in_plan_order() {
     let plan = Plan {
         name: "demo".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![
             entry("a", Status::Done),
             entry("b", Status::Pending),
             entry("c", Status::InProgress),
             entry("d", Status::Done),
-            entry("e", Status::Blocked),
+            entry("e", Status::Pending),
         ],
     };
     assert_eq!(outstanding(&plan), vec!["b", "c", "e"]);
@@ -104,12 +102,9 @@ fn outstanding_lists_in_plan_order() {
 fn outstanding_empty_when_all_terminal() {
     let plan = Plan {
         name: "demo".to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
-        entries: vec![
-            entry("a", Status::Done),
-            entry("b", Status::Failed),
-            entry("c", Status::Skipped),
-        ],
+        entries: vec![entry("a", Status::Done), entry("b", Status::Done), entry("c", Status::Done)],
     };
     assert!(outstanding(&plan).is_empty());
 }
@@ -118,13 +113,14 @@ fn entry(name: &str, status: Status) -> Entry {
     Entry {
         name: name.to_string(),
         project: None,
-        adapter: Some("omnia@v1".to_string()),
+        target: Some(TargetRef::new("omnia", 1)),
         status,
         depends_on: Vec::new(),
         sources: Vec::new(),
         context: Vec::new(),
         description: None,
-        status_reason: None,
+        divergence: None,
+        authority_override: SliceAuthorityOverride::default(),
     }
 }
 
@@ -243,6 +239,7 @@ fn registry_with(names: &[&str]) -> Registry {
 fn plan_named(name: &str) -> Plan {
     Plan {
         name: name.to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: Vec::new(),
     }
@@ -251,6 +248,7 @@ fn plan_named(name: &str) -> Plan {
 fn plan_with_entries(name: &str, entries: Vec<Entry>) -> Plan {
     Plan {
         name: name.to_string(),
+        lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries,
     }
@@ -273,7 +271,7 @@ fn refuses_when_plan_has_outstanding() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let err = run(inputs, &runner).expect_err("non-terminal must refuse");
+    let err = run(inputs, &|c| runner.run(c)).expect_err("non-terminal must refuse");
     assert!(matches!(&err, Refusal::NonTerminalEntries(names) if names == &["b"]));
     // Probe must not have been called — guard runs before any IO.
     assert!(runner.calls.borrow().is_empty(), "no probes on non-terminal refusal");
@@ -305,7 +303,7 @@ fn finalizes_with_no_clones_and_no_registry_passes() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(outcome.finalized);
     assert!(outcome.projects.is_empty());
     assert!(outcome.archived.is_some(), "archive must have run");
@@ -341,7 +339,7 @@ fn refuses_when_one_project_pr_is_unmerged() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Unmerged);
     assert_eq!(outcome.projects[0].pr_number, Some(7));
@@ -400,7 +398,7 @@ fn passes_when_pr_is_merged() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Merged);
     assert_eq!(outcome.summary.merged, 1);
@@ -424,7 +422,7 @@ fn passes_when_no_branch_for_project() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::NoBranch);
     assert_eq!(outcome.summary.no_branch, 1);
@@ -457,7 +455,7 @@ fn refuses_on_branch_pattern_mismatch() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::BranchPatternMismatch);
     // Diagnostic must surface the literal expected branch.
@@ -491,7 +489,7 @@ fn refuses_on_gh_shell_error() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Failed);
     assert!(outcome.projects[0].detail.as_deref().is_some_and(|d| d.contains("simulated")));
@@ -530,7 +528,7 @@ fn refuses_dirty_workspace_without_clean() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Dirty);
     assert_eq!(outcome.projects[0].dirty, Some(true));
@@ -582,7 +580,7 @@ fn refuses_dirty_workspace_with_clean() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Dirty);
     assert_eq!(
@@ -637,7 +635,7 @@ fn dry_run_does_not_archive_or_clean() {
         dry_run: true,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(outcome.finalized, "dry-run with all-passing must report finalized=true");
     assert!(outcome.dry_run);
     assert!(outcome.archived.is_none(), "dry-run must not archive");
@@ -674,7 +672,7 @@ fn dry_run_with_unmerged_pr_reports_not_finalized() {
         dry_run: true,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(!outcome.finalized);
     assert_eq!(outcome.projects[0].status, Landing::Unmerged);
     assert!(outcome.dry_run);
@@ -716,7 +714,7 @@ fn clean_removes_clones_after_archive() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(outcome.finalized);
     assert_eq!(outcome.cleaned, vec!["alpha"], "alpha must be cleaned");
     assert!(!alpha_path.exists(), "workspace clone must be gone");
@@ -763,7 +761,7 @@ fn clean_waits_until_archive_succeeds() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(!outcome.finalized, "archive collision must refuse finalize");
     assert!(outcome.cleaned.is_empty(), "failed archive must not clean clones");
     assert!(alpha_path.exists(), "clone must remain when archive fails");
@@ -807,7 +805,7 @@ fn clean_skips_symlink_projects() {
         dry_run: false,
         now: jiff::Timestamp::now(),
     };
-    let outcome = run(inputs, &runner).expect("ok");
+    let outcome = run(inputs, &|c| runner.run(c)).expect("ok");
     assert!(outcome.finalized);
     assert!(outcome.cleaned.is_empty(), "symlink projects must not be cleaned");
 }
@@ -849,7 +847,7 @@ fn idempotent_after_manual_merge() {
             dry_run: false,
             now: jiff::Timestamp::now(),
         },
-        &runner1,
+        &|c| runner1.run(c),
     )
     .expect("ok");
     assert!(!outcome1.finalized, "first run must refuse on unmerged PR");
@@ -879,7 +877,7 @@ fn idempotent_after_manual_merge() {
             dry_run: false,
             now: jiff::Timestamp::now(),
         },
-        &runner2,
+        &|c| runner2.run(c),
     )
     .expect("ok");
     assert!(outcome2.finalized, "second run after manual merge must finalize");

@@ -2,9 +2,11 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::adapter::ChangeBrief;
-use specify_domain::change::{Plan, PlanDoctorDiagnostic, Severity, Status, plan_doctor};
-use specify_domain::config::{InitPolicy, with_state};
+use specify_domain::change::{
+    Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, detect,
+    plan_doctor,
+};
+use specify_domain::config::{ProjectConfig, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -36,25 +38,41 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     if let Some(reg) = &registry {
         let workspace_base = ctx.layout().specify_dir().join("workspace");
         for rp in &reg.projects {
-            let slot_project_yaml =
-                workspace_base.join(&rp.name).join(".specify").join("project.yaml");
-            if slot_project_yaml.exists()
-                && let Ok(content) = std::fs::read_to_string(&slot_project_yaml)
-                && let Ok(config) = serde_saphyr::from_str::<serde_json::Value>(&content)
-                && let Some(slot_adapter) = config.get("adapter").and_then(|v| v.as_str())
-                && slot_adapter != rp.adapter
-            {
-                results.push(PlanDoctorDiagnostic {
-                    severity: Severity::Warning,
-                    code: "adapter-mismatch-workspace".to_string(),
-                    message: format!(
-                        "workspace clone '{}' has adapter '{}' but registry declares '{}'; \
-                         the clone's project.yaml is authoritative at execution time",
-                        rp.name, slot_adapter, rp.adapter
-                    ),
-                    entry: None,
-                    data: None,
-                });
+            let slot_project_dir = workspace_base.join(&rp.name);
+            let slot_project_yaml = slot_project_dir.join(".specify").join("project.yaml");
+            if !slot_project_yaml.exists() {
+                continue;
+            }
+            match ProjectConfig::load(&slot_project_dir) {
+                Ok(cfg) => {
+                    if let Some(slot_adapter) = cfg.adapter.as_deref()
+                        && slot_adapter != rp.adapter
+                    {
+                        results.push(PlanDoctorDiagnostic {
+                            severity: Severity::Warning,
+                            code: "adapter-mismatch-workspace".to_string(),
+                            message: format!(
+                                "workspace clone '{}' has adapter '{}' but registry declares '{}'; \
+                                 the clone's project.yaml is authoritative at execution time",
+                                rp.name, slot_adapter, rp.adapter
+                            ),
+                            entry: None,
+                            data: None,
+                        });
+                    }
+                }
+                Err(err) => {
+                    results.push(PlanDoctorDiagnostic {
+                        severity: Severity::Error,
+                        code: "workspace-slot-config-unreadable".to_string(),
+                        message: format!(
+                            "workspace clone '{}' project.yaml could not be loaded: {err}",
+                            rp.name
+                        ),
+                        entry: None,
+                        data: None,
+                    });
+                }
             }
         }
     }
@@ -82,83 +100,257 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     }
 }
 
+/// `specify plan next` — return the active in-progress entry, or
+/// transition the next eligible `Pending` entry to `InProgress` and
+/// return it. The only writer of per-entry `in-progress` per
+/// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
-    let plan_path = require_file(&ctx.project_dir)?;
-    let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.layout().slices_dir();
 
-    let results = plan.validate(Some(&slices_dir), None);
-    if results.iter().any(|r| matches!(r.level, Severity::Error)) {
-        return Err(Error::validation_failed(
-            "plan-structural-errors",
-            "plan must be free of structural errors",
-            "run 'specify plan validate' for detail",
-        ));
-    }
+    let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        let validate_results = plan.validate(Some(&slices_dir), None);
+        if validate_results.iter().any(|r| matches!(r.level, Severity::Error)) {
+            return Err(Error::validation_failed(
+                "plan-structural-errors",
+                "plan must be free of structural errors",
+                "run 'specify plan validate' for detail",
+            ));
+        }
+        if !detect(&plan.entries).is_empty() {
+            return Err(Error::validation_failed(
+                "plan-structural-errors",
+                "plan must be free of structural errors",
+                "run 'specify plan validate' for detail",
+            ));
+        }
 
-    let body = if let Some(active) = plan.entries.iter().find(|c| c.status == Status::InProgress) {
-        NextBody {
-            reason: Some("in-progress".into()),
-            active: Some(active.name.clone()),
-            ..NextBody::default()
-        }
-    } else if let Some(entry) = plan.next_eligible() {
-        NextBody {
-            next: Some(entry.name.clone()),
-            project: entry.project.clone(),
-            adapter: entry.adapter.clone(),
-            description: entry.description.clone(),
-            sources: Some(entry.sources.clone()),
-            ..NextBody::default()
-        }
-    } else {
-        let all_terminal =
-            plan.entries.iter().all(|c| matches!(c.status, Status::Done | Status::Skipped));
-        let reason = if all_terminal { "all-done" } else { "stuck" };
-        NextBody {
-            reason: Some(reason.into()),
-            ..NextBody::default()
-        }
-    };
+        // workflow §CLI surface: "plan next returns the active
+        // in-progress entry before selecting a new pending entry,
+        // and reports drained only when no active or pending
+        // entries remain."
+        let was_executing = plan.is_executing();
+        let advanced = plan.advance_next()?;
+        Ok(match advanced {
+            None => {
+                let reason = if plan.is_drained() { "drained" } else { "stuck" };
+                NextBody {
+                    reason: Some(reason.into()),
+                    ..NextBody::default()
+                }
+            }
+            Some(entry) if was_executing => NextBody {
+                reason: Some("in-progress".into()),
+                active: Some(entry.name.clone()),
+                ..NextBody::default()
+            },
+            Some(entry) => NextBody {
+                next: Some(entry.name.clone()),
+                project: entry.project.clone(),
+                target: entry.target.as_ref().map(ToString::to_string),
+                description: entry.description.clone(),
+                sources: Some(entry.sources.clone()),
+                ..NextBody::default()
+            },
+        })
+    })?;
     ctx.write(&body, write_next_text)?;
     Ok(())
 }
 
+/// `specify plan transition <name> <target>` — dispatches to either
+/// the plan-level Gate 1 stamp (`<plan-name> reviewed`) or the
+/// per-entry close (`<entry-name> done`). `--undo` swaps the
+/// forward verb for the one-rung reverse walk on per-entry status
+/// (`done → in-progress`, `in-progress → pending`); plan-level
+/// lifecycle has no undo path in v1.
+///
+/// `<plan-name> reviewed` against an already-reviewed plan is an
+/// idempotent no-op (exit 0, no journal event) per workflow §D7 —
+/// running the explicit transition after `specify plan create
+/// --auto-review` must not double-stamp the lifecycle nor double-
+/// fire `plan.transition.reviewed`.
 pub(super) fn transition(
-    ctx: &Ctx, name: String, target: Status, reason: Option<String>,
+    ctx: &Ctx, name: String, target: Option<String>, undo: bool,
 ) -> Result<()> {
     let plan_path = ctx.layout().plan_path();
-    let body = with_state::<Plan, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("plan.yaml"),
-        move |plan| {
-            let old_status = plan
-                .entries
-                .iter()
-                .find(|c| c.name == name)
-                .ok_or_else(|| Error::Diag {
-                    code: "plan-entry-not-found",
-                    detail: format!("no slice named '{name}' in plan"),
-                })?
-                .status;
-
-            plan.transition(&name, target, reason.as_deref())?;
-
-            let entry =
-                plan.entries.iter().find(|c| c.name == name).expect("transitioned entry present");
-            Ok(TransitionBody {
-                plan: plan_ref(plan, &plan_path),
-                entry: TransitionRow {
-                    name: entry.name.clone(),
-                    status: entry.status,
-                    status_reason: entry.status_reason.clone(),
+    let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        if undo {
+            dispatch_undo(plan, &plan_path, &name)
+        } else {
+            // Clap's `required_unless_present = "undo"` guarantees a
+            // target here; the unwrap_or surfaces the same usage
+            // diagnostic clap would have if it slipped through.
+            let target = target.ok_or_else(|| Error::Argument {
+                flag: "<target>",
+                detail: "transition target is required unless --undo is set".to_string(),
+            })?;
+            dispatch_transition(plan, &plan_path, &name, &target)
+        }
+    })?;
+    // workflow §Observability: every status / lifecycle move emits
+    // exactly one journal event when the on-disk state actually
+    // changed. The same-state no-op path (already-`reviewed` plan)
+    // flags `changed = false` so we skip the emit.
+    match (body.kind, body.changed) {
+        (TransitionKind::Plan, true) => {
+            let event = specify_domain::journal::Event::new(
+                Timestamp::now(),
+                specify_domain::journal::EventKind::PlanTransitionReviewed {
+                    plan_name: body.name.clone(),
                 },
-                previous_status: old_status,
-            })
-        },
-    )?;
+            );
+            specify_domain::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+        }
+        (TransitionKind::Undo, true) => {
+            let pair = body.undo.ok_or_else(|| Error::Diag {
+                code: "plan-transition-undo",
+                detail: "undo body must carry the status pair".to_string(),
+            })?;
+            let event = specify_domain::journal::Event::new(
+                Timestamp::now(),
+                specify_domain::journal::EventKind::PlanTransitionUndone {
+                    plan_name: body.plan.name.clone(),
+                    slice_name: body.name.clone(),
+                    from: pair.from,
+                    to: pair.to,
+                },
+            );
+            specify_domain::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+        }
+        _ => {}
+    }
     ctx.write(&body, write_transition_text)?;
     Ok(())
+}
+
+fn dispatch_undo(
+    plan: &mut Plan, plan_path: &std::path::Path, name: &str,
+) -> Result<TransitionBody> {
+    if name == plan.name {
+        return Err(Error::Argument {
+            flag: "--undo",
+            detail: "plan-level lifecycle has no undo path in v1; `--undo` operates on \
+                     per-entry status only. To un-stamp `reviewed`, edit `plan.yaml` directly \
+                     (out of scope for the CLI) or drop and re-create the plan."
+                .to_string(),
+        });
+    }
+    let (from, to) = plan.transition_undo(name)?;
+    let entry = plan.entries.iter().find(|e| e.name == name).ok_or_else(|| Error::Diag {
+        code: "plan-entry-not-found",
+        detail: format!("no slice named '{name}' in plan"),
+    })?;
+    Ok(TransitionBody {
+        plan: plan_ref(plan, plan_path),
+        kind: TransitionKind::Undo,
+        name: entry.name.clone(),
+        previous: from.to_string(),
+        current: to.to_string(),
+        changed: true,
+        undo: Some(UndoPair { from, to }),
+    })
+}
+
+fn dispatch_transition(
+    plan: &mut Plan, plan_path: &std::path::Path, name: &str, target: &str,
+) -> Result<TransitionBody> {
+    if name == plan.name {
+        // Plan-level transition: only `reviewed` is legal.
+        return match target {
+            "reviewed" => {
+                let previous = plan.lifecycle;
+                if matches!(previous, Lifecycle::Reviewed) {
+                    // workflow §D7: `--auto-review` already stamped
+                    // this plan; the explicit transition is the
+                    // operator's belt-and-braces follow-up. No
+                    // disk or journal write — `body.changed` is
+                    // `false` so the caller suppresses the emit.
+                    return Ok(TransitionBody {
+                        plan: plan_ref(plan, plan_path),
+                        kind: TransitionKind::Plan,
+                        name: plan.name.clone(),
+                        previous: previous.to_string(),
+                        current: plan.lifecycle.to_string(),
+                        changed: false,
+                        undo: None,
+                    });
+                }
+                plan.transition_lifecycle(Lifecycle::Reviewed)?;
+                Ok(TransitionBody {
+                    plan: plan_ref(plan, plan_path),
+                    kind: TransitionKind::Plan,
+                    name: plan.name.clone(),
+                    previous: previous.to_string(),
+                    current: plan.lifecycle.to_string(),
+                    changed: true,
+                    undo: None,
+                })
+            }
+            other => Err(plan_target_invalid(other)),
+        };
+    }
+
+    // Per-entry transition: only `done` is legal. `pending` is owned by
+    // `plan add`/`amend`; `in-progress` is owned by `plan next`; and
+    // `blocked`/`failed`/`skipped` are not v1 states.
+    match target {
+        "done" => {
+            let idx =
+                plan.entries.iter().position(|e| e.name == name).ok_or_else(|| Error::Diag {
+                    code: "plan-entry-not-found",
+                    detail: format!("no slice named '{name}' in plan"),
+                })?;
+            let previous = plan.entries[idx].status;
+            plan.transition(name, Status::Done)?;
+            let entry = &plan.entries[idx];
+            Ok(TransitionBody {
+                plan: plan_ref(plan, plan_path),
+                kind: TransitionKind::Entry,
+                name: entry.name.clone(),
+                previous: previous.to_string(),
+                current: entry.status.to_string(),
+                changed: true,
+                undo: None,
+            })
+        }
+        other => Err(entry_target_invalid(other)),
+    }
+}
+
+fn plan_target_invalid(target: &str) -> Error {
+    Error::Argument {
+        flag: "<target>",
+        detail: format!(
+            "plan-level transition target must be `reviewed`; got `{target}`. \
+             Run `specify plan transition <plan-name> reviewed` to stamp Gate 1."
+        ),
+    }
+}
+
+fn entry_target_invalid(target: &str) -> Error {
+    Error::Argument {
+        flag: "<target>",
+        detail: match target {
+            "pending" => {
+                "per-entry `pending` is written by `plan add` / `plan amend`, not `plan transition`. \
+                 To clear an entry, drop and re-add it.".to_string()
+            }
+            "in-progress" => {
+                "per-entry `in-progress` is written only by `plan next`; \
+                 `plan transition` cannot move an entry into the active slot."
+                    .to_string()
+            }
+            "blocked" | "failed" | "skipped" => format!(
+                "per-entry `{target}` is not a v1 state — the 2.0 collapse removed the per-entry enum to \
+                 `pending | in-progress | done`. Build failures and merge conflicts leave the \
+                 active entry `in-progress`."
+            ),
+            other => format!(
+                "per-entry transition target must be `done`; got `{other}`. \
+                 `done` is stamped by `/spec:merge` (or by hand once the slice is merged)."
+            ),
+        },
+    }
 }
 
 pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
@@ -171,7 +363,7 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
         });
     }
     let archive_dir = layout.archive_dir().join("plans");
-    let brief_path = ChangeBrief::path(&ctx.project_dir);
+    let brief_path = layout.change_brief_path();
     let plan_name = Plan::load(&plan_path)?.name;
 
     let (archived, archived_plans_dir) =
@@ -218,9 +410,9 @@ struct NextBody {
     reason: Option<String>,
     active: Option<String>,
     project: Option<String>,
-    adapter: Option<String>,
+    target: Option<String>,
     description: Option<String>,
-    sources: Option<Vec<String>>,
+    sources: Option<Vec<SliceSourceBinding>>,
 }
 
 fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {
@@ -228,39 +420,74 @@ fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {
         writeln!(w, "Active change in progress: {active}")
     } else if let Some(name) = &body.next {
         writeln!(w, "{name}")
-    } else if body.reason.as_deref() == Some("all-done") {
-        writeln!(w, "All changes done.")
+    } else if body.reason.as_deref() == Some("drained") {
+        writeln!(w, "Plan drained — no per-entry pending or in-progress remains.")
     } else {
         writeln!(
             w,
-            "No eligible changes \u{2014} remaining entries are blocked, failed, or waiting on unmet dependencies."
+            "No eligible changes \u{2014} remaining entries are waiting on unmet dependencies."
         )
     }
+}
+
+#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum TransitionKind {
+    Plan,
+    Entry,
+    Undo,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct TransitionBody {
     plan: Ref,
-    entry: TransitionRow,
+    kind: TransitionKind,
+    name: String,
+    previous: String,
+    current: String,
+    /// `false` when the transition was an idempotent no-op (workflow
+    /// §D7 — explicit `reviewed` after `--auto-review`); `true`
+    /// when the lifecycle / status actually moved. The outer
+    /// handler reads this to decide whether to fire the
+    /// `plan.transition.reviewed` journal event.
     #[serde(skip)]
-    previous_status: Status,
+    changed: bool,
+    /// Status pair the `--undo` walk visited, if any. `None` on
+    /// forward transitions and on undo failures that never reached
+    /// the mutation step. Surfaced on the JSON envelope under
+    /// `undo: { from, to }` so wire consumers can branch on the
+    /// reverse step without re-parsing `previous` / `current`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    undo: Option<UndoPair>,
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+struct UndoPair {
+    from: Status,
+    to: Status,
 }
 
 fn write_transition_text(w: &mut dyn Write, body: &TransitionBody) -> std::io::Result<()> {
-    writeln!(
-        w,
-        "Transitioned '{}': {} \u{2192} {}.",
-        body.entry.name, body.previous_status, body.entry.status
-    )
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct TransitionRow {
-    name: String,
-    status: Status,
-    status_reason: Option<String>,
+    match body.kind {
+        TransitionKind::Plan if !body.changed => {
+            writeln!(w, "Plan '{}' is already at lifecycle: {} (no-op).", body.name, body.current)
+        }
+        TransitionKind::Plan => writeln!(
+            w,
+            "Stamped plan '{}': lifecycle {} \u{2192} {}.",
+            body.name, body.previous, body.current
+        ),
+        TransitionKind::Entry => writeln!(
+            w,
+            "Transitioned '{}': {} \u{2192} {}.",
+            body.name, body.previous, body.current
+        ),
+        TransitionKind::Undo => {
+            writeln!(w, "Undid '{}': {} \u{2192} {}.", body.name, body.previous, body.current)
+        }
+    }
 }
 
 #[derive(Serialize)]

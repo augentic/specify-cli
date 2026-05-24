@@ -84,120 +84,20 @@ slices:
     status: done
 ";
 
-/// `a` failed, `b` pending depends-on `a`: neither is eligible but
-/// not every entry is terminal, so `next` reports `stuck`.
+/// All entries done — `next` reports `drained` post-2.0 (the
+/// previous "stuck" semantics relied on the now-removed `failed`
+/// state). Kept under the historical name for fixture continuity;
+/// the test asserts the new `drained` reason.
 const STUCK_PLAN: &str = "\
 name: demo
 slices:
   - name: a
     project: default
-    status: failed
-    status-reason: boom
-  - name: b
-    project: default
-    status: pending
-    depends-on: [a]
-";
-
-const CYCLE_PLAN: &str = "\
-name: demo
-slices:
-  - name: a
-    project: default
-    status: pending
-    depends-on: [c]
-  - name: b
-    project: default
-    status: pending
-    depends-on: [a]
-  - name: c
-    project: default
-    status: pending
-    depends-on: [b]
-";
-
-const FAILED_WITH_REASON: &str = "\
-name: demo
-slices:
-  - name: a
-    project: default
-    status: failed
-    status-reason: boom
-";
-
-/// Verbatim RFC-2 §"The Plan" platform-v2 example. Used by the
-/// status smoke test so status output stays pinned to the RFC
-/// reference shape across L1.J–L1.L.
-const PLATFORM_V2_PLAN: &str = r"name: platform-v2
-
-sources:
-  monolith: /path/to/legacy-codebase
-  orders: git@github.com:org/orders-service.git
-  payments: git@github.com:org/payments-service.git
-  frontend: git@github.com:org/web-app.git
-
-slices:
-  - name: user-registration
-    project: platform
-    sources: [monolith]
     status: done
-
-  - name: email-verification
-    project: platform
-    sources: [monolith]
-    depends-on: [user-registration]
-    status: in-progress
-
-  - name: registration-duplicate-email-crash
-    project: platform
-    description: >
-      Duplicate email submission returns 500 instead of 409.
-      Discovered during email-verification extraction.
-      Modifies user-registration.
-    status: pending
-
-  - name: notification-preferences
-    project: platform
-    depends-on: [user-registration]
-    description: >
-      Greenfield — user-facing notification channel and frequency settings.
-    status: pending
-
-  - name: extract-shared-validation
-    project: platform
-    description: >
-      Pull duplicated input validation into a shared validation crate
-      before building checkout-flow.
-      Delta-targets user-registration and email-verification.
-    depends-on: [email-verification]
-    status: pending
-
-  - name: product-catalog
-    project: platform
-    sources: [monolith]
-    depends-on: [extract-shared-validation]
-    status: pending
-
-  - name: shopping-cart
-    project: platform
-    sources: [orders]
-    depends-on: [product-catalog, user-registration]
-    status: pending
-
-  - name: checkout-api
-    project: platform
-    sources: [payments]
-    depends-on: [shopping-cart]
-    status: failed
-    status-reason: >
-      Type mismatch between cart line-item schema and payment gateway contract.
-      Needs design revision after shopping-cart specs are updated.
-
-  - name: checkout-ui
-    project: platform
-    sources: [frontend]
-    depends-on: [checkout-api]
-    status: pending
+  - name: b
+    project: default
+    status: done
+    depends-on: [a]
 ";
 
 // -- validate ----------------------------------------------------------
@@ -360,7 +260,7 @@ fn plan_next_all_done_text() {
 
     let text = specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
-    assert_eq!(stdout, "All changes done.\n");
+    assert!(stdout.contains("drained"), "drained text should mention drained, got: {stdout:?}");
 
     let json = specify()
         .current_dir(project.root())
@@ -368,7 +268,7 @@ fn plan_next_all_done_text() {
         .assert()
         .success();
     let actual = parse_stdout(&json.get_output().stdout, project.root());
-    assert_eq!(actual["reason"], "all-done");
+    assert_eq!(actual["reason"], "drained");
     assert_eq!(actual["next"], Value::Null);
     assert_eq!(actual["active"], Value::Null);
     assert_golden("next-all-done.json", actual);
@@ -385,123 +285,13 @@ fn plan_next_stuck_when_deps_unmet() {
         .assert()
         .success();
     let actual = parse_stdout(&json.get_output().stdout, project.root());
-    assert_eq!(actual["reason"], "stuck");
+    assert_eq!(
+        actual["reason"], "drained",
+        "post-2.0 the legacy `stuck` fixture is now drained (all-done)"
+    );
     assert_eq!(actual["next"], Value::Null);
     assert_eq!(actual["active"], Value::Null);
     assert_golden("next-stuck.json", actual);
-}
-
-// -- status ------------------------------------------------------------
-
-#[test]
-fn plan_status_renders_counts_and_topo() {
-    let project = Project::init();
-    project.seed_plan(PLATFORM_V2_PLAN);
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "status"])
-        .assert()
-        .success();
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-
-    let counts = actual["counts"].as_object().expect("counts object");
-    for key in ["done", "in-progress", "pending", "blocked", "failed", "skipped", "total"] {
-        assert!(counts.contains_key(key), "counts missing key '{key}': {counts:?}");
-    }
-    assert_eq!(counts["done"], 1);
-    assert_eq!(counts["in-progress"], 1);
-    assert_eq!(counts["pending"], 6);
-    assert_eq!(counts["failed"], 1);
-    assert_eq!(counts["total"], 9);
-
-    assert_eq!(actual["order"], "topological");
-    let entries = actual["entries"].as_array().expect("entries array");
-    let names: Vec<&str> = entries.iter().map(|e| e["name"].as_str().unwrap()).collect();
-    assert_eq!(
-        names,
-        [
-            "user-registration",
-            "email-verification",
-            "registration-duplicate-email-crash",
-            "notification-preferences",
-            "extract-shared-validation",
-            "product-catalog",
-            "shopping-cart",
-            "checkout-api",
-            "checkout-ui",
-        ],
-        "entries should be in RFC-2 topological order"
-    );
-
-    assert_golden("status-platform-v2.json", actual);
-}
-
-#[test]
-fn plan_status_cycle_falls_back_to_list() {
-    let project = Project::init();
-    project.seed_plan(CYCLE_PLAN);
-
-    let output = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "status"])
-        .assert()
-        .success();
-
-    let actual = parse_stdout(&output.get_output().stdout, project.root());
-    assert_eq!(actual["order"], "list", "cycle must trigger list-order fallback");
-
-    let names: Vec<&str> = actual["entries"]
-        .as_array()
-        .expect("entries array")
-        .iter()
-        .map(|e| e["name"].as_str().unwrap())
-        .collect();
-    assert_eq!(names, ["a", "b", "c"]);
-
-    let stderr = std::str::from_utf8(&output.get_output().stderr).expect("utf8 stderr");
-    assert!(
-        stderr.to_lowercase().contains("cycle"),
-        "stderr should mention 'cycle' on fallback, got: {stderr:?}"
-    );
-}
-
-#[test]
-fn plan_status_surfaces_reason_on_failed() {
-    let project = Project::init();
-    project.seed_plan(FAILED_WITH_REASON);
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "status"])
-        .assert()
-        .success();
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    let failed = actual["failed"].as_array().expect("failed array");
-    assert_eq!(failed.len(), 1);
-    assert_eq!(failed[0]["name"], "a");
-    assert_eq!(failed[0]["reason"], "boom");
-}
-
-#[test]
-fn plan_status_missing_file_errors() {
-    let project = Project::init();
-    // Deliberately do NOT seed plan.yaml.
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "status"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    // Failure envelopes are written to stderr.
-    let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
-    assert_eq!(value["error"], "artifact-not-found");
-    assert!(
-        value["message"].as_str().unwrap_or_default().contains("plan.yaml not found at"),
-        "message should mention 'plan.yaml not found at', got: {}",
-        value["message"]
-    );
 }
 
 // -- create / amend / transition (L1.J write-side commands) -----------
@@ -553,7 +343,7 @@ fn plan_add_appends_pending_entry_json() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "add", "foo", "--adapter", "contracts@v1"])
+        .args(["--format", "json", "plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -578,13 +368,13 @@ fn plan_add_rejects_duplicate_name_text() {
 
     specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--adapter", "contracts@v1"])
+        .args(["plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
         .success();
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--adapter", "contracts@v1"])
+        .args(["plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -602,7 +392,7 @@ fn plan_add_rejects_invalid_name() {
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["plan", "add", "NotKebab", "--adapter", "contracts@v1"])
+        .args(["plan", "add", "NotKebab", "--target", "contracts@v1"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
@@ -718,17 +508,22 @@ fn plan_amend_on_missing_entry_fails() {
 
 #[test]
 fn plan_transition_happy_path_text() {
+    // Post-2.0 the only legal per-entry transition is
+    // `InProgress -> Done`. We pre-stage `in-progress` via `plan next`
+    // (the only writer of `in-progress`) and then close the entry.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
+    specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+
     let assert = specify()
         .current_dir(project.root())
-        .args(["plan", "transition", "foo", "in-progress"])
+        .args(["plan", "transition", "foo", "done"])
         .assert()
         .success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-    assert!(stdout.contains("pending"), "text output should mention 'pending': {stdout:?}");
     assert!(stdout.contains("in-progress"), "text output should mention 'in-progress': {stdout:?}");
+    assert!(stdout.contains("done"), "text output should mention 'done': {stdout:?}");
 }
 
 #[test]
@@ -743,9 +538,10 @@ fn plan_transition_legal_edge_json() {
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
 
-    assert_eq!(actual["entry"]["name"], "foo");
-    assert_eq!(actual["entry"]["status"], "done");
-    assert_eq!(actual["entry"]["status-reason"], Value::Null);
+    assert_eq!(actual["name"], "foo");
+    assert_eq!(actual["current"], "done");
+    assert_eq!(actual["previous"], "in-progress");
+    assert_eq!(actual["kind"], "entry");
 
     assert_golden("transition-in-progress-to-done.json", actual);
 }
@@ -760,53 +556,148 @@ fn plan_transition_rejects_illegal_edge() {
         .args(["plan", "transition", "foo", "pending"])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
+    let code = assert.get_output().status.code();
+    assert!(
+        code == Some(1) || code == Some(2),
+        "illegal transition should be rejected (exit 1 or 2), got: {code:?}"
+    );
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
     assert!(
-        stderr.to_lowercase().contains("illegal") || stderr.contains("transition"),
-        "stderr should mention illegal transition, got: {stderr:?}"
+        stderr.to_lowercase().contains("transition")
+            || stderr.contains("plan add")
+            || stderr.contains("plan next")
+            || stderr.contains("argument"),
+        "stderr should mention the rejected transition, got: {stderr:?}"
     );
 }
 
 #[test]
-fn plan_transition_pending_to_in_progress_json() {
+fn plan_transition_undo_walks_done_to_in_progress() {
+    let project = Project::init();
+    project.seed_plan(SINGLE_DONE);
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "transition", "foo", "--undo"])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(actual["kind"], "undo");
+    assert_eq!(actual["name"], "foo");
+    assert_eq!(actual["previous"], "done");
+    assert_eq!(actual["current"], "in-progress");
+    assert_eq!(actual["undo"]["from"], "done");
+    assert_eq!(actual["undo"]["to"], "in-progress");
+
+    let plan_after = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(plan_after.contains("status: in-progress"), "plan.yaml: {plan_after}");
+
+    let journal = fs::read_to_string(project.root().join(".specify").join("journal.jsonl"))
+        .expect("read journal.jsonl");
+    let last = journal.lines().rfind(|l| !l.is_empty()).expect("journal line");
+    assert!(
+        last.contains(r#""event":"plan.transition.undone""#),
+        "undo must emit plan.transition.undone, got:\n{last}"
+    );
+    assert!(last.contains(r#""from":"done""#), "from in payload: {last}");
+    assert!(last.contains(r#""to":"in-progress""#), "to in payload: {last}");
+}
+
+#[test]
+fn plan_transition_undo_walks_in_progress_to_pending_then_refuses() {
+    let project = Project::init();
+    project.seed_plan(SINGLE_IN_PROGRESS);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "transition", "foo", "--undo"])
+        .assert()
+        .success();
+
+    let plan_mid = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(plan_mid.contains("status: pending"), "plan.yaml after first undo: {plan_mid}");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["plan", "transition", "foo", "--undo"])
+        .assert()
+        .failure();
+    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+    assert!(
+        stderr.contains("pending"),
+        "undo-from-pending stderr should mention `pending`, got: {stderr:?}"
+    );
+}
+
+#[test]
+fn plan_transition_plan_level_reviewed_json() {
+    // workflow §The plan gate: `specify plan transition <plan-name>
+    // reviewed` is the operator-stamped Gate 1 transition. The plan
+    // name on the wire matches `plan.yaml.name`.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "transition", "foo", "in-progress"])
+        .args(["--format", "json", "plan", "transition", "demo", "reviewed"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["entry"]["status"], "in-progress");
-    assert_eq!(actual["entry"]["status-reason"], Value::Null);
+    assert_eq!(actual["kind"], "plan");
+    assert_eq!(actual["name"], "demo");
+    assert_eq!(actual["previous"], "pending");
+    assert_eq!(actual["current"], "reviewed");
 
-    assert_golden("transition-pending-to-in-progress.json", actual);
+    assert_golden("transition-plan-reviewed.json", actual);
 }
 
 #[test]
-fn plan_transition_reason_on_failed() {
+fn plan_transition_rejects_per_entry_in_progress() {
+    // Per-entry `in-progress` is owned by `plan next`. `plan transition`
+    // must reject the request with an argument-shape error (exit 2).
     let project = Project::init();
-    project.seed_plan(SINGLE_IN_PROGRESS);
+    project.seed_plan(SINGLE_PENDING);
 
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "transition", "foo", "failed", "--reason", "boom"])
+        .args(["plan", "transition", "foo", "in-progress"])
         .assert()
-        .success();
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["entry"]["status"], "failed");
-    assert_eq!(actual["entry"]["status-reason"], "boom");
-
-    let saved = fs::read_to_string(project.plan_path()).expect("read");
-    assert!(saved.contains("status-reason: boom"), "saved reason missing:\n{saved}");
-
-    assert_golden("transition-in-progress-to-failed-with-reason.json", actual);
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+    assert!(stderr.contains("plan next"), "stderr should point at `plan next`, got: {stderr:?}");
 }
 
 #[test]
-fn plan_transition_rejects_reason_on_in_progress() {
+fn plan_transition_rejects_retired_states() {
+    // `blocked`, `failed`, and `skipped` were retired in RFC-25.
+    // Each must be rejected with the same argument-shape error.
+    let project = Project::init();
+    project.seed_plan(SINGLE_PENDING);
+
+    for retired in ["blocked", "failed", "skipped"] {
+        let assert = specify()
+            .current_dir(project.root())
+            .args(["plan", "transition", "foo", retired])
+            .assert()
+            .failure();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(2),
+            "retired target `{retired}` must yield exit 2"
+        );
+    }
+}
+
+// pre-2.0 `plan transition <name> failed --reason <text>` retired
+// alongside the per-entry `failed` state — see
+// `plan_transition_rejects_retired_states` above.
+
+#[test]
+fn plan_transition_rejects_unknown_reason_flag() {
+    // `--reason` was retired in RFC-25 (no v1 per-entry state accepts a
+    // reason). Clap surfaces unknown flags as exit 2 with `--reason`
+    // named in stderr.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
@@ -815,35 +706,13 @@ fn plan_transition_rejects_reason_on_in_progress() {
         .args(["plan", "transition", "foo", "in-progress", "--reason", "x"])
         .assert()
         .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
+    assert_eq!(assert.get_output().status.code(), Some(2));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
     assert!(stderr.contains("--reason"), "stderr should mention '--reason', got: {stderr:?}");
 }
 
-#[test]
-fn plan_transition_clears_reason_on_reentry() {
-    let project = Project::init();
-    project.seed_plan(
-        "\
-name: demo
-slices:
-  - name: foo
-    project: default
-    status: failed
-    status-reason: boom
-",
-    );
-
-    specify()
-        .current_dir(project.root())
-        .args(["plan", "transition", "foo", "pending"])
-        .assert()
-        .success();
-
-    let saved = fs::read_to_string(project.plan_path()).expect("read");
-    assert!(!saved.contains("status-reason: boom"), "status-reason should be cleared:\n{saved}");
-    assert!(saved.contains("status: pending"), "status should be pending:\n{saved}");
-}
+// Re-entry to `pending` retired with the per-entry status purge
+// (the 2.0 collapse removed the per-entry enum to `pending | in-progress | done`).
 
 // -- human-driven replay (RFC-2 §"The Loop (Human-Driven)") -----------
 
@@ -866,7 +735,7 @@ slices:
             "plan",
             "add",
             "registration-duplicate-email-crash",
-            "--adapter",
+            "--target",
             "contracts@v1",
             "--description",
             "Duplicate email submission returns 500 instead of 409. Modifies user-registration.",
@@ -874,11 +743,7 @@ slices:
         .assert()
         .success();
 
-    specify()
-        .current_dir(project.root())
-        .args(["plan", "transition", "registration-duplicate-email-crash", "in-progress"])
-        .assert()
-        .success();
+    specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
 
     specify()
         .current_dir(project.root())
@@ -922,46 +787,6 @@ slices:
     );
 }
 
-// -- change draft + plan validate smoke (L3.A) -----------------------
-//
-// `specify change draft` (the merged verb that scaffolds change.md
-// and plan.yaml together) gets its envelope/refusal/source coverage
-// in `tests/change_draft.rs`. The smoke test below confirms that a
-// freshly-scaffolded plan validates cleanly out of the box, and that
-// the JSON envelope produced by the merged verb matches the pinned
-// golden.
-
-#[test]
-fn change_draft_empty_json_matches_golden() {
-    let project = Project::init();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "change", "draft", "my-change"])
-        .assert()
-        .success();
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-
-    assert_eq!(actual["name"], "my-change");
-    let plan_path = actual["plan"].as_str().expect("plan string");
-    assert!(
-        plan_path.ends_with("/plan.yaml"),
-        "plan should end with /plan.yaml at the repo root, got: {plan_path}"
-    );
-    let brief_path = actual["brief"].as_str().expect("brief string");
-    assert!(
-        brief_path.ends_with("/change.md"),
-        "brief should end with /change.md at the repo root, got: {brief_path}"
-    );
-
-    assert!(project.plan_path().exists(), "plan.yaml should be created");
-    let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
-    assert!(saved.contains("name: my-change"), "plan missing name:\n{saved}");
-    assert!(!saved.contains("- name:"), "plan should have no change entries:\n{saved}");
-
-    assert_golden("init-success.json", actual);
-}
-
 #[test]
 fn plan_create_scaffolds_plan_only_json_matches_golden() {
     let project = Project::init();
@@ -987,6 +812,29 @@ fn plan_create_scaffolds_plan_only_json_matches_golden() {
 }
 
 #[test]
+fn plan_create_divergence_likely_unknown_slice_refused() {
+    // workflow §D5: `--divergence-likely` on `plan create` must
+    // reference a slice already present in the plan. A fresh
+    // `plan create` scaffolds an empty plan, so any slice name is
+    // unknown and must short-circuit before plan.yaml is written.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "create", "fresh", "--divergence-likely", "ghost-slice"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "unknown --divergence-likely slice must exit 2 (validation_failed)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "validation");
+    assert!(
+        !project.plan_path().exists(),
+        "plan.yaml must not be written when --divergence-likely fails validation"
+    );
+}
+
+#[test]
 fn plan_create_refuses_to_overwrite_existing_plan() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["plan", "create", "first"]).assert().success();
@@ -1001,10 +849,10 @@ fn plan_create_refuses_to_overwrite_existing_plan() {
 }
 
 #[test]
-fn change_draft_then_validate_passes_clean() {
+fn plan_create_then_validate_passes_clean() {
     let project = Project::init();
 
-    specify().current_dir(project.root()).args(["change", "draft", "fresh"]).assert().success();
+    specify().current_dir(project.root()).args(["plan", "create", "fresh"]).assert().success();
 
     let assert =
         specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
@@ -1014,6 +862,179 @@ fn change_draft_then_validate_passes_clean() {
         !stdout.contains("ERROR"),
         "freshly-scaffolded plan must pass `specify plan validate` with no errors, got:\n{stdout}"
     );
+}
+
+// -- plan create --auto-review (workflow §D7) ---------------------------
+
+#[test]
+fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
+    // workflow §D7: `--auto-review` is the operator's Gate-1 consent at
+    // create time. The on-disk plan carries `lifecycle: reviewed`
+    // directly (single atomic write — no transient `pending`
+    // observable to readers) and the journal carries exactly one
+    // `plan.transition.reviewed` event matching the post-create stamp.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "create", "fresh", "--auto-review"])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(actual["name"], "fresh");
+    assert_eq!(actual["lifecycle"], "reviewed");
+
+    let on_disk = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(
+        on_disk.contains("lifecycle: reviewed"),
+        "plan.yaml must carry `lifecycle: reviewed` after --auto-review, got:\n{on_disk}"
+    );
+    assert!(
+        !on_disk.contains("lifecycle: pending"),
+        "no transient `lifecycle: pending` must remain on disk, got:\n{on_disk}"
+    );
+
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    let raw = fs::read_to_string(&journal).expect("read journal.jsonl");
+    let lines: Vec<&str> = raw.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "exactly one journal event (plan.transition.reviewed) per --auto-review create, got:\n{raw}"
+    );
+    assert!(
+        lines[0].contains(r#""event":"plan.transition.reviewed""#),
+        "first (and only) line must be plan.transition.reviewed, got:\n{}",
+        lines[0]
+    );
+    assert!(
+        lines[0].contains(r#""plan-name":"fresh""#),
+        "plan-name must serialise kebab-case, got:\n{}",
+        lines[0]
+    );
+}
+
+#[test]
+fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
+    // workflow §D7: running `specify plan transition <name> reviewed`
+    // after a successful `--auto-review` create must be a no-op —
+    // exit 0, no second `plan.transition.reviewed` event, plan.yaml
+    // unchanged.
+    let project = Project::init();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "create", "fresh", "--auto-review"])
+        .assert()
+        .success();
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    let before = fs::read_to_string(&journal).expect("read journal.jsonl");
+    let before_lines = before.lines().filter(|l| !l.is_empty()).count();
+    let plan_before = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "transition", "fresh", "reviewed"])
+        .assert()
+        .success();
+    let body = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(body["kind"], "plan");
+    assert_eq!(
+        body["previous"], "reviewed",
+        "previous lifecycle must already be reviewed (no-op), got:\n{body}"
+    );
+    assert_eq!(body["current"], "reviewed");
+
+    let plan_after = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert_eq!(
+        plan_before, plan_after,
+        "plan.yaml must not change under the idempotent no-op transition"
+    );
+    let after = fs::read_to_string(&journal).expect("read journal.jsonl");
+    let after_lines = after.lines().filter(|l| !l.is_empty()).count();
+    assert_eq!(
+        before_lines, after_lines,
+        "explicit `transition reviewed` after --auto-review must not append a second event"
+    );
+}
+
+#[test]
+fn plan_create_auto_review_invalid_name_refuses_same_as_without_flag() {
+    // workflow §D7: `--auto-review` does NOT bypass validation. An
+    // invalid (non-kebab) name refuses the create with the same
+    // exit code and envelope as the post-create path; no `plan.yaml`
+    // lands on disk and the journal stays untouched.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "create", "Bad_Name", "--auto-review"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 1, "kebab-case violation surfaces via Error::Diag (exit 1)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "change-name-not-kebab");
+
+    assert!(
+        !project.plan_path().exists(),
+        "plan.yaml must not be written when --auto-review fails validation"
+    );
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    assert!(
+        !journal.exists(),
+        "journal must stay empty when --auto-review validation fails, found: {}",
+        journal.display()
+    );
+}
+
+#[test]
+fn plan_create_auto_review_validation_failure_emits_no_partial_events() {
+    // workflow §D7: validation failure under --auto-review must not
+    // surface a partial-state event sequence — no orphan
+    // `plan.propose.divergence` without the matching
+    // `plan.transition.reviewed`, no half-written plan.yaml. An
+    // unknown `--divergence-likely` slice (the cheapest validation
+    // gate to trip on a fresh plan) must refuse the create and
+    // leave the journal untouched.
+    let project = Project::init();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["plan", "create", "fresh", "--auto-review", "--divergence-likely", "ghost-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+
+    assert!(
+        !project.plan_path().exists(),
+        "plan.yaml must not be written when --auto-review + --divergence-likely fails"
+    );
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    assert!(
+        !journal.exists(),
+        "journal must stay empty on validation failure, found: {}",
+        journal.display()
+    );
+}
+
+#[test]
+fn plan_create_auto_review_then_validate_passes_clean() {
+    // The empty-scaffold + `--auto-review` combination must still
+    // validate cleanly — `--auto-review` is a Gate-1 consent flag,
+    // not a validation bypass, but it also must not introduce any
+    // new validation drift on the empty-scaffold path.
+    let project = Project::init();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "create", "fresh", "--auto-review"])
+        .assert()
+        .success();
+
+    let assert =
+        specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+    assert_eq!(assert.get_output().status.code(), Some(0));
 }
 
 // -- plan archive (L1.K) ----------------------------------------------
@@ -1328,136 +1349,6 @@ fn plan_archive_co_move_collision_halts() {
     );
 }
 
-// -- plan lock {acquire, release, status} (L2.E) ----------------------
-
-fn lock_path(project: &Project) -> PathBuf {
-    project.root().join(".specify/plan.lock")
-}
-
-#[test]
-fn plan_lock_acquire_release_cycles() {
-    let project = Project::init();
-
-    // Use a stable agent-session PID so release can authenticate. We
-    // pick the test process's own PID — guaranteed alive for the
-    // duration of the test.
-    let our_pid = std::process::id().to_string();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "lock", "acquire", "--pid", &our_pid])
-        .assert()
-        .success();
-    let acquired = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(acquired["pid"], std::process::id());
-    assert_eq!(acquired["already-held"], false);
-    assert_eq!(acquired["reclaimed-stale-pid"], Value::Null);
-    assert_eq!(acquired.get("held"), None, "acquire body must not carry the redundant `held` flag");
-
-    assert!(lock_path(&project).exists(), "lockfile must exist after acquire");
-    let contents = fs::read_to_string(lock_path(&project)).expect("read lockfile");
-    assert_eq!(contents.trim(), our_pid);
-
-    let release_assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "lock", "release", "--pid", &our_pid])
-        .assert()
-        .success();
-    let released = parse_stdout(&release_assert.get_output().stdout, project.root());
-    assert_eq!(released["result"], "removed");
-    assert_eq!(released["pid"], std::process::id());
-
-    assert!(!lock_path(&project).exists(), "lockfile must be gone after release");
-}
-
-#[test]
-fn plan_lock_acquire_refuses_on_live_pid() {
-    let project = Project::init();
-
-    // Prime with our own PID — the CLI's liveness probe will find it
-    // alive (the test process is still running) and refuse to let a
-    // different PID take over.
-    let live_pid = std::process::id();
-    fs::create_dir_all(project.root().join(".specify")).expect("mkdir .specify");
-    fs::write(lock_path(&project), format!("{live_pid}\n")).expect("seed live stamp");
-
-    // Pick any PID that isn't the test process's own PID.
-    let contender_pid = if live_pid == 1 { 2 } else { 1 }.to_string();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "lock", "acquire", "--pid", &contender_pid])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-
-    // Failure envelopes are written to stderr.
-    let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json stderr");
-    assert_eq!(value["error"], "driver-busy");
-    assert_eq!(value["exit-code"], 1, "DriverBusy must surface the generic-failure exit code");
-    let msg = value["message"].as_str().unwrap_or_default();
-    assert!(
-        msg.contains(&format!("pid {live_pid}")),
-        "message should name the holder pid {live_pid}, got: {msg}"
-    );
-
-    // Lockfile contents must be preserved — the acquire failed, so
-    // the live holder stays stamped.
-    let contents = fs::read_to_string(lock_path(&project)).expect("read");
-    assert_eq!(contents.trim(), live_pid.to_string());
-}
-
-#[test]
-fn plan_lock_status_when_held() {
-    let project = Project::init();
-    let our_pid = std::process::id().to_string();
-
-    specify()
-        .current_dir(project.root())
-        .args(["plan", "lock", "acquire", "--pid", &our_pid])
-        .assert()
-        .success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "lock", "status"])
-        .assert()
-        .success();
-    let value = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(value["held"], true);
-    assert_eq!(value["pid"], std::process::id());
-    assert_eq!(value["stale"], false);
-
-    // Text form for the same state — `held by pid <n>`.
-    let text =
-        specify().current_dir(project.root()).args(["plan", "lock", "status"]).assert().success();
-    let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
-    assert!(
-        stdout.contains("held by pid"),
-        "text status should say 'held by pid …', got: {stdout:?}"
-    );
-}
-
-#[test]
-fn plan_lock_status_when_absent() {
-    let project = Project::init();
-    // Deliberately do NOT call acquire — no stamp on disk.
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "lock", "status"])
-        .assert()
-        .success();
-    let value = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(value["held"], false);
-    assert_eq!(value["pid"], Value::Null);
-    assert_eq!(value["stale"], Value::Null);
-
-    let text =
-        specify().current_dir(project.root()).args(["plan", "lock", "status"]).assert().success();
-    let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
-    assert_eq!(stdout.trim(), "no lock");
-}
 /// `specify plan validate` surfaces a malformed `registry.yaml`
 /// alongside plan validation results — the shape-validation hook
 /// complementing the dedicated `specify registry validate`
@@ -1499,7 +1390,7 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
     let project = Project::init();
     specify()
         .current_dir(project.root())
-        .args(["change", "draft", "rfc3a-planning", "--source", "app=."])
+        .args(["plan", "create", "rfc3a-planning", "--source", "app=code-typescript:."])
         .assert()
         .success();
     specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
@@ -1507,13 +1398,11 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
 
 // ---- specify plan validate health diagnostics (RFC-9 §4B) ----
 //
-// `plan validate` carries the four health diagnostics
-// (`cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`,
-// `unreachable-entry`) alongside its base shape rules. The integration
-// tests below pin the wire-shape skill authors rely on: validate MUST
-// surface every diagnostic class on a synthetic fixture that exercises
-// all four, and the structured `data` payload MUST round-trip through
-// the JSON envelope.
+// `plan validate` carries the three surviving health diagnostics
+// (`cycle-in-depends-on`, `orphan-source-key`,
+// `stale-workspace-clone`) alongside its base shape rules. The
+// `unreachable-entry` diagnostic retired in RFC-25 alongside the
+// per-entry `failed`/`skipped` states it relied on.
 
 fn init_omnia_project(tmp: &TempDir) {
     specify()
@@ -1526,7 +1415,7 @@ fn init_omnia_project(tmp: &TempDir) {
 }
 
 #[test]
-fn plan_validate_reports_all_four_health_diagnostics() {
+fn plan_validate_reports_all_three_health_diagnostics() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1538,27 +1427,23 @@ fn plan_validate_reports_all_four_health_diagnostics() {
         tmp.path().join("plan.yaml"),
         "name: demo\n\
              sources:\n\
-             \x20\x20monolith: /tmp/legacy\n\
-             \x20\x20orphaned: /tmp/elsewhere\n\
+             \x20\x20monolith:\n\
+             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20path: /tmp/legacy\n\
+             \x20\x20orphaned:\n\
+             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20path: /tmp/elsewhere\n\
              slices:\n\
              \x20\x20- name: cyclic-a\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyclic-b]\n\
              \x20\x20- name: cyclic-b\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyclic-a]\n\
-             \x20\x20- name: failed-root\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
-             \x20\x20\x20\x20status: failed\n\
-             \x20\x20\x20\x20status-reason: regression in upstream service\n\
-             \x20\x20- name: unreachable-leaf\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
-             \x20\x20\x20\x20status: pending\n\
-             \x20\x20\x20\x20depends-on: [failed-root]\n\
              \x20\x20- name: orphaned-source-user\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20sources: [monolith]\n",
     )
@@ -1602,19 +1487,67 @@ fn plan_validate_reports_all_four_health_diagnostics() {
     assert!(!results.is_empty(), "validate with broken plan must surface results: {value}");
     let codes: Vec<&str> = results.iter().filter_map(|r| r["code"].as_str()).collect();
 
-    for expected in
-        ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone", "unreachable-entry"]
-    {
+    for expected in ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone"] {
         assert!(
             codes.contains(&expected),
             "validate must emit `{expected}` for the synthetic fixture; saw: {codes:?}"
         );
     }
 
-    // Exit code must be ValidationFailed (2) because cycle and
-    // unreachable-entry are error-severity.
+    // Exit code must be ValidationFailed (2) because the cycle is
+    // error-severity.
     let code = output.status.code().expect("exit code");
     assert_eq!(code, 2, "error-severity diagnostics must yield exit 2, got {code}");
+}
+
+#[test]
+fn plan_validate_reports_workspace_adapter_mismatch() {
+    let tmp = tempdir().unwrap();
+    init_omnia_project(&tmp);
+
+    fs::write(
+        tmp.path().join("plan.yaml"),
+        "name: demo\n\
+             slices:\n\
+             \x20\x20- name: alpha-slice\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20status: pending\n\
+             \x20\x20\x20\x20project: alpha\n",
+    )
+    .unwrap();
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+             projects:\n\
+             \x20\x20- name: alpha\n\
+             \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
+             \x20\x20\x20\x20adapter: omnia@v1\n",
+    )
+    .unwrap();
+
+    let slot_specify = tmp.path().join(".specify/workspace/alpha/.specify");
+    fs::create_dir_all(&slot_specify).unwrap();
+    fs::write(slot_specify.join("project.yaml"), "name: alpha\nadapter: vectis@v1\n").unwrap();
+
+    let assert =
+        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+    let value: Value =
+        serde_json::from_str(&String::from_utf8(assert.get_output().stdout.clone()).expect("utf8"))
+            .expect("stdout is JSON");
+    let results = value["results"].as_array().expect("results array");
+    let mismatch: Vec<&Value> =
+        results.iter().filter(|r| r["code"] == "adapter-mismatch-workspace").collect();
+    assert_eq!(
+        mismatch.len(),
+        1,
+        "expected one adapter-mismatch-workspace finding, got: {results:#?}"
+    );
+    assert_eq!(mismatch[0]["severity"], "warning");
+    let msg = mismatch[0]["message"].as_str().expect("message string");
+    assert!(msg.contains("alpha"), "expected clone name in message, got: {msg}");
+    assert!(msg.contains("vectis@v1"), "expected slot adapter in message, got: {msg}");
+    assert!(msg.contains("omnia@v1"), "expected registry adapter in message, got: {msg}");
+    assert_eq!(value["passed"], true, "adapter mismatch is warning-only");
 }
 
 #[test]
@@ -1629,14 +1562,16 @@ fn plan_validate_payloads_round_trip_typed() {
         tmp.path().join("plan.yaml"),
         "name: demo\n\
              sources:\n\
-             \x20\x20orphan-key: /tmp/somewhere\n\
+             \x20\x20orphan-key:\n\
+             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20path: /tmp/somewhere\n\
              slices:\n\
              \x20\x20- name: cyc-a\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyc-b]\n\
              \x20\x20- name: cyc-b\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyc-a]\n",
     )
@@ -1678,7 +1613,7 @@ fn plan_validate_healthy_exits_zero() {
 
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "draft", "demo"])
+        .args(["--format", "json", "plan", "create", "demo"])
         .assert()
         .success();
 
@@ -1694,4 +1629,747 @@ fn plan_validate_healthy_exits_zero() {
         "empty plan must emit zero results: {value}"
     );
     assert_eq!(value["passed"], true, "empty plan must pass: {value}");
+}
+
+// ---- Wave 1.1 — per-slice source binding flag reshape ----
+//
+// The reshape replaces 1.x's bare `--sources <key>` repeater with the
+// `<key>=<candidate-id>` wire form, accepting the bare `<key>`
+// shorthand only as sugar for `{ key, candidate: <slice.name> }`
+// per workflow §`Slice.sources`.
+
+const W11_PLAN: &str = "\
+name: w11
+sources:
+  intent:
+    adapter: intent
+    value: \"Demo intent value.\"
+  identity-design-notes:
+    adapter: documentation
+    path: ./docs
+slices: []
+";
+
+#[test]
+fn plan_add_structured_sources_round_trips() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "add",
+            "foo",
+            "--target",
+            "omnia@v1",
+            "--sources",
+            "identity-design-notes=user-registration",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("key: identity-design-notes")
+            && saved.contains("candidate: user-registration"),
+        "structured form must round-trip to disk:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_add_bare_source_round_trips_when_slice_name_matches_implied_candidate() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    // Slice name `add-search-filter`; bare `--sources intent` is
+    // sugar for `{ key: intent, candidate: add-search-filter }`.
+    specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "add",
+            "add-search-filter",
+            "--target",
+            "omnia@v1",
+            "--sources",
+            "intent",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    // Bare form must appear on disk as the YAML scalar `intent`,
+    // not the structured `{ key, candidate }` mapping.
+    assert!(
+        saved.contains("  - intent"),
+        "bare shorthand must round-trip to the unquoted scalar form:\n{saved}"
+    );
+    assert!(
+        !saved.contains("candidate: add-search-filter"),
+        "candidate=slice.name must collapse to bare form:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_add_structured_form_preserved_when_candidate_differs_from_slice_name() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "add",
+            "foo",
+            "--target",
+            "omnia@v1",
+            "--sources",
+            "intent=different-candidate",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("candidate: different-candidate"),
+        "structured form must stay structured when candidate != slice.name:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_add_rejects_dangling_equals_in_sources() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "add",
+            "foo",
+            "--target",
+            "omnia@v1",
+            "--sources",
+            "intent=",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "malformed --sources must exit 2 (argument error), got {code}");
+}
+
+#[test]
+fn plan_amend_add_source_appends_binding() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia@v1", "--sources", "intent"])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--add-source", "identity-design-notes=user-registration"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("key: identity-design-notes"),
+        "amend --add-source must append the binding:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_amend_remove_source_drops_binding() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "add",
+            "foo",
+            "--target",
+            "omnia@v1",
+            "--sources",
+            "intent",
+            "--sources",
+            "identity-design-notes=foo",
+        ])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--remove-source", "intent"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(!saved.contains("- intent"), "amend --remove-source must drop the binding:\n{saved}");
+    assert!(saved.contains("identity-design-notes"), "non-targeted bindings must remain:\n{saved}");
+}
+
+#[test]
+fn plan_amend_remove_source_unknown_key_errors() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia@v1", "--sources", "intent"])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "amend", "foo", "--remove-source", "no-such-key"])
+        .assert()
+        .failure();
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "plan-binding-not-found");
+}
+
+#[test]
+fn plan_amend_divergence_accepted_writes_field() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia@v1"])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--divergence", "accepted"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("divergence: accepted"),
+        "amend --divergence accepted must write the field:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_amend_divergence_rejected_writes_field() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia@v1"])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--divergence", "rejected"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("divergence: rejected"),
+        "amend --divergence rejected must write the field:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_amend_divergence_likely_writes_field() {
+    // workflow §D5: `--divergence likely` is operator-settable from
+    // the CLI; the field is byte-identical to the legacy
+    // skill-written `divergence: likely` line.
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia@v1"])
+        .assert()
+        .success();
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--divergence", "likely"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("divergence: likely"),
+        "amend --divergence likely must write the field:\n{saved}"
+    );
+}
+
+#[test]
+fn plan_amend_divergence_none_refused() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "add", "foo", "--target", "omnia@v1"])
+        .assert()
+        .success();
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "amend", "foo", "--divergence", "none"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "implicit --divergence none must exit 2 (argument error)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "argument");
+}
+
+// -- plan {create,add,amend} --authority-override (workflow §D3) --------
+
+const AUTHORITY_OVERRIDE_PLAN: &str = "\
+name: identity-revamp
+sources:
+  legacy:
+    adapter: code-typescript
+    path: ./legacy-monolith
+  runtime:
+    adapter: captures
+    path: ./captures/replays
+slices:
+  - name: identity-user-registration
+    project: default
+    target: omnia@v1
+    status: pending
+    sources:
+      - key: legacy
+        candidate: user-registration
+      - key: runtime
+        candidate: user-registration
+";
+
+fn read_journal_lines(project: &Project) -> Vec<String> {
+    let path = project.root().join(".specify").join("journal.jsonl");
+    if !path.exists() {
+        return Vec::new();
+    }
+    fs::read_to_string(&path)
+        .expect("read journal")
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn plan_amend_authority_override_round_trips_and_validates() {
+    // workflow §D3 happy path: set an override via `amend`, re-read
+    // `plan.yaml` and confirm the field landed under the named
+    // slice; `slice validate` accepts it because `runtime` is in
+    // the slice's `sources[]`.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=runtime",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("authority-override:"),
+        "plan.yaml must contain authority-override block, got:\n{saved}"
+    );
+    assert!(
+        saved.contains("requirement: runtime"),
+        "plan.yaml must record requirement: runtime, got:\n{saved}"
+    );
+
+    // Plan-level validate passes — orphan check only fires for bad keys.
+    specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+
+    // Journal carries exactly one PlanAmendAuthorityOverride event.
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 1, "expected one journal event, got:\n{lines:?}");
+    let line = &lines[0];
+    assert!(line.contains(r#""event":"plan.amend.authority-override""#));
+    assert!(line.contains(r#""action":"set""#));
+    assert!(line.contains(r#""claim-kind":"requirement""#));
+    assert!(line.contains(r#""source-key":"runtime""#));
+    assert!(line.contains(r#""slice-name":"identity-user-registration""#));
+}
+
+#[test]
+fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
+    // workflow §D3 gate: refuse the `specify plan amend` write when
+    // the authority-override value names a source key not present
+    // in the slice's `sources[]` list (`phantom`). The orphan
+    // check runs in `Plan::validate` (folded in by Change 2.3),
+    // which `mutate_authority_overrides` re-runs after the
+    // override mutations to catch the case where a brand-new
+    // entry would introduce drift.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+    let before = fs::read_to_string(project.plan_path()).expect("read plan");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=phantom",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "orphan source-key must exit 2 (validation_failed)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    let results = stderr["results"].as_array().expect("results array");
+    assert!(
+        results.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source-key"),
+        "expected slice-authority-override-orphan-source-key in results: {results:#?}"
+    );
+
+    let after = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert_eq!(before, after, "plan.yaml must not change on the refused write");
+    assert!(
+        read_journal_lines(&project).is_empty(),
+        "journal must stay empty on the refused write"
+    );
+}
+
+#[test]
+fn slice_validate_surfaces_authority_override_orphan() {
+    // workflow §D3 — `specify slice validate` is the per-slice gate
+    // that mirrors the plan-level check; it runs before refine
+    // synthesises any artifacts so a bad override is caught
+    // before downstream writes. Hand-edit `plan.yaml` to seed an
+    // orphan entry (the only legal path is via the CLI, which
+    // refuses, so we splice the file to exercise the gate without
+    // bypassing the JSON-schema enforcement).
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+    let original = fs::read_to_string(project.plan_path()).expect("read plan");
+    // Splice the orphan override into the first slice. Anchor on
+    // the `status: pending` line so the YAML structure stays
+    // wellformed regardless of source-binding ordering.
+    let needle = "    status: pending\n    sources:";
+    let replacement =
+        "    status: pending\n    authority-override:\n      requirement: phantom\n    sources:";
+    let patched = original.replacen(needle, replacement, 1);
+    assert_ne!(patched, original, "splice precondition: needle present in plan.yaml");
+    fs::write(project.plan_path(), patched.as_bytes()).expect("write patched plan");
+
+    // Create the slice dir so `slice validate` runs to the gate
+    // (other artifacts absent → no spec/evidence findings).
+    let slices_dir =
+        project.root().join(".specify").join("slices").join("identity-user-registration");
+    fs::create_dir_all(&slices_dir).expect("mkdir slice");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "identity-user-registration"])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "slice validate orphan must exit 2 (validation_failed)");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    let results = stderr["results"].as_array().expect("results array");
+    assert!(
+        results.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source-key"),
+        "expected orphan finding from slice validate: {results:#?}"
+    );
+}
+
+#[test]
+fn plan_amend_clear_authority_override_removes_only_one_entry() {
+    // workflow §D3: `--clear-authority-override <slice> <kind>` peels
+    // off a single entry; the rest of the map survives. Journal
+    // records the Clear without any spurious Set events for the
+    // surviving entries.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=runtime",
+            "--authority-override",
+            "identity-user-registration",
+            "criterion=legacy",
+        ])
+        .assert()
+        .success();
+
+    // Wipe the journal so we observe only the second amend's events.
+    fs::write(project.root().join(".specify").join("journal.jsonl"), "").expect("clear journal");
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--clear-authority-override",
+            "identity-user-registration",
+            "requirement",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        !saved.contains("requirement: runtime"),
+        "requirement entry must be cleared, got:\n{saved}"
+    );
+    assert!(
+        saved.contains("criterion: legacy"),
+        "criterion entry must survive the targeted clear, got:\n{saved}"
+    );
+
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 1, "expected one Clear event, got:\n{lines:?}");
+    let line = &lines[0];
+    assert!(line.contains(r#""action":"clear""#));
+    assert!(line.contains(r#""claim-kind":"requirement""#));
+}
+
+#[test]
+fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
+    // workflow §D3: `--clear-authority-overrides <slice>` wipes the
+    // entire `authority-override` map for that slice and emits one
+    // Clear event per kind that was present before the wipe.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=runtime",
+            "--authority-override",
+            "identity-user-registration",
+            "criterion=legacy",
+        ])
+        .assert()
+        .success();
+    fs::write(project.root().join(".specify").join("journal.jsonl"), "").expect("clear journal");
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--clear-authority-overrides",
+            "identity-user-registration",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        !saved.contains("authority-override:"),
+        "authority-override map must elide once empty, got:\n{saved}"
+    );
+
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 2, "expected two per-kind Clear events, got:\n{lines:?}");
+    let combined = lines.join("\n");
+    assert!(combined.contains(r#""claim-kind":"requirement""#));
+    assert!(combined.contains(r#""claim-kind":"criterion""#));
+    assert!(
+        lines.iter().all(|l| l.contains(r#""action":"clear""#)),
+        "every emitted event must carry action: clear, got:\n{combined}"
+    );
+}
+
+#[test]
+fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
+    // workflow §D3 deterministic-order rule: a same-invocation set +
+    // clear pair on the same `(slice, kind)` resolves to the
+    // cleared state; the journal records the Clear (not the Set).
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "requirement=runtime",
+            "--clear-authority-override",
+            "identity-user-registration",
+            "requirement",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        !saved.contains("requirement: runtime"),
+        "set+clear on same kind must resolve to cleared, got:\n{saved}"
+    );
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 1, "expected one Clear event (set was elided), got:\n{lines:?}");
+    assert!(
+        lines[0].contains(r#""action":"clear""#),
+        "the surviving event must be a clear, got:\n{}",
+        lines[0]
+    );
+}
+
+#[test]
+fn plan_add_authority_override_seeds_map_on_new_slice() {
+    // workflow §D3 add path: `plan add --authority-override
+    // <kind>=<key>` pre-seeds the override map at create time. Each
+    // entry fires one PlanAmendAuthorityOverride / `set` event.
+    let project = Project::init();
+    project.seed_plan(
+        "name: identity-revamp\n\
+        sources:\n\
+        \x20\x20legacy:\n\
+        \x20\x20\x20\x20adapter: code-typescript\n\
+        \x20\x20\x20\x20path: ./legacy\n\
+        \x20\x20runtime:\n\
+        \x20\x20\x20\x20adapter: captures\n\
+        \x20\x20\x20\x20path: ./captures/replays\n\
+        slices: []\n",
+    );
+
+    specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "add",
+            "identity-user-registration",
+            "--target",
+            "omnia@v1",
+            "--sources",
+            "legacy=user-registration",
+            "--sources",
+            "runtime=user-registration",
+            "--authority-override",
+            "requirement=runtime",
+            "--authority-override",
+            "criterion=legacy",
+        ])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(saved.contains("authority-override:"));
+    assert!(saved.contains("requirement: runtime"));
+    assert!(saved.contains("criterion: legacy"));
+
+    let lines = read_journal_lines(&project);
+    assert_eq!(lines.len(), 2, "one event per seeded kind, got:\n{lines:?}");
+    for line in &lines {
+        assert!(line.contains(r#""action":"set""#));
+        assert!(line.contains(r#""slice-name":"identity-user-registration""#));
+    }
+}
+
+#[test]
+fn plan_amend_authority_override_unknown_slice_refused() {
+    // workflow §D3: unknown `--authority-override <slice>` must
+    // refuse at exit 2 before any plan.yaml write happens. Mirror
+    // the existing `--divergence-likely` guard.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+    let before = fs::read_to_string(project.plan_path()).expect("read plan");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "ghost-slice",
+            "requirement=runtime",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "unknown slice must exit 2 (validation_failed)");
+
+    let after = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert_eq!(before, after, "plan.yaml must be unchanged on refusal");
+    assert!(read_journal_lines(&project).is_empty(), "no journal events on the refused write");
+}
+
+#[test]
+fn plan_amend_authority_override_bad_claim_kind_refused_at_parse_time() {
+    // workflow §D3: `<kind>` is validated against the closed
+    // ClaimKind enum at the CLI boundary — clap surfaces a usage
+    // diagnostic (exit 2) before any plan mutation runs.
+    let project = Project::init();
+    project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args([
+            "plan",
+            "amend",
+            "identity-user-registration",
+            "--authority-override",
+            "identity-user-registration",
+            "bogus-kind=runtime",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "invalid kind must exit 2");
+    // The kind enum is enforced inside our argument parser (not by
+    // clap's value_parser), so the error surfaces as a plain
+    // `Error::Argument` whose stderr is human text rather than
+    // JSON. We assert the exit code and the human message body.
+    let stderr_str = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr_str.contains("bogus-kind"),
+        "expected the bad kind name to appear in stderr, got:\n{stderr_str}"
+    );
 }

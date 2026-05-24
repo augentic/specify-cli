@@ -272,7 +272,7 @@ struct FixtureProject {
 
 impl FixtureProject {
     fn new(envs: &TestEnv, name: &'static str, adapter: &'static str) -> Self {
-        let source = envs.path().join("sources").join(name);
+        let source = envs.path().join("adapters").join("sources").join(name);
         let remote = envs.remotes_dir().join(format!("{name}.git"));
         fs::create_dir_all(source.join(".specify")).expect("mkdir project specify");
         run_git(&source, &["init", "-b", "main"], envs);
@@ -307,6 +307,8 @@ impl FixtureProject {
 }
 
 #[test]
+#[ignore = "Wave 1.1: drives the retired `change draft` + `change finalize` verbs; \
+              returns when W3.5's `/spec:finalize` skill + `specify plan finalize` land."]
 fn rm01_replays_cross_repo_through_finalize() {
     let envs = TestEnv::new();
     let backend = FixtureProject::new(&envs, "shop-backend", "omnia@v1");
@@ -368,7 +370,7 @@ fn seed_change_plan(envs: &TestEnv) {
             "plan",
             "add",
             "oauth-login-contract",
-            "--adapter",
+            "--target",
             "contracts@v1",
             "--description",
             "Author the shared OAuth login HTTP contract.",
@@ -412,26 +414,19 @@ fn seed_change_plan(envs: &TestEnv) {
 }
 
 fn assert_registry_and_plan_are_valid(envs: &TestEnv) {
-    let registry = envs.command().args(["--format", "json", "registry", "show"]).assert().success();
-    let registry = parse_json(&registry.get_output().stdout);
-    let projects = registry["registry"]["projects"].as_array().expect("projects");
-    assert_eq!(projects.len(), 2);
-    assert!(projects.iter().any(|p| p["name"] == "shop-backend"));
-    assert!(projects.iter().any(|p| p["name"] == "shop-mobile"));
+    let registry_yaml = fs::read_to_string(envs.path().join("registry.yaml")).expect("registry");
+    assert!(registry_yaml.contains("name: shop-backend"));
+    assert!(registry_yaml.contains("name: shop-mobile"));
 
     envs.command().args(["registry", "validate"]).assert().success();
     envs.command().args(["plan", "validate"]).assert().success();
 
-    let status = envs.command().args(["--format", "json", "plan", "status"]).assert().success();
-    let status = parse_json(&status.get_output().stdout);
-    let entries = status["entries"].as_array().expect("entries");
-    assert_eq!(entries.len(), 3);
-    assert!(entries.iter().any(|entry| entry["name"] == "oauth-login-contract"));
-    assert!(entries.iter().any(|entry| entry["name"] == "add-oauth-tokens"));
-    assert!(entries.iter().any(|entry| entry["name"] == "add-oauth-screens"));
-
     let plan_yaml = fs::read_to_string(envs.path().join("plan.yaml")).expect("read plan.yaml");
-    assert!(plan_yaml.contains("adapter: contracts@v1"), "contract slice must target adapter");
+    assert_eq!(plan_yaml.matches("name: ").count(), 4);
+    assert!(plan_yaml.contains("name: oauth-login-contract"));
+    assert!(plan_yaml.contains("name: add-oauth-tokens"));
+    assert!(plan_yaml.contains("name: add-oauth-screens"));
+    assert!(plan_yaml.contains("target: contracts@v1"), "contract slice must target adapter");
     assert!(plan_yaml.contains("project: shop-backend"), "backend slice must be routed");
     assert!(plan_yaml.contains("project: shop-mobile"), "mobile slice must be routed");
 }
@@ -485,15 +480,7 @@ fn replay_project_slice(
 
     let prepared = envs
         .command()
-        .args([
-            "--format",
-            "json",
-            "workspace",
-            "prepare-branch",
-            project.name,
-            "--change",
-            CHANGE_NAME,
-        ])
+        .args(["--format", "json", "workspace", "prepare", project.name, "--change", CHANGE_NAME])
         .assert()
         .success();
     let prepared = parse_json(&prepared.get_output().stdout);
@@ -543,24 +530,16 @@ fn assert_all_done(envs: &TestEnv) {
     assert_eq!(next["next"], Value::Null);
     assert_eq!(next["reason"], "all-done");
 
-    let status = envs.command().args(["--format", "json", "plan", "status"]).assert().success();
-    let status = parse_json(&status.get_output().stdout);
-    let entries = status["entries"].as_array().expect("entries");
-    assert!(entries.iter().all(|entry| entry["status"] == "done"), "{entries:#?}");
+    let plan_yaml = fs::read_to_string(envs.path().join("plan.yaml")).expect("read plan.yaml");
+    assert_eq!(plan_yaml.matches("status: done").count(), 3, "{plan_yaml}");
 }
 
 fn assert_workspace_ready_for_push(envs: &TestEnv) {
-    let status =
-        envs.command().args(["--format", "json", "workspace", "status"]).assert().success();
-    let status = parse_json(&status.get_output().stdout);
-    let slots = status["slots"].as_array().expect("slots");
-    assert_eq!(slots.len(), 2);
-    for slot in slots {
-        assert_eq!(slot["kind"], "git-clone");
-        assert_eq!(slot["current-branch"], BRANCH_NAME);
-        assert_eq!(slot["dirty"], false);
-        assert_eq!(slot["branch-matches-change"], true);
-        assert_eq!(slot["project-config-present"], true);
+    for project in ["shop-backend", "shop-mobile"] {
+        let slot = envs.path().join(".specify/workspace").join(project);
+        assert_eq!(git_output(&slot, &["branch", "--show-current"], envs), BRANCH_NAME);
+        assert_eq!(git_output(&slot, &["status", "--porcelain"], envs), "");
+        assert!(slot.join(".specify/project.yaml").is_file());
     }
 }
 

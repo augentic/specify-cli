@@ -151,7 +151,6 @@ mod tests {
             tasks: None,
             slice_dir,
             specs_dir,
-            terminology: "crate",
         }
     }
 

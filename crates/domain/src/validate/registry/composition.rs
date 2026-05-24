@@ -1,24 +1,33 @@
 //! Composition-brief rules.
 
-use crate::validate::{BriefContext, Classification, Rule, RuleOutcome};
+use regex::Regex;
+
+use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+
+fn parse_composition(ctx: &BriefContext<'_>) -> Result<serde_json::Value, RuleOutcome> {
+    match serde_saphyr::from_str(ctx.content) {
+        Ok(v) => Ok(v),
+        Err(_err) => Err(RuleOutcome::Fail {
+            detail: "not valid YAML".to_string(),
+        }),
+    }
+}
+
+fn slug_re() -> &'static Regex {
+    primitives::screen_slug_re()
+}
 
 fn composition_valid_yaml(ctx: &BriefContext<'_>) -> RuleOutcome {
-    match serde_saphyr::from_str::<serde_json::Value>(ctx.content) {
+    match parse_composition(ctx) {
         Ok(_) => RuleOutcome::Pass,
-        Err(err) => RuleOutcome::Fail {
-            detail: format!("composition.yaml is not valid YAML: {err}"),
-        },
+        Err(outcome) => outcome,
     }
 }
 
 fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_json::Value = match serde_saphyr::from_str(ctx.content) {
+    let doc = match parse_composition(ctx) {
         Ok(v) => v,
-        Err(_) => {
-            return RuleOutcome::Fail {
-                detail: "not valid YAML".to_string(),
-            };
-        }
+        Err(outcome) => return outcome,
     };
     match doc.get("version") {
         Some(serde_json::Value::Number(n)) if n.as_u64() == Some(1) => RuleOutcome::Pass,
@@ -32,13 +41,9 @@ fn composition_has_version(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn composition_screens_or_delta(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_json::Value = match serde_saphyr::from_str(ctx.content) {
+    let doc = match parse_composition(ctx) {
         Ok(v) => v,
-        Err(_) => {
-            return RuleOutcome::Fail {
-                detail: "not valid YAML".to_string(),
-            };
-        }
+        Err(outcome) => return outcome,
     };
     let has_screens = doc.get("screens").is_some();
     let has_delta = doc.get("delta").is_some();
@@ -56,15 +61,10 @@ fn composition_screens_or_delta(ctx: &BriefContext<'_>) -> RuleOutcome {
 }
 
 fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
-    let doc: serde_json::Value = match serde_saphyr::from_str(ctx.content) {
+    let doc = match parse_composition(ctx) {
         Ok(v) => v,
-        Err(_) => {
-            return RuleOutcome::Fail {
-                detail: "not valid YAML".to_string(),
-            };
-        }
+        Err(outcome) => return outcome,
     };
-    let slug_re = regex::Regex::new(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$").unwrap();
 
     let Some(screens_map) = doc.get("screens").and_then(|s| s.as_object()) else {
         if let Some(delta) = doc.get("delta").and_then(|d| d.as_object()) {
@@ -72,7 +72,7 @@ fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
             for section_key in &["added", "modified", "removed"] {
                 if let Some(section) = delta.get(*section_key).and_then(|s| s.as_object()) {
                     for slug in section.keys() {
-                        if !slug_re.is_match(slug) {
+                        if !slug_re().is_match(slug) {
                             bad.push(slug.clone());
                         }
                     }
@@ -90,7 +90,7 @@ fn composition_screen_slugs_kebab(ctx: &BriefContext<'_>) -> RuleOutcome {
 
     let mut bad: Vec<String> = Vec::new();
     for slug in screens_map.keys() {
-        if !slug_re.is_match(slug) {
+        if !slug_re().is_match(slug) {
             bad.push(slug.clone());
         }
     }

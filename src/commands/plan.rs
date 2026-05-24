@@ -3,57 +3,96 @@
     reason = "Plan dispatcher passes through clap-shaped argument tuples."
 )]
 
+mod add;
+mod amend;
+mod args;
 pub mod cli;
 mod create;
+mod entry;
 mod lifecycle;
-mod lock;
-pub(super) mod status;
 
 use std::path::{Path, PathBuf};
 
-pub use create::{build_source_map, require_kebab_change_name, write_scaffold};
 use serde::Serialize;
 use specify_domain::change::Plan;
 use specify_domain::config::Layout;
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
-use self::cli::{LockAction, PlanAction};
+use self::cli::PlanAction;
 use crate::context::Ctx;
 
 pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {
-        PlanAction::Create { name, sources } => create::create(ctx, name, sources),
+        PlanAction::Create {
+            name,
+            sources,
+            divergence_likely,
+            auto_review,
+            authority_override,
+        } => {
+            create::create(ctx, name, sources, &divergence_likely, auto_review, &authority_override)
+        }
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
-        PlanAction::Status => status::run(ctx),
         PlanAction::Add {
             name,
             depends_on,
             sources,
             description,
             project,
-            adapter,
+            target,
             context,
-        } => create::add(ctx, name, depends_on, sources, description, project, adapter, context),
-        PlanAction::Amend {
-            name,
+            authority_override,
+        } => add::add(
+            ctx,
+            &name,
             depends_on,
             sources,
             description,
             project,
-            adapter,
+            target,
             context,
-        } => create::amend(ctx, name, depends_on, sources, description, project, adapter, context),
-        PlanAction::Transition { name, target, reason } => {
-            lifecycle::transition(ctx, name, target, reason)
+            &authority_override,
+        ),
+        PlanAction::Amend {
+            name,
+            depends_on,
+            sources,
+            add_source,
+            remove_source,
+            divergence,
+            description,
+            project,
+            target,
+            context,
+            authority_override,
+            clear_authority_override,
+            clear_authority_overrides,
+            add_alias,
+            remove_alias,
+        } => amend::amend(
+            ctx,
+            name,
+            depends_on,
+            sources,
+            add_source,
+            remove_source,
+            divergence.as_deref(),
+            description,
+            project,
+            target,
+            context,
+            &authority_override,
+            &clear_authority_override,
+            &clear_authority_overrides,
+            &add_alias,
+            &remove_alias,
+        ),
+        PlanAction::Transition { name, target, undo } => {
+            lifecycle::transition(ctx, name, target, undo)
         }
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),
-        PlanAction::Lock { action } => match action {
-            LockAction::Acquire { pid } => lock::acquire(ctx, pid),
-            LockAction::Release { pid } => lock::release(ctx, pid),
-            LockAction::Status => lock::status(ctx),
-        },
     }
 }
 

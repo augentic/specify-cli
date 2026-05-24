@@ -104,15 +104,9 @@ fn registry_add_round_trips_through_show() {
     assert_eq!(value["added"]["description"], "Alpha service");
     assert_eq!(value["registry"]["projects"].as_array().unwrap().len(), 1);
 
-    // Round-trip via `registry show` — the entry must come back through
-    // the canonical loader, not just the in-memory write path.
-    let assert = specify()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "registry", "show"])
-        .assert()
-        .success();
-    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    let projects = value["registry"]["projects"].as_array().expect("projects array");
+    let loaded = fs::read_to_string(tmp.path().join("registry.yaml")).expect("read registry");
+    let value: Value = serde_saphyr::from_str(&loaded).expect("registry yaml");
+    let projects = value["projects"].as_array().expect("projects array");
     assert_eq!(projects.len(), 1);
     assert_eq!(projects[0]["name"], "alpha");
 }
@@ -247,10 +241,10 @@ fn registry_remove_warns_on_plan_ref() {
     }
 
     // Author a plan with one entry pointing at alpha. The merged
-    // `change draft` verb scaffolds change.md and plan.yaml together.
+    // `specify plan create` scaffolds plan.yaml (change.md scaffold moved to /spec:plan).
     specify()
         .current_dir(tmp.path())
-        .args(["--format", "json", "change", "draft", "demo"])
+        .args(["--format", "json", "plan", "create", "demo"])
         .assert()
         .success();
     specify()
@@ -346,11 +340,9 @@ fn registry_load_from_tempdir() {
 
 // ---- Registry CLI verbs (RFC-3a C13) ----
 //
-// `specify registry {show, validate}` — dedicated verbs
-// that isolate the same shape check the C12 hook drives through
+// `specify registry validate` isolates the same shape check the C12 hook drives through
 // `specify plan validate`. The tests below cover the full
-// matrix: absent / well-formed / malformed × show / validate ×
-// text / json.
+// matrix: absent / well-formed / malformed × text / json.
 
 const REGISTRY_SINGLE: &str = "\
 version: 1
@@ -379,76 +371,6 @@ projects:
 
 fn write_registry(project: &Project, body: &str) {
     fs::write(project.root().join("registry.yaml"), body).expect("write registry");
-}
-
-#[test]
-fn registry_show_absent() {
-    let project = Project::init();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "registry", "show"])
-        .assert()
-        .success();
-    assert_eq!(assert.get_output().status.code(), Some(0));
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["registry"], Value::Null);
-    let path = actual["path"].as_str().expect("path");
-    assert!(
-        path.ends_with("/registry.yaml"),
-        "path should point at /registry.yaml at the repo root, got: {path}"
-    );
-}
-
-#[test]
-fn registry_show_valid() {
-    let project = Project::init();
-    write_registry(&project, REGISTRY_SINGLE);
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "registry", "show"])
-        .assert()
-        .success();
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    let registry = actual["registry"].as_object().expect("registry object");
-    assert_eq!(registry["version"], 1);
-    let projects = registry["projects"].as_array().expect("projects array");
-    assert_eq!(projects.len(), 1);
-    assert_eq!(projects[0]["name"], "traffic");
-    assert_eq!(projects[0]["url"], ".");
-    assert_eq!(projects[0]["adapter"], "omnia@v1");
-}
-
-#[test]
-fn registry_show_text_mode() {
-    let project = Project::init();
-    write_registry(&project, REGISTRY_SINGLE);
-
-    let assert =
-        specify().current_dir(project.root()).args(["registry", "show"]).assert().success();
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-    for fragment in ["version: 1", "name: traffic", "url: .", "adapter: omnia@v1"] {
-        assert!(
-            stdout.contains(fragment),
-            "text show output should mention `{fragment}`, got:\n{stdout}"
-        );
-    }
-}
-
-#[test]
-fn registry_show_malformed() {
-    let project = Project::init();
-    write_registry(&project, "version: 2\nprojects: []\n");
-
-    let assert =
-        specify().current_dir(project.root()).args(["registry", "show"]).assert().failure();
-    assert_ne!(assert.get_output().status.code(), Some(0));
-    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
-    assert!(
-        stderr.contains("registry.yaml"),
-        "stderr should mention registry.yaml, got: {stderr:?}"
-    );
 }
 
 #[test]

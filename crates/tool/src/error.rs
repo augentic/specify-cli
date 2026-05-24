@@ -18,7 +18,6 @@ use std::path::PathBuf;
 /// with a kebab-case `code` carried at the constructor site (see the
 /// `sidecar_*` / `network_*` helpers below).
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 #[expect(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
 pub enum ToolError {
     /// Catch-all diagnostic. The `code` becomes the `error` field of the
@@ -29,38 +28,12 @@ pub enum ToolError {
     /// The requested tool name was not present in merged declarations.
     #[error("tool not declared: {name}")]
     ToolNotDeclared { name: String },
-    /// A cache path segment would be empty or escape its intended directory.
-    #[error("invalid tool cache segment `{value}` for {field}: {reason}")]
-    InvalidCacheSegment {
-        /// Field being converted to an on-disk path segment.
-        field: &'static str,
-        value: String,
-        reason: &'static str,
-    },
     /// A tool permission template or expanded permission path is invalid.
     #[error("invalid tool permission `{template}`: {reason}")]
     InvalidPermission { template: String, reason: String },
     /// A requested preopen or filesystem authority is denied.
     #[error("tool permission denied for {}: {reason}", path.display())]
     PermissionDenied { path: PathBuf, reason: String },
-    /// Wasmtime failed to compile, link, instantiate, or run a tool component.
-    #[error("tool runtime error: {0}")]
-    Runtime(String),
-    /// A source declaration is not usable by the resolver.
-    #[error("tool source `{source_value}` is invalid: {reason}")]
-    InvalidSource { source_value: String, reason: String },
-    /// Source bytes were empty.
-    #[error("tool source `{source_value}` produced empty bytes")]
-    EmptySource { source_value: String },
-    /// Source bytes did not match a declared SHA-256 digest.
-    #[error("tool source `{source_value}` sha256 mismatch: expected {expected}, got {actual}")]
-    DigestMismatch {
-        source_value: String,
-        /// Lowercase hex SHA-256 digest expected from the manifest.
-        expected: String,
-        /// Lowercase hex SHA-256 digest computed from the fetched bytes.
-        actual: String,
-    },
 }
 
 impl ToolError {
@@ -134,21 +107,6 @@ impl ToolError {
     pub fn permission_denied(path: impl Into<PathBuf>, reason: impl Into<String>) -> Self {
         Self::PermissionDenied {
             path: path.into(),
-            reason: reason.into(),
-        }
-    }
-
-    /// Build a runtime error.
-    #[must_use]
-    pub fn runtime(detail: impl Into<String>) -> Self {
-        Self::Runtime(detail.into())
-    }
-
-    /// Build an invalid-source error.
-    #[must_use]
-    pub fn invalid_source(source: impl Into<String>, reason: impl Into<String>) -> Self {
-        Self::InvalidSource {
-            source_value: source.into(),
             reason: reason.into(),
         }
     }
@@ -247,10 +205,6 @@ impl From<ToolError> for specify_error::Error {
     fn from(value: ToolError) -> Self {
         match value {
             ToolError::Diag { code, detail } => Self::Diag { code, detail },
-            ToolError::Runtime(detail) => Self::Diag {
-                code: "tool-runtime",
-                detail,
-            },
             err @ ToolError::ToolNotDeclared { .. } => Self::validation_failed(
                 "tool-not-declared",
                 "tool must be declared in tools.yaml",
@@ -263,10 +217,6 @@ impl From<ToolError> for specify_error::Error {
                     err.to_string(),
                 )
             }
-            other => Self::Diag {
-                code: "tool-resolver",
-                detail: other.to_string(),
-            },
         }
     }
 }

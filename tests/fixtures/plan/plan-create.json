@@ -1,4 +1,5 @@
 {
   "name": "my-change",
-  "plan": "<TEMPDIR>/plan.yaml"
+  "plan": "<TEMPDIR>/plan.yaml",
+  "lifecycle": "pending"
 }

@@ -4,9 +4,8 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_error::Result;
-use specify_tool::PackageMetadata;
 use specify_tool::cache::{self, Status as CacheStatus};
-use specify_tool::manifest::{Tool, ToolPermissions, ToolScope, ToolScopeKind};
+use specify_tool::manifest::{Tool, ToolScope, ToolScopeKind};
 
 pub(super) type CacheKey = (String, String, String);
 
@@ -51,40 +50,6 @@ pub(super) struct ToolFetchRow {
     pub(super) fetched: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(super) struct ToolShowRow {
-    #[serde(flatten)]
-    pub(super) row: ToolRow,
-    pub(super) permissions: ToolPermissions,
-    pub(super) sha256: Option<String>,
-    pub(super) fetched_at: Option<String>,
-    pub(super) package: Option<PackageMetadata>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(super) struct ListBody {
-    pub(super) tools: Vec<ToolRow>,
-    pub(super) warnings: Vec<WarningRow>,
-}
-
-pub(super) fn write_list_text(w: &mut dyn Write, body: &ListBody) -> std::io::Result<()> {
-    if body.tools.is_empty() {
-        writeln!(w, "No declared tools.")?;
-        return Ok(());
-    }
-    writeln!(w, "name\tversion\tscope\tcache\tcached path")?;
-    for row in &body.tools {
-        writeln!(
-            w,
-            "{}\t{}\t{}:{}\t{}\t{}",
-            row.name, row.version, row.scope, row.scope_detail, row.cache_status, row.cached_path
-        )?;
-    }
-    Ok(())
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(super) struct FetchBody {
@@ -110,39 +75,6 @@ pub(super) fn write_fetch_text(w: &mut dyn Write, body: &FetchBody) -> std::io::
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub(super) struct ShowBody {
-    pub(super) tool: ToolShowRow,
-    pub(super) warnings: Vec<WarningRow>,
-}
-
-pub(super) fn write_show_text(w: &mut dyn Write, body: &ShowBody) -> std::io::Result<()> {
-    let row = &body.tool;
-    writeln!(w, "name: {}", row.row.name)?;
-    writeln!(w, "version: {}", row.row.version)?;
-    writeln!(w, "source: {}", row.row.source)?;
-    writeln!(w, "scope: {}:{}", row.row.scope, row.row.scope_detail)?;
-    writeln!(w, "cache: {}", row.row.cache_status)?;
-    writeln!(w, "cached path: {}", row.row.cached_path)?;
-    if let Some(fetched_at) = &row.fetched_at {
-        writeln!(w, "fetched at: {fetched_at}")?;
-    }
-    if let Some(sha256) = &row.sha256 {
-        writeln!(w, "sha256: {sha256}")?;
-    }
-    if let Some(package) = &row.package {
-        writeln!(w, "package: {}@{} ({})", package.name, package.version, package.registry)?;
-        if let Some(reference) = &package.oci_reference {
-            writeln!(w, "oci: {reference}")?;
-        }
-    }
-    writeln!(w, "permissions:")?;
-    writeln!(w, "  read: {}", format_permission_list(&row.permissions.read))?;
-    writeln!(w, "  write: {}", format_permission_list(&row.permissions.write))?;
-    Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
 pub(super) struct GcBody {
     pub(super) removed: Vec<String>,
     pub(super) warnings: Vec<WarningRow>,
@@ -158,10 +90,6 @@ pub(super) fn write_gc_text(w: &mut dyn Write, body: &GcBody) -> std::io::Result
         writeln!(w, "  {path}")?;
     }
     Ok(())
-}
-
-pub(super) fn rows_for(tools: &[ScopedTool]) -> Result<Vec<ToolRow>> {
-    tools.iter().map(row_for).collect()
 }
 
 pub(super) fn row_for(scoped: &ScopedTool) -> Result<ToolRow> {
@@ -180,23 +108,6 @@ pub(super) fn row_for(scoped: &ScopedTool) -> Result<ToolRow> {
     })
 }
 
-pub(super) fn show_row_for(scoped: &ScopedTool) -> Result<ToolShowRow> {
-    let row = row_for(scoped)?;
-    let sidecar_path = cache::sidecar_path(&scoped.scope, &scoped.tool.name, &scoped.tool.version)?;
-    let sidecar = cache::read_sidecar(&sidecar_path)?;
-    let fetched_at = sidecar
-        .as_ref()
-        .map(|sidecar| sidecar.fetched_at.strftime("%Y-%m-%dT%H:%M:%SZ").to_string());
-    let package = sidecar.as_ref().and_then(|sidecar| sidecar.package.clone());
-    Ok(ToolShowRow {
-        row,
-        permissions: scoped.tool.permissions.clone(),
-        sha256: scoped.tool.sha256.clone(),
-        fetched_at,
-        package,
-    })
-}
-
 pub(super) fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
     Ok(cache::status(
         &scoped.scope,
@@ -207,10 +118,10 @@ pub(super) fn cache_status_for(scoped: &ScopedTool) -> Result<CacheStatus> {
     )?)
 }
 
-pub(super) fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
+fn scope_labels(scope: &ToolScope) -> (ToolScopeKind, String) {
     match scope {
         ToolScope::Project { project_name } => (ToolScopeKind::Project, project_name.clone()),
-        ToolScope::Adapter { adapter_slug, .. } => (ToolScopeKind::Adapter, adapter_slug.clone()),
+        ToolScope::Plugin { plugin_slug, .. } => (ToolScopeKind::Plugin, plugin_slug.clone()),
     }
 }
 
@@ -218,12 +129,8 @@ pub(super) fn warning_row(name: String) -> WarningRow {
     WarningRow {
         code: "tool-name-collision",
         message: format!(
-            "project-scope declaration for `{name}` overrides the adapter-scope declaration"
+            "project-scope declaration for `{name}` overrides the plugin-scope declaration"
         ),
         name,
     }
-}
-
-pub(super) fn format_permission_list(values: &[String]) -> String {
-    if values.is_empty() { "(none)".to_string() } else { values.join(", ") }
 }

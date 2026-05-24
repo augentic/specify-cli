@@ -1,5 +1,5 @@
 //! Source resolution for local paths, `file:` URIs, `https:` URIs,
-//! `$PROJECT_DIR`/`$ADAPTER_DIR` template paths, and wasm-pkg
+//! `$PROJECT_DIR`/`$CAPABILITY_DIR` template paths, and wasm-pkg
 //! package requests.
 
 use std::ffi::OsStr;
@@ -14,8 +14,8 @@ pub mod local;
 
 use crate::cache::{self, MODULE_FILENAME, SIDECAR_FILENAME, SIDECAR_SCHEMA_VERSION, Sidecar};
 use crate::error::ToolError;
-use crate::manifest::{Tool, ToolScope, ToolSource};
-use crate::package::{AcquiredBytes, PackageClient, WasmPkgClient, persist_temp};
+use crate::manifest::{PackageRequest, Tool, ToolScope, ToolSource};
+use crate::package::{self, AcquiredBytes, persist_temp};
 
 /// Cached component bytes plus the live declaration data needed to run them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,10 +49,12 @@ pub struct ResolvedTool {
 pub fn resolve(
     scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
 ) -> Result<ResolvedTool, ToolError> {
-    resolve_with(scope, tool, now, project_dir, &WasmPkgClient::new(project_dir.to_path_buf()))
+    resolve_with(scope, tool, now, project_dir, |request, dest_hint| {
+        package::fetch(project_dir, request, dest_hint)
+    })
 }
 
-/// Resolve a declared tool using an injected package client.
+/// Resolve a declared tool using an injected package fetcher.
 ///
 /// Tests use this to cover package resolver behavior without depending on a
 /// live registry.
@@ -62,7 +64,7 @@ pub fn resolve(
 /// Returns the same cache, source, digest, and resolver errors as [`resolve`].
 pub(crate) fn resolve_with(
     scope: &ToolScope, tool: &Tool, now: jiff::Timestamp, project_dir: &Path,
-    package_client: &impl PackageClient,
+    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
 ) -> Result<ResolvedTool, ToolError> {
     let source = tool.source.to_wire_string().into_owned();
     let module = cache::module_path(scope, &tool.name, &tool.version)?;
@@ -90,14 +92,15 @@ pub(crate) fn resolve_with(
         .tempdir_in(parent)
         .map_err(|err| ToolError::cache_io("create resolver staging directory", parent, err))?
         .keep();
-    let adapter_dir = match scope {
-        ToolScope::Adapter { adapter_dir, .. } => Some(adapter_dir.as_path()),
+    let capability_dir = match scope {
+        ToolScope::Plugin { capability_dir, .. } => Some(capability_dir.as_path()),
         ToolScope::Project { .. } => None,
     };
-    let expanded_source = tool
-        .source
-        .expand(project_dir, adapter_dir)
-        .map_err(|reason| ToolError::invalid_source(tool.source.to_wire_string(), reason))?;
+    let expanded_source =
+        tool.source.expand(project_dir, capability_dir).map_err(|reason| ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!("tool source `{}` is invalid: {reason}", tool.source.to_wire_string()),
+        })?;
     let install_result = stage_and_install(
         scope,
         tool,
@@ -105,7 +108,7 @@ pub(crate) fn resolve_with(
         &staged,
         &dest,
         now,
-        package_client,
+        package_fetch,
         &expanded_source,
     );
     // The atomic install moves `staged/` into `dest/`, so its absence on
@@ -130,10 +133,11 @@ pub(crate) fn resolve_with(
 )]
 fn stage_and_install(
     scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path, now: jiff::Timestamp,
-    package_client: &impl PackageClient, expanded_source: &ToolSource,
+    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
+    expanded_source: &ToolSource,
 ) -> Result<(), ToolError> {
     let module_dest = staged.join(MODULE_FILENAME);
-    let acquired = acquire_source_bytes(expanded_source, &module_dest, package_client)?;
+    let acquired = acquire_source_bytes(expanded_source, &module_dest, package_fetch)?;
     digest::validate(source, &acquired, tool.sha256.as_deref())?;
     let AcquiredBytes {
         temp,
@@ -165,7 +169,8 @@ fn resolved(scope: &ToolScope, tool: &Tool, bytes_path: PathBuf) -> ResolvedTool
 }
 
 fn acquire_source_bytes(
-    source: &ToolSource, dest_hint: &Path, package_client: &impl PackageClient,
+    source: &ToolSource, dest_hint: &Path,
+    package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
 ) -> Result<AcquiredBytes, ToolError> {
     match source {
         ToolSource::LocalPath(path) => buffered_into_acquired(
@@ -174,10 +179,13 @@ fn acquire_source_bytes(
         ),
         ToolSource::FileUri(uri) => buffered_into_acquired(&local::read_file_uri(uri)?, dest_hint),
         ToolSource::HttpsUri(url) => http::download_https(url, dest_hint),
-        ToolSource::Package(package) => package_client.fetch(package, dest_hint),
-        ToolSource::TemplatePath(t) => {
-            Err(ToolError::invalid_source(t, "template source was not expanded before resolution"))
-        }
+        ToolSource::Package(package) => package_fetch(package, dest_hint),
+        ToolSource::TemplatePath(t) => Err(ToolError::Diag {
+            code: "tool-resolver",
+            detail: format!(
+                "tool source `{t}` is invalid: template source was not expanded before resolution"
+            ),
+        }),
     }
 }
 
@@ -211,28 +219,11 @@ mod tests {
 
     use super::*;
     use crate::manifest::{PackageRequest, ToolSource};
-    use crate::package::{PackageClient, PackageMetadata};
+    use crate::package::PackageMetadata;
     use crate::test_support::{
-        adapter_scope, cache_env, cached_bytes, fixed_now, project_scope, scratch_dir, tool,
+        cache_env, cached_bytes, fixed_now, plugin_target_scope, project_scope, scratch_dir, tool,
         write_source,
     };
-
-    /// Wraps a closure so tests can stand in for `PackageClient` without
-    /// declaring a struct per scenario.
-    struct ClosurePackageClient<F>(F)
-    where
-        F: Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>;
-
-    impl<F> PackageClient for ClosurePackageClient<F>
-    where
-        F: Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
-    {
-        fn fetch(
-            &self, request: &PackageRequest, dest_hint: &Path,
-        ) -> Result<AcquiredBytes, ToolError> {
-            (self.0)(request, dest_hint)
-        }
-    }
 
     #[test]
     fn local_path_cache_miss_hit_and_source_change() {
@@ -268,10 +259,10 @@ mod tests {
         let cache_dir = scratch_dir("resolver-scope-cache");
         let project_dir = scratch_dir("resolver-scope-project");
         let source_dir = scratch_dir("resolver-scope-source");
-        let adapter_dir = scratch_dir("resolver-adapter");
+        let capability_dir = scratch_dir("resolver-adapter");
         let source = write_source(&source_dir, "module.wasm", b"same");
         let project = project_scope();
-        let adapter = adapter_scope(&adapter_dir);
+        let adapter = plugin_target_scope(&capability_dir);
         let declared = tool(ToolSource::LocalPath(source), None);
 
         let _env = cache_env(&cache_dir);
@@ -282,11 +273,13 @@ mod tests {
             resolve(&adapter, &declared, fixed_now(), &project_dir).expect("adapter resolve");
         assert_ne!(project_resolved.bytes_path, adapter_resolved.bytes_path);
         assert!(project_resolved.bytes_path.to_string_lossy().contains("project--demo"));
-        assert!(adapter_resolved.bytes_path.to_string_lossy().contains("adapter--contracts"));
+        assert!(
+            adapter_resolved.bytes_path.to_string_lossy().contains("adapter--target--contracts")
+        );
     }
 
     #[test]
-    fn package_source_uses_injected_client_and_records_metadata() {
+    fn package_source_uses_injected_fetcher_and_records_metadata() {
         let cache_dir = scratch_dir("resolver-package-cache");
         let project_dir = scratch_dir("resolver-package-project");
         let scope = project_scope();
@@ -299,7 +292,7 @@ mod tests {
 
         let bytes: &[u8] = b"package-bytes";
         let calls = Cell::new(0_u32);
-        let client = ClosurePackageClient(|request: &PackageRequest, dest_hint: &Path| {
+        let fetch = |request: &PackageRequest, dest_hint: &Path| {
             calls.set(calls.get() + 1);
             let parent = dest_hint.parent().expect("dest hint has parent");
             fs::create_dir_all(parent).expect("create mock package temp parent");
@@ -312,17 +305,13 @@ mod tests {
                     name: request.name_ref(),
                     version: request.version.clone(),
                     registry: "augentic.io".to_string(),
-                    oci_reference: Some(format!(
-                        "ghcr.io/augentic/specify/{}:{}",
-                        request.name, request.version
-                    )),
                 }),
             })
-        });
+        };
 
         let _env = cache_env(&cache_dir);
 
-        let resolved = resolve_with(&scope, &declared, fixed_now(), &project_dir, &client)
+        let resolved = resolve_with(&scope, &declared, fixed_now(), &project_dir, fetch)
             .expect("package resolves");
         assert_eq!(fs::read(resolved.bytes_path).expect("cached bytes"), b"package-bytes");
         assert_eq!(calls.get(), 1);
@@ -335,12 +324,10 @@ mod tests {
         assert_eq!(sidecar.source, "specify:contract@1.0.0");
         let sidecar_package = sidecar.package.as_ref().expect("sidecar package");
         assert_eq!(sidecar_package.name.as_str(), "specify:contract");
-        assert_eq!(
-            sidecar_package.oci_reference.as_deref(),
-            Some("ghcr.io/augentic/specify/contract:1.0.0")
-        );
+        assert_eq!(sidecar_package.version.as_str(), "1.0.0");
+        assert_eq!(sidecar_package.registry.as_str(), "augentic.io");
 
-        resolve_with(&scope, &declared, fixed_now(), &project_dir, &client)
+        resolve_with(&scope, &declared, fixed_now(), &project_dir, fetch)
             .expect("package cache hit resolves");
         assert_eq!(calls.get(), 1, "cache hit must not fetch package again");
     }

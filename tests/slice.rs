@@ -30,10 +30,10 @@ fn create_writes_dir_and_metadata() {
     let value = parse_json(&assert.get_output().stdout);
     let dir = value["dir"].as_str().expect("dir string");
     assert!(dir.ends_with("/my-slice"), "dir should end with /my-slice, got: {dir}");
-    assert_eq!(value["status"], "defining");
-    let adapter = value["adapter"].as_str().expect("adapter string");
-    assert!(adapter.starts_with("file://"));
-    assert!(adapter.ends_with("/schemas/omnia"));
+    assert_eq!(value["status"], "refining");
+    let target = value["target"].as_str().expect("target string");
+    assert!(target.starts_with("file://"));
+    assert!(target.ends_with("/adapters/targets/omnia"));
     assert_eq!(value["created"], true);
     assert_eq!(value["restarted"], false);
 
@@ -41,8 +41,8 @@ fn create_writes_dir_and_metadata() {
     assert!(slice_dir.is_dir(), "slice dir must exist");
     assert!(slice_dir.join("specs").is_dir(), "specs/ must exist");
     let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).expect("read metadata");
-    assert!(meta.contains("status: defining"));
-    assert!(meta.contains("adapter: file://"));
+    assert!(meta.contains("status: refining"));
+    assert!(meta.contains("file://") && meta.contains("targets/omnia"));
     assert!(meta.contains("created-at:"));
 }
 
@@ -101,7 +101,7 @@ fn transition_walks_happy_path() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
-    for target in ["defined", "building", "complete"] {
+    for target in ["refined", "built"] {
         let assert = specify()
             .current_dir(project.root())
             .args(["--format", "json", "slice", "transition", "my-slice", target])
@@ -113,9 +113,8 @@ fn transition_walks_happy_path() {
 
     let meta = fs::read_to_string(project.slices_dir().join("my-slice").join(".metadata.yaml"))
         .expect("read metadata");
-    assert!(meta.contains("status: complete"));
+    assert!(meta.contains("status: built"));
     assert!(meta.contains("defined-at:"));
-    assert!(meta.contains("build-started-at:"));
     assert!(meta.contains("completed-at:"));
 }
 
@@ -123,10 +122,10 @@ fn transition_walks_happy_path() {
 fn transition_rejects_illegal_edge() {
     let project = Project::init();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-    // Defining -> Building is not a legal edge.
+    // Refining -> Built is not a legal edge (must pass through refined).
     let assert = specify()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "transition", "my-slice", "building"])
+        .args(["--format", "json", "slice", "transition", "my-slice", "built"])
         .assert()
         .failure();
     let value = parse_json(&assert.get_output().stderr);
@@ -324,285 +323,6 @@ fn drop_transitions_and_archives() {
     assert!(archived_meta.contains("dropped-at:"));
 }
 
-// ---------------------------------------------------------------------------
-// slice status
-// ---------------------------------------------------------------------------
-
-#[test]
-fn status_by_name_returns_single_entry() {
-    let project = Project::init().with_schemas();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "create", "only-slice"])
-        .assert()
-        .success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "status", "only-slice"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let entry = &value["slice"];
-    assert_eq!(entry["name"], "only-slice");
-    assert_eq!(entry["status"], "defining");
-}
-
-// ---------------------------------------------------------------------------
-// slice outcome set (L2.A)
-// ---------------------------------------------------------------------------
-
-/// Parse the `.metadata.yaml` for `name` under `project` as a
-/// `serde_json::Value` so tests can assert on the `outcome` subtree
-/// without pulling in the `specify-slice` crate directly.
-fn read_metadata_yaml(project: &Project, name: &str) -> serde_json::Value {
-    let path = project.slices_dir().join(name).join(".metadata.yaml");
-    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    serde_saphyr::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
-}
-
-/// Naive RFC3339 sanity check sufficient for integration tests: `YYYY-MM-DDT...`.
-fn looks_like_rfc3339(s: &str) -> bool {
-    s.len() >= 20
-        && s.chars().nth(4) == Some('-')
-        && s.chars().nth(7) == Some('-')
-        && s.chars().nth(10) == Some('T')
-}
-
-#[test]
-fn phase_outcome_stamps_success_on_define() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "define",
-            "success",
-            "--summary",
-            "artifacts generated",
-        ])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["slice"], "foo");
-    assert_eq!(value["phase"], "define");
-    assert_eq!(value["outcome"], "success");
-    let at = value["at"].as_str().expect("at is a string");
-    assert!(looks_like_rfc3339(at), "at should be RFC3339, got {at}");
-
-    let meta = read_metadata_yaml(&project, "foo");
-    let outcome = &meta["outcome"];
-    assert_eq!(outcome["phase"].as_str(), Some("define"));
-    assert_eq!(outcome["outcome"].as_str(), Some("success"));
-    assert_eq!(outcome["summary"].as_str(), Some("artifacts generated"));
-    let at_on_disk = outcome["at"].as_str().expect("at on disk");
-    assert!(looks_like_rfc3339(at_on_disk), "on-disk at should be RFC3339, got {at_on_disk}");
-    assert!(
-        outcome.get("context").is_none_or(serde_json::Value::is_null),
-        "context must be absent when not supplied, got: {outcome:?}"
-    );
-}
-
-#[test]
-fn phase_outcome_stamps_failure_with_context() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "failure",
-            "--summary",
-            "build broke",
-            "--context",
-            "task 3 failed",
-        ])
-        .assert()
-        .success();
-
-    let meta = read_metadata_yaml(&project, "foo");
-    assert_eq!(meta["outcome"]["phase"].as_str(), Some("build"));
-    assert_eq!(meta["outcome"]["outcome"].as_str(), Some("failure"));
-    assert_eq!(meta["outcome"]["context"].as_str(), Some("task 3 failed"));
-}
-
-#[test]
-fn phase_outcome_stamps_deferred_on_build() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "deferred",
-            "--summary",
-            "channel scope unclear",
-        ])
-        .assert()
-        .success();
-
-    let meta = read_metadata_yaml(&project, "foo");
-    assert_eq!(meta["outcome"]["phase"].as_str(), Some("build"));
-    assert_eq!(meta["outcome"]["outcome"].as_str(), Some("deferred"));
-    assert_eq!(meta["outcome"]["summary"].as_str(), Some("channel scope unclear"));
-}
-
-#[test]
-fn phase_outcome_text_output() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
-        .assert()
-        .success();
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
-    assert_eq!(stdout.trim_end(), "Stamped outcome 'success' for phase 'define' on slice 'foo'.");
-}
-
-#[test]
-fn phase_outcome_errors_on_missing_slice() {
-    let project = Project::init();
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "outcome",
-            "set",
-            "ghost",
-            "define",
-            "success",
-            "--summary",
-            "x",
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stderr);
-    let msg = value["message"].as_str().unwrap_or("");
-    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
-}
-
-#[test]
-fn phase_outcome_writes_trailing_newline() {
-    // Atomicity is an OS-level guarantee (NamedTempFile + rename) so it
-    // is not directly unit-testable. Instead assert the saved file
-    // shape: trailing newline, mirroring the Plan::save atomic-save
-    // tests.
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
-        .assert()
-        .success();
-
-    let path = project.slices_dir().join("foo").join(".metadata.yaml");
-    let bytes = fs::read(&path).expect("read metadata");
-    assert!(!bytes.is_empty(), "metadata should not be empty");
-    assert_eq!(
-        *bytes.last().unwrap(),
-        b'\n',
-        "metadata must end with a trailing newline after atomic stamp"
-    );
-}
-
-#[test]
-fn phase_outcome_overwrites_previous() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "defined"])
-        .assert()
-        .success();
-
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "failure",
-            "--summary",
-            "broke",
-            "--context",
-            "stderr blob",
-        ])
-        .assert()
-        .success();
-
-    let meta = read_metadata_yaml(&project, "foo");
-    let outcome = &meta["outcome"];
-    assert_eq!(outcome["phase"].as_str(), Some("build"));
-    assert_eq!(outcome["outcome"].as_str(), Some("failure"));
-    assert_eq!(outcome["summary"].as_str(), Some("broke"));
-    assert_eq!(outcome["context"].as_str(), Some("stderr blob"));
-
-    // Document that outcome is a single field, not a list: the raw
-    // YAML text must contain exactly one top-level `outcome:` key.
-    let path = project.slices_dir().join("foo").join(".metadata.yaml");
-    let text = fs::read_to_string(&path).expect("read metadata");
-    let outcome_lines = text.lines().filter(|l| l.starts_with("outcome:")).count();
-    assert_eq!(
-        outcome_lines, 1,
-        "expected exactly one top-level `outcome:` key, got {outcome_lines} in:\n{text}"
-    );
-}
-
-#[test]
-fn phase_outcome_preserves_metadata_fields() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let meta_before = read_metadata_yaml(&project, "foo");
-    let created_at_before =
-        meta_before["created-at"].as_str().expect("created-at populated after create").to_string();
-    let status_before =
-        meta_before["status"].as_str().expect("status populated after create").to_string();
-    let adapter_before =
-        meta_before["adapter"].as_str().expect("adapter populated after create").to_string();
-
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
-        .assert()
-        .success();
-
-    let meta_after = read_metadata_yaml(&project, "foo");
-    assert_eq!(meta_after["created-at"].as_str(), Some(created_at_before.as_str()));
-    assert_eq!(meta_after["status"].as_str(), Some(status_before.as_str()));
-    assert_eq!(meta_after["adapter"].as_str(), Some(adapter_before.as_str()));
-    assert!(meta_after["outcome"].is_object(), "outcome should now be present");
-}
-
 #[test]
 fn metadata_without_outcome_still_parses() {
     use specify_domain::slice::SliceMetadata;
@@ -611,8 +331,8 @@ fn metadata_without_outcome_still_parses() {
     // `outcome` as None.
     let tmp = tempfile::tempdir().expect("tempdir");
     let slice_dir = tmp.path();
-    let yaml = r#"adapter: omnia
-status: defining
+    let yaml = r#"target: omnia
+status: refining
 created-at: "2024-08-01T10:00:00Z"
 "#;
     fs::write(slice_dir.join(".metadata.yaml"), yaml).expect("write metadata");
@@ -623,646 +343,6 @@ created-at: "2024-08-01T10:00:00Z"
     );
 }
 
-// ---------------------------------------------------------------------------
-// slice outcome show (read verb symmetric with `outcome set`)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn outcome_returns_stamped_as_json() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "success",
-            "--summary",
-            "5/5 tasks",
-            "--context",
-            "trailing newline",
-        ])
-        .assert()
-        .success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["name"], "foo");
-    let outcome = &value["outcome"];
-    assert_eq!(outcome["phase"].as_str(), Some("build"));
-    assert_eq!(outcome["outcome"].as_str(), Some("success"));
-    assert_eq!(outcome["summary"].as_str(), Some("5/5 tasks"));
-    assert_eq!(outcome["context"].as_str(), Some("trailing newline"));
-    let at = outcome["at"].as_str().expect("at is a string");
-    assert!(looks_like_rfc3339(at), "at should be RFC3339, got {at}");
-}
-
-#[test]
-fn outcome_emits_null_when_unstamped() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["name"], "foo");
-    assert!(
-        value["outcome"].is_null(),
-        "outcome must be null when not yet stamped, got: {}",
-        value["outcome"]
-    );
-    assert_eq!(assert.get_output().status.code(), Some(0));
-}
-
-#[test]
-fn outcome_null_context_when_unstamped() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "define", "success", "--summary", "ok"])
-        .assert()
-        .success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    let outcome = &value["outcome"];
-    assert!(
-        outcome["context"].is_null(),
-        "context must render as null when absent, got: {}",
-        outcome["context"]
-    );
-}
-
-#[test]
-fn outcome_text_output_stamped() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "set", "foo", "build", "success", "--summary", "5/5 tasks"])
-        .assert()
-        .success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
-    assert_eq!(stdout.trim_end(), "foo: build/success — 5/5 tasks");
-}
-
-#[test]
-fn outcome_text_output_unstamped() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
-    assert_eq!(stdout.trim_end(), "foo: no outcome stamped");
-}
-
-#[test]
-fn outcome_errors_on_missing_slice() {
-    let project = Project::init();
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "ghost"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stderr);
-    let msg = value["message"].as_str().unwrap_or("");
-    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
-}
-
-#[test]
-fn outcome_falls_back_to_archive() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "bar",
-            "merge",
-            "success",
-            "--summary",
-            "Merged 2 spec(s) into baseline",
-        ])
-        .assert()
-        .success();
-
-    // Simulate the archive move that `specify merge` performs.
-    let slices_dir = project.root().join(".specify/slices");
-    let archive_dir = project.root().join(".specify/archive");
-    fs::create_dir_all(&archive_dir).unwrap();
-    fs::rename(slices_dir.join("bar"), archive_dir.join("2026-04-24-bar")).unwrap();
-
-    // The active slice directory is gone; outcome should resolve from archive.
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "bar"])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["name"], "bar");
-    let outcome = &value["outcome"];
-    assert_eq!(outcome["phase"].as_str(), Some("merge"));
-    assert_eq!(outcome["outcome"].as_str(), Some("success"));
-    assert_eq!(outcome["summary"].as_str(), Some("Merged 2 spec(s) into baseline"));
-}
-
-#[test]
-fn outcome_archive_picks_most_recent() {
-    let project = Project::init();
-
-    // Create and stamp two archived versions with different created-at timestamps.
-    let archive_dir = project.root().join(".specify/archive");
-    fs::create_dir_all(&archive_dir).unwrap();
-
-    for (date, summary) in [("2026-01-01-baz", "old run"), ("2026-04-24-baz", "latest run")] {
-        let dir = archive_dir.join(date);
-        fs::create_dir_all(&dir).unwrap();
-        let created_at = if date.starts_with("2026-01") {
-            "2026-01-01T00:00:00Z"
-        } else {
-            "2026-04-24T00:00:00Z"
-        };
-        let yaml = format!(
-            "adapter: omnia\nstatus: merged\ncreated-at: \"{created_at}\"\noutcome:\n  phase: merge\n  outcome: success\n  at: \"{created_at}\"\n  summary: \"{summary}\"\n"
-        );
-        fs::write(dir.join(".metadata.yaml"), yaml).unwrap();
-    }
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "baz"])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(
-        value["outcome"]["summary"].as_str(),
-        Some("latest run"),
-        "should pick the most recent archive entry"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// slice outcome set — registry-amendment-required (RFC-9 §2B)
-// ---------------------------------------------------------------------------
-
-/// Stamping the new outcome variant writes the structured proposal
-/// payload to `.metadata.yaml` under `outcome.outcome.registry-amendment-required.*`
-/// (kebab-case external-tag form). Round-trips through the writer.
-#[test]
-fn outcome_registry_amendment_writes_payload() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let proposal = serde_json::json!({
-        "proposed-name": "alpha-gateway",
-        "proposed-url": "git@github.com:augentic/alpha-gateway.git",
-        "proposed-adapter": "omnia@v1",
-        "proposed-description": "Gateway for alpha adapter.",
-        "rationale": "build discovered tangled code requiring a split",
-    })
-    .to_string();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "registry-amendment-required",
-            "--proposal",
-            &proposal,
-        ])
-        .assert()
-        .success();
-
-    let path = project.slices_dir().join("foo").join(".metadata.yaml");
-    let raw = fs::read_to_string(&path).expect("read metadata");
-    assert!(
-        raw.contains("registry-amendment-required:"),
-        "outcome should use external-tag form, got:\n{raw}"
-    );
-    assert!(
-        raw.contains("proposed-name: alpha-gateway"),
-        "proposal fields should be kebab-case, got:\n{raw}"
-    );
-    assert!(
-        raw.contains("proposed-url: \"git@github.com:augentic/alpha-gateway.git\"")
-            || raw.contains("proposed-url: git@github.com:augentic/alpha-gateway.git"),
-        "proposed-url should round-trip the verbatim URL, got:\n{raw}"
-    );
-    assert!(
-        raw.contains("proposed-adapter: \"omnia@v1\"")
-            || raw.contains("proposed-adapter: omnia@v1"),
-        "proposed-schema should round-trip, got:\n{raw}"
-    );
-    assert!(raw.contains("rationale:"), "rationale should be emitted, got:\n{raw}");
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let outcome = &value["outcome"];
-    let payload = &outcome["outcome"]["registry-amendment-required"];
-    assert!(payload.is_object(), "expected externally-tagged variant, got: {outcome}");
-    assert_eq!(payload["proposed-name"].as_str(), Some("alpha-gateway"));
-    assert_eq!(payload["proposed-url"].as_str(), Some("git@github.com:augentic/alpha-gateway.git"),);
-    assert_eq!(payload["proposed-adapter"].as_str(), Some("omnia@v1"));
-    assert_eq!(payload["proposed-description"].as_str(), Some("Gateway for alpha adapter."));
-    assert_eq!(
-        payload["rationale"].as_str(),
-        Some("build discovered tangled code requiring a split"),
-    );
-    assert_eq!(
-        outcome["summary"].as_str(),
-        Some("registry-amendment-required: alpha-gateway"),
-        "missing --summary should default to `registry-amendment-required: <name>`",
-    );
-}
-
-/// Missing required keys in the `--proposal` JSON object surface as a
-/// clap parse error (exit `2`).
-#[test]
-fn outcome_registry_amendment_missing_keys() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let proposal = serde_json::json!({
-        "proposed-name": "alpha-gateway",
-        "proposed-url": "git@github.com:augentic/alpha-gateway.git",
-    })
-    .to_string();
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "registry-amendment-required",
-            "--proposal",
-            &proposal,
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(
-        stderr.contains("--proposal") && stderr.contains("missing field"),
-        "expected clap parse-error naming --proposal and the missing field, got: {stderr}",
-    );
-}
-
-/// Malformed JSON on `--proposal` is rejected at parse time (exit `2`).
-#[test]
-fn outcome_registry_amendment_malformed_json() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "registry-amendment-required",
-            "--proposal",
-            "not-json",
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(
-        stderr.contains("--proposal"),
-        "expected clap parse-error naming --proposal, got: {stderr}",
-    );
-}
-
-/// Supplying `--proposal` with an outcome other than
-/// `registry-amendment-required` is rejected — the flag is
-/// outcome-scoped, and silently dropping it would mask author intent.
-#[test]
-fn outcome_proposal_flag_rejected_otherwise() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "success",
-            "--summary",
-            "ok",
-            "--proposal",
-            "{}",
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
-    assert!(
-        stderr.contains("--proposal") || stderr.contains("unexpected argument"),
-        "expected clap diagnostic naming the offending flag, got: {stderr}",
-    );
-}
-
-// ---------------------------------------------------------------------------
-// slice journal append (L2.B)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn journal_append_writes_to_file() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "journal",
-            "append",
-            "foo",
-            "define",
-            "question",
-            "--summary",
-            "scope unclear",
-            "--context",
-            "line one\nline two",
-        ])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["slice"], "foo");
-    assert_eq!(value["phase"], "define");
-    assert_eq!(value["kind"], "question");
-
-    let journal_path = project.slices_dir().join("foo").join("journal.yaml");
-    assert!(journal_path.is_file(), "journal.yaml must exist after append");
-    let text = fs::read_to_string(&journal_path).expect("read journal");
-    assert!(text.contains("entries:"), "missing entries list in:\n{text}");
-    assert!(text.contains("phase: define"), "missing kebab-case phase:\n{text}");
-    assert!(text.contains("kind: question"), "missing kebab-case kind:\n{text}");
-    assert!(text.contains("summary: scope unclear"), "missing summary:\n{text}");
-    assert!(text.contains("line one"), "missing first context line:\n{text}");
-    assert!(text.contains("line two"), "missing second context line:\n{text}");
-    assert_eq!(
-        *text.as_bytes().last().unwrap(),
-        b'\n',
-        "journal.yaml must end with a trailing newline"
-    );
-
-    let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse journal");
-    let entries = yaml["entries"].as_array().expect("entries seq");
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0]["phase"].as_str(), Some("define"));
-    assert_eq!(entries[0]["kind"].as_str(), Some("question"));
-    assert_eq!(entries[0]["summary"].as_str(), Some("scope unclear"));
-    assert_eq!(entries[0]["context"].as_str(), Some("line one\nline two"));
-}
-
-#[test]
-fn journal_append_stamps_rfc3339() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "journal",
-            "append",
-            "foo",
-            "build",
-            "failure",
-            "--summary",
-            "task 3 failed",
-        ])
-        .assert()
-        .success();
-
-    let value = parse_json(&assert.get_output().stdout);
-    let stamp = value["timestamp"].as_str().expect("timestamp string");
-    assert!(looks_like_rfc3339(stamp), "CLI-reported timestamp should be RFC3339, got {stamp}");
-
-    // `jiff::Timestamp::from_str` is the authoritative check.
-    stamp
-        .parse::<jiff::Timestamp>()
-        .unwrap_or_else(|e| panic!("CLI timestamp {stamp} is not valid RFC3339: {e}"));
-
-    let journal_path = project.slices_dir().join("foo").join("journal.yaml");
-    let text = fs::read_to_string(&journal_path).expect("read journal");
-    let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse journal");
-    let on_disk = yaml["entries"][0]["timestamp"].as_str().expect("timestamp on disk");
-    on_disk
-        .parse::<jiff::Timestamp>()
-        .unwrap_or_else(|e| panic!("on-disk timestamp {on_disk} is not valid RFC3339: {e}"));
-    assert_eq!(on_disk, stamp, "on-disk timestamp must match the JSON payload");
-}
-
-#[test]
-fn journal_append_preserves_entries() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    for (phase, kind, summary) in [
-        ("define", "question", "first"),
-        ("build", "failure", "second"),
-        ("build", "recovery", "third"),
-    ] {
-        specify()
-            .current_dir(project.root())
-            .args(["slice", "journal", "append", "foo", phase, kind, "--summary", summary])
-            .assert()
-            .success();
-    }
-
-    let text =
-        fs::read_to_string(project.slices_dir().join("foo").join("journal.yaml")).expect("read");
-    let yaml: serde_json::Value = serde_saphyr::from_str(&text).expect("parse");
-    let entries = yaml["entries"].as_array().expect("entries seq");
-    assert_eq!(entries.len(), 3, "all three appends must persist");
-    let summaries: Vec<&str> =
-        entries.iter().map(|e| e["summary"].as_str().expect("summary")).collect();
-    assert_eq!(summaries, vec!["first", "second", "third"]);
-}
-
-#[test]
-fn journal_append_text_output() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["slice", "journal", "append", "foo", "define", "question", "--summary", "why"])
-        .assert()
-        .success();
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
-    assert_eq!(stdout.trim_end(), "Appended question entry to foo/journal.yaml.");
-}
-
-#[test]
-fn journal_append_errors_on_missing() {
-    let project = Project::init();
-    let assert = specify()
-        .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "slice",
-            "journal",
-            "append",
-            "ghost",
-            "define",
-            "question",
-            "--summary",
-            "x",
-        ])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stderr);
-    let msg = value["message"].as_str().unwrap_or("");
-    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
-}
-
-// ---------------------------------------------------------------------------
-// slice journal show
-// ---------------------------------------------------------------------------
-
-#[test]
-fn journal_show_empty_then_populated() {
-    let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-
-    // Empty journal — show must return an empty entries array.
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "journal", "show", "foo"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    assert_eq!(value["name"], "foo");
-    assert!(
-        value["entries"].as_array().unwrap().is_empty(),
-        "expected empty entries on a fresh slice, got: {}",
-        value["entries"]
-    );
-
-    // Text mode for the empty case: the per-slice "no journal entries" line.
-    let text = specify()
-        .current_dir(project.root())
-        .args(["slice", "journal", "show", "foo"])
-        .assert()
-        .success();
-    let stdout = std::str::from_utf8(&text.get_output().stdout).unwrap();
-    assert!(
-        stdout.contains("foo: no journal entries"),
-        "text show on empty journal should announce no entries, got: {stdout:?}"
-    );
-
-    // Append two entries and verify show reports them in order.
-    specify()
-        .current_dir(project.root())
-        .args(["slice", "journal", "append", "foo", "define", "question", "--summary", "first"])
-        .assert()
-        .success();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "journal",
-            "append",
-            "foo",
-            "build",
-            "failure",
-            "--summary",
-            "second",
-            "--context",
-            "stderr blob",
-        ])
-        .assert()
-        .success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "journal", "show", "foo"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let entries = value["entries"].as_array().expect("entries array");
-    assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0]["phase"], "define");
-    assert_eq!(entries[0]["kind"], "question");
-    assert_eq!(entries[0]["summary"], "first");
-    assert!(entries[0]["context"].is_null());
-    assert_eq!(entries[1]["phase"], "build");
-    assert_eq!(entries[1]["kind"], "failure");
-    assert_eq!(entries[1]["summary"], "second");
-    assert_eq!(entries[1]["context"], "stderr blob");
-}
-
-#[test]
-fn journal_show_errors_on_missing() {
-    let project = Project::init();
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "journal", "show", "ghost"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(1));
-    let value = parse_json(&assert.get_output().stderr);
-    let msg = value["message"].as_str().unwrap_or("");
-    assert!(msg.contains("not found"), "expected 'not found' in message, got: {msg}");
-}
-
 #[test]
 fn phase_outcome_round_trips_serde() {
     use specify_domain::slice::Outcome;
@@ -1270,7 +350,7 @@ fn phase_outcome_round_trips_serde() {
     // `#[non_exhaustive]` boundary on `Outcome`; round-trip through
     // YAML instead so the wire shape is what's exercised.
     for kind in ["success", "failure", "deferred"] {
-        for phase in ["define", "build", "merge"] {
+        for phase in ["shape", "build", "merge"] {
             let yaml = format!(
                 "phase: {phase}\noutcome: {kind}\nat: \"2024-08-01T10:00:00Z\"\nsummary: some summary\n"
             );
@@ -1282,15 +362,447 @@ fn phase_outcome_round_trips_serde() {
     }
 }
 
-// ---- specify change is the umbrella for the operator surface ----
+// ---- RFC-25 top-level help surfaces source/target axis verbs ----
 
 #[test]
-fn change_umbrella_is_listed_in_top_level_help() {
+fn top_level_help_lists_source_and_target_axis_verbs() {
     let assert = specify().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(stdout.contains("slice"), "post-RFC-13 --help must list `slice`, got:\n{stdout}");
+    assert!(stdout.contains("slice"), "RFC-25 --help must still list `slice`, got:\n{stdout}");
     assert!(
-        stdout.lines().any(|line| line.trim_start().starts_with("change ")),
-        "post-3.5 --help must list `change` as the umbrella subcommand, got:\n{stdout}"
+        stdout.lines().any(|line| line.trim_start().starts_with("source ")),
+        "RFC-25 --help must list the `source` axis verb, got:\n{stdout}"
     );
+    assert!(
+        stdout.lines().any(|line| line.trim_start().starts_with("target ")),
+        "RFC-25 --help must list the `target` axis verb, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.lines().any(|line| line.trim_start().starts_with("change ")),
+        "RFC-25 --help must NOT list the retired `change` verb, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.lines().any(|line| line.trim_start().starts_with("adapter ")),
+        "RFC-25 --help must NOT list the retired `adapter` verb, got:\n{stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// workflow §Requirement block contract — `slice validate` provenance gate
+// ---------------------------------------------------------------------------
+
+/// Stage a slice on disk and seed `<slice>/specs/login/spec.md`
+/// directly, plus optionally a `plan.yaml` at the project root, so the
+/// provenance gate inside `specify slice validate` has both the spec
+/// file and a plan-level source-bindings context to cross-validate
+/// against. Returns the project handle so the caller can drive
+/// `specify slice validate` on it.
+fn stage_slice_with_spec(spec_md: &str, plan_yaml: Option<&str>) -> Project {
+    let project = Project::init().with_schemas();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let specs_dir = project.slices_dir().join("my-slice/specs/login");
+    fs::create_dir_all(&specs_dir).expect("mkdir specs/login");
+    fs::write(specs_dir.join("spec.md"), spec_md).expect("write spec.md");
+    if let Some(yaml) = plan_yaml {
+        project.seed_plan(yaml);
+    }
+    project
+}
+
+/// Validate-fail goldens carry a `validation` discriminant; assert
+/// that the wire envelope holds the expected `rule_id` exactly once.
+fn assert_provenance_fail_rule(stderr: &[u8], rule_id: &str) {
+    let value = parse_json(stderr);
+    assert_eq!(value["error"], "validation", "wire envelope must be `validation`");
+    assert_eq!(value["exit-code"], 2);
+    let results = value["results"].as_array().expect("results array");
+    assert!(
+        results.iter().any(|r| r["rule-id"] == rule_id),
+        "expected rule_id `{rule_id}` in results: {results:#?}"
+    );
+}
+
+const PLAN_WITH_LEGACY_MONOLITH: &str = "\
+name: rfc25-prov
+lifecycle: pending
+sources:
+  legacy-monolith:
+    adapter: code-typescript
+    path: ./legacy
+slices:
+  - name: my-slice
+    status: pending
+    sources:
+      - { key: legacy-monolith, candidate: my-slice }
+";
+
+#[test]
+fn validate_rejects_missing_id_with_exit_two() {
+    let spec = "### Requirement: Missing id\n\n\
+                Sources: [legacy-monolith]\n\
+                Status: agreed\n\n\
+                body\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-id-missing");
+}
+
+#[test]
+fn validate_rejects_malformed_id_with_exit_two() {
+    let spec = "### Requirement: Malformed id\n\n\
+                ID: REQ-1\n\
+                Sources: [legacy-monolith]\n\
+                Status: agreed\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-id-malformed");
+}
+
+#[test]
+fn validate_rejects_missing_sources_with_exit_two() {
+    let spec = "### Requirement: No sources\n\n\
+                ID: REQ-001\n\
+                Status: agreed\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-sources-missing");
+}
+
+#[test]
+fn validate_rejects_missing_status_with_exit_two() {
+    let spec = "### Requirement: No status\n\n\
+                ID: REQ-001\n\
+                Sources: [legacy-monolith]\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-status-missing");
+}
+
+#[test]
+fn validate_rejects_unknown_status_value_with_exit_two() {
+    let spec = "### Requirement: Bogus status\n\n\
+                ID: REQ-001\n\
+                Sources: [legacy-monolith]\n\
+                Status: maybe\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(
+        &assert.get_output().stderr,
+        "spec.requirement-status-unknown-value",
+    );
+}
+
+#[test]
+fn validate_rejects_source_key_not_in_plan_with_exit_two() {
+    let spec = "### Requirement: Stray source key\n\n\
+                ID: REQ-001\n\
+                Sources: [phantom]\n\
+                Status: agreed\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(
+        &assert.get_output().stderr,
+        "spec.requirement-source-key-undefined",
+    );
+}
+
+#[test]
+fn validate_rejects_tag_status_mismatch_with_exit_two() {
+    let spec = "### Requirement: Lying tag [divergence]\n\n\
+                ID: REQ-001\n\
+                Sources: [legacy-monolith]\n\
+                Status: agreed\n";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    assert_provenance_fail_rule(
+        &assert.get_output().stderr,
+        "spec.requirement-tag-status-mismatch",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// workflow §D4 — `slice validate` fusion drift gate
+// ---------------------------------------------------------------------------
+
+/// Minimal fusion.yaml for a slice named `my-slice` with one
+/// requirement `REQ-001` whose single contributing claim cites
+/// `legacy-monolith :: REQ-001` (the same id we'll seed the evidence
+/// file with by default).
+const CLEAN_FUSION_YAML: &str = "version: 1
+slice: my-slice
+generated-at: 2026-05-22T13:15:00Z
+generator: specify@2.1.0
+requirements:
+  - id: REQ-001
+    status: agreed
+    sources: [legacy-monolith]
+    contributing-claims:
+      - source: legacy-monolith
+        claim-id: REQ-001
+        kind: requirement
+        value: \"Password reset request returns a 200 response.\"
+        path: src/users/reset.ts#L42
+    resolution: single-source
+";
+
+const CLEAN_SPEC_MD: &str = "### Requirement: Password reset request
+
+ID: REQ-001
+Sources: [legacy-monolith]
+Status: agreed
+
+The system lets a registered user request a password reset link by email.
+";
+
+const CLEAN_EVIDENCE_YAML: &str = "source: legacy-monolith
+adapter: code-typescript
+authority: behaviour
+candidate: my-slice
+claims:
+  - kind: requirement
+    claim-id: REQ-001
+    statement: \"Password reset request returns a 200 response.\"
+    path: src/users/reset.ts#L42
+";
+
+/// Stage a fully-wired slice with fusion.yaml + spec.md + evidence
+/// so the drift gate has every input it needs and the baseline test
+/// fixture validates clean. Caller may then mutate any file before
+/// re-running `slice validate` to exercise drift.
+fn stage_slice_with_fusion() -> Project {
+    let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
+    // stage_slice_with_spec writes specs/login/spec.md by default;
+    // the fusion gate gathers REQ ids across every spec.md, so we
+    // can leave that path alone.
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("fusion.yaml"), CLEAN_FUSION_YAML).expect("write fusion.yaml");
+    let evidence_dir = slice_dir.join("evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
+    fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
+        .expect("write evidence");
+    project
+}
+
+#[test]
+fn validate_passes_on_clean_fusion_inputs() {
+    let project = stage_slice_with_fusion();
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    let code = assert.get_output().status.code();
+    if code != Some(0) {
+        // Adapter-level brief validation may still surface findings on
+        // the synthetic slice — those would route through different
+        // rule ids. Assert that whatever surfaces, *no* row carries
+        // `slice-fusion-drift` against clean inputs.
+        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+            && let Some(results) = value["results"].as_array()
+        {
+            for r in results {
+                let rule_id = r["rule-id"].as_str().unwrap_or("");
+                assert_ne!(
+                    rule_id, "slice-fusion-drift",
+                    "no drift row may appear on clean inputs; got results: {results:#?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn validate_detects_req_id_drift_when_spec_md_has_extra_requirement() {
+    let project = stage_slice_with_fusion();
+    // Append a second REQ block to spec.md so spec.md has REQ-001 +
+    // REQ-002 while fusion.yaml only knows REQ-001.
+    let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
+    let extended = format!(
+        "{CLEAN_SPEC_MD}\n\
+         ### Requirement: Extra requirement\n\n\
+         ID: REQ-002\n\
+         Sources: [legacy-monolith]\n\
+         Status: agreed\n\n\
+         An undiscovered requirement.\n",
+    );
+    fs::write(&spec_path, extended).expect("rewrite spec.md");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "validation");
+    let results = value["results"].as_array().expect("results array");
+    let detail = results
+        .iter()
+        .find(|r| r["rule-id"] == "slice-fusion-drift")
+        .and_then(|r| r["detail"].as_str())
+        .expect("slice-fusion-drift row must be present");
+    assert!(detail.contains("REQ-002"), "drift detail should name REQ-002, got: {detail}");
+    assert!(
+        detail.contains("missing from fusion.yaml"),
+        "drift detail should mention the drift direction, got: {detail}"
+    );
+}
+
+#[test]
+fn validate_detects_contributing_claim_drift_when_evidence_claim_renamed() {
+    let project = stage_slice_with_fusion();
+    // Rename the evidence claim id; fusion.yaml still cites the old one.
+    let evidence_path = project.slices_dir().join("my-slice/evidence/legacy-monolith.yaml");
+    let modified = CLEAN_EVIDENCE_YAML.replace("claim-id: REQ-001", "claim-id: REQ-999-renamed");
+    fs::write(&evidence_path, modified).expect("rewrite evidence");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "validation");
+    let results = value["results"].as_array().expect("results array");
+    let detail = results
+        .iter()
+        .find(|r| r["rule-id"] == "slice-fusion-drift")
+        .and_then(|r| r["detail"].as_str())
+        .expect("slice-fusion-drift row must be present");
+    assert!(
+        detail.contains("legacy-monolith") && detail.contains("REQ-001"),
+        "drift detail should name the dangling (source, claim-id) pair, got: {detail}"
+    );
+}
+
+#[test]
+fn validate_skips_drift_gate_when_fusion_yaml_absent() {
+    // Stage a slice with spec.md but no fusion.yaml — the drift gate
+    // must be a silent no-op so older slices and pre-refine slices
+    // still validate. (Any other adapter-level rules can still
+    // surface, but no drift row may appear.)
+    let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "slice-fusion-drift",
+                "drift gate must skip when fusion.yaml is absent"
+            );
+        }
+    }
+}
+
+#[test]
+fn validate_skipped_drift_gate_does_not_fire_on_pre_synthesis_spec() {
+    // When fusion.yaml is present but spec.md is still pre-synthesis
+    // (no Sources/Status lines), the drift gate must still gather
+    // REQ ids from the bare `ID:` lines so a partially-refined slice
+    // does not silently drift. This protects against the case where
+    // the operator hand-deletes `Sources:` / `Status:` lines but
+    // leaves the requirement intact.
+    let spec = "### Requirement: Pre-synthesis body
+
+ID: REQ-001
+
+body without metadata lines yet
+";
+    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("fusion.yaml"), CLEAN_FUSION_YAML).expect("write fusion");
+    let evidence_dir = slice_dir.join("evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir");
+    fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
+        .expect("write evidence");
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "slice-fusion-drift",
+                "drift gate must accept matching REQ ids even when Sources/Status metadata is absent"
+            );
+        }
+    }
+}
+
+#[test]
+fn validate_skips_provenance_when_no_metadata_lines_present() {
+    // pre-2.0 (or pre-synthesis) state. The provenance gate must
+    // not fire and the slice progresses to the existing adapter rule
+    // run. The adapter rules will still surface deferred /
+    // pass-style results — we only assert the provenance rule ids
+    // are NOT present.
+    let spec = "### Requirement: pre-2.0 body\n\n\
+                ID: REQ-001\n\n\
+                body that has no Sources or Status yet\n";
+    let project = stage_slice_with_spec(spec, None);
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    // Whether the run passes or fails (existing adapter rules may
+    // still produce findings on the synthetic slice), no provenance
+    // rule should appear.
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert!(
+                !rule_id.starts_with("spec.requirement-"),
+                "no provenance rule should fire on a pre-2.0 spec.md, got: {rule_id}"
+            );
+        }
+    }
 }

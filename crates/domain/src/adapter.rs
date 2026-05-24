@@ -1,74 +1,42 @@
-//! Adapter resolution and brief frontmatter parsing — the canonical
-//! home for `Adapter`, `Brief`, `ChangeBrief`, `CacheMeta`, the
-//! codex catalogue, and the resolved `PipelineView`.
+//! Adapter manifest resolution.
+//!
+//! workflow §"Adapter implementation shape" / §"Resolver and cache".
+//! Source and target adapters share the `adapter.yaml` wire shape but
+//! split into [`SourceAdapter`] / [`TargetAdapter`] in memory, each
+//! carrying its closed operation set ([`SourceOperation`] /
+//! [`TargetOperation`]) as the typed `briefs.keys()` source-of-truth.
+//! The split pushes the string boundary out to the YAML parse step;
+//! see [DECISIONS.md §"Operations typed at parse boundary"] for the
+//! rationale.
+//!
+//! Resolution is path-agnostic: each axis-specific loader probes
+//! `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`
+//! first (the agent-populated manifest cache) and then
+//! `<project_dir>/adapters/{sources,targets}/<name>/` (in-repo). The
+//! manifest cache mirrors the in-repo adapter tree so source and
+//! target adapters with colliding names disambiguate by axis. The
+//! workflow §D8 per-source extraction result cache lives in a sibling
+//! tree under `<project_dir>/.specify/.cache/extractions/<adapter>/`
+//! (with `index.jsonl` at the adapter root) — see
+//! [DECISIONS.md §"Cache layout"].
+//!
+//! Brief bodies are read by the agent from paths declared in each
+//! manifest's typed `briefs` map; the CLI never parses brief markdown.
+//! Per the plugin-repo standard
+//! ([`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md)
+//! §"Brief authoring"), briefs carry no YAML frontmatter.
+//!
+//! [DECISIONS.md §"Operations typed at parse boundary"]: ../../../DECISIONS.md#operations-typed-at-parse-boundary
+//! [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
 
-#[expect(
-    clippy::module_inception,
-    reason = "preserves the per-concern split inherited from the pre-collapse `specify-adapter` crate; rename would cascade across many imports"
-)]
-mod adapter;
-mod brief;
-mod cache;
-mod change_brief;
-mod codex;
-mod codex_resolver;
-mod pipeline;
+pub mod cache;
+mod core;
+pub(crate) mod operation;
 
-use std::borrow::Cow;
-
-// --- Adapter core ---
-pub use adapter::{
-    ADAPTER_FILENAME, Adapter, AdapterSource, Phase, Pipeline, PipelineEntry, ResolvedAdapter,
-    validate_against_schema,
+pub use core::{
+    ADAPTER_FILENAME, AdapterLocation, Axis, CacheMode, ResolvedTargetAdapter, SourceAdapter,
+    TargetAdapter, cache_dir, check_axis_unique_for_name,
 };
-// --- Brief frontmatter ---
-pub use brief::{Brief, BriefFrontmatter};
-// --- Agent-populated cache ---
-pub use cache::CacheMeta;
-pub use change_brief::{
-    ChangeBrief, ChangeFrontmatter, ChangeInput, FILENAME as CHANGE_BRIEF_FILENAME, InputKind,
-};
-// --- Codex (rules catalog) ---
-pub use codex::{CodexRule, CodexRuleFrontmatter, CodexSeverity};
-pub use codex_resolver::{
-    CODEX_DIR_NAME, CodexCatalogSource, CodexProvenance, CodexResolver, DEFAULT_CODEX_ADAPTER,
-    ResolvedCodex, ResolvedCodexRule,
-};
-pub use pipeline::PipelineView;
 
-/// Outcome of a structural validation rule.
-///
-/// Canonical home for `ValidationResult`. Lives in `specify-domain`
-/// because every consumer of the validation registry already depends
-/// on the broader domain surface (`Adapter`, `PipelineView`,
-/// `Registry`). See `DECISIONS.md` §"Crate layout" for the full
-/// rationale.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(tag = "status", rename_all = "kebab-case", rename_all_fields = "kebab-case")]
-pub enum ValidationResult {
-    /// Rule passed.
-    Pass {
-        /// Machine-readable rule identifier.
-        rule_id: Cow<'static, str>,
-        /// Human-readable rule description.
-        rule: Cow<'static, str>,
-    },
-    /// Rule failed.
-    Fail {
-        /// Machine-readable rule identifier.
-        rule_id: Cow<'static, str>,
-        /// Human-readable rule description.
-        rule: Cow<'static, str>,
-        /// Detail message explaining the failure.
-        detail: String,
-    },
-    /// Rule evaluation was deferred.
-    Deferred {
-        /// Machine-readable rule identifier.
-        rule_id: Cow<'static, str>,
-        /// Human-readable rule description.
-        rule: Cow<'static, str>,
-        /// Why the rule was deferred.
-        reason: &'static str,
-    },
-}
+pub use cache::{CacheLayout, SourceOperation, read_index as cache_read_index};
+pub use operation::TargetOperation;

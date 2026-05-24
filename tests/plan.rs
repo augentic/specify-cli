@@ -21,34 +21,47 @@ const RFC_EXAMPLE: &str = r"
 name: platform-v2
 
 sources:
-  monolith: /path/to/legacy-codebase
-  orders: git@github.com:org/orders-service.git
-  payments: git@github.com:org/payments-service.git
-  frontend: git@github.com:org/web-app.git
+  monolith:
+    adapter: code-typescript
+    path: /path/to/legacy-codebase
+  orders:
+    adapter: code-typescript
+    path: git@github.com:org/orders-service.git
+  payments:
+    adapter: code-typescript
+    path: git@github.com:org/payments-service.git
+  frontend:
+    adapter: code-typescript
+    path: git@github.com:org/web-app.git
 
 slices:
   - name: user-registration
+    project: platform
     sources: [monolith]
     status: done
 
   - name: email-verification
+    project: platform
     sources: [monolith]
     depends-on: [user-registration]
     status: in-progress
 
   - name: registration-duplicate-email-crash
+    project: platform
     description: >
       Duplicate email submission returns 500 instead of 409.
       Discovered during email-verification extraction.
     status: pending
 
   - name: notification-preferences
+    project: platform
     depends-on: [user-registration]
     description: >
       Greenfield — user-facing notification channel and frequency settings.
     status: pending
 
   - name: extract-shared-validation
+    project: platform
     description: >
       Pull duplicated input validation into a shared validation crate
       before building checkout-flow.
@@ -56,24 +69,25 @@ slices:
     status: pending
 
   - name: product-catalog
+    project: platform
     sources: [monolith]
     depends-on: [extract-shared-validation]
     status: pending
 
   - name: shopping-cart
+    project: platform
     sources: [orders]
     depends-on: [product-catalog, user-registration]
     status: pending
 
   - name: checkout-api
+    project: platform
     sources: [payments]
     depends-on: [shopping-cart]
-    status: failed
-    status-reason: >
-      Type mismatch between cart line-item schema and payment gateway contract.
-      Needs design revision after shopping-cart specs are updated.
+    status: pending
 
   - name: checkout-ui
+    project: platform
     sources: [frontend]
     depends-on: [checkout-api]
     status: pending

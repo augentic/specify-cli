@@ -2,8 +2,12 @@ use std::collections::{BTreeMap, HashSet};
 
 use tempfile::tempdir;
 
-use super::super::model::{Entry, Plan, Severity, Status};
-use super::super::test_support::{RFC_EXAMPLE_YAML, change, plan_with_changes};
+use super::super::model::{
+    Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
+};
+use super::super::{RFC_EXAMPLE_YAML, change, plan_with_changes};
+use crate::change::{CYCLE, detect};
+use crate::evidence::ClaimKind;
 use crate::registry::{Registry, RegistryProject};
 
 #[test]
@@ -35,9 +39,8 @@ fn cycle_error() {
     let mut c = change("c", Status::Pending);
     c.depends_on = vec!["b".into()];
     let plan = plan_with_changes(vec![a, b, c]);
-    let results = plan.validate(None, None);
-    let cycles: Vec<_> = results.iter().filter(|r| r.code == "dependency-cycle").collect();
-    assert!(!cycles.is_empty(), "expected at least one dependency-cycle, got {results:#?}");
+    let cycles: Vec<_> = detect(&plan.entries).into_iter().filter(|d| d.code == CYCLE).collect();
+    assert!(!cycles.is_empty(), "expected at least one {CYCLE}, got {cycles:#?}");
     let msg = &cycles[0].message;
     assert!(msg.contains('a'), "cycle message should name a: {msg}");
     assert!(msg.contains('b'), "cycle message should name b: {msg}");
@@ -49,52 +52,59 @@ fn self_cycle_error() {
     let mut a = change("a", Status::Pending);
     a.depends_on = vec!["a".into()];
     let plan = plan_with_changes(vec![a]);
-    let results = plan.validate(None, None);
+    let cycles = detect(&plan.entries);
     assert!(
-        results.iter().any(|r| r.code == "dependency-cycle"),
-        "expected a dependency-cycle result for self-edge, got: {results:#?}"
+        cycles.iter().any(|d| d.code == CYCLE),
+        "expected a {CYCLE} result for self-edge, got: {cycles:#?}"
     );
 }
 
 #[test]
 fn unknown_depends_on_error() {
-    let mut a = change("a", Status::Pending);
-    a.depends_on = vec!["bogus".into()];
-    let plan = plan_with_changes(vec![a]);
+    let mut entry = change("depends-on-ghost", Status::Pending);
+    entry.depends_on = vec!["bogus".into()];
+    let plan = plan_with_changes(vec![entry]);
     let results = plan.validate(None, None);
     let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-depends-on").collect();
     assert_eq!(hits.len(), 1, "expected one unknown-depends-on, got {results:#?}");
-    assert_eq!(hits[0].entry.as_deref(), Some("a"));
+    assert_eq!(hits[0].entry.as_deref(), Some("depends-on-ghost"));
     assert!(hits[0].message.contains("bogus"));
 }
 
 #[test]
 fn unknown_source_error() {
-    let mut a = change("a", Status::Pending);
-    a.sources = vec!["monolith".into()];
-    let plan = plan_with_changes(vec![a]);
+    let mut entry = change("source-ghost", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::bare("monolith")];
+    let plan = plan_with_changes(vec![entry]);
     let results = plan.validate(None, None);
     let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-source").collect();
     assert_eq!(hits.len(), 1, "expected one unknown-source, got {results:#?}");
-    assert_eq!(hits[0].entry.as_deref(), Some("a"));
+    assert_eq!(hits[0].entry.as_deref(), Some("source-ghost"));
     assert!(hits[0].message.contains("monolith"));
 }
 
 #[test]
 fn multiple_in_progress_error() {
-    let plan =
-        plan_with_changes(vec![change("a", Status::InProgress), change("b", Status::InProgress)]);
+    let plan = plan_with_changes(vec![
+        change("first-in-progress", Status::InProgress),
+        change("second-in-progress", Status::InProgress),
+    ]);
     let results = plan.validate(None, None);
     let hits: Vec<_> = results.iter().filter(|r| r.code == "multiple-in-progress").collect();
     assert_eq!(hits.len(), 2, "expected one result per offender, got {results:#?}");
     let names: HashSet<&str> = hits.iter().filter_map(|r| r.entry.as_deref()).collect();
-    assert!(names.contains("a") && names.contains("b"), "names = {names:?}");
+    assert!(
+        names.contains("first-in-progress") && names.contains("second-in-progress"),
+        "names = {names:?}"
+    );
 }
 
 #[test]
 fn single_in_progress_is_fine() {
-    let plan =
-        plan_with_changes(vec![change("a", Status::InProgress), change("b", Status::Pending)]);
+    let plan = plan_with_changes(vec![
+        change("only-in-progress", Status::InProgress),
+        change("queued", Status::Pending),
+    ]);
     let results = plan.validate(None, None);
     assert!(
         !results.iter().any(|r| r.code == "multiple-in-progress"),
@@ -156,7 +166,7 @@ fn no_slices_dir_skips_consistency() {
 fn no_short_circuit() {
     let mut a = change("foo", Status::Pending);
     a.depends_on = vec!["missing".into()];
-    a.sources = vec!["ghost-source".into()];
+    a.sources = vec![SliceSourceBinding::bare("ghost-source")];
     let b = change("foo", Status::Pending);
     let plan = plan_with_changes(vec![a, b]);
     let results = plan.validate(None, None);
@@ -172,21 +182,9 @@ fn no_short_circuit() {
 
 #[test]
 fn project_not_in_registry() {
-    let plan = Plan {
-        name: "test".to_string(),
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "a".to_string(),
-            project: Some("nonexistent".to_string()),
-            adapter: None,
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: None,
-        }],
-    };
+    let mut e = change("registry-missing", Status::Pending);
+    e.project = Some("nonexistent".to_string());
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -203,21 +201,9 @@ fn project_not_in_registry() {
 
 #[test]
 fn project_missing_multi_repo() {
-    let plan = Plan {
-        name: "test".to_string(),
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "a".to_string(),
-            project: None,
-            adapter: None,
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: None,
-        }],
-    };
+    let mut e = change("needs-project", Status::Pending);
+    e.project = None;
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![
@@ -242,22 +228,11 @@ fn project_missing_multi_repo() {
 }
 
 #[test]
-fn adapter_only_entry_valid_multi_repo() {
-    let plan = Plan {
-        name: "test".to_string(),
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "contracts".to_string(),
-            project: None,
-            adapter: Some("contracts@v1".into()),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: None,
-        }],
-    };
+fn target_only_entry_valid_multi_repo() {
+    let mut e = change("contracts", Status::Pending);
+    e.project = None;
+    e.target = Some(TargetRef::new("contracts", 1));
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![
@@ -286,21 +261,10 @@ fn adapter_only_entry_valid_multi_repo() {
 
 #[test]
 fn project_valid_single_repo() {
-    let plan = Plan {
-        name: "test".to_string(),
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "a".to_string(),
-            project: None,
-            adapter: Some("contracts@v1".into()),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: None,
-        }],
-    };
+    let mut e = change("solo-target-only", Status::Pending);
+    e.project = None;
+    e.target = Some(TargetRef::new("contracts", 1));
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -318,21 +282,9 @@ fn project_valid_single_repo() {
 
 #[test]
 fn project_matches_registry() {
-    let plan = Plan {
-        name: "test".to_string(),
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "a".to_string(),
-            project: Some("alpha".to_string()),
-            adapter: None,
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: None,
-        }],
-    };
+    let mut e = change("project-alpha", Status::Pending);
+    e.project = Some("alpha".to_string());
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![
@@ -357,76 +309,42 @@ fn project_matches_registry() {
 }
 
 #[test]
-fn neither_project_nor_adapter_error() {
-    let plan = Plan {
-        name: "test".to_string(),
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "orphan".to_string(),
-            project: None,
-            adapter: None,
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: None,
-        }],
-    };
+fn neither_project_nor_target_error() {
+    let mut e = change("orphan", Status::Pending);
+    e.project = None;
+    let plan = plan_with_changes(vec![e]);
     let results = plan.validate(None, None);
     assert!(
         results
             .iter()
-            .any(|r| r.code == "plan.entry-needs-project-or-adapter" && r.level == Severity::Error),
-        "expected entry-needs-project-or-adapter error, got: {results:#?}"
+            .any(|r| r.code == "plan.entry-needs-project-or-target" && r.level == Severity::Error),
+        "expected entry-needs-project-or-target error, got: {results:#?}"
     );
 }
 
 #[test]
-fn adapter_only_passes() {
-    let plan = Plan {
-        name: "test".to_string(),
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "contracts".to_string(),
-            project: None,
-            adapter: Some("contracts@v1".into()),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: None,
-        }],
-    };
+fn target_only_passes() {
+    let mut e = change("contracts", Status::Pending);
+    e.project = None;
+    e.target = Some(TargetRef::new("contracts", 1));
+    let plan = plan_with_changes(vec![e]);
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-adapter"),
-        "adapter-only entry must not trigger project-or-adapter error"
+        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-target"),
+        "target-only entry must not trigger project-or-target error"
     );
 }
 
 #[test]
-fn project_and_adapter_passes() {
-    let plan = Plan {
-        name: "test".to_string(),
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "impl".to_string(),
-            project: Some("auth-service".into()),
-            adapter: Some("omnia@v1".into()),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: None,
-        }],
-    };
+fn project_and_target_passes() {
+    let mut e = change("impl", Status::Pending);
+    e.project = Some("auth-service".into());
+    e.target = Some(TargetRef::new("omnia", 1));
+    let plan = plan_with_changes(vec![e]);
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-adapter"),
-        "entry with both project and adapter must pass"
+        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-target"),
+        "entry with both project and target must pass"
     );
 }
 
@@ -456,6 +374,108 @@ fn context_rejects_absolute() {
         .collect();
     assert_eq!(errors.len(), 1, "expected exactly one context-path-invalid error");
     assert!(errors[0].message.contains("/absolute/path"));
+}
+
+#[test]
+fn authority_override_orphan_source_key_rejected() {
+    let mut entry = change("identity-user-registration", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::bare("legacy")];
+    entry.authority_override = SliceAuthorityOverride {
+        by_kind: BTreeMap::from([
+            (ClaimKind::Requirement, "phantom".to_string()),
+            (ClaimKind::Criterion, "legacy".to_string()),
+        ]),
+    };
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp"));
+    let hits: Vec<_> = plan
+        .validate(None, None)
+        .into_iter()
+        .filter(|r| r.code == "slice-authority-override-orphan-source-key")
+        .collect();
+    assert_eq!(hits.len(), 1, "expected one orphan finding, got: {hits:#?}");
+    assert_eq!(hits[0].entry.as_deref(), Some("identity-user-registration"));
+    assert!(
+        hits[0].message.contains("requirement") && hits[0].message.contains("phantom"),
+        "message must name kind + bad source key, got: {}",
+        hits[0].message
+    );
+}
+
+#[test]
+fn authority_override_empty_passes() {
+    let mut entry = change("any", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::bare("legacy")];
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp"));
+    assert!(
+        !plan
+            .validate(None, None)
+            .iter()
+            .any(|r| r.code == "slice-authority-override-orphan-source-key"),
+        "empty override map must not trip orphan check"
+    );
+}
+
+#[test]
+fn authority_override_valid_keys_pass() {
+    let mut entry = change("any", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::bare("legacy"), SliceSourceBinding::bare("runtime")];
+    entry.authority_override = SliceAuthorityOverride {
+        by_kind: BTreeMap::from([
+            (ClaimKind::Requirement, "runtime".to_string()),
+            (ClaimKind::Criterion, "legacy".to_string()),
+        ]),
+    };
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp/legacy"));
+    plan.sources.insert("runtime".into(), SourceBinding::path("captures", "/tmp/runtime"));
+    assert!(
+        !plan
+            .validate(None, None)
+            .iter()
+            .any(|r| r.code == "slice-authority-override-orphan-source-key"),
+        "all-valid overrides must pass"
+    );
+}
+
+#[test]
+fn authority_override_findings_sort_deterministically() {
+    let mut entry = change("identity-user-registration", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::bare("legacy")];
+    // Insert in non-sorted order; BTreeMap iteration sorts by kind.
+    entry.authority_override = SliceAuthorityOverride {
+        by_kind: BTreeMap::from([
+            (ClaimKind::Requirement, "ghost-a".to_string()),
+            (ClaimKind::Criterion, "ghost-b".to_string()),
+            (ClaimKind::Decision, "ghost-c".to_string()),
+        ]),
+    };
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp"));
+    let codes: Vec<&str> = plan
+        .validate(None, None)
+        .iter()
+        .filter(|r| r.code == "slice-authority-override-orphan-source-key")
+        .map(|r| {
+            // Pull the kind out of the message (between "kind '" and "'").
+            let msg = &r.message;
+            let start = msg.find("kind '").unwrap() + "kind '".len();
+            let end = start + msg[start..].find('\'').unwrap();
+            &msg[start..end]
+        })
+        .map(|s| -> &'static str {
+            match s {
+                "requirement" => "requirement",
+                "criterion" => "criterion",
+                "decision" => "decision",
+                _ => "other",
+            }
+        })
+        .collect();
+    // ClaimKind PartialOrd matches enum declaration order: Intent,
+    // Requirement, Criterion, Decision, …
+    assert_eq!(codes, vec!["requirement", "criterion", "decision"]);
 }
 
 #[test]

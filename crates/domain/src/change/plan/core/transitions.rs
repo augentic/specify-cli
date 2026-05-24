@@ -1,326 +1,183 @@
-//! Status transition rules and `Plan::transition` — the single writer
-//! of [`Entry::status`]. The canonical edge table lives in
-//! `rfcs/rfc-2-execution.md` §"Transition Rules".
+//! `Plan::transition` and `Plan::transition_lifecycle` — the only
+//! writers of `Entry::status` for `done` and `Plan::lifecycle` for
+//! `reviewed`. Post-2.0 the legal edges are `Pending → InProgress`
+//! (written by `plan next`, never here) and `InProgress → Done` per
+//! entry, plus `Pending → Reviewed` plan-level (operator stamp at
+//! Gate 1, workflow §The plan gate; `/spec:plan` MUST NOT call it).
 
 use specify_error::Error;
 
-use super::model::{Entry, Plan, Status};
-
-impl Status {
-    /// Whether `self -> target` is a legal edge in the plan-entry state
-    /// machine. See `rfc-2-execution.md` §"Transition Rules" for the canonical
-    /// table; the 10 edges enumerated below are the *only* legal ones.
-    /// `Done` is terminal: every edge with `Done` on the left is `false`.
-    #[must_use]
-    pub const fn can_transition_to(&self, target: &Self) -> bool {
-        use Status::{Blocked, Done, Failed, InProgress, Pending, Skipped};
-        matches!(
-            (self, target),
-            (Pending, InProgress | Blocked | Skipped)
-                | (InProgress, Done | Failed | Blocked)
-                | (Blocked | Failed | Skipped, Pending)
-                | (Failed, Skipped)
-        )
-    }
-
-    /// Return `target` if the edge is legal, otherwise an
-    /// `Error::Diag` (code `plan-transition`) whose detail carries both
-    /// endpoints by their `Debug` representation.
-    ///
-    /// # Errors
-    ///
-    /// Errors with `Error::Diag { code: "plan-transition", .. }` when
-    /// `self -> target` is not in the legal edge table.
-    pub fn transition(&self, target: Self) -> Result<Self, Error> {
-        if self.can_transition_to(&target) {
-            Ok(target)
-        } else {
-            Err(Error::Diag {
-                code: "plan-transition",
-                detail: format!("cannot transition from {self:?} to {target:?}"),
-            })
-        }
-    }
-}
+use super::model::{Entry, Lifecycle, Plan, Status};
 
 impl Plan {
-    /// Transition the named entry to `target`, recording `reason` in
-    /// [`Entry::status_reason`] per the rules documented in
-    /// `rfc-2-execution.md` §Fields.
-    ///
-    /// `reason` is only meaningful when `target` is one of
-    /// `{Failed, Blocked, Skipped}`; passing `Some(_)` with any other
-    /// target returns an `Error::Diag`. On a legal reason-less
-    /// transition to `Pending`, `InProgress`, or `Done`,
-    /// `status_reason` is cleared.
+    /// Transition the named entry to `target` (in practice always
+    /// [`Status::Done`]; `Pending → InProgress` is reserved for
+    /// `Plan::next`).
     ///
     /// # Errors
-    ///
-    /// Errors when the entry is missing, when the edge is illegal, or
-    /// when `--reason` is supplied for a clean target.
-    pub fn transition(
-        &mut self, name: &str, target: Status, reason: Option<&str>,
-    ) -> Result<(), Error> {
+    /// `plan-entry-not-found` / `plan-transition` — see module docs.
+    pub fn transition(&mut self, name: &str, target: Status) -> Result<(), Error> {
         let entry: &mut Entry =
             self.entries.iter_mut().find(|c| c.name == name).ok_or_else(|| Error::Diag {
                 code: "plan-entry-not-found",
                 detail: format!("no slice named '{name}' in plan"),
             })?;
-
-        let new_status = entry.status.transition(target)?;
-
-        match target {
-            Status::Failed | Status::Blocked | Status::Skipped => {
-                if let Some(s) = reason {
-                    entry.status_reason = Some(s.to_string());
-                }
-            }
-            Status::Pending | Status::InProgress | Status::Done => {
-                if reason.is_some() {
-                    return Err(Error::Diag {
-                        code: "plan-transition-reason-not-allowed",
-                        detail: format!("--reason is not valid when transitioning to {target:?}"),
-                    });
-                }
-                entry.status_reason = None;
-            }
+        let current = entry.status;
+        if matches!(
+            (current, target),
+            (Status::Pending, Status::InProgress) | (Status::InProgress, Status::Done)
+        ) {
+            entry.status = target;
+            Ok(())
+        } else {
+            Err(Error::Diag {
+                code: "plan-transition",
+                detail: format!("cannot transition from {current:?} to {target:?}"),
+            })
         }
+    }
 
-        entry.status = new_status;
-        Ok(())
+    /// Transition [`Plan::lifecycle`] to `target` — see module docs.
+    ///
+    /// # Errors
+    /// `plan-lifecycle-transition` when the edge is not legal.
+    pub fn transition_lifecycle(&mut self, target: Lifecycle) -> Result<(), Error> {
+        let current = self.lifecycle;
+        if matches!((current, target), (Lifecycle::Pending, Lifecycle::Reviewed)) {
+            self.lifecycle = target;
+            Ok(())
+        } else {
+            Err(Error::Diag {
+                code: "plan-lifecycle-transition",
+                detail: format!("cannot transition plan lifecycle from {current:?} to {target:?}"),
+            })
+        }
+    }
+
+    /// Walk a single entry one step backwards along the legal v1
+    /// lifecycle (`Done → InProgress`, `InProgress → Pending`) and
+    /// return `(from, to)` so the caller can emit the matching
+    /// `plan.transition.undone` journal event.
+    ///
+    /// The undo verb refuses to skip rungs — `Done → Pending` MUST
+    /// run twice so the journal records each rung independently and
+    /// the operator never lands in a state the forward path cannot
+    /// reach. `Pending` has no predecessor (no prior status to
+    /// reinstate); `plan add` / `plan amend` are the only writers
+    /// of `Pending`.
+    ///
+    /// # Errors
+    ///
+    /// - `plan-entry-not-found` when no entry on `self` matches
+    ///   `name`.
+    /// - `plan-transition-undo` when the entry is already at
+    ///   `Pending` (nothing to undo).
+    pub fn transition_undo(&mut self, name: &str) -> Result<(Status, Status), Error> {
+        let entry: &mut Entry =
+            self.entries.iter_mut().find(|c| c.name == name).ok_or_else(|| Error::Diag {
+                code: "plan-entry-not-found",
+                detail: format!("no slice named '{name}' in plan"),
+            })?;
+        let from = entry.status;
+        let to = match from {
+            Status::Done => Status::InProgress,
+            Status::InProgress => Status::Pending,
+            Status::Pending => {
+                return Err(Error::Diag {
+                    code: "plan-transition-undo",
+                    detail: format!(
+                        "cannot undo from `pending` on slice `{name}`; `pending` is the entry \
+                         point and has no prior status to reinstate"
+                    ),
+                });
+            }
+        };
+        entry.status = to;
+        Ok((from, to))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
-    use clap::ValueEnum;
-
-    use super::super::test_support::{change, plan_with_changes};
+    use super::super::{change, plan_with_changes};
     use super::*;
 
-    /// The 10 legal edges from `rfc-2-execution.md` §"Transition Rules".
-    /// Kept here (not on `Status`) so the production matcher and the
-    /// test oracle are independent representations of the same table.
-    fn allowed_edges() -> HashSet<(Status, Status)> {
-        use Status::{Blocked, Done, Failed, InProgress, Pending, Skipped};
-        let mut set = HashSet::new();
-        set.insert((Pending, InProgress));
-        set.insert((Pending, Blocked));
-        set.insert((Pending, Skipped));
-        set.insert((InProgress, Done));
-        set.insert((InProgress, Failed));
-        set.insert((InProgress, Blocked));
-        set.insert((Blocked, Pending));
-        set.insert((Failed, Pending));
-        set.insert((Failed, Skipped));
-        set.insert((Skipped, Pending));
-        set
-    }
-
     #[test]
-    #[expect(clippy::iter_over_hash_type, reason = "test exhausts a HashSet of edges")]
-    fn legal_edges_succeed() {
-        for (from, to) in allowed_edges() {
-            assert!(
-                from.can_transition_to(&to),
-                "{from:?} -> {to:?} should be allowed by can_transition_to"
-            );
-            let result = from
-                .transition(to)
-                .unwrap_or_else(|e| panic!("expected {from:?} -> {to:?} to succeed, got {e:?}"));
-            assert_eq!(result, to);
-        }
-    }
-
-    #[test]
-    fn done_is_terminal() {
-        for &t in Status::value_variants() {
-            assert!(!Status::Done.can_transition_to(&t), "Done must not allow -> {t:?}");
-        }
-    }
-
-    #[test]
-    fn illegal_edges_rejected() {
-        use Status::{Blocked, Done, Failed, InProgress, Pending, Skipped};
-        let cases: &[(Status, Status)] = &[
-            (Done, Pending),
-            (Done, InProgress),
-            (Done, Failed),
-            (Pending, Done),
-            (Pending, Failed),
-            (Skipped, Failed),
-            (InProgress, Pending),
-            (InProgress, Skipped),
-            (Blocked, Failed),
-            (Pending, Pending),
-            (InProgress, InProgress),
-            (Done, Done),
-            (Blocked, Blocked),
-            (Failed, Failed),
-            (Skipped, Skipped),
-        ];
-
-        for &(from, to) in cases {
-            assert!(
-                !from.can_transition_to(&to),
-                "{from:?} -> {to:?} must be rejected by can_transition_to"
-            );
-            let err = from.transition(to).expect_err(&format!("{from:?} -> {to:?} should be Err"));
-            match err {
-                Error::Diag {
-                    code: "plan-transition",
-                    detail,
-                } => {
-                    assert!(
-                        detail.contains(&format!("{from:?}"))
-                            && detail.contains(&format!("{to:?}")),
-                        "expected both endpoints in detail, got {detail:?}"
-                    );
-                }
-                other => panic!("expected Error::Diag(plan-transition), got {other:?}"),
-            }
-        }
-    }
-
-    #[test]
-    fn table_matches_oracle() {
-        let allowed = allowed_edges();
-        for &from in Status::value_variants() {
-            for &to in Status::value_variants() {
-                let expected = allowed.contains(&(from, to));
-                let actual = from.can_transition_to(&to);
-                assert_eq!(
-                    actual, expected,
-                    "({from:?}) -> ({to:?}): expected allowed={expected}, got {actual}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn error_carries_endpoints() {
-        let err = Status::Done.transition(Status::Pending).expect_err("Done -> Pending must error");
-        match err {
-            Error::Diag {
-                code: "plan-transition",
-                detail,
-            } => {
-                assert!(detail.contains("Done"), "detail should mention Done: {detail}");
-                assert!(detail.contains("Pending"), "detail should mention Pending: {detail}");
-            }
-            other => panic!("expected Error::Diag(plan-transition), got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn transition_clears_reason_on_reentry() {
-        let mut plan = plan_with_changes(vec![Entry {
-            name: "a".into(),
-            project: Some("default".into()),
-            adapter: None,
-            status: Status::Failed,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            status_reason: Some("crashed".into()),
-        }]);
-        plan.transition("a", Status::Pending, None).expect("failed -> pending ok");
-        let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
-        assert_eq!(a.status, Status::Pending);
-        assert_eq!(a.status_reason, None, "re-entry to Pending must clear status_reason");
-    }
-
-    #[test]
-    fn transition_writes_reason() {
-        let mut plan = plan_with_changes(vec![
-            change("a", Status::Pending),
-            change("b", Status::InProgress),
-            change("c", Status::Failed),
-        ]);
-
-        plan.transition("a", Status::Blocked, Some("needs scope")).expect("pending -> blocked ok");
-        let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
-        assert_eq!(a.status, Status::Blocked);
-        assert_eq!(a.status_reason.as_deref(), Some("needs scope"));
-
-        plan.transition("b", Status::Failed, Some("broken")).expect("in-progress -> failed ok");
-        let b = plan.entries.iter().find(|c| c.name == "b").unwrap();
-        assert_eq!(b.status, Status::Failed);
-        assert_eq!(b.status_reason.as_deref(), Some("broken"));
-
-        plan.transition("c", Status::Skipped, Some("abandoned")).expect("failed -> skipped ok");
-        let c = plan.entries.iter().find(|c| c.name == "c").unwrap();
-        assert_eq!(c.status, Status::Skipped);
-        assert_eq!(c.status_reason.as_deref(), Some("abandoned"));
-    }
-
-    #[test]
-    fn transition_rejects_reason_on_clean_target() {
+    fn transition_in_progress_to_done_and_rejects_pending_skip() {
         let mut plan =
             plan_with_changes(vec![change("a", Status::Pending), change("b", Status::InProgress)]);
-
-        let err = plan
-            .transition("a", Status::InProgress, Some("why"))
-            .expect_err("reason on InProgress target must Err");
-        match err {
-            Error::Diag { code, detail } => {
-                assert_eq!(code, "plan-transition-reason-not-allowed");
-                assert!(detail.contains("--reason"), "message should mention --reason: {detail}");
-            }
-            other => panic!("expected Error::Diag, got {other:?}"),
-        }
-        let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
-        assert_eq!(a.status, Status::Pending, "a.status must be unchanged");
-
-        let err = plan
-            .transition("b", Status::Done, Some("why"))
-            .expect_err("reason on Done target must Err");
-        match err {
-            Error::Diag { code, detail } => {
-                assert_eq!(code, "plan-transition-reason-not-allowed");
-                assert!(detail.contains("--reason"), "message should mention --reason: {detail}");
-            }
-            other => panic!("expected Error::Diag, got {other:?}"),
-        }
-        let b = plan.entries.iter().find(|c| c.name == "b").unwrap();
-        assert_eq!(b.status, Status::InProgress, "b.status must be unchanged");
+        plan.transition("b", Status::Done).expect("in-progress -> done ok");
+        assert_eq!(plan.entries.iter().find(|c| c.name == "b").unwrap().status, Status::Done);
+        let Err(Error::Diag { code, detail }) = plan.transition("a", Status::Done) else {
+            panic!("Pending -> Done must Err with plan-transition diag");
+        };
+        assert_eq!(code, "plan-transition");
+        assert!(detail.contains("Pending") && detail.contains("Done"), "endpoints in: {detail:?}");
+        assert_eq!(plan.entries[0].status, Status::Pending, "status not mutated on illegal edge");
     }
 
     #[test]
-    fn transition_rejects_illegal_edge() {
-        let mut plan = plan_with_changes(vec![change("a", Status::Done)]);
-        let err = plan
-            .transition("a", Status::Pending, None)
-            .expect_err("Done -> Pending must Err from state machine");
-        match err {
-            Error::Diag {
-                code: "plan-transition",
-                detail,
-            } => {
-                assert!(detail.contains("Done"), "detail should mention Done: {detail}");
-                assert!(detail.contains("Pending"), "detail should mention Pending: {detail}");
-            }
-            other => panic!("expected Error::Diag(plan-transition), got {other:?}"),
-        }
-        let a = plan.entries.iter().find(|c| c.name == "a").unwrap();
-        assert_eq!(a.status, Status::Done, "status must not be mutated on illegal edge");
+    fn lifecycle_pending_to_reviewed_then_terminal() {
+        let mut plan = plan_with_changes(vec![change("a", Status::Pending)]);
+        plan.transition_lifecycle(Lifecycle::Reviewed).expect("pending -> reviewed ok");
+        assert_eq!(plan.lifecycle, Lifecycle::Reviewed);
+        let Err(Error::Diag { code, detail }) = plan.transition_lifecycle(Lifecycle::Reviewed)
+        else {
+            panic!("reviewed -> reviewed must Err");
+        };
+        assert_eq!(code, "plan-lifecycle-transition");
+        assert!(detail.contains("Reviewed"), "endpoint in: {detail:?}");
     }
 
     #[test]
-    fn transition_missing_entry() {
-        let mut plan = plan_with_changes(vec![change("foo", Status::Pending)]);
-        let err = plan
-            .transition("nonexistent", Status::InProgress, None)
-            .expect_err("missing entry must Err");
-        match err {
-            Error::Diag { code, detail } => {
-                assert_eq!(code, "plan-entry-not-found");
-                assert!(detail.contains("nonexistent"), "message should mention name: {detail}");
-            }
-            other => panic!("expected Error::Diag, got {other:?}"),
-        }
+    fn undo_walks_status_backwards_one_rung_at_a_time() {
+        let mut plan = plan_with_changes(vec![change("slice", Status::Done)]);
+        let (from, to) = plan.transition_undo("slice").expect("done -> in-progress ok");
+        assert_eq!((from, to), (Status::Done, Status::InProgress));
+        assert_eq!(plan.entries[0].status, Status::InProgress);
+
+        let (from, to) = plan.transition_undo("slice").expect("in-progress -> pending ok");
+        assert_eq!((from, to), (Status::InProgress, Status::Pending));
+        assert_eq!(plan.entries[0].status, Status::Pending);
+    }
+
+    #[test]
+    fn undo_refuses_from_pending() {
+        let mut plan = plan_with_changes(vec![change("slice", Status::Pending)]);
+        let Err(Error::Diag { code, detail }) = plan.transition_undo("slice") else {
+            panic!("undo from pending must Err with plan-transition-undo diag");
+        };
+        assert_eq!(code, "plan-transition-undo");
+        assert!(detail.contains("pending"), "endpoint in: {detail:?}");
+        assert_eq!(plan.entries[0].status, Status::Pending, "status not mutated on illegal undo");
+    }
+
+    #[test]
+    fn undo_unknown_entry_diag() {
+        let mut plan = plan_with_changes(vec![change("known", Status::InProgress)]);
+        let Err(Error::Diag { code, .. }) = plan.transition_undo("ghost") else {
+            panic!("unknown entry must Err with plan-entry-not-found");
+        };
+        assert_eq!(code, "plan-entry-not-found");
+    }
+
+    #[test]
+    fn init_then_reviewed_models_auto_review_at_create() {
+        // workflow §D7: `--auto-review` composes `Plan::init` with
+        // `Plan::transition_lifecycle(Reviewed)` before the single
+        // atomic save. The resulting in-memory plan must carry
+        // `lifecycle: reviewed` so the post-init `Plan::save` writes
+        // `lifecycle: reviewed` directly with no transient `pending`
+        // round trip through disk.
+        let mut plan =
+            Plan::init("fresh", std::collections::BTreeMap::new()).expect("init fresh ok");
+        assert_eq!(plan.lifecycle, Lifecycle::Pending, "fresh init defaults to pending");
+        plan.transition_lifecycle(Lifecycle::Reviewed)
+            .expect("--auto-review composes init + lifecycle stamp");
+        assert_eq!(
+            plan.lifecycle,
+            Lifecycle::Reviewed,
+            "in-memory plan must carry reviewed before save under --auto-review"
+        );
     }
 }

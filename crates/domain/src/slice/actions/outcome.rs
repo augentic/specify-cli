@@ -5,7 +5,7 @@ use std::path::Path;
 use jiff::Timestamp;
 use specify_error::Error;
 
-use crate::slice::{Outcome, OutcomeKind, Phase, SliceMetadata};
+use crate::slice::{Outcome, OutcomeKind, SliceMetadata, TargetOperation};
 
 /// Stamp the outcome of a phase run on `<slice_dir>/.metadata.yaml`.
 ///
@@ -19,7 +19,7 @@ use crate::slice::{Outcome, OutcomeKind, Phase, SliceMetadata};
 /// The whole metadata file is rewritten atomically via
 /// [`SliceMetadata::save`] so a concurrent reader never sees a
 /// half-written file. A new stamp replaces any previous one — history
-/// lives in `journal.yaml` (L2.B), not here.
+/// lives in `.specify/journal.jsonl` (workflow §Observability), not here.
 ///
 /// `now` is plumbed in so tests can pin `at` deterministically; the CLI
 /// passes `Timestamp::now()`.
@@ -30,8 +30,8 @@ use crate::slice::{Outcome, OutcomeKind, Phase, SliceMetadata};
 ///
 /// Propagates load / save failures from `SliceMetadata`.
 pub fn stamp_outcome(
-    slice_dir: &Path, phase: Phase, outcome: OutcomeKind, summary: &str, context: Option<&str>,
-    now: Timestamp,
+    slice_dir: &Path, phase: TargetOperation, outcome: OutcomeKind, summary: &str,
+    context: Option<&str>, now: Timestamp,
 ) -> Result<SliceMetadata, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     metadata.outcome = Some(Outcome {

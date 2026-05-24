@@ -13,10 +13,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
+use std::str::FromStr;
 
 use assert_cmd::Command;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use specify_error::Result;
 use tempfile::{TempDir, tempdir};
 
@@ -40,13 +40,37 @@ pub fn repo_root() -> PathBuf {
 /// Convenience pointer to the in-repo Omnia adapter fixture used as
 /// the canonical positional argument for `specify init`.
 pub fn omnia_schema_dir() -> PathBuf {
-    repo_root().join("schemas").join("omnia")
+    repo_root().join("tests").join("fixtures").join("adapters").join("targets").join("omnia")
 }
 
 /// Build a fresh `assert_cmd::Command` for the locally-built `specify`
 /// binary.
 pub fn specify() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
+}
+
+/// Stamp a phase outcome on `<project>/slices/<name>/.metadata.yaml`
+/// through the domain writer merge uses (`stamp_outcome`).
+///
+/// Integration tests call this directly because outcome inspection is no
+/// longer exposed as CLI product surface.
+pub fn stamp_slice_outcome(
+    project: &Project, name: &str, phase: specify_domain::adapter::TargetOperation,
+    kind: specify_domain::slice::OutcomeKind, summary: &str, context: Option<&str>,
+) {
+    use jiff::Timestamp;
+    use specify_domain::slice::actions as slice_actions;
+
+    let slice_dir = project.slices_dir().join(name);
+    slice_actions::stamp_outcome(
+        &slice_dir,
+        phase,
+        kind,
+        summary,
+        context,
+        Timestamp::from_str("2026-04-24T12:00:00Z").expect("fixed test timestamp"),
+    )
+    .expect("stamp outcome");
 }
 
 /// Hex-encoded SHA-256 of the bytes at `path`, used by every tool
@@ -57,7 +81,7 @@ pub fn specify() -> Command {
 /// Panics if `path` cannot be read.
 pub fn sha256_hex(path: &Path) -> String {
     let bytes = fs::read(path).expect("read bytes for sha256");
-    format!("{:x}", Sha256::digest(bytes))
+    specify_tool::sha256_hex(&bytes)
 }
 
 /// Deterministic git author/committer identity for tests that exercise
@@ -250,7 +274,7 @@ pub struct Project {
 }
 
 impl Project {
-    /// Build a fresh tempdir and run `specify init <repo>/schemas/omnia`
+    /// Build a fresh tempdir and run `specify init <repo>/targets/omnia`
     /// with a default `--name`. The resulting project sits at the
     /// tempdir root.
     pub fn init() -> Self {
@@ -259,7 +283,7 @@ impl Project {
         specify()
             .current_dir(&root)
             .args(["init"])
-            .arg(repo_root().join("schemas").join("omnia"))
+            .arg(omnia_schema_dir())
             .args(["--name", "test-proj"])
             .assert()
             .success();
@@ -267,37 +291,38 @@ impl Project {
     }
 
     /// Initialise a project backed by a local fixture adapter dir.
-    /// The fixture is mirrored into `<tmp>/schemas/<name>/` so that
+    /// The fixture is mirrored into `<tmp>/adapters/targets/<name>/` so that
     /// subsequent `specify` invocations resolve it via the usual
-    /// `schemas/<name>/` probe.
+    /// `adapters/targets/<name>/` probe.
     pub fn init_from_fixture(name: &str, fixture_dir: &Path) -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
-        copy_dir(fixture_dir, &root.join("schemas").join(name));
+        copy_dir(fixture_dir, &root.join("adapters").join("targets").join(name));
         specify()
             .current_dir(&root)
             .args(["init"])
-            .arg(root.join("schemas").join(name))
+            .arg(root.join("adapters").join("targets").join(name))
             .args(["--name", "test-proj"])
             .assert()
             .success();
         Self { _tmp: tmp, root }
     }
 
-    /// Mirror the in-repo `schemas/omnia` tree into the project so any
-    /// subcommand that loads a `PipelineView` can resolve the schema
-    /// from the project's own `schemas/` dir.
+    /// Mirror the in-repo `targets/omnia` tree into the project so any
+    /// subcommand that resolves the target adapter can find it under
+    /// the project's own `adapters/targets/` dir.
     #[must_use]
     pub fn with_schemas(self) -> Self {
-        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join("schemas/omnia"));
+        copy_dir(&omnia_schema_dir(), &self.root.join("adapters").join("targets").join("omnia"));
         self
     }
 
-    /// Populate the schema cache instead of the local `schemas/` tree so
-    /// `Adapter::resolve` picks the `AdapterSource::Cached` branch.
+    /// Populate the cache instead of the local `targets/` tree so
+    /// `TargetAdapter::resolve` picks the `AdapterLocation::Cached`
+    /// branch.
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
-        copy_dir(&repo_root().join("schemas/omnia"), &self.root.join(".specify/.cache/omnia"));
+        copy_dir(&omnia_schema_dir(), &self.root.join(".specify/.cache/manifests/targets/omnia"));
         self
     }
 

@@ -39,8 +39,8 @@ pub(in crate::registry::workspace) fn current_branch(
     Ok((!branch.is_empty()).then_some(branch))
 }
 
-pub(super) fn inspect_remote_branch<R: CmdRunner>(
-    runner: &R, project_path: &Path, branch_name: &str, slug: Option<&str>,
+pub(super) fn inspect_remote_branch(
+    runner: CmdRunner<'_>, project_path: &Path, branch_name: &str, slug: Option<&str>,
 ) -> Result<RemoteBranchState, Error> {
     match remote_branch_head(project_path, branch_name) {
         Ok(Some(sha)) => Ok(RemoteBranchState::Present(sha)),
@@ -58,8 +58,9 @@ pub(super) fn inspect_remote_branch<R: CmdRunner>(
     }
 }
 
-pub(super) fn ensure_pr_if_supported<R: CmdRunner>(
-    runner: &R, project_path: &Path, slug: Option<&str>, branch_name: &str, change_name: &str,
+pub(super) fn ensure_pr_if_supported(
+    runner: CmdRunner<'_>, project_path: &Path, slug: Option<&str>, branch_name: &str,
+    change_name: &str,
 ) -> Result<Option<u64>, Error> {
     if slug.is_none() {
         return Ok(None);

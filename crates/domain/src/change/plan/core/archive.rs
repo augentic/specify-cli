@@ -20,7 +20,7 @@ impl Plan {
     ///
     /// 1. Load the plan at `path`.
     /// 2. Collect every entry whose status is non-terminal for archival
-    ///    purposes — anything not in `{Done, Skipped}`. If the list is
+    ///    purposes — anything not equal to `Done`. If the list is
     ///    non-empty and `force == false`, return [`Error::Diag`] with
     ///    `code = "plan-has-outstanding-work"` carrying those names in
     ///    plan list order. When `force == true`, proceed; the archived
@@ -64,7 +64,7 @@ impl Plan {
             let entries: Vec<String> = plan
                 .entries
                 .iter()
-                .filter(|c| !matches!(c.status, Status::Done | Status::Skipped))
+                .filter(|c| c.status != Status::Done)
                 .map(|c| c.name.clone())
                 .collect();
             if !entries.is_empty() {

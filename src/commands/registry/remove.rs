@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use specify_domain::change::Plan;
-use specify_domain::config::{InitPolicy, Layout, with_state};
+use specify_domain::config::{Layout, with_state};
 use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
@@ -26,37 +26,31 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
         });
     }
 
-    let body = with_state::<Registry, _, _>(
-        ctx.layout(),
-        InitPolicy::RequireExisting("registry.yaml"),
-        move |registry| {
-            let position =
-                registry.projects.iter().position(|p| p.name == name).ok_or_else(|| {
-                    Error::Diag {
-                        code: "registry-remove-not-found",
-                        detail: format!("registry remove: project `{name}` not found in {path}"),
-                    }
-                })?;
-            registry.projects.remove(position);
+    let body = with_state::<Registry, _, _>(ctx.layout(), "registry.yaml", move |registry| {
+        let position =
+            registry.projects.iter().position(|p| p.name == name).ok_or_else(|| Error::Diag {
+                code: "registry-remove-not-found",
+                detail: format!("registry remove: project `{name}` not found in {path}"),
+            })?;
+        registry.projects.remove(position);
 
-            // A removal can only relax the multi-repo description
-            // invariant, so the post-write check should always
-            // succeed; we run it anyway to pin the contract.
-            if hub_mode {
-                registry.validate_shape_hub()?;
-            } else {
-                registry.validate_shape()?;
-            }
+        // A removal can only relax the multi-repo description
+        // invariant, so the post-write check should always
+        // succeed; we run it anyway to pin the contract.
+        if hub_mode {
+            registry.validate_shape_hub()?;
+        } else {
+            registry.validate_shape()?;
+        }
 
-            let warnings = plan_refs(&ctx.project_dir, &name);
-            Ok(RemoveBody {
-                registry: registry.clone(),
-                path,
-                removed: name,
-                warnings,
-            })
-        },
-    )?;
+        let warnings = plan_refs(&ctx.project_dir, &name);
+        Ok(RemoveBody {
+            registry: registry.clone(),
+            path,
+            removed: name,
+            warnings,
+        })
+    })?;
 
     ctx.write(&body, write_remove_text)?;
     Ok(())

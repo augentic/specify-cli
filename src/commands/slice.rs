@@ -10,17 +10,13 @@ use specify_domain::slice::LifecycleStatus;
 use specify_error::{Error, Result};
 
 pub mod cli;
-mod journal;
 mod lifecycle;
-mod list;
 mod merge;
-mod outcome;
 mod task;
 mod touched;
 mod validate;
 
-use cli::{JournalAction, OutcomeAction, SliceAction, SliceMergeAction, SliceTaskAction};
-pub(super) use list::{StatusEntry, collect_status, list_slice_names};
+use cli::{SliceAction, SliceMergeAction, SliceTaskAction};
 
 use crate::context::Ctx;
 
@@ -28,7 +24,7 @@ use crate::context::Ctx;
 /// `contracts` (opaque replace). Single source of truth in the
 /// binary; future adapter manifests should drive this through
 /// `specify-adapter`.
-pub(super) fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass> {
+fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass> {
     vec![
         ArtifactClass {
             name: "specs".to_string(),
@@ -49,10 +45,9 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
     match action {
         SliceAction::Create {
             name,
-            adapter,
+            target,
             if_exists,
-        } => lifecycle::create(ctx, &name, adapter, if_exists),
-        SliceAction::Status { name } => list::status_one(ctx, &name),
+        } => lifecycle::create(ctx, &name, target, if_exists),
         SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Merge { action } => match action {
             SliceMergeAction::Run { name } => merge::run(ctx, &name),
@@ -62,20 +57,6 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
         SliceAction::Task { action } => match action {
             SliceTaskAction::Progress { name } => task::progress(ctx, &name),
             SliceTaskAction::Mark { name, task_number } => task::mark(ctx, &name, task_number),
-        },
-        SliceAction::Outcome { action } => match action {
-            OutcomeAction::Set { name, phase, kind } => outcome::set(ctx, name, phase, kind),
-            OutcomeAction::Show { name } => outcome::show(ctx, name),
-        },
-        SliceAction::Journal { action } => match action {
-            JournalAction::Append {
-                name,
-                phase,
-                kind,
-                summary,
-                context,
-            } => journal::append(ctx, name, phase, kind, summary, context),
-            JournalAction::Show { name } => journal::show(ctx, name),
         },
         SliceAction::Transition { name, target } => {
             if matches!(target, LifecycleStatus::Merged) {

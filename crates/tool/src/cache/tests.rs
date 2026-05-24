@@ -3,7 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::*;
-use crate::manifest::{ToolPermissions, ToolScope};
+use crate::manifest::{Axis, ToolPermissions, ToolScope};
 use crate::test_support::{EnvGuard, cache_env, env_lock, scratch_dir};
 
 fn project_scope() -> ToolScope {
@@ -12,10 +12,11 @@ fn project_scope() -> ToolScope {
     }
 }
 
-fn adapter_scope() -> ToolScope {
-    ToolScope::Adapter {
-        adapter_slug: "contracts".to_string(),
-        adapter_dir: PathBuf::from("/adapters/contracts"),
+fn plugin_target_scope() -> ToolScope {
+    ToolScope::Plugin {
+        axis: Axis::Target,
+        plugin_slug: "contracts".to_string(),
+        capability_dir: PathBuf::from("/adapters/contracts"),
     }
 }
 
@@ -83,11 +84,20 @@ fn cache_root_uses_home_when_no_explicit_env() {
 #[test]
 fn scope_segment_formats_and_rejects_empty_names() {
     assert_eq!(scope_segment(&project_scope()).expect("project segment"), "project--demo");
-    assert_eq!(scope_segment(&adapter_scope()).expect("adapter segment"), "adapter--contracts");
+    assert_eq!(
+        scope_segment(&plugin_target_scope()).expect("plugin segment"),
+        "adapter--target--contracts"
+    );
     let empty = ToolScope::Project {
         project_name: String::new(),
     };
-    assert!(matches!(scope_segment(&empty), Err(ToolError::InvalidCacheSegment { .. })));
+    assert!(matches!(
+        scope_segment(&empty),
+        Err(ToolError::Diag {
+            code: "tool-resolver",
+            ..
+        })
+    ));
 }
 
 #[test]
@@ -208,7 +218,7 @@ fn scan_for_gc_isolates_scope_and_uses_name_version_source_keep_set() {
         "https://example.test/contract-new.wasm",
     );
     let stale_adapter = write_cached_version(
-        &adapter_scope(),
+        &plugin_target_scope(),
         "contract",
         "1.0.0",
         "https://example.test/contract.wasm",
@@ -224,6 +234,6 @@ fn scan_for_gc_isolates_scope_and_uses_name_version_source_keep_set() {
     assert_eq!(project_gc, vec![stale_project]);
     assert!(kept_project.exists());
 
-    let adapter_gc = scan_for_gc(&adapter_scope(), &HashSet::new()).expect("adapter gc");
+    let adapter_gc = scan_for_gc(&plugin_target_scope(), &HashSet::new()).expect("adapter gc");
     assert_eq!(adapter_gc, vec![stale_adapter]);
 }

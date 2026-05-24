@@ -24,7 +24,9 @@ pub struct Summary {
     /// Human-readable rule description.
     pub rule: String,
     /// Populated for `fail` (failure detail) and `deferred` (reason);
-    /// `None` for `pass`.
+    /// `None` for `pass`. Skipped from the wire envelope when absent
+    /// so passing entries serialise as `{status, rule-id, rule}` only.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
 

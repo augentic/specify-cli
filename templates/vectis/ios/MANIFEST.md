@@ -1,34 +1,11 @@
 # iOS Assembly Template Manifest
 
-Source-of-truth mapping for the chunk-3b templates. The Rust template engine
-arriving in chunk 7 reads this list (or an equivalent embedded copy) to know
-which template file goes to which on-disk path, and which placeholders /
-capability markers it must process.
+Human reference for the iOS assembly templates. The canonical source-to-target
+registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.ios`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specify tool run vectis -- scaffold ios`.
 
-## Path mapping
-
-Source filenames are flat -- no nested directories under `templates/vectis/ios/`.
-Nested target paths (especially the `iOS/__APP_NAME__/...` segment) are produced
-by the template engine, never by the on-disk layout of the templates directory.
-This keeps `include_str!` paths short and matches the convention established
-in `templates/vectis/core/MANIFEST.md`.
-
-| Source (this dir)         | Target (rendered project)                              |
-| ------------------------- | ------------------------------------------------------ |
-| `project.yml`             | `iOS/project.yml`                                      |
-| `Makefile`                | `iOS/Makefile`                                         |
-| `App.swift`               | `iOS/__APP_NAME__/__APP_NAME__App.swift`               |
-| `Core.swift`              | `iOS/__APP_NAME__/Core.swift`                          |
-| `ContentView.swift`       | `iOS/__APP_NAME__/ContentView.swift`                   |
-| `LoadingScreen.swift`     | `iOS/__APP_NAME__/Views/LoadingScreen.swift`           |
-| `HomeScreen.swift`        | `iOS/__APP_NAME__/Views/HomeScreen.swift`              |
+Source filenames are flat under `templates/vectis/ios/`. Nested target paths (especially the `iOS/__APP_NAME__/...` segment) are declared in `manifest.yaml`. The `__APP_NAME__` segment in target paths is substituted by the engine when writing each file, the same as inside file contents (e.g. `__APP_NAME__App.swift` becomes `CounterApp.swift`).
 
 Total: 7 files (matches RFC § File Manifests § iOS Assembly).
-
-The `__APP_NAME__` segment in target paths is substituted by the engine when
-writing each file, the same as inside file contents. The substitution applies
-to both directory and file-name positions (e.g. `__APP_NAME__App.swift` becomes
-`CounterApp.swift`).
 
 ## Placeholder reference
 
@@ -99,16 +76,4 @@ If a future RFC wants hot-reload back, it can be added as a cap-style toggle
 
 ## Self-check
 
-This manifest must list every file in `templates/vectis/ios/`. CI can enforce
-this trivially -- restrict the awk match to backtick-wrapped tokens that look
-like file names so cap names (`http`, `kv`, ...) from the cap-marker table
-don't pollute the comparison:
-
-```bash
-diff \
-  <(command ls -1 templates/vectis/ios | grep -v '^MANIFEST.md$' | sort) \
-  <(awk -F'`' '/^\| `[A-Za-z][A-Za-z._-]*`/ { print $2 }' templates/vectis/ios/MANIFEST.md \
-      | grep -E '\.[A-Za-z]+$|^Makefile$' | sort -u)
-```
-
-Run the diff after adding or renaming a template file.
+Orphan detection and file-count parity (7 files) run in `wasi-tools/vectis/build.rs` when the crate builds. After adding or renaming a template file, update [`../manifest.yaml`](../manifest.yaml) in the same change.

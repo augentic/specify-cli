@@ -1,5 +1,5 @@
 //! Workspace status reporting: `SlotStatus` / `WorkspaceStatus`-shaped
-//! output that powers `specify workspace status` and friends.
+//! workspace-slot status DTOs for direct callers and future inspection surfaces.
 
 use std::path::{Path, PathBuf};
 
@@ -11,7 +11,7 @@ use super::{local_target_path, workspace_base};
 use crate::registry::Registry;
 use crate::registry::catalog::RegistryProject;
 
-/// One row for `specify workspace status` text/JSON output.
+/// One row of workspace-slot status.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[must_use]

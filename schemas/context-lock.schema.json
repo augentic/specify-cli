@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/context-lock.schema.json",
   "title": "Specify context.lock",
-  "description": "Validates the structure of `.specify/context.lock`, the deterministic sidecar written by `specify context generate` and read by `specify context check` to detect renderer-input and fenced-body drift.",
+  "description": "Validates the structure of `.specify/context.lock`, the deterministic sidecar written by init-time AGENTS.md generation to record renderer-input and fenced-body fingerprints.",
   "type": "object",
   "required": ["version", "fingerprint", "cli_version", "inputs", "fences"],
   "additionalProperties": false,

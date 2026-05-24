@@ -10,9 +10,10 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use regex::Regex;
+use specify_domain::adapter::TargetOperation;
 use specify_domain::merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
 use specify_domain::slice::{
-    LifecycleStatus, METADATA_VERSION, Outcome, OutcomeKind, Phase, SLICES_DIR_NAME, SliceMetadata,
+    LifecycleStatus, Outcome, OutcomeKind, SLICES_DIR_NAME, SliceMetadata,
 };
 use specify_error::Error;
 
@@ -88,12 +89,10 @@ fn build_project() -> Project {
         .expect("write oauth delta");
 
     let metadata = SliceMetadata {
-        version: METADATA_VERSION,
-        adapter: "omnia".to_string(),
-        status: LifecycleStatus::Complete,
+        target: "omnia".to_string(),
+        status: LifecycleStatus::Built,
         created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
         defined_at: Some(parse_stamp("2024-08-01T12:00:00Z")),
-        build_started_at: Some(parse_stamp("2024-08-02T09:30:00Z")),
         completed_at: None,
         merged_at: None,
         dropped_at: None,
@@ -159,7 +158,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     // RFC-13 Phase 2.8 the summary is generic — it lists each
     // contributing class name and entry count.
     let outcome = new_meta.outcome.expect("expected outcome to be stamped by slice::commit");
-    assert_eq!(outcome.phase, Phase::Merge);
+    assert_eq!(outcome.phase, TargetOperation::Merge);
     assert_eq!(outcome.kind, OutcomeKind::Success);
     assert!(outcome.summary.contains("2 specs"), "unexpected summary: {}", outcome.summary);
 }
@@ -173,19 +172,19 @@ fn wrong_precondition_aborts_cleanly() {
     let project = build_project();
     let slice_dir = project.slice_dir();
 
-    // Re-save metadata with status = Building.
+    // Re-save metadata with status = Refined (merge requires Built).
     let mut meta = SliceMetadata::load(&slice_dir).unwrap();
-    meta.status = LifecycleStatus::Building;
+    meta.status = LifecycleStatus::Refined;
     meta.save(&slice_dir).unwrap();
 
     let classes = omnia_classes(&slice_dir, &project.root);
     let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
-        .expect_err("should refuse on Building status");
+        .expect_err("should refuse on Refined status");
     match err {
         Error::Diag { code, detail } => {
             assert_eq!(code, "lifecycle");
-            assert!(detail.contains("Complete"), "unexpected detail: {detail}");
-            assert!(detail.contains("Building"), "unexpected detail: {detail}");
+            assert!(detail.contains("Built"), "unexpected detail: {detail}");
+            assert!(detail.contains("Refined"), "unexpected detail: {detail}");
         }
         other => panic!("expected lifecycle diag, got {other:?}"),
     }
@@ -233,7 +232,7 @@ fn coherence_failure_rolls_back_all_writes() {
     // Nothing on disk has moved or been created.
     assert!(slice_dir.exists(), "slice dir must still exist");
     let meta = SliceMetadata::load(&slice_dir).unwrap();
-    assert_eq!(meta.status, LifecycleStatus::Complete);
+    assert_eq!(meta.status, LifecycleStatus::Built);
     assert!(!project.specs_dir().join("login/spec.md").exists());
     assert!(!project.specs_dir().join("oauth/spec.md").exists());
     assert!(

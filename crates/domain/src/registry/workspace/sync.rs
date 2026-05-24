@@ -10,32 +10,13 @@ use super::bootstrap::{self, greenfield_init};
 use super::git::{self, git_output_ok};
 use super::slot_problem::inspect_at;
 use super::{contracts_base, registry_symlink_target, workspace_base, workspace_slot_path};
-use crate::registry::Registry;
 use crate::registry::catalog::RegistryProject;
 use crate::registry::gitignore::ensure_specify_gitignore_entries;
-
-/// Materialise `.specify/workspace/<name>/` for every registry entry.
-///
-/// Symlinks for `.` / relative URLs, shallow `git clone` or `git fetch`
-/// for remotes. Ensures `.gitignore` lists `.specify/workspace/` (and
-/// `.specify/.cache/` when missing).
-///
-/// # Errors
-///
-/// Bubbles up registry parse failures, refused/mismatched slots, and any
-/// per-project sync errors aggregated under `workspace-sync-failed`.
-pub fn sync_all(project_dir: &Path) -> Result<(), Error> {
-    let Some(registry) = Registry::load(project_dir)? else {
-        return Ok(());
-    };
-    let projects = registry.select(&[])?;
-    sync_projects(project_dir, &projects)
-}
 
 /// Materialise `.specify/workspace/<name>/` for selected registry entries.
 ///
 /// Callers must pass projects returned by
-/// [`Registry::select`] so unknown selectors fail before
+/// [`crate::registry::Registry::select`] so unknown selectors fail before
 /// this function performs filesystem, Git, or forge work.
 ///
 /// # Errors

@@ -14,15 +14,9 @@ pub enum WorkspaceAction {
         #[arg()]
         projects: Vec<String>,
     },
-    /// Report slot materialisation, Git state, project config, and active slices per entry.
-    Status {
-        /// Specific project(s) to inspect; omit to inspect all registry projects.
-        #[arg()]
-        projects: Vec<String>,
-    },
     /// Hidden executor helper: prepare one workspace slot on `specify/<change>`.
     #[command(hide = true)]
-    PrepareBranch {
+    Prepare {
         /// Registry project to prepare.
         project: String,
         /// Kebab-case umbrella change name.

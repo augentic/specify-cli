@@ -20,7 +20,8 @@ use serde_json::Value;
 
 mod common;
 use common::{
-    GIT_ENV, Project, assert_golden_at, copy_dir, parse_stdout, repo_root, run_git, specify,
+    GIT_ENV, Project, assert_golden_at, copy_dir, omnia_schema_dir, parse_stdout, repo_root,
+    run_git, specify,
 };
 use tempfile::tempdir;
 
@@ -48,35 +49,6 @@ fn specify_with_git_identity() -> Command {
 
 fn assert_golden(name: &str, actual: Value) {
     assert_golden_at(&goldens_dir(), name, actual);
-}
-
-/// Replace any RFC3339 `YYYY-MM-DDTHH:MM:SS(Z|±HH:MM)` timestamp in JSON
-/// strings with the placeholder `<ISO8601>` so goldens stay stable
-/// across test runs. Mirrors
-/// `plan_orchestrate.rs::strip_date_stamps` for the timestamp
-/// case.
-fn strip_iso8601(value: &mut Value) {
-    fn visit(re: &regex::Regex, v: &mut Value) {
-        match v {
-            Value::String(s) if re.is_match(s) => {
-                *s = re.replace_all(s, "<ISO8601>").into_owned();
-            }
-            Value::Array(items) => {
-                for item in items {
-                    visit(re, item);
-                }
-            }
-            Value::Object(map) => {
-                for (_k, v) in map.iter_mut() {
-                    visit(re, v);
-                }
-            }
-            _ => {}
-        }
-    }
-    let re = regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})")
-        .expect("regex compiles");
-    visit(&re, value);
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +101,15 @@ fn validate_bad_slice_fails_with_exit_two() {
 fn merge_two_spec_slice_produces_baselines() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
+    project.seed_plan(
+        "\
+name: merge-e2e
+slices:
+  - name: my-slice
+    project: default
+    status: in-progress
+",
+    );
 
     let assert = specify()
         .current_dir(project.root())
@@ -157,6 +138,12 @@ fn merge_two_spec_slice_produces_baselines() {
         "original slice dir should be gone"
     );
 
+    let plan_yaml = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(
+        plan_yaml.contains("status: done"),
+        "merge must stamp plan entry done, got:\n{plan_yaml}"
+    );
+
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_golden("merge-two-spec.json", actual);
 }
@@ -170,11 +157,11 @@ fn workspace_merge_excludes_generated() {
     specify()
         .current_dir(&project_root)
         .args(["init"])
-        .arg(repo_root().join("schemas").join("omnia"))
+        .arg(omnia_schema_dir())
         .args(["--name", "orders"])
         .assert()
         .success();
-    copy_dir(&repo_root().join("schemas/omnia"), &project_root.join("schemas/omnia"));
+    copy_dir(&omnia_schema_dir(), &project_root.join("adapters").join("targets").join("omnia"));
 
     run_git(&project_root, &["init"]);
     run_git(&project_root, &["add", "."]);
@@ -301,135 +288,4 @@ fn task_mark_is_idempotent() {
     assert_eq!(after_first, after_second, "second mark must leave tasks.md byte-identical");
 
     assert_golden("task-mark.json", second_value);
-}
-
-// ---------------------------------------------------------------------------
-// 6. adapter resolve — local
-// ---------------------------------------------------------------------------
-
-#[test]
-fn adapter_resolve_local_returns_local() {
-    let project = Project::init().with_schemas();
-    fs::remove_dir_all(project.root().join(".specify/.cache/omnia"))
-        .expect("remove cached adapter");
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "adapter", "resolve", "omnia"])
-        .arg("--project-dir")
-        .arg(project.root())
-        .assert()
-        .success();
-
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["adapter-value"], "omnia");
-    assert_eq!(actual["source"], "local");
-    let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
-    assert!(
-        resolved.ends_with("schemas/omnia"),
-        "resolved_path {resolved} must end with schemas/omnia"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// 7. adapter resolve — cached
-// ---------------------------------------------------------------------------
-
-#[test]
-fn adapter_resolve_returns_cached() {
-    // `init` + cache-only layout (no `schemas/omnia` under the tempdir).
-    let project = Project::init().with_cached_schema();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "adapter", "resolve", "omnia"])
-        .arg("--project-dir")
-        .arg(project.root())
-        .assert()
-        .success();
-
-    let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["source"], "cached");
-    let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
-    assert!(
-        resolved.ends_with(".specify/.cache/omnia"),
-        "resolved_path {resolved} must end with .specify/.cache/omnia"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// 8. slice outcome — round-trip through `outcome set` + `outcome show`
-// ---------------------------------------------------------------------------
-
-/// End-to-end round-trip for the `slice outcome` read verb added in
-/// RFC-2 §1.1 (renamed from `change outcome` in RFC-13 chunk 3.2):
-/// stamp an outcome with `slice outcome set`, read it back with
-/// `slice outcome show --format json`, and assert the full JSON
-/// shape. Also covers the unstamped case where `outcome` must be `null`.
-#[test]
-fn phase_outcome_round_trip_via_slice() {
-    let project = Project::init();
-
-    specify().current_dir(project.root()).args(["slice", "create", "foo"]).assert().success();
-    specify()
-        .current_dir(project.root())
-        .args([
-            "slice",
-            "outcome",
-            "set",
-            "foo",
-            "build",
-            "success",
-            "--summary",
-            "5/5 tasks",
-            "--context",
-            "trailing newline",
-        ])
-        .assert()
-        .success();
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "foo"])
-        .assert()
-        .success();
-    assert_eq!(assert.get_output().status.code(), Some(0));
-
-    let mut actual = parse_stdout(&assert.get_output().stdout, project.root());
-
-    assert_eq!(actual["name"], "foo");
-    let outcome = &actual["outcome"];
-    assert_eq!(outcome["phase"], "build");
-    assert_eq!(outcome["outcome"], "success");
-    assert_eq!(outcome["summary"], "5/5 tasks");
-    assert_eq!(outcome["context"], "trailing newline");
-    let at = outcome["at"].as_str().expect("at is a string");
-    let at_re =
-        regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$").expect("regex compiles");
-    assert!(
-        at_re.is_match(at),
-        "at must match ^\\d{{4}}-\\d{{2}}-\\d{{2}}T\\d{{2}}:\\d{{2}}:\\d{{2}}Z$, got {at}"
-    );
-
-    strip_iso8601(&mut actual);
-    assert_golden("slice-outcome.json", actual);
-
-    let unstamped =
-        specify().current_dir(project.root()).args(["slice", "create", "bar"]).assert().success();
-    assert_eq!(unstamped.get_output().status.code(), Some(0));
-
-    let assert = specify()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "outcome", "show", "bar"])
-        .assert()
-        .success();
-    assert_eq!(assert.get_output().status.code(), Some(0));
-
-    let value = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(value["name"], "bar");
-    assert!(
-        value["outcome"].is_null(),
-        "unstamped slice must emit outcome == null, got: {}",
-        value["outcome"]
-    );
 }

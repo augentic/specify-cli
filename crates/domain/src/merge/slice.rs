@@ -11,7 +11,7 @@ use specify_error::Error;
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
 use crate::merge::merge::MergeResult;
 use crate::slice::{
-    LifecycleStatus, Outcome, OutcomeKind, Phase, SliceMetadata, SpecKind, actions,
+    LifecycleStatus, Outcome, OutcomeKind, SliceMetadata, SpecKind, TargetOperation, actions,
 };
 
 mod parse;
@@ -120,8 +120,8 @@ pub struct BaselineConflict {
 /// [`MergeStrategy::OpaqueReplace`] class.
 ///
 /// Unlike [`commit`] this does not gate on
-/// `LifecycleStatus::Complete` — the define / build / merge skill pipeline
-/// previews while the slice is still `building` or `complete` so the
+/// `LifecycleStatus::Built` — the refine / build / merge skill pipeline
+/// previews while the slice is still `refined` or `built` so the
 /// human can confirm operations before the merge skill commits.
 ///
 /// # Errors
@@ -145,7 +145,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 
 /// Atomic multi-class merge plus archive.
 ///
-/// Gates on `LifecycleStatus::Complete`, runs [`preview`]'s
+/// Gates on `LifecycleStatus::Built`, runs [`preview`]'s
 /// in-memory plan, writes each merged baseline, transitions status to
 /// `Merged` with `merged_at`/`completed_at` timestamps, stamps an
 /// `Outcome { phase: Merge, outcome: Success }` into
@@ -155,7 +155,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// The outcome stamp is written atomically with the status transition,
 /// before the archive move. This ensures the archived `.metadata.yaml`
 /// carries the merge-success outcome so that `/change:execute` can read
-/// it via `specify slice outcome show` (which falls back to the archive
+/// it via direct `.metadata.yaml` inspection (falling back to the archive
 /// when the active slice directory no longer exists).
 ///
 /// `now` records the `merged_at`, `completed_at`, and outcome stamp;
@@ -164,8 +164,8 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// # Errors
 ///
 /// - [`Error::Diag`] with `code = "lifecycle"` when the slice's status
-///   is not [`LifecycleStatus::Complete`] on entry, or when the
-///   `Complete → Merged` transition is rejected (e.g. terminal-state
+///   is not [`LifecycleStatus::Built`] on entry, or when the
+///   `Built → Merged` transition is rejected (e.g. terminal-state
 ///   re-entry).
 /// - Every error documented on [`preview`] (the in-memory plan
 ///   is computed before any writes).
@@ -182,10 +182,10 @@ pub fn commit(
     slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: Timestamp,
 ) -> Result<Vec<MergePreviewEntry>, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
-    if metadata.status != LifecycleStatus::Complete {
+    if metadata.status != LifecycleStatus::Built {
         return Err(Error::Diag {
             code: "lifecycle",
-            detail: format!("expected Complete, found {:?}", metadata.status),
+            detail: format!("expected Built, found {:?}", metadata.status),
         });
     }
 
@@ -202,7 +202,7 @@ pub fn commit(
         metadata.merged_at = Some(now);
     }
     metadata.outcome = Some(Outcome {
-        phase: Phase::Merge,
+        phase: TargetOperation::Merge,
         kind: OutcomeKind::Success,
         at: now,
         summary: build_merge_summary(&merged, &opaque_counts),

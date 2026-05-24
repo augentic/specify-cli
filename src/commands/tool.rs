@@ -6,22 +6,18 @@ pub mod cli;
 mod dto;
 mod fetch;
 mod gc;
-mod list;
 mod run;
-mod show;
 
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
-pub(super) use list::run as list;
 pub(super) use run::run;
-pub(super) use show::run as show;
-use specify_domain::adapter::{Adapter, ResolvedAdapter};
+use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
+use specify_domain::init::adapter_name_from_value;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
-use specify_tool::manifest::{Tool, ToolManifest, ToolScope};
+use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
 
 use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
 use crate::context::Ctx;
@@ -34,22 +30,24 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_tools = load::project_tools(ctx.config.name.clone(), ctx.config.tools.clone());
 
     let mut scopes = vec![project_scope];
-    let adapter = resolve_project_adapter(ctx)?;
-    let adapter_tools = if let Some(adapter) = adapter {
-        let adapter_scope = ToolScope::Adapter {
-            adapter_slug: adapter.manifest.name.clone(),
-            adapter_dir: adapter.root_dir.clone(),
+    let plugin = resolve_project_adapter(ctx)?;
+    let plugin_tools = if let Some(plugin) = plugin {
+        let plugin_scope = ToolScope::Plugin {
+            axis: ToolAxis::Target,
+            plugin_slug: plugin.manifest.name.clone(),
+            capability_dir: plugin.root_dir.clone(),
         };
-        scopes.push(adapter_scope.clone());
-        let sidecar_tools = load::adapter_sidecar(&adapter.root_dir, &adapter.manifest.name)?;
+        scopes.push(plugin_scope.clone());
+        let sidecar_tools =
+            load::plugin_sidecar(&plugin.root_dir, &plugin.manifest.name, ToolAxis::Target)?;
         let tools: Vec<Tool> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
-        validate_manifest_tools(&tools, &adapter_scope)?;
+        validate_manifest_tools(&tools, &plugin_scope)?;
         sidecar_tools
     } else {
         Vec::new()
     };
 
-    let (merged, warnings) = load::merge_scoped(project_tools, adapter_tools);
+    let (merged, warnings) = load::merge_scoped(project_tools, plugin_tools);
     Ok(Inventory {
         tools: merged.into_iter().map(|(scope, tool)| ScopedTool { scope, tool }).collect(),
         warnings: warnings.into_iter().map(warning_row).collect(),
@@ -57,20 +55,12 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     })
 }
 
-fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedAdapter>> {
+fn resolve_project_adapter(ctx: &Ctx) -> Result<Option<ResolvedTargetAdapter>> {
     let Some(value) = ctx.config.adapter.as_deref() else {
         return Ok(None);
     };
-    let (root_dir, _) = Adapter::locate(value, &ctx.project_dir)?;
-    enforce_adapter_filename(&root_dir)?;
-    Adapter::resolve(value, &ctx.project_dir).map(Some)
-}
-
-fn enforce_adapter_filename(dir: &Path) -> Result<()> {
-    Adapter::probe_dir(dir).map(|_| ()).ok_or_else(|| Error::Diag {
-        code: "adapter-manifest-missing",
-        detail: format!("no `adapter.yaml` at {}", dir.display()),
-    })
+    let name = adapter_name_from_value(value);
+    TargetAdapter::resolve(name, &ctx.project_dir).map(Some)
 }
 
 fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {

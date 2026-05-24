@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 
 use specify_error::Error;
 
-use super::model::{Entry, Plan, Severity, Status};
+use super::model::{Entry, Lifecycle, Plan, Severity, SourceBinding, Status};
+use crate::change::detect;
 use crate::slice::actions::validate_name;
 
 impl Plan {
@@ -21,10 +22,11 @@ impl Plan {
     /// # Errors
     ///
     /// Errors when `name` is not kebab-case.
-    pub fn init(name: &str, sources: BTreeMap<String, String>) -> Result<Self, Error> {
+    pub fn init(name: &str, sources: BTreeMap<String, SourceBinding>) -> Result<Self, Error> {
         validate_name(name)?;
         Ok(Self {
             name: name.to_string(),
+            lifecycle: Lifecycle::Pending,
             sources,
             entries: vec![],
         })
@@ -59,13 +61,15 @@ impl Plan {
 
         let mut change = change;
         change.status = Status::Pending;
-        change.status_reason = None;
 
         self.entries.push(change);
         let errors: Vec<_> =
             self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
-        if let Some(first) = errors.first() {
-            let msg = first.message.clone();
+        let failure_msg = errors
+            .first()
+            .map(|r| r.message.clone())
+            .or_else(|| detect(&self.entries).into_iter().next().map(|d| d.message));
+        if let Some(msg) = failure_msg {
             self.entries.pop();
             return Err(Error::Diag {
                 code: "plan-create-validation-failed",
@@ -79,22 +83,28 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{change, change_with_deps, plan_with_changes};
+    use super::super::model::SliceAuthorityOverride;
+    use super::super::{change, change_with_deps, plan_with_changes};
     use super::*;
 
     #[test]
-    fn create_forces_pending_clears_reason() {
+    fn create_forces_pending() {
         let mut plan = plan_with_changes(vec![]);
         let incoming = Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            adapter: None,
-            status: Status::Failed,
+            target: None,
+            // Even an entry that arrives with `Done` (the only other
+            // legal status post-2.0) must be re-stamped to `Pending`
+            // by `Plan::create` — the single-writer rule on the
+            // per-entry status state machine.
+            status: Status::Done,
             depends_on: vec![],
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: Some("bogus".into()),
+            divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         };
         plan.create(incoming).expect("create ok");
         assert_eq!(plan.entries.len(), 1);
@@ -103,10 +113,6 @@ mod tests {
             plan.entries[0].status,
             Status::Pending,
             "create must force status to Pending regardless of input"
-        );
-        assert_eq!(
-            plan.entries[0].status_reason, None,
-            "create must clear status_reason regardless of input"
         );
     }
 
@@ -182,26 +188,27 @@ mod tests {
     }
 
     #[test]
-    fn create_rejects_no_project_or_adapter() {
+    fn create_rejects_no_project_or_target() {
         let mut plan = plan_with_changes(vec![]);
         let entry = Entry {
             name: "bad".into(),
             project: None,
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         };
-        let err = plan.create(entry).expect_err("must reject entry without project or adapter");
+        let err = plan.create(entry).expect_err("must reject entry without project or target");
         match err {
             Error::Diag { code, detail } => {
                 assert_eq!(code, "plan-create-validation-failed");
                 assert!(
-                    detail.contains("project") && detail.contains("adapter"),
-                    "error should mention project and adapter: {detail}"
+                    detail.contains("project") && detail.contains("target"),
+                    "error should mention project and target: {detail}"
                 );
             }
             other => panic!("expected Error::Diag, got {other:?}"),
@@ -215,13 +222,14 @@ mod tests {
         let entry = Entry {
             name: "with-ctx".into(),
             project: Some("default".into()),
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
             context: vec!["contracts/http/foo.yaml".into()],
             description: None,
-            status_reason: None,
+            divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         };
         plan.create(entry).expect("create ok");
         assert_eq!(
@@ -237,13 +245,14 @@ mod tests {
         let entry = Entry {
             name: "bad-ctx".into(),
             project: Some("default".into()),
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
             context: vec!["../escape".into()],
             description: None,
-            status_reason: None,
+            divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         };
         let err = plan.create(entry).expect_err("invalid context path must be rejected");
         match err {
@@ -270,9 +279,18 @@ mod tests {
     #[test]
     fn init_preserves_sources() {
         let mut sources = BTreeMap::new();
-        sources.insert("monolith".to_string(), "/path/to/legacy".to_string());
-        sources.insert("orders".to_string(), "git@github.com:org/orders.git".to_string());
-        sources.insert("payments".to_string(), "git@github.com:org/payments.git".to_string());
+        sources.insert(
+            "monolith".to_string(),
+            SourceBinding::path("code-typescript", "/path/to/legacy"),
+        );
+        sources.insert(
+            "orders".to_string(),
+            SourceBinding::path("code-typescript", "git@github.com:org/orders.git"),
+        );
+        sources.insert(
+            "payments".to_string(),
+            SourceBinding::path("code-typescript", "git@github.com:org/payments.git"),
+        );
 
         let plan = Plan::init("big", sources.clone()).expect("init ok");
         assert_eq!(plan.sources, sources, "init must preserve the sources map verbatim");

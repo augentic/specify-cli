@@ -1,14 +1,13 @@
 {
   "action": "create",
   "entry": {
-    "adapter": "contracts@v1",
     "depends-on": [],
     "description": null,
     "name": "foo",
     "project": null,
     "sources": [],
     "status": "pending",
-    "status-reason": null
+    "target": "contracts@v1"
   },
   "plan": {
     "name": "demo",

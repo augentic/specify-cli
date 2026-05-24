@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 use specify_error::{Error, is_kebab};
 
-use crate::adapter::CacheMeta;
 use crate::config::{Layout, ProjectConfig};
+use crate::init::cache::CacheMeta;
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
     upsert_gitignore,
@@ -30,7 +30,7 @@ use crate::registry::Registry;
 /// `registry.yaml` is the one platform-component artefact init
 /// scaffolds — bootstrapping a hub *is* bootstrapping its registry.
 /// `change.md` and `plan.yaml` stay operator-managed even on a hub;
-/// the operator runs `specify change draft <name> [--source ...]`
+/// the operator runs `/spec:plan <name>`
 /// (which scaffolds both files atomically) when the work itself begins.
 ///
 /// Adapter resolution is intentionally skipped — there is no
@@ -81,7 +81,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     fs::create_dir_all(&specify_dir)?;
     let directories_created: Vec<PathBuf> = vec![specify_dir];
 
-    let specify_version = resolve_version(opts.project_dir, opts.version_mode)?;
+    let specify_version = resolve_version();
 
     let cfg = ProjectConfig {
         name,
@@ -129,7 +129,7 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::config::ProjectConfig;
-    use crate::init::{InitOptions, VersionMode, fixed_now, init};
+    use crate::init::{InitOptions, fixed_now, init};
     use crate::registry::Registry;
 
     fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
@@ -138,7 +138,6 @@ mod tests {
             adapter: None,
             name: Some(name),
             domain: None,
-            version_mode: VersionMode::WriteCurrent,
             hub: true,
         }
     }

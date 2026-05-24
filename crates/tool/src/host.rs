@@ -18,8 +18,8 @@ use crate::resolver::ResolvedTool;
 pub struct RunContext {
     /// Project root used for `$PROJECT_DIR` and permission-root checks.
     pub project_dir: PathBuf,
-    /// Canonical or canonicalisable adapter root for adapter-scope tools.
-    pub adapter_dir: Option<PathBuf>,
+    /// Canonical or canonicalisable capability root for plugin-scope tools.
+    pub capability_dir: Option<PathBuf>,
     /// Arguments forwarded after `argv[0]`, which is always the tool name.
     pub args: Vec<String>,
 }
@@ -30,15 +30,15 @@ impl RunContext {
     pub fn new(project_dir: impl Into<PathBuf>, args: Vec<String>) -> Self {
         Self {
             project_dir: project_dir.into(),
-            adapter_dir: None,
+            capability_dir: None,
             args,
         }
     }
 
-    /// Attach a adapter root for adapter-scope tools.
+    /// Attach a capability root for plugin-scope tools.
     #[must_use]
-    pub fn with_adapter_dir(mut self, adapter_dir: impl Into<PathBuf>) -> Self {
-        self.adapter_dir = Some(adapter_dir.into());
+    pub fn with_capability_dir(mut self, capability_dir: impl Into<PathBuf>) -> Self {
+        self.capability_dir = Some(capability_dir.into());
         self
     }
 }
@@ -58,8 +58,9 @@ impl WasiRunner {
     pub fn new() -> Result<Self, ToolError> {
         let mut config = Config::new();
         config.wasm_component_model(true);
-        let engine = Engine::new(&config).map_err(|err| {
-            ToolError::runtime(format!("failed to create Wasmtime engine: {err}"))
+        let engine = Engine::new(&config).map_err(|err| ToolError::Diag {
+            code: "tool-runtime",
+            detail: format!("failed to create Wasmtime engine: {err}"),
         })?;
         Ok(Self { engine })
     }
@@ -72,17 +73,28 @@ impl WasiRunner {
     /// Wasmtime cannot compile, link, instantiate, or execute the component.
     pub fn run(&self, resolved: &ResolvedTool, ctx: &RunContext) -> Result<i32, ToolError> {
         let project_dir = canonical_project_dir(&ctx.project_dir)?;
-        let adapter_dir = canonical_adapter_dir(&resolved.scope, ctx.adapter_dir.as_deref())?;
-        let preopens = prepare_preopens(resolved, &project_dir, adapter_dir.as_deref())?;
-        let wasi = build_wasi_ctx(resolved, ctx, &project_dir, adapter_dir.as_deref(), &preopens)?;
+        let capability_dir =
+            canonical_capability_dir(&resolved.scope, ctx.capability_dir.as_deref())?;
+        let preopens = prepare_preopens(resolved, &project_dir, capability_dir.as_deref())?;
+        let wasi =
+            build_wasi_ctx(resolved, ctx, &project_dir, capability_dir.as_deref(), &preopens)?;
 
-        let component = Component::from_file(&self.engine, &resolved.bytes_path)
-            .map_err(|err| ToolError::runtime(format!("failed to compile component: {err}")))?;
+        let component =
+            Component::from_file(&self.engine, &resolved.bytes_path).map_err(|err| {
+                ToolError::Diag {
+                    code: "tool-runtime",
+                    detail: format!("failed to compile component: {err}"),
+                }
+            })?;
         let mut linker = Linker::<WasiState>::new(&self.engine);
         let mut link_options = wasmtime_wasi::p2::bindings::sync::LinkOptions::default();
         link_options.cli_exit_with_code(true);
-        wasmtime_wasi::p2::add_to_linker_with_options_sync(&mut linker, &link_options)
-            .map_err(|err| ToolError::runtime(format!("failed to link WASI Preview 2: {err}")))?;
+        wasmtime_wasi::p2::add_to_linker_with_options_sync(&mut linker, &link_options).map_err(
+            |err| ToolError::Diag {
+                code: "tool-runtime",
+                detail: format!("failed to link WASI Preview 2: {err}"),
+            },
+        )?;
         let mut store = Store::new(
             &self.engine,
             WasiState {
@@ -90,8 +102,12 @@ impl WasiRunner {
                 table: ResourceTable::new(),
             },
         );
-        let command = Command::instantiate(&mut store, &component, &linker)
-            .map_err(|err| ToolError::runtime(format!("failed to instantiate command: {err}")))?;
+        let command = Command::instantiate(&mut store, &component, &linker).map_err(|err| {
+            ToolError::Diag {
+                code: "tool-runtime",
+                detail: format!("failed to instantiate command: {err}"),
+            }
+        })?;
 
         match command.wasi_cli_run().call_run(&mut store) {
             Ok(Ok(())) => Ok(0),
@@ -131,17 +147,17 @@ fn canonical_project_dir(project_dir: &Path) -> Result<PathBuf, ToolError> {
     })
 }
 
-fn canonical_adapter_dir(
-    scope: &ToolScope, ctx_adapter_dir: Option<&Path>,
+fn canonical_capability_dir(
+    scope: &ToolScope, ctx_capability_dir: Option<&Path>,
 ) -> Result<Option<PathBuf>, ToolError> {
     match scope {
         ToolScope::Project { .. } => Ok(None),
-        ToolScope::Adapter { adapter_dir, .. } => {
-            let path = ctx_adapter_dir.unwrap_or(adapter_dir);
+        ToolScope::Plugin { capability_dir, .. } => {
+            let path = ctx_capability_dir.unwrap_or(capability_dir);
             let canonical = path.canonicalize().map_err(|err| {
                 ToolError::permission_denied(
                     path,
-                    format!("ADAPTER_DIR must exist and be canonicalisable: {err}"),
+                    format!("CAPABILITY_DIR must exist and be canonicalisable: {err}"),
                 )
             })?;
             Ok(Some(canonical))
@@ -150,21 +166,21 @@ fn canonical_adapter_dir(
 }
 
 fn prepare_preopens(
-    resolved: &ResolvedTool, project_dir: &Path, adapter_dir: Option<&Path>,
+    resolved: &ResolvedTool, project_dir: &Path, capability_dir: Option<&Path>,
 ) -> Result<Vec<Preopen>, ToolError> {
     let mut roots = vec![project_dir];
-    if let Some(adapter_dir) = adapter_dir {
-        roots.push(adapter_dir);
+    if let Some(capability_dir) = capability_dir {
+        roots.push(capability_dir);
     }
 
     let mut permissions = BTreeMap::<PathBuf, bool>::new();
     for template in &resolved.tool.permissions.read {
-        let expanded = substitute(template, project_dir, adapter_dir)?;
+        let expanded = substitute(template, project_dir, capability_dir)?;
         let canonical = canonicalise_under(Path::new(&expanded), &roots)?;
         permissions.entry(canonical).or_insert(false);
     }
     for template in &resolved.tool.permissions.write {
-        let expanded = substitute(template, project_dir, adapter_dir)?;
+        let expanded = substitute(template, project_dir, capability_dir)?;
         let canonical = canonicalise_under(Path::new(&expanded), &roots)?;
         deny_lifecycle_write(&canonical, project_dir)?;
         permissions.insert(canonical, true);
@@ -184,7 +200,7 @@ fn prepare_preopens(
 }
 
 fn build_wasi_ctx(
-    resolved: &ResolvedTool, ctx: &RunContext, project_dir: &Path, adapter_dir: Option<&Path>,
+    resolved: &ResolvedTool, ctx: &RunContext, project_dir: &Path, capability_dir: Option<&Path>,
     preopens: &[Preopen],
 ) -> Result<WasiCtx, ToolError> {
     let mut builder = WasiCtxBuilder::new();
@@ -210,13 +226,13 @@ fn build_wasi_ctx(
             )
         })?,
     );
-    if let Some(adapter_dir) = adapter_dir {
+    if let Some(capability_dir) = capability_dir {
         builder.env(
-            "ADAPTER_DIR",
-            adapter_dir.to_str().ok_or_else(|| {
+            "CAPABILITY_DIR",
+            capability_dir.to_str().ok_or_else(|| {
                 ToolError::invalid_permission(
-                    "ADAPTER_DIR",
-                    "ADAPTER_DIR contains non-UTF-8 bytes and cannot be exposed to WASI",
+                    "CAPABILITY_DIR",
+                    "CAPABILITY_DIR contains non-UTF-8 bytes and cannot be exposed to WASI",
                 )
             })?,
         );
@@ -254,7 +270,10 @@ fn map_guest_error(err: &wasmtime::Error) -> Result<i32, ToolError> {
     if let Some(exit) = err.downcast_ref::<I32Exit>() {
         return Ok(exit.0.clamp(0, 255));
     }
-    Err(ToolError::runtime(format!("guest trapped or failed at runtime: {err}")))
+    Err(ToolError::Diag {
+        code: "tool-runtime",
+        detail: format!("guest trapped or failed at runtime: {err}"),
+    })
 }
 
 #[cfg(test)]
@@ -310,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn run_rejects_adapter_dir_in_project_scope_before_loading_component() {
+    fn run_rejects_capability_dir_in_project_scope_before_loading_component() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project");
@@ -318,7 +337,7 @@ mod tests {
             ToolScope::Project {
                 project_name: "demo".to_string(),
             },
-            tool_with_permissions(vec!["$ADAPTER_DIR/templates".to_string()], Vec::new()),
+            tool_with_permissions(vec!["$CAPABILITY_DIR/templates".to_string()], Vec::new()),
             tmp.path().join("missing.wasm"),
         );
 
@@ -369,6 +388,15 @@ mod tests {
         let err = runner
             .run(&resolved, &RunContext::new(&project, Vec::new()))
             .expect_err("invalid component must fail");
-        assert!(matches!(err, ToolError::Runtime(_)), "{err}");
+        assert!(
+            matches!(
+                err,
+                ToolError::Diag {
+                    code: "tool-runtime",
+                    ..
+                }
+            ),
+            "{err}"
+        );
     }
 }

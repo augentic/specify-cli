@@ -10,13 +10,13 @@ use specify_error::{Error, Result};
 use crate::context::Ctx;
 
 pub(super) fn create(
-    ctx: &Ctx, name: &str, adapter: Option<String>, if_exists: CreateIfExists,
+    ctx: &Ctx, name: &str, target: Option<String>, if_exists: CreateIfExists,
 ) -> Result<()> {
-    let adapter_value = adapter.map_or_else(
+    let target_value = target.map_or_else(
         || {
             ctx.config.adapter.clone().ok_or_else(|| Error::Diag {
-                code: "slice-create-adapter-missing",
-                detail: "no project adapter declared; pass `--adapter <id>` explicitly or \
+                code: "slice-create-target-missing",
+                detail: "no project target declared; pass `--target <id>` explicitly or \
                          run `specify init <adapter>` first (hub projects cannot create \
                          changes)"
                     .to_string(),
@@ -28,7 +28,7 @@ pub(super) fn create(
     std::fs::create_dir_all(&slices_dir)?;
 
     let outcome =
-        slice_actions::create(&slices_dir, name, &adapter_value, if_exists, Timestamp::now())?;
+        slice_actions::create(&slices_dir, name, &target_value, if_exists, Timestamp::now())?;
 
     ctx.write(&outcome, write_create_text)?;
     Ok(())
@@ -43,7 +43,7 @@ fn write_create_text(w: &mut dyn Write, c: &Created) -> std::io::Result<()> {
     if c.restarted {
         writeln!(w, "  (previous directory was removed)")?;
     }
-    writeln!(w, "  adapter: {}", c.metadata.adapter)?;
+    writeln!(w, "  target: {}", c.metadata.target)?;
     writeln!(w, "  status: {}", c.metadata.status)
 }
 
@@ -55,7 +55,6 @@ pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Re
             name,
             status: metadata.status,
             defined_at: metadata.defined_at,
-            build_started_at: metadata.build_started_at,
             completed_at: metadata.completed_at,
             merged_at: metadata.merged_at,
             dropped_at: metadata.dropped_at,
@@ -72,8 +71,6 @@ struct TransitionBody {
     status: LifecycleStatus,
     #[serde(with = "specify_error::serde_rfc3339_opt")]
     defined_at: Option<Timestamp>,
-    #[serde(with = "specify_error::serde_rfc3339_opt")]
-    build_started_at: Option<Timestamp>,
     #[serde(with = "specify_error::serde_rfc3339_opt")]
     completed_at: Option<Timestamp>,
     #[serde(with = "specify_error::serde_rfc3339_opt")]

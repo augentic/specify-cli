@@ -10,32 +10,23 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
-use crate::adapter::Phase;
+use crate::adapter::TargetOperation;
 use crate::slice::OutcomeKind;
 
 /// Basename of the slice working directory under `.specify/`.
 pub const SLICES_DIR_NAME: &str = "slices";
 
-/// On-disk schema version stamped into new `.metadata.yaml` files.
-/// Informational only — readers dispatch on the `outcome` discriminant,
-/// not the version number. Pre-v2 files default to `1`.
-pub const METADATA_VERSION: u32 = 2;
-
-const fn default_version() -> u32 {
-    1
-}
-
 /// On-disk representation of `<slice_dir>/.metadata.yaml`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct SliceMetadata {
-    /// On-disk schema version. Defaults to `1` for pre-v2 archives;
-    /// current writers stamp [`METADATA_VERSION`]. Readers dispatch on
-    /// the outcome discriminant, not this field.
-    #[serde(default = "default_version")]
-    pub version: u32,
-    /// Adapter identifier (e.g. `omnia@v1`).
-    pub adapter: String,
+    /// Target-adapter identifier (e.g. `omnia@v1`).
+    ///
+    /// Renamed from `adapter` in Wave 0.2 — the on-disk and
+    /// in-memory field is now `target`. The pre-2.0 `adapter`
+    /// alias was dropped together with the schema tightening that
+    /// shipped in the same change.
+    pub target: String,
     /// Current lifecycle state.
     pub status: crate::slice::LifecycleStatus,
     /// When the slice was created.
@@ -45,21 +36,14 @@ pub struct SliceMetadata {
         with = "specify_error::serde_rfc3339_opt"
     )]
     pub created_at: Option<Timestamp>,
-    /// When the slice entered `Defined`.
+    /// When the slice entered `Refined`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
         with = "specify_error::serde_rfc3339_opt"
     )]
     pub defined_at: Option<Timestamp>,
-    /// When the build phase started.
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        default,
-        with = "specify_error::serde_rfc3339_opt"
-    )]
-    pub build_started_at: Option<Timestamp>,
-    /// When the slice reached `Complete`.
+    /// When the slice reached `Built`.
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
@@ -87,22 +71,20 @@ pub struct SliceMetadata {
     #[serde(default)]
     pub touched_specs: Vec<TouchedSpec>,
     /// Latest phase outcome. Written atomically by
-    /// `specify slice outcome set` or by `crate::merge::slice::commit` (stamps `Success`
-    /// before the archive move). New stamps overwrite; history lives in
-    /// `journal.yaml`.
+    /// `crate::merge::slice::commit` (stamps `Success` before the archive move).
+    /// History lives in `.specify/journal.jsonl` (workflow §Observability).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Outcome>,
 }
 
-/// Result of a phase run (define | build | merge) as recorded in
-/// `.metadata.yaml`. Read by `/change:execute` on phase return to
-/// decide the next plan transition.
-#[non_exhaustive]
+/// Result of a target-adapter operation (shape | build | merge) as
+/// recorded in `.metadata.yaml`. Read by `/spec:execute` on phase
+/// return to decide the next plan transition.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Outcome {
-    /// Which phase produced this outcome.
-    pub phase: Phase,
+    /// Which target-adapter operation produced this outcome.
+    pub phase: TargetOperation,
     /// Success, failure, or deferred classification. The wire field
     /// name stays `outcome` for back-compat with existing
     /// `.metadata.yaml` files and skill JSON consumers; the Rust name
@@ -138,7 +120,6 @@ pub struct TouchedSpec {
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-#[non_exhaustive]
 pub enum SpecKind {
     /// A brand-new spec not yet in the baseline.
     New,
@@ -201,21 +182,16 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::slice::{LifecycleStatus, OutcomeKind};
-
-    fn parse_stamp(raw: &str) -> Timestamp {
-        raw.parse().expect("valid rfc3339 timestamp in test fixture")
-    }
+    use crate::journal::test_timestamp;
+    use crate::slice::LifecycleStatus;
 
     fn sample() -> SliceMetadata {
         SliceMetadata {
-            version: METADATA_VERSION,
-            adapter: "omnia".to_string(),
-            status: LifecycleStatus::Building,
-            created_at: Some(parse_stamp("2024-08-01T10:00:00Z")),
-            defined_at: Some(parse_stamp("2024-08-01T12:00:00Z")),
-            build_started_at: Some(parse_stamp("2024-08-02T09:30:00Z")),
-            completed_at: Some(parse_stamp("2024-08-03T15:45:00Z")),
+            target: "omnia".to_string(),
+            status: LifecycleStatus::Refined,
+            created_at: Some(test_timestamp("2024-08-01T10:00:00Z")),
+            defined_at: Some(test_timestamp("2024-08-01T12:00:00Z")),
+            completed_at: Some(test_timestamp("2024-08-03T15:45:00Z")),
             merged_at: None,
             dropped_at: None,
             drop_reason: None,
@@ -240,35 +216,5 @@ mod tests {
         meta.save(dir.path()).expect("save ok");
         let loaded = SliceMetadata::load(dir.path()).expect("load ok");
         assert_eq!(loaded, meta);
-    }
-
-    /// Back-compat invariant: the implicit pre-v2 metadata schema
-    /// (no `version:` field, closed `OutcomeKind`) must round-trip
-    /// through the current reader, and the absent version resolves to
-    /// `1`.
-    #[test]
-    fn defaults_version_when_absent() {
-        let yaml = r#"adapter: omnia
-status: complete
-created-at: "2024-08-01T10:00:00Z"
-defined-at: "2024-08-01T12:00:00Z"
-build-started-at: "2024-08-02T09:30:00Z"
-completed-at: "2024-08-03T15:45:00Z"
-touched-specs:
-  - name: login
-    type: modified
-outcome:
-  phase: merge
-  outcome: success
-  at: "2024-08-03T15:45:00Z"
-  summary: "Baseline updated."
-"#;
-        let meta: SliceMetadata =
-            serde_saphyr::from_str(yaml).expect("parse legacy v1 metadata file");
-        assert_eq!(meta.version, 1, "absent version should default to 1");
-        assert_eq!(meta.status, LifecycleStatus::Complete);
-        let stamped = meta.outcome.expect("outcome should round-trip");
-        assert_eq!(stamped.phase, Phase::Merge);
-        assert_eq!(stamped.kind, OutcomeKind::Success);
     }
 }

@@ -23,8 +23,8 @@ const RULE_PACKAGE_PERMISSIONS: &str = "tool.package-permissions-catalog";
 const RULE_SHA256_FORMAT: &str = "tool.sha256-format";
 const RULE_PERMISSION_PATH_FORM: &str = "tool.permission-path-form";
 const RULE_LIFECYCLE_WRITE_DENIED: &str = "tool.lifecycle-state-write-denied";
-const RULE_ADAPTER_DIR_SCOPE: &str = "tool.adapter-dir-out-of-scope";
-const RULE_SOURCE_ADAPTER_DIR_SCOPE: &str = "tool.source-adapter-dir-out-of-scope";
+const RULE_CAPABILITY_DIR_SCOPE: &str = "tool.capability-dir-out-of-scope";
+const RULE_SOURCE_CAPABILITY_DIR_SCOPE: &str = "tool.source-capability-dir-out-of-scope";
 const RULE_NAME_UNIQUE: &str = "tool.name-unique";
 
 impl Tool {
@@ -93,12 +93,12 @@ impl Tool {
             check(RULE_VERSION_SEMVER, "tool versions are exact SemVer versions", version_detail),
             check(
                 RULE_SOURCE_SUPPORTED,
-                "tool sources are absolute paths, file:// URIs, https:// URIs, $PROJECT_DIR/$ADAPTER_DIR templates, or wasm package requests",
+                "tool sources are absolute paths, file:// URIs, https:// URIs, $PROJECT_DIR/$CAPABILITY_DIR templates, or wasm package requests",
                 source_detail,
             ),
             check(
-                RULE_SOURCE_ADAPTER_DIR_SCOPE,
-                "$ADAPTER_DIR in source is only available to adapter-scope tools",
+                RULE_SOURCE_CAPABILITY_DIR_SCOPE,
+                "$CAPABILITY_DIR in source is only available to plugin-scope tools",
                 source_scope_detail,
             ),
             check(
@@ -128,7 +128,7 @@ impl Tool {
             ),
             validate_permission_paths(&self.permissions.read, &self.permissions.write),
             validate_lifecycle_writes(&self.permissions.write),
-            validate_adapter_dir_scope(scope, &self.permissions.read, &self.permissions.write),
+            validate_capability_dir_scope(scope, &self.permissions.read, &self.permissions.write),
         ]
     }
 }
@@ -182,13 +182,13 @@ fn validate_source(source: &ToolSource, scope: &ToolScope) -> (Option<String>, O
             uri.strip_prefix("https://").is_some_and(|rest| !rest.is_empty())
         }
         ToolSource::Package(p) => !p.name_ref().is_empty(),
-        ToolSource::TemplatePath(t) => is_project_dir_path(t) || is_adapter_dir_path(t),
+        ToolSource::TemplatePath(t) => is_project_dir_path(t) || is_capability_dir_path(t),
     };
     let detail =
         (!valid).then(|| format!("`{}` is not a supported source", source.to_wire_string()));
     let scope_detail = if let ToolSource::TemplatePath(t) = source {
-        (t.contains("$ADAPTER_DIR") && !matches!(scope, ToolScope::Adapter { .. }))
-            .then(|| "project-scope source references $ADAPTER_DIR".to_string())
+        (t.contains("$CAPABILITY_DIR") && !matches!(scope, ToolScope::Plugin { .. }))
+            .then(|| "project-scope source references $CAPABILITY_DIR".to_string())
     } else {
         None
     };
@@ -196,7 +196,7 @@ fn validate_source(source: &ToolSource, scope: &ToolScope) -> (Option<String>, O
 }
 
 fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationSummary {
-    const RULE: &str = "permission paths are absolute or start with $PROJECT_DIR/$ADAPTER_DIR, with no glob or parent segments";
+    const RULE: &str = "permission paths are absolute or start with $PROJECT_DIR/$CAPABILITY_DIR, with no glob or parent segments";
     let failures: Vec<String> = read
         .iter()
         .map(|entry| ("read", entry))
@@ -218,20 +218,20 @@ fn validate_lifecycle_writes(write: &[String]) -> ValidationSummary {
     check(RULE_LIFECYCLE_WRITE_DENIED, RULE, (!failures.is_empty()).then(|| failures.join("; ")))
 }
 
-fn validate_adapter_dir_scope(
+fn validate_capability_dir_scope(
     scope: &ToolScope, read: &[String], write: &[String],
 ) -> ValidationSummary {
-    const RULE: &str = "$ADAPTER_DIR is only available to adapter-scope tools";
-    let failures: Vec<String> = if matches!(scope, ToolScope::Adapter { .. }) {
+    const RULE: &str = "$CAPABILITY_DIR is only available to plugin-scope tools";
+    let failures: Vec<String> = if matches!(scope, ToolScope::Plugin { .. }) {
         Vec::new()
     } else {
         read.iter()
             .chain(write)
-            .filter(|entry| entry.contains("$ADAPTER_DIR"))
-            .map(|entry| format!("project-scope permission `{entry}` references $ADAPTER_DIR"))
+            .filter(|entry| entry.contains("$CAPABILITY_DIR"))
+            .map(|entry| format!("project-scope permission `{entry}` references $CAPABILITY_DIR"))
             .collect()
     };
-    check(RULE_ADAPTER_DIR_SCOPE, RULE, (!failures.is_empty()).then(|| failures.join("; ")))
+    check(RULE_CAPABILITY_DIR_SCOPE, RULE, (!failures.is_empty()).then(|| failures.join("; ")))
 }
 
 fn permission_path_form_error(value: &str) -> Option<String> {
@@ -248,13 +248,13 @@ fn permission_path_form_error(value: &str) -> Option<String> {
         return Some(format!("`{value}` contains an unsupported variable"));
     }
     if is_project_dir_path(value)
-        || is_adapter_dir_path(value)
+        || is_capability_dir_path(value)
         || Path::new(value).is_absolute()
         || looks_like_windows_absolute(value)
     {
         return None;
     }
-    Some(format!("`{value}` must be absolute or start with $PROJECT_DIR or $ADAPTER_DIR"))
+    Some(format!("`{value}` must be absolute or start with $PROJECT_DIR or $CAPABILITY_DIR"))
 }
 
 fn has_glob_char(value: &str) -> bool {
@@ -266,7 +266,7 @@ fn has_parent_segment(value: &str) -> bool {
 }
 
 fn has_unsupported_variable(value: &str) -> bool {
-    value.contains('$') && !is_project_dir_path(value) && !is_adapter_dir_path(value)
+    value.contains('$') && !is_project_dir_path(value) && !is_capability_dir_path(value)
 }
 
 fn is_project_dir_path(value: &str) -> bool {
@@ -275,10 +275,10 @@ fn is_project_dir_path(value: &str) -> bool {
         || value.starts_with("$PROJECT_DIR\\")
 }
 
-fn is_adapter_dir_path(value: &str) -> bool {
-    value == "$ADAPTER_DIR"
-        || value.starts_with("$ADAPTER_DIR/")
-        || value.starts_with("$ADAPTER_DIR\\")
+fn is_capability_dir_path(value: &str) -> bool {
+    value == "$CAPABILITY_DIR"
+        || value.starts_with("$CAPABILITY_DIR/")
+        || value.starts_with("$CAPABILITY_DIR\\")
 }
 
 fn targets_lifecycle_state(value: &str) -> bool {
@@ -334,7 +334,10 @@ mod tests {
             source: ToolSource::HttpsUri("oci://registry/tool.wasm".to_string()),
             sha256: Some("ABC".to_string()),
             permissions: ToolPermissions {
-                read: vec!["relative/../*.txt".to_string(), "$ADAPTER_DIR/templates".to_string()],
+                read: vec![
+                    "relative/../*.txt".to_string(),
+                    "$CAPABILITY_DIR/templates".to_string(),
+                ],
                 write: vec!["$PROJECT_DIR/.specify/project.yaml".to_string()],
             },
         };
@@ -347,7 +350,7 @@ mod tests {
         assert!(ids.contains(&RULE_SHA256_FORMAT));
         assert!(ids.contains(&RULE_PERMISSION_PATH_FORM));
         assert!(ids.contains(&RULE_LIFECYCLE_WRITE_DENIED));
-        assert!(ids.contains(&RULE_ADAPTER_DIR_SCOPE));
+        assert!(ids.contains(&RULE_CAPABILITY_DIR_SCOPE));
     }
 
     #[test]
@@ -400,12 +403,12 @@ mod tests {
     }
 
     #[test]
-    fn project_scope_rejects_adapter_dir_permissions() {
+    fn project_scope_rejects_capability_dir_permissions() {
         let mut tool = valid_tool("contract");
-        tool.permissions.read.push("$ADAPTER_DIR/templates".to_string());
+        tool.permissions.read.push("$CAPABILITY_DIR/templates".to_string());
 
         let results = tool.validate_structure(&project_scope());
-        assert!(fail_rule_ids(&results).contains(&RULE_ADAPTER_DIR_SCOPE));
+        assert!(fail_rule_ids(&results).contains(&RULE_CAPABILITY_DIR_SCOPE));
     }
 
     #[test]
@@ -480,7 +483,7 @@ mod tests {
         for case in [
             json!({ "tools": [{ "name": "vectis", "version": "0.3.0", "source": "$PROJECT_DIR/../cli/target/vectis.wasm" }] }),
             json!({ "tools": [{ "name": "vectis", "version": "0.3.0", "source": "$PROJECT_DIR/tools/vectis.wasm" }] }),
-            json!({ "tools": [{ "name": "vectis", "version": "0.3.0", "source": "$ADAPTER_DIR/bin/vectis.wasm" }] }),
+            json!({ "tools": [{ "name": "vectis", "version": "0.3.0", "source": "$CAPABILITY_DIR/bin/vectis.wasm" }] }),
         ] {
             assert!(validator.is_valid(&case), "schema should accept template source: {case}");
         }
@@ -503,15 +506,15 @@ mod tests {
     }
 
     #[test]
-    fn template_source_adapter_dir_rejected_in_project_scope() {
+    fn template_source_capability_dir_rejected_in_project_scope() {
         let tool = Tool {
             name: "vectis".to_string(),
             version: "0.3.0".to_string(),
-            source: ToolSource::TemplatePath("$ADAPTER_DIR/bin/vectis.wasm".to_string()),
+            source: ToolSource::TemplatePath("$CAPABILITY_DIR/bin/vectis.wasm".to_string()),
             sha256: None,
             permissions: ToolPermissions::default(),
         };
         let results = tool.validate_structure(&project_scope());
-        assert!(fail_rule_ids(&results).contains(&RULE_SOURCE_ADAPTER_DIR_SCOPE));
+        assert!(fail_rule_ids(&results).contains(&RULE_SOURCE_CAPABILITY_DIR_SCOPE));
     }
 }

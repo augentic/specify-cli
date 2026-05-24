@@ -2,6 +2,8 @@
 //! sections. Public functions are pure, infallible, and deliberately
 //! lenient — coherence checks belong to the merge engine.
 
+pub mod provenance;
+
 // Hard-coded spec format constants (matches
 // `plugins/spec/references/spec-format.md`).
 

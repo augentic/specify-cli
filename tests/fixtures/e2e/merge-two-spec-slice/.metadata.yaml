@@ -1,5 +1,5 @@
-adapter: omnia
-status: complete
+target: omnia
+status: built
 touched-specs:
   - name: login
     type: new

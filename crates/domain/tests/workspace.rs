@@ -2,13 +2,13 @@
 //! `specify_domain::registry::forge`.
 //!
 //! Pins the public surface lifted from the binary by RFC-13 chunk 2.2:
-//! `github_slug`, `workspace_sync_all` (registry-absent
-//! short-circuit, `.gitignore` upkeep), `workspace_status` (returns
-//! `None` when no registry), `is_specify_branch`, and
-//! `branches_match`. Per-classifier coverage continues to live in
-//! the in-module `#[cfg(test)]` blocks; this file exercises the
-//! integration boundary an external consumer (the binary, plus
-//! anyone replacing it via `--lib`) would touch.
+//! `github_slug`, `sync_projects` (registry-absent short-circuit at the
+//! caller, `.gitignore` upkeep), `workspace_status` (returns `None`
+//! when no registry), `is_specify_branch`, and `branches_match`.
+//! Per-classifier coverage continues to live in the in-module
+//! `#[cfg(test)]` blocks; this file exercises the integration boundary
+//! an external consumer (the binary, plus anyone replacing it via
+//! `--lib`) would touch.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,9 +19,9 @@ use specify_domain::registry::branch::{
 };
 use specify_domain::registry::forge::{branches_match, is_specify_branch};
 use specify_domain::registry::workspace::{
-    PushOutcome, SlotKind, SlotProblemReason, SlotStatus, github_slug, push_all, push_projects,
-    slot_problem, status as workspace_status, status_projects as workspace_status_projects,
-    sync_all as workspace_sync_all, sync_projects as workspace_sync_projects,
+    PushOutcome, SlotKind, SlotProblemReason, SlotStatus, github_slug, push_projects, slot_problem,
+    status as workspace_status, status_projects as workspace_status_projects,
+    sync_projects as workspace_sync_projects,
 };
 use specify_domain::registry::{Registry, RegistryProject};
 use tempfile::TempDir;
@@ -159,20 +159,21 @@ fn github_slug_handles_each_supported_form() {
     assert_eq!(github_slug("git@gitlab.com:org/repo.git"), None);
 }
 
-// ---------- workspace_sync_all ----------------------------------
+// ---------- sync_projects ---------------------------------------
 
 #[test]
-fn workspace_sync_all_no_registry_is_noop() {
+fn workspace_sync_no_registry_is_noop() {
     let tmp = TempDir::new().unwrap();
-    workspace_sync_all(tmp.path()).expect("absent registry must not error");
-    // No `.gitignore` written when there is nothing to sync — the
-    // helper is only invoked once a registry is present.
+    assert!(
+        Registry::load(tmp.path()).expect("registry load must not error").is_none(),
+        "absent registry must yield None so callers can short-circuit",
+    );
     assert!(!tmp.path().join(".gitignore").exists());
     assert!(!tmp.path().join(".specify/workspace").exists());
 }
 
 #[test]
-fn workspace_sync_all_with_symlink_entry_creates_workspace_and_gitignore() {
+fn workspace_sync_with_symlink_entry_creates_workspace_and_gitignore() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
 
@@ -191,7 +192,8 @@ projects:
     )
     .unwrap();
 
-    workspace_sync_all(project_dir).expect("sync ok");
+    let registry = Registry::load(project_dir).unwrap().expect("registry present");
+    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).expect("sync ok");
 
     let slot = project_dir.join(".specify/workspace/peer");
     assert!(slot.exists(), "symlink slot must materialise");
@@ -228,7 +230,8 @@ projects:
     )
     .unwrap();
 
-    workspace_sync_all(project_dir).expect("sync ok");
+    let registry = Registry::load(project_dir).unwrap().expect("registry present");
+    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).expect("sync ok");
 
     let workspace = project_dir.join(".specify/workspace");
     for name in ["alpha", "beta"] {
@@ -736,7 +739,8 @@ projects:
     )
     .unwrap();
 
-    workspace_sync_all(project_dir).unwrap();
+    let registry = Registry::load(project_dir).unwrap().expect("registry present");
+    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).unwrap();
     let slots = workspace_status(project_dir).unwrap().unwrap();
     assert_eq!(slots.len(), 1);
     assert_eq!(slots[0].name, "peer");
@@ -771,7 +775,8 @@ projects:
     )
     .unwrap();
 
-    workspace_sync_all(project_dir).unwrap();
+    let registry = Registry::load(project_dir).unwrap().expect("registry present");
+    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).unwrap();
     let slots = workspace_status(project_dir).unwrap().unwrap();
     let slot = &slots[0];
 
@@ -990,7 +995,8 @@ fn rfc14_c07_workspace_push_selector_preflight_rejects_unknown_before_slots() {
     let tmp = TempDir::new().unwrap();
     let registry = registry_with_projects(&["alpha"]);
 
-    let err = push_all(tmp.path(), "demo-change", &registry, &["ghost".to_string()], true)
+    let err = registry
+        .select(&["ghost".to_string()])
         .expect_err("unknown selector must fail before workspace work");
 
     let msg = err.to_string();
@@ -1036,6 +1042,7 @@ projects:
     )
     .unwrap();
 
-    workspace_sync_all(project_dir).unwrap();
+    let registry = Registry::load(project_dir).unwrap().expect("registry present");
+    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).unwrap();
     assert!(Path::new(&project_dir.join(".specify/workspace")).is_dir());
 }

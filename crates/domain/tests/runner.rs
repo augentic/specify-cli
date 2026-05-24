@@ -4,9 +4,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use specify_domain::adapter::{PipelineView, ValidationResult};
 use specify_domain::slice::SLICES_DIR_NAME;
 use specify_domain::validate::validate_slice;
+use specify_error::ValidationStatus;
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -28,15 +28,10 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
     }
 }
 
-/// Stage a project dir with omnia's schema but leave the slice dir to
-/// the caller.
+/// Stage an empty project dir.
 fn stage_project() -> (TempDir, PathBuf) {
-    let repo = repo_root();
-    let schema_src = repo.join("schemas/omnia");
     let tempdir = tempfile::tempdir().unwrap();
     let project_dir = tempdir.path().to_path_buf();
-    let schema_dst = project_dir.join("schemas").join("omnia");
-    copy_dir_recursive(&schema_src, &schema_dst);
     (tempdir, project_dir)
 }
 
@@ -45,40 +40,38 @@ fn missing_artifact_produces_synth_failure() {
     let (_guard, project_dir) = stage_project();
     let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join("synth-missing");
     fs::create_dir_all(&slice_dir).unwrap();
-    // Deliberately leave out every artifact.
+    // Deliberately leave out every canonical artifact.
 
-    let pipeline = PipelineView::load("omnia", &project_dir).expect("pipeline loads");
-    let report = validate_slice(&slice_dir, &pipeline).expect("validate_slice ok");
+    let report = validate_slice(&slice_dir).expect("validate_slice ok");
 
-    // Every define-phase brief should have synthesised an artifact-exists
-    // failure (and nothing else for that brief).
+    // Every literal canonical artifact should have synthesised an
+    // `artifact-exists` failure (and nothing else for that brief).
+    // `specs` is glob-expanded; an empty slice has no `specs/**/*.md`
+    // matches and is silently skipped — the operator-facing failure
+    // there comes from the cross-validation rules instead.
     for brief in &["proposal", "design", "tasks"] {
         let results = report
             .brief_results
             .get(*brief)
             .unwrap_or_else(|| panic!("missing entry for `{brief}`"));
         assert_eq!(results.len(), 1, "{brief} should have exactly one result");
-        match &results[0] {
-            ValidationResult::Fail { rule_id, detail, .. } => {
-                assert!(
-                    rule_id.ends_with(".artifact-exists"),
-                    "unexpected rule_id for `{brief}`: {rule_id}"
-                );
-                assert!(detail.contains("not found"));
-            }
-            other => panic!("expected Fail for `{brief}`, got {other:?}"),
-        }
+        let first = &results[0];
+        assert_eq!(first.status, ValidationStatus::Fail, "expected Fail for `{brief}`: {first:?}");
+        assert!(
+            first.rule_id.ends_with(".artifact-exists"),
+            "unexpected rule_id for `{brief}`: {}",
+            first.rule_id
+        );
+        let detail = first.detail.as_deref().unwrap_or("");
+        assert!(detail.contains("not found"), "unexpected detail for `{brief}`: {detail}");
     }
-    // `specs` brief uses a glob → empty expansion also routes through the
-    // artifact-missing path with key == brief_id.
-    let specs = report.brief_results.get("specs").expect("specs key present");
-    assert_eq!(specs.len(), 1);
-    match &specs[0] {
-        ValidationResult::Fail { rule_id, .. } => {
-            assert_eq!(*rule_id, "specs.artifact-exists");
-        }
-        other => panic!("expected Fail for specs, got {other:?}"),
-    }
+
+    // `contracts` and `specs` are globs — empty expansion is silently
+    // skipped per workflow §"Refinement" (slices need not populate every
+    // overlay; the cross-validation rules surface the operator-facing
+    // failure for the missing slice spec separately).
+    assert!(!report.brief_results.contains_key("contracts"));
+    assert!(!report.brief_results.contains_key("specs"));
 
     assert!(!report.passed);
 }
@@ -94,8 +87,7 @@ fn validate_slice_reports_passed_without_panics_across_semantic_rules() {
     let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join("change-good");
     copy_dir_recursive(&fixture, &slice_dir);
 
-    let pipeline = PipelineView::load("omnia", &project_dir).expect("pipeline loads");
-    let report = validate_slice(&slice_dir, &pipeline).expect("validate_slice ok");
+    let report = validate_slice(&slice_dir).expect("validate_slice ok");
     assert!(report.passed);
 
     // Confirm every Semantic rule surfaced as Deferred.
@@ -104,7 +96,7 @@ fn validate_slice_reports_passed_without_panics_across_semantic_rules() {
         .values()
         .flatten()
         .chain(report.cross_checks.iter())
-        .filter(|r| matches!(r, ValidationResult::Deferred { .. }))
+        .filter(|r| r.status == ValidationStatus::Deferred)
         .count();
     assert!(deferred_count >= 2, "expected at least two deferred rules");
 }

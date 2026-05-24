@@ -2,9 +2,8 @@
 //! outputs captured from the archived Python reference implementation
 //! (now retired). The Rust port must match them exactly.
 
-use specify_domain::adapter::ValidationResult;
 use specify_domain::merge::{merge, validate_baseline};
-use specify_error::Error;
+use specify_error::{Error, ValidationStatus, ValidationSummary};
 
 macro_rules! fixture {
     ($case:literal, $file:literal) => {
@@ -122,13 +121,11 @@ fn merge_failure_surfaces_consolidated_error_messages() {
 // validate_baseline parity
 // ---------------------------------------------------------------------------
 
-fn fails(results: &[ValidationResult]) -> Vec<&str> {
+fn fails(results: &[ValidationSummary]) -> Vec<&str> {
     results
         .iter()
-        .filter_map(|r| match r {
-            ValidationResult::Fail { detail, .. } => Some(detail.as_str()),
-            _ => None,
-        })
+        .filter(|r| r.status == ValidationStatus::Fail)
+        .filter_map(|r| r.detail.as_deref())
         .collect()
 }
 

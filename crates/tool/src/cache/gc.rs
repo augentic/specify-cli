@@ -14,7 +14,7 @@ use crate::manifest::ToolScope;
 /// Return version directories under `scope` not referenced by `kept`.
 ///
 /// The keep-set tuple is `(tool-name, tool-version, source)`. The scan is
-/// limited to the supplied scope segment; another project or adapter with
+/// limited to the supplied scope segment; another project or plugin with
 /// the same tool name is not considered. The returned vector is deduplicated
 /// by the directory layout (one entry per `<tool>/<version>/` directory) and
 /// sorted for deterministic output.
@@ -22,7 +22,7 @@ use crate::manifest::ToolScope;
 /// # Errors
 ///
 /// Returns the `tool-cache-root` diagnostic when the cache root cannot
-/// be selected, `ToolError::InvalidCacheSegment` when a discovered
+/// be selected, the `tool-resolver` diagnostic when a discovered
 /// directory name is not valid UTF-8 or violates the cache-segment
 /// invariants, the `tool-io` diagnostic when the scope or tool directory
 /// cannot be read, and the `tool-sidecar-parse` / `tool-sidecar-schema`
@@ -63,11 +63,11 @@ pub fn scan<S: BuildHasher>(
 }
 
 fn file_name_string(path: &std::path::Path, field: &'static str) -> Result<String, ToolError> {
-    path.file_name().and_then(OsStr::to_str).map(ToOwned::to_owned).ok_or_else(|| {
-        ToolError::InvalidCacheSegment {
-            field,
-            value: path.display().to_string(),
-            reason: "must be valid UTF-8",
-        }
+    path.file_name().and_then(OsStr::to_str).map(ToOwned::to_owned).ok_or_else(|| ToolError::Diag {
+        code: "tool-resolver",
+        detail: format!(
+            "invalid tool cache segment `{}` for {field}: must be valid UTF-8",
+            path.display()
+        ),
     })
 }

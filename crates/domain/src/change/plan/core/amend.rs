@@ -3,13 +3,14 @@
 use specify_error::Error;
 
 use super::model::{EntryPatch, Plan, Severity};
+use crate::change::detect;
 
 impl Plan {
     /// Apply `patch` to the entry named `name`. Wholesale-replacement
     /// fields (`depends_on`, `sources`, `context`) replace when `Some`
     /// and leave the corresponding
     /// [`Entry`](super::model::Entry) field unchanged when `None`.
-    /// Nullable fields (`project`, `adapter`, `description`) take a
+    /// Nullable fields (`project`, `target`, `description`) take a
     /// three-way [`Patch`](super::model::Patch): `Keep` leaves the field
     /// alone, `Clear` sets it to `None`, `Set(v)` replaces it with
     /// `Some(v)`. `status` is intentionally not patchable — see
@@ -46,17 +47,23 @@ impl Plan {
                 entry.sources = v;
             }
             patch.project.apply(&mut entry.project);
-            patch.adapter.apply(&mut entry.adapter);
+            patch.target.apply(&mut entry.target);
             patch.description.apply(&mut entry.description);
             if let Some(v) = patch.context {
                 entry.context = v;
+            }
+            if let Some(d) = patch.divergence {
+                entry.divergence = Some(d);
             }
         }
 
         let errors: Vec<_> =
             self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
-        if let Some(first) = errors.first() {
-            let msg = first.message.clone();
+        let failure_msg = errors
+            .first()
+            .map(|r| r.message.clone())
+            .or_else(|| detect(&self.entries).into_iter().next().map(|d| d.message));
+        if let Some(msg) = failure_msg {
             self.entries[idx] = snapshot;
             return Err(Error::Diag {
                 code: "plan-amend-validation-failed",
@@ -72,8 +79,11 @@ impl Plan {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::super::model::{Entry, Patch, Status};
-    use super::super::test_support::{change, plan_with_changes};
+    use super::super::model::{
+        Entry, Lifecycle, Patch, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
+        TargetRef,
+    };
+    use super::super::{change, plan_with_changes};
     use super::*;
 
     #[test]
@@ -97,13 +107,14 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
             context: vec![],
             description: Some("original".into()),
-            status_reason: None,
+            divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
@@ -145,22 +156,24 @@ mod tests {
     fn amend_leaves_unchanged() {
         let plan = Plan {
             name: "test".into(),
+            lifecycle: Lifecycle::Pending,
             sources: {
                 let mut m = BTreeMap::new();
-                m.insert("a".to_string(), "/path/a".to_string());
+                m.insert("a".to_string(), SourceBinding::path("code-typescript", "/path/a"));
                 m
             },
             entries: vec![
                 Entry {
                     name: "foo".into(),
                     project: Some("default".into()),
-                    adapter: None,
+                    target: None,
                     status: Status::Pending,
                     depends_on: vec![],
-                    sources: vec!["a".into()],
+                    sources: vec![SliceSourceBinding::bare("a")],
                     context: vec![],
                     description: Some("d".into()),
-                    status_reason: None,
+                    divergence: None,
+                    authority_override: SliceAuthorityOverride::default(),
                 },
                 change("b", Status::Pending),
                 change("x", Status::Pending),
@@ -174,7 +187,7 @@ mod tests {
         plan.amend("foo", patch).expect("amend ok");
         let foo = plan.entries.iter().find(|c| c.name == "foo").unwrap();
         assert_eq!(foo.depends_on, vec!["x".to_string()]);
-        assert_eq!(foo.sources, vec!["a".to_string()], "sources untouched");
+        assert_eq!(foo.sources, vec![SliceSourceBinding::bare("a")], "sources untouched");
         assert_eq!(foo.description.as_deref(), Some("d"), "description untouched");
     }
 
@@ -242,13 +255,14 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("alpha".into()),
-            adapter: None,
+            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
@@ -276,7 +290,7 @@ mod tests {
             "foo",
             EntryPatch {
                 project: Patch::Clear,
-                adapter: Patch::Set("contracts@v1".into()),
+                target: Patch::Set(TargetRef::new("contracts", 1)),
                 ..EntryPatch::default()
             },
         )
@@ -285,49 +299,50 @@ mod tests {
     }
 
     #[test]
-    fn amend_adapter_three_way() {
+    fn amend_target_three_way() {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            adapter: Some("omnia@v1".into()),
+            target: Some(TargetRef::new("omnia", 1)),
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
             context: vec![],
             description: None,
-            status_reason: None,
+            divergence: None,
+            authority_override: SliceAuthorityOverride::default(),
         }]);
 
         plan.amend("foo", EntryPatch::default()).expect("amend none ok");
         assert_eq!(
-            plan.entries[0].adapter.as_deref(),
+            plan.entries[0].target.as_ref().map(ToString::to_string).as_deref(),
             Some("omnia@v1"),
-            "None must leave adapter unchanged"
+            "None must leave target unchanged"
         );
 
         plan.amend(
             "foo",
             EntryPatch {
-                adapter: Patch::Set("contracts@v1".into()),
+                target: Patch::Set(TargetRef::new("contracts", 1)),
                 ..EntryPatch::default()
             },
         )
         .expect("amend replace ok");
         assert_eq!(
-            plan.entries[0].adapter.as_deref(),
+            plan.entries[0].target.as_ref().map(ToString::to_string).as_deref(),
             Some("contracts@v1"),
-            "Patch::Set(s) must replace adapter"
+            "Patch::Set(s) must replace target"
         );
 
         plan.amend(
             "foo",
             EntryPatch {
-                adapter: Patch::Clear,
+                target: Patch::Clear,
                 ..EntryPatch::default()
             },
         )
         .expect("amend clear ok");
-        assert_eq!(plan.entries[0].adapter, None, "Patch::Clear must clear adapter");
+        assert_eq!(plan.entries[0].target, None, "Patch::Clear must clear target");
     }
 
     #[test]

@@ -15,7 +15,7 @@ skip_rust_env_info = true
 # CI Checks
 # -------------------------------------
 [tasks.check]
-dependencies = ["audit", "fmt", "lint", "outdated", "deps"]
+dependencies = ["fmt", "lint", "test", "test-docs", "doc"]
 
 [tasks.ci]
 dependencies = ["fmt", "lint", "test", "test-docs", "doc", "vet", "outdated", "deny"]
@@ -108,15 +108,6 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 # -------------------------------------
 # Auxiliary tasks
 # -------------------------------------
-
-# Generic xtask passthrough. Use for any subcommand exposed by
-# `xtask` (`gen-man`):
-# ```bash
-# cargo make xtask gen-man
-# ```
-[tasks.xtask]
-command = "cargo"
-args = ["run", "--quiet", "-p", "xtask", "--", "${@}"]
 
 # Build the first-party `contract` WASI tool into the sibling
 # workspace's target dir. `tests/contract_tool.rs` reads the

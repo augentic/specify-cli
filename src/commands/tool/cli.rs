@@ -13,17 +13,10 @@ pub enum ToolAction {
         #[arg(last = true)]
         args: Vec<String>,
     },
-    /// List declared tools and cache status.
-    List,
     /// Fetch one declared tool, or every declared tool when omitted.
     Fetch {
         /// Optional declared tool name to fetch.
         name: Option<String>,
-    },
-    /// Show one declared tool's metadata.
-    Show {
-        /// Declared tool name.
-        name: String,
     },
     /// Remove unused cache entries for the current project.
     Gc,

@@ -99,9 +99,9 @@ match ctx.format {
 ctx.write(&SomeBody::from(&result), write_text)?;
 ```
 
-Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run`, `commands::adapter::resolve` — receive a bare `Format` and call the free `output::write(format, &body, write_text)?;` instead.
+Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run` and the unified `commands::resolve_plugin` shared by `source resolve` / `target resolve` — receive a bare `Format` and call `output::emit(Box::new(std::io::stdout().lock()), format, &body, write_text)?;` directly.
 
-The `write_text` closure receives `(&mut dyn Write, &Body)` and renders the text-mode body; the JSON path goes through `serde::Serialize` automatically. New code must not introduce `match … format`. See [`src/commands/codex.rs`](../../src/commands/codex.rs) for the canonical pattern.
+The `write_text` closure receives `(&mut dyn Write, &Body)` and renders the text-mode body; the JSON path goes through `serde::Serialize` automatically. New code must not introduce `match … format`.
 
 ## One emit path
 

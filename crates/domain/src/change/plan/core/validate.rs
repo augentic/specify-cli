@@ -2,10 +2,9 @@
 //! accumulate (no check short-circuits another); order is structural
 //! checks first, then consistency checks against the registry.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
-use petgraph::algo::{tarjan_scc, toposort};
 use petgraph::graph::DiGraph;
 
 use super::model::{Entry, Finding, Plan, Severity, Status};
@@ -20,7 +19,7 @@ impl Plan {
     /// checks (`project-not-in-registry`, `project-missing-multi-repo`).
     ///
     /// Findings are accumulated — no check short-circuits another. Order
-    /// is structural checks first (duplicate names, cycles, unknown
+    /// is structural checks first (duplicate names, unknown
     /// depends-on / sources, multiple in-progress) followed by
     /// consistency checks against `slices_dir` when provided.
     ///
@@ -32,12 +31,12 @@ impl Plan {
     pub fn validate(&self, slices_dir: Option<&Path>, registry: Option<&Registry>) -> Vec<Finding> {
         let mut results = Vec::new();
         results.extend(duplicate_names(&self.entries));
-        results.extend(detect_cycles(&self.entries));
         results.extend(check_unknown_depends_on(&self.entries));
         results.extend(check_unknown_sources(self));
         results.extend(check_single_in_progress(&self.entries));
-        results.extend(missing_project_or_adapter(&self.entries));
+        results.extend(missing_project_or_target(&self.entries));
         results.extend(check_context_paths(&self.entries));
+        results.extend(authority_override_orphan_source_keys(&self.entries));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.entries, reg));
             results.extend(check_project_required_multi_repo(&self.entries, reg));
@@ -65,62 +64,27 @@ fn duplicate_names(changes: &[Entry]) -> Vec<Finding> {
     out
 }
 
-/// Build a `depends_on -> self` DAG and emit one `dependency-cycle`
-/// result per cycle (including self-edges). Uses `petgraph::toposort`
-/// to detect the existence of a cycle, then `tarjan_scc` to enumerate
-/// every strongly-connected component larger than one node plus any
-/// self-edges (which are their own SCC of size 1 with a loop).
-fn detect_cycles(changes: &[Entry]) -> Vec<Finding> {
+/// Build a `depends_on -> entry` dependency graph for plan entries.
+///
+/// Every entry becomes a node (in declaration order). For each
+/// `entry.depends_on` target that names another entry, an edge runs
+/// from the dependency node to `entry`.
+pub fn entry_dependency_graph(entries: &[Entry]) -> DiGraph<&str, ()> {
     let mut graph: DiGraph<&str, ()> = DiGraph::new();
     let mut idx = HashMap::new();
-    for entry in changes {
+    for entry in entries {
         let node = graph.add_node(entry.name.as_str());
         idx.insert(entry.name.as_str(), node);
     }
-    let mut has_self_loop = false;
-    for entry in changes {
+    for entry in entries {
         let to = idx[entry.name.as_str()];
         for dep in &entry.depends_on {
             if let Some(&from) = idx.get(dep.as_str()) {
                 graph.add_edge(from, to, ());
-                if from == to {
-                    has_self_loop = true;
-                }
             }
         }
     }
-
-    if toposort(&graph, None).is_ok() && !has_self_loop {
-        return Vec::new();
-    }
-
-    let mut out = Vec::new();
-    for scc in tarjan_scc(&graph) {
-        if scc.len() > 1 {
-            let mut names: Vec<&str> = scc.iter().map(|&n| graph[n]).collect();
-            names.sort_unstable();
-            let mut path = names.clone();
-            path.push(names[0]);
-            out.push(Finding {
-                level: Severity::Error,
-                code: "dependency-cycle",
-                message: format!("cycle: {}", path.join(" → ")),
-                entry: None,
-            });
-        } else if scc.len() == 1 {
-            let node = scc[0];
-            if graph.find_edge(node, node).is_some() {
-                let name = graph[node];
-                out.push(Finding {
-                    level: Severity::Error,
-                    code: "dependency-cycle",
-                    message: format!("cycle: {name} → {name}"),
-                    entry: None,
-                });
-            }
-        }
-    }
-    out
+    graph
 }
 
 fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Finding> {
@@ -144,7 +108,8 @@ fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Finding> {
 fn check_unknown_sources(plan: &Plan) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in &plan.entries {
-        for key in &entry.sources {
+        for binding in &entry.sources {
+            let key = binding.key();
             if !plan.sources.contains_key(key) {
                 out.push(Finding {
                     level: Severity::Error,
@@ -202,12 +167,12 @@ fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> 
     }
     let mut out = Vec::new();
     for entry in changes {
-        if entry.project.is_none() && entry.adapter.is_none() {
+        if entry.project.is_none() && entry.target.is_none() {
             out.push(Finding {
                 level: Severity::Error,
                 code: "project-missing-multi-repo",
                 message: format!(
-                    "slice '{}' has no project or adapter; multi-repo implementation slices must specify a project",
+                    "slice '{}' has no project or target; multi-repo implementation slices must specify a project",
                     entry.name
                 ),
                 entry: Some(entry.name.clone()),
@@ -217,19 +182,58 @@ fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> 
     out
 }
 
-fn missing_project_or_adapter(changes: &[Entry]) -> Vec<Finding> {
+fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in changes {
-        if entry.project.is_none() && entry.adapter.is_none() {
+        if entry.project.is_none() && entry.target.is_none() {
             out.push(Finding {
                 level: Severity::Error,
-                code: "plan.entry-needs-project-or-adapter",
+                code: "plan.entry-needs-project-or-target",
                 message: format!(
-                    "entry '{}' has neither 'project' nor 'adapter'; at least one is required",
+                    "entry '{}' has neither 'project' nor 'target'; at least one is required",
                     entry.name
                 ),
                 entry: Some(entry.name.clone()),
             });
+        }
+    }
+    out
+}
+
+/// workflow §D3 — refuse orphan per-slice `authority-override` values.
+///
+/// For every slice's override map, every value MUST appear in that
+/// slice's `sources[].key` list; otherwise the operator has named a
+/// source key that does not exist on the slice, and synthesis would
+/// silently fall through to the default authority. Findings sort
+/// deterministically by slice name (declaration order) then by
+/// claim kind (the `BTreeMap` iteration order on
+/// [`super::model::SliceAuthorityOverride::by_kind`]).
+///
+/// Public for the per-slice helper at `specify slice validate` to
+/// surface only the findings relevant to one slice.
+#[must_use]
+pub fn authority_override_orphan_source_keys(changes: &[Entry]) -> Vec<Finding> {
+    let mut out = Vec::new();
+    for entry in changes {
+        if entry.authority_override.by_kind.is_empty() {
+            continue;
+        }
+        let known: BTreeSet<&str> =
+            entry.sources.iter().map(super::model::SliceSourceBinding::key).collect();
+        for (kind, key) in &entry.authority_override.by_kind {
+            if !known.contains(key.as_str()) {
+                out.push(Finding {
+                    level: Severity::Error,
+                    code: "slice-authority-override-orphan-source-key",
+                    message: format!(
+                        "slice '{}' override for kind '{kind}' references source key '{key}', \
+                         not present in slice sources",
+                        entry.name
+                    ),
+                    entry: Some(entry.name.clone()),
+                });
+            }
         }
     }
     out

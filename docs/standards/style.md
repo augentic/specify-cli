@@ -45,14 +45,14 @@ ctx.emit_with(&resolved, |w, r| write_resolved(w, r))?;
 
 ## No traits for testability alone
 
-Don't introduce a trait whose only non-test impl is `RealX`. The right test boundary is the lowest external surface — usually `std::process::Command` (via `CmdRunner`) or the filesystem. One `CmdRunner` trait beats three sibling `GhClient` / `Probe` / `WorkspacePushForge` traits.
+Don't introduce a trait whose only non-test impl is `RealX`. The right test boundary is the lowest external surface — `std::process::Command` (drive via the `CmdRunner` callable alias in `specify_domain::cmd`) or the filesystem. When a stable in-tree boundary already exists — for example `AtomicYaml` in `specify_domain::config`, shared by `Plan`, `Project`, and `Registry` for `.specify/` YAML state — implement that instead of inventing a sibling trait pair.
 
 ```rust
-// BAD — trait pair that exists so MockGhClient can swap in.
-trait GhClient { fn pr_list(&self) -> Result<Vec<Pr>>; }
-struct RealGhClient;
-// GOOD — drive the boundary at the lowest external surface.
-fn pr_list(runner: &dyn CmdRunner) -> Result<Vec<Pr>> { /* ... */ }
+// BAD — trait pair that exists so MockProjectStore can swap in.
+trait ProjectStore { fn load(&self) -> Result<Project>; }
+struct RealProjectStore;
+// GOOD — implement the existing shared boundary.
+impl AtomicYaml for Project { fn path(layout: Layout<'_>) -> PathBuf { /* ... */ } }
 ```
 
 ## Reach for the standard crate first

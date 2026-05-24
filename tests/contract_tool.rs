@@ -22,10 +22,11 @@ impl ContractToolFixture {
     fn new() -> Self {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
-        let adapter = project.join("schemas/contracts");
+        let adapter = project.join("adapters").join("targets/contracts");
+        let briefs = adapter.join("briefs");
         fs::create_dir_all(project.join(".specify")).expect("create .specify");
         fs::create_dir_all(project.join("contracts/http")).expect("create contracts");
-        fs::create_dir_all(&adapter).expect("create adapter");
+        fs::create_dir_all(&briefs).expect("create adapter briefs");
 
         fs::write(
             project.join(".specify/project.yaml"),
@@ -34,9 +35,16 @@ impl ContractToolFixture {
         .expect("write project.yaml");
         fs::write(
             adapter.join("adapter.yaml"),
-            "name: contracts\nversion: 1\ndescription: Test contracts adapter\npipeline:\n  define: []\n  build: []\n  merge: []\n",
+            "name: contracts\nversion: 1\naxis: target\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test contracts adapter\n",
         )
         .expect("write adapter.yaml");
+        for op in ["shape", "build", "merge"] {
+            fs::write(
+                briefs.join(format!("{op}.md")),
+                format!("---\nid: {op}\ndescription: {op} brief\n---\n"),
+            )
+            .expect("write brief");
+        }
 
         let wasm = contract_wasm();
         let source = format!("file://{}", wasm.display());
@@ -67,25 +75,6 @@ impl ContractToolFixture {
         fs::create_dir_all(path.parent().expect("contract parent")).expect("create contract dir");
         fs::write(path, body).expect("write contract");
     }
-}
-
-#[test]
-fn lists_from_adapter_sidecar() {
-    let fixture = ContractToolFixture::new();
-
-    let assert = specify()
-        .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
-        .args(["--format", "json", "tool", "list"])
-        .assert()
-        .success();
-    let value = parse_json(&assert.get_output().stdout);
-    let tools = value["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 1, "{value}");
-    assert_eq!(tools[0]["name"], "contract");
-    assert_eq!(tools[0]["version"], "0.2.0");
-    assert_eq!(tools[0]["scope"], "adapter");
-    assert_eq!(tools[0]["scope-detail"], "contracts");
 }
 
 #[test]

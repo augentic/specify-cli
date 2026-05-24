@@ -7,7 +7,7 @@ mod atomic;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub use atomic::{AtomicYaml, InitPolicy, with_state};
+pub use atomic::{AtomicYaml, with_state};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
@@ -199,7 +199,16 @@ impl<'a> Layout<'a> {
     /// operator brief at the repo root. Platform-level artifact.
     #[must_use]
     pub fn change_brief_path(&self) -> PathBuf {
-        self.project_dir.join(crate::adapter::CHANGE_BRIEF_FILENAME)
+        self.project_dir.join("change.md")
+    }
+
+    /// Absolute path to `<project_dir>/discovery.md` — the candidate
+    /// inventory written at `/spec:plan`'s `propose` sub-step and
+    /// mutated by `specify plan amend --add-alias` /
+    /// `--remove-alias` (workflow §D6).
+    #[must_use]
+    pub fn discovery_path(&self) -> PathBuf {
+        self.project_dir.join("discovery.md")
     }
 }
 
@@ -256,6 +265,7 @@ mod tests {
         assert_eq!(layout.registry_path(), PathBuf::from("/a/b/registry.yaml"));
         assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
         assert_eq!(layout.change_brief_path(), PathBuf::from("/a/b/change.md"));
+        assert_eq!(layout.discovery_path(), PathBuf::from("/a/b/discovery.md"));
         assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/.cache"));
         assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
     }

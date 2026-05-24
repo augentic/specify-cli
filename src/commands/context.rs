@@ -1,14 +1,12 @@
-//! `specify context {generate, check}` dispatcher. Heavy lifting lives
-//! in submodules; this module owns the small set of helpers
-//! (`render_document` plus IO/error-mapping shims) shared by both verbs.
+//! Init-time AGENTS.md context generation. Heavy lifting lives in
+//! submodules; this module owns the small set of helpers
+//! (`render_document` plus IO/error-mapping shims) used by init.
 
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 mod assemble;
-mod check;
-pub mod cli;
 mod detect;
 mod fences;
 mod fingerprint;
@@ -21,15 +19,7 @@ pub(super) use generate::for_init as generate_for_init;
 use specify_domain::config::Layout;
 use specify_error::{Error, Result};
 
-use self::cli::ContextAction;
 use crate::context::Ctx;
-
-pub fn run(ctx: &Ctx, action: &ContextAction) -> Result<()> {
-    match action {
-        ContextAction::Generate { check, force } => generate::run(ctx, *check, *force),
-        ContextAction::Check => check::run(ctx),
-    }
-}
 
 fn render_document(ctx: &Ctx) -> Result<(String, fingerprint::ContextFingerprint)> {
     let assembly = assemble::render_input(ctx)?;
@@ -47,13 +37,6 @@ fn render_document(ctx: &Ctx) -> Result<(String, fingerprint::ContextFingerprint
     let context_fingerprint =
         fingerprint::for_context(env!("CARGO_PKG_VERSION"), assembly.inputs, fenced.body());
     Ok((generated, context_fingerprint))
-}
-
-fn diag(code: &'static str, detail: impl Into<String>) -> Error {
-    Error::Diag {
-        code,
-        detail: detail.into(),
-    }
 }
 
 fn read_optional(path: &Path) -> Result<Option<Vec<u8>>> {
@@ -93,19 +76,21 @@ mod tests {
     use crate::cli::Format;
 
     fn write_minimal_adapter(project_dir: &Path) {
-        let adapter_dir = project_dir.join("schemas").join("mini");
+        let adapter_dir = project_dir.join("adapters").join("targets").join("mini");
         let briefs_dir = adapter_dir.join("briefs");
         fs::create_dir_all(&briefs_dir).expect("create adapter dirs");
         fs::write(
             adapter_dir.join("adapter.yaml"),
-            "name: mini\nversion: 1\ndescription: Mini adapter\npipeline:\n  define:\n    - id: proposal\n      brief: briefs/proposal.md\n  build: []\n  merge: []\n",
+            "name: mini\nversion: 1\naxis: target\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Mini adapter\n",
         )
         .expect("write adapter");
-        fs::write(
-            briefs_dir.join("proposal.md"),
-            "---\nid: proposal\ndescription: Draft the proposal\ngenerates: proposal.md\n---\n",
-        )
-        .expect("write brief");
+        for op in ["shape", "build", "merge"] {
+            fs::write(
+                briefs_dir.join(format!("{op}.md")),
+                format!("---\nid: {op}\ndescription: {op} brief\n---\n"),
+            )
+            .expect("write brief");
+        }
     }
 
     fn sample_config() -> ProjectConfig {
@@ -169,9 +154,11 @@ mod tests {
                 ".specify/project.yaml",
                 ".specify/slices/alpha/.metadata.yaml",
                 ".specify/slices/zeta/.metadata.yaml",
+                "adapters/targets/mini/adapter.yaml",
+                "adapters/targets/mini/briefs/build.md",
+                "adapters/targets/mini/briefs/merge.md",
+                "adapters/targets/mini/briefs/shape.md",
                 "registry.yaml",
-                "schemas/mini/adapter.yaml",
-                "schemas/mini/briefs/proposal.md",
             ]
         );
     }

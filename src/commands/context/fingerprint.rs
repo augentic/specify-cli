@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use sha2::{Digest, Sha256};
 use specify_error::Error;
 
 /// One renderer input file and its content digest.
@@ -127,7 +126,7 @@ fn prefixed_sha256(bytes: &[u8]) -> String {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    specify_tool::sha256_hex(bytes)
 }
 
 fn repo_relative_path(project_dir: &Path, path: &Path) -> Result<String, Error> {

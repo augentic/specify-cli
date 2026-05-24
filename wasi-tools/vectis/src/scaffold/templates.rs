@@ -1,8 +1,75 @@
 //! Template engine -- placeholder substitution and capability-conditional sections.
 
-pub(super) mod android;
-pub(super) mod core;
-pub(super) mod ios;
+pub(super) mod registry;
+
+use super::PlannedFile;
+
+/// One embedded scaffold template entry.
+pub(super) struct TemplateEntry {
+    /// Target path under `PROJECT_DIR`, with optional placeholders.
+    pub target: &'static str,
+    /// Embedded template contents.
+    pub contents: &'static str,
+    /// How to substitute placeholders in the target path before write.
+    pub path_mode: PathMode,
+    /// Whole-file inclusion predicate.
+    pub include_when: IncludeWhen,
+}
+
+/// Target-path substitution mode for one assembly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PathMode {
+    /// Target path is literal.
+    ContentOnly,
+    /// Substitute `__APP_NAME__` / `__APP_NAME_LOWER__` in the target path.
+    AppName,
+    /// Substitute app-name and `__ANDROID_PACKAGE_PATH__` in the target path.
+    AndroidPackage,
+}
+
+/// Whole-file inclusion predicate.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum IncludeWhen {
+    /// File is rendered regardless of selected capabilities.
+    Always,
+    /// File is rendered iff any listed capability is selected.
+    AnyOf(&'static [Capability]),
+}
+
+impl IncludeWhen {
+    /// Should this entry be rendered for the given cap selection?
+    #[must_use]
+    pub(super) fn should_include(self, caps: &[Capability]) -> bool {
+        match self {
+            Self::Always => true,
+            Self::AnyOf(needed) => needed.iter().any(|c| caps.contains(c)),
+        }
+    }
+}
+
+/// Render and plan one assembly's template entries.
+pub(super) fn plan_assembly(
+    entries: &[TemplateEntry], params: &Params, caps: &[Capability],
+) -> Vec<PlannedFile> {
+    let android_package_path = params.android_package.replace('.', "/");
+    entries
+        .iter()
+        .filter(|entry| entry.include_when.should_include(caps))
+        .map(|entry| {
+            let relative_path = match entry.path_mode {
+                PathMode::ContentOnly => entry.target.to_string(),
+                PathMode::AppName => substitute_path(entry.target, params),
+                PathMode::AndroidPackage => {
+                    substitute_path_with(entry.target, params, Some(&android_package_path))
+                }
+            };
+            PlannedFile {
+                relative_path,
+                contents: render(entry.contents, params, caps),
+            }
+        })
+        .collect()
+}
 
 /// A single capability the user can enable via `--caps`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

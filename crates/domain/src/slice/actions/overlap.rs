@@ -5,7 +5,7 @@ use std::path::Path;
 use serde::Serialize;
 use specify_error::Error;
 
-use crate::slice::{SliceMetadata, SpecKind};
+use crate::slice::{LifecycleStatus, SliceMetadata, SpecKind};
 
 /// A capability-level conflict between two active slices both touching
 /// the same spec.
@@ -63,7 +63,7 @@ pub fn overlap(slices_dir: &Path, slice_name: &str) -> Result<Vec<Overlap>, Erro
             continue;
         }
         let other_meta = SliceMetadata::load(&other_path)?;
-        if other_meta.status.is_terminal() {
+        if matches!(other_meta.status, LifecycleStatus::Merged | LifecycleStatus::Dropped) {
             continue;
         }
         for ours in &self_meta.touched_specs {

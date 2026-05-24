@@ -14,18 +14,18 @@
         "status": "pass"
       },
       {
-        "rule": "Has a Crates/Features section listing at least one entry",
+        "rule": "Has a Crates section listing at least one entry",
         "rule-id": "proposal.crates-listed",
         "status": "pass"
       },
       {
-        "reason": "Semantic check — requires LLM judgment",
+        "detail": "Semantic check — requires LLM judgment",
         "rule": "Uses imperative language for motivation",
         "rule-id": "proposal.uses-imperative-language",
         "status": "deferred"
       }
     ],
-    "specs": [
+    "specs/login/spec.md": [
       {
         "rule": "Every requirement has at least one scenario",
         "rule-id": "specs.requirements-have-scenarios",
@@ -42,7 +42,7 @@
         "status": "pass"
       },
       {
-        "reason": "Semantic check — requires LLM judgment",
+        "detail": "Semantic check — requires LLM judgment",
         "rule": "Uses SHALL/MUST language for normative requirements",
         "rule-id": "specs.uses-normative-language",
         "status": "deferred"
@@ -63,7 +63,7 @@
   },
   "cross-checks": [
     {
-      "rule": "Every crate/feature listed in the proposal has a matching spec file",
+      "rule": "Every crate listed in the proposal has a matching spec file",
       "rule-id": "cross.proposal-crates-have-specs",
       "status": "pass"
     },

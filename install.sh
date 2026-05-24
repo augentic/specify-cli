@@ -12,7 +12,7 @@
 
 set -eu
 
-REPO="augentic/specify"
+REPO="augentic/specify-cli"
 BINARY="specify"
 
 log() {
