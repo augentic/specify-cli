@@ -261,6 +261,13 @@ where
     Ok(out)
 }
 
+fn parse_authority_override_assigns(raw: &[String]) -> Result<Vec<(String, ClaimKind, String)>> {
+    Ok(parse_slice_pair_args::<AuthorityOverrideKindAssign>(raw, "--authority-override")?
+        .into_iter()
+        .map(|(slice, a)| (slice, a.kind, a.source_key))
+        .collect())
+}
+
 /// Refuse the whole CLI invocation if any flag references a slice
 /// not present on `plan`. Runs before any mutation so the
 /// `with_state` writer is never invoked with a partial result.
@@ -499,14 +506,7 @@ pub(super) fn create(
         });
     }
 
-    let override_assigns: Vec<(String, ClaimKind, String)> =
-        parse_slice_pair_args::<AuthorityOverrideKindAssign>(
-            authority_override,
-            "--authority-override",
-        )?
-        .into_iter()
-        .map(|(slice, assign)| (slice, assign.kind, assign.source_key))
-        .collect();
+    let override_assigns = parse_authority_override_assigns(authority_override)?;
 
     let mut plan = Plan::init(&name, source_map)?;
     apply_divergence_likely(&mut plan, divergence_likely)?;
@@ -640,27 +640,24 @@ pub(super) fn add(
             validate_plan(plan)?;
             let plan_name = plan.name.clone();
             let now = jiff::Timestamp::now();
-            let (events, created_entry) = {
-                let created = entry_mut(plan, &plan_name, name)?;
-                let events: Vec<journal::Event> = created
-                    .authority_override
-                    .by_kind
-                    .iter()
-                    .map(|(kind, key)| {
-                        journal::Event::new(
-                            now,
-                            journal::EventKind::PlanAmendAuthorityOverride {
-                                plan_name: plan_name.clone(),
-                                slice_name: created.name.clone(),
-                                action: AuthorityOverrideAction::Set,
-                                claim_kind: Some(kind.to_string()),
-                                source_key: Some(key.clone()),
-                            },
-                        )
-                    })
-                    .collect();
-                (events, created.clone())
-            };
+            // Route the seeded overrides through the shared writer
+            // (no clears on the add path) so all three handlers emit
+            // identically-shaped, identically-sorted Set events.
+            let created_entry = entry_mut(plan, &plan_name, name)?.clone();
+            let set_map: BTreeMap<(String, ClaimKind), String> = created_entry
+                .authority_override
+                .by_kind
+                .iter()
+                .map(|(kind, key)| ((created_entry.name.clone(), *kind), key.clone()))
+                .collect();
+            let events = emit_override_events(
+                &plan_name,
+                &set_map,
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                &BTreeMap::new(),
+                now,
+            );
             Ok((
                 EntryBody {
                     plan: plan_ref(plan, &plan_path),
@@ -680,10 +677,6 @@ pub(super) fn add(
     clippy::too_many_arguments,
     reason = "plan amend's clap surface is the source of truth for the argument set; threading it through the handler avoids stuffing the bag into a struct just for clippy."
 )]
-#[expect(
-    clippy::too_many_lines,
-    reason = "RFC-27 §D6 layered alias edits, source rewrites, authority-override mutations, and divergence transitions into one atomic plan-amend invocation; the body trades length for a single-pass `with_state` boundary and an atomic journal append. Splitting the closure further would force shared state through a struct without buying clarity."
-)]
 pub(super) fn amend(
     ctx: &Ctx, name: String, depends_on: Option<Vec<String>>, sources: Option<Vec<SliceSourceArg>>,
     add_source: Vec<SliceSourceArg>, remove_source: Vec<String>, divergence: Option<&str>,
@@ -699,14 +692,7 @@ pub(super) fn amend(
     }
 
     let divergence = divergence.map(parse_divergence).transpose()?;
-    let override_sets: Vec<(String, ClaimKind, String)> =
-        parse_slice_pair_args::<AuthorityOverrideKindAssign>(
-            authority_override,
-            "--authority-override",
-        )?
-        .into_iter()
-        .map(|(slice, assign)| (slice, assign.kind, assign.source_key))
-        .collect();
+    let override_sets = parse_authority_override_assigns(authority_override)?;
     let override_clears: Vec<(String, ClaimKind)> =
         parse_slice_pair_args::<ClaimKind>(clear_authority_override, "--clear-authority-override")?;
     let override_clear_all: Vec<String> = clear_authority_overrides.to_vec();
@@ -742,21 +728,13 @@ pub(super) fn amend(
             let patch = EntryPatch {
                 depends_on: depends_on.clone(),
                 sources: sources_replace,
-                project: match project.clone() {
-                    None => Patch::Keep,
-                    Some(s) if s.is_empty() => Patch::Clear,
-                    Some(s) => Patch::Set(s),
-                },
+                project: Patch::from_string_option(project.clone()),
                 target: match target.clone() {
                     None => Patch::Keep,
                     Some(s) if s.is_empty() => Patch::Clear,
                     Some(s) => Patch::Set(parse_target_flag(&s)?),
                 },
-                description: match description.clone() {
-                    None => Patch::Keep,
-                    Some(s) if s.is_empty() => Patch::Clear,
-                    Some(s) => Patch::Set(s),
-                },
+                description: Patch::from_string_option(description.clone()),
                 context: context.clone(),
                 divergence,
             };

@@ -127,6 +127,21 @@ impl Discovery {
         self.candidates.iter_mut().find(|c| c.id == id)
     }
 
+    /// Convenience wrapper around [`Self::candidate_mut`] that
+    /// converts the `None` arm into the canonical
+    /// `discovery-candidate-unknown` diagnostic. `flag` is the CLI
+    /// flag token (e.g. `--add-alias`) the caller wants threaded
+    /// through the operator-facing detail string.
+    fn candidate_mut_or_unknown(&mut self, id: &str, flag: &str) -> Result<&mut Candidate> {
+        self.candidate_mut(id).ok_or_else(|| Error::Diag {
+            code: "discovery-candidate-unknown",
+            detail: format!(
+                "no candidate `{id}` in discovery.md; {flag} must reference \
+                 an existing candidate id"
+            ),
+        })
+    }
+
     /// Resolve a `--sources <key>=<value>` token to its candidate
     /// per RFC-27 §D6. Walks every candidate, returning a hit when
     /// `token` matches the candidate's `id` or any of its
@@ -211,15 +226,7 @@ impl Discovery {
     ///   the operator-supplied alias collides with an existing
     ///   namespace entry (self-shadow or cross-candidate).
     pub fn add_alias(&mut self, candidate_id: &str, alias: &str) -> Result<()> {
-        let Some(candidate) = self.candidate_mut(candidate_id) else {
-            return Err(Error::Diag {
-                code: "discovery-candidate-unknown",
-                detail: format!(
-                    "no candidate `{candidate_id}` in discovery.md; --add-alias must reference \
-                     an existing candidate id"
-                ),
-            });
-        };
+        let candidate = self.candidate_mut_or_unknown(candidate_id, "--add-alias")?;
         candidate.add_alias(alias.to_string()).map_err(|collision| {
             Error::validation_failed(
                 "discovery-alias-collision",
@@ -255,15 +262,7 @@ impl Discovery {
     /// removals against a missing candidate are a typo, not a
     /// no-op.
     pub fn remove_alias(&mut self, candidate_id: &str, alias: &str) -> Result<()> {
-        let Some(candidate) = self.candidate_mut(candidate_id) else {
-            return Err(Error::Diag {
-                code: "discovery-candidate-unknown",
-                detail: format!(
-                    "no candidate `{candidate_id}` in discovery.md; --remove-alias must reference \
-                     an existing candidate id"
-                ),
-            });
-        };
+        let candidate = self.candidate_mut_or_unknown(candidate_id, "--remove-alias")?;
         candidate.remove_alias(alias);
         Ok(())
     }

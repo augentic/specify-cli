@@ -560,6 +560,21 @@ impl<T> Patch<T> {
     }
 }
 
+impl Patch<String> {
+    /// Materialise the wire convention shared by every `Patch<String>`
+    /// CLI flag: a missing flag means `Keep`, an empty-string flag
+    /// (`--field ""`) means `Clear`, and any non-empty value means
+    /// `Set(value)`.
+    #[must_use]
+    pub fn from_string_option(value: Option<String>) -> Self {
+        match value {
+            None => Self::Keep,
+            Some(s) if s.is_empty() => Self::Clear,
+            Some(s) => Self::Set(s),
+        }
+    }
+}
+
 /// Patch applied by [`Plan::amend`] to an existing entry.
 ///
 /// Wholesale-replacement fields are `Option<Vec<...>>`; nullable fields use
