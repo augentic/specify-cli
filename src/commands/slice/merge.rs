@@ -47,7 +47,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// RFC-25 §Workflow: `/spec:merge` is the sole writer of per-entry
+/// workflow §Workflow: `/spec:merge` is the sole writer of per-entry
 /// `done`. Standalone merge fixtures without `plan.yaml` skip this
 /// step silently.
 fn stamp_plan_entry_done(ctx: &Ctx, name: &str) -> Result<()> {

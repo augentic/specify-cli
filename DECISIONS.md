@@ -25,7 +25,7 @@ run` WASI passthrough.
 |------|--------------------------|-----------------------------------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the RFC-27 §D3/D4/D6 kebab discriminants `slice-authority-override-orphan-source-key`, `slice-fusion-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
+| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the workflow §D3/D4/D6 kebab discriminants `slice-authority-override-orphan-source-key`, `slice-fusion-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
 The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
@@ -256,7 +256,7 @@ frontmatter and the CLI never reads their bodies. `CacheMeta` lives in
 the slice-metadata wire uses `Operation { Shape, Build, Merge }`
 (`phase: shape | build | merge`).
 
-Per RFC-25 §"Note to the implementing agent", touching any of these
+Per workflow §"Note to the implementing agent", touching any of these
 symbols requires a cross-repo `rg` sweep against `augentic/specify-cli`
 and `augentic/specify` in the same PR.
 
@@ -269,7 +269,7 @@ including the names of the retired axis-generic types and the prior
 
 `specify_domain::adapter::Adapter::resolve(axis, name, project_dir)` is
 the single entry point for loading a source or target adapter manifest.
-Probe order is path-agnostic and matches RFC-25 §"Resolver and cache"
+Probe order is path-agnostic and matches workflow §"Resolver and cache"
 verbatim:
 
 1. `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/` —
@@ -282,9 +282,9 @@ The axis segment (`sources` for `Axis::Source`, `targets` for
 disambiguated by axis. Cache placement matches the probe layout —
 `cache_dir(axis, name)` returns
 `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`.
-The sibling RFC-27 §D8 extraction cache lives in a disjoint tree under
+The sibling workflow §D8 extraction cache lives in a disjoint tree under
 `<project_dir>/.specify/.cache/extractions/<adapter>/`; see §"Cache
-layout". Refer to RFC-25 §"Resolver and cache" before changing the
+layout". Refer to workflow §"Resolver and cache" before changing the
 probe order or manifest-cache layout.
 
 ## Plan lifecycle: two stored states
@@ -301,7 +301,7 @@ is computed at read time as "every entry is `done`", not stored.
 operator-only — the CLI does not gate it (the call is ungated so
 operators can run it from any shell), but the `--help` text documents
 the rule and `/spec:plan` skill bodies MUST NOT call it. Refer to
-RFC-25 §"Execution model" for the full state diagram.
+workflow §"Execution model" for the full state diagram.
 
 `Status::Done` is absorbing in v1: per-entry `done` is the terminal
 state and no CLI verb walks it back. There is no `plan transition
@@ -333,7 +333,7 @@ state.
 The CLI always serialises bindings in the structured form; the
 shorthand parser exists so `/spec:plan` and operator hand edits stay
 ergonomic. `plan amend --add-source <key>` accepts the same shorthand
-on the wire. Refer to RFC-25 §`Slice.sources`.
+on the wire. Refer to workflow §`Slice.sources`.
 
 ## `Divergence` enum
 
@@ -346,9 +346,9 @@ from the wire — `none` is the absent default, and `likely` is reserved
 for the `propose` sub-step of `/spec:plan`, which writes the value via
 a direct YAML edit (per the W3.2 hand-off). Operators flipping the
 field after Gate 1 review use `accepted | rejected` exclusively.
-Refer to RFC-25 §"Plan-time fusion".
+Refer to workflow §"Plan-time fusion".
 
-## RFC-27 §D2 — per-kind authority on Evidence
+## workflow §D2 — per-kind authority on Evidence
 
 `evidence.schema.json` gains an
 optional `authority-overrides` map keyed by claim kind, valued by
@@ -356,10 +356,10 @@ authority class. The document-level `authority:` field stays
 required; the override applies to all claims of the named kind in
 that Evidence document. Per-claim overrides remain explicitly
 deferred. Synthesis consults the per-kind override first, then the
-document-level `authority:`, then the RFC-25 default ordering — a
+document-level `authority:`, then the workflow default ordering — a
 byte-stable three-step fallback chain.
 
-## RFC-27 §D3 — per-slice authority on `plan.yaml`
+## workflow §D3 — per-slice authority on `plan.yaml`
 
 `plan.yaml.slices[]` gains an
 optional `authority-override` map keyed by claim kind, valued by
@@ -370,7 +370,7 @@ keys are rejected by `specify slice validate` with the
 map is scoped to one slice — plan-wide and project-wide overrides
 are out of scope.
 
-## RFC-27 §D4 — `fusion.yaml` is audit-only
+## workflow §D4 — `fusion.yaml` is audit-only
 
 `schemas/slice/fusion.schema.json`
 fixes the closed top-level shape (`version`, `slice`,
@@ -382,7 +382,7 @@ surface. `specify slice validate` enforces id-set parity between
 catches contributing-claim → Evidence-claim drift, both via the
 `slice-fusion-drift` discriminant.
 
-## RFC-27 §D8 — cache fingerprint inputs
+## workflow §D8 — cache fingerprint inputs
 
 The closed list of fingerprint
 inputs (`source path canonicalised | adapter name@version | brief
@@ -411,15 +411,15 @@ variants are `snake_case` and bridge to the wire via
 | `slice.transition.refined` | `specify slice transition <slice> refined`. |
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. |
-| `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). RFC-27 §D8. |
-| `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). RFC-27 §D4. |
-| `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. RFC-27 §D1. |
-| `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. RFC-27 §D3. |
+| `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). workflow §D8. |
+| `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). workflow §D4. |
+| `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. workflow §D1. |
+| `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. workflow §D3. |
 
 Events persist as newline-delimited JSON at
 `<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`
 enum on the divergence events is
-`none | likely | accepted | rejected`. Refer to RFC-25 §"Observability"
+`none | likely | accepted | rejected`. Refer to workflow §"Observability"
 and the per-event row table.
 
 ## `$CAPABILITY_DIR` replaces `$ADAPTER_DIR`
@@ -435,7 +435,7 @@ references are rejected as `tool.capability-dir-out-of-scope` /
 segment that pairs with it is `plugin--<axis>--<slug>` — e.g.
 `plugin--target--contracts` for the `contracts` target adapter's
 tools. Project-scope tools keep `project--<project-name>`
-unchanged. Refer to RFC-25 §"Sandboxing".
+unchanged. Refer to workflow §"Sandboxing".
 
 ## Lifecycle write-ownership
 
@@ -454,7 +454,7 @@ each transition:
 The plan-level `reviewed` row is the lightest-touch shape the RFC
 allows: a wholly operator-driven stamp with no CLI-side authentication.
 Skills that drift from this contract get caught at review time. Refer
-to RFC-25 §"CLI surface" and §"Writer ownership".
+to workflow §"CLI surface" and §"Writer ownership".
 
 ## Plan source bindings
 
@@ -483,7 +483,7 @@ the path form unchanged. The `value:` sentinel switches the parser
 to literal mode, so the literal payload may contain any character
 (including `:`, `=`, and newlines) without further escaping. No
 shorthand exists for "the adapter name equals the key"; every flag
-invocation carries both. Refer to RFC-25 §Source and
+invocation carries both. Refer to workflow §Source and
 `crates/domain/src/change/plan/core/model.rs::SourceBinding`.
 
 Source keys are plan-scoped; each key maps to exactly one binding
@@ -499,7 +499,7 @@ tool. The accepted shape is semver only: `x.y.z` with an optional
 `-prerelease` suffix, locked by the schema pattern
 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`. No `v` prefix, no `sha256:` digest,
 no free-form strings. Tools without a release must cut one before being
-declared. The reproducibility argument is the RFC-27 §D8 cache
+declared. The reproducibility argument is the workflow §D8 cache
 fingerprint: it folds `sorted declared-tool versions` into the
 extraction cache key, so an absent or non-semver pin would silently
 drop tool-version from the fingerprint and let two adapter revisions
@@ -534,7 +534,7 @@ rename or delete one side without grepping the manifest tree.
   (`adapter.yaml` plus the brief markdown files it references). Per-axis
   because adapter names are unique per axis. Resolved by
   `crates/domain/src/adapter/core.rs::cache_dir`.
-- `extractions/<adapter>/<fingerprint>/` — RFC-27 §D8 per-source
+- `extractions/<adapter>/<fingerprint>/` — workflow §D8 per-source
   extraction result cache, with the append-only `index.jsonl` at the
   adapter root (`extractions/<adapter>/index.jsonl`). Per-adapter only —
   not per-axis — because extraction is a source-axis operation; the
@@ -545,7 +545,7 @@ Each cache owns its own root, so the loader no longer probes for an
 `adapter.yaml` inside the cache directory to disambiguate manifest vs.
 extraction co-tenancy — a manifest-cache directory is always a manifest
 mirror, and the extraction tree never carries `adapter.yaml` at any
-level. Refer to RFC-27 §D8 for the extraction-cache fingerprint
+level. Refer to workflow §D8 for the extraction-cache fingerprint
 contract.
 
 ## Target adapter suffix policy

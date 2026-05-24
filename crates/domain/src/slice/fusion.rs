@@ -1,10 +1,10 @@
-//! RFC-27 §D4 reconciliation index — `fusion.yaml`.
+//! workflow §D4 reconciliation index — `fusion.yaml`.
 //!
 //! One file per slice at `.specify/slices/<slice>/fusion.yaml`. Lists
 //! every `REQ-*` id in `spec.md` and the contributing
 //! `(source-key, claim-id)` pairs plus the authority outcome.
 //! Validated against `schemas/slice/fusion.schema.json`. The file is
-//! audit-only; see [`DECISIONS.md` §"RFC-27 §D4 — `fusion.yaml` is
+//! audit-only; see [`DECISIONS.md` §"workflow §D4 — `fusion.yaml` is
 //! audit-only"][rfc27-d4] for the rationale (`spec.md` is the
 //! authoritative artifact).
 //!
@@ -28,7 +28,7 @@ use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use crate::schema::{fusion_schema_source, validate_value};
 use crate::spec::provenance::RequirementStatus;
 
-/// In-memory model of `fusion.yaml` (RFC-27 §Reconciliation index).
+/// In-memory model of `fusion.yaml` (workflow §Reconciliation index).
 ///
 /// Top-level shape is closed; unknown fields are rejected per the
 /// matching schema.
@@ -112,7 +112,7 @@ pub struct ContributingClaim {
     pub winner: Option<bool>,
 }
 
-/// Closed resolution enum per RFC-27 §Reconciliation index.
+/// Closed resolution enum per workflow §Reconciliation index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -217,7 +217,7 @@ impl FusionIndex {
     /// and the per-source evidence claim ids, returning every
     /// drift finding sorted for byte-stable error output.
     ///
-    /// Drift kinds (RFC-27 §D4 §Acceptance scenario #26-4):
+    /// Drift kinds (workflow §D4 §Acceptance scenario #26-4):
     ///
     /// 1. **Requirement-id drift** — `spec.md` `REQ-*` set ≠
     ///    `fusion.yaml.requirements[].id` set, in either direction.

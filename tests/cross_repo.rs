@@ -307,7 +307,7 @@ impl FixtureProject {
 }
 
 #[test]
-#[ignore = "RFC-25 W1.1: drives the retired `change draft` + `change finalize` verbs; \
+#[ignore = "Wave 1.1: drives the retired `change draft` + `change finalize` verbs; \
               returns when W3.5's `/spec:finalize` skill + `specify plan finalize` land."]
 fn rm01_replays_cross_repo_through_finalize() {
     let envs = TestEnv::new();

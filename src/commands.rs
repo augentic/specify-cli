@@ -165,7 +165,7 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 /// For [`Axis::Target`], `value` accepts either `<name>` or
 /// `<name>@<version>`; the `@version` suffix is treated as an opaque
 /// identifier and stripped to leave the kebab name for the lookup
-/// (RFC-25 §CLI surface).
+/// (workflow §CLI surface).
 fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) -> Result<()> {
     let body = match axis {
         Axis::Source => {

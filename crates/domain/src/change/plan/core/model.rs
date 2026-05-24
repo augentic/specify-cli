@@ -12,7 +12,7 @@ use crate::evidence::ClaimKind;
 
 /// Lifecycle state of a single entry in [`Plan::entries`].
 ///
-/// RFC-25 collapses the per-entry state machine to three states:
+/// workflow collapses the per-entry state machine to three states:
 /// `pending` (default after `plan add` / `plan amend`), `in-progress`
 /// (written only by `plan next`), and `done` (written by
 /// `plan transition <name> done` — the final per-entry transition,
@@ -49,7 +49,7 @@ pub enum Status {
 }
 
 /// Plan-level lifecycle state stored at the top of `plan.yaml`
-/// (RFC-25 §Workflow vocabulary).
+/// (workflow §Workflow vocabulary).
 ///
 /// Two stored states only — `pending` (default after `plan create`)
 /// and `reviewed` (operator-stamped at Gate 1 via
@@ -91,7 +91,7 @@ pub enum Lifecycle {
 pub struct Plan {
     /// Human-readable plan name, e.g. `platform-v2`.
     pub name: String,
-    /// Plan-level lifecycle gate (RFC-25 §Workflow vocabulary).
+    /// Plan-level lifecycle gate (workflow §Workflow vocabulary).
     /// Defaults to [`Lifecycle::Pending`] on parse so 1.x fixtures
     /// without a `lifecycle:` field load cleanly.
     #[serde(default)]
@@ -120,7 +120,7 @@ pub struct Entry {
     /// Target registry project. Required for multi-project registries.
     #[serde(default)]
     pub project: Option<String>,
-    /// Target-adapter identifier (RFC-25 §Adapter vocabulary) for the
+    /// Target-adapter identifier (workflow §Adapter vocabulary) for the
     /// slice (e.g. `omnia@v1`, `contracts@v1`). Required when
     /// `project` is `None`; optional override when `project` is
     /// `Some`. Mutually enriching with `project`: `project` identifies
@@ -134,8 +134,8 @@ pub struct Entry {
     /// [`TargetRef`] newtype and reconciled at plan-validation time
     /// against the resolved target adapter's `version` field.
     ///
-    /// Renamed from `adapter` in RFC-25 W0.2 — the on-disk and
-    /// in-memory field is now `target`. The pre-RFC-25 `adapter`
+    /// Renamed from `adapter` in Wave 0.2 — the on-disk and
+    /// in-memory field is now `target`. The pre-2.0 `adapter`
     /// alias was dropped together with the schema tightening that
     /// shipped in the same change.
     ///
@@ -148,7 +148,7 @@ pub struct Entry {
     /// entry is eligible.
     #[serde(default)]
     pub depends_on: Vec<String>,
-    /// (source-key, candidate-id) bindings (RFC-25 §`Slice.sources`).
+    /// (source-key, candidate-id) bindings (workflow §`Slice.sources`).
     /// Each entry pairs a source key — referencing a top-level
     /// [`Plan::sources`] entry — with the `candidate` id from
     /// `discovery.md` that contributed to the slice. The bare-string
@@ -164,7 +164,7 @@ pub struct Entry {
     /// Free-form human-readable description.
     #[serde(default)]
     pub description: Option<String>,
-    /// RFC-25 §Plan-time fusion — closed enum capturing slice-level
+    /// workflow §Plan-time fusion — closed enum capturing slice-level
     /// fusion outcome. Absent on disk (the default) is semantic `none`.
     /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
     /// materially-disagreeing candidate summaries; `Accepted` /
@@ -172,7 +172,7 @@ pub struct Entry {
     /// `specify plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub divergence: Option<Divergence>,
-    /// RFC-27 §D3 — optional per-slice authority override map keyed
+    /// workflow §D3 — optional per-slice authority override map keyed
     /// by claim kind, valued by source key. Keys are the closed
     /// [`ClaimKind`] enum; values MUST be source keys present in
     /// this slice's own [`Entry::sources`] list — orphan keys are
@@ -183,7 +183,7 @@ pub struct Entry {
     pub authority_override: SliceAuthorityOverride,
 }
 
-/// RFC-25 §Plan-time fusion — slice-level fusion-outcome enum.
+/// workflow §Plan-time fusion — slice-level fusion-outcome enum.
 ///
 /// Closed `none | likely | accepted | rejected` taxonomy. On disk
 /// inside `plan.yaml.slices[].divergence` the field uses
@@ -194,7 +194,7 @@ pub struct Entry {
 /// four values literally — `Divergence::None` serialises as the
 /// kebab-case `"none"` for that channel.
 ///
-/// RFC-27 §D5 — the CLI is the single writer of every variant of
+/// workflow §D5 — the CLI is the single writer of every variant of
 /// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
 /// disk via `specify plan create --divergence-likely <slice>` (the
 /// post-`propose` staging site) and `specify plan amend --divergence
@@ -222,7 +222,7 @@ pub enum Divergence {
     Rejected,
 }
 
-/// RFC-27 §D3 — per-slice authority override map keyed by claim
+/// workflow §D3 — per-slice authority override map keyed by claim
 /// kind, valued by source key.
 ///
 /// The map is scoped to one [`Entry`]; plan-wide and project-wide
@@ -235,7 +235,7 @@ pub enum Divergence {
 /// `#[serde(transparent)]` over `BTreeMap` so the on-disk shape is
 /// the bare YAML map under `authority-override:`. Empty map and
 /// missing field round-trip identically — both leave the slice's
-/// authority resolution at the RFC-25 default ordering.
+/// authority resolution at the workflow default ordering.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct SliceAuthorityOverride {
@@ -254,7 +254,7 @@ fn slice_authority_override_is_empty(o: &SliceAuthorityOverride) -> bool {
 /// payload supplied directly to the adapter, used by the `intent`
 /// source).
 ///
-/// On the wire (RFC-25 §Source) the binding is always the structured
+/// On the wire (workflow §Source) the binding is always the structured
 /// `{ adapter, path?, value? }` object form — 2.0 dropped the
 /// 1.x bare-string shorthand. The `oneOf` exclusion between `path`
 /// and `value` is enforced by `plan.schema.json` and re-checked at
@@ -298,7 +298,7 @@ impl SourceBinding {
     }
 }
 
-/// Parsed `<name>@v<version>` target-adapter identifier (RFC-25 §Adapter
+/// Parsed `<name>@v<version>` target-adapter identifier (workflow §Adapter
 /// vocabulary) used by [`Entry::target`].
 ///
 /// Wire form is the single kebab string `name@vN` (e.g. `omnia@v1`),
@@ -462,7 +462,7 @@ impl std::error::Error for TargetRefParseError {}
 
 /// One `(source-key, candidate-id)` binding under [`Entry::sources`].
 ///
-/// On the wire (RFC-25 §`Slice.sources`) this is either:
+/// On the wire (workflow §`Slice.sources`) this is either:
 ///
 /// - a bare string `<key>` — shorthand for the structured form
 ///   `{ key: <key>, candidate: <slice.name> }`; used predominantly in
@@ -496,7 +496,7 @@ impl SliceSourceBinding {
     }
 
     /// The candidate id this binding pairs with, falling back to the
-    /// owning slice's name for the bare-string shorthand per RFC-25
+    /// owning slice's name for the bare-string shorthand per the workflow contract
     /// §`Slice.sources`.
     #[must_use]
     pub const fn candidate<'a>(&'a self, slice_name: &'a str) -> &'a str {
@@ -508,7 +508,7 @@ impl SliceSourceBinding {
 }
 
 impl Plan {
-    /// Computed predicate (RFC-25 §Workflow vocabulary): `true` when
+    /// Computed predicate (workflow §Workflow vocabulary): `true` when
     /// at least one entry is currently `in-progress`.
     ///
     /// "Currently executing" is not stored — it's derived from
@@ -520,7 +520,7 @@ impl Plan {
         self.entries.iter().any(|e| e.status == Status::InProgress)
     }
 
-    /// Computed predicate (RFC-25 §Workflow vocabulary): `true` when
+    /// Computed predicate (workflow §Workflow vocabulary): `true` when
     /// every entry has reached terminal `done` status.
     ///
     /// Empty plans report drained vacuously — there is no work left
@@ -592,7 +592,7 @@ pub struct EntryPatch {
     pub sources: Option<Vec<SliceSourceBinding>>,
     /// Three-way patch over `project`.
     pub project: Patch<String>,
-    /// Three-way patch over `target` (the RFC-25 target-adapter
+    /// Three-way patch over `target` (the target-adapter
     /// identifier — renamed from `adapter`). The CLI parses the
     /// raw `--target name@vN` flag into [`TargetRef`] before
     /// materialising the patch.
@@ -603,7 +603,7 @@ pub struct EntryPatch {
     pub context: Option<Vec<String>>,
     /// Set `divergence` when `Some`. `None` leaves the field
     /// untouched. The CLI is the only caller that materialises this
-    /// patch (`specify plan amend --divergence`) — RFC-27 §D5
+    /// patch (`specify plan amend --divergence`) — workflow §D5
     /// widens the accepted operator surface to include `Likely`
     /// alongside `Accepted` / `Rejected`; the implicit `None` value
     /// is still rejected at the flag-parser level (omit

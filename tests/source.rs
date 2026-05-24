@@ -1,6 +1,6 @@
 //! Integration tests for `specify source resolve`.
 //!
-//! Mirrors the RFC-25 source-adapter loader exposed by
+//! Mirrors the source-adapter loader exposed by
 //! `crates/domain/src/plugin/`. The CLI verb is a thin
 //! `Plugin::resolve(Axis::Source, …)` wrapper; the cases below pin
 //! the wire shape skill bodies and downstream callers rely on.

@@ -15,7 +15,7 @@ pub enum SourceAction {
     /// (in-repo). Emits the resolved directory path plus the
     /// manifest's declared operations.
     ///
-    /// `--explain` switches the output to the RFC-27 §D8 fingerprint
+    /// `--explain` switches the output to the workflow §D8 fingerprint
     /// chain read from `.specify/.cache/extractions/<name>/index.jsonl`
     /// instead of the manifest summary.
     Resolve {

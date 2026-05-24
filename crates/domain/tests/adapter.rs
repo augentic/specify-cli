@@ -1,4 +1,4 @@
-//! Integration tests for the RFC-25 axis-aware adapter loader
+//! Integration tests for the the axis-aware adapter loader
 //! (`specify_domain::adapter`).
 //!
 //! Covers:
@@ -8,7 +8,7 @@
 //!   wins.
 //! - cache placement — a load of `(source, …)` populates
 //!   `.specify/.cache/manifests/sources/<name>/`; `(target, …)`
-//!   mirrors under `manifests/targets/`. The RFC-27 §D8 extraction
+//!   mirrors under `manifests/targets/`. The workflow §D8 extraction
 //!   cache lives in a sibling tree under
 //!   `.specify/.cache/extractions/<adapter>/` and is exercised by the
 //!   `adapter::cache` unit tests.
@@ -173,7 +173,7 @@ fn cache_dir_resolves_under_axis_segment() {
 fn cache_directory_wins_over_local_when_both_exist() {
     // Stage a manifest under `.specify/.cache/manifests/sources/code-typescript/`
     // alongside the in-tree `adapters/sources/code-typescript/`; assert the
-    // cached copy wins per RFC-25 §Resolver and cache.
+    // cached copy wins per workflow §Resolver and cache.
     let (_tmp, project) = local_project();
     let cached_root = cache_dir(&project, Axis::Source, "code-typescript");
     fs::create_dir_all(&cached_root).expect("create cache dir");
@@ -236,7 +236,7 @@ briefs:
 
 #[test]
 fn resolves_captures_source_adapter_with_tools_array() {
-    // RFC-27 §Acceptance scenario #26-1 (release blocker, D1):
+    // workflow §Acceptance scenario #26-1 (release blocker, D1):
     // pin the loader against the live `adapters/sources/captures/`
     // adapter shape shipped by the `plg` repo. The manifest carries
     // a `tools: [{ name: replay-index }]` declaration and a free-
@@ -281,7 +281,7 @@ description: >-
     assert_eq!(
         resolved.manifest.operations().copied().collect::<Vec<_>>(),
         vec![SourceOperation::Enumerate, SourceOperation::Extract],
-        "captures declares enumerate + extract per RFC-27 §Runtime source adapter"
+        "captures declares enumerate + extract per workflow §Runtime source adapter"
     );
     assert_eq!(
         resolved.manifest.briefs.get(&SourceOperation::Extract).map(String::as_str),

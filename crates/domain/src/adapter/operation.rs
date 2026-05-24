@@ -17,7 +17,7 @@
 //! field, and any `parse::<TargetOperation>()` call all agree on a
 //! single wire spelling.
 //!
-//! Pre-RFC-25 outcome stamps used the legacy `define | build | merge`
+//! pre-2.0 outcome stamps used the legacy `define | build | merge`
 //! target set — readers of those archived files must migrate before
 //! upgrading; the closed enum here will reject `define` at parse time
 //! with a clear error.
@@ -29,7 +29,7 @@ use strum::EnumString;
 /// Closed source-adapter operation set (`enumerate | extract`).
 ///
 /// Source adapters declare exactly these two operations per
-/// RFC-25 §Source adapter contract. The enum is the typed
+/// workflow §Source adapter contract. The enum is the typed
 /// `briefs.keys()` carried by [`crate::adapter::SourceAdapter`]
 /// (parsed out of `adapters/sources/<name>/adapter.yaml` at load
 /// time) and the discriminant stamped onto every cache index row at
@@ -94,13 +94,13 @@ impl SourceOperation {
 /// Closed target-adapter operation set (`shape | build | merge`).
 ///
 /// Target adapters declare exactly these three operations per
-/// RFC-25 §Target adapter contract. The enum is the typed
+/// workflow §Target adapter contract. The enum is the typed
 /// `briefs.keys()` carried by [`crate::adapter::TargetAdapter`]
 /// (parsed out of `adapters/targets/<name>/adapter.yaml` at load
 /// time) and the discriminant stamped into per-slice outcomes
 /// (`<slice_dir>/.metadata.yaml.outcome.phase`).
 ///
-/// Replaces the pre-RFC-25 `Phase { Define, Build, Merge }` — the
+/// Replaces the pre-2.0 `Phase { Define, Build, Merge }` — the
 /// 1.x define phase has no RFC-25 counterpart (refine-time artifacts
 /// are synthesised by core, not produced by an operation), so the
 /// enum collapses to the three target operations.

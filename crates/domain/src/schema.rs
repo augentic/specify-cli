@@ -23,7 +23,7 @@ const PLAN_JSON_SCHEMA: &str = include_str!("../../../schemas/plan/plan.schema.j
 const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.schema.json");
 const FUSION_JSON_SCHEMA: &str = include_str!("../../../schemas/slice/fusion.schema.json");
 
-/// Embedded JSON Schema for `fusion.yaml` (RFC-27 §D4).
+/// Embedded JSON Schema for `fusion.yaml` (workflow §D4).
 ///
 /// Exposed as a `&'static str` so domain modules can validate
 /// in-memory `FusionIndex` values (Phase 1) without re-reading the
@@ -71,7 +71,7 @@ pub fn validate_plan(plan: &Plan) -> Result<()> {
 ///
 /// `slice_dir` is the directory typically at
 /// `.specify/slices/<name>/`. The evidence subdirectory is optional —
-/// returning `Ok(())` when it is absent matches the RFC-25 §Extraction
+/// returning `Ok(())` when it is absent matches the workflow §Extraction
 /// reliability rule that an empty `claims: []` (or no Evidence at all
 /// before extract runs) is valid. The walk is non-recursive: only
 /// direct children of `evidence/` whose extension is `yaml` or `yml`
@@ -239,7 +239,7 @@ mod tests {
     }
 
     /// An empty evidence directory (or missing one) passes — empty
-    /// extraction is a legal slice state per RFC-25 §Extraction
+    /// extraction is a legal slice state per workflow §Extraction
     /// reliability.
     #[test]
     fn missing_evidence_dir_is_ok() {

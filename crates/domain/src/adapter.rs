@@ -1,6 +1,6 @@
 //! Adapter manifest resolution.
 //!
-//! RFC-25 §"Adapter implementation shape" / §"Resolver and cache".
+//! workflow §"Adapter implementation shape" / §"Resolver and cache".
 //! Source and target adapters share the `adapter.yaml` wire shape but
 //! split into [`SourceAdapter`] / [`TargetAdapter`] in memory, each
 //! carrying its closed operation set ([`SourceOperation`] /
@@ -15,7 +15,7 @@
 //! `<project_dir>/adapters/{sources,targets}/<name>/` (in-repo). The
 //! manifest cache mirrors the in-repo adapter tree so source and
 //! target adapters with colliding names disambiguate by axis. The
-//! RFC-27 §D8 per-source extraction result cache lives in a sibling
+//! workflow §D8 per-source extraction result cache lives in a sibling
 //! tree under `<project_dir>/.specify/.cache/extractions/<adapter>/`
 //! (with `index.jsonl` at the adapter root) — see
 //! [DECISIONS.md §"Cache layout"].

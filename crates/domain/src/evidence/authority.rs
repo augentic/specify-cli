@@ -1,4 +1,4 @@
-//! RFC-27 §D2 — per-Evidence, per-claim-kind authority overrides.
+//! workflow §D2 — per-Evidence, per-claim-kind authority overrides.
 //!
 //! The default `intent > documentation > behaviour` ordering stays
 //! per-Evidence via the existing `authority:` field; this module adds
@@ -15,10 +15,10 @@ use serde::{Deserialize, Serialize};
 /// Closed authority-class enum mirrored from
 /// `schemas/evidence.schema.json#/$defs/authorityClass`.
 ///
-/// RFC-25 §Authority hierarchy fixes the default ordering as
-/// `intent > documentation > behaviour`; RFC-27 §D2 lifts authority
+/// workflow §Authority hierarchy fixes the default ordering as
+/// `intent > documentation > behaviour`; workflow §D2 lifts authority
 /// from per-Evidence to per-(Evidence, claim-kind) without widening
-/// the class set. New classes still require an RFC update.
+/// the class set. New classes still require a workflow contract update.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display, clap::ValueEnum,
 )]
@@ -39,7 +39,7 @@ pub enum AuthorityClass {
 /// Kept byte-identical with the schema enum so that
 /// [`AuthorityOverrides`] and the per-slice authority override map
 /// in `plan.yaml.slices[]` validate against the same closed set.
-/// `example` (RFC-27 §D1) is the runtime capture kind emitted by the
+/// `example` (workflow §D1) is the runtime capture kind emitted by the
 /// `captures` source adapter.
 #[derive(
     Debug,
@@ -73,7 +73,7 @@ pub enum ClaimKind {
     Diagram,
     /// `kind: contract` — interface contract excerpt.
     Contract,
-    /// `kind: example` — runtime capture (RFC-27 §D1, `captures`).
+    /// `kind: example` — runtime capture (workflow §D1, `captures`).
     Example,
     /// `kind: excerpt` — code excerpt.
     Excerpt,
@@ -124,7 +124,7 @@ impl FromStr for ClaimKind {
 /// Optional per-(Evidence, claim-kind) authority override map.
 ///
 /// Synthesis consults this map first, then falls back to the
-/// document-level `authority:` field, then to the RFC-25 default
+/// document-level `authority:` field, then to the workflow default
 /// ordering. Empty maps and a missing field on the Evidence document
 /// are equivalent — both leave the document-level `authority:`
 /// untouched.
@@ -138,7 +138,7 @@ impl FromStr for ClaimKind {
 /// ```
 ///
 /// Both keys and values are closed enums; new kinds or classes
-/// require an RFC update.
+/// require a workflow contract update.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct AuthorityOverrides {
@@ -246,7 +246,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------
-    // RFC-27 §D3 resolution-order pin.
+    // workflow §D3 resolution-order pin.
     //
     // The CLI does not yet ship a synthesis resolver — `/spec:refine`
     // is still skill-driven and the in-Rust resolution helper lives
@@ -298,7 +298,7 @@ mod tests {
     }
 
     fn rank(class: AuthorityClass) -> u8 {
-        // `intent > documentation > behaviour` per RFC-25.
+        // `intent > documentation > behaviour` per the workflow contract.
         match class {
             AuthorityClass::Intent => 2,
             AuthorityClass::Documentation => 1,

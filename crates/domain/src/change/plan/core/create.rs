@@ -91,7 +91,7 @@ mod tests {
             project: Some("default".into()),
             target: None,
             // Even an entry that arrives with `Done` (the only other
-            // legal status post-RFC-25) must be re-stamped to `Pending`
+            // legal status post-2.0) must be re-stamped to `Pending`
             // by `Plan::create` — the single-writer rule on the
             // per-entry status state machine.
             status: Status::Done,

@@ -67,7 +67,7 @@ fn missing_artifact_produces_synth_failure() {
     }
 
     // `contracts` and `specs` are globs — empty expansion is silently
-    // skipped per RFC-25 §"Refinement" (slices need not populate every
+    // skipped per workflow §"Refinement" (slices need not populate every
     // overlay; the cross-validation rules surface the operator-facing
     // failure for the missing slice spec separately).
     assert!(!report.brief_results.contains_key("contracts"));

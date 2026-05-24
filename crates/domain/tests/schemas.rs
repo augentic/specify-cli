@@ -1,4 +1,4 @@
-//! Golden tests for the RFC-25 JSON Schemas shipped under
+//! Golden tests for the the workflow contract JSON Schemas shipped under
 //! `cli/schemas/`: `adapter.schema.json`, `source.schema.json`,
 //! `target.schema.json`, `evidence.schema.json`, and
 //! `discovery/candidate.schema.json`. Each schema gets a "valid"

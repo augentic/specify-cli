@@ -1,4 +1,4 @@
-//! Integration tests for the RFC-25 §Observability journal events.
+//! Integration tests for the workflow §Observability journal events.
 //!
 //! Verifies that each CLI-owned emit site writes the documented wire
 //! shape into `.specify/journal.jsonl` and that the agent-facing
@@ -133,7 +133,7 @@ fn plan_amend_divergence_from_none_to_accepted() {
 
 #[test]
 fn plan_amend_divergence_none_to_likely_emits_event() {
-    // RFC-27 §D5: the CLI is the single writer of every variant of
+    // workflow §D5: the CLI is the single writer of every variant of
     // `slices[].divergence`, including `likely`. A `plan amend
     // --divergence likely` against a slice with no prior divergence
     // emits one `plan.amend.divergence` event with `from: none, to:
@@ -156,7 +156,7 @@ fn plan_amend_divergence_none_to_likely_emits_event() {
 
 #[test]
 fn plan_amend_divergence_likely_round_trips_to_yaml() {
-    // RFC-27 §D5: `specify plan amend --divergence likely` is the
+    // workflow §D5: `specify plan amend --divergence likely` is the
     // bare-skill fallback writer of `slices[].divergence: likely`.
     // The CLI must persist the field byte-identically to the legacy
     // skill-written form so existing fixtures keep round-tripping.
@@ -425,7 +425,7 @@ fn agent_emit_helper_writes_one_event_per_jsonl_line() {
     // Exercises the public Rust helper skill bodies call for
     // agent-driven events. The harness drives `append` directly
     // because the CLI does not own a `journal append` verb
-    // (RFC-25 §"What was cut and why"). `slice.synthesis.*` is
+    // (workflow §"What was cut and why"). `slice.synthesis.*` is
     // CLI-owned via `specify slice validate` instead.
     let project = Project::init();
     let layout = Layout::new(project.root());
@@ -469,7 +469,7 @@ fn agent_emit_helper_writes_one_event_per_jsonl_line() {
 #[test]
 fn divergence_kebab_case_round_trip() {
     // Wire-format guard: snake_case lifecycle values are never
-    // produced anywhere on disk (RFC-25 §Wire format).
+    // produced anywhere on disk (workflow §Wire format).
     for state in [Divergence::None, Divergence::Likely, Divergence::Accepted, Divergence::Rejected]
     {
         let rendered = serde_json::to_string(&state).expect("Divergence serialises");

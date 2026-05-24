@@ -1,5 +1,5 @@
 //! Handler for the `source resolve --explain` fingerprint-chain reader
-//! (RFC-27 §D8).
+//! (workflow §D8).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

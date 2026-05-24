@@ -1,6 +1,6 @@
 //! `slice validate` — coherence check against the adapter validation
 //! rules plus first-use schema validation of per-source `Evidence`
-//! files and RFC-25 §Requirement block contract validation of
+//! files and workflow §Requirement block contract validation of
 //! `spec.md` provenance metadata.
 
 use std::collections::BTreeSet;
@@ -20,7 +20,7 @@ use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
-    // Per RFC-25 §Source adapter contract, any Evidence file under
+    // Per workflow §Source adapter contract, any Evidence file under
     // `<slice>/evidence/` must satisfy `schemas/evidence.schema.json`.
     // Failure here short-circuits the rule-based validator below so
     // the operator sees the structural problem first, before adapter
@@ -28,20 +28,20 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // malformed Evidence.
     validate_evidence_dir(&slice_dir)?;
 
-    // RFC-25 §Requirement block contract — provenance metadata in
+    // workflow §Requirement block contract — provenance metadata in
     // `<slice>/specs/**/*.md`. Absent `spec.md` (e.g. slice still
     // `refining`) is a valid intermediate state and is silently
     // skipped.
     validate_spec_provenance(ctx, &slice_dir, name)?;
 
-    // RFC-27 §D4 — when `fusion.yaml` exists, cross-check it against
+    // workflow §D4 — when `fusion.yaml` exists, cross-check it against
     // `spec.md` REQ ids and per-source evidence claim ids. Absence
     // of `fusion.yaml` is *not* drift: older slices and pre-refine
     // slices skip the check silently. The slice-fusion-drift error
     // body bundles every finding so the operator sees the full
     // re-refine surface in one pass.
     //
-    // RFC-27 §D3 — refuse a per-slice `authority-override` map that
+    // workflow §D3 — refuse a per-slice `authority-override` map that
     // names a source key absent from the slice's own `sources[]`
     // list. Runs before `validate_slice` so the operator sees the
     // structural issue before adapter rules surface downstream
@@ -142,11 +142,11 @@ fn collect_synthesis_tags(slice_dir: &Path) -> Result<Vec<(String, RequirementTa
 
 /// Bundle the three pre-adapter gates that fire on a single slice:
 ///
-/// 1. RFC-27 §D4 — fusion-drift detection between `spec.md`, the
+/// 1. workflow §D4 — fusion-drift detection between `spec.md`, the
 ///    per-slice `fusion.yaml`, and per-source `evidence/<key>.yaml`.
-/// 2. RFC-27 §D3 — orphan source keys on the slice's
+/// 2. workflow §D3 — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
-/// 3. RFC-27 §D6 — candidate `id` ↔ `aliases[]` collisions in
+/// 3. workflow §D6 — candidate `id` ↔ `aliases[]` collisions in
 ///    `<project_dir>/discovery.md`. A discovery-level check (not
 ///    per-slice) but evaluated here because `specify slice validate`
 ///    is the single CLI surface skills shell out to between
@@ -163,7 +163,7 @@ fn validate_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result
     if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
 }
 
-/// RFC-27 §D6 alias-collision gate. Loads
+/// workflow §D6 alias-collision gate. Loads
 /// `<project_dir>/discovery.md` when present and emits one
 /// `discovery-alias-collision` finding per name that resolves to
 /// more than one candidate. Absent `discovery.md` skips the check
@@ -183,7 +183,7 @@ fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<Validatio
         .collect())
 }
 
-/// RFC-27 §D4 drift gate. Loads `<slice>/fusion.yaml` when present,
+/// workflow §D4 drift gate. Loads `<slice>/fusion.yaml` when present,
 /// gathers `REQ-*` ids from every `<slice>/specs/**/*.md` file and
 /// claim ids from every `<slice>/evidence/<source>.yaml` file, and
 /// emits one `slice-fusion-drift` finding per drift entry. The
@@ -206,7 +206,7 @@ fn collect_fusion_drift_findings(slice_dir: &Path) -> Result<Vec<ValidationSumma
     Ok(drift.into_iter().map(fusion::FusionDrift::into_summary).collect())
 }
 
-/// RFC-27 §D3 orphan-source-key gate. Loads `plan.yaml` (when
+/// workflow §D3 orphan-source-key gate. Loads `plan.yaml` (when
 /// present) and reports one finding per `(slice, kind)` pair
 /// whose source-key value is not in the slice's own `sources[]`
 /// list. Absent `plan.yaml` (e.g. ad-hoc slice without a plan)
@@ -263,7 +263,7 @@ fn collect_spec_req_ids(slice_dir: &Path) -> Result<BTreeSet<String>> {
     Ok(ids)
 }
 
-/// Walk `<slice>/specs/**/*.md`, parse the RFC-25 §Requirement block
+/// Walk `<slice>/specs/**/*.md`, parse the workflow §Requirement block
 /// contract metadata, and surface every failure as a single
 /// [`Error::Validation`] payload so the operator can see all of them in
 /// one pass. The plan-level source bindings for the slice (when
@@ -291,9 +291,9 @@ fn validate_spec_provenance(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<(
         let parsed = provenance::parse_spec_md(&text);
         let path_hint = path_hint(&path, slice_dir);
         if parsed.is_unannotated() {
-            // Pre-RFC-25 (or pre-synthesis) state — no provenance
+            // pre-2.0 (or pre-synthesis) state — no provenance
             // lines anywhere in the file. Skip silently per the
-            // RFC-25 §Workflow vocabulary `refining` lifecycle.
+            // workflow §Workflow vocabulary `refining` lifecycle.
             continue;
         }
         let validation_findings = provenance::validate(&parsed, &source_keys);

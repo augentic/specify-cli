@@ -18,7 +18,7 @@ use crate::init::{
     upsert_gitignore,
 };
 
-/// RFC-25 canonical refine-time artifact set. Hardcoded because target
+/// canonical refine-time artifact set. Hardcoded because target
 /// adapters no longer enumerate per-define-brief artifacts via
 /// `pipeline.define[]`; refine synthesises the canonical set directly
 /// (see `DECISIONS.md` §"Adapter loader axis routing"). The exact

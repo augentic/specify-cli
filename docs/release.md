@@ -97,7 +97,7 @@ Once the formula lands in `homebrew-core`, the tap step disappears entirely — 
 
 ## Install script hosting
 
-`install.sh` lives at the repo root and is served verbatim. Whether we front it on a `specify.sh` domain or serve it as a release asset (or both) is a Phase-2 choice: the skill-fallback prose in migrated skills already tolerates both, per [RFC-1 §CLI Distribution and Fallback](https://github.com/augentic/specify/blob/main/rfcs/archive/rfc-1-cli.md#cli-distribution-and-fallback).
+`install.sh` lives at the repo root and is served verbatim. Whether we front it on a `specify.sh` domain or serve it as a release asset (or both) is a Phase-2 choice: the skill-fallback prose in migrated skills already tolerates both, per [RFC-1 §CLI Distribution and Fallback](https://github.com/augentic/specify/blob/main/rfcs/done/rfc-1-cli.md#cli-distribution-and-fallback).
 
 Until a domain is purchased, users can still run:
 

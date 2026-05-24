@@ -388,7 +388,7 @@ fn top_level_help_lists_source_and_target_axis_verbs() {
 }
 
 // ---------------------------------------------------------------------------
-// RFC-25 §Requirement block contract — `slice validate` provenance gate
+// workflow §Requirement block contract — `slice validate` provenance gate
 // ---------------------------------------------------------------------------
 
 /// Stage a slice on disk and seed `<slice>/specs/login/spec.md`
@@ -556,7 +556,7 @@ fn validate_rejects_tag_status_mismatch_with_exit_two() {
 }
 
 // ---------------------------------------------------------------------------
-// RFC-27 §D4 — `slice validate` fusion drift gate
+// workflow §D4 — `slice validate` fusion drift gate
 // ---------------------------------------------------------------------------
 
 /// Minimal fusion.yaml for a slice named `my-slice` with one
@@ -777,12 +777,12 @@ body without metadata lines yet
 
 #[test]
 fn validate_skips_provenance_when_no_metadata_lines_present() {
-    // Pre-RFC-25 (or pre-synthesis) state. The provenance gate must
+    // pre-2.0 (or pre-synthesis) state. The provenance gate must
     // not fire and the slice progresses to the existing adapter rule
     // run. The adapter rules will still surface deferred /
     // pass-style results — we only assert the provenance rule ids
     // are NOT present.
-    let spec = "### Requirement: Pre-RFC-25 body\n\n\
+    let spec = "### Requirement: pre-2.0 body\n\n\
                 ID: REQ-001\n\n\
                 body that has no Sources or Status yet\n";
     let project = stage_slice_with_spec(spec, None);
@@ -801,7 +801,7 @@ fn validate_skips_provenance_when_no_metadata_lines_present() {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert!(
                 !rule_id.starts_with("spec.requirement-"),
-                "no provenance rule should fire on a pre-RFC-25 spec.md, got: {rule_id}"
+                "no provenance rule should fire on a pre-2.0 spec.md, got: {rule_id}"
             );
         }
     }

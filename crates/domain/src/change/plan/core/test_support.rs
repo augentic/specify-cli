@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use super::model::{Entry, Lifecycle, Plan, SliceAuthorityOverride, Status};
 
 /// Reduced-state reproduction of the `rfc-2-execution.md` §"The Plan"
-/// fixture. Per RFC-25, v1 has no per-entry `failed`, `blocked`, or
+/// fixture. Per the workflow contract, v1 has no per-entry `failed`, `blocked`, or
 /// `skipped` state — entries either move forward or stay where they
 /// are. The fixture has been mechanically rewritten to use the
 /// surviving three-state enum.

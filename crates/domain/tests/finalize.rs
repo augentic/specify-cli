@@ -25,7 +25,7 @@ use crate::common::{MockCmd, RecordedCall, fail_stderr, ok_stdout};
 
 #[test]
 fn terminal_states_accept_done_only() {
-    // Post-RFC-25 the only terminal per-entry state is `Done`.
+    // Post-2.0 the only terminal per-entry state is `Done`.
     assert!(is_terminal(Status::Done));
 }
 

@@ -2,10 +2,10 @@
 //! refine-time artifact set, locates each artifact, invokes the
 //! registered rules, and collects a [`ValidationReport`].
 //!
-//! RFC-25 §"Refinement" pins the canonical artifact set to
+//! workflow §"Refinement" pins the canonical artifact set to
 //! `proposal.md`, `spec.md`, `design.md`, `tasks.md`, plus the
 //! `contracts/` overlay; per-define-brief `generates` paths from the
-//! pre-RFC-25 `pipeline.define[]` are gone with the legacy adapter
+//! pre-2.0 `pipeline.define[]` are gone with the legacy adapter
 //! shape. Rules are still registered in
 //! [`crate::validate::registry::rules_for`] under the historical
 //! per-brief namespaces (`proposal`, `specs`, `design`, `tasks`,
@@ -71,7 +71,7 @@ pub fn validate_slice(slice_dir: &Path) -> Result<ValidationReport, Error> {
             // Glob matched nothing. If the configured path is literal,
             // treat that as "artifact missing" so the skill sees the
             // failure. Globs that legitimately match nothing are
-            // skipped silently — RFC-25 slices don't have to populate
+            // skipped silently — Specify 2.0 slices don't have to populate
             // every overlay (e.g. `contracts/`).
             if !artifact.contains('*') {
                 let missing_path = slice_dir.join(artifact);

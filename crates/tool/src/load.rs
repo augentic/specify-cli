@@ -16,7 +16,7 @@ pub fn project_tools(project_name: impl Into<String>, tools: Vec<Tool>) -> Vec<(
 }
 
 /// Read the plugin-scope `tools.yaml` sidecar next to a resolved
-/// `adapter.yaml` (per RFC-25 §Adapter implementation shape, both
+/// `adapter.yaml` (per workflow §Adapter implementation shape, both
 /// source and target plugins keep the `adapter.yaml` filename).
 ///
 /// Plugins without a sidecar remain valid and return an empty list.

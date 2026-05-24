@@ -4,7 +4,7 @@
 //! `id`, the non-empty `sources[]` keys that surfaced the candidate,
 //! the one-line `summary`, the optional `tentative` flag set by
 //! `/spec:plan`'s `propose` sub-step on low-confidence cross-source
-//! merges, and (RFC-27 §D6) the optional `aliases[]` list. Operator
+//! merges, and (workflow §D6) the optional `aliases[]` list. Operator
 //! additions through `specify plan amend --add-alias` survive
 //! re-enumeration.
 
@@ -27,7 +27,7 @@ pub struct Candidate {
     /// confidence; the operator reconciles at Gate 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tentative: Option<bool>,
-    /// Optional alias list (RFC-27 §D6). `slices[].sources[].candidate`
+    /// Optional alias list (workflow §D6). `slices[].sources[].candidate`
     /// resolves first against `id`, then against any entry in
     /// `aliases`. Empty list and missing field are equivalent on the
     /// wire.
@@ -59,7 +59,7 @@ impl CandidateAliases {
     }
 
     /// `true` when `needle` matches any alias entry (case-sensitive
-    /// per RFC-27 §D6).
+    /// per workflow §D6).
     #[must_use]
     pub fn contains(&self, needle: &str) -> bool {
         self.names.iter().any(|alias| alias == needle)
@@ -81,7 +81,7 @@ impl Candidate {
     /// `true` when `token` equals this candidate's `id` or any entry
     /// in `aliases[]`.
     ///
-    /// RFC-27 §D6 — `slices[].sources[].candidate` resolves first
+    /// workflow §D6 — `slices[].sources[].candidate` resolves first
     /// against `id`, then against `aliases[]`; case-sensitive.
     #[must_use]
     pub fn resolves(&self, token: &str) -> bool {
@@ -217,7 +217,7 @@ aliases:
         assert!(candidate.resolves("user-registration"));
         assert!(candidate.resolves("account-registration"));
         assert!(candidate.resolves("user-signup"));
-        assert!(!candidate.resolves("USER-REGISTRATION"), "case-sensitive per RFC-27 §D6");
+        assert!(!candidate.resolves("USER-REGISTRATION"), "case-sensitive per workflow §D6");
         assert!(!candidate.resolves("password-reset"));
     }
 

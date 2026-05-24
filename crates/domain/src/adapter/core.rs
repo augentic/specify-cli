@@ -26,7 +26,7 @@ use crate::schema::validate_value;
 /// Filename of an adapter manifest.
 ///
 /// Source and target adapters share the `adapter.yaml` filename per
-/// RFC-25 §Adapter implementation shape; the directory's axis (under
+/// workflow §Adapter implementation shape; the directory's axis (under
 /// `adapters/sources/` or `adapters/targets/`) and the manifest's
 /// `axis:` field disambiguate.
 pub const ADAPTER_FILENAME: &str = "adapter.yaml";
@@ -38,7 +38,7 @@ pub const ADAPTERS_DIR: &str = "adapters";
 ///
 /// `.specify/.cache/manifests/{sources,targets}/<name>/` mirrors the
 /// in-repo `adapters/{sources,targets}/<name>/` tree. Paired with
-/// [`EXTRACTIONS_CACHE_DIR`] so the manifest and RFC-27 §D8 extraction
+/// [`EXTRACTIONS_CACHE_DIR`] so the manifest and workflow §D8 extraction
 /// caches own disjoint roots (see [DECISIONS.md §"Cache layout"]).
 ///
 /// [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
@@ -47,7 +47,7 @@ pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 /// Extraction-cache root segment under `.specify/.cache/`.
 ///
 /// `.specify/.cache/extractions/<adapter>/<fingerprint>/` holds the
-/// RFC-27 §D8 per-source extraction result cache (with `index.jsonl`
+/// workflow §D8 per-source extraction result cache (with `index.jsonl`
 /// at the adapter root). Per-adapter only — extraction is a source-axis
 /// operation — and partitioned from [`MANIFESTS_CACHE_DIR`] so each
 /// cache owns its own tree (no co-tenancy heuristic; see
@@ -62,7 +62,7 @@ const TARGET_JSON_SCHEMA: &str = include_str!("../../../../schemas/target.schema
 
 /// Axis discriminator for an adapter manifest.
 ///
-/// Source vs target — see RFC-25 §Adapter axis. The closed enum is
+/// Source vs target — see workflow §Adapter axis. The closed enum is
 /// used by the resolver dispatcher (`commands::resolve_adapter`) and
 /// the manifest-cache helpers ([`cache_dir`], `adapter_axis_dir`);
 /// the in-memory manifests themselves are axis-typed
@@ -131,7 +131,7 @@ pub struct AdapterToolDeclaration {
 }
 
 /// Closed enum for the optional `cache:` field on an adapter manifest
-/// (RFC-27 §D8). Single variant in v1; widened only behind an RFC.
+/// (workflow §D8). Single variant in v1; widened only behind an RFC.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -150,7 +150,7 @@ pub enum AdapterLocation {
     /// Resolved from the manifest cache at
     /// `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`.
     /// The manifest cache mirrors the in-repo adapter tree
-    /// (`adapter.yaml` plus brief markdown); the RFC-27 §D8 extraction
+    /// (`adapter.yaml` plus brief markdown); the workflow §D8 extraction
     /// result cache lives in a sibling tree under
     /// `.specify/.cache/extractions/<adapter>/` — see
     /// [DECISIONS.md §"Cache layout"].
@@ -183,7 +183,7 @@ impl AdapterLocation {
 ///
 /// This is the agent-populated mirror of `adapters/{sources,targets}/<name>/`
 /// — `adapter.yaml` plus the brief markdown files it references. The
-/// RFC-27 §D8 per-source extraction result cache lives in a separate
+/// workflow §D8 per-source extraction result cache lives in a separate
 /// sibling tree under `.specify/.cache/extractions/<adapter>/` (with
 /// `index.jsonl` at the adapter root) so the two caches no longer share
 /// a root; see [DECISIONS.md §"Cache layout"].
@@ -233,7 +233,7 @@ pub struct SourceAdapter {
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Optional cache opt-out switch (RFC-27 §D8).
+    /// Optional cache opt-out switch (workflow §D8).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<CacheMode>,
 }
@@ -270,7 +270,7 @@ pub struct TargetAdapter {
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Optional cache opt-out switch (RFC-27 §D8).
+    /// Optional cache opt-out switch (workflow §D8).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<CacheMode>,
 }
@@ -306,7 +306,7 @@ pub struct ResolvedTargetAdapter {
 impl SourceAdapter {
     /// Resolve a source adapter by kebab-case name.
     ///
-    /// Probe order, per RFC-25 §Resolver and cache:
+    /// Probe order, per workflow §Resolver and cache:
     ///
     /// 1. `<project_dir>/.specify/.cache/manifests/sources/<name>/adapter.yaml`
     ///    (agent-populated manifest cache).
@@ -357,7 +357,7 @@ impl SourceAdapter {
 impl TargetAdapter {
     /// Resolve a target adapter by kebab-case name.
     ///
-    /// Probe order, per RFC-25 §Resolver and cache:
+    /// Probe order, per workflow §Resolver and cache:
     ///
     /// 1. `<project_dir>/.specify/.cache/manifests/targets/<name>/adapter.yaml`
     ///    (agent-populated manifest cache).
@@ -447,7 +447,7 @@ fn locate_axis(
     let cached = cache_dir(project_dir, axis, name);
     // The manifest cache owns its own root
     // (`.specify/.cache/manifests/{sources,targets}/<name>/`), disjoint
-    // from the RFC-27 §D8 extraction cache under
+    // from the workflow §D8 extraction cache under
     // `.specify/.cache/extractions/<adapter>/`. A bare cache directory
     // is therefore always a manifest mirror — see
     // [DECISIONS.md §"Cache layout"].

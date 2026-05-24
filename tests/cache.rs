@@ -1,4 +1,4 @@
-//! Integration tests for the RFC-27 §D8 cache index explain surface.
+//! Integration tests for the workflow §D8 cache index explain surface.
 
 use std::fs;
 

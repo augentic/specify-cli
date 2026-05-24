@@ -1,4 +1,4 @@
-//! RFC-27 §D8 cache fingerprint inputs and the per-write index entry
+//! workflow §D8 cache fingerprint inputs and the per-write index entry
 //! persisted at `.specify/.cache/extractions/<adapter>/index.jsonl`.
 //!
 //! Lookup / write helpers the source-resolution code path uses.
@@ -17,7 +17,7 @@ pub use io::{
 };
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-/// Closed list of fingerprint inputs (RFC-27 §D8).
+/// Closed list of fingerprint inputs (workflow §D8).
 ///
 /// Inputs are byte-stable per source — operators who pin the four
 /// inputs at a known set can re-run any prior `/spec:execute` and
@@ -95,7 +95,7 @@ impl CacheFingerprint {
     ///
     /// Field order: `source`, `adapter`, `brief_sha256`,
     /// `tool_versions`, `candidate` — the closed declaration order of
-    /// [`CacheFingerprint`], which mirrors the RFC-27 §D8 input list.
+    /// [`CacheFingerprint`], which mirrors the workflow §D8 input list.
     #[must_use]
     pub fn diff_reason(prior: &Self, current: &Self) -> Option<CacheMissReason> {
         if prior.source != current.source {
@@ -130,7 +130,7 @@ pub fn sha256_prefixed(bytes: &[u8]) -> String {
 
 /// Closed two-form `source:` shape inside a [`CacheFingerprint`].
 ///
-/// Mirrors RFC-25 §`Source` — bindings are either path-style or
+/// Mirrors workflow §`Source` — bindings are either path-style or
 /// value-style. The two forms hash differently downstream; the closed
 /// enum makes the distinction visible at the type level.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -195,7 +195,7 @@ pub struct FingerprintToolVersion {
 }
 
 /// One row appended to `.specify/.cache/extractions/<adapter>/index.jsonl`
-/// on every cache write (RFC-27 §D8).
+/// on every cache write (workflow §D8).
 ///
 /// The slot is `(timestamp, fingerprint-sha256, slice, source-key,
 /// adapter, operation)` — together they let `specify source resolve
@@ -226,7 +226,7 @@ pub struct CacheIndexEntry {
 /// `adapter::operation` module so cache consumers reach the type via
 /// the same import they use for [`CacheIndexEntry`].
 ///
-/// The cache write surface (RFC-27 §D8) records which one drove a
+/// The cache write surface (workflow §D8) records which one drove a
 /// given index row so `specify source resolve --explain` can
 /// attribute hits and misses. Target adapters use the sibling
 /// [`TargetOperation`](crate::adapter::TargetOperation) enum

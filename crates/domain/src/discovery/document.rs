@@ -2,7 +2,7 @@
 //! `## Candidate inventory` section plus the surrounding operator
 //! prose.
 //!
-//! RFC-27 §D6 — `slices[].sources[].candidate` resolves first against
+//! workflow §D6 — `slices[].sources[].candidate` resolves first against
 //! a candidate's `id`, then against any entry in `aliases[]`. The
 //! `## Candidate inventory` section uses the block grammar
 //!
@@ -67,7 +67,7 @@ impl Discovery {
     /// inventory` section verbatim. Inside the section, every
     /// `### <id>` block plus its bullet list is collected as a
     /// [`Candidate`]; bullets are parsed line-by-line. Aliases use
-    /// the inline `[a, b, c]` form per RFC-27 §D6.
+    /// the inline `[a, b, c]` form per workflow §D6.
     ///
     /// # Errors
     ///
@@ -117,7 +117,7 @@ impl Discovery {
         atomic::bytes_write(path, body.as_bytes())
     }
 
-    /// Locate a candidate by its `id` for mutation. RFC-27 §D6 calls
+    /// Locate a candidate by its `id` for mutation. workflow §D6 calls
     /// out `id`-only addressing for amend-style operations (aliases
     /// are *resolved* against, not *addressed* by, on the amend
     /// path); use [`Self::resolve_candidate`] when the caller wants
@@ -143,7 +143,7 @@ impl Discovery {
     }
 
     /// Resolve a `--sources <key>=<value>` token to its candidate
-    /// per RFC-27 §D6. Walks every candidate, returning a hit when
+    /// per workflow §D6. Walks every candidate, returning a hit when
     /// `token` matches the candidate's `id` or any of its
     /// `aliases[]`. Multiple hits surface as
     /// [`ResolveError::Collision`] — the document is invalid, not
@@ -178,7 +178,7 @@ impl Discovery {
     /// candidates, returning every namespace collision sorted
     /// deterministically.
     ///
-    /// The single-namespace rule per RFC-27 §D6: an alias MUST NOT
+    /// The single-namespace rule per workflow §D6: an alias MUST NOT
     /// collide with ANY other candidate's `id` or `aliases[]` in the
     /// same `discovery.md`. Findings sort lexicographically on the
     /// colliding name, then by the bearing candidate id list so
@@ -310,7 +310,7 @@ impl Discovery {
 }
 
 /// Render a single `### <id>` block onto `out`. Bullet order mirrors
-/// RFC-27 §D6: `id`, optional `aliases`, `sources`, `summary`, plus
+/// workflow §D6: `id`, optional `aliases`, `sources`, `summary`, plus
 /// the optional `tentative` flag.
 fn render_candidate(out: &mut String, candidate: &Candidate) {
     out.push_str("### ");

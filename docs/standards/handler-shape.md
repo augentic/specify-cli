@@ -63,7 +63,7 @@ Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/comm
 
 Never put domain logic in the binary. If a function needs unit tests, it belongs in a workspace crate. The binary owns argv parsing, formatting, and dispatch only. For the crate dependency direction this enforces see [architecture.md §"Workspace layout"](./architecture.md#workspace-layout).
 
-## RFC-25 verb shapes
+## Adapter-resolve verb shapes
 
 `source resolve <name>` and `target resolve <value>` are format-only
 handlers — both clap arms in `src/commands.rs` dispatch to a single
@@ -75,7 +75,7 @@ emits a `ResolveBody { axis, name, resolved_path, location,
 operations, description }` via the direct `output::emit` path
 described above. They never load a `Ctx`, because adapter resolution
 is read-only and runs before any project mutation. The unified helper
-peels an opaque `@version` suffix only on `Axis::Target` (per RFC-25
+peels an opaque `@version` suffix only on `Axis::Target` (per the workflow contract
 §CLI surface); the axis discriminator is otherwise the sole branch,
 so adding a third axis later is a one-extra-arm addition to the
 existing `match`.

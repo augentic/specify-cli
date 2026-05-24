@@ -121,7 +121,7 @@ fn archive_refuses_pending() {
 
 #[test]
 fn archive_refuses_nonterminal() {
-    // Post-RFC-25, only `Done` is terminal for archive purposes.
+    // Post-2.0, only `Done` is terminal for archive purposes.
     // `Pending` and `InProgress` block; v1 has no per-entry
     // `failed`/`blocked`/`skipped` state to cover here.
     let tmp = tempdir().expect("tempdir");

@@ -70,7 +70,7 @@ pub enum Commands {
         hub: bool,
     },
 
-    /// Source adapter operations (RFC-25). Source adapters provide
+    /// Source adapter operations (workflow contract). Source adapters provide
     /// `enumerate` + `extract` capabilities and are resolved against
     /// `adapters/sources/<name>/adapter.yaml` (in-repo) or
     /// `.specify/.cache/manifests/sources/<name>/` (agent manifest cache).
@@ -79,7 +79,7 @@ pub enum Commands {
         action: SourceAction,
     },
 
-    /// Target adapter operations (RFC-25). Target adapters provide
+    /// Target adapter operations (workflow contract). Target adapters provide
     /// `shape` + `build` + `merge` capabilities and are resolved
     /// against `adapters/targets/<name>/adapter.yaml` (in-repo) or
     /// `.specify/.cache/manifests/targets/<name>/` (agent manifest cache).
@@ -217,7 +217,7 @@ impl FromStr for SourceArg {
 /// Typed value for the per-slice `--sources` / `--add-source` /
 /// `--remove-source` flags.
 ///
-/// Wire forms (RFC-25 §`Slice.sources`):
+/// Wire forms (workflow §`Slice.sources`):
 ///
 /// - `<key>=<candidate-id>` — structured binding; both sides are
 ///   non-empty kebab identifiers. Materialises as
@@ -257,7 +257,7 @@ pub struct AuthorityOverrideKindAssign {
 }
 
 /// Typed value for `specify plan amend --add-alias` /
-/// `--remove-alias` (RFC-27 §D6). Wire form is
+/// `--remove-alias` (workflow §D6). Wire form is
 /// `<candidate-id>=<alias>`; both sides must be non-empty
 /// kebab-case strings. The closed [`specify_error::is_kebab`]
 /// check runs at the handler boundary so the parser stays focused

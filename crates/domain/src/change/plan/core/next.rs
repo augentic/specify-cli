@@ -38,7 +38,7 @@ impl Plan {
     /// active entry without writing anything.
     ///
     /// This is the **only** writer of per-entry `InProgress` per
-    /// RFC-25 §CLI surface — `plan add` / `amend` write `Pending`
+    /// workflow §CLI surface — `plan add` / `amend` write `Pending`
     /// only, and `plan transition` writes `Done` only.
     ///
     /// Returns `None` when the plan is drained (no active and no
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn next_eligible_none_when_finished() {
-        // Post-RFC-25 the only terminal per-entry state is `Done`. A
+        // Post-2.0 the only terminal per-entry state is `Done`. A
         // plan whose entries are all `Done` is drained — `next_eligible`
         // must report nothing.
         let plan = plan_with_changes(vec![

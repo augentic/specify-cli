@@ -1,4 +1,4 @@
-//! `specify target {resolve}` — RFC-25 target adapter operations.
+//! `specify target {resolve}` — target adapter operations.
 //!
 //! Target adapters carry `axis: target` and the `shape` + `build` +
 //! `merge` capabilities. The run-side dispatch lives on the unified

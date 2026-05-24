@@ -6,7 +6,7 @@
 //! `cache-meta.yaml` with the resolved URI. The agent owns writes to
 //! the manifest cache; the CLI reads `.cache-meta.yaml` (via
 //! [`CacheMeta::load`]) only to decide whether the cache matches
-//! `.specify/project.yaml:adapter`. The RFC-27 §D8 extraction cache at
+//! `.specify/project.yaml:adapter`. The workflow §D8 extraction cache at
 //! `.specify/.cache/extractions/<adapter>/` lives in a sibling tree and
 //! is managed by [`crate::adapter::cache`].
 

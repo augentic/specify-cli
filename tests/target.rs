@@ -1,6 +1,6 @@
 //! Integration tests for `specify target resolve`.
 //!
-//! Mirrors the RFC-25 target-adapter loader exposed by
+//! Mirrors the target-adapter loader exposed by
 //! `crates/domain/src/adapter/`. The CLI verb is a thin
 //! `TargetAdapter::resolve(name, project_dir)` wrapper.
 
@@ -72,7 +72,7 @@ fn target_resolve_local_returns_resolved_manifest() {
 
 #[test]
 fn target_resolve_strips_version_suffix() {
-    // RFC-25 §CLI surface: `specify target resolve <value>` takes
+    // workflow §CLI surface: `specify target resolve <value>` takes
     // either `<name>` or `<name>@<version>`. The `@version` part is
     // opaque metadata; the loader is keyed on the bare kebab name.
     let project = Project::init();
@@ -92,7 +92,7 @@ fn target_resolve_strips_version_suffix() {
 
 #[test]
 fn retired_adapter_verb_rejected_by_clap() {
-    // `specify adapter *` retires at 2.0 (RFC-25 §What was cut and why).
+    // `specify adapter *` retires at 2.0 (workflow §What was cut and why).
     // Clap rejects unknown verbs with exit code 2.
     let assert = specify().arg("adapter").arg("resolve").arg("omnia").assert().failure();
     let code = assert.get_output().status.code().expect("exit code");
@@ -101,7 +101,7 @@ fn retired_adapter_verb_rejected_by_clap() {
 
 #[test]
 fn retired_change_verb_rejected_by_clap() {
-    // `specify change *` retires at 2.0 (RFC-25 §What was cut and why).
+    // `specify change *` retires at 2.0 (workflow §What was cut and why).
     let assert = specify().arg("change").arg("draft").arg("demo").assert().failure();
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "clap must reject the retired `change` verb with exit 2, got {code}");

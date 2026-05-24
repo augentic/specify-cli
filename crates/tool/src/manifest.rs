@@ -260,7 +260,7 @@ pub struct ToolManifest {
     pub tools: Vec<Tool>,
 }
 
-/// Plugin axis discriminator per RFC-25 §Adapter axis.
+/// Plugin axis discriminator per workflow §Adapter axis.
 ///
 /// Source plugins (`enumerate` / `extract`) and target plugins
 /// (`shape` / `build` / `merge`) share the `adapter.yaml` shape and
@@ -303,7 +303,7 @@ pub enum ToolScope {
         project_name: String,
     },
     /// Tool declared in a resolved plugin's sidecar `tools.yaml`.
-    /// Per RFC-25 §Adapter implementation shape, plugins carry an
+    /// Per workflow §Adapter implementation shape, plugins carry an
     /// [`Axis`] (`source` / `target`); the read-only plugin-owned
     /// cache root exposed to guests as `$CAPABILITY_DIR` is
     /// `capability_dir`.

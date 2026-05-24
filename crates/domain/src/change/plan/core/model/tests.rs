@@ -1,6 +1,6 @@
 use super::*;
 
-/// Verbatim §The Plan reference fixture, post-RFC-25 collapse.
+/// Verbatim §The Plan reference fixture, post-2.0 collapse.
 /// All entries use the simplified per-entry `Status` enum
 /// (`pending | in-progress | done`); v1 has no per-entry
 /// `blocked`, `failed`, or `skipped` state.
@@ -385,7 +385,7 @@ slices:
 
 #[test]
 fn divergence_likely_round_trips_to_byte_identical_yaml() {
-    // RFC-27 §D5: the CLI is the single writer of every variant
+    // workflow §D5: the CLI is the single writer of every variant
     // of `slices[].divergence`. The on-disk shape for `Likely`
     // is one kebab-case line on the slice entry, byte-identical
     // to the legacy skill-written output we are retiring.

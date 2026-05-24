@@ -102,7 +102,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 /// `specify plan next` — return the active in-progress entry, or
 /// transition the next eligible `Pending` entry to `InProgress` and
 /// return it. The only writer of per-entry `in-progress` per
-/// RFC-25 §CLI surface.
+/// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let slices_dir = ctx.layout().slices_dir();
 
@@ -116,7 +116,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
             ));
         }
 
-        // RFC-25 §CLI surface: "plan next returns the active
+        // workflow §CLI surface: "plan next returns the active
         // in-progress entry before selecting a new pending entry,
         // and reports drained only when no active or pending
         // entries remain."
@@ -155,7 +155,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 /// rejected with `Error::Argument` (exit 2).
 ///
 /// `<plan-name> reviewed` against an already-reviewed plan is an
-/// idempotent no-op (exit 0, no journal event) per RFC-27 §D7 —
+/// idempotent no-op (exit 0, no journal event) per workflow §D7 —
 /// running the explicit transition after `specify plan create
 /// --auto-review` must not double-stamp the lifecycle nor double-
 /// fire `plan.transition.reviewed`.
@@ -164,7 +164,7 @@ pub(super) fn transition(ctx: &Ctx, name: String, target: String) -> Result<()> 
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
         dispatch_transition(plan, &plan_path, &name, &target)
     })?;
-    // RFC-25 §Observability: Gate-1 stamp emits a journal event when
+    // workflow §Observability: Gate-1 stamp emits a journal event when
     // the lifecycle actually changed. The same-state no-op path
     // (already `reviewed`) flags `changed = false` so we skip the
     // emit — preserves single-emit-per-event for the
@@ -191,7 +191,7 @@ fn dispatch_transition(
             "reviewed" => {
                 let previous = plan.lifecycle;
                 if matches!(previous, Lifecycle::Reviewed) {
-                    // RFC-27 §D7: `--auto-review` already stamped
+                    // workflow §D7: `--auto-review` already stamped
                     // this plan; the explicit transition is the
                     // operator's belt-and-braces follow-up. No
                     // disk or journal write — `body.changed` is
@@ -269,7 +269,7 @@ fn entry_target_invalid(target: &str) -> Error {
                     .to_string()
             }
             "blocked" | "failed" | "skipped" => format!(
-                "per-entry `{target}` is not a v1 state — RFC-25 collapsed the per-entry enum to \
+                "per-entry `{target}` is not a v1 state — the 2.0 collapse removed the per-entry enum to \
                  `pending | in-progress | done`. Build failures and merge conflicts leave the \
                  active entry `in-progress`."
             ),

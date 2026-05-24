@@ -1,9 +1,9 @@
 //! `Plan::transition` and `Plan::transition_lifecycle` — the only
 //! writers of `Entry::status` for `done` and `Plan::lifecycle` for
-//! `reviewed`. Post-RFC-25 the legal edges are `Pending → InProgress`
+//! `reviewed`. Post-2.0 the legal edges are `Pending → InProgress`
 //! (written by `plan next`, never here) and `InProgress → Done` per
 //! entry, plus `Pending → Reviewed` plan-level (operator stamp at
-//! Gate 1, RFC-25 §The plan gate; `/spec:plan` MUST NOT call it).
+//! Gate 1, workflow §The plan gate; `/spec:plan` MUST NOT call it).
 
 use specify_error::Error;
 
@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn init_then_reviewed_models_auto_review_at_create() {
-        // RFC-27 §D7: `--auto-review` composes `Plan::init` with
+        // workflow §D7: `--auto-review` composes `Plan::init` with
         // `Plan::transition_lifecycle(Reviewed)` before the single
         // atomic save. The resulting in-memory plan must carry
         // `lifecycle: reviewed` so the post-init `Plan::save` writes

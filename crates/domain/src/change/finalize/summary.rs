@@ -6,7 +6,7 @@ use crate::change::plan::core::{Plan, Status};
 
 /// Whether a plan-entry status counts as terminal for finalize.
 ///
-/// Post-RFC-25 the only terminal per-entry state is `Done`; v1 has no
+/// Post-2.0 the only terminal per-entry state is `Done`; v1 has no
 /// per-entry `failed`, `blocked`, or `skipped` state.
 #[must_use]
 pub const fn is_terminal(status: Status) -> bool {

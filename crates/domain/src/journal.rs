@@ -1,8 +1,8 @@
-//! RFC-25 journal events.
+//! Workflow journal events.
 //!
 //! Append-only newline-delimited JSON at `.specify/journal.jsonl`,
 //! shared by every plan-, slice-, propose-, extract-, and synthesis-
-//! related signal listed in [RFC-25 §Observability]. One line per
+//! related signal listed in [workflow §Observability]. One line per
 //! [`Event`]; readers tail the file and skip blank lines.
 //!
 //! Wire format is locked: event ids are dotted kebab-case
@@ -12,7 +12,7 @@
 //! names stay `snake_case` and reach the wire through
 //! `#[serde(rename = "…")]`.
 //!
-//! [RFC-25 §Observability]: https://github.com/augentic/specify/blob/main/rfcs/rfc-25-workflow.md#observability-rfc-19
+//! [workflow §Observability]: ../../../../docs/standards/workflow.md#observability
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -28,7 +28,7 @@ use crate::config::Layout;
 const JOURNAL_FILE_NAME: &str = "journal.jsonl";
 
 /// One row of the journal. Serialises as `{ timestamp, event,
-/// payload }` — RFC-25 §Wire format pins `timestamp` first so a
+/// payload }` — workflow §Wire format pins `timestamp` first so a
 /// `head -1` on the file is enough to confirm the run window.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
@@ -50,7 +50,7 @@ impl Event {
     }
 }
 
-/// The RFC-25 §Observability event set.
+/// The workflow §Observability event set.
 ///
 /// Adjacently-tagged on the wire as `{ event: <id>, payload: {…} }`
 /// so the dotted-kebab-case event id is a top-level field consumers
@@ -66,7 +66,7 @@ pub enum EventKind {
     },
     /// `/spec:plan`'s `propose` sub-step flagged a materially-
     /// disagreeing slice (`slices[].divergence: likely`).
-    /// RFC-27 §D5 — emitted from the CLI when the operator (or the
+    /// workflow §D5 — emitted from the CLI when the operator (or the
     /// `plan` skill body) runs `specify plan create
     /// --divergence-likely <slice>` or `specify plan amend
     /// --divergence likely`; the skill is no longer the writer.
@@ -79,7 +79,7 @@ pub enum EventKind {
     },
     /// Operator stamped `slices[].divergence` via
     /// `specify plan amend --divergence <likely|accepted|rejected>`.
-    /// RFC-27 §D5 — the CLI is the single writer; `likely` reaches
+    /// workflow §D5 — the CLI is the single writer; `likely` reaches
     /// this event from skill-body fallbacks against existing
     /// `plan.yaml` entries (the post-`propose` happy path stages
     /// `likely` via `specify plan create --divergence-likely`, which
@@ -145,7 +145,7 @@ pub enum EventKind {
         /// `ID:` value on the tagged requirement block.
         requirement_id: String,
     },
-    /// RFC-27 §D8 — cache lookup matched and `extract` was *not*
+    /// workflow §D8 — cache lookup matched and `extract` was *not*
     /// re-run. CI pinning the five fingerprint inputs at a known set
     /// can re-run any prior `/spec:execute` and expect byte-stable
     /// cache hits.
@@ -161,7 +161,7 @@ pub enum EventKind {
         /// inputs the cache layer keyed against.
         fingerprint: String,
     },
-    /// RFC-27 §D8 — cache lookup missed and `extract` ran. `reason`
+    /// workflow §D8 — cache lookup missed and `extract` ran. `reason`
     /// is one of the closed [`CacheMissReason`] values; CI observing
     /// any of them knows exactly which input drifted.
     #[serde(rename = "slice.extract.cache-miss", rename_all = "kebab-case")]
@@ -180,7 +180,7 @@ pub enum EventKind {
         /// `cache: opt-out`).
         reason: CacheMissReason,
     },
-    /// RFC-27 §D4 — `/spec:refine` wrote `fusion.yaml` for a slice.
+    /// workflow §D4 — `/spec:refine` wrote `fusion.yaml` for a slice.
     /// Agent-driven from `/spec:refine` step 5.
     #[serde(rename = "slice.fusion.written", rename_all = "kebab-case")]
     SliceFusionWritten {
@@ -191,7 +191,7 @@ pub enum EventKind {
         /// Count of `requirements[]` rows written.
         requirement_count: usize,
     },
-    /// RFC-27 §D1 — target's `build` finished replay.
+    /// workflow §D1 — target's `build` finished replay.
     /// Payload mirrors the `replay:` block written into the
     /// slice's `.metadata.yaml`. Optional in v1 (targets that have
     /// not implemented the hook do not emit this event).
@@ -208,7 +208,7 @@ pub enum EventKind {
         /// Number of replay scenarios the runner skipped.
         skipped: usize,
     },
-    /// RFC-27 §D3 — operator set or cleared a per-slice
+    /// workflow §D3 — operator set or cleared a per-slice
     /// `authority-override` map at Gate 1. CLI-driven via
     /// `specify plan create --authority-override`,
     /// `specify plan amend --authority-override`, or the matching
@@ -297,7 +297,7 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 /// observe a partial-state batch. A POSIX `O_APPEND` write of
 /// ≤ `PIPE_BUF` bytes is atomic against concurrent writers on
 /// local filesystems, which is the safety envelope a workflow
-/// journal needs — RFC-25 emits one event per CLI verb
+/// journal needs — the workflow contract emits one event per CLI verb
 /// invocation, well below the limit.
 ///
 /// Used by CLI verbs that own more than one journal emit per
@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn append_batch_writes_every_event_in_order_in_one_call() {
-        // RFC-27 §D7: `specify plan create --auto-review` may emit
+        // workflow §D7: `specify plan create --auto-review` may emit
         // both `plan.propose.divergence` and
         // `plan.transition.reviewed` in a single fsynced append.
         // Exercise the batched helper to lock that contract.
@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn no_snake_case_fields_or_values_leak_to_wire() {
-        // RFC-25 §Wire format: snake_case lifecycle values are never
+        // workflow §Wire format: snake_case lifecycle values are never
         // produced on disk. Exercise every variant that carries an
         // enum-shaped or hyphenable field name.
         let dir = tempdir().expect("tempdir");

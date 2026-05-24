@@ -1,4 +1,4 @@
-//! RFC-25 §Requirement block contract — parser + validator for the
+//! workflow §Requirement block contract — parser + validator for the
 //! `ID:` / `Sources:` / `Status:` provenance metadata that core
 //! synthesis emits at the top of every requirement in `spec.md`.
 //!
@@ -53,7 +53,7 @@ pub struct Requirement {
     pub span: Span,
 }
 
-/// Closed enum for the `Status:` line (RFC-25 §Authority hierarchy).
+/// Closed enum for the `Status:` line (workflow §Authority hierarchy).
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RequirementStatus {
@@ -79,7 +79,7 @@ impl RequirementStatus {
         }
     }
 
-    /// Parse the wire form; case-sensitive per RFC-25 contract.
+    /// Parse the wire form; case-sensitive per the workflow contract contract.
     #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         match s {
@@ -115,7 +115,7 @@ impl RequirementTag {
         }
     }
 
-    /// The `Status:` value this tag must pair with per RFC-25
+    /// The `Status:` value this tag must pair with per the workflow contract
     /// §Authority hierarchy.
     #[must_use]
     pub const fn expected_status(self) -> RequirementStatus {

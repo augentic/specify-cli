@@ -19,7 +19,7 @@ use crate::slice::{Outcome, OutcomeKind, SliceMetadata, TargetOperation};
 /// The whole metadata file is rewritten atomically via
 /// [`SliceMetadata::save`] so a concurrent reader never sees a
 /// half-written file. A new stamp replaces any previous one — history
-/// lives in `.specify/journal.jsonl` (RFC-25 §Observability), not here.
+/// lives in `.specify/journal.jsonl` (workflow §Observability), not here.
 ///
 /// `now` is plumbed in so tests can pin `at` deterministically; the CLI
 /// passes `Timestamp::now()`.

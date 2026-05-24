@@ -84,7 +84,7 @@ slices:
     status: done
 ";
 
-/// All entries done — `next` reports `drained` post-RFC-25 (the
+/// All entries done — `next` reports `drained` post-2.0 (the
 /// previous "stuck" semantics relied on the now-removed `failed`
 /// state). Kept under the historical name for fixture continuity;
 /// the test asserts the new `drained` reason.
@@ -287,7 +287,7 @@ fn plan_next_stuck_when_deps_unmet() {
     let actual = parse_stdout(&json.get_output().stdout, project.root());
     assert_eq!(
         actual["reason"], "drained",
-        "post-RFC-25 the legacy `stuck` fixture is now drained (all-done)"
+        "post-2.0 the legacy `stuck` fixture is now drained (all-done)"
     );
     assert_eq!(actual["next"], Value::Null);
     assert_eq!(actual["active"], Value::Null);
@@ -508,7 +508,7 @@ fn plan_amend_on_missing_entry_fails() {
 
 #[test]
 fn plan_transition_happy_path_text() {
-    // Post-RFC-25 the only legal per-entry transition is
+    // Post-2.0 the only legal per-entry transition is
     // `InProgress -> Done`. We pre-stage `in-progress` via `plan next`
     // (the only writer of `in-progress`) and then close the entry.
     let project = Project::init();
@@ -573,7 +573,7 @@ fn plan_transition_rejects_illegal_edge() {
 
 #[test]
 fn plan_transition_plan_level_reviewed_json() {
-    // RFC-25 §The plan gate: `specify plan transition <plan-name>
+    // workflow §The plan gate: `specify plan transition <plan-name>
     // reviewed` is the operator-stamped Gate 1 transition. The plan
     // name on the wire matches `plan.yaml.name`.
     let project = Project::init();
@@ -631,7 +631,7 @@ fn plan_transition_rejects_retired_states() {
     }
 }
 
-// Pre-RFC-25 `plan transition <name> failed --reason <text>` retired
+// pre-2.0 `plan transition <name> failed --reason <text>` retired
 // alongside the per-entry `failed` state — see
 // `plan_transition_rejects_retired_states` above.
 
@@ -654,7 +654,7 @@ fn plan_transition_rejects_unknown_reason_flag() {
 }
 
 // Re-entry to `pending` retired with the per-entry status purge
-// (RFC-25 collapsed the per-entry enum to `pending | in-progress | done`).
+// (the 2.0 collapse removed the per-entry enum to `pending | in-progress | done`).
 
 // -- human-driven replay (RFC-2 §"The Loop (Human-Driven)") -----------
 
@@ -755,7 +755,7 @@ fn plan_create_scaffolds_plan_only_json_matches_golden() {
 
 #[test]
 fn plan_create_divergence_likely_unknown_slice_refused() {
-    // RFC-27 §D5: `--divergence-likely` on `plan create` must
+    // workflow §D5: `--divergence-likely` on `plan create` must
     // reference a slice already present in the plan. A fresh
     // `plan create` scaffolds an empty plan, so any slice name is
     // unknown and must short-circuit before plan.yaml is written.
@@ -806,11 +806,11 @@ fn plan_create_then_validate_passes_clean() {
     );
 }
 
-// -- plan create --auto-review (RFC-27 §D7) ---------------------------
+// -- plan create --auto-review (workflow §D7) ---------------------------
 
 #[test]
 fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
-    // RFC-27 §D7: `--auto-review` is the operator's Gate-1 consent at
+    // workflow §D7: `--auto-review` is the operator's Gate-1 consent at
     // create time. The on-disk plan carries `lifecycle: reviewed`
     // directly (single atomic write — no transient `pending`
     // observable to readers) and the journal carries exactly one
@@ -858,7 +858,7 @@ fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
 
 #[test]
 fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
-    // RFC-27 §D7: running `specify plan transition <name> reviewed`
+    // workflow §D7: running `specify plan transition <name> reviewed`
     // after a successful `--auto-review` create must be a no-op —
     // exit 0, no second `plan.transition.reviewed` event, plan.yaml
     // unchanged.
@@ -902,7 +902,7 @@ fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
 
 #[test]
 fn plan_create_auto_review_invalid_name_refuses_same_as_without_flag() {
-    // RFC-27 §D7: `--auto-review` does NOT bypass validation. An
+    // workflow §D7: `--auto-review` does NOT bypass validation. An
     // invalid (non-kebab) name refuses the create with the same
     // exit code and envelope as the post-create path; no `plan.yaml`
     // lands on disk and the journal stays untouched.
@@ -932,7 +932,7 @@ fn plan_create_auto_review_invalid_name_refuses_same_as_without_flag() {
 
 #[test]
 fn plan_create_auto_review_validation_failure_emits_no_partial_events() {
-    // RFC-27 §D7: validation failure under --auto-review must not
+    // workflow §D7: validation failure under --auto-review must not
     // surface a partial-state event sequence — no orphan
     // `plan.propose.divergence` without the matching
     // `plan.transition.reviewed`, no half-written plan.yaml. An
@@ -1573,12 +1573,12 @@ fn plan_validate_healthy_exits_zero() {
     assert_eq!(value["passed"], true, "empty plan must pass: {value}");
 }
 
-// ---- RFC-25 W1.1 — per-slice source binding flag reshape ----
+// ---- Wave 1.1 — per-slice source binding flag reshape ----
 //
 // The reshape replaces 1.x's bare `--sources <key>` repeater with the
 // `<key>=<candidate-id>` wire form, accepting the bare `<key>`
 // shorthand only as sugar for `{ key, candidate: <slice.name> }`
-// per RFC-25 §`Slice.sources`.
+// per workflow §`Slice.sources`.
 
 const W11_PLAN: &str = "\
 name: w11
@@ -1835,7 +1835,7 @@ fn plan_amend_divergence_rejected_writes_field() {
 
 #[test]
 fn plan_amend_divergence_likely_writes_field() {
-    // RFC-27 §D5: `--divergence likely` is operator-settable from
+    // workflow §D5: `--divergence likely` is operator-settable from
     // the CLI; the field is byte-identical to the legacy
     // skill-written `divergence: likely` line.
     let project = Project::init();
@@ -1882,7 +1882,7 @@ fn plan_amend_divergence_none_refused() {
     assert_eq!(stderr["error"], "argument");
 }
 
-// -- plan {create,add,amend} --authority-override (RFC-27 §D3) --------
+// -- plan {create,add,amend} --authority-override (workflow §D3) --------
 
 const AUTHORITY_OVERRIDE_PLAN: &str = "\
 name: identity-revamp
@@ -1920,7 +1920,7 @@ fn read_journal_lines(project: &Project) -> Vec<String> {
 
 #[test]
 fn plan_amend_authority_override_round_trips_and_validates() {
-    // RFC-27 §D3 happy path: set an override via `amend`, re-read
+    // workflow §D3 happy path: set an override via `amend`, re-read
     // `plan.yaml` and confirm the field landed under the named
     // slice; `slice validate` accepts it because `runtime` is in
     // the slice's `sources[]`.
@@ -1966,7 +1966,7 @@ fn plan_amend_authority_override_round_trips_and_validates() {
 
 #[test]
 fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
-    // RFC-27 §D3 gate: refuse the `specify plan amend` write when
+    // workflow §D3 gate: refuse the `specify plan amend` write when
     // the authority-override value names a source key not present
     // in the slice's `sources[]` list (`phantom`). The orphan
     // check runs in `Plan::validate` (folded in by Change 2.3),
@@ -2010,7 +2010,7 @@ fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
 
 #[test]
 fn slice_validate_surfaces_authority_override_orphan() {
-    // RFC-27 §D3 — `specify slice validate` is the per-slice gate
+    // workflow §D3 — `specify slice validate` is the per-slice gate
     // that mirrors the plan-level check; it runs before refine
     // synthesises any artifacts so a bad override is caught
     // before downstream writes. Hand-edit `plan.yaml` to seed an
@@ -2053,7 +2053,7 @@ fn slice_validate_surfaces_authority_override_orphan() {
 
 #[test]
 fn plan_amend_clear_authority_override_removes_only_one_entry() {
-    // RFC-27 §D3: `--clear-authority-override <slice> <kind>` peels
+    // workflow §D3: `--clear-authority-override <slice> <kind>` peels
     // off a single entry; the rest of the map survives. Journal
     // records the Clear without any spurious Set events for the
     // surviving entries.
@@ -2111,7 +2111,7 @@ fn plan_amend_clear_authority_override_removes_only_one_entry() {
 
 #[test]
 fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
-    // RFC-27 §D3: `--clear-authority-overrides <slice>` wipes the
+    // workflow §D3: `--clear-authority-overrides <slice>` wipes the
     // entire `authority-override` map for that slice and emits one
     // Clear event per kind that was present before the wipe.
     let project = Project::init();
@@ -2165,7 +2165,7 @@ fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
 
 #[test]
 fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
-    // RFC-27 §D3 deterministic-order rule: a same-invocation set +
+    // workflow §D3 deterministic-order rule: a same-invocation set +
     // clear pair on the same `(slice, kind)` resolves to the
     // cleared state; the journal records the Clear (not the Set).
     let project = Project::init();
@@ -2203,7 +2203,7 @@ fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
 
 #[test]
 fn plan_add_authority_override_seeds_map_on_new_slice() {
-    // RFC-27 §D3 add path: `plan add --authority-override
+    // workflow §D3 add path: `plan add --authority-override
     // <kind>=<key>` pre-seeds the override map at create time. Each
     // entry fires one PlanAmendAuthorityOverride / `set` event.
     let project = Project::init();
@@ -2254,7 +2254,7 @@ fn plan_add_authority_override_seeds_map_on_new_slice() {
 
 #[test]
 fn plan_amend_authority_override_unknown_slice_refused() {
-    // RFC-27 §D3: unknown `--authority-override <slice>` must
+    // workflow §D3: unknown `--authority-override <slice>` must
     // refuse at exit 2 before any plan.yaml write happens. Mirror
     // the existing `--divergence-likely` guard.
     let project = Project::init();
@@ -2285,7 +2285,7 @@ fn plan_amend_authority_override_unknown_slice_refused() {
 
 #[test]
 fn plan_amend_authority_override_bad_claim_kind_refused_at_parse_time() {
-    // RFC-27 §D3: `<kind>` is validated against the closed
+    // workflow §D3: `<kind>` is validated against the closed
     // ClaimKind enum at the CLI boundary — clap surfaces a usage
     // diagnostic (exit 2) before any plan mutation runs.
     let project = Project::init();

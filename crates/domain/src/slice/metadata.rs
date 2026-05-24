@@ -22,8 +22,8 @@ pub const SLICES_DIR_NAME: &str = "slices";
 pub struct SliceMetadata {
     /// Target-adapter identifier (e.g. `omnia@v1`).
     ///
-    /// Renamed from `adapter` in RFC-25 W0.2 — the on-disk and
-    /// in-memory field is now `target`. The pre-RFC-25 `adapter`
+    /// Renamed from `adapter` in Wave 0.2 — the on-disk and
+    /// in-memory field is now `target`. The pre-2.0 `adapter`
     /// alias was dropped together with the schema tightening that
     /// shipped in the same change.
     pub target: String,
@@ -72,7 +72,7 @@ pub struct SliceMetadata {
     pub touched_specs: Vec<TouchedSpec>,
     /// Latest phase outcome. Written atomically by
     /// `crate::merge::slice::commit` (stamps `Success` before the archive move).
-    /// History lives in `.specify/journal.jsonl` (RFC-25 §Observability).
+    /// History lives in `.specify/journal.jsonl` (workflow §Observability).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Outcome>,
 }

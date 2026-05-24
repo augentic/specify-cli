@@ -211,7 +211,7 @@ fn tag_status_mismatch_reported_when_status_lies() {
 }
 
 // ---------------------------------------------------------------------------
-// Liberal / pre-RFC-25 behaviours
+// Liberal / pre-2.0 behaviours
 // ---------------------------------------------------------------------------
 
 #[test]

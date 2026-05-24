@@ -53,7 +53,7 @@ pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, Sour
 /// shorthand when the candidate id equals the slice's name (RFC-25
 /// §`Slice.sources`).
 ///
-/// RFC-27 §D6 — when `discovery` is `Some(_)`, the operator-supplied
+/// workflow §D6 — when `discovery` is `Some(_)`, the operator-supplied
 /// candidate value is resolved against the loaded `discovery.md` so
 /// aliases rewrite to the canonical `id` before persisting. Unknown
 /// tokens or alias collisions surface as `Error::validation_failed`
@@ -97,7 +97,7 @@ fn parse_target_flag(raw: &str) -> Result<TargetRef> {
 
 /// Map every CLI `--sources` / `--add-source` argument into the
 /// on-disk binding shape against `slice_name`. Aliases are resolved
-/// against `discovery` when present (RFC-27 §D6).
+/// against `discovery` when present (workflow §D6).
 fn bindings_from_args(
     args: Vec<SliceSourceArg>, slice_name: &str, discovery: Option<&Discovery>,
 ) -> Result<Vec<SliceSourceBinding>> {
@@ -214,7 +214,7 @@ fn apply_alias_edits(
 }
 
 /// Parse the `--divergence` flag value. `likely` / `accepted` /
-/// `rejected` are wire-legal — RFC-27 §D5 widens the operator
+/// `rejected` are wire-legal — workflow §D5 widens the operator
 /// surface so the CLI is the single writer of every variant
 /// reachable on disk. The implicit default (absent on disk) has
 /// no flag spelling; any other token — including `none` — falls
@@ -357,7 +357,7 @@ fn emit_override_events(
 /// Apply the full `--authority-override` / `--clear-authority-override`
 /// / `--clear-authority-overrides` mutation set on `plan` and return
 /// the matching `plan.amend.authority-override` journal events
-/// (RFC-27 §D3). Order is deterministic:
+/// (workflow §D3). Order is deterministic:
 ///
 /// 1. Sets — collapse duplicate `(slice, kind)` pairs to the last
 ///    value.
@@ -456,16 +456,16 @@ fn unknown_slice_err(plan_name: &str, slice: &str) -> Error {
 
 /// `specify plan create <name> [--source ...] [--divergence-likely <slice>]... [--auto-review]`.
 ///
-/// Scaffolds `plan.yaml` (RFC-25 §The Plan), then stages every
+/// Scaffolds `plan.yaml` (workflow §The Plan), then stages every
 /// `--divergence-likely <slice>` value onto the named slice's
-/// `slices[].divergence` field (RFC-27 §D5). The slice MUST already
+/// `slices[].divergence` field (workflow §D5). The slice MUST already
 /// exist in the plan being created — an unknown name short-circuits
 /// with `plan-divergence-likely-unknown-slice` (`Error::Validation`,
 /// exit 2). One `plan.propose.divergence` journal event fires per
 /// applied slice, matching the post-`propose` happy path the
 /// `/spec:plan` skill drives.
 ///
-/// When `--auto-review` is set (RFC-27 §D7), the plan is constructed
+/// When `--auto-review` is set (workflow §D7), the plan is constructed
 /// with `lifecycle: reviewed` *before* the single atomic
 /// `plan.save` — there is never a transient `lifecycle: pending`
 /// file on disk. The matching `plan.transition.reviewed` journal
@@ -475,7 +475,7 @@ fn unknown_slice_err(plan_name: &str, slice: &str) -> Error {
 /// unknown `--divergence-likely` slice) refuse the create with or
 /// without the flag and leave the journal untouched.
 ///
-/// NOTE: RFC-27 §D7 names a `plan.create` event as the first row
+/// NOTE: workflow §D7 names a `plan.create` event as the first row
 /// of the batched append, but no such variant exists in
 /// [`specify_domain::journal::EventKind`] today (and the existing
 /// `plan create` path has never written one). Introducing it would
@@ -529,7 +529,7 @@ pub(super) fn create(
     if auto_review {
         // Single atomic write below carries `lifecycle: reviewed`
         // directly; readers never observe a transient `pending` plan
-        // under --auto-review (RFC-27 §D7).
+        // under --auto-review (workflow §D7).
         plan.transition_lifecycle(Lifecycle::Reviewed)?;
     }
     plan.save(&plan_path)?;
@@ -606,7 +606,7 @@ pub(super) fn add(
         check_project(&ctx.project_dir, proj)?;
     }
 
-    // RFC-27 §D6 — resolve `--sources <key>=<alias>` to the
+    // workflow §D6 — resolve `--sources <key>=<alias>` to the
     // canonical candidate `id` before persisting; the on-disk
     // `plan.yaml.slices[].sources[].candidate` always carries the
     // canonical id. Absence of `discovery.md` short-circuits to the
@@ -697,7 +697,7 @@ pub(super) fn amend(
         parse_slice_pair_args::<ClaimKind>(clear_authority_override, "--clear-authority-override")?;
     let override_clear_all: Vec<String> = clear_authority_overrides.to_vec();
     let plan_path = ctx.layout().plan_path();
-    // RFC-27 §D6 — `--add-alias` / `--remove-alias` mutate
+    // workflow §D6 — `--add-alias` / `--remove-alias` mutate
     // `discovery.md`, NOT `plan.yaml`. We apply them up-front so the
     // updated discovery feeds the subsequent `--sources` rewrite
     // path on the same invocation; the in-memory Discovery is also
@@ -720,7 +720,7 @@ pub(super) fn amend(
 
             // Capture pre-amend divergence so the journal event's
             // `from` field carries the implicit-default `none` on the
-            // first transition (RFC-25 §Observability).
+            // first transition (workflow §Observability).
             let plan_name = plan.name.clone();
             let previous_divergence =
                 plan.entries.iter().find(|e| e.name == name).and_then(|e| e.divergence);
@@ -763,7 +763,7 @@ pub(super) fn amend(
             }
 
             // Apply per-slice authority-override mutations. Order
-            // is deterministic per RFC-27 §D3: sets first (later
+            // is deterministic per workflow §D3: sets first (later
             // occurrences win on the same `(slice, kind)`), then
             // single-kind clears, then whole-map clears. The
             // mutations are gathered into journal events as we go
@@ -782,7 +782,7 @@ pub(super) fn amend(
             // Re-run the orphan-source-key gate after the override
             // mutations: `Plan::amend` validated the pre-mutation
             // state, and `validate_plan` only checks JSON Schema.
-            // The orphan check is the only RFC-27 §D3 gate that
+            // The orphan check is the only workflow §D3 gate that
             // fires on this code path.
             refuse_orphan_authority_overrides(plan)?;
 
@@ -794,7 +794,7 @@ pub(super) fn amend(
                 .ok_or_else(|| unknown_slice_err(&plan_name, &name))?;
 
             // Build the journal event only when --divergence flipped
-            // the slice's `divergence` (RFC-25 §Observability — every
+            // the slice's `divergence` (workflow §Observability — every
             // operator transition is logged, including no-op writes
             // of the same value).
             let mut journal_events: Vec<journal::Event> = Vec::new();
