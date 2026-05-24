@@ -321,19 +321,29 @@ state.
 
 ## `SliceSourceBinding`: bare shorthand plus structured form
 
-`plan.yaml.slices[].sources` accepts two shapes on parse:
+`plan.yaml.slices[].sources` is a single in-memory struct
+(`{ key: String, candidate: Option<String> }`) with a custom
+`Deserialize` impl that accepts two wire shapes and a custom
+`Serialize` impl that emits whichever shape produced the value:
 
-- **Bare string shorthand** — `legacy` resolves to a binding whose
-  `key` is `legacy` and whose `candidate` is the matching
-  `plan.yaml.sources[].name` (one-to-one between source and slice).
+- **Bare string shorthand** — `legacy` parses to `key = "legacy"`,
+  `candidate = None`; serialises back as the bare string. The candidate
+  falls back to the owning slice's name at lookup time via
+  `SliceSourceBinding::candidate(slice_name)`, preserving the
+  one-source-per-slice degenerate case (predominantly `intent`).
 - **Structured form** — `{ key: legacy, candidate: legacy-monolith }`
-  is the canonical wire shape and is required whenever the key and
-  the candidate id differ.
+  parses to `key = "legacy"`, `candidate = Some("legacy-monolith")`;
+  serialises back as the same `{ key, candidate }` map. Required
+  whenever the key and the candidate id differ.
 
-The CLI always serialises bindings in the structured form; the
-shorthand parser exists so `/spec:plan` and operator hand edits stay
-ergonomic. `plan amend --add-source <key>` accepts the same shorthand
-on the wire. Refer to workflow §`Slice.sources`.
+Collapsing the two variants into one struct means every consumer
+(`validate`, `doctor`, `fusion`, CLI handlers) goes through the same
+`key()` / `candidate()` accessors instead of `match`-ing the
+discriminator — the shorthand stays a pure parser concern. Construct in
+tests via `SliceSourceBinding::bare(key)` or
+`SliceSourceBinding::structured(key, candidate)` so the discipline
+stays consistent. `plan amend --add-source <key>` and `plan create`
+share the same shorthand on the wire. Refer to workflow §`Slice.sources`.
 
 ## `Divergence` enum
 

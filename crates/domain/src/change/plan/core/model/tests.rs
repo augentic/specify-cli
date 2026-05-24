@@ -232,12 +232,13 @@ slices:
     status: pending
 ";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-    assert!(matches!(&plan.entries[0].sources[0], SliceSourceBinding::Bare(k) if k == "intent"));
-    assert!(matches!(
-        &plan.entries[1].sources[0],
-        SliceSourceBinding::Structured { key, candidate }
-            if key == "docs" && candidate == "account-pwd-reset"
-    ));
+    let bare = &plan.entries[0].sources[0];
+    assert!(bare.is_bare(), "expected bare shorthand, got {bare:?}");
+    assert_eq!(bare.key(), "intent");
+    let structured = &plan.entries[1].sources[0];
+    assert!(!structured.is_bare(), "expected structured form, got {structured:?}");
+    assert_eq!(structured.key(), "docs");
+    assert_eq!(structured.candidate("ignored-slice-name"), "account-pwd-reset");
     let rendered = serde_saphyr::to_string(&plan).expect("serialize");
     let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
     assert_eq!(plan, reparsed, "both binding shapes must survive a round-trip");
@@ -245,16 +246,15 @@ slices:
 
 #[test]
 fn slice_source_binding_helpers_normalise_bare_shorthand() {
-    let bare = SliceSourceBinding::Bare("intent".into());
+    let bare = SliceSourceBinding::bare("intent");
     assert_eq!(bare.key(), "intent");
     assert_eq!(bare.candidate("add-search-filter"), "add-search-filter");
+    assert!(bare.is_bare());
 
-    let structured = SliceSourceBinding::Structured {
-        key: "docs".into(),
-        candidate: "user-reg".into(),
-    };
+    let structured = SliceSourceBinding::structured("docs", "user-reg");
     assert_eq!(structured.key(), "docs");
     assert_eq!(structured.candidate("ignored-slice-name"), "user-reg");
+    assert!(!structured.is_bare());
 }
 
 #[test]

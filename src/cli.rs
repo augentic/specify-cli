@@ -220,11 +220,11 @@ impl FromStr for SourceArg {
 /// Wire forms (workflow §`Slice.sources`):
 ///
 /// - `<key>=<candidate-id>` — structured binding; both sides are
-///   non-empty kebab identifiers. Materialises as
-///   [`specify_domain::change::SliceSourceBinding::Structured`].
+///   non-empty kebab identifiers. Materialises via
+///   [`specify_domain::change::SliceSourceBinding::structured`].
 /// - `<key>` — bare-string shorthand; sugar for
-///   `{ key: <key>, candidate: <slice.name> }`. Materialises as
-///   [`specify_domain::change::SliceSourceBinding::Bare`].
+///   `{ key: <key>, candidate: <slice.name> }`. Materialises via
+///   [`specify_domain::change::SliceSourceBinding::bare`].
 ///
 /// Malformed inputs (empty key, empty candidate, dangling `=`, more
 /// than one `=`) produce a `FromStr` error that clap surfaces as a

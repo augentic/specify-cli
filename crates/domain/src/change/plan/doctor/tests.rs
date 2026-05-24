@@ -106,7 +106,7 @@ fn doctor_no_cycle_quiet() {
 #[test]
 fn doctor_orphan_source_zero() {
     let mut e = change("a", Status::Pending);
-    e.sources = vec![SliceSourceBinding::Bare("monolith".into())];
+    e.sources = vec![SliceSourceBinding::bare("monolith")];
     let plan = plan_with_sources(vec![("monolith", "/path")], vec![e]);
     let any_orphan = doctor(&plan, None, None, None).into_iter().any(|d| d.code == ORPHAN_SOURCE);
     assert!(!any_orphan);
@@ -118,7 +118,7 @@ fn doctor_orphan_source_one() {
         vec![("monolith", "/path"), ("orphan", "/elsewhere")],
         vec![{
             let mut e = change("a", Status::Pending);
-            e.sources = vec![SliceSourceBinding::Bare("monolith".into())];
+            e.sources = vec![SliceSourceBinding::bare("monolith")];
             e
         }],
     );
@@ -138,7 +138,7 @@ fn doctor_orphan_source_multiple_sorted() {
         vec![("alpha", "/a"), ("beta", "/b"), ("gamma", "/g"), ("monolith", "/m")],
         vec![{
             let mut e = change("a", Status::Pending);
-            e.sources = vec![SliceSourceBinding::Bare("monolith".into())];
+            e.sources = vec![SliceSourceBinding::bare("monolith")];
             e
         }],
     );
@@ -161,15 +161,13 @@ fn doctor_orphan_source_mixed_references() {
         vec![
             {
                 let mut e = change("a", Status::Pending);
-                e.sources = vec![
-                    SliceSourceBinding::Bare("monolith".into()),
-                    SliceSourceBinding::Bare("orders".into()),
-                ];
+                e.sources =
+                    vec![SliceSourceBinding::bare("monolith"), SliceSourceBinding::bare("orders")];
                 e
             },
             {
                 let mut e = change("b", Status::Done);
-                e.sources = vec![SliceSourceBinding::Bare("orders".into())];
+                e.sources = vec![SliceSourceBinding::bare("orders")];
                 e
             },
         ],
@@ -378,12 +376,12 @@ fn doctor_healthy_plan_emits_zero_doctor_diagnostics() {
         vec![
             {
                 let mut e = change("a", Status::Done);
-                e.sources = vec![SliceSourceBinding::Bare("monolith".into())];
+                e.sources = vec![SliceSourceBinding::bare("monolith")];
                 e
             },
             {
                 let mut e = change_with_deps("b", Status::Pending, &["a"]);
-                e.sources = vec![SliceSourceBinding::Bare("monolith".into())];
+                e.sources = vec![SliceSourceBinding::bare("monolith")];
                 e
             },
         ],

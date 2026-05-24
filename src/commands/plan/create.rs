@@ -69,12 +69,9 @@ fn binding_from_arg(
         Some(value) => Some(resolve_candidate_token(&value, discovery)?),
     };
     Ok(match candidate {
-        None => SliceSourceBinding::Bare(arg.key),
-        Some(candidate) if candidate == slice_name => SliceSourceBinding::Bare(arg.key),
-        Some(candidate) => SliceSourceBinding::Structured {
-            key: arg.key,
-            candidate,
-        },
+        None => SliceSourceBinding::bare(arg.key),
+        Some(candidate) if candidate == slice_name => SliceSourceBinding::bare(arg.key),
+        Some(candidate) => SliceSourceBinding::structured(arg.key, candidate),
     })
 }
 

@@ -165,7 +165,7 @@ mod tests {
                     target: None,
                     status: Status::Pending,
                     depends_on: vec![],
-                    sources: vec![SliceSourceBinding::Bare("a".into())],
+                    sources: vec![SliceSourceBinding::bare("a")],
                     context: vec![],
                     description: Some("d".into()),
                     divergence: None,
@@ -183,11 +183,7 @@ mod tests {
         plan.amend("foo", patch).expect("amend ok");
         let foo = plan.entries.iter().find(|c| c.name == "foo").unwrap();
         assert_eq!(foo.depends_on, vec!["x".to_string()]);
-        assert_eq!(
-            foo.sources,
-            vec![SliceSourceBinding::Bare("a".to_string())],
-            "sources untouched"
-        );
+        assert_eq!(foo.sources, vec![SliceSourceBinding::bare("a")], "sources untouched");
         assert_eq!(foo.description.as_deref(), Some("d"), "description untouched");
     }
 

@@ -74,7 +74,7 @@ fn unknown_depends_on_error() {
 #[test]
 fn unknown_source_error() {
     let mut entry = change("source-ghost", Status::Pending);
-    entry.sources = vec![SliceSourceBinding::Bare("monolith".into())];
+    entry.sources = vec![SliceSourceBinding::bare("monolith")];
     let plan = plan_with_changes(vec![entry]);
     let results = plan.validate(None, None);
     let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-source").collect();
@@ -166,7 +166,7 @@ fn no_slices_dir_skips_consistency() {
 fn no_short_circuit() {
     let mut a = change("foo", Status::Pending);
     a.depends_on = vec!["missing".into()];
-    a.sources = vec![SliceSourceBinding::Bare("ghost-source".into())];
+    a.sources = vec![SliceSourceBinding::bare("ghost-source")];
     let b = change("foo", Status::Pending);
     let plan = plan_with_changes(vec![a, b]);
     let results = plan.validate(None, None);
@@ -379,7 +379,7 @@ fn context_rejects_absolute() {
 #[test]
 fn authority_override_orphan_source_key_rejected() {
     let mut entry = change("identity-user-registration", Status::Pending);
-    entry.sources = vec![SliceSourceBinding::Bare("legacy".into())];
+    entry.sources = vec![SliceSourceBinding::bare("legacy")];
     entry.authority_override = SliceAuthorityOverride {
         by_kind: BTreeMap::from([
             (ClaimKind::Requirement, "phantom".to_string()),
@@ -405,7 +405,7 @@ fn authority_override_orphan_source_key_rejected() {
 #[test]
 fn authority_override_empty_passes() {
     let mut entry = change("any", Status::Pending);
-    entry.sources = vec![SliceSourceBinding::Bare("legacy".into())];
+    entry.sources = vec![SliceSourceBinding::bare("legacy")];
     let mut plan = plan_with_changes(vec![entry]);
     plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp"));
     assert!(
@@ -420,8 +420,7 @@ fn authority_override_empty_passes() {
 #[test]
 fn authority_override_valid_keys_pass() {
     let mut entry = change("any", Status::Pending);
-    entry.sources =
-        vec![SliceSourceBinding::Bare("legacy".into()), SliceSourceBinding::Bare("runtime".into())];
+    entry.sources = vec![SliceSourceBinding::bare("legacy"), SliceSourceBinding::bare("runtime")];
     entry.authority_override = SliceAuthorityOverride {
         by_kind: BTreeMap::from([
             (ClaimKind::Requirement, "runtime".to_string()),
@@ -443,7 +442,7 @@ fn authority_override_valid_keys_pass() {
 #[test]
 fn authority_override_findings_sort_deterministically() {
     let mut entry = change("identity-user-registration", Status::Pending);
-    entry.sources = vec![SliceSourceBinding::Bare("legacy".into())];
+    entry.sources = vec![SliceSourceBinding::bare("legacy")];
     // Insert in non-sorted order; BTreeMap iteration sorts by kind.
     entry.authority_override = SliceAuthorityOverride {
         by_kind: BTreeMap::from([

@@ -469,41 +469,92 @@ impl std::error::Error for TargetRefParseError {}
 ///   the degenerate `intent` case (`sources: [intent]`); or
 /// - a structured `{ key, candidate }` object.
 ///
-/// Both shapes round-trip byte-identically through serde. Callers can
-/// use [`SliceSourceBinding::key`] and [`SliceSourceBinding::candidate`]
-/// when they need explicit `(key, candidate)` pairs.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum SliceSourceBinding {
-    /// Bare-string shorthand: `<key>` ≡ `{ key, candidate: <slice.name> }`.
-    Bare(String),
-    /// Structured form. Both fields are kebab-case identifiers.
-    Structured {
-        /// Source key matching a top-level [`Plan::sources`] entry.
-        key: String,
-        /// Candidate id from `discovery.md`.
-        candidate: String,
-    },
+/// Both shapes round-trip byte-identically: the bare shorthand is
+/// normalised at parse time into `candidate == None`, and `Serialize`
+/// emits the same shape the operator authored. Use
+/// [`SliceSourceBinding::bare`] / [`SliceSourceBinding::structured`] in
+/// tests instead of constructing the struct literal directly so the
+/// shorthand discipline stays consistent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SliceSourceBinding {
+    /// Source key matching a top-level [`Plan::sources`] entry. Always
+    /// present, regardless of which wire shape produced this value.
+    pub key: String,
+    /// Candidate id from `discovery.md`. `None` denotes the bare-string
+    /// shorthand — the candidate falls back to the owning slice's name
+    /// via [`SliceSourceBinding::candidate`].
+    pub candidate: Option<String>,
 }
 
 impl SliceSourceBinding {
-    /// The source key this binding references in [`Plan::sources`].
+    /// Construct the bare-string shorthand form: candidate defaults to
+    /// the owning slice's name at lookup time.
     #[must_use]
-    pub const fn key(&self) -> &str {
-        match self {
-            Self::Bare(k) | Self::Structured { key: k, .. } => k.as_str(),
+    pub fn bare(key: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            candidate: None,
         }
     }
 
-    /// The candidate id this binding pairs with, falling back to the
-    /// owning slice's name for the bare-string shorthand per the workflow contract
-    /// §`Slice.sources`.
+    /// Construct the structured form with an explicit candidate id.
     #[must_use]
-    pub const fn candidate<'a>(&'a self, slice_name: &'a str) -> &'a str {
-        match self {
-            Self::Bare(_) => slice_name,
-            Self::Structured { candidate, .. } => candidate.as_str(),
+    pub fn structured(key: impl Into<String>, candidate: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            candidate: Some(candidate.into()),
         }
+    }
+
+    /// The source key this binding references in [`Plan::sources`].
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// The candidate id this binding pairs with, falling back to the
+    /// owning slice's name for the bare-string shorthand per the
+    /// workflow contract §`Slice.sources`.
+    #[must_use]
+    pub fn candidate<'a>(&'a self, slice_name: &'a str) -> &'a str {
+        self.candidate.as_deref().unwrap_or(slice_name)
+    }
+
+    /// `true` when the binding was authored / will be emitted as the
+    /// bare-string shorthand.
+    #[must_use]
+    pub const fn is_bare(&self) -> bool {
+        self.candidate.is_none()
+    }
+}
+
+impl Serialize for SliceSourceBinding {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match &self.candidate {
+            None => serializer.serialize_str(&self.key),
+            Some(candidate) => {
+                use serde::ser::SerializeStruct;
+                let mut state = serializer.serialize_struct("SliceSourceBinding", 2)?;
+                state.serialize_field("key", &self.key)?;
+                state.serialize_field("candidate", candidate)?;
+                state.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SliceSourceBinding {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            Bare(String),
+            Structured { key: String, candidate: String },
+        }
+        Ok(match Wire::deserialize(deserializer)? {
+            Wire::Bare(key) => Self::bare(key),
+            Wire::Structured { key, candidate } => Self::structured(key, candidate),
+        })
     }
 }
 
