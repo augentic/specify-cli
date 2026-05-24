@@ -151,35 +151,96 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 
 /// `specify plan transition <name> <target>` — dispatches to either
 /// the plan-level Gate 1 stamp (`<plan-name> reviewed`) or the
-/// per-entry close (`<entry-name> done`). Any other combination is
-/// rejected with `Error::Argument` (exit 2).
+/// per-entry close (`<entry-name> done`). `--undo` swaps the
+/// forward verb for the one-rung reverse walk on per-entry status
+/// (`done → in-progress`, `in-progress → pending`); plan-level
+/// lifecycle has no undo path in v1.
 ///
 /// `<plan-name> reviewed` against an already-reviewed plan is an
 /// idempotent no-op (exit 0, no journal event) per workflow §D7 —
 /// running the explicit transition after `specify plan create
 /// --auto-review` must not double-stamp the lifecycle nor double-
 /// fire `plan.transition.reviewed`.
-pub(super) fn transition(ctx: &Ctx, name: String, target: String) -> Result<()> {
+pub(super) fn transition(
+    ctx: &Ctx, name: String, target: Option<String>, undo: bool,
+) -> Result<()> {
     let plan_path = ctx.layout().plan_path();
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        dispatch_transition(plan, &plan_path, &name, &target)
+        if undo {
+            dispatch_undo(plan, &plan_path, &name)
+        } else {
+            // Clap's `required_unless_present = "undo"` guarantees a
+            // target here; the unwrap_or surfaces the same usage
+            // diagnostic clap would have if it slipped through.
+            let target = target.ok_or_else(|| Error::Argument {
+                flag: "<target>",
+                detail: "transition target is required unless --undo is set".to_string(),
+            })?;
+            dispatch_transition(plan, &plan_path, &name, &target)
+        }
     })?;
-    // workflow §Observability: Gate-1 stamp emits a journal event when
-    // the lifecycle actually changed. The same-state no-op path
-    // (already `reviewed`) flags `changed = false` so we skip the
-    // emit — preserves single-emit-per-event for the
-    // `plan.transition.reviewed` line.
-    if matches!(body.kind, TransitionKind::Plan) && body.changed {
-        let event = specify_domain::journal::Event::new(
-            Timestamp::now(),
-            specify_domain::journal::EventKind::PlanTransitionReviewed {
-                plan_name: body.name.clone(),
-            },
-        );
-        specify_domain::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+    // workflow §Observability: every status / lifecycle move emits
+    // exactly one journal event when the on-disk state actually
+    // changed. The same-state no-op path (already-`reviewed` plan)
+    // flags `changed = false` so we skip the emit.
+    match (body.kind, body.changed) {
+        (TransitionKind::Plan, true) => {
+            let event = specify_domain::journal::Event::new(
+                Timestamp::now(),
+                specify_domain::journal::EventKind::PlanTransitionReviewed {
+                    plan_name: body.name.clone(),
+                },
+            );
+            specify_domain::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+        }
+        (TransitionKind::Undo, true) => {
+            let pair = body.undo.ok_or_else(|| Error::Diag {
+                code: "plan-transition-undo",
+                detail: "undo body must carry the status pair".to_string(),
+            })?;
+            let event = specify_domain::journal::Event::new(
+                Timestamp::now(),
+                specify_domain::journal::EventKind::PlanTransitionUndone {
+                    plan_name: body.plan.name.clone(),
+                    slice_name: body.name.clone(),
+                    from: pair.from,
+                    to: pair.to,
+                },
+            );
+            specify_domain::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+        }
+        _ => {}
     }
     ctx.write(&body, write_transition_text)?;
     Ok(())
+}
+
+fn dispatch_undo(
+    plan: &mut Plan, plan_path: &std::path::Path, name: &str,
+) -> Result<TransitionBody> {
+    if name == plan.name {
+        return Err(Error::Argument {
+            flag: "--undo",
+            detail: "plan-level lifecycle has no undo path in v1; `--undo` operates on \
+                     per-entry status only. To un-stamp `reviewed`, edit `plan.yaml` directly \
+                     (out of scope for the CLI) or drop and re-create the plan."
+                .to_string(),
+        });
+    }
+    let (from, to) = plan.transition_undo(name)?;
+    let entry = plan.entries.iter().find(|e| e.name == name).ok_or_else(|| Error::Diag {
+        code: "plan-entry-not-found",
+        detail: format!("no slice named '{name}' in plan"),
+    })?;
+    Ok(TransitionBody {
+        plan: plan_ref(plan, plan_path),
+        kind: TransitionKind::Undo,
+        name: entry.name.clone(),
+        previous: from.to_string(),
+        current: to.to_string(),
+        changed: true,
+        undo: Some(UndoPair { from, to }),
+    })
 }
 
 fn dispatch_transition(
@@ -203,6 +264,7 @@ fn dispatch_transition(
                         previous: previous.to_string(),
                         current: plan.lifecycle.to_string(),
                         changed: false,
+                        undo: None,
                     });
                 }
                 plan.transition_lifecycle(Lifecycle::Reviewed)?;
@@ -213,6 +275,7 @@ fn dispatch_transition(
                     previous: previous.to_string(),
                     current: plan.lifecycle.to_string(),
                     changed: true,
+                    undo: None,
                 })
             }
             other => Err(plan_target_invalid(other)),
@@ -239,6 +302,7 @@ fn dispatch_transition(
                 previous: previous.to_string(),
                 current: entry.status.to_string(),
                 changed: true,
+                undo: None,
             })
         }
         other => Err(entry_target_invalid(other)),
@@ -358,11 +422,12 @@ fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {
     }
 }
 
-#[derive(Serialize, Clone, Copy)]
+#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 enum TransitionKind {
     Plan,
     Entry,
+    Undo,
 }
 
 #[derive(Serialize)]
@@ -373,13 +438,27 @@ struct TransitionBody {
     name: String,
     previous: String,
     current: String,
-    /// `false` when the transition was an idempotent no-op (RFC-27
+    /// `false` when the transition was an idempotent no-op (workflow
     /// §D7 — explicit `reviewed` after `--auto-review`); `true`
     /// when the lifecycle / status actually moved. The outer
     /// handler reads this to decide whether to fire the
     /// `plan.transition.reviewed` journal event.
     #[serde(skip)]
     changed: bool,
+    /// Status pair the `--undo` walk visited, if any. `None` on
+    /// forward transitions and on undo failures that never reached
+    /// the mutation step. Surfaced on the JSON envelope under
+    /// `undo: { from, to }` so wire consumers can branch on the
+    /// reverse step without re-parsing `previous` / `current`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    undo: Option<UndoPair>,
+}
+
+#[derive(Serialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+struct UndoPair {
+    from: Status,
+    to: Status,
 }
 
 fn write_transition_text(w: &mut dyn Write, body: &TransitionBody) -> std::io::Result<()> {
@@ -397,6 +476,9 @@ fn write_transition_text(w: &mut dyn Write, body: &TransitionBody) -> std::io::R
             "Transitioned '{}': {} \u{2192} {}.",
             body.name, body.previous, body.current
         ),
+        TransitionKind::Undo => {
+            writeln!(w, "Undid '{}': {} \u{2192} {}.", body.name, body.previous, body.current)
+        }
     }
 }
 

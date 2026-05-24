@@ -258,11 +258,21 @@ pub enum PlanAction {
     /// failures and merge conflicts leave the active entry `in-progress`.
     Transition {
         /// Plan name (for plan-level `reviewed`) or kebab-case entry
-        /// name (for per-entry `done`).
+        /// name (for per-entry `done` / `--undo`).
         name: String,
         /// Transition target — `reviewed` (plan-level) or `done`
-        /// (per-entry).
-        target: String,
+        /// (per-entry). Omit when `--undo` is set.
+        #[arg(required_unless_present = "undo")]
+        target: Option<String>,
+        /// Walk one rung backwards on per-entry status. Legal rungs:
+        /// `done → in-progress`, `in-progress → pending`. The flag
+        /// refuses to skip rungs — undoing a `done` entry to
+        /// `pending` MUST run twice so the journal records each step
+        /// independently. Fires one `plan.transition.undone` event
+        /// per call. Plan-level `reviewed` cannot be undone; un-stamp
+        /// by editing `plan.yaml` directly (out of scope for v1).
+        #[arg(long = "undo", action = ArgAction::SetTrue, conflicts_with = "target")]
+        undo: bool,
     },
     /// Archive the current plan to `.specify/archive/plans/<name>-<YYYYMMDD>.yaml`
     Archive {

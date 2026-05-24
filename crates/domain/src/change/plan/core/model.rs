@@ -40,11 +40,16 @@ use crate::evidence::ClaimKind;
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum Status {
-    /// Not yet started.
+    /// Not yet started. Written by `plan add` / `plan amend` (forward)
+    /// and `plan transition <entry> --undo` (reverse from
+    /// `InProgress`).
     Pending,
-    /// Currently being executed.
+    /// Currently being executed. Written by `plan next` (forward)
+    /// and `plan transition <entry> --undo` (reverse from `Done`).
     InProgress,
-    /// Completed successfully.
+    /// Completed successfully. Written by `slice merge` (forward
+    /// only — `--undo` walks back to `InProgress` so the slice can be
+    /// re-built and re-merged without inventing a `Reopened` state).
     Done,
 }
 

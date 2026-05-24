@@ -53,6 +53,48 @@ impl Plan {
             })
         }
     }
+
+    /// Walk a single entry one step backwards along the legal v1
+    /// lifecycle (`Done → InProgress`, `InProgress → Pending`) and
+    /// return `(from, to)` so the caller can emit the matching
+    /// `plan.transition.undone` journal event.
+    ///
+    /// The undo verb refuses to skip rungs — `Done → Pending` MUST
+    /// run twice so the journal records each rung independently and
+    /// the operator never lands in a state the forward path cannot
+    /// reach. `Pending` has no predecessor (no prior status to
+    /// reinstate); `plan add` / `plan amend` are the only writers
+    /// of `Pending`.
+    ///
+    /// # Errors
+    ///
+    /// - `plan-entry-not-found` when no entry on `self` matches
+    ///   `name`.
+    /// - `plan-transition-undo` when the entry is already at
+    ///   `Pending` (nothing to undo).
+    pub fn transition_undo(&mut self, name: &str) -> Result<(Status, Status), Error> {
+        let entry: &mut Entry =
+            self.entries.iter_mut().find(|c| c.name == name).ok_or_else(|| Error::Diag {
+                code: "plan-entry-not-found",
+                detail: format!("no slice named '{name}' in plan"),
+            })?;
+        let from = entry.status;
+        let to = match from {
+            Status::Done => Status::InProgress,
+            Status::InProgress => Status::Pending,
+            Status::Pending => {
+                return Err(Error::Diag {
+                    code: "plan-transition-undo",
+                    detail: format!(
+                        "cannot undo from `pending` on slice `{name}`; `pending` is the entry \
+                         point and has no prior status to reinstate"
+                    ),
+                });
+            }
+        };
+        entry.status = to;
+        Ok((from, to))
+    }
 }
 
 #[cfg(test)]
@@ -85,6 +127,38 @@ mod tests {
         };
         assert_eq!(code, "plan-lifecycle-transition");
         assert!(detail.contains("Reviewed"), "endpoint in: {detail:?}");
+    }
+
+    #[test]
+    fn undo_walks_status_backwards_one_rung_at_a_time() {
+        let mut plan = plan_with_changes(vec![change("slice", Status::Done)]);
+        let (from, to) = plan.transition_undo("slice").expect("done -> in-progress ok");
+        assert_eq!((from, to), (Status::Done, Status::InProgress));
+        assert_eq!(plan.entries[0].status, Status::InProgress);
+
+        let (from, to) = plan.transition_undo("slice").expect("in-progress -> pending ok");
+        assert_eq!((from, to), (Status::InProgress, Status::Pending));
+        assert_eq!(plan.entries[0].status, Status::Pending);
+    }
+
+    #[test]
+    fn undo_refuses_from_pending() {
+        let mut plan = plan_with_changes(vec![change("slice", Status::Pending)]);
+        let Err(Error::Diag { code, detail }) = plan.transition_undo("slice") else {
+            panic!("undo from pending must Err with plan-transition-undo diag");
+        };
+        assert_eq!(code, "plan-transition-undo");
+        assert!(detail.contains("pending"), "endpoint in: {detail:?}");
+        assert_eq!(plan.entries[0].status, Status::Pending, "status not mutated on illegal undo");
+    }
+
+    #[test]
+    fn undo_unknown_entry_diag() {
+        let mut plan = plan_with_changes(vec![change("known", Status::InProgress)]);
+        let Err(Error::Diag { code, .. }) = plan.transition_undo("ghost") else {
+            panic!("unknown entry must Err with plan-entry-not-found");
+        };
+        assert_eq!(code, "plan-entry-not-found");
     }
 
     #[test]

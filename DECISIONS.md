@@ -303,13 +303,23 @@ operators can run it from any shell), but the `--help` text documents
 the rule and `/spec:plan` skill bodies MUST NOT call it. Refer to
 workflow §"Execution model" for the full state diagram.
 
-`Status::Done` is absorbing in v1: per-entry `done` is the terminal
-state and no CLI verb walks it back. There is no `plan transition
---undo`, no `Status::Reopened`, and no "rebuild" sub-flow — a merged
-slice stays merged unless the operator hand-edits `plan.yaml` (an
-explicit escape hatch, not a supported flow). If an upstream revert
-demands a redo, author a fresh slice that captures the redo work; the
-original slice's `done` row stays as the historical record.
+Per-entry status walks backwards only via the dedicated
+`specify plan transition <entry> --undo` verb. The verb refuses to
+skip rungs — it implements exactly `Done → InProgress` and
+`InProgress → Pending` per call, so undoing a `done` entry to
+`pending` MUST run twice. Each step emits one
+`plan.transition.undone` journal event carrying `{ plan-name,
+slice-name, from, to }` so replay traces line up with the
+forward-direction cadence (`plan.transition.reviewed`,
+`slice.transition.*`). Plan-level lifecycle has no undo path in v1:
+once stamped, `reviewed` only un-sets by hand-editing `plan.yaml`
+(out of scope for the CLI) or by dropping and re-creating the plan.
+`Status::Reopened` does not exist — an "undone" `done` row walks
+back to `in-progress` so the operator can re-run `/spec:build` and
+re-merge without inventing a new state. If an upstream revert
+demands a redo without re-running the slice, author a fresh slice
+that captures the redo work; the original slice's `done` row stays
+as the historical record.
 
 Archive is a filesystem operation, not a lifecycle state. `specify
 plan finalize` moves `change.md` + `plan.yaml` into
@@ -416,6 +426,7 @@ variants are `snake_case` and bridge to the wire via
 | Wire id | Emitted by |
 |---|---|
 | `plan.transition.reviewed` | `specify plan transition <plan> reviewed` (Gate 1 stamp). |
+| `plan.transition.undone` | `specify plan transition <entry> --undo` (per-entry reverse rung; one event per rung). |
 | `plan.propose.divergence` | `/spec:plan` `propose` sub-step when it flips a slice to `divergence: likely`. |
 | `plan.amend.divergence` | `specify plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
 | `slice.transition.refined` | `specify slice transition <slice> refined`. |

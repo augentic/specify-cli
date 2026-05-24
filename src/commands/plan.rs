@@ -89,7 +89,9 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             &add_alias,
             &remove_alias,
         ),
-        PlanAction::Transition { name, target } => lifecycle::transition(ctx, name, target),
+        PlanAction::Transition { name, target, undo } => {
+            lifecycle::transition(ctx, name, target, undo)
+        }
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),
     }
 }

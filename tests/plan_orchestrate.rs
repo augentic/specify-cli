@@ -572,6 +572,64 @@ fn plan_transition_rejects_illegal_edge() {
 }
 
 #[test]
+fn plan_transition_undo_walks_done_to_in_progress() {
+    let project = Project::init();
+    project.seed_plan(SINGLE_DONE);
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "transition", "foo", "--undo"])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(actual["kind"], "undo");
+    assert_eq!(actual["name"], "foo");
+    assert_eq!(actual["previous"], "done");
+    assert_eq!(actual["current"], "in-progress");
+    assert_eq!(actual["undo"]["from"], "done");
+    assert_eq!(actual["undo"]["to"], "in-progress");
+
+    let plan_after = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(plan_after.contains("status: in-progress"), "plan.yaml: {plan_after}");
+
+    let journal = fs::read_to_string(project.root().join(".specify").join("journal.jsonl"))
+        .expect("read journal.jsonl");
+    let last = journal.lines().rfind(|l| !l.is_empty()).expect("journal line");
+    assert!(
+        last.contains(r#""event":"plan.transition.undone""#),
+        "undo must emit plan.transition.undone, got:\n{last}"
+    );
+    assert!(last.contains(r#""from":"done""#), "from in payload: {last}");
+    assert!(last.contains(r#""to":"in-progress""#), "to in payload: {last}");
+}
+
+#[test]
+fn plan_transition_undo_walks_in_progress_to_pending_then_refuses() {
+    let project = Project::init();
+    project.seed_plan(SINGLE_IN_PROGRESS);
+
+    specify()
+        .current_dir(project.root())
+        .args(["plan", "transition", "foo", "--undo"])
+        .assert()
+        .success();
+
+    let plan_mid = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(plan_mid.contains("status: pending"), "plan.yaml after first undo: {plan_mid}");
+
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["plan", "transition", "foo", "--undo"])
+        .assert()
+        .failure();
+    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8");
+    assert!(
+        stderr.contains("pending"),
+        "undo-from-pending stderr should mention `pending`, got: {stderr:?}"
+    );
+}
+
+#[test]
 fn plan_transition_plan_level_reviewed_json() {
     // workflow §The plan gate: `specify plan transition <plan-name>
     // reviewed` is the operator-stamped Gate 1 transition. The plan

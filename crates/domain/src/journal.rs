@@ -64,6 +64,23 @@ pub enum EventKind {
         /// Plan name from `plan.yaml.name`.
         plan_name: String,
     },
+    /// Operator walked one rung backwards on per-entry status via
+    /// `specify plan transition <entry> --undo`. One event per rung
+    /// (`done → in-progress` and `in-progress → pending` each fire
+    /// individually) so the journal records every step the operator
+    /// took and replay traces line up with the forward-direction
+    /// `plan.transition.reviewed` / `slice.transition.*` cadence.
+    #[serde(rename = "plan.transition.undone", rename_all = "kebab-case")]
+    PlanTransitionUndone {
+        /// Plan name from `plan.yaml.name`.
+        plan_name: String,
+        /// Entry id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Status the entry held before the undo.
+        from: crate::change::Status,
+        /// Status the entry holds after the undo.
+        to: crate::change::Status,
+    },
     /// `/spec:plan`'s `propose` sub-step flagged a materially-
     /// disagreeing slice (`slices[].divergence: likely`).
     /// workflow §D5 — emitted from the CLI when the operator (or the
