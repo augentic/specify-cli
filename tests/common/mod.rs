@@ -17,7 +17,6 @@ use std::str::FromStr;
 
 use assert_cmd::Command;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use specify_error::Result;
 use tempfile::{TempDir, tempdir};
 
@@ -82,7 +81,7 @@ pub fn stamp_slice_outcome(
 /// Panics if `path` cannot be read.
 pub fn sha256_hex(path: &Path) -> String {
     let bytes = fs::read(path).expect("read bytes for sha256");
-    format!("{:x}", Sha256::digest(bytes))
+    specify_tool::sha256_hex(&bytes)
 }
 
 /// Deterministic git author/committer identity for tests that exercise

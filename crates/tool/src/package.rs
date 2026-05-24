@@ -167,7 +167,7 @@ async fn fetch_async(
 
     Ok(AcquiredBytes {
         temp,
-        sha256: format!("{:x}", hasher.finalize()),
+        sha256: crate::hash::sha256_output_hex(hasher.finalize()),
         package_metadata: Some(PackageMetadata {
             name: request.name_ref(),
             version: request.version.clone(),

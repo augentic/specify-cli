@@ -8,6 +8,7 @@
 
 pub mod cache;
 pub mod error;
+pub mod hash;
 pub mod host;
 pub mod load;
 pub mod manifest;
@@ -16,6 +17,7 @@ pub mod permissions;
 pub mod resolver;
 pub mod validate;
 
+pub use hash::{sha256_hex, sha256_output_hex};
 pub use package::{DEFAULT_WASM_PKG_CONFIG, PackageMetadata, WASM_PKG_CONFIG_FILENAME};
 
 #[cfg(test)]

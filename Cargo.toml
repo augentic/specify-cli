@@ -22,7 +22,6 @@ semver.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 specify-domain.workspace = true
 specify-error.workspace = true
 specify-tool.workspace = true
@@ -154,9 +153,9 @@ petgraph = "0.8"
 regex = "1"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
-serde-saphyr = "0.0.25"
+serde-saphyr = "0.0.26"
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 specify-domain = { path = "crates/domain" }
 specify-error = { path = "crates/error" }
 specify-tool = { path = "crates/tool" }
@@ -166,8 +165,8 @@ thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "rt"] }
 ureq = { version = "3", features = ["json"] }
 wasm-pkg-client = "0.15"
-wasmtime = { version = "44.0.2", default-features = false, features = ["component-model", "cranelift", "runtime"] }
-wasmtime-wasi = { version = "44.0.2", default-features = false, features = ["p2"] }
+wasmtime = { version = "45.0.0", default-features = false, features = ["component-model", "cranelift", "runtime"] }
+wasmtime-wasi = { version = "45.0.0", default-features = false, features = ["p2"] }
 
 [profile.release]
 lto = true

@@ -17,8 +17,6 @@ pub use io::{
 };
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-
 /// Closed list of fingerprint inputs (RFC-27 §D8).
 ///
 /// Inputs are byte-stable per source — operators who pin the four
@@ -88,7 +86,7 @@ impl CacheFingerprint {
     #[must_use]
     pub fn digest(&self) -> String {
         let bytes = self.canonical_bytes();
-        format!("sha256:{:x}", Sha256::digest(&bytes))
+        format!("sha256:{}", specify_tool::sha256_hex(&bytes))
     }
 
     /// First field that differs between `prior` and `self`, walking
@@ -127,7 +125,7 @@ impl CacheFingerprint {
 /// [`CacheFingerprint::digest`] for the brief-file input.
 #[must_use]
 pub fn sha256_prefixed(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", specify_tool::sha256_hex(bytes))
 }
 
 /// Closed two-form `source:` shape inside a [`CacheFingerprint`].

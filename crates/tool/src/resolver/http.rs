@@ -122,7 +122,7 @@ fn stream_to_tempfile<R: Read>(
     temp.as_file()
         .sync_all()
         .map_err(|err| ToolError::cache_io("sync download tempfile", temp.path(), err))?;
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::hash::sha256_output_hex(hasher.finalize()))
 }
 
 fn https_agent() -> ureq::Agent {
