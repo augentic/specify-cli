@@ -79,7 +79,7 @@ mod tests {
         Entry, Lifecycle, Patch, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
         TargetRef,
     };
-    use super::super::test_support::{change, plan_with_changes};
+    use super::super::{change, plan_with_changes};
     use super::*;
 
     #[test]

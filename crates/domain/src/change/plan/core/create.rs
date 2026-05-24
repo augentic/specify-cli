@@ -80,7 +80,7 @@ impl Plan {
 #[cfg(test)]
 mod tests {
     use super::super::model::SliceAuthorityOverride;
-    use super::super::test_support::{change, change_with_deps, plan_with_changes};
+    use super::super::{change, change_with_deps, plan_with_changes};
     use super::*;
 
     #[test]

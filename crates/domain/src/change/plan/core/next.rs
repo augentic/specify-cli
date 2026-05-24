@@ -64,9 +64,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{
-        RFC_EXAMPLE_YAML, change, change_with_deps, plan_with_changes,
-    };
+    use super::super::{RFC_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
     use super::*;
 
     #[test]

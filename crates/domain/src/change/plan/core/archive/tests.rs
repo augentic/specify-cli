@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use specify_error::Error;
 use tempfile::tempdir;
 
+use super::super::change;
 use super::super::model::{Entry, Lifecycle, Plan, Status};
-use super::super::test_support::change;
 
 fn write_plan(dir: &Path, name: &str, changes: Vec<Entry>) -> PathBuf {
     let plan = Plan {

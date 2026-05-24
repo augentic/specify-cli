@@ -57,7 +57,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{change, plan_with_changes};
+    use super::super::{change, plan_with_changes};
     use super::*;
 
     #[test]

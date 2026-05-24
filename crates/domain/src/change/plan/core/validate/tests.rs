@@ -5,7 +5,7 @@ use tempfile::tempdir;
 use super::super::model::{
     Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
 };
-use super::super::test_support::{RFC_EXAMPLE_YAML, change, plan_with_changes};
+use super::super::{RFC_EXAMPLE_YAML, change, plan_with_changes};
 use crate::evidence::ClaimKind;
 use crate::registry::{Registry, RegistryProject};
 
@@ -61,43 +61,50 @@ fn self_cycle_error() {
 
 #[test]
 fn unknown_depends_on_error() {
-    let mut a = change("a", Status::Pending);
-    a.depends_on = vec!["bogus".into()];
-    let plan = plan_with_changes(vec![a]);
+    let mut entry = change("depends-on-ghost", Status::Pending);
+    entry.depends_on = vec!["bogus".into()];
+    let plan = plan_with_changes(vec![entry]);
     let results = plan.validate(None, None);
     let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-depends-on").collect();
     assert_eq!(hits.len(), 1, "expected one unknown-depends-on, got {results:#?}");
-    assert_eq!(hits[0].entry.as_deref(), Some("a"));
+    assert_eq!(hits[0].entry.as_deref(), Some("depends-on-ghost"));
     assert!(hits[0].message.contains("bogus"));
 }
 
 #[test]
 fn unknown_source_error() {
-    let mut a = change("a", Status::Pending);
-    a.sources = vec![SliceSourceBinding::Bare("monolith".into())];
-    let plan = plan_with_changes(vec![a]);
+    let mut entry = change("source-ghost", Status::Pending);
+    entry.sources = vec![SliceSourceBinding::Bare("monolith".into())];
+    let plan = plan_with_changes(vec![entry]);
     let results = plan.validate(None, None);
     let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-source").collect();
     assert_eq!(hits.len(), 1, "expected one unknown-source, got {results:#?}");
-    assert_eq!(hits[0].entry.as_deref(), Some("a"));
+    assert_eq!(hits[0].entry.as_deref(), Some("source-ghost"));
     assert!(hits[0].message.contains("monolith"));
 }
 
 #[test]
 fn multiple_in_progress_error() {
-    let plan =
-        plan_with_changes(vec![change("a", Status::InProgress), change("b", Status::InProgress)]);
+    let plan = plan_with_changes(vec![
+        change("first-in-progress", Status::InProgress),
+        change("second-in-progress", Status::InProgress),
+    ]);
     let results = plan.validate(None, None);
     let hits: Vec<_> = results.iter().filter(|r| r.code == "multiple-in-progress").collect();
     assert_eq!(hits.len(), 2, "expected one result per offender, got {results:#?}");
     let names: HashSet<&str> = hits.iter().filter_map(|r| r.entry.as_deref()).collect();
-    assert!(names.contains("a") && names.contains("b"), "names = {names:?}");
+    assert!(
+        names.contains("first-in-progress") && names.contains("second-in-progress"),
+        "names = {names:?}"
+    );
 }
 
 #[test]
 fn single_in_progress_is_fine() {
-    let plan =
-        plan_with_changes(vec![change("a", Status::InProgress), change("b", Status::Pending)]);
+    let plan = plan_with_changes(vec![
+        change("only-in-progress", Status::InProgress),
+        change("queued", Status::Pending),
+    ]);
     let results = plan.validate(None, None);
     assert!(
         !results.iter().any(|r| r.code == "multiple-in-progress"),
@@ -175,7 +182,7 @@ fn no_short_circuit() {
 
 #[test]
 fn project_not_in_registry() {
-    let mut e = change("a", Status::Pending);
+    let mut e = change("registry-missing", Status::Pending);
     e.project = Some("nonexistent".to_string());
     let plan = plan_with_changes(vec![e]);
     let registry = Registry {
@@ -194,7 +201,7 @@ fn project_not_in_registry() {
 
 #[test]
 fn project_missing_multi_repo() {
-    let mut e = change("a", Status::Pending);
+    let mut e = change("needs-project", Status::Pending);
     e.project = None;
     let plan = plan_with_changes(vec![e]);
     let registry = Registry {
@@ -254,7 +261,7 @@ fn target_only_entry_valid_multi_repo() {
 
 #[test]
 fn project_valid_single_repo() {
-    let mut e = change("a", Status::Pending);
+    let mut e = change("solo-target-only", Status::Pending);
     e.project = None;
     e.target = Some(TargetRef::new("contracts", 1));
     let plan = plan_with_changes(vec![e]);
@@ -275,7 +282,7 @@ fn project_valid_single_repo() {
 
 #[test]
 fn project_matches_registry() {
-    let mut e = change("a", Status::Pending);
+    let mut e = change("project-alpha", Status::Pending);
     e.project = Some("alpha".to_string());
     let plan = plan_with_changes(vec![e]);
     let registry = Registry {

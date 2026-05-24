@@ -69,7 +69,8 @@ pub struct FusionRequirement {
     /// only the winning one. Operators auditing a divergence can see
     /// what was dropped.
     pub contributing_claims: Vec<ContributingClaim>,
-    /// How synthesis arrived at the requirement's final value.
+    /// How synthesis arrived at the requirement's final value. See
+    /// [`FusionResolution`] for the closed variant set and meanings.
     pub resolution: FusionResolution,
     /// Optional trace describing how a non-trivial resolution
     /// selected the winning claim. Present only when `resolution` is
