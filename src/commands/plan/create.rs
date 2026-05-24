@@ -302,25 +302,30 @@ fn emit_override_events(
     clear_all_emitted: &BTreeMap<String, Vec<ClaimKind>>, now: jiff::Timestamp,
 ) -> Vec<journal::Event> {
     let mut pending: Vec<(AuthorityOverrideSortKey, journal::Event)> = Vec::new();
-    for ((slice, kind), key) in set_map {
-        if clear_set.contains(&(slice.clone(), *kind)) || clear_all_set.contains(slice) {
-            continue;
-        }
-        let action = AuthorityOverrideAction::Set;
-        let claim_kind = Some(kind.to_string());
+    let mut record = |slice: &str,
+                      action: AuthorityOverrideAction,
+                      claim_kind: ClaimKind,
+                      source_key: Option<&str>| {
+        let claim_kind = Some(claim_kind.to_string());
         pending.push((
-            (slice.clone(), claim_kind.clone(), action),
+            (slice.to_string(), claim_kind.clone(), action),
             journal::Event::new(
                 now,
                 journal::EventKind::PlanAmendAuthorityOverride {
                     plan_name: plan_name.to_string(),
-                    slice_name: slice.clone(),
+                    slice_name: slice.to_string(),
                     action,
                     claim_kind,
-                    source_key: Some(key.clone()),
+                    source_key: source_key.map(str::to_owned),
                 },
             ),
         ));
+    };
+    for ((slice, kind), key) in set_map {
+        if clear_set.contains(&(slice.clone(), *kind)) || clear_all_set.contains(slice) {
+            continue;
+        }
+        record(slice, AuthorityOverrideAction::Set, *kind, Some(key.as_str()));
     }
     for (slice, kind) in clear_set {
         if clear_all_set.contains(slice)
@@ -328,39 +333,11 @@ fn emit_override_events(
         {
             continue;
         }
-        let action = AuthorityOverrideAction::Clear;
-        let claim_kind = Some(kind.to_string());
-        pending.push((
-            (slice.clone(), claim_kind.clone(), action),
-            journal::Event::new(
-                now,
-                journal::EventKind::PlanAmendAuthorityOverride {
-                    plan_name: plan_name.to_string(),
-                    slice_name: slice.clone(),
-                    action,
-                    claim_kind,
-                    source_key: None,
-                },
-            ),
-        ));
+        record(slice, AuthorityOverrideAction::Clear, *kind, None);
     }
     for (slice, kinds) in clear_all_emitted {
         for kind in kinds {
-            let action = AuthorityOverrideAction::Clear;
-            let claim_kind = Some(kind.to_string());
-            pending.push((
-                (slice.clone(), claim_kind.clone(), action),
-                journal::Event::new(
-                    now,
-                    journal::EventKind::PlanAmendAuthorityOverride {
-                        plan_name: plan_name.to_string(),
-                        slice_name: slice.clone(),
-                        action,
-                        claim_kind,
-                        source_key: None,
-                    },
-                ),
-            ));
+            record(slice, AuthorityOverrideAction::Clear, *kind, None);
         }
     }
     // Final sort gives a byte-stable batched append regardless of

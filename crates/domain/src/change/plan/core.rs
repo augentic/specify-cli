@@ -19,4 +19,10 @@ pub use model::{
     SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
     TargetRefParseError,
 };
+#[cfg(test)]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "re-export shared plan test fixtures for sibling modules"
+)]
+pub(crate) use test_support::{change, change_with_deps, plan_with_changes};
 pub use validate::authority_override_orphan_source_keys;

@@ -6,39 +6,10 @@ use tempfile::tempdir;
 
 use super::*;
 use crate::change::plan::core::{
-    Entry, Plan, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
+    Entry, Plan, SliceSourceBinding, SourceBinding, Status, change, change_with_deps,
+    plan_with_changes,
 };
 use crate::registry::{Registry, RegistryProject};
-
-fn change(name: &str, status: Status) -> Entry {
-    Entry {
-        name: name.into(),
-        project: Some("default".into()),
-        target: None,
-        status,
-        depends_on: vec![],
-        sources: vec![],
-        context: vec![],
-        description: None,
-        divergence: None,
-        authority_override: SliceAuthorityOverride::default(),
-    }
-}
-
-fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Entry {
-    let mut e = change(name, status);
-    e.depends_on = deps.iter().map(|s| (*s).to_string()).collect();
-    e
-}
-
-fn plan_with(changes: Vec<Entry>) -> Plan {
-    Plan {
-        name: "test".into(),
-        lifecycle: crate::change::plan::core::Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: changes,
-    }
-}
 
 fn plan_with_sources(sources: Vec<(&str, &str)>, changes: Vec<Entry>) -> Plan {
     let mut map = BTreeMap::new();
@@ -57,7 +28,7 @@ fn plan_with_sources(sources: Vec<(&str, &str)>, changes: Vec<Entry>) -> Plan {
 
 #[test]
 fn doctor_cycle_two_node() {
-    let plan = plan_with(vec![
+    let plan = plan_with_changes(vec![
         change_with_deps("a", Status::Pending, &["b"]),
         change_with_deps("b", Status::Pending, &["a"]),
     ]);
@@ -74,7 +45,7 @@ fn doctor_cycle_two_node() {
 
 #[test]
 fn doctor_cycle_three_node() {
-    let plan = plan_with(vec![
+    let plan = plan_with_changes(vec![
         change_with_deps("a", Status::Pending, &["c"]),
         change_with_deps("b", Status::Pending, &["a"]),
         change_with_deps("c", Status::Pending, &["b"]),
@@ -95,7 +66,7 @@ fn doctor_cycle_three_node() {
 
 #[test]
 fn doctor_cycle_two_disjoint() {
-    let plan = plan_with(vec![
+    let plan = plan_with_changes(vec![
         change_with_deps("a", Status::Pending, &["b"]),
         change_with_deps("b", Status::Pending, &["a"]),
         change_with_deps("c", Status::Pending, &["d"]),
@@ -107,7 +78,7 @@ fn doctor_cycle_two_disjoint() {
 
 #[test]
 fn doctor_cycle_self_loop() {
-    let plan = plan_with(vec![change_with_deps("a", Status::Pending, &["a"])]);
+    let plan = plan_with_changes(vec![change_with_deps("a", Status::Pending, &["a"])]);
     let hits: Vec<_> =
         doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
     assert_eq!(hits.len(), 1);
@@ -121,8 +92,10 @@ fn doctor_cycle_self_loop() {
 
 #[test]
 fn doctor_no_cycle_quiet() {
-    let plan =
-        plan_with(vec![change("a", Status::Done), change_with_deps("b", Status::Pending, &["a"])]);
+    let plan = plan_with_changes(vec![
+        change("a", Status::Done),
+        change_with_deps("b", Status::Pending, &["a"]),
+    ]);
     let hits: Vec<_> =
         doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
     assert!(hits.is_empty(), "no cycle expected, got {hits:#?}");
@@ -266,7 +239,7 @@ fn doctor_stale_clone_reports_missing_origin_without_sync_stamp_warning() {
         "omnia@v1",
         "alpha service",
     )]);
-    let plan = plan_with(vec![]);
+    let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
         .filter(|d| d.code == STALE_CLONE)
@@ -304,7 +277,7 @@ fn doctor_stale_clone_signature_changed() {
         "omnia@v1",
         "alpha service",
     )]);
-    let plan = plan_with(vec![]);
+    let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
         .filter(|d| d.code == STALE_CLONE)
@@ -341,7 +314,7 @@ fn doctor_stale_clone_signature_current() {
         "omnia@v1",
         "alpha service",
     )]);
-    let plan = plan_with(vec![]);
+    let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
         .filter(|d| d.code == STALE_CLONE)
@@ -360,7 +333,7 @@ fn doctor_stale_clone_diagnoses_wrong_symlink_target() {
     std::fs::create_dir_all(&workspace).unwrap();
     symlink_dir(&other, &workspace.join("peer"));
     let registry = registry_with(vec![rp("peer", "./peer", "omnia@v1", "peer service")]);
-    let plan = plan_with(vec![]);
+    let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
         .filter(|d| d.code == STALE_CLONE)
@@ -389,7 +362,7 @@ fn doctor_stale_clone_diagnoses_wrong_symlink_target() {
 fn doctor_stale_clone_ignores_missing_symlink_slots() {
     let tmp = tempdir().unwrap();
     let registry = registry_with(vec![rp("self", ".", "omnia@v1", "self service")]);
-    let plan = plan_with(vec![]);
+    let plan = plan_with_changes(vec![]);
     let any_stale = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
         .any(|d| d.code == STALE_CLONE);
@@ -428,7 +401,7 @@ fn doctor_healthy_plan_emits_zero_doctor_diagnostics() {
 fn doctor_includes_validate_findings_unchanged() {
     // A plan with an unknown depends-on (validate-only). Doctor must
     // forward the validate diagnostic with code unchanged.
-    let plan = plan_with(vec![
+    let plan = plan_with_changes(vec![
         change("a", Status::Done),
         change_with_deps("b", Status::Pending, &["a", "ghost"]),
     ]);

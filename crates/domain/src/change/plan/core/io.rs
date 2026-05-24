@@ -90,12 +90,12 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use tempfile::tempdir;
 
-    use super::super::model::{Entry, Lifecycle, SliceAuthorityOverride, Status};
-    use super::super::test_support::RFC_EXAMPLE_YAML;
+    use super::super::model::Status;
+    use super::super::test_support::{
+        RFC_EXAMPLE_YAML, change, change_with_deps, plan_with_changes,
+    };
     use super::*;
 
     #[test]
@@ -112,12 +112,8 @@ mod tests {
     fn save_emits_trailing_newline() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        let plan = Plan {
-            name: "init".to_string(),
-            lifecycle: Lifecycle::Pending,
-            sources: BTreeMap::new(),
-            entries: vec![],
-        };
+        let mut plan = plan_with_changes(vec![]);
+        plan.name = "init".into();
         plan.save(&path).expect("save ok");
 
         let bytes = std::fs::read(&path).expect("read ok");
@@ -137,23 +133,8 @@ mod tests {
         let path = dir.path().join("plan.yaml");
         std::fs::write(&path, "garbage that should be overwritten").expect("write garbage");
 
-        let plan = Plan {
-            name: "fresh".to_string(),
-            lifecycle: Lifecycle::Pending,
-            sources: BTreeMap::new(),
-            entries: vec![Entry {
-                name: "only-entry".to_string(),
-                project: Some("default".into()),
-                target: None,
-                status: Status::Pending,
-                depends_on: vec![],
-                sources: vec![],
-                context: vec![],
-                description: None,
-                divergence: None,
-                authority_override: SliceAuthorityOverride::default(),
-            }],
-        };
+        let mut plan = plan_with_changes(vec![change("only-entry", Status::Pending)]);
+        plan.name = "fresh".into();
         plan.save(&path).expect("save ok");
 
         let loaded = Plan::load(&path).expect("load ok");
@@ -194,23 +175,9 @@ mod tests {
     fn save_writes_kebab_case() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        let plan = Plan {
-            name: "demo".to_string(),
-            lifecycle: Lifecycle::Pending,
-            sources: BTreeMap::new(),
-            entries: vec![Entry {
-                name: "entry-one".to_string(),
-                project: Some("default".into()),
-                target: None,
-                status: Status::InProgress,
-                depends_on: vec!["foo".to_string()],
-                sources: vec![],
-                context: vec![],
-                description: None,
-                divergence: None,
-                authority_override: SliceAuthorityOverride::default(),
-            }],
-        };
+        let mut plan =
+            plan_with_changes(vec![change_with_deps("entry-one", Status::InProgress, &["foo"])]);
+        plan.name = "demo".into();
         plan.save(&path).expect("save ok");
 
         let content = std::fs::read_to_string(&path).expect("read ok");
@@ -237,31 +204,12 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
 
-        let first = Plan {
-            name: "first".to_string(),
-            lifecycle: Lifecycle::Pending,
-            sources: BTreeMap::new(),
-            entries: vec![],
-        };
+        let mut first = plan_with_changes(vec![]);
+        first.name = "first".into();
         first.save(&path).expect("save first ok");
 
-        let second = Plan {
-            name: "second".to_string(),
-            lifecycle: Lifecycle::Pending,
-            sources: BTreeMap::new(),
-            entries: vec![Entry {
-                name: "new-entry".to_string(),
-                project: Some("default".into()),
-                target: None,
-                status: Status::Pending,
-                depends_on: vec![],
-                sources: vec![],
-                context: vec![],
-                description: None,
-                divergence: None,
-                authority_override: SliceAuthorityOverride::default(),
-            }],
-        };
+        let mut second = plan_with_changes(vec![change("new-entry", Status::Pending)]);
+        second.name = "second".into();
         second.save(&path).expect("save second ok");
 
         let loaded = Plan::load(&path).expect("load ok");

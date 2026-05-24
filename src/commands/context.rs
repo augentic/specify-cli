@@ -39,13 +39,6 @@ fn render_document(ctx: &Ctx) -> Result<(String, fingerprint::ContextFingerprint
     Ok((generated, context_fingerprint))
 }
 
-fn diag(code: &'static str, detail: impl Into<String>) -> Error {
-    Error::Diag {
-        code,
-        detail: detail.into(),
-    }
-}
-
 fn read_optional(path: &Path) -> Result<Option<Vec<u8>>> {
     match fs::read(path) {
         Ok(bytes) => Ok(Some(bytes)),

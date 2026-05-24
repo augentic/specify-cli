@@ -5,9 +5,9 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_error::Result;
+use specify_error::{Error, Result};
 
-use super::{context_lock_path, diag, fences, fingerprint, lock, read_optional, render_document};
+use super::{context_lock_path, fences, fingerprint, lock, read_optional, render_document};
 use crate::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
@@ -16,19 +16,24 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     ctx.write(&body, write_text)?;
     match status {
         "up-to-date" => Ok(()),
-        "context-not-generated" => Err(diag("context-not-generated", "AGENTS.md is missing")),
-        "context-lock-missing" => {
-            Err(diag("context-lock-missing", ".specify/context.lock is missing"))
-        }
-        "drift" => Err(diag(
-            "context-drift-detected",
-            "AGENTS.md / .specify/context.lock drift detected; \
-             see the stdout body for affected inputs",
-        )),
-        other => Err(diag(
-            "context-check-unknown-status",
-            format!("context check returned unexpected status `{other}`"),
-        )),
+        "context-not-generated" => Err(Error::Diag {
+            code: "context-not-generated",
+            detail: "AGENTS.md is missing".to_string(),
+        }),
+        "context-lock-missing" => Err(Error::Diag {
+            code: "context-lock-missing",
+            detail: ".specify/context.lock is missing".to_string(),
+        }),
+        "drift" => Err(Error::Diag {
+            code: "context-drift-detected",
+            detail: "AGENTS.md / .specify/context.lock drift detected; \
+             see the stdout body for affected inputs"
+                .to_string(),
+        }),
+        other => Err(Error::Diag {
+            code: "context-check-unknown-status",
+            detail: format!("context check returned unexpected status `{other}`"),
+        }),
     }
 }
 

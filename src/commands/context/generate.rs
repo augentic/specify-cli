@@ -1,11 +1,9 @@
 //! Init-time fenced AGENTS.md writer.
 
 use specify_domain::slice::atomic::bytes_write;
-use specify_error::Result;
+use specify_error::{Error, Result};
 
-use super::{
-    context_lock_path, diag, error_from_fence, fences, lock, read_optional, render_document,
-};
+use super::{context_lock_path, error_from_fence, fences, lock, read_optional, render_document};
 use crate::context::Ctx;
 
 pub(in crate::commands) fn for_init(ctx: &Ctx) -> Result<Outcome> {
@@ -68,10 +66,10 @@ fn refuse_modified_fenced_body(
     };
     let actual_body = super::fingerprint::body_sha256(current.body());
     if actual_body != existing_lock.fences.body_sha256 {
-        return Err(diag(
-            "context-fenced-content-modified",
-            "AGENTS.md drifted from .specify/context.lock",
-        ));
+        return Err(Error::Diag {
+            code: "context-fenced-content-modified",
+            detail: "AGENTS.md drifted from .specify/context.lock".to_string(),
+        });
     }
     Ok(())
 }

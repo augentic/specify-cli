@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use tempfile::tempdir;
 
 use super::super::model::{
-    Entry, Lifecycle, Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding,
-    Status, TargetRef,
+    Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
 };
 use super::super::test_support::{RFC_EXAMPLE_YAML, change, plan_with_changes};
 use crate::evidence::ClaimKind;
@@ -176,23 +175,9 @@ fn no_short_circuit() {
 
 #[test]
 fn project_not_in_registry() {
-    let plan = Plan {
-        name: "test".to_string(),
-        lifecycle: Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "a".to_string(),
-            project: Some("nonexistent".to_string()),
-            target: None,
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }],
-    };
+    let mut e = change("a", Status::Pending);
+    e.project = Some("nonexistent".to_string());
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -209,23 +194,9 @@ fn project_not_in_registry() {
 
 #[test]
 fn project_missing_multi_repo() {
-    let plan = Plan {
-        name: "test".to_string(),
-        lifecycle: Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "a".to_string(),
-            project: None,
-            target: None,
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }],
-    };
+    let mut e = change("a", Status::Pending);
+    e.project = None;
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![
@@ -251,23 +222,10 @@ fn project_missing_multi_repo() {
 
 #[test]
 fn target_only_entry_valid_multi_repo() {
-    let plan = Plan {
-        name: "test".to_string(),
-        lifecycle: Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "contracts".to_string(),
-            project: None,
-            target: Some(TargetRef::new("contracts", 1)),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }],
-    };
+    let mut e = change("contracts", Status::Pending);
+    e.project = None;
+    e.target = Some(TargetRef::new("contracts", 1));
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![
@@ -296,23 +254,10 @@ fn target_only_entry_valid_multi_repo() {
 
 #[test]
 fn project_valid_single_repo() {
-    let plan = Plan {
-        name: "test".to_string(),
-        lifecycle: Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "a".to_string(),
-            project: None,
-            target: Some(TargetRef::new("contracts", 1)),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }],
-    };
+    let mut e = change("a", Status::Pending);
+    e.project = None;
+    e.target = Some(TargetRef::new("contracts", 1));
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -330,23 +275,9 @@ fn project_valid_single_repo() {
 
 #[test]
 fn project_matches_registry() {
-    let plan = Plan {
-        name: "test".to_string(),
-        lifecycle: Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "a".to_string(),
-            project: Some("alpha".to_string()),
-            target: None,
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }],
-    };
+    let mut e = change("a", Status::Pending);
+    e.project = Some("alpha".to_string());
+    let plan = plan_with_changes(vec![e]);
     let registry = Registry {
         version: 1,
         projects: vec![
@@ -372,23 +303,9 @@ fn project_matches_registry() {
 
 #[test]
 fn neither_project_nor_target_error() {
-    let plan = Plan {
-        name: "test".to_string(),
-        lifecycle: Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "orphan".to_string(),
-            project: None,
-            target: None,
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }],
-    };
+    let mut e = change("orphan", Status::Pending);
+    e.project = None;
+    let plan = plan_with_changes(vec![e]);
     let results = plan.validate(None, None);
     assert!(
         results
@@ -400,23 +317,10 @@ fn neither_project_nor_target_error() {
 
 #[test]
 fn target_only_passes() {
-    let plan = Plan {
-        name: "test".to_string(),
-        lifecycle: Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "contracts".to_string(),
-            project: None,
-            target: Some(TargetRef::new("contracts", 1)),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }],
-    };
+    let mut e = change("contracts", Status::Pending);
+    e.project = None;
+    e.target = Some(TargetRef::new("contracts", 1));
+    let plan = plan_with_changes(vec![e]);
     let results = plan.validate(None, None);
     assert!(
         !results.iter().any(|r| r.code == "plan.entry-needs-project-or-target"),
@@ -426,23 +330,10 @@ fn target_only_passes() {
 
 #[test]
 fn project_and_target_passes() {
-    let plan = Plan {
-        name: "test".to_string(),
-        lifecycle: Lifecycle::Pending,
-        sources: BTreeMap::new(),
-        entries: vec![Entry {
-            name: "impl".to_string(),
-            project: Some("auth-service".into()),
-            target: Some(TargetRef::new("omnia", 1)),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }],
-    };
+    let mut e = change("impl", Status::Pending);
+    e.project = Some("auth-service".into());
+    e.target = Some(TargetRef::new("omnia", 1));
+    let plan = plan_with_changes(vec![e]);
     let results = plan.validate(None, None);
     assert!(
         !results.iter().any(|r| r.code == "plan.entry-needs-project-or-target"),

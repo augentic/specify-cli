@@ -74,7 +74,7 @@ slices:
     status: pending
 ";
 
-pub(super) fn plan_with_changes(changes: Vec<Entry>) -> Plan {
+pub fn plan_with_changes(changes: Vec<Entry>) -> Plan {
     Plan {
         name: "test".into(),
         lifecycle: Lifecycle::Pending,
@@ -83,7 +83,7 @@ pub(super) fn plan_with_changes(changes: Vec<Entry>) -> Plan {
     }
 }
 
-pub(super) fn change(name: &str, status: Status) -> Entry {
+pub fn change(name: &str, status: Status) -> Entry {
     Entry {
         name: name.into(),
         project: Some("default".into()),
@@ -98,17 +98,8 @@ pub(super) fn change(name: &str, status: Status) -> Entry {
     }
 }
 
-pub(super) fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Entry {
-    Entry {
-        name: name.into(),
-        project: Some("default".into()),
-        target: None,
-        status,
-        depends_on: deps.iter().map(|s| (*s).to_string()).collect(),
-        sources: vec![],
-        context: vec![],
-        description: None,
-        divergence: None,
-        authority_override: SliceAuthorityOverride::default(),
-    }
+pub fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Entry {
+    let mut e = change(name, status);
+    e.depends_on = deps.iter().map(|s| (*s).to_string()).collect();
+    e
 }
