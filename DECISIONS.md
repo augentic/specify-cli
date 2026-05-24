@@ -79,13 +79,9 @@ destructures the variant's payload, (b) the variant routes to a
 non-default `Exit` slot, or (c) three or more call sites share the
 exact shape. The kebab `code` is the wire contract; the Rust variant is
 for callers that pattern-match. See AGENTS.md §"Errors" for the full
-rule. Twelve historical one-site variants
-(`RegistryMissing`, `PlanNotFound`, `PlanStructural`,
-`CompatibilityCheckFailed`, `ContextDriftDetected`,
-`ContextWouldUpdate`, `ContextNoLock`, `ContextMissing`,
-`ContextUnfenced`, `ContextDrift`, `InitNeedsAdapter`,
-`WorkspacePushFailed`) collapsed to `Diag` under this policy with their
-kebab discriminants preserved.
+rule. The one-time collapse that produced the steady state — twelve
+historical variants moving to `Diag` — is recorded in
+[`docs/explanation/decision-log.md` §"Diag-first error policy — historical variant collapse"](./docs/explanation/decision-log.md#diag-first-error-policy--historical-variant-collapse).
 
 ## Hint colocation
 
@@ -140,24 +136,10 @@ Four workspace crates: `specify-error` (leaf), `specify-domain`
 (every domain module), `specify-tool` (WASI host, gated), and the
 `specify` binary.
 
-History: until Phase 1B of the 2026-05 cleanup the workspace had 13
-crates; the fragmentation cost more than it earned (wide build graph,
-redundant `Cargo.toml` files, indirect re-export hops, repeated
-duplicate-version exemptions). Module boundaries inside
-`specify-domain` preserve the original separation; `pub` cross-module
-surfaces match the prior cross-crate `pub use` exports.
-
-`specify-validate` was a Phase 1B re-extraction that owned the
-baseline-contract validation primitives (`ContractFinding`,
-`validate_baseline`) and was shared between `specify-domain` and the
-`wasi-tools/contract` carve-out. The 2026-05 architecture-inversion
-pass collapsed it into the carve-out: an adapter's validation logic
-belongs inside its WASI tool, not as a `specify-*` workspace crate the
-host can link against. Operators run `specify tool run contract --
-"$PWD/contracts"` as a pre-flight when they need that gate, identical
-to every other adapter. The carve-out is now self-contained;
-`wasi-tools/Cargo.toml` no longer has a path bridge into the host
-workspace.
+The Phase 1B collapse from 13 crates and the subsequent
+`specify-validate` re-extraction (folded into the `wasi-tools/contract`
+carve-out by the 2026-05 architecture-inversion pass) are recorded in
+[`docs/explanation/decision-log.md` §"Crate layout — Phase 1B / `specify-validate` carve-out history"](./docs/explanation/decision-log.md#crate-layout--phase-1b--specify-validate-carve-out-history).
 
 Rule: new functionality lands in an existing module by default. New
 workspace crates require a paragraph in this file justifying why an
@@ -261,35 +243,27 @@ crate project-scope and adapter-scope tool declarations.
 
 ## RFC-25 type rename: `Target*` is the output role, `Adapter` is the shared shape
 
-Wave 0.2 (`cli/W0.2`) renamed `Adapter*` → `Target*` for the output-role
-domain types (`Target`, the `Slice.target` field, the
-`slice-create-target-missing` / `plan.entry-needs-project-or-target`
-error discriminants, plus every fixture, JSON envelope, and call site).
-Specify 2.0 then settled the regular/hub init guard on its documented
-spelling `init-requires-adapter-or-hub` (the Wave 0.2-era
-`init-requires-target-or-workspace` is gone — both the [`docs/init.md`](./docs/init.md)
-contract and the in-repo `Error::Diag { code, .. }` arm carry the
-new kebab). Wave 0.3 (`cli/W0.3`) moved the
-shared manifest *shape* into a new axis-aware loader. The F9 collapse
-then retired the legacy axis-agnostic `crate::adapter` module
-(`Adapter` / `Pipeline` / `PipelineEntry` / `PipelineView` / `Phase` /
-`AdapterSource` / `ResolvedAdapter` / the legacy `adapter.schema.json`)
-and renamed the axis-aware loader back into `crates/domain/src/adapter/`
-under the cleaner `Adapter` / `Axis` / `ResolvedAdapter` /
-`AdapterLocation` type names. The 1.x brief-frontmatter parser
-(`Brief` / `BriefFrontmatter` with `id` / `description` / `needs` /
-`tracks` / `generates` fields) was retired together with the
-`schemas/brief/schema.json` schema: RFC-25 briefs are resolved by path
-through `briefs.<op>` on the adapter manifest and the CLI never reads
-their bodies, so the parser was dead code. The plugin repo's
-[`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md)
-§"Brief authoring" now requires briefs carry no YAML frontmatter at
-all. `CacheMeta` was rehomed inside `crates/domain/src/init/cache.rs`.
-The `Phase` enum was replaced by
-`Operation { Shape, Build, Merge }` on the slice-metadata wire (`phase:
-shape | build | merge`). Per RFC-25 §"Note to the implementing agent",
-touching any of these symbols requires a cross-repo `rg` sweep against
-`augentic/specify-cli` and `augentic/specify` in the same PR.
+The output-role domain types are spelled `Target*`
+(`Target`, `Slice.target`, the `slice-create-target-missing` /
+`plan.entry-needs-project-or-target` / `init-requires-adapter-or-hub`
+discriminants, plus every fixture, JSON envelope, and call site). The
+shared manifest *shape* is loaded by the axis-aware module
+`crates/domain/src/adapter/` (`SourceAdapter` / `TargetAdapter` /
+`Axis` / `ResolvedAdapter` / `AdapterLocation`). Briefs are resolved by
+path through `briefs.<op>` on the adapter manifest; they carry no YAML
+frontmatter and the CLI never reads their bodies. `CacheMeta` lives in
+[`crates/domain/src/init/cache.rs`](./crates/domain/src/init/cache.rs);
+the slice-metadata wire uses `Operation { Shape, Build, Merge }`
+(`phase: shape | build | merge`).
+
+Per RFC-25 §"Note to the implementing agent", touching any of these
+symbols requires a cross-repo `rg` sweep against `augentic/specify-cli`
+and `augentic/specify` in the same PR.
+
+The Wave 0.2 / 0.3 / F9 collapse history that produced this layout —
+including the names of the retired axis-generic types and the prior
+`init-requires-target-or-workspace` discriminant — is recorded in
+[`docs/explanation/decision-log.md` §"RFC-25 type rename — Wave 0 / F9 collapse history"](./docs/explanation/decision-log.md#rfc-25-type-rename--wave-0--f9-collapse-history).
 
 ## Adapter loader axis routing
 

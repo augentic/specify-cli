@@ -3,9 +3,12 @@
 //! One file per slice at `.specify/slices/<slice>/fusion.yaml`. Lists
 //! every `REQ-*` id in `spec.md` and the contributing
 //! `(source-key, claim-id)` pairs plus the authority outcome.
-//! Validated against `schemas/slice/fusion.schema.json`; the file is
-//! audit-only — `spec.md` remains the authoritative artifact for
-//! downstream verbs.
+//! Validated against `schemas/slice/fusion.schema.json`. The file is
+//! audit-only; see [`DECISIONS.md` §"RFC-27 §D4 — `fusion.yaml` is
+//! audit-only"][rfc27-d4] for the rationale (`spec.md` is the
+//! authoritative artifact).
+//!
+//! [rfc27-d4]: ../../../../DECISIONS.md#rfc-27-d4--fusionyaml-is-audit-only
 //!
 //! Change 2.6 wires up the YAML read and validation envelope
 //! ([`FusionIndex::load`]) and drift detection
