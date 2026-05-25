@@ -619,10 +619,6 @@ finishes; string operation names never survive past the manifest loader.
 - **Wire invariant.** The `specify source resolve` and
   `specify target resolve` JSON envelopes' `operations: [...]` arrays
   iterate in kebab-alphabetical order (e.g. `["enumerate", "extract"]`,
-  `["build", "merge", "shape"]`). `BTreeMap` ordering combined with
-  manual `Ord` / `PartialOrd` impls on `{Source,Target}Operation`
-  (sorting by kebab string, not by Rust variant declaration order)
-  preserves this contract end-to-end. Future refactors must not
-  re-derive `Ord` on these enums without preserving the kebab-string
-  sort — derived `Ord` follows declaration order and would silently
-  break the wire.
+  `["build", "merge", "shape"]`). Derived `Ord` on
+  `{Source,Target}Operation` is intentional because enum variants are
+  declared in kebab-alphabetical wire order.

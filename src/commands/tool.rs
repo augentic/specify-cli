@@ -35,11 +35,11 @@ fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
         let plugin_scope = ToolScope::Plugin {
             axis: ToolAxis::Target,
             plugin_slug: plugin.manifest.name.clone(),
-            capability_dir: plugin.root_dir.clone(),
+            capability_dir: plugin.location.path().clone(),
         };
         scopes.push(plugin_scope.clone());
         let sidecar_tools =
-            load::plugin_sidecar(&plugin.root_dir, &plugin.manifest.name, ToolAxis::Target)?;
+            load::plugin_sidecar(plugin.location.path(), &plugin.manifest.name, ToolAxis::Target)?;
         let tools: Vec<Tool> = sidecar_tools.iter().map(|(_, tool)| tool.clone()).collect();
         validate_manifest_tools(&tools, &plugin_scope)?;
         sidecar_tools

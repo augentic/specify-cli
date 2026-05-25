@@ -54,8 +54,20 @@ pub struct Requirement {
 }
 
 /// Closed enum for the `Status:` line (workflow §Authority hierarchy).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    strum::Display,
+    strum::EnumString,
+    strum::IntoStaticStr,
+)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 pub enum RequirementStatus {
     /// One source, or multiple sources that agree.
     Agreed,
@@ -67,34 +79,12 @@ pub enum RequirementStatus {
     Divergence,
 }
 
-impl RequirementStatus {
-    /// Wire form (lowercase token).
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Agreed => "agreed",
-            Self::Unknown => "unknown",
-            Self::Conflict => "conflict",
-            Self::Divergence => "divergence",
-        }
-    }
-
-    /// Parse the wire form; case-sensitive per the workflow contract contract.
-    #[must_use]
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "agreed" => Some(Self::Agreed),
-            "unknown" => Some(Self::Unknown),
-            "conflict" => Some(Self::Conflict),
-            "divergence" => Some(Self::Divergence),
-            _ => None,
-        }
-    }
-}
-
 /// Inline heading tag attached to a `### Requirement:` line when the
 /// `Status:` value is anything other than `agreed`.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, strum::Display, strum::EnumString, strum::IntoStaticStr,
+)]
+#[strum(serialize_all = "kebab-case")]
 pub enum RequirementTag {
     /// `[unknown]`.
     Unknown,
@@ -105,16 +95,6 @@ pub enum RequirementTag {
 }
 
 impl RequirementTag {
-    /// Wire form (without surrounding brackets).
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Unknown => "unknown",
-            Self::Conflict => "conflict",
-            Self::Divergence => "divergence",
-        }
-    }
-
     /// The `Status:` value this tag must pair with per the workflow contract
     /// §Authority hierarchy.
     #[must_use]
@@ -123,15 +103,6 @@ impl RequirementTag {
             Self::Unknown => RequirementStatus::Unknown,
             Self::Conflict => RequirementStatus::Conflict,
             Self::Divergence => RequirementStatus::Divergence,
-        }
-    }
-
-    fn parse(s: &str) -> Option<Self> {
-        match s {
-            "unknown" => Some(Self::Unknown),
-            "conflict" => Some(Self::Conflict),
-            "divergence" => Some(Self::Divergence),
-            _ => None,
         }
     }
 }
@@ -440,10 +411,8 @@ fn check_status(req: &Requirement, out: &mut Vec<Finding>) {
                         rule_id: "spec.requirement-tag-status-mismatch",
                         rule: "Heading tag agrees with `Status:` value",
                         detail: format!(
-                            "requirement {} carries heading tag `[{}]` but `Status: {}`",
+                            "requirement {} carries heading tag `[{tag}]` but `Status: {status}`",
                             req.id_or_name(),
-                            tag.as_str(),
-                            status.as_str()
                         ),
                         span: req.span,
                     });
@@ -453,10 +422,8 @@ fn check_status(req: &Requirement, out: &mut Vec<Finding>) {
                     rule_id: "spec.requirement-tag-status-mismatch",
                     rule: "Heading tag agrees with `Status:` value",
                     detail: format!(
-                        "requirement {} has `Status: {}` but no `[{}]` heading tag",
+                        "requirement {} has `Status: {status}` but no `[{status}]` heading tag",
                         req.id_or_name(),
-                        status.as_str(),
-                        status.as_str()
                     ),
                     span: req.span,
                 });
@@ -524,7 +491,7 @@ impl Block {
         } = self;
         let sources_line_absent = sources.is_none();
         let sources = sources.unwrap_or_default();
-        let status = status_raw.as_deref().and_then(RequirementStatus::parse);
+        let status = status_raw.as_deref().and_then(|s| s.parse().ok());
         Requirement {
             id: id.unwrap_or_default(),
             name,
@@ -550,7 +517,7 @@ fn split_heading_tag(heading_text: &str) -> (String, Option<RequirementTag>) {
     {
         let body = &trimmed[..open];
         let tag_text = &trimmed[open + 2..trimmed.len() - 1];
-        if let Some(tag) = RequirementTag::parse(tag_text) {
+        if let Ok(tag) = tag_text.parse::<RequirementTag>() {
             return (body.trim_end().to_string(), Some(tag));
         }
     }

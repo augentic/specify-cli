@@ -8,7 +8,6 @@
 //! from `schemas/evidence.schema.json`.
 
 use std::collections::BTreeMap;
-use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -53,10 +52,15 @@ pub enum AuthorityClass {
     Serialize,
     Deserialize,
     strum::Display,
+    strum::EnumString,
     clap::ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
+#[strum(
+    serialize_all = "kebab-case",
+    parse_err_ty = String,
+    parse_err_fn = claim_kind_parse_error
+)]
 #[clap(rename_all = "kebab-case")]
 pub enum ClaimKind {
     /// `kind: intent` — operator-stated intent (e.g. `change.md`).
@@ -89,36 +93,11 @@ pub enum ClaimKind {
     Leaf,
 }
 
-impl FromStr for ClaimKind {
-    type Err = String;
-
-    /// Parse the closed kebab-case wire form (e.g. `requirement`,
-    /// `criterion`). Mirrors the schema enum byte-for-byte so the
-    /// CLI parser and `evidence.schema.json` reject the same set of
-    /// values.
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "intent" => Ok(Self::Intent),
-            "requirement" => Ok(Self::Requirement),
-            "criterion" => Ok(Self::Criterion),
-            "decision" => Ok(Self::Decision),
-            "section" => Ok(Self::Section),
-            "diagram" => Ok(Self::Diagram),
-            "contract" => Ok(Self::Contract),
-            "example" => Ok(Self::Example),
-            "excerpt" => Ok(Self::Excerpt),
-            "type" => Ok(Self::Type),
-            "call" => Ok(Self::Call),
-            "region" => Ok(Self::Region),
-            "container" => Ok(Self::Container),
-            "leaf" => Ok(Self::Leaf),
-            other => Err(format!(
-                "`{other}` is not a valid claim kind; expected one of intent, requirement, \
-                 criterion, decision, section, diagram, contract, example, excerpt, type, call, \
-                 region, container, leaf"
-            )),
-        }
-    }
+fn claim_kind_parse_error(other: &str) -> String {
+    format!(
+        "`{other}` is not a valid claim kind; expected one of intent, requirement, criterion, \
+         decision, section, diagram, contract, example, excerpt, type, call, region, container, leaf"
+    )
 }
 
 /// Optional per-(Evidence, claim-kind) authority override map.

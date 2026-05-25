@@ -27,7 +27,7 @@
     },
     "results": {
       "type": "array",
-      "description": "Every structural, semantic, and health diagnostic produced by `Plan::validate` and the four supplementary doctor checks (`cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`, `unreachable-entry`). Empty when the plan is clean. Warnings do not affect `passed`; only `error`-level findings cause `passed` to be false.",
+      "description": "Every structural, semantic, and health diagnostic produced by `Plan::validate` and the three supplementary doctor checks (`cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`). Empty when the plan is clean. Warnings do not affect `passed`; only `error`-level findings cause `passed` to be false.",
       "items": { "$ref": "#/$defs/validationResult" }
     },
     "passed": {
@@ -50,7 +50,7 @@
         "code": {
           "type": "string",
           "minLength": 1,
-          "description": "Stable machine-readable identifier (e.g. `duplicate-name`, `dependency-cycle`, `missing-change-dir-for-in-progress`, `cycle-in-depends-on`, `orphan-source-key`, `stale-workspace-clone`, `unreachable-entry`). Skills may pattern-match on this value."
+          "description": "Stable machine-readable identifier (e.g. `duplicate-name`, `cycle-in-depends-on`, `missing-slice-dir-for-in-progress`, `orphan-source-key`, `stale-workspace-clone`). Skills may pattern-match on this value."
         },
         "entry": {
           "type": ["string", "null"],
@@ -63,7 +63,7 @@
         },
         "data": {
           "type": "object",
-          "description": "Structured payload attached to the four health diagnostics. Absent for the base `Plan::validate` findings; readers should not require this key. Shape depends on the `kind` discriminant — see `specify_domain::change::PlanDoctorPayload` for the variants (`cycle`, `orphan-source`, `stale-clone`, `unreachable-entry`)."
+          "description": "Structured payload attached to the three health diagnostics. Absent for the base `Plan::validate` findings; readers should not require this key. Shape depends on the `kind` discriminant — see `specify_domain::change::PlanDoctorPayload` for the variants (`cycle`, `orphan-source`, `stale-clone`)."
         }
       }
     }

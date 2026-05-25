@@ -37,20 +37,16 @@ use strum::EnumString;
 /// `specify source resolve --explain` can attribute hits and misses
 /// (see [`crate::adapter::cache::CacheIndexEntry::operation`]).
 ///
-/// `Ord` is implemented manually so [`std::collections::BTreeMap`]
-/// keyed on this enum iterates in kebab-alphabetical order
-/// (`enumerate < extract`) — the wire-format guarantee pinned by the
-/// `specify source resolve` envelope tests and the cache-index
-/// canonicalisation. Variant declaration order tracks the operational
-/// pipeline (plan-time → slice-time); the two orderings happen to
-/// agree here, but the manual impl keeps the wire-format invariant
-/// independent of future variant reshuffles.
+/// Variants declared in kebab-alphabetical order so `BTreeMap`
+/// iteration matches the wire envelope.
 #[derive(
     Debug,
     Clone,
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     Serialize,
     Deserialize,
@@ -65,18 +61,6 @@ pub enum SourceOperation {
     Enumerate,
     /// Slice-time evidence extraction.
     Extract,
-}
-
-impl Ord for SourceOperation {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.to_string().cmp(&other.to_string())
-    }
-}
-
-impl PartialOrd for SourceOperation {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
 }
 
 impl SourceOperation {
@@ -105,20 +89,16 @@ impl SourceOperation {
 /// are synthesised by core, not produced by an operation), so the
 /// enum collapses to the three target operations.
 ///
-/// `Ord` is implemented manually so [`std::collections::BTreeMap`]
-/// keyed on this enum iterates in kebab-alphabetical order
-/// (`build < merge < shape`) — the wire-format guarantee pinned by
-/// the `specify target resolve` envelope tests. Variant declaration
-/// order tracks the operational pipeline (refine-time shape →
-/// build-time build → landing-time merge); decoupling the wire
-/// iteration order from variant order keeps the envelope stable
-/// against any future reshuffles for readability.
+/// Variants declared in kebab-alphabetical order so `BTreeMap`
+/// iteration matches the wire envelope.
 #[derive(
     Debug,
     Clone,
     Copy,
     PartialEq,
     Eq,
+    PartialOrd,
+    Ord,
     Hash,
     Serialize,
     Deserialize,
@@ -129,24 +109,12 @@ impl SourceOperation {
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum TargetOperation {
-    /// Shape — synthesis-time guidance read by core during `/spec:refine`.
-    Shape,
     /// Build — implementation, driven by `/spec:build`.
     Build,
     /// Merge — landing gate, driven by `/spec:merge`.
     Merge,
-}
-
-impl Ord for TargetOperation {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.to_string().cmp(&other.to_string())
-    }
-}
-
-impl PartialOrd for TargetOperation {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+    /// Shape — synthesis-time guidance read by core during `/spec:refine`.
+    Shape,
 }
 
 #[cfg(test)]
@@ -186,6 +154,8 @@ mod tests {
         assert_eq!(json, "\"merge\"");
         let back: TargetOperation = serde_json::from_str(&json).expect("deserialise");
         assert_eq!(back, TargetOperation::Merge);
+        assert!(TargetOperation::Build < TargetOperation::Merge);
+        assert!(TargetOperation::Merge < TargetOperation::Shape);
     }
 
     #[test]

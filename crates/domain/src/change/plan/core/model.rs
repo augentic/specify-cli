@@ -313,7 +313,7 @@ impl SourceBinding {
 /// form; the `plan.schema.json` regex is the primary defence, and
 /// `FromStr` is the in-process belt-and-braces re-check.
 ///
-/// The integer [`TargetRef::version`] is reconciled against the
+/// The integer version is reconciled against the
 /// resolved target adapter's `version: u32` field at plan-validation
 /// time; mismatches surface as the kebab discriminant
 /// `plan-target-version-mismatch`. See
@@ -348,18 +348,6 @@ impl TargetRef {
             "TargetRef::new received non-kebab name `{name}`",
         );
         Self { name, version }
-    }
-
-    /// Kebab-case adapter name (before the `@v` suffix).
-    #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Integer version (after the `@v` suffix).
-    #[must_use]
-    pub const fn version(&self) -> u32 {
-        self.version
     }
 
     /// Parse a wire-form `<name>@v<version>` string.

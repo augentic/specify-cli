@@ -173,7 +173,7 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
             ResolveBody {
                 axis: axis.dir_segment(),
                 name: resolved.manifest.name.clone(),
-                resolved_path: resolved.root_dir.display().to_string(),
+                resolved_path: resolved.location.path().display().to_string(),
                 location: resolved.location.label(),
                 operations: resolved.manifest.operations().map(ToString::to_string).collect(),
                 description: resolved.manifest.description.clone(),
@@ -185,7 +185,7 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
             ResolveBody {
                 axis: axis.dir_segment(),
                 name: resolved.manifest.name.clone(),
-                resolved_path: resolved.root_dir.display().to_string(),
+                resolved_path: resolved.location.path().display().to_string(),
                 location: resolved.location.label(),
                 operations: resolved.manifest.operations().map(ToString::to_string).collect(),
                 description: resolved.manifest.description.clone(),

@@ -150,13 +150,9 @@ slices:
     status: pending
 ";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-    let zero_target = plan.entries[0].target.as_ref().expect("target present");
-    assert_eq!(zero_target.name(), "contracts");
-    assert_eq!(zero_target.version(), 1);
+    assert!(plan.entries[0].target.is_some());
     assert_eq!(plan.entries[0].project, None);
-    let one_target = plan.entries[1].target.as_ref().expect("target present");
-    assert_eq!(one_target.name(), "omnia");
-    assert_eq!(one_target.version(), 1);
+    assert!(plan.entries[1].target.is_some());
     assert_eq!(plan.entries[1].project.as_deref(), Some("auth-service"));
 
     let rendered = serde_saphyr::to_string(&plan).expect("serialize");

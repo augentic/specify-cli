@@ -18,7 +18,7 @@ Canonical JSON Schema (2020-12) for the response body emitted by `specify plan v
       "code": "<stable-identifier>",
       "entry": "<plan-entry-name> | null",
       "message": "<human readable>",
-      "data": { "kind": "cycle | orphan-source | stale-clone | unreachable-entry", "...": "..." }
+      "data": { "kind": "cycle | orphan-source | stale-clone", "...": "..." }
     }
   ],
   "passed": true
@@ -38,18 +38,16 @@ The same `schema.json` is the source of truth for Rust-side CLI tests (`tests/pl
 `specify plan validate` emits additional codes when `registry.yaml` is present:
 
 - `project-not-in-registry` (error): a slice's `project` value does not match any `projects[].name` in the registry.
-- `project-missing-multi-repo` (error): when the registry has multiple projects, a slice is missing the required `project` field.
 - `description-missing-multi-repo` (error): when the registry has multiple projects, a project entry is missing the required `description` field.
 - `adapter-mismatch-workspace` (warning): a workspace clone's `.specify/project.yaml` declares a different `adapter` than the corresponding registry entry.
 
-The four health diagnostics layer additional codes that carry an optional `data` payload describing the offending shape:
+The three health diagnostics layer additional codes that carry an optional `data` payload describing the offending shape:
 
 - `cycle-in-depends-on` (error): one or more cycles in the `depends-on` graph; `data.kind` is `cycle` and `data.cycle` is the cycle path with the first node repeated at the end.
 - `orphan-source-key` (warning): a top-level `sources:` key that no entry references; `data.kind` is `orphan-source` and `data.key` is the unreferenced key.
 - `stale-workspace-clone` (warning): a registry-backed `.specify/workspace/<project>/` slot whose materialisation no longer matches `registry.yaml`; `data.kind` is `stale-clone` with `data.project`, `data.reason`, and optional `data.expected` / `data.observed` signature snapshots.
-- `unreachable-entry` (warning): a pending entry whose dependency closure is rooted in a `failed` or `skipped` predecessor; `data.kind` is `unreachable-entry` with `data.entry` and `data.blocking[]` predecessor descriptors.
 
 ## See also
 
 - [`../plan/README.md`](../plan/README.md) - companion schema for the on-disk `plan.yaml` file this command validates.
-- [`../plan/plan.schema.json`](../plan/plan.schema.json) - structural schema for the input; findings like `duplicate-name` and `dependency-cycle` reported here layer semantic checks on top.
+- [`../plan/plan.schema.json`](../plan/plan.schema.json) - structural schema for the input; findings like `duplicate-name` and `cycle-in-depends-on` reported here layer semantic checks on top.
