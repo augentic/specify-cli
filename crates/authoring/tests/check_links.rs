@@ -66,3 +66,16 @@ fn skill_directives_flag_unknown_skill() {
     assert_eq!(findings[0].rule_id, "links.unresolved-directive");
     assert!(findings[0].message.contains("skill 'demo:missing' not found"));
 }
+
+#[test]
+fn link_checks_ignore_moved_authoring_test_fixtures() {
+    let (_temp, root) = assemble_fixture("scaffold");
+    let fixture_doc =
+        root.join("specify-cli/crates/authoring/tests/fixtures/links/directive_bad_plugin/docs");
+    fs::create_dir_all(&fixture_doc).expect("create nested fixture dir");
+    fs::write(fixture_doc.join("guide.md"), "<!-- skill: missing:test -->\n")
+        .expect("write nested fixture doc");
+
+    let findings = run_on_root(&root);
+    assert!(findings.is_empty(), "expected no findings, got: {findings:?}");
+}
