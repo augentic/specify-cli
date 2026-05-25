@@ -64,9 +64,9 @@ pub enum PlanAction {
     },
     /// Validate plan.yaml (structure + plan/change consistency).
     ///
-    /// Includes the four health diagnostics — `cycle-in-depends-on`,
-    /// `orphan-source-key`, `stale-workspace-clone`, and
-    /// `unreachable-entry` — alongside the base shape rules.
+    /// Includes the three health diagnostics — `cycle-in-depends-on`,
+    /// `orphan-source-key`, and `stale-workspace-clone` — alongside
+    /// the base shape rules.
     Validate,
     /// Return the active in-progress entry, or transition the next eligible
     /// `Pending` entry to `InProgress` and return it. `plan next` is the

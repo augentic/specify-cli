@@ -8,7 +8,7 @@ use specify_error::Error;
 
 use super::model::Plan;
 use crate::config::{AtomicYaml, Layout};
-use crate::schema::validate_plan_file;
+use crate::schema::validate_plan_yaml;
 use crate::slice::atomic::yaml_write;
 
 impl AtomicYaml for Plan {
@@ -64,7 +64,7 @@ impl Plan {
             });
         }
         let content = std::fs::read_to_string(path)?;
-        validate_plan_file(path)?;
+        validate_plan_yaml(&content)?;
         let plan: Self = serde_saphyr::from_str(&content)?;
         Ok(plan)
     }

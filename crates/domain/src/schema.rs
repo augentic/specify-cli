@@ -23,18 +23,8 @@ use crate::change::Plan;
 
 const PLAN_JSON_SCHEMA: &str = include_str!("../../../schemas/plan/plan.schema.json");
 const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.schema.json");
-const FUSION_JSON_SCHEMA: &str = include_str!("../../../schemas/slice/fusion.schema.json");
-
-/// Embedded JSON Schema for `fusion.yaml` (workflow §D4).
-///
-/// Exposed as a `&'static str` so domain modules can validate
-/// in-memory `FusionIndex` values (Phase 1) without re-reading the
-/// schema from disk. The fusion validator wiring lands in Change 1.1
-/// alongside the new `slice/fusion.rs` module.
-#[must_use]
-pub const fn fusion_schema_source() -> &'static str {
-    FUSION_JSON_SCHEMA
-}
+pub(crate) const FUSION_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/slice/fusion.schema.json");
 
 /// Validate `plan` against the embedded `schemas/plan/plan.schema.json`.
 ///
@@ -62,29 +52,41 @@ pub fn validate_plan(plan: &Plan) -> Result<()> {
     )
 }
 
+/// Validate raw `plan.yaml` content before typed deserialisation.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
+pub fn validate_plan_yaml(content: &str) -> Result<()> {
+    let instance = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed(
+            "plan-schema",
+            "plan.yaml conforms to schemas/plan/plan.schema.json",
+            format!("YAML parse failed: {err}"),
+        )
+    })?;
+    err_from_failures(validation_failures(
+        &instance,
+        PLAN_JSON_SCHEMA,
+        "plan-schema",
+        "plan.yaml conforms to schemas/plan/plan.schema.json",
+    ))
+}
+
 /// Validate raw `plan.yaml` before typed deserialisation.
 ///
 /// # Errors
 ///
 /// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
 pub fn validate_plan_file(path: &Path) -> Result<()> {
-    let instance = read_yaml_as_json(path).map_err(|err| {
+    let content = fs::read_to_string(path).map_err(|err| {
         Error::validation_failed(
             "plan-schema",
             "plan.yaml conforms to schemas/plan/plan.schema.json",
-            err,
+            format!("read failed: {err}"),
         )
     })?;
-    let results = validate_value(
-        &instance,
-        PLAN_JSON_SCHEMA,
-        "plan-schema",
-        "plan.yaml conforms to schemas/plan/plan.schema.json",
-    )
-    .into_iter()
-    .filter(|summary| summary.status == ValidationStatus::Fail)
-    .collect::<Vec<_>>();
-    if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
+    validate_plan_yaml(&content)
 }
 
 /// Sorted paths to `.yaml`/`.yml` files under `<slice_dir>/evidence/`.
@@ -213,12 +215,19 @@ pub fn validate_serialisable<T: Serialize>(
             "failed to serialise {serialise_label} to JSON for schema validation: {err}"
         ),
     })?;
-    let mut results = Vec::new();
-    for summary in validate_value(&instance, schema_source, rule_id, rule) {
-        if summary.status == ValidationStatus::Fail {
-            results.push(summary);
-        }
-    }
+    err_from_failures(validation_failures(&instance, schema_source, rule_id, rule))
+}
+
+fn validation_failures(
+    instance: &JsonValue, schema_source: &str, rule_id: &str, rule: &str,
+) -> Vec<ValidationSummary> {
+    validate_value(instance, schema_source, rule_id, rule)
+        .into_iter()
+        .filter(|summary| summary.status == ValidationStatus::Fail)
+        .collect()
+}
+
+fn err_from_failures(results: Vec<ValidationSummary>) -> Result<()> {
     if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
 }
 

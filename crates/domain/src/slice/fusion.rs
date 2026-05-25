@@ -9,12 +9,6 @@
 //! authoritative artifact).
 //!
 //! [rfc27-d4]: ../../../../DECISIONS.md#rfc-27-d4--fusionyaml-is-audit-only
-//!
-//! Change 2.6 wires up the YAML read and validation envelope
-//! ([`FusionIndex::load`]) and drift detection
-//! ([`FusionIndex::detect_drift`]) consumed by `specify slice
-//! validate`. Agent-side authoring of `fusion.yaml` itself lands in
-//! Change 3.2; the CLI half owns validation and inspection only.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -25,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
-use crate::schema::{evidence_yaml_paths, fusion_schema_source, validate_serialisable};
+use crate::schema::{FUSION_JSON_SCHEMA, evidence_yaml_paths, validate_serialisable};
 use crate::spec::provenance::RequirementStatus;
 
 /// In-memory model of `fusion.yaml` (workflow §Reconciliation index).
@@ -174,7 +168,7 @@ impl FusionIndex {
     pub fn validate(&self) -> Result<(), Error> {
         validate_serialisable(
             self,
-            fusion_schema_source(),
+            FUSION_JSON_SCHEMA,
             "fusion-schema",
             "fusion.yaml conforms to schemas/slice/fusion.schema.json",
             "fusion-schema-serialise",
