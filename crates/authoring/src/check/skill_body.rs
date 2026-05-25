@@ -240,7 +240,7 @@ fn check_invalid_critical_path(ctx: &Context) -> Result<Vec<Finding>, ToolingErr
         };
 
         let section_lines = critical_path_section_lines(&lines, heading_index);
-        let item_count = count_critical_path_items(&section_lines, &list_item_re);
+        let item_count = count_critical_path_items(section_lines, &list_item_re);
 
         if !(5..=7).contains(&item_count) {
             findings.push(finding(
@@ -287,11 +287,10 @@ fn count_critical_path_items(section_lines: &[String], list_item_re: &Regex) -> 
             continue;
         }
         match mode {
-            Some(CriticalPathMode::H3) => {
-                if line.starts_with("### ") {
-                    item_count += 1;
-                }
+            Some(CriticalPathMode::H3) if line.starts_with("### ") => {
+                item_count += 1;
             }
+            Some(CriticalPathMode::H3) => {}
             Some(CriticalPathMode::List) => {
                 if trimmed.is_empty() {
                     break;

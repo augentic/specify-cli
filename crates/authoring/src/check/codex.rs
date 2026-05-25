@@ -96,14 +96,14 @@ pub fn run_codex_check(ctx: &Context) -> Vec<Finding> {
             }
         }
 
-        if let Some(body) = codex_body(&content) {
-            if !CODEX_RULE_HEADING_RE.is_match(body) {
-                findings.push(finding_at(
-                    RULE_SCHEMA_VIOLATION,
-                    format!("Codex rule body: {rel} — missing required '## Rule' heading"),
-                    &path,
-                ));
-            }
+        if let Some(body) = codex_body(&content)
+            && !CODEX_RULE_HEADING_RE.is_match(body)
+        {
+            findings.push(finding_at(
+                RULE_SCHEMA_VIOLATION,
+                format!("Codex rule body: {rel} — missing required '## Rule' heading"),
+                &path,
+            ));
         }
 
         let Some(frontmatter) = skill_frontmatter(&content) else {
@@ -132,17 +132,17 @@ pub fn run_codex_check(ctx: &Context) -> Vec<Finding> {
             continue;
         };
 
-        if let Some(namespace) = namespace_for_rule_id(id) {
-            if !allowed_namespaces.contains(namespace) {
-                findings.push(finding_at(
-                    RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-                    format!(
-                        "Codex namespace ownership: {rel} — codex owner '{owner}' may only use {} ids, got '{id}'",
-                        namespace_list(allowed_namespaces)
-                    ),
-                    &path,
-                ));
-            }
+        if let Some(namespace) = namespace_for_rule_id(id)
+            && !allowed_namespaces.contains(namespace)
+        {
+            findings.push(finding_at(
+                RULE_NAMESPACE_OWNERSHIP_VIOLATION,
+                format!(
+                    "Codex namespace ownership: {rel} — codex owner '{owner}' may only use {} ids, got '{id}'",
+                    namespace_list(allowed_namespaces)
+                ),
+                &path,
+            ));
         }
     }
 

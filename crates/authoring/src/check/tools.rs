@@ -177,7 +177,7 @@ pub fn run_declared_tool_equivalent_invocations(ctx: &Context) -> Vec<Finding> {
 
         for (line_idx, line) in content.lines().enumerate() {
             for (helper, pattern) in retired_helper_regexes() {
-                if !retired_helper_matches(line, *helper, pattern) {
+                if !retired_helper_matches(line, helper, pattern) {
                     continue;
                 }
                 findings.push(Finding {

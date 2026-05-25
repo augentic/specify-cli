@@ -114,19 +114,19 @@ pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Finding> {
         if sc.frontmatter.is_empty() {
             continue;
         }
-        if let Some(stages) = sc.frontmatter.get("stages") {
-            if !is_contiguous_stages_prefix(stages) {
-                findings.push(finding(
-                    RULE_STAGES_NOT_CONTIGUOUS,
-                    format!(
-                        "Scenario frontmatter: {} — stages must be a contiguous slice of \
-                         [plan, refine, build, merge, drop] anchored at any element; got {}",
-                        sc.rel,
-                        serde_json::to_string(stages).unwrap_or_else(|_| "<?>".into())
-                    ),
-                    Some(sc.path.clone()),
-                ));
-            }
+        if let Some(stages) = sc.frontmatter.get("stages")
+            && !is_contiguous_stages_prefix(stages)
+        {
+            findings.push(finding(
+                RULE_STAGES_NOT_CONTIGUOUS,
+                format!(
+                    "Scenario frontmatter: {} — stages must be a contiguous slice of \
+                     [plan, refine, build, merge, drop] anchored at any element; got {}",
+                    sc.rel,
+                    serde_json::to_string(stages).unwrap_or_else(|_| "<?>".into())
+                ),
+                Some(sc.path.clone()),
+            ));
         }
     }
 

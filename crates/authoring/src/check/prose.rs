@@ -210,17 +210,19 @@ fn check_invocation_positionals(framework_root: &Path) -> Result<Vec<Finding>, T
             let mut logical = lines[line_idx].to_string();
             let mut end = line_idx;
 
-            for next_idx in (line_idx + 1)..lines.len().min(line_idx + 8) {
+            for (next_idx, next_line) in
+                lines.iter().enumerate().take(lines.len().min(line_idx + 8)).skip(line_idx + 1)
+            {
                 let previous_continues = logical.trim_end().ends_with('\\');
                 let next_is_indented =
-                    lines[next_idx].chars().next().is_some_and(|ch| ch == ' ' || ch == '\t');
+                    next_line.chars().next().is_some_and(|ch| ch == ' ' || ch == '\t');
                 if !previous_continues && !next_is_indented {
                     break;
                 }
                 logical.push('\n');
-                logical.push_str(lines[next_idx]);
+                logical.push_str(next_line);
                 end = next_idx;
-                if !lines[next_idx].trim_end().ends_with('\\') && !next_is_indented {
+                if !next_line.trim_end().ends_with('\\') && !next_is_indented {
                     break;
                 }
             }

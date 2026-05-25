@@ -141,8 +141,8 @@ fn format_location(framework_root: &Path, location: &Location) -> String {
         .to_string()
         .replace('\\', "/");
 
-    match location.column {
-        Some(column) => format!("{path}:{}:{column}", location.line),
-        None => format!("{path}:{}", location.line),
-    }
+    location.column.map_or_else(
+        || format!("{path}:{}", location.line),
+        |column| format!("{path}:{}:{column}", location.line),
+    )
 }
