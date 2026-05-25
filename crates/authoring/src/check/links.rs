@@ -259,7 +259,7 @@ fn skip_rfc_markdown_path(path: &str) -> bool {
 }
 
 fn skip_test_fixtures(path: &str) -> bool {
-    path.contains("tooling/tests/fixtures")
+    path.contains("tooling/tests/fixtures") || path.contains("crates/authoring/tests/fixtures")
 }
 
 fn directive_skip_patterns() -> &'static [Regex] {
