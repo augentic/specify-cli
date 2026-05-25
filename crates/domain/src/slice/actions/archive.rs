@@ -10,7 +10,7 @@ use super::io::move_atomic;
 /// Move `slice_dir` to `<archive_dir>/YYYY-MM-DD-<slice-name>/`.
 ///
 /// This is the sole implementation of the archive move semantics; both
-/// `specify slice archive` and the `specify slice merge run` success path
+/// `specrun slice archive` and the `specrun slice merge run` success path
 /// route through it. Does **not** touch `.metadata.yaml` — the caller is
 /// responsible for any status transition before or after.
 ///

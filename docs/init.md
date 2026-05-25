@@ -1,17 +1,17 @@
-# `specify init`
+# `specrun init`
 
-`specify init` scaffolds the per-project `.specify/` tree plus
+`specrun init` scaffolds the per-project `.specify/` tree plus
 `project.yaml`. It has two mutually exclusive shapes; missing both
 surfaces as `init-requires-adapter-or-hub`.
 
-## Regular project — `specify init <adapter>`
+## Regular project — `specrun init <adapter>`
 
 Pass a adapter identifier or a directory/URL that resolves to one:
 
 ```bash
-specify init omnia
-specify init https://github.com/augentic/omnia.git
-specify init ./path/to/adapter
+specrun init omnia
+specrun init https://github.com/augentic/omnia.git
+specrun init ./path/to/adapter
 ```
 
 The adapter supplies the schemas, plan template, and registry hooks
@@ -25,10 +25,10 @@ the project will use. The CLI writes:
   mirror or to register additional namespaces. The file is checked
   in; re-running `init` never overwrites operator edits.
 
-## Platform hub — `specify init --hub`
+## Platform hub — `specrun init --hub`
 
 ```bash
-specify init --hub --name <hub-name>
+specrun init --hub --name <hub-name>
 ```
 
 A hub is a registry-only project: it owns `registry.yaml` and the

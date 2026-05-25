@@ -93,14 +93,14 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         Err(Error::validation_failed(
             "plan-structural-errors",
             "plan must be free of structural errors",
-            "run 'specify plan validate' for detail",
+            "run 'specrun plan validate' for detail",
         ))
     } else {
         Ok(())
     }
 }
 
-/// `specify plan next` — return the active in-progress entry, or
+/// `specrun plan next` — return the active in-progress entry, or
 /// transition the next eligible `Pending` entry to `InProgress` and
 /// return it. The only writer of per-entry `in-progress` per
 /// workflow §CLI surface.
@@ -113,14 +113,14 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
             return Err(Error::validation_failed(
                 "plan-structural-errors",
                 "plan must be free of structural errors",
-                "run 'specify plan validate' for detail",
+                "run 'specrun plan validate' for detail",
             ));
         }
         if !detect(&plan.entries).is_empty() {
             return Err(Error::validation_failed(
                 "plan-structural-errors",
                 "plan must be free of structural errors",
-                "run 'specify plan validate' for detail",
+                "run 'specrun plan validate' for detail",
             ));
         }
 
@@ -157,7 +157,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
-/// `specify plan transition <name> <target>` — dispatches to either
+/// `specrun plan transition <name> <target>` — dispatches to either
 /// the plan-level Gate 1 stamp (`<plan-name> reviewed`) or the
 /// per-entry close (`<entry-name> done`). `--undo` swaps the
 /// forward verb for the one-rung reverse walk on per-entry status
@@ -166,7 +166,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 ///
 /// `<plan-name> reviewed` against an already-reviewed plan is an
 /// idempotent no-op (exit 0, no journal event) per workflow §D7 —
-/// running the explicit transition after `specify plan create
+/// running the explicit transition after `specrun plan create
 /// --auto-review` must not double-stamp the lifecycle nor double-
 /// fire `plan.transition.reviewed`.
 pub(super) fn transition(
@@ -322,7 +322,7 @@ fn plan_target_invalid(target: &str) -> Error {
         flag: "<target>",
         detail: format!(
             "plan-level transition target must be `reviewed`; got `{target}`. \
-             Run `specify plan transition <plan-name> reviewed` to stamp Gate 1."
+             Run `specrun plan transition <plan-name> reviewed` to stamp Gate 1."
         ),
     }
 }

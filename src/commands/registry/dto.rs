@@ -1,4 +1,4 @@
-//! Response DTOs for `specify registry *` handlers.
+//! Response DTOs for `specrun registry *` handlers.
 
 use std::io::Write;
 

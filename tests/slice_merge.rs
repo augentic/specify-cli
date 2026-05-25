@@ -1,7 +1,7 @@
-//! Integration tests for `specify slice merge preview` and
-//! `specify slice merge conflict-check`.
+//! Integration tests for `specrun slice merge preview` and
+//! `specrun slice merge conflict-check`.
 //!
-//! These are the two no-write counterparts to `specify slice merge run`
+//! These are the two no-write counterparts to `specrun slice merge run`
 //! used by the merge-skill rewrite: `preview` computes the operation
 //! list without touching disk; `conflict-check` flags `type: modified`
 //! baselines that have drifted since `defined_at`.

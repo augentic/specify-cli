@@ -1,4 +1,4 @@
-//! Integration tests for `specify registry` (RFC-9 §2A).
+//! Integration tests for `specrun registry` (RFC-9 §2A).
 //!
 //! Covers `registry add`, `registry remove`, the hub-mode `registry
 //! validate` invariants surfaced after a fresh `init --hub`, and the
@@ -70,7 +70,7 @@ fn init_hub_validate_rejects_dot_url() {
     assert!(msg.contains("registry.yaml"), "message must scope the file: {msg}");
 }
 
-// ---- specify registry {add, remove} (RFC-9 §2A) ----
+// ---- specrun registry {add, remove} (RFC-9 §2A) ----
 
 #[test]
 fn registry_add_round_trips_through_show() {
@@ -241,7 +241,7 @@ fn registry_remove_warns_on_plan_ref() {
     }
 
     // Author a plan with one entry pointing at alpha. The merged
-    // `specify plan create` scaffolds plan.yaml (change.md scaffold moved to /spec:plan).
+    // `specrun plan create` scaffolds plan.yaml (change.md scaffold moved to /spec:plan).
     specify()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "create", "demo"])
@@ -340,8 +340,8 @@ fn registry_load_from_tempdir() {
 
 // ---- Registry CLI verbs (RFC-3a C13) ----
 //
-// `specify registry validate` isolates the same shape check the C12 hook drives through
-// `specify plan validate`. The tests below cover the full
+// `specrun registry validate` isolates the same shape check the C12 hook drives through
+// `specrun plan validate`. The tests below cover the full
 // matrix: absent / well-formed / malformed × text / json.
 
 const REGISTRY_SINGLE: &str = "\
@@ -507,7 +507,7 @@ fn registry_validate_unknown_key() {
 }
 
 /// Plan "Done when" criterion: on a scaffolded project with no
-/// registry, `specify registry validate` exits 0.
+/// registry, `specrun registry validate` exits 0.
 #[test]
 fn registry_validate_on_bare_repo() {
     let project = Project::init();

@@ -1,4 +1,4 @@
-//! CLI acceptance tests for `specify tool`.
+//! CLI acceptance tests for `specrun tool`.
 
 use std::fmt::Write as _;
 use std::fs;

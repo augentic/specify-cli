@@ -1,4 +1,4 @@
-//! `specify workspace push`: publish slot work back to remote forges and
+//! `specrun workspace push`: publish slot work back to remote forges and
 //! ensure (or update) the matching pull request.
 
 mod forge;
@@ -79,7 +79,7 @@ pub fn github_slug(url: &str) -> Option<String> {
     None
 }
 
-/// Core implementation of `specify workspace push` for pre-resolved projects.
+/// Core implementation of `specrun workspace push` for pre-resolved projects.
 ///
 /// # Errors
 ///

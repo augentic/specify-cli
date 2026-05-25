@@ -172,7 +172,7 @@ fn conventions_bullets(input: &Input) -> Vec<String> {
 
 fn boundaries_bullets(input: &Input) -> Vec<String> {
     let mut bullets = vec![
-        "`.metadata.yaml` files are framework-managed; update them through `specify slice` commands."
+        "`.metadata.yaml` files are framework-managed; update them through `specrun slice` commands."
             .to_string(),
         "`.specify/archive/` is framework-managed history.".to_string(),
         "`project.yaml` is the source of truth for Specify project metadata.".to_string(),

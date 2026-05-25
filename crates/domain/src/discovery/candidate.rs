@@ -5,7 +5,7 @@
 //! the one-line `summary`, the optional `tentative` flag set by
 //! `/spec:plan`'s `propose` sub-step on low-confidence cross-source
 //! merges, and (workflow §D6) the optional `aliases[]` list. Operator
-//! additions through `specify plan amend --add-alias` survive
+//! additions through `specrun plan amend --add-alias` survive
 //! re-enumeration.
 
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,7 @@ pub struct Candidate {
 ///
 /// `#[serde(transparent)]` over `Vec<String>` so the on-disk shape is
 /// the bare YAML list under `aliases:`. Alias collisions with other
-/// candidates' `id` or `aliases[]` are caught by `specify slice
+/// candidates' `id` or `aliases[]` are caught by `specrun slice
 /// validate` (`discovery-alias-collision`); this type carries only
 /// the per-candidate slot.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,7 +94,7 @@ impl Candidate {
     /// present.
     ///
     /// Idempotency on exact-duplicate is the operator-ergonomic
-    /// choice — `specify plan amend --add-alias` is the operator's
+    /// choice — `specrun plan amend --add-alias` is the operator's
     /// front door, and silently re-asserting a known alias is the
     /// least surprising shape there. Refusal on `id` collision is a
     /// clean signal: the operator either typed the wrong candidate
@@ -128,7 +128,7 @@ impl Candidate {
 
     /// Remove `alias` from this candidate's `aliases[]`. Idempotent
     /// — silently returns when the alias is not present so
-    /// `specify plan amend --remove-alias` can be issued without a
+    /// `specrun plan amend --remove-alias` can be issued without a
     /// prior probe.
     pub fn remove_alias(&mut self, alias: &str) {
         self.aliases.names.retain(|existing| existing != alias);

@@ -13,7 +13,7 @@ use specify_error::Result;
 use crate::cli::Format;
 use crate::output;
 
-/// One row emitted for `specify source resolve --explain`.
+/// One row emitted for `specrun source resolve --explain`.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ExplainRow {
@@ -34,7 +34,7 @@ pub(super) struct ExplainBody {
     entries: Vec<ExplainRow>,
 }
 
-/// Dispatch for `specify source resolve --explain`.
+/// Dispatch for `specrun source resolve --explain`.
 pub fn explain(format: Format, adapter: &str, project_dir: &Path) -> Result<()> {
     let layout = CacheLayout::new(project_dir, adapter);
     let entries = adapter_mod::cache_read_index(layout)?;

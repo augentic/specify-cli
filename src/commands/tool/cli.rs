@@ -1,4 +1,4 @@
-//! Clap derive surface for `specify tool *`. The umbrella `cli.rs`
+//! Clap derive surface for `specrun tool *`. The umbrella `cli.rs`
 //! re-exports `ToolAction`.
 
 use clap::Subcommand;

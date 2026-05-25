@@ -86,12 +86,12 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     if hub {
         writeln!(
             w,
-            "Next: run `specify registry add <id> <url>` to declare the projects this hub coordinates."
+            "Next: run `specrun registry add <id> <url>` to declare the projects this hub coordinates."
         )?;
     } else {
         writeln!(
             w,
-            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specify plan create <name>` followed by `specify plan add` and `specify plan transition <name> reviewed`."
+            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specrun plan create <name>` followed by `specrun plan add` and `specrun plan transition <name> reviewed`."
         )?;
     }
     Ok(())

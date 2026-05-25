@@ -42,7 +42,7 @@ pub struct FusionIndex {
     /// CLI version that wrote the file (e.g. `specify@2.1.0`).
     pub generator: String,
     /// One entry per `REQ-*` id in `spec.md`; order matches `spec.md`
-    /// order. `specify slice validate` enforces id-set parity in both
+    /// order. `specrun slice validate` enforces id-set parity in both
     /// directions.
     pub requirements: Vec<FusionRequirement>,
 }

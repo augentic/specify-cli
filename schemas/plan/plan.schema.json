@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/plan/plan.schema.json",
   "title": "Specify plan.yaml",
-  "description": "Validates the structure of `plan.yaml` (at the repo root): the change name, the optional plan-level `lifecycle` (`pending | reviewed` per the workflow contract \u00a7Workflow vocabulary), the optional named-sources map, and the ordered list of plan slices with their dependencies, status, and (per the workflow contract) structured source bindings plus the optional `divergence` enum. Strict schema \u2014 unknown top-level and per-slice fields are rejected.\n\nEach slice carries the `target` field (target-adapter identifier \u2014 renamed from `adapter` in Wave 0.2) and an optional `divergence` enum (`likely | accepted | rejected`); `slices[].sources[]` items accept either a bare-string source key (shorthand for `{ key: <key>, candidate: <slice.name> }`) or the structured `{ key, candidate }` object form; the top-level `sources` map carries the structured `{ adapter, path?, value? }` object per source key \u2014 the 1.x bare-string shorthand was dropped at the 2.0 cut and exactly one of `path` or `value` is required. The per-entry status enum is the 2.0-collapsed `{pending, in-progress, done}` (v1 has no `blocked`/`failed`/`skipped`); the plan-level `lifecycle` enum is the collapsed `{pending, reviewed}` \u2014 `drained` and `currently executing` are computed from per-entry status at read time.\n\nworkflow \u00a7D3: each slice MAY carry an optional `authority-override` map keyed by claim kind whose values are source keys present in the slice's own `sources[]` list \u2014 orphan keys are rejected by `specify slice validate` with `slice-authority-override-orphan-source-key`. workflow \u00a7D5: every `divergence` value (including `likely`) is CLI-written via `specify plan create --divergence-likely` / `specify plan amend --divergence`; the plan skill no longer patches the file directly.",
+  "description": "Validates the structure of `plan.yaml` (at the repo root): the change name, the optional plan-level `lifecycle` (`pending | reviewed` per the workflow contract \u00a7Workflow vocabulary), the optional named-sources map, and the ordered list of plan slices with their dependencies, status, and (per the workflow contract) structured source bindings plus the optional `divergence` enum. Strict schema \u2014 unknown top-level and per-slice fields are rejected.\n\nEach slice carries the `target` field (target-adapter identifier \u2014 renamed from `adapter` in Wave 0.2) and an optional `divergence` enum (`likely | accepted | rejected`); `slices[].sources[]` items accept either a bare-string source key (shorthand for `{ key: <key>, candidate: <slice.name> }`) or the structured `{ key, candidate }` object form; the top-level `sources` map carries the structured `{ adapter, path?, value? }` object per source key \u2014 the 1.x bare-string shorthand was dropped at the 2.0 cut and exactly one of `path` or `value` is required. The per-entry status enum is the 2.0-collapsed `{pending, in-progress, done}` (v1 has no `blocked`/`failed`/`skipped`); the plan-level `lifecycle` enum is the collapsed `{pending, reviewed}` \u2014 `drained` and `currently executing` are computed from per-entry status at read time.\n\nworkflow \u00a7D3: each slice MAY carry an optional `authority-override` map keyed by claim kind whose values are source keys present in the slice's own `sources[]` list \u2014 orphan keys are rejected by `specrun slice validate` with `slice-authority-override-orphan-source-key`. workflow \u00a7D5: every `divergence` value (including `likely`) is CLI-written via `specrun plan create --divergence-likely` / `specrun plan amend --divergence`; the plan skill no longer patches the file directly.",
   "type": "object",
   "required": [
     "name",
@@ -26,7 +26,7 @@
     },
     "slices": {
       "type": "array",
-      "description": "Ordered list of plan slices. Order is the tie-breaker for `specify plan next` when multiple entries are eligible.",
+      "description": "Ordered list of plan slices. Order is the tie-breaker for `specrun plan next` when multiple entries are eligible.",
       "items": {
         "$ref": "#/$defs/planSlice"
       }
@@ -37,7 +37,7 @@
         "pending",
         "reviewed"
       ],
-      "description": "workflow plan-level lifecycle gate. `pending` is the default after `plan create`; `reviewed` is operator-stamped at Gate 1 via `specify plan transition <plan-name> reviewed`. Two stored states only \u2014 `currently executing` and `drained` are computed at read time from per-entry `status`."
+      "description": "workflow plan-level lifecycle gate. `pending` is the default after `plan create`; `reviewed` is operator-stamped at Gate 1 via `specrun plan transition <plan-name> reviewed`. Two stored states only \u2014 `currently executing` and `drained` are computed at read time from per-entry `status`."
     }
   },
   "$defs": {
@@ -169,17 +169,17 @@
             "accepted",
             "rejected"
           ],
-          "description": "workflow \u00a7Plan-time fusion \u2014 closed enum for slice-level divergence state. Absent \u2261 `none` (the default). `likely` is set by `/spec:plan`'s `propose` sub-step on materially-disagreeing candidate summaries; `accepted` / `rejected` are set by the operator at Gate 1 via `specify plan amend --divergence`. Advisory metadata in v1. workflow \u00a7D5: every value (including `likely`) is CLI-written \u2014 the plan skill invokes `specify plan create --divergence-likely <slice>` or `specify plan amend <plan> <slice> --divergence likely` rather than patching `plan.yaml` directly."
+          "description": "workflow \u00a7Plan-time fusion \u2014 closed enum for slice-level divergence state. Absent \u2261 `none` (the default). `likely` is set by `/spec:plan`'s `propose` sub-step on materially-disagreeing candidate summaries; `accepted` / `rejected` are set by the operator at Gate 1 via `specrun plan amend --divergence`. Advisory metadata in v1. workflow \u00a7D5: every value (including `likely`) is CLI-written \u2014 the plan skill invokes `specrun plan create --divergence-likely <slice>` or `specrun plan amend <plan> <slice> --divergence likely` rather than patching `plan.yaml` directly."
         },
         "authority-override": {
           "type": "object",
-          "description": "workflow \u00a7D3 \u2014 optional per-slice authority override map keyed by claim kind, valued by source key. Keys are the closed claim-kind enum (mirrored from `evidence.schema.json#/$defs/claimKind`); values MUST be source keys present in this slice's own `sources[]` list. Synthesis consults this map first when a contributing-claim disagreement remains after Evidence-level overrides resolve, then falls back to the per-Evidence `authority-overrides` map, then to the workflow default ordering. Empty maps and missing fields are equivalent. Orphan source keys are rejected by `specify slice validate` with `slice-authority-override-orphan-source-key`. CLI-written via `specify plan create --authority-override <slice> <kind>=<key>` and `specify plan amend --authority-override <slice> <kind>=<key>` / `--clear-authority-override` / `--clear-authority-overrides`.",
+          "description": "workflow \u00a7D3 \u2014 optional per-slice authority override map keyed by claim kind, valued by source key. Keys are the closed claim-kind enum (mirrored from `evidence.schema.json#/$defs/claimKind`); values MUST be source keys present in this slice's own `sources[]` list. Synthesis consults this map first when a contributing-claim disagreement remains after Evidence-level overrides resolve, then falls back to the per-Evidence `authority-overrides` map, then to the workflow default ordering. Empty maps and missing fields are equivalent. Orphan source keys are rejected by `specrun slice validate` with `slice-authority-override-orphan-source-key`. CLI-written via `specrun plan create --authority-override <slice> <kind>=<key>` and `specrun plan amend --authority-override <slice> <kind>=<key>` / `--clear-authority-override` / `--clear-authority-overrides`.",
           "propertyNames": { "$ref": "#/$defs/claimKind" },
           "additionalProperties": { "$ref": "#/$defs/kebabName" }
         },
         "depends-on": {
           "type": "array",
-          "description": "Slice names that must be `done` before this slice is eligible. Consumed by `specify plan next`.",
+          "description": "Slice names that must be `done` before this slice is eligible. Consumed by `specrun plan next`.",
           "items": {
             "$ref": "#/$defs/kebabName"
           },

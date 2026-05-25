@@ -13,7 +13,7 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 | [`evidence.schema.json`](evidence.schema.json) | Validates per-source `Evidence` files written by `source.extract` per workflow §Source adapter contract; closed `kind` enum includes the spatial `region` / `container` / `leaf` kinds from day one. |
 | [`discovery/candidate.schema.json`](discovery/candidate.schema.json) | Validates a single candidate block under `## Candidate inventory` in `discovery.md` per workflow §Discovery handshake. |
 | [`plan/plan.schema.json`](plan/plan.schema.json) | Validates `plan.yaml` structure, including the structured `sources[<key>]` binding shape and the `name@vN` target suffix reconciled against the resolved adapter's `version`. |
-| [`plan-validate-output/schema.json`](plan-validate-output/schema.json) | Validates `specify plan validate --format json` output. |
+| [`plan-validate-output/schema.json`](plan-validate-output/schema.json) | Validates `specrun plan validate --format json` output. |
 | [`slice/fusion.schema.json`](slice/fusion.schema.json) | Validates a slice's `fusion.yaml` reconciliation index per workflow §D4 — the audit surface listing every `REQ-*` id with its contributing `(source, claim-id)` pairs and authority outcome. |
 | [`vectis/template-manifest.schema.json`](vectis/template-manifest.schema.json) | Validates `templates/vectis/manifest.yaml`, the source-to-target assembly map consumed by `wasi-tools/vectis/build.rs`. |
 | [`cache-meta.schema.json`](cache-meta.schema.json) | Validates schema cache metadata written under `.specify/.cache`. |

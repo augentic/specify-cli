@@ -1,4 +1,4 @@
-//! Clap derive surface for `specify target *`. The umbrella `cli.rs`
+//! Clap derive surface for `specrun target *`. The umbrella `cli.rs`
 //! re-exports `TargetAction`.
 
 use std::path::PathBuf;

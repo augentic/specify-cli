@@ -1,4 +1,4 @@
-//! Orchestration for `specify init`. Scaffolds `.specify/`, resolves
+//! Orchestration for `specrun init`. Scaffolds `.specify/`, resolves
 //! the requested adapter, writes `project.yaml`, and upserts
 //! `.gitignore` lines. Hub mode additionally mints `registry.yaml`.
 

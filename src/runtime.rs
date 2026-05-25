@@ -1,4 +1,4 @@
-//! `specify` binary entry point. Thin shim over the `specify` library
+//! `specrun` binary entry point. Thin shim over the runtime library
 //! crate (`src/lib.rs`); see `DECISIONS.md` for the exit-code contract.
 
 use std::process::ExitCode;

@@ -188,7 +188,7 @@ fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
 /// claim kind (the `BTreeMap` iteration order on
 /// [`super::model::SliceAuthorityOverride::by_kind`]).
 ///
-/// Public for the per-slice helper at `specify slice validate` to
+/// Public for the per-slice helper at `specrun slice validate` to
 /// surface only the findings relevant to one slice.
 #[must_use]
 pub fn authority_override_orphan_source_keys(changes: &[Entry]) -> Vec<Finding> {

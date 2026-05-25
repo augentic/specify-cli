@@ -1,4 +1,4 @@
-//! `specify plan amend` handler. Routes wholesale edits through
+//! `specrun plan amend` handler. Routes wholesale edits through
 //! [`Plan::amend`], additive `--add-source` / `--remove-source`
 //! through direct entry mutation, and authority-override flags
 //! through the shared domain engine.

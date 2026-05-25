@@ -1,4 +1,4 @@
-//! `specify plan create` handler. Composes the shared CLI arg
+//! `specrun plan create` handler. Composes the shared CLI arg
 //! parsers in [`super::args`] with the domain authority-override
 //! engine in [`specify_domain::change::mutate_authority_overrides`]
 //! so the handler stays declarative.
@@ -16,7 +16,7 @@ use super::args::{build_source_map, parse_authority_override_assigns};
 use crate::cli::SourceArg;
 use crate::context::Ctx;
 
-/// `specify plan create <name> [--source ...] [--divergence-likely <slice>]... [--auto-review]`.
+/// `specrun plan create <name> [--source ...] [--divergence-likely <slice>]... [--auto-review]`.
 ///
 /// Scaffolds `plan.yaml` (workflow §The Plan), then stages every
 /// `--divergence-likely <slice>` value onto the named slice's
@@ -134,7 +134,7 @@ fn apply_divergence_likely(plan: &mut Plan, slices: &[String]) -> Result<()> {
                 "plan-divergence-likely-unknown-slice",
                 "--divergence-likely must reference a slice present in the plan",
                 format!(
-                    "no slice named '{slice}' in plan '{}'; add the slice (e.g. specify plan \
+                    "no slice named '{slice}' in plan '{}'; add the slice (e.g. specrun plan \
                      add {slice}) before staging divergence: likely",
                     plan.name
                 ),

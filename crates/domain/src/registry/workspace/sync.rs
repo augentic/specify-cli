@@ -181,7 +181,7 @@ fn symlink(target: &Path, link: &Path) -> Result<(), Error> {
         let _ = (target, link);
         Err(Error::Diag {
             code: "workspace-symlink-unsupported",
-            detail: "platform does not support symlinks for `specify workspace sync`".to_string(),
+            detail: "platform does not support symlinks for `specrun workspace sync`".to_string(),
         })
     }
 }

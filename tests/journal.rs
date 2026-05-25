@@ -156,7 +156,7 @@ fn plan_amend_divergence_none_to_likely_emits_event() {
 
 #[test]
 fn plan_amend_divergence_likely_round_trips_to_yaml() {
-    // workflow §D5: `specify plan amend --divergence likely` is the
+    // workflow §D5: `specrun plan amend --divergence likely` is the
     // bare-skill fallback writer of `slices[].divergence: likely`.
     // The CLI must persist the field byte-identically to the legacy
     // skill-written form so existing fixtures keep round-tripping.
@@ -337,7 +337,7 @@ fn slice_transition_to_built_appends_no_refined_event() {
     );
 }
 
-// -- slice.synthesis.* (specify slice validate) ----------------------
+// -- slice.synthesis.* (specrun slice validate) ----------------------
 
 const PLAN_WITH_LEGACY_MONOLITH: &str = "\
 name: rfc25-prov
@@ -427,7 +427,7 @@ fn agent_emit_helper_writes_one_event_per_jsonl_line() {
     // agent-driven events. The harness drives `append` directly
     // because the CLI does not own a `journal append` verb
     // (workflow §"What was cut and why"). `slice.synthesis.*` is
-    // CLI-owned via `specify slice validate` instead.
+    // CLI-owned via `specrun slice validate` instead.
     let project = Project::init();
     let layout = Layout::new(project.root());
     let fixed: jiff::Timestamp =

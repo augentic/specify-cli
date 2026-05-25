@@ -58,14 +58,14 @@ impl Event {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "payload")]
 pub enum EventKind {
-    /// Gate 1 cleared — `specify plan transition <plan-name> reviewed`.
+    /// Gate 1 cleared — `specrun plan transition <plan-name> reviewed`.
     #[serde(rename = "plan.transition.reviewed", rename_all = "kebab-case")]
     PlanTransitionReviewed {
         /// Plan name from `plan.yaml.name`.
         plan_name: String,
     },
     /// Operator walked one rung backwards on per-entry status via
-    /// `specify plan transition <entry> --undo`. One event per rung
+    /// `specrun plan transition <entry> --undo`. One event per rung
     /// (`done → in-progress` and `in-progress → pending` each fire
     /// individually) so the journal records every step the operator
     /// took and replay traces line up with the forward-direction
@@ -84,8 +84,8 @@ pub enum EventKind {
     /// `/spec:plan`'s `propose` sub-step flagged a materially-
     /// disagreeing slice (`slices[].divergence: likely`).
     /// workflow §D5 — emitted from the CLI when the operator (or the
-    /// `plan` skill body) runs `specify plan create
-    /// --divergence-likely <slice>` or `specify plan amend
+    /// `plan` skill body) runs `specrun plan create
+    /// --divergence-likely <slice>` or `specrun plan amend
     /// --divergence likely`; the skill is no longer the writer.
     #[serde(rename = "plan.propose.divergence", rename_all = "kebab-case")]
     PlanProposeDivergence {
@@ -95,11 +95,11 @@ pub enum EventKind {
         slice_name: String,
     },
     /// Operator stamped `slices[].divergence` via
-    /// `specify plan amend --divergence <likely|accepted|rejected>`.
+    /// `specrun plan amend --divergence <likely|accepted|rejected>`.
     /// workflow §D5 — the CLI is the single writer; `likely` reaches
     /// this event from skill-body fallbacks against existing
     /// `plan.yaml` entries (the post-`propose` happy path stages
-    /// `likely` via `specify plan create --divergence-likely`, which
+    /// `likely` via `specrun plan create --divergence-likely`, which
     /// emits [`Self::PlanProposeDivergence`] instead).
     #[serde(rename = "plan.amend.divergence", rename_all = "kebab-case")]
     PlanAmendDivergence {
@@ -134,7 +134,7 @@ pub enum EventKind {
     },
     /// `[conflict]` on a requirement in `spec.md` — same-authority
     /// disagreement the operator must reconcile. Emitted by
-    /// `specify slice validate` after a successful run.
+    /// `specrun slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.conflict", rename_all = "kebab-case")]
     SliceSynthesisConflict {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -144,7 +144,7 @@ pub enum EventKind {
     },
     /// `[divergence]` on a requirement in `spec.md` — cross-authority
     /// disagreement preserved as inline commentary. Emitted by
-    /// `specify slice validate` after a successful run.
+    /// `specrun slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.divergence", rename_all = "kebab-case")]
     SliceSynthesisDivergence {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -154,7 +154,7 @@ pub enum EventKind {
     },
     /// `[unknown]` on a requirement in `spec.md` — a gap the operator
     /// must close before the requirement is meaningful. Emitted by
-    /// `specify slice validate` after a successful run.
+    /// `specrun slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.unknown", rename_all = "kebab-case")]
     SliceSynthesisUnknown {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -227,8 +227,8 @@ pub enum EventKind {
     },
     /// workflow §D3 — operator set or cleared a per-slice
     /// `authority-override` map at Gate 1. CLI-driven via
-    /// `specify plan create --authority-override`,
-    /// `specify plan amend --authority-override`, or the matching
+    /// `specrun plan create --authority-override`,
+    /// `specrun plan amend --authority-override`, or the matching
     /// `--clear-*` flags.
     #[serde(rename = "plan.amend.authority-override", rename_all = "kebab-case")]
     PlanAmendAuthorityOverride {
@@ -335,7 +335,7 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 /// invocation, well below the limit.
 ///
 /// Used by CLI verbs that own more than one journal emit per
-/// invocation (e.g. `specify plan create --auto-review`, which
+/// invocation (e.g. `specrun plan create --auto-review`, which
 /// stages both `plan.propose.divergence` and
 /// `plan.transition.reviewed` in the same Gate-1 consent), and
 /// equally by single-event callers via
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn append_batch_writes_every_event_in_order_in_one_call() {
-        // workflow §D7: `specify plan create --auto-review` may emit
+        // workflow §D7: `specrun plan create --auto-review` may emit
         // both `plan.propose.divergence` and
         // `plan.transition.reviewed` in a single fsynced append.
         // Exercise the batched helper to lock that contract.

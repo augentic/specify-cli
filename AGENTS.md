@@ -1,6 +1,6 @@
 # Specify CLI — Agent Instructions
 
-This is a Rust workspace. It produces the `specify` binary that the [augentic/specify](https://github.com/augentic/specify) plugin repo's skills shell out to. Generated Rust crates and Swift shells produced by the workflow live in downstream consumer repositories; this repo owns the deterministic CLI primitives those workflows compose.
+This is a Rust workspace. It produces the `specrun` runtime binary that the [augentic/specify](https://github.com/augentic/specify) plugin repo's skills shell out to. Generated Rust crates and Swift shells produced by the workflow live in downstream consumer repositories; this repo owns the deterministic CLI primitives those workflows compose.
 
 ## Crate graph
 
@@ -20,7 +20,7 @@ Modules of note inside `specify-domain` (workflow reshapes from Wave 0):
 - `crates/domain/src/spec/provenance.rs` — `spec.md` requirement-block parser (`ID:` / `Sources:` / `Status:` lines, closed `RequirementStatus` enum, inline `[…]` tag coherence).
 - `crates/domain/src/journal.rs` — RFC-19 newline-delimited JSON event log at `<project_dir>/.specify/journal.jsonl`; closed `Event` / `EventKind` taxonomy with kebab-case wire ids and `snake_case` Rust variants joined by `#[serde(rename = "…")]`.
 
-WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`, `wasi-tools/vectis`) and are carved out of the host workspace's discipline. Both carve-outs are self-contained — plugin-specific validation, scaffold, and rendering logic lives inside the carve-out and the host CLI consumes it only through `specify tool run <name>`.
+WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`, `wasi-tools/vectis`) and are carved out of the host workspace's discipline. Both carve-outs are self-contained — plugin-specific validation, scaffold, and rendering logic lives inside the carve-out and the host CLI consumes it only through `specrun tool run <name>`.
 
 ## Exit codes
 

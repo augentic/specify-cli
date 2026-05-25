@@ -1,4 +1,4 @@
-//! `specify registry remove` handler.
+//! `specrun registry remove` handler.
 
 use std::path::Path;
 
@@ -80,7 +80,7 @@ pub(super) fn plan_refs(project_dir: &Path, removed: &str) -> Vec<String> {
             } else {
                 vec![format!(
                     "plan.yaml has {n} entry(ies) still referencing project `{removed}`: {entries}. \
-                     Run `specify plan amend <change> --project <other>` to rewire them.",
+                     Run `specrun plan amend <change> --project <other>` to rewire them.",
                     n = referencing.len(),
                     entries = referencing.join(", "),
                 )]

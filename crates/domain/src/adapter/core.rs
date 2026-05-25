@@ -535,7 +535,7 @@ fn axis_collision_error(
 /// Validate that installing or resolving `name` on `axis` does not
 /// collide with an existing declaration on the opposite axis.
 ///
-/// Used at `specify init` time (with `axis = Axis::Target`, since
+/// Used at `specrun init` time (with `axis = Axis::Target`, since
 /// `init` only caches target adapters) before the per-axis manifest
 /// cache directory at
 /// `.specify/.cache/manifests/{sources,targets}/<name>/` is rewritten,

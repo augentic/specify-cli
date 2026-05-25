@@ -1,4 +1,4 @@
-//! Clap derive surface for `specify slice *` and its nested verbs.
+//! Clap derive surface for `specrun slice *` and its nested verbs.
 //! The umbrella `cli.rs` re-exports the action enums.
 
 use clap::Subcommand;
@@ -34,13 +34,13 @@ pub enum SliceAction {
     },
     /// Transition a slice to a new lifecycle status. Note: `merged` is
     /// not a valid target — the only legal writer of `Merged` is
-    /// `specify slice merge run`, which performs the spec merge,
+    /// `specrun slice merge run`, which performs the spec merge,
     /// status transition, and archive move atomically.
     Transition {
         /// Slice name
         name: String,
         /// Target status (`refining`, `refined`, `built`, or `dropped`).
-        /// `merged` is reserved for `specify slice merge run` and is
+        /// `merged` is reserved for `specrun slice merge run` and is
         /// rejected with exit 2 if passed here.
         #[arg(value_enum)]
         target: LifecycleStatus,

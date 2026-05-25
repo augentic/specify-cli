@@ -1,4 +1,4 @@
-//! Top-level clap derive surface for the `specify` binary. Owns the
+//! Top-level clap derive surface for the `specrun` binary. Owns the
 //! umbrella types ([`Cli`], [`Commands`], [`Format`], [`SourceArg`],
 //! [`SliceSourceArg`]) and re-exports the per-verb action enums.
 
@@ -18,7 +18,7 @@ use crate::commands::workspace::cli::WorkspaceAction;
 
 #[derive(Parser)]
 #[command(
-    name = "specify",
+    name = "specrun",
     version,
     about = "Deterministic primitives for spec-driven development"
 )]
@@ -27,9 +27,9 @@ pub struct Cli {
     pub(crate) command: Commands,
 
     /// Output format. `text` by default; pass `--format json` (or set
-    /// `SPECIFY_FORMAT=json`) for structured envelopes when shelling
+    /// `SPECRUN_FORMAT=json`) for structured envelopes when shelling
     /// out from skills.
-    #[arg(long, env = "SPECIFY_FORMAT", default_value = "text", global = true)]
+    #[arg(long, env = "SPECRUN_FORMAT", default_value = "text", global = true)]
     pub(crate) format: Format,
 }
 
@@ -122,7 +122,7 @@ pub enum Commands {
     /// Print a shell-completion script for `<shell>` to stdout.
     ///
     /// Pipe into your shell's completion directory (e.g.
-    /// `specify completions zsh > ~/.zsh/_specify`). Generated via
+    /// `specrun completions zsh > ~/.zsh/_specrun`). Generated via
     /// `clap_complete`; the output tracks the live clap surface so
     /// every new verb is auto-discovered.
     Completions {
@@ -241,12 +241,12 @@ pub struct SliceSourceArg {
 }
 
 /// Typed value for the per-slice `--authority-override <kind>=<key>`
-/// flag on `specify plan add` (where the slice context is implicit
+/// flag on `specrun plan add` (where the slice context is implicit
 /// from the command's positional `name`).
 ///
 /// Wire form is `<claim-kind>=<source-key>`; both sides must be
 /// non-empty and kebab-case (`source-key` is validated at the
-/// `specify slice validate` stage via the orphan-key check).
+/// `specrun slice validate` stage via the orphan-key check).
 /// `claim-kind` is parsed at the CLI boundary against the closed
 /// [`ClaimKind`] enum so misspellings fail before any plan mutation
 /// runs (clap exits 2 with its standard usage diagnostic).
@@ -256,7 +256,7 @@ pub struct AuthorityOverrideKindAssign {
     pub(crate) source_key: String,
 }
 
-/// Typed value for `specify plan amend --add-alias` /
+/// Typed value for `specrun plan amend --add-alias` /
 /// `--remove-alias` (workflow §D6). Wire form is
 /// `<candidate-id>=<alias>`; both sides must be non-empty
 /// kebab-case strings. The closed [`specify_error::is_kebab`]

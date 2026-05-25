@@ -1,4 +1,4 @@
-//! Remote-branch inspection helpers for `specify workspace push`: tip
+//! Remote-branch inspection helpers for `specrun workspace push`: tip
 //! discovery, default-branch resolution, and PR-base preflight.
 
 use std::path::Path;

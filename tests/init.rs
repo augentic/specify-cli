@@ -1,4 +1,4 @@
-//! Integration tests for `specify init` (adapter and `--hub` modes).
+//! Integration tests for `specrun init` (adapter and `--hub` modes).
 //!
 //! Covers the on-disk shape produced by `init`, the JSON envelope, and
 //! the clap-level invariants around the positional `<adapter>`
@@ -80,7 +80,7 @@ fn init_github_directory_uri_succeeds() {
 
 #[test]
 fn init_writes_adapter_field_for_url_arg() {
-    // Acceptance (a): `specify init <url>` writes `adapter: <url>`
+    // Acceptance (a): `specrun init <url>` writes `adapter: <url>`
     // and no `schema:` field; `hub:` either absent or false.
     let tmp = tempdir().unwrap();
     specify()
@@ -121,7 +121,7 @@ fn init_writes_adapter_field_for_url_arg() {
 
 #[test]
 fn init_with_no_args_errors() {
-    // Acceptance (c): `specify init` (no positional, no `--hub`) must
+    // Acceptance (c): `specrun init` (no positional, no `--hub`) must
     // exit `2` (clap's parse-error slot) with clap's standard
     // "required arguments were not provided" diagnostic. The historical
     // post-parse `init-requires-adapter-or-hub` diagnostic was lifted
@@ -142,7 +142,7 @@ fn init_with_no_args_errors() {
 
 #[test]
 fn init_with_adapter_and_hub_errors() {
-    // Acceptance (d): `specify init <url> --hub` must exit `2` with
+    // Acceptance (d): `specrun init <url> --hub` must exit `2` with
     // clap's "the argument cannot be used with" diagnostic. Same
     // motivation as `init_with_no_args_errors`: the invariant lives in
     // clap (`conflicts_with = "hub"`), not a post-parse diagnostic.
@@ -162,7 +162,7 @@ fn init_with_adapter_and_hub_errors() {
     );
 }
 
-// ---- specify init --hub (RFC-9 §1D platform-hub topology) ----
+// ---- specrun init --hub (RFC-9 §1D platform-hub topology) ----
 
 #[test]
 fn init_hub_writes_canonical_on_disk_shape() {
@@ -236,7 +236,7 @@ fn init_hub_writes_canonical_on_disk_shape() {
     );
 
     // `change.md` is not scaffolded by hub init; it appears only after
-    // the operator runs `/spec:plan <name>` (or `specify plan create <name>`).
+    // the operator runs `/spec:plan <name>` (or `specrun plan create <name>`).
 }
 
 #[test]

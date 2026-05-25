@@ -3,9 +3,9 @@
 //!
 //! Covers the three operator-facing surfaces:
 //!
-//! - `specify plan add --sources <key>=<alias>` rewrites the alias to
+//! - `specrun plan add --sources <key>=<alias>` rewrites the alias to
 //!   the canonical candidate id before persisting `plan.yaml`.
-//! - `specify plan amend --add-alias` / `--remove-alias` mutate
+//! - `specrun plan amend --add-alias` / `--remove-alias` mutate
 //!   `discovery.md` and refuse the whole amend on any
 //!   `discovery-alias-collision`.
 //!
@@ -197,7 +197,7 @@ fn plan_amend_add_alias_mutates_discovery_md() {
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
 
-    // `specify plan amend` requires the target slice to exist on
+    // `specrun plan amend` requires the target slice to exist on
     // the plan; create one so the orthogonal alias edits land.
     specify()
         .current_dir(project.root())

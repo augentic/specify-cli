@@ -59,7 +59,7 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Execution model
 
-`pending → reviewed` plan-level (Gate 1; operator-only). Per-entry: `pending → in-progress → done`. `done` is absorbing in v1; the operator-reversed flow lives behind `specify plan transition --undo` (added Phase 6 — see [`DECISIONS.md` §"Plan lifecycle: two stored states"](../../DECISIONS.md#plan-lifecycle-two-stored-states)).
+`pending → reviewed` plan-level (Gate 1; operator-only). Per-entry: `pending → in-progress → done`. `done` is absorbing in v1; the operator-reversed flow lives behind `specrun plan transition --undo` (added Phase 6 — see [`DECISIONS.md` §"Plan lifecycle: two stored states"](../../DECISIONS.md#plan-lifecycle-two-stored-states)).
 
 ## Refinement
 
@@ -123,7 +123,7 @@ Reconciliation index at `.specify/slices/<slice>/fusion.yaml`; `spec.md` is the 
 
 ## D5 — Operator-driven `divergence`
 
-The CLI is the single writer of every `Divergence` variant. Operators flip `accepted | rejected` via `specify plan amend --divergence`; `likely` is staged by `specify plan create --divergence-likely <slice>`. See [`crates/domain/src/change/plan/core/model.rs`](../../crates/domain/src/change/plan/core/model.rs).
+The CLI is the single writer of every `Divergence` variant. Operators flip `accepted | rejected` via `specrun plan amend --divergence`; `likely` is staged by `specrun plan create --divergence-likely <slice>`. See [`crates/domain/src/change/plan/core/model.rs`](../../crates/domain/src/change/plan/core/model.rs).
 
 ## D6 — Discovery aliases
 
@@ -131,7 +131,7 @@ Candidates carry an optional `aliases[]` bullet. `slices[].sources[].candidate` 
 
 ## D7 — `--auto-review`
 
-`specify plan create --auto-review` stamps Gate 1 in the same invocation when validation passes. Failure under `--auto-review` MUST NOT stamp; the operator re-runs after fixing.
+`specrun plan create --auto-review` stamps Gate 1 in the same invocation when validation passes. Failure under `--auto-review` MUST NOT stamp; the operator re-runs after fixing.
 
 ## D8 — Cache fingerprint inputs
 

@@ -1,4 +1,4 @@
-//! Orphan-cache scan for `specify tool gc` — computes the cache
+//! Orphan-cache scan for `specrun tool gc` — computes the cache
 //! `<scope>/<tool>/<version>/` directories that are no longer
 //! referenced by the live merged manifest.
 

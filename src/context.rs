@@ -49,7 +49,7 @@ impl Ctx {
             return Err(Error::Diag {
                 code: "hub-no-adapter",
                 detail: "this project has no adapter declared (hub projects do not run \
-                         per-target operations); only `specify registry` and `specify plan` \
+                         per-target operations); only `specrun registry` and `specrun plan` \
                          verbs are supported on hubs"
                     .to_string(),
             });

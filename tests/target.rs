@@ -1,4 +1,4 @@
-//! Integration tests for `specify target resolve`.
+//! Integration tests for `specrun target resolve`.
 //!
 //! Mirrors the target-adapter loader exposed by
 //! `crates/domain/src/adapter/`. The CLI verb is a thin
@@ -72,7 +72,7 @@ fn target_resolve_local_returns_resolved_manifest() {
 
 #[test]
 fn target_resolve_strips_version_suffix() {
-    // workflow §CLI surface: `specify target resolve <value>` takes
+    // workflow §CLI surface: `specrun target resolve <value>` takes
     // either `<name>` or `<name>@<version>`. The `@version` part is
     // opaque metadata; the loader is keyed on the bare kebab name.
     let project = Project::init();

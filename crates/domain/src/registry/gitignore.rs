@@ -1,5 +1,5 @@
 //! `.gitignore` upkeep for `.specify/`-internal directories. `init`
-//! and `specify workspace sync` both call
+//! and `specrun workspace sync` both call
 //! [`ensure_specify_gitignore_entries`] to keep the entries current.
 
 use std::fs;
@@ -16,7 +16,7 @@ const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/works
 /// exactly once (matched with `trim()` per line) in the project
 /// `.gitignore`, appending missing lines with a trailing newline.
 ///
-/// Used by `specify init` and by `specify workspace sync`.
+/// Used by `specrun init` and by `specrun workspace sync`.
 ///
 /// # Errors
 ///

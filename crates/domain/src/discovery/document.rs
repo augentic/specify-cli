@@ -269,7 +269,7 @@ impl Discovery {
 
     /// Convert a non-empty list of collision findings into the
     /// single [`Error::Validation`] envelope the CLI emits. Shared
-    /// between [`Self::add_alias`] and `specify slice validate`.
+    /// between [`Self::add_alias`] and `specrun slice validate`.
     #[must_use]
     pub fn collision_error(findings: &[DiscoveryAliasCollision]) -> Error {
         let results: Vec<specify_error::ValidationSummary> =
@@ -350,7 +350,7 @@ pub struct DiscoveryAliasCollision {
 
 impl DiscoveryAliasCollision {
     /// Project the finding into the [`specify_error::ValidationSummary`]
-    /// shape `specify slice validate` and `specify plan amend` emit.
+    /// shape `specrun slice validate` and `specrun plan amend` emit.
     #[must_use]
     pub fn to_summary(&self) -> specify_error::ValidationSummary {
         specify_error::ValidationSummary {
