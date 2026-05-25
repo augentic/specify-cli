@@ -1,7 +1,7 @@
 //! On-disk `<slice_dir>/.metadata.yaml` representation.
 //!
 //! [`SliceMetadata`] is the document, [`Outcome`] is the latest phase return
-//! surface read by `/change:execute`, and [`TouchedSpec`] lists the specs
+//! surface read by `/spec:execute`, and [`TouchedSpec`] lists the specs
 //! the slice mutates.
 
 use std::path::{Path, PathBuf};
@@ -140,7 +140,7 @@ impl SliceMetadata {
     ///
     /// Returns [`Error::ArtifactNotFound`] (`kind = ".metadata.yaml"`)
     /// when the file is absent — the canonical "not a slice directory"
-    /// signal that `specify slice list` and `/change:execute` rely on.
+    /// signal that `specify slice list` and `/spec:execute` rely on.
     /// [`Error::YamlDe`] surfaces serde-saphyr deserialisation failures
     /// (malformed YAML, unknown enum tags, type mismatches);
     /// [`Error::Io`] propagates filesystem read errors past the

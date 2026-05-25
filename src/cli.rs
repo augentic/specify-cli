@@ -94,7 +94,7 @@ pub enum Commands {
         action: ToolAction,
     },
 
-    /// Slice lifecycle operations — one `define → build → merge` loop.
+    /// Slice lifecycle operations — one `refine → build → merge` loop.
     Slice {
         #[command(subcommand)]
         action: SliceAction,

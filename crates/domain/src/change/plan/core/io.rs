@@ -8,6 +8,7 @@ use specify_error::Error;
 
 use super::model::Plan;
 use crate::config::{AtomicYaml, Layout};
+use crate::schema::validate_plan_file;
 use crate::slice::atomic::yaml_write;
 
 impl AtomicYaml for Plan {
@@ -45,7 +46,8 @@ impl Plan {
     ///
     /// Errors mirror [`crate::slice::SliceMetadata::load`]:
     ///   - missing file -> `Error::ArtifactNotFound`
-    ///   - malformed YAML -> `Error::YamlDe`
+    ///   - schema failure -> `Error::Validation`
+    ///   - YAML/type deserialization failure -> `Error::YamlDe`
     ///   - other I/O failure -> `Error::Io`
     ///
     /// Tolerant of files with or without a trailing newline —
@@ -62,6 +64,7 @@ impl Plan {
             });
         }
         let content = std::fs::read_to_string(path)?;
+        validate_plan_file(path)?;
         let plan: Self = serde_saphyr::from_str(&content)?;
         Ok(plan)
     }
@@ -90,6 +93,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
+    use specify_error::ValidationStatus;
     use tempfile::tempdir;
 
     use super::super::model::Status;
@@ -167,6 +171,23 @@ mod tests {
         let plan = Plan::load(&path).expect("load ok");
         assert_eq!(plan.name, "foo");
         assert!(plan.entries.is_empty());
+    }
+
+    #[test]
+    fn load_rejects_rogue_top_level_field() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("plan.yaml");
+        std::fs::write(&path, "name: foo\nrogue: true\nslices: []\n").expect("write rogue plan");
+
+        let err = Plan::load(&path).expect_err("rogue top-level field should fail schema");
+        let Error::Validation { results } = err else {
+            panic!("expected Error::Validation, got {err:?}");
+        };
+        assert_eq!(results.len(), 1, "expected one schema result, got {results:?}");
+        assert_eq!(results[0].status, ValidationStatus::Fail);
+        assert_eq!(results[0].rule_id, "plan-schema");
+        let detail = results[0].detail.as_deref().expect("schema failure detail");
+        assert!(detail.contains("/rogue"), "expected detail to mention `/rogue`, got {detail}");
     }
 
     #[test]

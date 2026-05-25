@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Phase outcome reported to `/change:execute`. Unit variants serialise
+/// Phase outcome reported to `/spec:execute`. Unit variants serialise
 /// as `outcome: success` etc.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, strum::Display)]
 #[serde(rename_all = "kebab-case")]

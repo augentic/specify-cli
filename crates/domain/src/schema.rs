@@ -14,6 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use jsonschema::Validator;
+use jsonschema::error::{ValidationError, ValidationErrorKind};
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
@@ -59,6 +60,31 @@ pub fn validate_plan(plan: &Plan) -> Result<()> {
         "plan-schema-serialise",
         "plan",
     )
+}
+
+/// Validate raw `plan.yaml` before typed deserialisation.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
+pub fn validate_plan_file(path: &Path) -> Result<()> {
+    let instance = read_yaml_as_json(path).map_err(|err| {
+        Error::validation_failed(
+            "plan-schema",
+            "plan.yaml conforms to schemas/plan/plan.schema.json",
+            err,
+        )
+    })?;
+    let results = validate_value(
+        &instance,
+        PLAN_JSON_SCHEMA,
+        "plan-schema",
+        "plan.yaml conforms to schemas/plan/plan.schema.json",
+    )
+    .into_iter()
+    .filter(|summary| summary.status == ValidationStatus::Fail)
+    .collect::<Vec<_>>();
+    if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
 }
 
 /// Sorted paths to `.yaml`/`.yml` files under `<slice_dir>/evidence/`.
@@ -222,7 +248,7 @@ pub fn validate_value(
         }
     };
     let errors: Vec<String> =
-        validator.iter_errors(instance).map(|e| format!("{}: {}", e.instance_path(), e)).collect();
+        validator.iter_errors(instance).map(|err| validation_error_detail(&err)).collect();
     if errors.is_empty() {
         vec![ValidationSummary {
             status: ValidationStatus::Pass,
@@ -238,6 +264,21 @@ pub fn validate_value(
             detail: Some(errors.join("; ")),
         }]
     }
+}
+
+fn validation_error_detail(err: &ValidationError<'_>) -> String {
+    let path = match err.kind() {
+        ValidationErrorKind::AdditionalProperties { unexpected } if unexpected.len() == 1 => {
+            child_pointer(&err.instance_path().to_string(), &unexpected[0])
+        }
+        _ => err.instance_path().to_string(),
+    };
+    format!("{path}: {err}")
+}
+
+fn child_pointer(parent: &str, property: &str) -> String {
+    let property = property.replace('~', "~0").replace('/', "~1");
+    if parent.is_empty() { format!("/{property}") } else { format!("{parent}/{property}") }
 }
 
 fn compile_schema(schema_source: &str) -> Result<Validator> {

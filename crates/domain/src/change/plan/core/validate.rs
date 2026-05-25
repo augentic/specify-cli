@@ -16,7 +16,7 @@ impl Plan {
     /// `slices_dir` (when `Some`) points at `.specify/slices/` and
     /// enables the cross-reference checks against on-disk slice
     /// metadata. `registry` (when `Some`) enables the cross-registry
-    /// checks (`project-not-in-registry`, `project-missing-multi-repo`).
+    /// checks (`project-not-in-registry`).
     ///
     /// Findings are accumulated — no check short-circuits another. Order
     /// is structural checks first (duplicate names, unknown
@@ -39,7 +39,6 @@ impl Plan {
         results.extend(authority_override_orphan_source_keys(&self.entries));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.entries, reg));
-            results.extend(check_project_required_multi_repo(&self.entries, reg));
         }
         if let Some(dir) = slices_dir.filter(|d| d.is_dir()) {
             results.extend(slices_dir_consistency(self, dir));
@@ -153,27 +152,6 @@ fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Find
                 message: format!(
                     "project '{}' on slice '{}' does not match any project in registry.yaml",
                     project, entry.name
-                ),
-                entry: Some(entry.name.clone()),
-            });
-        }
-    }
-    out
-}
-
-fn check_project_required_multi_repo(changes: &[Entry], registry: &Registry) -> Vec<Finding> {
-    if registry.projects.len() <= 1 {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    for entry in changes {
-        if entry.project.is_none() && entry.target.is_none() {
-            out.push(Finding {
-                level: Severity::Error,
-                code: "project-missing-multi-repo",
-                message: format!(
-                    "slice '{}' has no project or target; multi-repo implementation slices must specify a project",
-                    entry.name
                 ),
                 entry: Some(entry.name.clone()),
             });

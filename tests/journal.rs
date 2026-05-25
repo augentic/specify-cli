@@ -348,6 +348,7 @@ sources:
     path: ./legacy
 slices:
   - name: my-slice
+    target: omnia@v1
     status: pending
     sources:
       - { key: legacy-monolith, candidate: my-slice }
