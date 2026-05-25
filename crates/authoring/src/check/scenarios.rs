@@ -559,8 +559,9 @@ fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Fin
 
 #[cfg(test)]
 mod unit_tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn contiguous_stages_prefix_accepts_refine_anchor() {

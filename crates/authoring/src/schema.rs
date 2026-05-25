@@ -122,8 +122,9 @@ pub fn collect_errors_for_test(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Write;
+
+    use super::*;
 
     #[test]
     fn validate_frontmatter_rejects_invalid_skill_description() {

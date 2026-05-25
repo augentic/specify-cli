@@ -11,9 +11,6 @@ mod skill_body;
 pub mod skill_frontmatter;
 pub mod tools;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding};
-
 pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, RULE_SCHEMA_VIOLATION, run_adapter_check};
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
@@ -45,6 +42,9 @@ pub use skill_frontmatter::{
     SkillFrontmatterSchemaCheck, SkillNameDirectoryMismatchCheck, SkillUnknownToolCheck,
 };
 pub use tools::{DeclaredToolEquivalentInvocations, FirstPartyToolDeclarations};
+
+use crate::context::Context;
+use crate::finding::{Check, Finding};
 
 /// Run every registered check predicate sequentially.
 pub fn run(ctx: &Context) -> Vec<Finding> {

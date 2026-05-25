@@ -1,8 +1,7 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
+use std::path::{Path, PathBuf};
 
 use specify_authoring::Context;
 use specify_authoring::check::agent_teams;
