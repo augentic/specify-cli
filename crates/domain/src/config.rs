@@ -29,7 +29,7 @@ pub struct ProjectConfig {
     pub adapter: Option<String>,
 
     /// Minimum `specify` CLI version required to operate on this project.
-    /// Written by `specify init` as the running binary's version and
+    /// Written by `specrun init` as the running binary's version and
     /// enforced by [`ProjectConfig::load`] via the `semver` crate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub specify_version: Option<String>,
@@ -37,7 +37,7 @@ pub struct ProjectConfig {
     /// Map of brief id (e.g. `proposal`, `specs`, `design`, `tasks`) to a
     /// path (relative to `.specify/`) of a markdown file containing extra
     /// rules for that brief. Scaffolded with one empty entry per
-    /// `pipeline.define` brief by `specify init`.
+    /// `pipeline.define` brief by `specrun init`.
     #[serde(default)]
     pub rules: BTreeMap<String, String>,
 
@@ -204,7 +204,7 @@ impl<'a> Layout<'a> {
 
     /// Absolute path to `<project_dir>/discovery.md` — the candidate
     /// inventory written at `/spec:plan`'s `propose` sub-step and
-    /// mutated by `specify plan amend --add-alias` /
+    /// mutated by `specrun plan amend --add-alias` /
     /// `--remove-alias` (workflow §D6).
     #[must_use]
     pub fn discovery_path(&self) -> PathBuf {

@@ -1,4 +1,4 @@
-//! `specify plan add` handler — append one slice entry to an
+//! `specrun plan add` handler — append one slice entry to an
 //! existing `plan.yaml`. Authority-override seeding is delegated to
 //! the shared domain helper so the journal events match `plan create`
 //! and `plan amend` byte-for-byte.

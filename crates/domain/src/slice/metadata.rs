@@ -140,7 +140,7 @@ impl SliceMetadata {
     ///
     /// Returns [`Error::ArtifactNotFound`] (`kind = ".metadata.yaml"`)
     /// when the file is absent — the canonical "not a slice directory"
-    /// signal that `specify slice list` and `/spec:execute` rely on.
+    /// signal that `specrun slice list` and `/spec:execute` rely on.
     /// [`Error::YamlDe`] surfaces serde-saphyr deserialisation failures
     /// (malformed YAML, unknown enum tags, type mismatches);
     /// [`Error::Io`] propagates filesystem read errors past the

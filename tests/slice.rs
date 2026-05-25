@@ -1,7 +1,7 @@
-//! Integration tests for the `specify slice` subcommand tree.
+//! Integration tests for the `specrun slice` subcommand tree.
 //!
-//! Every test stands up a fresh `.specify/` project via `specify init`,
-//! drives `specify slice *` through `assert_cmd`, and inspects both the
+//! Every test stands up a fresh `.specify/` project via `specrun init`,
+//! drives `specrun slice *` through `assert_cmd`, and inspects both the
 //! structured stdout (`--format json`) and the on-disk side effects the
 //! verb is responsible for.
 //!
@@ -152,7 +152,7 @@ fn transition_rejects_merged_target() {
     assert_eq!(value["exit-code"], 2);
     let message = value["message"].as_str().expect("message string");
     assert!(
-        message.contains("specify slice merge run"),
+        message.contains("specrun slice merge run"),
         "argument-error message must redirect to the merge runner; got:\n{message}"
     );
     assert!(
@@ -393,10 +393,10 @@ fn top_level_help_lists_source_and_target_axis_verbs() {
 
 /// Stage a slice on disk and seed `<slice>/specs/login/spec.md`
 /// directly, plus optionally a `plan.yaml` at the project root, so the
-/// provenance gate inside `specify slice validate` has both the spec
+/// provenance gate inside `specrun slice validate` has both the spec
 /// file and a plan-level source-bindings context to cross-validate
 /// against. Returns the project handle so the caller can drive
-/// `specify slice validate` on it.
+/// `specrun slice validate` on it.
 fn stage_slice_with_spec(spec_md: &str, plan_yaml: Option<&str>) -> Project {
     let project = Project::init().with_schemas();
     specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();

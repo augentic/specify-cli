@@ -1,4 +1,4 @@
-//! Clap derive surface for `specify plan *` and the nested
+//! Clap derive surface for `specrun plan *` and the nested
 //! `plan lock *` verbs. The umbrella `cli.rs` re-exports both action
 //! enums.
 
@@ -6,7 +6,7 @@ use clap::{ArgAction, Subcommand};
 
 use crate::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 
-/// Plan-authoring verbs (`specify plan *`).
+/// Plan-authoring verbs (`specrun plan *`).
 #[derive(Subcommand)]
 pub enum PlanAction {
     /// Scaffold an empty `plan.yaml` at the repo root. Refuses to
@@ -49,7 +49,7 @@ pub enum PlanAction {
         /// `(slice, kind)` tuple. The slice MUST already exist in
         /// the plan being created (unknown names short-circuit with
         /// `plan-authority-override-unknown-slice`); the source key
-        /// is validated at `specify slice validate` time via the
+        /// is validated at `specrun slice validate` time via the
         /// orphan-key check. One
         /// `plan.amend.authority-override` journal event fires per
         /// resolved entry in the same batched append as
@@ -105,7 +105,7 @@ pub enum PlanAction {
         /// and the kind is checked against the closed [`ClaimKind`]
         /// enum at parse time. Repeatable; later occurrences win on
         /// the same `(kind)` key. Orphan source keys are caught by
-        /// `specify slice validate`. One
+        /// `specrun slice validate`. One
         /// `plan.amend.authority-override` event fires per resolved
         /// entry.
         #[arg(long = "authority-override", action = ArgAction::Append)]
@@ -153,7 +153,7 @@ pub enum PlanAction {
         /// fusion; workflow §D5). Accepts `likely`, `accepted`, or
         /// `rejected` — the CLI is the single writer of this field
         /// across every value of the closed enum, so use
-        /// `specify plan amend <plan> <slice> --divergence likely`
+        /// `specrun plan amend <plan> <slice> --divergence likely`
         /// (or `--divergence accepted|rejected`) instead of editing
         /// `plan.yaml` by hand. `none` (absent) is the implicit
         /// default; omit this flag to leave the field unchanged.
@@ -182,7 +182,7 @@ pub enum PlanAction {
         /// appears in `--clear-authority-override`, the clear
         /// wins (clears apply after sets). Validated against the
         /// closed [`ClaimKind`] enum at parse time; orphan source
-        /// keys are caught by `specify slice validate`.
+        /// keys are caught by `specrun slice validate`.
         #[arg(
             long = "authority-override",
             value_names = ["SLICE", "KIND=KEY"],
@@ -246,7 +246,7 @@ pub enum PlanAction {
     /// - **Plan-level Gate 1 stamp** — `<name>` is the plan name and
     ///   `<target>` is `reviewed`. Operator-only — `/spec:plan` MUST
     ///   NOT call this verb; skill bodies stop at `pending` and print
-    ///   the literal `specify plan transition <name> reviewed`
+    ///   the literal `specrun plan transition <name> reviewed`
     ///   command in their closing hint for the operator to run.
     /// - **Per-entry close** — `<name>` is a plan-entry name and
     ///   `<target>` is `done`. The `/spec:merge` skill is the

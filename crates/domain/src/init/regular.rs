@@ -152,7 +152,7 @@ mod tests {
 
         // Non-hub init must not pre-touch any platform-component
         // artefact at the repo root. Operators mint these via
-        // `specify registry add` and `specify plan create`
+        // `specrun registry add` and `specrun plan create`
         // (which scaffolds change.md + plan.yaml together).
         for absent in ["registry.yaml", "plan.yaml", "change.md"] {
             assert!(

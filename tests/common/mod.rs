@@ -38,15 +38,15 @@ pub fn repo_root() -> PathBuf {
 }
 
 /// Convenience pointer to the in-repo Omnia adapter fixture used as
-/// the canonical positional argument for `specify init`.
+/// the canonical positional argument for `specrun init`.
 pub fn omnia_schema_dir() -> PathBuf {
     repo_root().join("tests").join("fixtures").join("adapters").join("targets").join("omnia")
 }
 
-/// Build a fresh `assert_cmd::Command` for the locally-built `specify`
+/// Build a fresh `assert_cmd::Command` for the locally-built `specrun`
 /// binary.
 pub fn specify() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
+    Command::cargo_bin("specrun").expect("cargo_bin(specrun)")
 }
 
 /// Stamp a phase outcome on `<project>/slices/<name>/.metadata.yaml`
@@ -147,11 +147,11 @@ pub fn copy_dir(src: &Path, dst: &Path) {
     }
 }
 
-/// Scaffold an empty hub-mode project in `tmp` via `specify init --hub`.
+/// Scaffold an empty hub-mode project in `tmp` via `specrun init --hub`.
 ///
 /// # Panics
 ///
-/// Panics if the `specify init` invocation does not exit 0.
+/// Panics if the `specrun init` invocation does not exit 0.
 pub fn init_hub(tmp: &TempDir, name: &str) {
     specify()
         .current_dir(tmp.path())
@@ -259,7 +259,7 @@ fn parse_json_stream(label: &str, bytes: &[u8], root: &Path) -> Value {
 }
 
 /// A throwaway `.specify/` project rooted in a tempdir, scaffolded by
-/// running `specify init` with the in-repo Omnia adapter fixture.
+/// running `specrun init` with the in-repo Omnia adapter fixture.
 ///
 /// Hoisted from the per-test-file `struct Project` harnesses
 /// (`tests/slice.rs`, `tests/slice_merge.rs`, `tests/e2e.rs`,
@@ -274,7 +274,7 @@ pub struct Project {
 }
 
 impl Project {
-    /// Build a fresh tempdir and run `specify init <repo>/targets/omnia`
+    /// Build a fresh tempdir and run `specrun init <repo>/targets/omnia`
     /// with a default `--name`. The resulting project sits at the
     /// tempdir root.
     pub fn init() -> Self {

@@ -1,4 +1,4 @@
-//! `specify source {resolve, cache}` — source adapter
+//! `specrun source {resolve, cache}` — source adapter
 //! operations and the workflow §D8 cache surface.
 //!
 //! `resolve` shares the run-side dispatch with the target axis on the

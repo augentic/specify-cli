@@ -31,7 +31,7 @@ pub(crate) const FUSION_JSON_SCHEMA: &str =
 /// Returns `Ok(())` on a clean validation; otherwise an
 /// [`Error::Validation`] whose single [`ValidationSummary`] carries the
 /// stable `rule_id` `"plan-schema"` and the JSON-pointer + reason list
-/// the schema produced. Used by `specify plan add` and `specify plan
+/// the schema produced. Used by `specrun plan add` and `specrun plan
 /// amend` so first-use validation refuses to write a malformed plan.
 ///
 /// # Errors

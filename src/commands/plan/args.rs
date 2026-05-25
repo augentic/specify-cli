@@ -105,7 +105,7 @@ fn resolve_candidate_token(token: &str, discovery: Option<&Discovery>) -> Result
                 "candidate id and aliases share a single namespace per discovery.md",
                 format!(
                     "`{token}` resolves to multiple candidates in discovery.md: {}; run \
-                     `specify slice validate` to enumerate every collision",
+                     `specrun slice validate` to enumerate every collision",
                     candidates.join(", ")
                 ),
             ))

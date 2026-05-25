@@ -1,4 +1,4 @@
-//! Integration tests for `specify source resolve`.
+//! Integration tests for `specrun source resolve`.
 //!
 //! Mirrors the source-adapter loader exposed by
 //! `crates/domain/src/plugin/`. The CLI verb is a thin

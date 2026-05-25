@@ -58,7 +58,7 @@ pub enum Status {
 ///
 /// Two stored states only — `pending` (default after `plan create`)
 /// and `reviewed` (operator-stamped at Gate 1 via
-/// `specify plan transition <plan-name> reviewed`). "Currently
+/// `specrun plan transition <plan-name> reviewed`). "Currently
 /// executing" and "drained" are computed from per-entry [`Status`] at
 /// read time via [`Plan::is_executing`] / [`Plan::is_drained`].
 #[derive(
@@ -174,14 +174,14 @@ pub struct Entry {
     /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
     /// materially-disagreeing candidate summaries; `Accepted` /
     /// `Rejected` are written by the operator at Gate 1 via
-    /// `specify plan amend --divergence`. Advisory metadata in v1.
+    /// `specrun plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub divergence: Option<Divergence>,
     /// workflow §D3 — optional per-slice authority override map keyed
     /// by claim kind, valued by source key. Keys are the closed
     /// [`ClaimKind`] enum; values MUST be source keys present in
     /// this slice's own [`Entry::sources`] list — orphan keys are
-    /// rejected by `specify slice validate` with
+    /// rejected by `specrun slice validate` with
     /// `slice-authority-override-orphan-source-key`. Empty map and
     /// missing field are equivalent.
     #[serde(default, skip_serializing_if = "slice_authority_override_is_empty")]
@@ -201,10 +201,10 @@ pub struct Entry {
 ///
 /// workflow §D5 — the CLI is the single writer of every variant of
 /// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
-/// disk via `specify plan create --divergence-likely <slice>` (the
-/// post-`propose` staging site) and `specify plan amend --divergence
+/// disk via `specrun plan create --divergence-likely <slice>` (the
+/// post-`propose` staging site) and `specrun plan amend --divergence
 /// likely` (the bare-skill fallback); `Accepted` / `Rejected` reach
-/// disk via `specify plan amend --divergence`. `none` is the
+/// disk via `specrun plan amend --divergence`. `none` is the
 /// implicit-absent default and is never serialised explicitly into
 /// a slice record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
@@ -647,7 +647,7 @@ pub struct EntryPatch {
     pub context: Option<Vec<String>>,
     /// Set `divergence` when `Some`. `None` leaves the field
     /// untouched. The CLI is the only caller that materialises this
-    /// patch (`specify plan amend --divergence`) — workflow §D5
+    /// patch (`specrun plan amend --divergence`) — workflow §D5
     /// widens the accepted operator surface to include `Likely`
     /// alongside `Accepted` / `Rejected`; the implicit `None` value
     /// is still rejected at the flag-parser level (omit

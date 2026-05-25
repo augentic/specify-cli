@@ -63,7 +63,7 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
-            clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
+            clap_complete::generate(shell, &mut cmd, "specrun", &mut std::io::stdout());
             Exit::Success
         }
         Commands::Workspace { action } => match action {

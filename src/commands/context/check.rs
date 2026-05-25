@@ -1,4 +1,4 @@
-//! `specify context check` handler — read-side drift detection
+//! `specrun context check` handler — read-side drift detection
 //! comparing input fingerprints and the fenced AGENTS.md body hash
 //! against `.specify/context.lock`.
 

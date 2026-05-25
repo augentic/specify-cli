@@ -202,7 +202,7 @@ mod tests {
     fn hub_init_refuses_when_specify_dir_exists() {
         let tmp = tempdir().unwrap();
         // Pre-create `.specify/` with arbitrary content as if a regular
-        // `specify init` had already run here.
+        // `specrun init` had already run here.
         fs::create_dir_all(tmp.path().join(".specify")).unwrap();
         fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nadapter: omnia\n")
             .unwrap();

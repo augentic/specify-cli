@@ -1,4 +1,4 @@
-//! `specify registry add` handler.
+//! `specrun registry add` handler.
 
 use specify_domain::registry::{Registry, RegistryProject};
 use specify_domain::slice::atomic::yaml_write;

@@ -190,7 +190,7 @@ fn scan_slice_specs(
 ///    `plan.yaml.slices[].authority-override` map.
 /// 3. workflow §D6 — candidate `id` ↔ `aliases[]` collisions in
 ///    `<project_dir>/discovery.md`. A discovery-level check (not
-///    per-slice) but evaluated here because `specify slice validate`
+///    per-slice) but evaluated here because `specrun slice validate`
 ///    is the single CLI surface skills shell out to between
 ///    `/spec:refine` and `/spec:build`.
 ///
@@ -213,7 +213,7 @@ fn validate_pre_adapter_gates(
 /// more than one candidate. Absent `discovery.md` skips the check
 /// silently — older slices and projects without an authored
 /// inventory remain valid (this is the read-only counterpart to
-/// the per-amend gate in `specify plan amend --add-alias`).
+/// the per-amend gate in `specrun plan amend --add-alias`).
 fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
     let path = ctx.layout().discovery_path();
     if !path.exists() {
@@ -265,7 +265,7 @@ fn collect_authority_override_orphan_findings(
         return Ok(Vec::new());
     }
     let plan = Plan::load(&plan_path)?;
-    // Filter to the named slice only — `specify slice validate` is
+    // Filter to the named slice only — `specrun slice validate` is
     // per-slice by definition, and surfacing findings from other
     // slices would confuse the operator.
     let slice_entries: Vec<_> = plan.entries.iter().filter(|e| e.name == name).cloned().collect();

@@ -1,4 +1,4 @@
-//! Response DTOs and row builders for `specify tool *` handlers.
+//! Response DTOs and row builders for `specrun tool *` handlers.
 
 use std::io::Write;
 

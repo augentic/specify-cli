@@ -1,6 +1,6 @@
 //! `plan.yaml.slices[].authority-override` mutation engine (workflow
 //! §D3). The CLI handlers ([`crate::change::Plan::amend`] siblings in
-//! the `specify` binary) parse `--authority-override` /
+//! the `specrun` runtime binary) parse `--authority-override` /
 //! `--clear-authority-override` / `--clear-authority-overrides`
 //! flags into the typed `(slice, kind, source-key)` tuples this
 //! module consumes, then drive the in-memory plan through
@@ -258,7 +258,7 @@ pub fn unknown_slice_err(plan_name: &str, slice: &str) -> Error {
         "--authority-override / --clear-authority-override(s) must reference a slice present in \
          the plan",
         format!(
-            "no slice named '{slice}' in plan '{plan_name}'; add the slice (e.g. specify plan add \
+            "no slice named '{slice}' in plan '{plan_name}'; add the slice (e.g. specrun plan add \
              {slice}) before authoring authority-override entries"
         ),
     )

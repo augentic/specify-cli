@@ -10,7 +10,7 @@ categories = ["development-tools", "command-line-utilities"]
 keywords = ["specify", "contracts", "validate", "openapi", "asyncapi"]
 
 # Host binary used by the contracts adapter gate. The published surface is
-# the WASI component run through `specify tool run contract -- ...`; this
+# the WASI component run through `specrun tool run contract -- ...`; this
 # native binary stays available for parity tests and direct local debugging.
 [[bin]]
 name = "specify-contract"

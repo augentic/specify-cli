@@ -1,4 +1,4 @@
-//! `specify registry *` dispatcher. Per-subcommand handlers live in
+//! `specrun registry *` dispatcher. Per-subcommand handlers live in
 //! sibling modules; shared response DTOs live in `registry/dto.rs`.
 
 mod add;

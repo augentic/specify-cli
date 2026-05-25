@@ -100,6 +100,6 @@ Anything else is an `Error::Argument` (exit 2). The journal append
 runs *after* `with_state` returns so the plan write and the journal
 append cannot interleave on failure.
 
-## Gotcha — `specify init` and the version floor
+## Gotcha — `specrun init` and the version floor
 
-`specify init` bypasses the `specify_version` floor check (the file doesn't exist yet); every other project-aware verb inherits it for free via `ProjectConfig::load`. Don't reimplement the floor check at a subcommand site.
+`specrun init` bypasses the `specify_version` floor check (the file doesn't exist yet); every other project-aware verb inherits it for free via `ProjectConfig::load`. Don't reimplement the floor check at a subcommand site.

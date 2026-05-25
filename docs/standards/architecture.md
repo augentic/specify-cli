@@ -10,7 +10,8 @@ Binary crate (`name = "specify"`) at the repo root. `src/main.rs` is a thin `Exi
 specify-error                    # leaf — thiserror + serde-saphyr only
 specify-tool                     # depends on specify-error (WASI tool runner; wasmtime, gated)
 specify-domain                   # depends on specify-{error,tool} (every other domain module)
-specify (root crate)             # wires every workspace crate above into the CLI binary
+specify-authoring                # depends on specify-error (framework authoring checks; publish=false)
+specify (root crate)             # wires runtime + authoring crates into specrun/specdev
 ```
 
 The Phase 1B collapse from 13 crates to these four library crates is logged in [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout); the module boundaries inside `specify-domain` preserve the prior cross-crate split.
@@ -30,7 +31,7 @@ Four `specify-domain` modules carry the workflow contract; touching any of them 
 - **`crates/domain/src/adapter/`** — axis-split loader. `SourceAdapter::resolve(name, project_dir)` and `TargetAdapter::resolve(name, project_dir)` are the per-axis entry points for loading a source or target adapter manifest; each carries its closed operation set (`SourceOperation` / `TargetOperation`) as the typed `briefs.keys()` source-of-truth, with serde rejecting unknown variants at the YAML parse boundary. The closed `Axis::{Source, Target}` enum still routes cache paths and the runtime dispatcher used by `specify {source,target} resolve`; see [DECISIONS.md §"Adapter loader axis routing"](../../DECISIONS.md#adapter-loader-axis-routing) for the long form. The legacy axis-agnostic `crate::adapter` module (with `Adapter`/`Pipeline`/`PipelineView`/`Phase`/`AdapterSource`/`ResolvedAdapter`) was retired in the F9 collapse; the 1.x `Brief`/`BriefFrontmatter` parser was retired together with `schemas/brief/schema.json` (Specify 2.0 briefs are resolved by path and the CLI never reads their bodies), and `CacheMeta` is in [`init/cache.rs`](../../crates/domain/src/init/cache.rs).
 - **`crates/domain/src/spec/provenance.rs`** — parser and validator for the requirement-block provenance metadata (`ID:`, `Sources:`, `Status:`) that core synthesis emits at the top of every `spec.md` requirement. `RequirementStatus` is closed (`agreed | unknown | conflict | divergence`); the inline `[…]` tag on the requirement heading must agree with the `Status:` line. Findings aggregate so one malformed block does not mask later problems.
 - **`crates/domain/src/journal.rs`** — RFC-19 newline-delimited JSON event log at `<project_dir>/.specify/journal.jsonl`. Closed `Event` / `EventKind` taxonomy; kebab-case dotted wire ids (`plan.transition.reviewed`, `plan.propose.divergence`, `plan.amend.divergence`, `slice.transition.refined`, `slice.extract.completed`, `slice.synthesis.{conflict,divergence,unknown}`) bridge to `snake_case` Rust variants via `#[serde(rename = "…")]`. Append is atomic and is the only mutation; readers tail the file and skip blank lines.
-- **`crates/domain/src/schema.rs`** — embeds the workflow contract JSON Schemas (`schemas/plan/plan.schema.json`, `schemas/evidence.schema.json`, the adapter/source/target manifest schemas, `schemas/discovery/candidate.schema.json`) at compile time via `include_str!`. The validators return `Error::Validation` so the CLI exits with code 2 (`Exit::ValidationFailed`); `specify plan add` / `plan amend` / `slice validate` are the first-use hooks.
+- **`crates/domain/src/schema.rs`** — embeds the workflow contract JSON Schemas (`schemas/plan/plan.schema.json`, `schemas/evidence.schema.json`, the adapter/source/target manifest schemas, `schemas/discovery/candidate.schema.json`) at compile time via `include_str!`. The validators return `Error::Validation` so the CLI exits with code 2 (`Exit::ValidationFailed`); `specrun plan add` / `plan amend` / `slice validate` are the first-use hooks.
 
 ## Per-axis cache layout
 
@@ -46,7 +47,7 @@ WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lin
 
 `wasi-tools/contract` and `wasi-tools/vectis` are deliberate carve-outs from the workspace's Render/emit/`specify-error` discipline. They ship as standalone WASI components and live in their own sibling workspace at `wasi-tools/Cargo.toml`, which inherits a leaner lint posture and a minimal `[workspace.dependencies]` set. Do not pull `specify-error` (or any other host workspace crate that drags in `wasmtime`, `tokio`, `ureq`, …) into either; the carve-out comments in `wasi-tools/contract/src/main.rs` and `wasi-tools/vectis/src/lib.rs` are authoritative.
 
-**Carve-out invariant.** A plugin's validation, scaffold, and rendering logic lives inside its carve-out; the host CLI consumes it only through `specify tool run <name>`. No `specify-*` workspace crate may import plugin-specific logic — the previous shared-validation split (`specify-validate` re-extracted for the contract baseline checks) was an architectural leak collapsed in the 2026-05 inversion pass. New source / target adapters ship as carve-outs (or as in-repo brief bundles consumed by the agent) and stay there.
+**Carve-out invariant.** A plugin's validation, scaffold, and rendering logic lives inside its carve-out; the host CLI consumes it only through `specrun tool run <name>`. No `specify-*` workspace crate may import plugin-specific logic — the previous shared-validation split (`specify-validate` re-extracted for the contract baseline checks) was an architectural leak collapsed in the 2026-05 inversion pass. New source / target adapters ship as carve-outs (or as in-repo brief bundles consumed by the agent) and stay there.
 
 When editing these crates:
 
@@ -55,7 +56,7 @@ When editing these crates:
 - Rebuild artifacts from inside `wasi-tools/` so the sibling workspace's lockfile is used (`cargo make contract-wasm` and `scripts/build-vectis-local.sh` both do this). Do not check the `.wasm` outputs into git — the release workflow handles distribution.
 - Keep their crate dependency surface minimal — they ship as standalone components and bloat the WASM size if you pull in heavy crates.
 
-The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `specify tool run <name>` per declared-tool permissions in `project.yaml.tools[]`.
+The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `specrun tool run <name>` per declared-tool permissions in `project.yaml.tools[]`.
 
 ## Layout boundary
 
@@ -99,7 +100,7 @@ cargo +nightly fmt --all
 
 ## Skill / CLI responsibility split
 
-Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, plugin resolution (`specify source resolve` / `specify target resolve`), artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation, schema validation of `plan.yaml` and per-source `Evidence`, RFC-19 journal append. The plugin repo's `/spec:` skills (`/spec:plan`, `/spec:refine`, `/spec:build`, `/spec:merge`, `/spec:execute`, `/spec:finalize`, `/spec:init`, `/spec:drop`) shell out for all of those.
+Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, plugin resolution (`specrun source resolve` / `specrun target resolve`), artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation, schema validation of `plan.yaml` and per-source `Evidence`, RFC-19 journal append. The plugin repo's `/spec:` skills (`/spec:plan`, `/spec:refine`, `/spec:build`, `/spec:merge`, `/spec:execute`, `/spec:finalize`, `/spec:init`, `/spec:drop`) shell out for all of those.
 
 The corollary: when a skill currently does something deterministic in prose (parsing YAML, validating shape, computing topology, transitioning state), the right fix is to add a CLI verb here and have the skill call it. The wrong fix is to make the skill smarter.
 

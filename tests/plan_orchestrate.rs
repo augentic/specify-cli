@@ -1,4 +1,4 @@
-//! Integration tests for `specify plan *` — the top-level verb that
+//! Integration tests for `specrun plan *` — the top-level verb that
 //! orchestrates the executable plan at `plan.yaml` (RFC-9 §1B).
 //!
 //! These CLI tests stand up a fresh `.specify/` project via `specify
@@ -138,7 +138,7 @@ fn plan_validate_clean_json() {
 fn plan_validate_tolerates_in_progress() {
     // Transient window: `specify change transition <name> in-progress`
     // can run a moment before `.specify/slices/<name>/` exists.
-    // `specify plan validate` must surface a *warning* (not an
+    // `specrun plan validate` must surface a *warning* (not an
     // error) so `passed == true` and skills don't stall on start-up.
     let project = Project::init();
     project.seed_plan(A_IN_PROGRESS);
@@ -631,7 +631,7 @@ fn plan_transition_undo_walks_in_progress_to_pending_then_refuses() {
 
 #[test]
 fn plan_transition_plan_level_reviewed_json() {
-    // workflow §The plan gate: `specify plan transition <plan-name>
+    // workflow §The plan gate: `specrun plan transition <plan-name>
     // reviewed` is the operator-stamped Gate 1 transition. The plan
     // name on the wire matches `plan.yaml.name`.
     let project = Project::init();
@@ -860,7 +860,7 @@ fn plan_create_then_validate_passes_clean() {
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
     assert!(
         !stdout.contains("ERROR"),
-        "freshly-scaffolded plan must pass `specify plan validate` with no errors, got:\n{stdout}"
+        "freshly-scaffolded plan must pass `specrun plan validate` with no errors, got:\n{stdout}"
     );
 }
 
@@ -916,7 +916,7 @@ fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
 
 #[test]
 fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
-    // workflow §D7: running `specify plan transition <name> reviewed`
+    // workflow §D7: running `specrun plan transition <name> reviewed`
     // after a successful `--auto-review` create must be a no-op —
     // exit 0, no second `plan.transition.reviewed` event, plan.yaml
     // unchanged.
@@ -1349,9 +1349,9 @@ fn plan_archive_co_move_collision_halts() {
     );
 }
 
-/// `specify plan validate` surfaces a malformed `registry.yaml`
+/// `specrun plan validate` surfaces a malformed `registry.yaml`
 /// alongside plan validation results — the shape-validation hook
-/// complementing the dedicated `specify registry validate`
+/// complementing the dedicated `specrun registry validate`
 /// verb.
 #[test]
 fn plan_validate_surfaces_registry_errors() {
@@ -1396,7 +1396,7 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
     specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
 }
 
-// ---- specify plan validate health diagnostics (RFC-9 §4B) ----
+// ---- specrun plan validate health diagnostics (RFC-9 §4B) ----
 //
 // `plan validate` carries the three surviving health diagnostics
 // (`cycle-in-depends-on`, `orphan-source-key`,
@@ -2024,7 +2024,7 @@ fn plan_amend_authority_override_round_trips_and_validates() {
 
 #[test]
 fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
-    // workflow §D3 gate: refuse the `specify plan amend` write when
+    // workflow §D3 gate: refuse the `specrun plan amend` write when
     // the authority-override value names a source key not present
     // in the slice's `sources[]` list (`phantom`). The orphan
     // check runs in `Plan::validate` (folded in by Change 2.3),
@@ -2068,7 +2068,7 @@ fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
 
 #[test]
 fn slice_validate_surfaces_authority_override_orphan() {
-    // workflow §D3 — `specify slice validate` is the per-slice gate
+    // workflow §D3 — `specrun slice validate` is the per-slice gate
     // that mirrors the plan-level check; it runs before refine
     // synthesises any artifacts so a bad override is caught
     // before downstream writes. Hand-edit `plan.yaml` to seed an

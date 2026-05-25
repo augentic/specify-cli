@@ -1,4 +1,4 @@
-//! Clap derive surface for `specify registry *`. The umbrella
+//! Clap derive surface for `specrun registry *`. The umbrella
 //! `cli.rs` re-exports `RegistryAction`.
 
 use clap::Subcommand;

@@ -10,8 +10,12 @@ keywords = ["specify", "cli", "spec", "workflow", "rfc"]
 readme = "README.md"
 
 [[bin]]
-name = "specify"
-path = "src/main.rs"
+name = "specrun"
+path = "src/runtime.rs"
+
+[[bin]]
+name = "specdev"
+path = "src/authoring.rs"
 
 [dependencies]
 clap.workspace = true
@@ -23,6 +27,7 @@ serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
 specify-domain.workspace = true
+specify-authoring.workspace = true
 specify-error.workspace = true
 specify-tool.workspace = true
 strum.workspace = true
@@ -42,6 +47,7 @@ members = [
     "crates/error",
     "crates/domain",
     "crates/tool",
+    "crates/authoring",
 ]
 
 [workspace.package]
@@ -157,6 +163,7 @@ serde-saphyr = "0.0.26"
 serde_json = "1"
 sha2 = "0.11"
 specify-domain = { path = "crates/domain" }
+specify-authoring = { path = "crates/authoring" }
 specify-error = { path = "crates/error" }
 specify-tool = { path = "crates/tool" }
 strum = { version = "0.28", features = ["derive"] }
@@ -167,6 +174,7 @@ ureq = { version = "3", features = ["json"] }
 wasm-pkg-client = "0.15"
 wasmtime = { version = "45.0.0", default-features = false, features = ["component-model", "cranelift", "runtime"] }
 wasmtime-wasi = { version = "45.0.0", default-features = false, features = ["p2"] }
+walkdir = "2"
 
 [profile.release]
 lto = true

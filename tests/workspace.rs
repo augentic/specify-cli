@@ -1,4 +1,4 @@
-//! Integration tests for `specify workspace *` (RFC-14).
+//! Integration tests for `specrun workspace *` (RFC-14).
 //!
 //! Covers `workspace sync`, `workspace push`, and the hidden
 //! `workspace prepare` executor helper. Selector

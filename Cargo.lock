@@ -4497,12 +4497,29 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "specify-authoring",
  "specify-domain",
  "specify-error",
  "specify-tool",
  "strum 0.28.0",
  "tempfile",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "specify-authoring"
+version = "0.3.0"
+dependencies = [
+ "glob",
+ "jsonschema",
+ "regex",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "sha2 0.11.0",
+ "specify-error",
+ "tempfile",
+ "walkdir",
 ]
 
 [[package]]

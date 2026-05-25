@@ -1,4 +1,4 @@
-//! Clap derive surface for `specify source *`. The umbrella `cli.rs`
+//! Clap derive surface for `specrun source *`. The umbrella `cli.rs`
 //! re-exports `SourceAction`.
 
 use std::path::PathBuf;

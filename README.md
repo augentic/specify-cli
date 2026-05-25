@@ -2,23 +2,23 @@
 
 ## Installing the CLI
 
-The `specify` binary is required by `spec` plugin skills. Install using:
+The `specrun` runtime binary is required by `spec` plugin skills. The `specdev` authoring binary ships alongside it for framework checks. Install using:
 
 ```bash
 cargo install --git https://github.com/augentic/specify-cli
 
-# brew install augentic/tap/specify         # macOS + Linux (primary)
+# brew install augentic/tap/specrun         # macOS + Linux (primary)
 ```
 
 ## Shell completions
 
-`specify completions <shell>` writes a completion script to stdout for any
+`specrun completions <shell>` writes a completion script to stdout for any
 clap-supported shell (`bash`, `elvish`, `fish`, `powershell`, `zsh`). For
 example:
 
 ```bash
-specify completions zsh > "${fpath[1]}/_specify"   # zsh
-specify completions bash > /etc/bash_completion.d/specify  # bash
+specrun completions zsh > "${fpath[1]}/_specrun"   # zsh
+specrun completions bash > /etc/bash_completion.d/specrun  # bash
 ```
 
 The script is generated from the live clap surface, so it stays in sync

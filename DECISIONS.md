@@ -18,7 +18,7 @@ need full fidelity reach for the downstream crate's own type directly.
 
 The binary commits to a four-slot exit-code table. `Exit::from(&Error)`
 in `src/output.rs` is the single source of truth; every dispatcher routes
-its error through it. `Exit::Code(u8)` is reserved for `specify tool
+its error through it. `Exit::Code(u8)` is reserved for `specrun tool
 run` WASI passthrough.
 
 | Code | Name                     | When                                                                                          |
@@ -113,7 +113,7 @@ flag is additive, removing or renaming a flag is breaking. One
 non-additive input change has shipped under the version reflected
 above:
 
-- `specify init` enforces the `<adapter>` xor `--hub` invariant
+- `specrun init` enforces the `<adapter>` xor `--hub` invariant
   through clap. The historical post-parse
   `init-requires-adapter-or-hub` envelope is gone on the CLI
   surface; clap parse errors exit `2` with the standard "required
@@ -124,7 +124,7 @@ above:
 
 ## Shell completions
 
-`specify completions <shell>` writes a clap-generated completion script
+`specrun completions <shell>` writes a clap-generated completion script
 to stdout for any shell `clap_complete::Shell` covers (`bash`,
 `elvish`, `fish`, `powershell`, `zsh`). The script is a pure function
 of the live clap surface, so verb additions/removals are auto-tracked
@@ -132,9 +132,10 @@ without extra plumbing.
 
 ## Crate layout
 
-Four workspace crates: `specify-error` (leaf), `specify-domain`
-(every domain module), `specify-tool` (WASI host, gated), and the
-`specify` binary.
+Five workspace crates: `specify-error` (leaf), `specify-domain`
+(every runtime domain module), `specify-tool` (WASI host, gated),
+`specify-authoring` (publish-disabled framework authoring checks), and
+the root binary package.
 
 The Phase 1B collapse from 13 crates and the subsequent
 `specify-validate` re-extraction (folded into the `wasi-tools/contract`
@@ -151,6 +152,14 @@ dependency direction is overhead; refactor within an existing module
 instead. Adapter-specific logic never lands as a workspace crate
 — it lands in the adapter's WASI carve-out.
 
+`specify-authoring` is the exception for framework authoring checks
+moved from the plugin repo's retired `tooling/` crate. It stays
+publish-disabled and depends only on leaf/shared crates; the root
+`specdev` binary calls into it. Keeping the checker as a library crate
+preserves its integration-test shape without making framework-repo
+predicates part of the runtime dispatcher or `specify-domain`'s
+workflow contract.
+
 ## Tool architecture
 
 `specify-tool` owns the declared WASI tool model, cache, resolver, and
@@ -162,7 +171,7 @@ crate project-scope and adapter-scope tool declarations.
   top-level `tools:` array in `.specify/project.yaml`) and / or
   *adapter scope* (a `tools.yaml` sidecar next to `adapter.yaml`
   inside the resolved adapter directory). Both shapes share
-  `schemas/tool.schema.json`. `specify tool` merges by `name`, with
+  `schemas/tool.schema.json`. `specrun tool` merges by `name`, with
   project scope winning on collision and a typed `tool-name-collision`
   warning emitted once per session. `adapter.yaml` itself is never
   modified and never gains a `tools:` field.
@@ -191,7 +200,7 @@ crate project-scope and adapter-scope tool declarations.
   (or `ADAPTER_DIR` for adapter-scope). `write:` entries that
   target Specify lifecycle state (`.specify/project.yaml`, slice /
   archive `.metadata.yaml`, `.specify/plan.lock`, etc.) are rejected.
-- **Argument forwarding and environment.** `specify tool run <name>
+- **Argument forwarding and environment.** `specrun tool run <name>
   [-- <args>...]` forwards everything after `--` verbatim with
   `<name>` as `argv[0]`. The module receives exactly two environment
   variables — `PROJECT_DIR` always, `ADAPTER_DIR` only for
@@ -212,7 +221,7 @@ crate project-scope and adapter-scope tool declarations.
   resolutions may both stage, and the resolver's atomic rename makes
   the steady state deterministic. A per-tool flock is deferred until
   it is needed.
-- **`specify tool gc` scope.** Deletes any
+- **`specrun tool gc` scope.** Deletes any
   `<cache-root>/<scope-segment>/<tool-name>/<version>/` whose
   `(scope, name, version, source)` tuple is not referenced by the live
   merged manifest of the current project. It does not scan other
@@ -222,7 +231,7 @@ crate project-scope and adapter-scope tool declarations.
   `.specify/wasm-pkg.toml` (when present), (3) the `WKG_CONFIG`
   override, (4) an embedded `specify -> augentic.io` namespace
   fallback applied only when no earlier layer mapped the `specify`
-  namespace. `specify init` (regular and hub modes) scaffolds
+  namespace. `specrun init` (regular and hub modes) scaffolds
   `.specify/wasm-pkg.toml` with the canonical RFC-17 mapping; the
   file is checked in and operators edit it to register internal
   mirrors. Re-init never overwrites an operator-edited file. The
@@ -297,14 +306,14 @@ in Wave 1.2 (`cli/W1.2`). Per-entry status remains a closed enum of
 writer of `in-progress`, and `slice merge` (via `plan transition <entry>
 done` invoked by the `/spec:merge` skill body) writes `done`. "Drained"
 is computed at read time as "every entry is `done`", not stored.
-`specify plan transition <plan-name> reviewed` is Gate 1 and is
+`specrun plan transition <plan-name> reviewed` is Gate 1 and is
 operator-only — the CLI does not gate it (the call is ungated so
 operators can run it from any shell), but the `--help` text documents
 the rule and `/spec:plan` skill bodies MUST NOT call it. Refer to
 workflow §"Execution model" for the full state diagram.
 
 Per-entry status walks backwards only via the dedicated
-`specify plan transition <entry> --undo` verb. The verb refuses to
+`specrun plan transition <entry> --undo` verb. The verb refuses to
 skip rungs — it implements exactly `Done → InProgress` and
 `InProgress → Pending` per call, so undoing a `done` entry to
 `pending` MUST run twice. Each step emits one
@@ -361,7 +370,7 @@ share the same shorthand on the wire. Refer to workflow §`Slice.sources`.
 `none | likely | accepted | rejected` (kebab-case on the wire;
 `snake_case` Rust variants joined by `#[serde(rename = "…")]`). `none`
 is the implicit default and is elided from serialised output.
-`specify plan amend --divergence` only accepts `accepted | rejected`
+`specrun plan amend --divergence` only accepts `accepted | rejected`
 from the wire — `none` is the absent default, and `likely` is reserved
 for the `propose` sub-step of `/spec:plan`, which writes the value via
 a direct YAML edit (per the W3.2 hand-off). Operators flipping the
@@ -385,7 +394,7 @@ byte-stable three-step fallback chain.
 optional `authority-override` map keyed by claim kind, valued by
 source key. Keys come from the closed claim-kind enum; values MUST
 be source keys present in the slice's own `sources[]` list. Orphan
-keys are rejected by `specify slice validate` with the
+keys are rejected by `specrun slice validate` with the
 `slice-authority-override-orphan-source-key` kebab discriminant. The
 map is scoped to one slice — plan-wide and project-wide overrides
 are out of scope.
@@ -397,7 +406,7 @@ fixes the closed top-level shape (`version`, `slice`,
 `generated-at`, `generator`, `requirements[]`). `/spec:refine`
 writes the file atomically; downstream verbs read `spec.md` as the
 authoritative artifact and treat `fusion.yaml` as an inspection
-surface. `specify slice validate` enforces id-set parity between
+surface. `specrun slice validate` enforces id-set parity between
 `spec.md` `REQ-*` ids and `fusion.yaml.requirements[].id` and
 catches contributing-claim → Evidence-claim drift, both via the
 `slice-fusion-drift` discriminant.
@@ -425,17 +434,17 @@ variants are `snake_case` and bridge to the wire via
 
 | Wire id | Emitted by |
 |---|---|
-| `plan.transition.reviewed` | `specify plan transition <plan> reviewed` (Gate 1 stamp). |
-| `plan.transition.undone` | `specify plan transition <entry> --undo` (per-entry reverse rung; one event per rung). |
+| `plan.transition.reviewed` | `specrun plan transition <plan> reviewed` (Gate 1 stamp). |
+| `plan.transition.undone` | `specrun plan transition <entry> --undo` (per-entry reverse rung; one event per rung). |
 | `plan.propose.divergence` | `/spec:plan` `propose` sub-step when it flips a slice to `divergence: likely`. |
-| `plan.amend.divergence` | `specify plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
-| `slice.transition.refined` | `specify slice transition <slice> refined`. |
+| `plan.amend.divergence` | `specrun plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
+| `slice.transition.refined` | `specrun slice transition <slice> refined`. |
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
-| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. |
+| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). workflow §D8. |
 | `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). workflow §D4. |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. workflow §D1. |
-| `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. workflow §D3. |
+| `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. workflow §D3. |
 
 Events persist as newline-delimited JSON at
 `<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`
@@ -466,11 +475,11 @@ each transition:
 
 | State | Writer | Trigger |
 |---|---|---|
-| `pending` (per-entry) | `specify plan add` / `specify plan amend` | Operator (or `/spec:plan`) authors / edits a slice row. |
-| `in-progress` (per-entry) | `specify plan next` | Sole writer; the `/spec:execute` loop calls it once per slice. |
-| `done` (per-entry) | `specify plan transition <entry> done` | Called by `/spec:merge` after `specify slice merge` succeeds. |
-| `pending` (plan-level) | `specify plan create` | `/spec:plan` scaffolds the plan in `pending`. |
-| `reviewed` (plan-level) | `specify plan transition <plan> reviewed` | Operator-only (Gate 1). The CLI is ungated; `/spec:plan` MUST NOT call this verb — `--help` text documents the rule and the skill body is the actual gate. |
+| `pending` (per-entry) | `specrun plan add` / `specrun plan amend` | Operator (or `/spec:plan`) authors / edits a slice row. |
+| `in-progress` (per-entry) | `specrun plan next` | Sole writer; the `/spec:execute` loop calls it once per slice. |
+| `done` (per-entry) | `specrun plan transition <entry> done` | Called by `/spec:merge` after `specrun slice merge` succeeds. |
+| `pending` (plan-level) | `specrun plan create` | `/spec:plan` scaffolds the plan in `pending`. |
+| `reviewed` (plan-level) | `specrun plan transition <plan> reviewed` | Operator-only (Gate 1). The CLI is ungated; `/spec:plan` MUST NOT call this verb — `--help` text documents the rule and the skill body is the actual gate. |
 
 The plan-level `reviewed` row is the lightest-touch shape the RFC
 allows: a wholly operator-driven stamp with no CLI-side authentication.
@@ -489,7 +498,7 @@ payload supplied directly to the adapter — used by `intent`). The
 `oneOf [path, value]` exclusion is enforced in both the JSON Schema
 and the Rust loader (`specify_domain::change::SourceBinding`).
 
-The `specify plan create --source` flag grammar mirrors the wire
+The `specrun plan create --source` flag grammar mirrors the wire
 shape:
 
 | Form | Materialises as |
@@ -533,7 +542,7 @@ Adapter names are unique across axes — a name is declared under
 `adapters/sources/<name>/` xor `adapters/targets/<name>/`, never both
 (and the same applies to their
 `.specify/.cache/manifests/{sources,targets}/<name>/` manifest-cache
-mirrors). Eagerly enforced at `specify init` time (inside
+mirrors). Eagerly enforced at `specrun init` time (inside
 `crates/domain/src/init/cache.rs::cache_adapter`, before the target
 cache directory is rewritten) and at `*Adapter::resolve` time. The
 resolve-time probe is process-memoised per `(project_dir, axis, name)`
@@ -616,8 +625,8 @@ finishes; string operation names never survive past the manifest loader.
   `crates/domain/src/adapter/operation.rs` are the typed `briefs.keys()`
   carried by each manifest struct; manifest brief maps are enum-keyed
   and string literals at call sites are gone.
-- **Wire invariant.** The `specify source resolve` and
-  `specify target resolve` JSON envelopes' `operations: [...]` arrays
+- **Wire invariant.** The `specrun source resolve` and
+  `specrun target resolve` JSON envelopes' `operations: [...]` arrays
   iterate in kebab-alphabetical order (e.g. `["enumerate", "extract"]`,
   `["build", "merge", "shape"]`). Derived `Ord` on
   `{Source,Target}Operation` is intentional because enum variants are

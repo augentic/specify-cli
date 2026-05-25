@@ -1,26 +1,27 @@
 #!/bin/sh
-# Specify CLI installer.
+# Specrun CLI installer.
 # Usage:
 #   curl -sSf https://specify.sh/install.sh | sh
-#   curl -sSf https://specify.sh/install.sh | SPECIFY_VERSION=v0.1.0 sh
+#   curl -sSf https://specify.sh/install.sh | SPECRUN_VERSION=v0.1.0 sh
 #
 # Override install location:
-#   SPECIFY_INSTALL_DIR=/usr/local/bin sh install.sh
+#   SPECRUN_INSTALL_DIR=/usr/local/bin sh install.sh
 #
 # Skip SHA256 verification (NOT recommended):
-#   SPECIFY_SKIP_VERIFY=1 sh install.sh
+#   SPECRUN_SKIP_VERIFY=1 sh install.sh
 
 set -eu
 
 REPO="augentic/specify-cli"
-BINARY="specify"
+RUNTIME_BINARY="specrun"
+AUTHORING_BINARY="specdev"
 
 log() {
-    printf '%s\n' "specify-install: $*"
+    printf '%s\n' "specrun-install: $*"
 }
 
 err() {
-    printf '%s\n' "specify-install: error: $*" >&2
+    printf '%s\n' "specrun-install: error: $*" >&2
     exit 1
 }
 
@@ -47,8 +48,8 @@ detect_arch() {
 }
 
 resolve_version() {
-    if [ -n "${SPECIFY_VERSION:-}" ]; then
-        echo "$SPECIFY_VERSION"
+    if [ -n "${SPECRUN_VERSION:-}" ]; then
+        echo "$SPECRUN_VERSION"
         return
     fi
     # Use the /releases/latest redirect so we don't need jq to parse JSON.
@@ -57,7 +58,7 @@ resolve_version() {
         | awk 'tolower($1)=="location:" {print $2}' \
         | tr -d '\r')
     if [ -z "$_url" ]; then
-        err "failed to resolve latest release (set SPECIFY_VERSION=vX.Y.Z to override)"
+        err "failed to resolve latest release (set SPECRUN_VERSION=vX.Y.Z to override)"
     fi
     echo "${_url##*/}"
 }
@@ -77,14 +78,14 @@ verify_sha256() {
     _archive="$1"
     _sha_file="$2"
 
-    if [ "${SPECIFY_SKIP_VERIFY:-0}" = "1" ]; then
-        log "WARNING: SPECIFY_SKIP_VERIFY=1 set, skipping SHA256 verification"
+    if [ "${SPECRUN_SKIP_VERIFY:-0}" = "1" ]; then
+        log "WARNING: SPECRUN_SKIP_VERIFY=1 set, skipping SHA256 verification"
         return 0
     fi
 
     if [ ! -f "$_sha_file" ]; then
         log "WARNING: no .sha256 companion found, skipping verification"
-        log "         (set SPECIFY_SKIP_VERIFY=1 to suppress this warning)"
+        log "         (set SPECRUN_SKIP_VERIFY=1 to suppress this warning)"
         return 0
     fi
 
@@ -117,17 +118,17 @@ main() {
         *) _version="v${_version}" ;;
     esac
 
-    _install_dir="${SPECIFY_INSTALL_DIR:-${HOME}/.local/bin}"
-    _archive="${BINARY}-${_version}-${_target}.tar.gz"
+    _install_dir="${SPECRUN_INSTALL_DIR:-${HOME}/.local/bin}"
+    _archive="${RUNTIME_BINARY}-${_version}-${_target}.tar.gz"
     _url="https://github.com/${REPO}/releases/download/${_version}/${_archive}"
     _sha_url="${_url}.sha256"
 
     log "target:  ${_target}"
     log "version: ${_version}"
     log "source:  ${_url}"
-    log "dest:    ${_install_dir}/${BINARY}"
+    log "dest:    ${_install_dir}/${RUNTIME_BINARY}"
 
-    _tmp=$(mktemp -d 2>/dev/null || mktemp -d -t specify-install)
+    _tmp=$(mktemp -d 2>/dev/null || mktemp -d -t specrun-install)
     trap 'rm -rf "$_tmp"' EXIT INT TERM
 
     log "downloading archive"
@@ -143,19 +144,24 @@ main() {
     log "extracting"
     tar -xzf "${_tmp}/${_archive}" -C "$_tmp"
 
-    if [ ! -f "${_tmp}/${BINARY}" ]; then
-        err "archive did not contain expected binary: ${BINARY}"
+    if [ ! -f "${_tmp}/${RUNTIME_BINARY}" ]; then
+        err "archive did not contain expected binary: ${RUNTIME_BINARY}"
+    fi
+    if [ ! -f "${_tmp}/${AUTHORING_BINARY}" ]; then
+        err "archive did not contain expected binary: ${AUTHORING_BINARY}"
     fi
 
     mkdir -p "$_install_dir"
-    mv "${_tmp}/${BINARY}" "${_install_dir}/${BINARY}"
-    chmod +x "${_install_dir}/${BINARY}"
+    mv "${_tmp}/${RUNTIME_BINARY}" "${_install_dir}/${RUNTIME_BINARY}"
+    mv "${_tmp}/${AUTHORING_BINARY}" "${_install_dir}/${AUTHORING_BINARY}"
+    chmod +x "${_install_dir}/${RUNTIME_BINARY}" "${_install_dir}/${AUTHORING_BINARY}"
 
-    log "installed ${BINARY} ${_version} to ${_install_dir}/${BINARY}"
+    log "installed ${RUNTIME_BINARY} ${_version} to ${_install_dir}/${RUNTIME_BINARY}"
+    log "installed ${AUTHORING_BINARY} ${_version} to ${_install_dir}/${AUTHORING_BINARY}"
 
     case ":${PATH}:" in
         *":${_install_dir}:"*)
-            log "run '${BINARY} --version' to verify"
+            log "run '${RUNTIME_BINARY} --version' to verify"
             ;;
         *)
             log "NOTE: ${_install_dir} is not on your PATH."

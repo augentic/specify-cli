@@ -1,4 +1,4 @@
-//! `specify tool fetch` handler.
+//! `specrun tool fetch` handler.
 
 use jiff::Timestamp;
 use specify_error::Result;

@@ -3,7 +3,7 @@
 //!
 //! The schema tests are pure-library: they compile the bundled JSON
 //! Schema and feed it YAML fixtures converted to `serde_json::Value`.
-//! CLI integration tests for the `specify plan *` group live in
+//! CLI integration tests for the `specrun plan *` group live in
 //! `tests/plan_orchestrate.rs`.
 
 use std::fs;

@@ -7,8 +7,8 @@
 //! parses `discovery.md`, exposes [`Discovery::resolve_candidate`]
 //! for the `--sources <key>=<id-or-alias>` rewrite path, and gates
 //! the cross-candidate `id` ↔ `aliases[]` collision check shared
-//! between `specify plan amend --add-alias` and
-//! `specify slice validate`.
+//! between `specrun plan amend --add-alias` and
+//! `specrun slice validate`.
 
 pub mod candidate;
 pub mod document;

@@ -14,7 +14,7 @@ Scope and delta-targeting intent are carried in the `description` and `context` 
 
 Semantic checks (cycle detection, referential integrity of `depends-on` / `sources` targets, at-most-one `in-progress`, registry project checks, etc.) are performed by the CLI; this schema covers shape only.
 
-The JSON response produced by `specify plan validate --format json` is itself covered by a sibling schema at [`../plan-validate-output/schema.json`](../plan-validate-output/schema.json); skill authors consuming the validator should match the response against that schema.
+The JSON response produced by `specrun plan validate --format json` is itself covered by a sibling schema at [`../plan-validate-output/schema.json`](../plan-validate-output/schema.json); skill authors consuming the validator should match the response against that schema.
 
 ## Editor integration
 
