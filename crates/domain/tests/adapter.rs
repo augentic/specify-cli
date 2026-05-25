@@ -71,7 +71,7 @@ fn resolves_source_adapter_from_local_directory() {
         Some("briefs/extract.md")
     );
     assert!(matches!(resolved.location, AdapterLocation::Local(_)));
-    assert!(resolved.root_dir.ends_with("adapters/sources/code-typescript"));
+    assert!(resolved.location.path().ends_with("adapters/sources/code-typescript"));
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn resolves_target_adapter_from_local_directory() {
         resolved.manifest.operations().copied().collect::<Vec<_>>(),
         vec![TargetOperation::Build, TargetOperation::Merge, TargetOperation::Shape]
     );
-    assert!(resolved.root_dir.ends_with("adapters/targets/omnia"));
+    assert!(resolved.location.path().ends_with("adapters/targets/omnia"));
 }
 
 #[test]
@@ -292,9 +292,9 @@ description: >-
         "live plg manifest resolves under adapters/sources/<name>/ (local axis)"
     );
     assert!(
-        resolved.root_dir.ends_with("adapters/sources/captures"),
+        resolved.location.path().ends_with("adapters/sources/captures"),
         "resolver root must land on the plg-tree adapter directory, got: {}",
-        resolved.root_dir.display()
+        resolved.location.path().display()
     );
 }
 

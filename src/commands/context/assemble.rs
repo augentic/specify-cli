@@ -69,12 +69,12 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
 fn collect_adapter_inputs(
     collector: &mut fingerprint::InputCollector, adapter: &ResolvedTargetAdapter,
 ) -> Result<()> {
-    let manifest = adapter.root_dir.join(ADAPTER_FILENAME);
+    let manifest = adapter.location.path().join(ADAPTER_FILENAME);
     if manifest.is_file() {
         collector.add_file(&manifest)?;
     }
     for relative in adapter.manifest.briefs.values() {
-        let brief_path = adapter.root_dir.join(relative);
+        let brief_path = adapter.location.path().join(relative);
         if brief_path.is_file() {
             collector.add_file(&brief_path)?;
         }

@@ -275,31 +275,31 @@ pub struct TargetAdapter {
     pub cache: Option<CacheMode>,
 }
 
-/// A parsed [`SourceAdapter`] paired with the directory it loaded from
-/// and where it was located (in-repo vs. agent-populated cache).
+/// A parsed [`SourceAdapter`] paired with the [`AdapterLocation`] it
+/// loaded from (in-repo vs. agent-populated cache). The filesystem
+/// directory is reachable through [`AdapterLocation::path`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSourceAdapter {
     /// Parsed manifest.
     pub manifest: SourceAdapter,
-    /// Filesystem directory the manifest was loaded from.
-    pub root_dir: PathBuf,
     /// Whether the manifest came from
     /// `.specify/.cache/manifests/sources/<name>/` or from
-    /// `<project_dir>/adapters/sources/<name>/`.
+    /// `<project_dir>/adapters/sources/<name>/`, and the directory
+    /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,
 }
 
-/// A parsed [`TargetAdapter`] paired with the directory it loaded from
-/// and where it was located (in-repo vs. agent-populated cache).
+/// A parsed [`TargetAdapter`] paired with the [`AdapterLocation`] it
+/// loaded from (in-repo vs. agent-populated cache). The filesystem
+/// directory is reachable through [`AdapterLocation::path`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedTargetAdapter {
     /// Parsed manifest.
     pub manifest: TargetAdapter,
-    /// Filesystem directory the manifest was loaded from.
-    pub root_dir: PathBuf,
     /// Whether the manifest came from
     /// `.specify/.cache/manifests/targets/<name>/` or from
-    /// `<project_dir>/adapters/targets/<name>/`.
+    /// `<project_dir>/adapters/targets/<name>/`, and the directory
+    /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,
 }
 
@@ -327,8 +327,7 @@ impl SourceAdapter {
     /// - `adapter-schema-violation` — manifest fails the source-axis
     ///   JSON Schema.
     pub fn resolve(name: &str, project_dir: &Path) -> Result<ResolvedSourceAdapter, Error> {
-        let (root_dir, location, manifest_path, raw_value) =
-            load_validated(Axis::Source, name, project_dir)?;
+        let (location, manifest_path, raw_value) = load_validated(Axis::Source, name, project_dir)?;
 
         let manifest: Self = serde_json::from_value(raw_value).map_err(|err| Error::Diag {
             code: "adapter-manifest-malformed",
@@ -337,11 +336,7 @@ impl SourceAdapter {
 
         check_axis_and_name(Axis::Source, name, manifest.axis, &manifest.name, &manifest_path)?;
 
-        Ok(ResolvedSourceAdapter {
-            manifest,
-            root_dir,
-            location,
-        })
+        Ok(ResolvedSourceAdapter { manifest, location })
     }
 
     /// Iterator over the source operations this adapter declares, in
@@ -378,8 +373,7 @@ impl TargetAdapter {
     /// - `adapter-schema-violation` — manifest fails the target-axis
     ///   JSON Schema.
     pub fn resolve(name: &str, project_dir: &Path) -> Result<ResolvedTargetAdapter, Error> {
-        let (root_dir, location, manifest_path, raw_value) =
-            load_validated(Axis::Target, name, project_dir)?;
+        let (location, manifest_path, raw_value) = load_validated(Axis::Target, name, project_dir)?;
 
         let manifest: Self = serde_json::from_value(raw_value).map_err(|err| Error::Diag {
             code: "adapter-manifest-malformed",
@@ -388,11 +382,7 @@ impl TargetAdapter {
 
         check_axis_and_name(Axis::Target, name, manifest.axis, &manifest.name, &manifest_path)?;
 
-        Ok(ResolvedTargetAdapter {
-            manifest,
-            root_dir,
-            location,
-        })
+        Ok(ResolvedTargetAdapter { manifest, location })
     }
 
     /// Iterator over the target operations this adapter declares, in
@@ -408,16 +398,17 @@ impl TargetAdapter {
 /// Shared load + schema-validate pipeline used by both axis-specific
 /// resolvers.
 ///
-/// Returns the root directory, the [`AdapterLocation`] tag, the
-/// canonical manifest path (for error messages), and the
-/// schema-validated `serde_json::Value` ready for typed deserialisation
-/// by the caller. Keeps the duplicated bytes between
-/// [`SourceAdapter::resolve`] and [`TargetAdapter::resolve`] down to a
-/// single `serde_json::from_value` + axis/name check.
+/// Returns the [`AdapterLocation`] tag (whose [`AdapterLocation::path`]
+/// is the root directory), the canonical manifest path (for error
+/// messages), and the schema-validated `serde_json::Value` ready for
+/// typed deserialisation by the caller. Keeps the duplicated bytes
+/// between [`SourceAdapter::resolve`] and [`TargetAdapter::resolve`]
+/// down to a single `serde_json::from_value` + axis/name check.
 fn load_validated(
     axis: Axis, name: &str, project_dir: &Path,
-) -> Result<(PathBuf, AdapterLocation, PathBuf, serde_json::Value), Error> {
-    let (root_dir, location) = locate_axis(axis, name, project_dir)?;
+) -> Result<(AdapterLocation, PathBuf, serde_json::Value), Error> {
+    let location = locate_axis(axis, name, project_dir)?;
+    let root_dir = location.path();
     let manifest_path = root_dir.join(ADAPTER_FILENAME);
     if !manifest_path.is_file() {
         return Err(Error::Diag {
@@ -438,13 +429,12 @@ fn load_validated(
     })?;
     validate_schema(axis, &manifest_path, &raw_value)?;
 
-    Ok((root_dir, location, manifest_path, raw_value))
+    Ok((location, manifest_path, raw_value))
 }
 
-fn locate_axis(
-    axis: Axis, name: &str, project_dir: &Path,
-) -> Result<(PathBuf, AdapterLocation), Error> {
+fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLocation, Error> {
     let cached = cache_dir(project_dir, axis, name);
+    let local = adapter_axis_dir(project_dir, axis).join(name);
     // The manifest cache owns its own root
     // (`.specify/.cache/manifests/{sources,targets}/<name>/`), disjoint
     // from the workflow §D8 extraction cache under
@@ -453,20 +443,17 @@ fn locate_axis(
     // [DECISIONS.md §"Cache layout"].
     let location = if cached.is_dir() {
         AdapterLocation::Cached(cached)
+    } else if local.is_dir() {
+        AdapterLocation::Local(local)
     } else {
-        let local = adapter_axis_dir(project_dir, axis).join(name);
-        if local.is_dir() {
-            AdapterLocation::Local(local)
-        } else {
-            return Err(Error::Diag {
-                code: "adapter-not-found",
-                detail: format!(
-                    "adapter `{name}` (axis `{axis}`) not found at {} or {}",
-                    cache_dir(project_dir, axis, name).display(),
-                    adapter_axis_dir(project_dir, axis).join(name).display(),
-                ),
-            });
-        }
+        return Err(Error::Diag {
+            code: "adapter-not-found",
+            detail: format!(
+                "adapter `{name}` (axis `{axis}`) not found at {} or {}",
+                cached.display(),
+                local.display(),
+            ),
+        });
     };
     // Cross-axis uniqueness invariant — see DECISIONS.md
     // §"Adapter name uniqueness". The probe is process-memoised
@@ -476,8 +463,7 @@ fn locate_axis(
     // [`check_axis_unique_for_name`] eagerly, so steady-state
     // resolves usually hit the memo on first reach.
     check_axis_unique_for_name_memo(axis, name, project_dir, location.path())?;
-    let path = location.path().clone();
-    Ok((path, location))
+    Ok(location)
 }
 
 /// Per-session memo for the cross-axis uniqueness probe. Keyed by

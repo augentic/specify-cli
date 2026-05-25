@@ -280,18 +280,12 @@ pub enum CacheMissReason {
 /// (`--authority-override`, `--clear-authority-override`, and the
 /// per-kind expansion of `--clear-authority-overrides`).
 ///
-/// `Ord` is implemented by hand (not derived) so the sort invariant
-/// `Set < Clear` is a load-bearing source-level fact, not an accident
-/// of enum-variant declaration order. Batched-append callers in
-/// `mutate_authority_overrides` rely on the order to produce
-/// byte-stable journal output: a single `plan amend` invocation that
-/// both sets and clears overrides on the same `(slice, kind)` writes
-/// the `Set` event first so a later reader replays the operator's
-/// intent end-to-end. Re-deriving `Ord` would couple the wire order
-/// to the source layout — any future variant added between `Set` and
-/// `Clear` would silently change the journal-write order; the hand
-/// impl makes that breakage compile-loud instead.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
+/// Variants are declared in the documented sort order `Set < Clear`
+/// so batched `mutate_authority_overrides` callers emit set-then-clear
+/// journal events; the `set_sorts_before_clear` test guards drift.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, strum::Display,
+)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum AuthorityOverrideAction {
@@ -299,30 +293,6 @@ pub enum AuthorityOverrideAction {
     Set,
     /// `--clear-authority-override <slice> <kind>` removed one entry.
     Clear,
-}
-
-impl AuthorityOverrideAction {
-    /// Sort key for the documented `Set < Clear` invariant. Used by
-    /// `PartialOrd` / `Ord` instead of the derived enum ordering so
-    /// the invariant survives variant-list reshuffles.
-    const fn sort_key(self) -> u8 {
-        match self {
-            Self::Set => 0,
-            Self::Clear => 1,
-        }
-    }
-}
-
-impl PartialOrd for AuthorityOverrideAction {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for AuthorityOverrideAction {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.sort_key().cmp(&other.sort_key())
-    }
 }
 
 #[cfg(test)]
