@@ -16,7 +16,7 @@ use specify_domain::config::Layout;
 use specify_domain::journal::{self, Event, EventKind};
 
 mod common;
-use common::{Project, assert_golden_at, repo_root, specify};
+use common::{Project, assert_golden_at, repo_root, specrun};
 
 /// Pinned RFC-3339 timestamp used by every golden snapshot. CLI-driven
 /// emits use `Timestamp::now()`; tests normalise the value to this
@@ -75,7 +75,7 @@ slices:
 ",
     );
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "transition", "platform-v2", "reviewed"])
         .assert()
@@ -114,7 +114,7 @@ fn plan_amend_divergence_from_none_to_accepted() {
     let project = Project::init();
     project.seed_plan(TWO_SLICE_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "accepted"])
         .assert()
@@ -141,7 +141,7 @@ fn plan_amend_divergence_none_to_likely_emits_event() {
     let project = Project::init();
     project.seed_plan(TWO_SLICE_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "likely"])
         .assert()
@@ -170,7 +170,7 @@ slices:
 ",
     );
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "likely"])
         .assert()
@@ -203,7 +203,7 @@ slices:
 ",
     );
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "rejected"])
         .assert()
@@ -230,7 +230,7 @@ slices:
 ",
     );
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "rejected"])
         .assert()
@@ -256,7 +256,7 @@ slices:
 ",
     );
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "accepted"])
         .assert()
@@ -274,7 +274,7 @@ fn plan_amend_without_divergence_flag_emits_no_event() {
     let project = Project::init();
     project.seed_plan(TWO_SLICE_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--description", "scope hint"])
         .assert()
@@ -291,7 +291,7 @@ fn plan_amend_without_divergence_flag_emits_no_event() {
 #[test]
 fn slice_create_writes_no_refined_journal() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
     assert!(
         !journal_path(project.root()).exists(),
         "slice create must not emit slice.transition.refined"
@@ -301,8 +301,8 @@ fn slice_create_writes_no_refined_journal() {
 #[test]
 fn slice_transition_refined_cli_writes_journal() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
-    specify()
+    specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
+    specrun()
         .current_dir(project.root())
         .args(["slice", "transition", "checkout", "refined"])
         .assert()
@@ -318,14 +318,14 @@ fn slice_transition_refined_cli_writes_journal() {
 #[test]
 fn slice_transition_to_built_appends_no_refined_event() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
-    specify()
+    specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
+    specrun()
         .current_dir(project.root())
         .args(["slice", "transition", "checkout", "refined"])
         .assert()
         .success();
     let before = read_journal(project.root()).len();
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["slice", "transition", "checkout", "built"])
         .assert()
@@ -386,7 +386,7 @@ fn stage_slice_for_synthesis_journal() -> Project {
 #[test]
 fn slice_validate_appends_synthesis_journal_on_success() {
     let project = stage_slice_for_synthesis_journal();
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["slice", "validate", "my-slice"])
         .assert()
@@ -407,7 +407,7 @@ fn slice_validate_provenance_failure_writes_no_synthesis_journal() {
     let bad = TAGGED_SPEC_UNKNOWN.replace("Status: unknown", "Status: agreed");
     fs::write(&spec_path, bad).expect("rewrite spec with tag/status mismatch");
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["slice", "validate", "my-slice"])
         .assert()

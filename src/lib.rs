@@ -1,19 +1,8 @@
-//! Runtime library crate. Hosts the command modules behind the
-//! `specrun` binary entry point. See `DECISIONS.md` for the exit-code contract.
+//! Specify CLI library — hosts the `specrun` and `specdev` dispatch trees.
 
-mod cli;
-mod commands;
-mod context;
-pub(crate) mod output;
+pub mod authoring;
+mod output;
+pub mod runtime;
 
-use std::process::ExitCode;
-
-use clap::Parser;
-
-/// Parse argv, dispatch the subcommand, and return the process exit
-/// code. The `specrun` binary calls into this.
-#[must_use]
-pub fn run() -> ExitCode {
-    let cli = cli::Cli::parse();
-    commands::run(cli).into()
-}
+pub use output::Format;
+pub use runtime::run;

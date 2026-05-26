@@ -18,7 +18,7 @@ use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{GIT_ENV, parse_json, specify};
+use common::{GIT_ENV, parse_json, specrun};
 
 const CHANGE_NAME: &str = "oauth-login";
 const BRANCH_NAME: &str = "specify/oauth-login";
@@ -94,7 +94,7 @@ impl TestEnv {
     }
 
     fn command(&self) -> Command {
-        let mut cmd = specify();
+        let mut cmd = specrun();
         cmd.current_dir(self.path())
             .envs(GIT_ENV)
             .env("GIT_CONFIG_GLOBAL", &self.git_config)

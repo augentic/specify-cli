@@ -1,0 +1,203 @@
+//! CLI-side argument-parsing helpers shared by `plan create`,
+//! `plan add`, and `plan amend`. Each helper turns the clap-shaped
+//! string payload into the domain type the handler will hand to
+//! [`specify_domain::change::Plan`]; the handlers themselves stay
+//! free of `FromStr` chatter and `--flag` plumbing.
+
+use std::collections::BTreeMap;
+use std::str::FromStr;
+
+use specify_domain::change::{
+    Divergence, SliceSourceBinding, SourceBinding, TargetRef, TargetRefParseError,
+};
+use specify_domain::config::Layout;
+use specify_domain::discovery::{Discovery, DiscoveryResolveError};
+use specify_domain::evidence::ClaimKind;
+use specify_error::{Error, Result};
+
+use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
+
+/// Validate `--source <key>=<adapter>:<binding>` arguments and
+/// collapse them into the structured [`SourceBinding`] map
+/// `Plan::init` expects. Refuses duplicate keys with the stable
+/// `plan-source-duplicate-key` diagnostic.
+///
+/// Wire grammar (parsed in [`crate::runtime::cli::SourceArg::from_str`]):
+///
+/// - `<key>=<adapter>:<path>` → `SourceBinding { adapter, path: Some(_), value: None }`.
+/// - `<key>=<adapter>:value:<literal>` → `SourceBinding { adapter, path: None, value: Some(_) }`.
+pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, SourceBinding>> {
+    let mut map: BTreeMap<String, SourceBinding> = BTreeMap::new();
+    for SourceArg {
+        key,
+        adapter,
+        path,
+        value,
+    } in sources
+    {
+        if map.contains_key(&key) {
+            return Err(Error::Diag {
+                code: "plan-source-duplicate-key",
+                detail: format!("duplicate key `{key}` in --source arguments"),
+            });
+        }
+        map.insert(key, SourceBinding { adapter, path, value });
+    }
+    Ok(map)
+}
+
+/// Materialise CLI `--sources` / `--add-source` arguments into the
+/// on-disk [`SliceSourceBinding`] shape, preferring the bare-string
+/// shorthand when the candidate id equals the slice's name
+/// (workflow §`Slice.sources`).
+///
+/// workflow §D6 — when `discovery` is `Some(_)`, the operator-supplied
+/// candidate value is resolved against the loaded `discovery.md` so
+/// aliases rewrite to the canonical `id` before persisting. Unknown
+/// tokens or alias collisions surface as `Error::validation_failed`
+/// (exit 2) with the discriminants `discovery-candidate-unknown` and
+/// `discovery-alias-collision` respectively. With `discovery` `None`
+/// (no `discovery.md` on disk) the discovery-absent passthrough
+/// applies — the supplied value is used verbatim.
+pub fn bindings_from_args(
+    args: Vec<SliceSourceArg>, slice_name: &str, discovery: Option<&Discovery>,
+) -> Result<Vec<SliceSourceBinding>> {
+    args.into_iter().map(|a| binding_from_arg(a, slice_name, discovery)).collect()
+}
+
+fn binding_from_arg(
+    arg: SliceSourceArg, slice_name: &str, discovery: Option<&Discovery>,
+) -> Result<SliceSourceBinding> {
+    let candidate = match arg.candidate {
+        None => None,
+        Some(value) => Some(resolve_candidate_token(&value, discovery)?),
+    };
+    Ok(match candidate {
+        None => SliceSourceBinding::bare(arg.key),
+        Some(candidate) if candidate == slice_name => SliceSourceBinding::bare(arg.key),
+        Some(candidate) => SliceSourceBinding::structured(arg.key, candidate),
+    })
+}
+
+/// Rewrite a `--sources <key>=<value>` candidate token to the
+/// canonical `id` discovered in `discovery.md`.
+///
+/// When `discovery` is `None` (no `discovery.md` on disk), the
+/// token round-trips unchanged — the legacy path predates
+/// workflow §D6 and many tests operate without a discovery file.
+fn resolve_candidate_token(token: &str, discovery: Option<&Discovery>) -> Result<String> {
+    let Some(discovery) = discovery else {
+        return Ok(token.to_string());
+    };
+    match discovery.resolve_candidate(token) {
+        Ok(candidate) => Ok(candidate.id.clone()),
+        Err(DiscoveryResolveError::Unknown { token }) => Err(Error::validation_failed(
+            "discovery-candidate-unknown",
+            "--sources <key>=<value> must resolve to a candidate in discovery.md",
+            format!(
+                "no candidate in discovery.md has an id or alias matching `{token}`; inspect \
+                 discovery.md directly to review the inventory"
+            ),
+        )),
+        Err(DiscoveryResolveError::Collision { token, candidates }) => {
+            Err(Error::validation_failed(
+                "discovery-alias-collision",
+                "candidate id and aliases share a single namespace per discovery.md",
+                format!(
+                    "`{token}` resolves to multiple candidates in discovery.md: {}; run \
+                     `specrun slice validate` to enumerate every collision",
+                    candidates.join(", ")
+                ),
+            ))
+        }
+    }
+}
+
+/// Best-effort load of `<project_dir>/discovery.md`. Returns
+/// `Ok(None)` when the file is absent so the legacy plan-create
+/// path (with no `discovery.md`) keeps working; propagates parse /
+/// I/O errors otherwise.
+pub fn load_discovery(layout: Layout<'_>) -> Result<Option<Discovery>> {
+    let path = layout.discovery_path();
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(Discovery::load(&path)?))
+}
+
+/// Parse a CLI `--target <name@vN>` flag into a [`TargetRef`].
+///
+/// The schema regex on `plan.yaml.slices[].target` is the primary
+/// gate; this helper is the matching gate at the CLI boundary so an
+/// `Error::Argument` surfaces ahead of any plan I/O. The kebab
+/// discriminant on the resulting argument-error is
+/// `plan-target-malformed` per
+/// `DECISIONS.md §"Target adapter suffix policy"`.
+pub fn parse_target_flag(raw: &str) -> Result<TargetRef> {
+    TargetRef::from_str(raw).map_err(|err: TargetRefParseError| Error::Argument {
+        flag: "--target",
+        detail: format!(
+            "{err}. Expected `<name>@v<version>` with kebab `<name>` and a non-negative integer \
+             `<version>` (e.g. `omnia@v1`). Discriminant: plan-target-malformed."
+        ),
+    })
+}
+
+/// Parse the `--divergence` flag value. `likely` / `accepted` /
+/// `rejected` are wire-legal — workflow §D5 widens the operator
+/// surface so the CLI is the single writer of every variant
+/// reachable on disk. The implicit default (absent on disk) has
+/// no flag spelling; any other token — including `none` — falls
+/// through to the catch-all and is rejected with the same
+/// actionable hint.
+pub fn parse_divergence(raw: &str) -> Result<Divergence> {
+    match raw {
+        "likely" => Ok(Divergence::Likely),
+        "accepted" => Ok(Divergence::Accepted),
+        "rejected" => Ok(Divergence::Rejected),
+        other => Err(Error::Argument {
+            flag: "--divergence",
+            detail: format!(
+                "`{other}` is not a valid --divergence value; expected `likely`, `accepted`, or \
+                 `rejected`"
+            ),
+        }),
+    }
+}
+
+/// Chunk a clap `num_args = 2` flag payload (`Vec<String>` of
+/// interleaved `<slice>` and `<value>` values) into typed
+/// `(slice, T)` pairs. The value half is parsed via `T`'s `FromStr`
+/// impl, so the closed enum (`ClaimKind`) and the composite assign
+/// (`AuthorityOverrideKindAssign`) share one implementation.
+pub fn parse_slice_pair_args<T>(raw: &[String], flag: &'static str) -> Result<Vec<(String, T)>>
+where
+    T: FromStr<Err = String>,
+{
+    let mut out = Vec::with_capacity(raw.len() / 2);
+    for chunk in raw.chunks_exact(2) {
+        let slice = chunk[0].clone();
+        if slice.is_empty() {
+            return Err(Error::Argument {
+                flag,
+                detail: format!("{flag} <slice> must be non-empty"),
+            });
+        }
+        let value: T =
+            chunk[1].parse().map_err(|detail: String| Error::Argument { flag, detail })?;
+        out.push((slice, value));
+    }
+    Ok(out)
+}
+
+/// Parse `--authority-override <slice> <kind>=<source-key>` repeats
+/// into the typed `(slice, kind, source-key)` tuple
+/// [`specify_domain::change::mutate_authority_overrides`] expects.
+pub fn parse_authority_override_assigns(
+    raw: &[String],
+) -> Result<Vec<(String, ClaimKind, String)>> {
+    Ok(parse_slice_pair_args::<AuthorityOverrideKindAssign>(raw, "--authority-override")?
+        .into_iter()
+        .map(|(slice, a)| (slice, a.kind, a.source_key))
+        .collect())
+}

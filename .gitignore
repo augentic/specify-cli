@@ -2,8 +2,8 @@
 target/
 # Source module that shares the `target` name with Cargo's build dir;
 # without this exception .gitignore would silently exclude it from commits.
-!/src/commands/target/
-!/src/commands/target/**
+!/src/runtime/commands/target/
+!/src/runtime/commands/target/**
 
 .env
 .DS_Store

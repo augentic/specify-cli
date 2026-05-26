@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod common;
-use common::{Project, parse_stderr, parse_stdout, repo_root, specify};
+use common::{Project, parse_stderr, parse_stdout, repo_root, specrun};
 
 fn plugin_fixtures_root() -> PathBuf {
     repo_root().join("crates/domain/tests/fixtures/plugins")
@@ -40,7 +40,7 @@ fn source_resolve_local_returns_resolved_manifest() {
     let project = Project::init();
     stage_source_fixture(&project, "code-typescript");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "source", "resolve", "code-typescript"])
         .arg("--project-dir")
@@ -66,7 +66,7 @@ fn source_resolve_local_returns_resolved_manifest() {
 fn source_resolve_missing_emits_not_found() {
     let project = Project::init();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "source", "resolve", "no-such-source"])
         .arg("--project-dir")

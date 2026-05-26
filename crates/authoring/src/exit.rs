@@ -1,4 +1,4 @@
-/// Exit codes aligned with `specify-cli` (`src/output.rs`).
+/// Exit codes aligned with `specify-cli` (`src/runtime/output.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub enum Exit {

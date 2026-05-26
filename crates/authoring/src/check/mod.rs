@@ -2,6 +2,7 @@ pub mod adapter;
 pub mod agent_teams;
 pub mod brief;
 pub mod codex;
+pub mod codex_schema_drift;
 mod docs_quality;
 pub mod links;
 mod plugins;
@@ -18,6 +19,7 @@ pub use brief::BriefCheck;
 pub use codex::{
     CodexCheck, RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, run_codex_check,
 };
+pub use codex_schema_drift::{CodexSchemaDriftCheck, RULE_SCHEMA_DRIFT as CODEX_RULE_SCHEMA_DRIFT};
 pub use docs_quality::{MissingDiagramAsset, RfcCitationInDocs, TextPipelineDiagram};
 pub use links::LinksCheck;
 pub use plugins::{BrokenSymlinkCheck, MarketplaceDriftCheck};
@@ -55,6 +57,7 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
         &AgentTeamsCheck,
         &BriefCheck,
         &CodexCheck,
+        &CodexSchemaDriftCheck,
         &RfcCitationInDocs,
         &MissingDiagramAsset,
         &TextPipelineDiagram,

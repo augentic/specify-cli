@@ -63,7 +63,7 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Refinement
 
-`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `fusion.yaml`, and transitions the slice to `refined`. Validators live in [`crates/domain/src/validate/`](../../crates/domain/src/validate/) and [`src/commands/slice/validate.rs`](../../src/commands/slice/validate.rs).
+`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `fusion.yaml`, and transitions the slice to `refined`. Validators live in [`crates/domain/src/validate/`](../../crates/domain/src/validate/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
 
 ## Extraction
 

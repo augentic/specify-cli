@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 mod common;
-use common::{Project, parse_stdout, repo_root, specify};
+use common::{Project, parse_stdout, repo_root, specrun};
 
 fn plugin_fixtures_root() -> PathBuf {
     repo_root().join("crates/domain/tests/fixtures/plugins")
@@ -45,7 +45,7 @@ fn target_resolve_local_returns_resolved_manifest() {
     }
     stage_target_fixture(&project, "omnia");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "target", "resolve", "omnia"])
         .arg("--project-dir")
@@ -78,7 +78,7 @@ fn target_resolve_strips_version_suffix() {
     let project = Project::init();
     stage_target_fixture(&project, "omnia");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "target", "resolve", "omnia@v1"])
         .arg("--project-dir")
@@ -94,7 +94,7 @@ fn target_resolve_strips_version_suffix() {
 fn retired_adapter_verb_rejected_by_clap() {
     // `specify adapter *` retires at 2.0 (workflow §What was cut and why).
     // Clap rejects unknown verbs with exit code 2.
-    let assert = specify().arg("adapter").arg("resolve").arg("omnia").assert().failure();
+    let assert = specrun().arg("adapter").arg("resolve").arg("omnia").assert().failure();
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "clap must reject the retired `adapter` verb with exit 2, got {code}");
 }
@@ -102,7 +102,7 @@ fn retired_adapter_verb_rejected_by_clap() {
 #[test]
 fn retired_change_verb_rejected_by_clap() {
     // `specify change *` retires at 2.0 (workflow §What was cut and why).
-    let assert = specify().arg("change").arg("draft").arg("demo").assert().failure();
+    let assert = specrun().arg("change").arg("draft").arg("demo").assert().failure();
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "clap must reject the retired `change` verb with exit 2, got {code}");
 }

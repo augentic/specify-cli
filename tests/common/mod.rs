@@ -45,7 +45,7 @@ pub fn omnia_schema_dir() -> PathBuf {
 
 /// Build a fresh `assert_cmd::Command` for the locally-built `specrun`
 /// binary.
-pub fn specify() -> Command {
+pub fn specrun() -> Command {
     Command::cargo_bin("specrun").expect("cargo_bin(specrun)")
 }
 
@@ -153,7 +153,7 @@ pub fn copy_dir(src: &Path, dst: &Path) {
 ///
 /// Panics if the `specrun init` invocation does not exit 0.
 pub fn init_hub(tmp: &TempDir, name: &str) {
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .args(["--name", name, "--hub"])
@@ -280,7 +280,7 @@ impl Project {
     pub fn init() -> Self {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
-        specify()
+        specrun()
             .current_dir(&root)
             .args(["init"])
             .arg(omnia_schema_dir())
@@ -298,7 +298,7 @@ impl Project {
         let tmp = tempdir().expect("tempdir");
         let root = tmp.path().to_path_buf();
         copy_dir(fixture_dir, &root.join("adapters").join("targets").join(name));
-        specify()
+        specrun()
             .current_dir(&root)
             .args(["init"])
             .arg(root.join("adapters").join("targets").join(name))

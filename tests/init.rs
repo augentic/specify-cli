@@ -9,12 +9,12 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{omnia_schema_dir, specify};
+use common::{omnia_schema_dir, specrun};
 
 #[test]
 fn init_text_format_succeeds() {
     let tmp = tempdir().unwrap();
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -34,7 +34,7 @@ fn init_text_format_succeeds() {
 #[test]
 fn init_json_format_has_stable_shape() {
     let tmp = tempdir().unwrap();
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "init"])
         .arg(omnia_schema_dir())
@@ -64,7 +64,7 @@ fn init_json_format_has_stable_shape() {
 #[ignore = "networked GitHub fetch smoke test"]
 fn init_github_directory_uri_succeeds() {
     let tmp = tempdir().unwrap();
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args([
             "init",
@@ -83,7 +83,7 @@ fn init_writes_adapter_field_for_url_arg() {
     // Acceptance (a): `specrun init <url>` writes `adapter: <url>`
     // and no `schema:` field; `hub:` either absent or false.
     let tmp = tempdir().unwrap();
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -127,7 +127,7 @@ fn init_with_no_args_errors() {
     // post-parse `init-requires-adapter-or-hub` diagnostic was lifted
     // into the clap surface (`required_unless_present = "hub"`).
     let tmp = tempdir().unwrap();
-    let assert = specify().current_dir(tmp.path()).args(["init"]).assert().failure();
+    let assert = specrun().current_dir(tmp.path()).args(["init"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "clap parse errors map to exit code 2");
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
@@ -147,7 +147,7 @@ fn init_with_adapter_and_hub_errors() {
     // motivation as `init_with_no_args_errors`: the invariant lives in
     // clap (`conflicts_with = "hub"`), not a post-parse diagnostic.
     let tmp = tempdir().unwrap();
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -167,7 +167,7 @@ fn init_with_adapter_and_hub_errors() {
 #[test]
 fn init_hub_writes_canonical_on_disk_shape() {
     let tmp = tempdir().unwrap();
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "init"])
         .args(["--name", "platform-hub", "--hub"])
@@ -247,7 +247,7 @@ fn init_hub_refuses_when_present() {
     fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nadapter: omnia\n")
         .unwrap();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .args(["--name", "platform-hub", "--hub"])

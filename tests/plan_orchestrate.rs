@@ -18,7 +18,7 @@ use tempfile::{TempDir, tempdir};
 
 mod common;
 use common::{
-    Project, assert_golden_at, omnia_schema_dir, parse_stderr, parse_stdout, repo_root, specify,
+    Project, assert_golden_at, omnia_schema_dir, parse_stderr, parse_stdout, repo_root, specrun,
 };
 
 fn plan_fixtures() -> PathBuf {
@@ -108,7 +108,7 @@ fn plan_validate_clean_text() {
     project.seed_plan(CLEAN_PLAN);
 
     let assert =
-        specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+        specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
@@ -121,7 +121,7 @@ fn plan_validate_clean_json() {
     let project = Project::init();
     project.seed_plan(CLEAN_PLAN);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -143,7 +143,7 @@ fn plan_validate_tolerates_in_progress() {
     let project = Project::init();
     project.seed_plan(A_IN_PROGRESS);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -176,7 +176,7 @@ fn plan_validate_with_errors_json() {
     let project = Project::init();
     project.seed_plan(DUPLICATE_NAME_PLAN);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -204,7 +204,7 @@ fn plan_next_picks_first_pending_text() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    let assert = specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    let assert = specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
     assert_eq!(stdout, "b\n", "text next should be bare '<name>\\n', got: {stdout:?}");
 }
@@ -214,7 +214,7 @@ fn plan_next_picks_first_pending_json() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "next"])
         .assert()
@@ -237,11 +237,11 @@ fn plan_next_reports_in_progress() {
     let project = Project::init();
     project.seed_plan(A_IN_PROGRESS);
 
-    let text = specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    let text = specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
     assert!(stdout.contains('a'), "text output should mention 'a': {stdout:?}");
 
-    let json = specify()
+    let json = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "next"])
         .assert()
@@ -258,11 +258,11 @@ fn plan_next_all_done_text() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
 
-    let text = specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    let text = specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
     assert!(stdout.contains("drained"), "drained text should mention drained, got: {stdout:?}");
 
-    let json = specify()
+    let json = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "next"])
         .assert()
@@ -279,7 +279,7 @@ fn plan_next_stuck_when_deps_unmet() {
     let project = Project::init();
     project.seed_plan(STUCK_PLAN);
 
-    let json = specify()
+    let json = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "next"])
         .assert()
@@ -341,7 +341,7 @@ fn plan_add_appends_pending_entry_json() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
@@ -366,13 +366,13 @@ fn plan_add_rejects_duplicate_name_text() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--target", "contracts@v1"])
         .assert()
@@ -390,7 +390,7 @@ fn plan_add_rejects_invalid_name() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "add", "NotKebab", "--target", "contracts@v1"])
         .assert()
@@ -423,7 +423,7 @@ slices:
 ",
     );
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -457,7 +457,7 @@ fn plan_amend_clears_description() {
     let project = Project::init();
     project.seed_plan(WITH_DESCRIPTION);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--description", ""])
         .assert()
@@ -476,7 +476,7 @@ fn plan_amend_leaves_field_alone() {
     project.seed_plan(WITH_DESCRIPTION);
 
     // --depends-on (clear) but no --description; description must stay.
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--depends-on"])
         .assert()
@@ -491,7 +491,7 @@ fn plan_amend_on_missing_entry_fails() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "nope", "--description", "x"])
         .assert()
@@ -514,9 +514,9 @@ fn plan_transition_happy_path_text() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "done"])
         .assert()
@@ -531,7 +531,7 @@ fn plan_transition_legal_edge_json() {
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "transition", "foo", "done"])
         .assert()
@@ -551,7 +551,7 @@ fn plan_transition_rejects_illegal_edge() {
     let project = Project::init();
     project.seed_plan(SINGLE_DONE);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "pending"])
         .assert()
@@ -576,7 +576,7 @@ fn plan_transition_undo_walks_done_to_in_progress() {
     let project = Project::init();
     project.seed_plan(SINGLE_DONE);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "transition", "foo", "--undo"])
         .assert()
@@ -608,7 +608,7 @@ fn plan_transition_undo_walks_in_progress_to_pending_then_refuses() {
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "--undo"])
         .assert()
@@ -617,7 +617,7 @@ fn plan_transition_undo_walks_in_progress_to_pending_then_refuses() {
     let plan_mid = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
     assert!(plan_mid.contains("status: pending"), "plan.yaml after first undo: {plan_mid}");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "--undo"])
         .assert()
@@ -637,7 +637,7 @@ fn plan_transition_plan_level_reviewed_json() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "transition", "demo", "reviewed"])
         .assert()
@@ -658,7 +658,7 @@ fn plan_transition_rejects_per_entry_in_progress() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "in-progress"])
         .assert()
@@ -676,7 +676,7 @@ fn plan_transition_rejects_retired_states() {
     project.seed_plan(SINGLE_PENDING);
 
     for retired in ["blocked", "failed", "skipped"] {
-        let assert = specify()
+        let assert = specrun()
             .current_dir(project.root())
             .args(["plan", "transition", "foo", retired])
             .assert()
@@ -701,7 +701,7 @@ fn plan_transition_rejects_unknown_reason_flag() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "in-progress", "--reason", "x"])
         .assert()
@@ -729,7 +729,7 @@ slices:
 ",
     );
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -743,9 +743,9 @@ slices:
         .assert()
         .success();
 
-    specify().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -757,7 +757,7 @@ slices:
         .assert()
         .success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "transition", "registration-duplicate-email-crash", "done"])
         .assert()
@@ -791,7 +791,7 @@ slices:
 fn plan_create_scaffolds_plan_only_json_matches_golden() {
     let project = Project::init();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "my-change"])
         .assert()
@@ -819,7 +819,7 @@ fn plan_create_divergence_likely_unknown_slice_refused() {
     // unknown and must short-circuit before plan.yaml is written.
     let project = Project::init();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "fresh", "--divergence-likely", "ghost-slice"])
         .assert()
@@ -837,9 +837,9 @@ fn plan_create_divergence_likely_unknown_slice_refused() {
 #[test]
 fn plan_create_refuses_to_overwrite_existing_plan() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["plan", "create", "first"]).assert().success();
+    specrun().current_dir(project.root()).args(["plan", "create", "first"]).assert().success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "second"])
         .assert()
@@ -852,10 +852,10 @@ fn plan_create_refuses_to_overwrite_existing_plan() {
 fn plan_create_then_validate_passes_clean() {
     let project = Project::init();
 
-    specify().current_dir(project.root()).args(["plan", "create", "fresh"]).assert().success();
+    specrun().current_dir(project.root()).args(["plan", "create", "fresh"]).assert().success();
 
     let assert =
-        specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+        specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
     assert_eq!(assert.get_output().status.code(), Some(0));
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
     assert!(
@@ -875,7 +875,7 @@ fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
     // `plan.transition.reviewed` event matching the post-create stamp.
     let project = Project::init();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "fresh", "--auto-review"])
         .assert()
@@ -922,7 +922,7 @@ fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
     // unchanged.
     let project = Project::init();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "create", "fresh", "--auto-review"])
         .assert()
@@ -932,7 +932,7 @@ fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
     let before_lines = before.lines().filter(|l| !l.is_empty()).count();
     let plan_before = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "transition", "fresh", "reviewed"])
         .assert()
@@ -966,7 +966,7 @@ fn plan_create_auto_review_invalid_name_refuses_same_as_without_flag() {
     // lands on disk and the journal stays untouched.
     let project = Project::init();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "Bad_Name", "--auto-review"])
         .assert()
@@ -999,7 +999,7 @@ fn plan_create_auto_review_validation_failure_emits_no_partial_events() {
     // leave the journal untouched.
     let project = Project::init();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["plan", "create", "fresh", "--auto-review", "--divergence-likely", "ghost-slice"])
         .assert()
@@ -1026,14 +1026,14 @@ fn plan_create_auto_review_then_validate_passes_clean() {
     // new validation drift on the empty-scaffold path.
     let project = Project::init();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "create", "fresh", "--auto-review"])
         .assert()
         .success();
 
     let assert =
-        specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+        specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
     assert_eq!(assert.get_output().status.code(), Some(0));
 }
 
@@ -1077,7 +1077,7 @@ fn plan_archive_happy_path_text() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
 
-    let assert = specify().current_dir(project.root()).args(["plan", "archive"]).assert().success();
+    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
     assert!(
         stdout.contains("Archived plan to"),
@@ -1094,7 +1094,7 @@ fn plan_archive_happy_path_json() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "archive"])
         .assert()
@@ -1117,7 +1117,7 @@ fn plan_archive_refuses_without_force() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    let assert = specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -1139,7 +1139,7 @@ fn plan_archive_refuses_json_lists_entries() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "archive"])
         .assert()
@@ -1161,7 +1161,7 @@ fn plan_archive_with_force_succeeds() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    specify().current_dir(project.root()).args(["plan", "archive", "--force"]).assert().success();
+    specrun().current_dir(project.root()).args(["plan", "archive", "--force"]).assert().success();
 
     let archived = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
     assert!(archived.exists(), "archived file missing at {}", archived.display());
@@ -1186,7 +1186,7 @@ slices: []
 ",
     );
 
-    specify().current_dir(project.root()).args(["plan", "archive"]).assert().success();
+    specrun().current_dir(project.root()).args(["plan", "archive"]).assert().success();
 
     let re = regex::Regex::new(r"^my-change-\d{8}\.yaml$").expect("regex compiles");
     let entries: Vec<String> = fs::read_dir(archive_dir(&project))
@@ -1211,7 +1211,7 @@ fn plan_archive_refuses_when_dest_exists() {
     let dest = dest_dir.join(format!("demo-{}.yaml", today_yyyymmdd()));
     fs::write(&dest, "prior: content\n").expect("seed prior archive");
 
-    let assert = specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -1232,7 +1232,7 @@ fn plan_archive_missing_file_errors() {
     let project = Project::init();
     // Deliberately do NOT seed plan.yaml.
 
-    let assert = specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -1264,7 +1264,7 @@ fn plan_archive_co_moves_working_dir() {
         &[("discovery.md", b"# discovery\n"), ("proposal.md", b"# proposal\n")],
     );
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "archive"])
         .assert()
@@ -1300,7 +1300,7 @@ fn plan_archive_no_working_dir_json() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "archive"])
         .assert()
@@ -1327,7 +1327,7 @@ fn plan_archive_co_move_collision_halts() {
     let dest_dir = archive_dir(&project).join(format!("demo-{}", today_yyyymmdd()));
     fs::create_dir_all(&dest_dir).expect("seed collision dir");
 
-    let assert = specify().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -1363,7 +1363,7 @@ fn plan_validate_surfaces_registry_errors() {
     fs::write(project.root().join("registry.yaml"), "version: 2\nprojects: []\n")
         .expect("write bad registry");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -1388,12 +1388,12 @@ fn plan_validate_surfaces_registry_errors() {
 #[test]
 fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
     let project = Project::init();
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "create", "rfc3a-planning", "--source", "app=code-typescript:."])
         .assert()
         .success();
-    specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+    specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
 }
 
 // ---- specrun plan validate health diagnostics (RFC-9 §4B) ----
@@ -1405,7 +1405,7 @@ fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
 // per-entry `failed`/`skipped` states it relied on.
 
 fn init_omnia_project(tmp: &TempDir) {
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -1478,7 +1478,7 @@ fn plan_validate_reports_all_three_health_diagnostics() {
     );
 
     let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+        specrun().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
     let output = assert.get_output();
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
@@ -1530,7 +1530,7 @@ fn plan_validate_reports_workspace_adapter_mismatch() {
     fs::write(slot_specify.join("project.yaml"), "name: alpha\nadapter: vectis@v1\n").unwrap();
 
     let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+        specrun().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
     let value: Value =
         serde_json::from_str(&String::from_utf8(assert.get_output().stdout.clone()).expect("utf8"))
             .expect("stdout is JSON");
@@ -1578,7 +1578,7 @@ fn plan_validate_payloads_round_trip_typed() {
     .unwrap();
 
     let assert =
-        specify().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+        specrun().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     let results = value["results"].as_array().expect("results array");
@@ -1611,13 +1611,13 @@ fn plan_validate_healthy_exits_zero() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "create", "demo"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -1655,7 +1655,7 @@ fn plan_add_structured_sources_round_trips() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -1686,7 +1686,7 @@ fn plan_add_bare_source_round_trips_when_slice_name_matches_implied_candidate() 
 
     // Slice name `add-search-filter`; bare `--sources intent` is
     // sugar for `{ key: intent, candidate: add-search-filter }`.
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -1720,7 +1720,7 @@ fn plan_add_structured_form_preserved_when_candidate_differs_from_slice_name() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -1748,7 +1748,7 @@ fn plan_add_rejects_dangling_equals_in_sources() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -1772,13 +1772,13 @@ fn plan_amend_add_source_appends_binding() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--target", "omnia@v1", "--sources", "intent"])
         .assert()
         .success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--add-source", "identity-design-notes=user-registration"])
         .assert()
@@ -1796,7 +1796,7 @@ fn plan_amend_remove_source_drops_binding() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -1812,7 +1812,7 @@ fn plan_amend_remove_source_drops_binding() {
         .assert()
         .success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--remove-source", "intent"])
         .assert()
@@ -1828,13 +1828,13 @@ fn plan_amend_remove_source_unknown_key_errors() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--target", "omnia@v1", "--sources", "intent"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "amend", "foo", "--remove-source", "no-such-key"])
         .assert()
@@ -1848,13 +1848,13 @@ fn plan_amend_divergence_accepted_writes_field() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--target", "omnia@v1"])
         .assert()
         .success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--divergence", "accepted"])
         .assert()
@@ -1872,13 +1872,13 @@ fn plan_amend_divergence_rejected_writes_field() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--target", "omnia@v1"])
         .assert()
         .success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--divergence", "rejected"])
         .assert()
@@ -1899,13 +1899,13 @@ fn plan_amend_divergence_likely_writes_field() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--target", "omnia@v1"])
         .assert()
         .success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--divergence", "likely"])
         .assert()
@@ -1923,13 +1923,13 @@ fn plan_amend_divergence_none_refused() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--target", "omnia@v1"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "amend", "foo", "--divergence", "none"])
         .assert()
@@ -1985,7 +1985,7 @@ fn plan_amend_authority_override_round_trips_and_validates() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -2009,7 +2009,7 @@ fn plan_amend_authority_override_round_trips_and_validates() {
     );
 
     // Plan-level validate passes — orphan check only fires for bad keys.
-    specify().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+    specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
 
     // Journal carries exactly one PlanAmendAuthorityOverride event.
     let lines = read_journal_lines(&project);
@@ -2035,7 +2035,7 @@ fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
     let before = fs::read_to_string(project.plan_path()).expect("read plan");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -2094,7 +2094,7 @@ fn slice_validate_surfaces_authority_override_orphan() {
         project.root().join(".specify").join("slices").join("identity-user-registration");
     fs::create_dir_all(&slices_dir).expect("mkdir slice");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "identity-user-registration"])
         .assert()
@@ -2118,7 +2118,7 @@ fn plan_amend_clear_authority_override_removes_only_one_entry() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -2137,7 +2137,7 @@ fn plan_amend_clear_authority_override_removes_only_one_entry() {
     // Wipe the journal so we observe only the second amend's events.
     fs::write(project.root().join(".specify").join("journal.jsonl"), "").expect("clear journal");
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -2175,7 +2175,7 @@ fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -2192,7 +2192,7 @@ fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
         .success();
     fs::write(project.root().join(".specify").join("journal.jsonl"), "").expect("clear journal");
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -2229,7 +2229,7 @@ fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -2277,7 +2277,7 @@ fn plan_add_authority_override_seeds_map_on_new_slice() {
         slices: []\n",
     );
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -2319,7 +2319,7 @@ fn plan_amend_authority_override_unknown_slice_refused() {
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
     let before = fs::read_to_string(project.plan_path()).expect("read plan");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -2349,7 +2349,7 @@ fn plan_amend_authority_override_bad_claim_kind_refused_at_parse_time() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "plan",
