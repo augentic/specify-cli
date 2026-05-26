@@ -7,12 +7,14 @@ mod dto;
 mod fetch;
 mod gc;
 mod run;
+mod schema;
 
 use std::collections::{HashMap, HashSet};
 
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
 pub(super) use run::run;
+pub(super) use schema::schema;
 use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
 use specify_domain::init::adapter_name_from_value;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};

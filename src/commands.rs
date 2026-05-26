@@ -57,6 +57,7 @@ pub fn run(cli: Cli) -> Exit {
             ToolAction::Run { name, args } => run_tool(format, &name, args),
             ToolAction::Fetch { name } => scoped(format, |ctx| tool::fetch(ctx, name.as_deref())),
             ToolAction::Gc => scoped(format, tool::gc),
+            ToolAction::Schema { name, schema } => run_tool_schema(format, &name, &schema),
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
@@ -127,6 +128,20 @@ fn run_tool(format: Format, name: &str, args: Vec<String>) -> Exit {
         Err(err) => return report(format, &err),
     };
     match tool::run(&ctx, name, args) {
+        Ok(0) => Exit::Success,
+        Ok(code) => Exit::Code(code),
+        Err(err) => report(format, &err),
+    }
+}
+
+/// `tool schema` delegates to the tool's `schema` subcommand and
+/// passes through the guest's exit code, mirroring [`run_tool`].
+fn run_tool_schema(format: Format, name: &str, schema: &str) -> Exit {
+    let ctx = match Ctx::load(format) {
+        Ok(ctx) => ctx,
+        Err(err) => return report(format, &err),
+    };
+    match tool::schema(&ctx, name, schema) {
         Ok(0) => Exit::Success,
         Ok(code) => Exit::Code(code),
         Err(err) => report(format, &err),
