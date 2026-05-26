@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -89,22 +88,12 @@ pub fn validate_frontmatter(
         }]));
     };
 
-    let value = frontmatter_to_json(frontmatter);
+    let value = JsonValue::Object(frontmatter.into_iter().collect());
     validate_value(ctx, &value, schema_id)
 }
 
-fn frontmatter_to_json(frontmatter: BTreeMap<String, JsonValue>) -> JsonValue {
-    JsonValue::Object(frontmatter.into_iter().collect())
-}
-
-fn collect_errors(compiled: &Validator, value: &JsonValue) -> Result<(), Vec<ValidationError>> {
-    collect_errors_for_test(compiled, value)
-}
-
 /// Shared validation error collection for checks and acceptance tests.
-pub fn collect_errors_for_test(
-    compiled: &Validator, value: &JsonValue,
-) -> Result<(), Vec<ValidationError>> {
+pub fn collect_errors(compiled: &Validator, value: &JsonValue) -> Result<(), Vec<ValidationError>> {
     if compiled.is_valid(value) {
         return Ok(());
     }

@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 use crate::context::Context;
 use crate::finding::{Check, Finding, Location};
 use crate::helpers::{relative_display, under_symlink};
-use crate::schema::{SchemaId, collect_errors_for_test};
+use crate::schema::{SchemaId, collect_errors};
 
 pub const RULE_SCHEMA_VIOLATION: &str = "scenarios.schema-violation";
 pub const RULE_STAGES_NOT_CONTIGUOUS: &str = "scenarios.stages-not-contiguous-prefix";
@@ -92,7 +92,7 @@ pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Finding> {
 
     for sc in &opted {
         let value = JsonValue::Object(sc.frontmatter.clone().into_iter().collect());
-        if let Err(errors) = collect_errors_for_test(&validator, &value) {
+        if let Err(errors) = collect_errors(&validator, &value) {
             for error in errors {
                 let at = if error.instance_path.is_empty() {
                     "/".to_string()

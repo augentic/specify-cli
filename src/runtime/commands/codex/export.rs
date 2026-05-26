@@ -51,9 +51,7 @@ pub fn run(
 
     let resolved = build_resolved_codex(&inputs).map_err(map_resolve_error)?;
 
-    output::emit(Box::new(std::io::stdout().lock()), Format::Json, &resolved, |_w, _body| {
-        unreachable!("codex export rejects --format text before emit")
-    })?;
+    output::emit(Box::new(std::io::stdout().lock()), Format::Json, &resolved, |_, _| Ok(()))?;
     Ok(())
 }
 
