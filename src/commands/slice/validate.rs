@@ -7,10 +7,12 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
+use serde_json::Value as JsonValue;
 use specify_domain::change::{Plan, authority_override_orphan_source_keys};
+use specify_domain::design_system::{ComponentStatus, ComponentsCatalog};
 use specify_domain::discovery::Discovery;
 use specify_domain::journal::{Event, EventKind, append_batch};
-use specify_domain::schema::validate_evidence_dir;
+use specify_domain::schema::{evidence_yaml_paths, validate_evidence_dir};
 use specify_domain::slice::fusion::{self, FusionIndex};
 use specify_domain::spec::provenance::{self, ParsedSpec, RequirementTag};
 use specify_domain::validate::validate_slice;
@@ -182,7 +184,7 @@ fn scan_slice_specs(
     Ok((req_ids, synthesis_tags, provenance_summaries))
 }
 
-/// Bundle the three pre-adapter gates that fire on a single slice:
+/// Bundle the four pre-adapter gates that fire on a single slice:
 ///
 /// 1. workflow §D4 — fusion-drift detection between `spec.md`, the
 ///    per-slice `fusion.yaml`, and per-source `evidence/<key>.yaml`.
@@ -193,8 +195,10 @@ fn scan_slice_specs(
 ///    per-slice) but evaluated here because `specrun slice validate`
 ///    is the single CLI surface skills shell out to between
 ///    `/spec:refine` and `/spec:build`.
+/// 4. RFC-31 D5 — catalog drift between Evidence `component:`
+///    directives and `.specify/design-system/components.yaml`.
 ///
-/// All three checks can fail independently; we collect every finding
+/// All four checks can fail independently; we collect every finding
 /// into a single [`Error::Validation`] so the operator sees the
 /// full surface in one pass instead of one error per re-run.
 fn validate_pre_adapter_gates(
@@ -204,6 +208,7 @@ fn validate_pre_adapter_gates(
     findings.extend(collect_fusion_drift_findings(slice_dir, spec_req_ids)?);
     findings.extend(collect_authority_override_orphan_findings(ctx, name)?);
     findings.extend(collect_discovery_alias_collision_findings(ctx)?);
+    findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
     if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
 }
 
@@ -281,6 +286,86 @@ fn collect_authority_override_orphan_findings(
             detail: Some(f.message),
         })
         .collect())
+}
+
+/// RFC-31 D5 catalog-drift gate. Loads the project-level component
+/// catalog (`.specify/design-system/components.yaml`) when present
+/// and cross-references every `component: <slug>` directive on
+/// Evidence claims in `<slice>/evidence/*.yaml` against it:
+///
+/// - Slug absent from catalog → `slice-catalog-drift` finding.
+/// - Slug has `status: rejected` → `slice-catalog-drift` finding.
+///
+/// Claims carrying a slug in `notes.candidate_component` are exempt
+/// when the catalog entry is `rejected` — the operator has
+/// intentionally declined the promotion, and the note is purely
+/// informational.
+///
+/// When no catalog exists the check returns empty — the catalog is
+/// opt-in.
+fn collect_catalog_drift_findings(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<ValidationSummary>> {
+    let Some(catalog) = ComponentsCatalog::load(&ctx.project_dir)? else {
+        return Ok(Vec::new());
+    };
+
+    let paths = evidence_yaml_paths(slice_dir)?;
+    let mut findings: Vec<ValidationSummary> = Vec::new();
+
+    for path in &paths {
+        let raw = std::fs::read_to_string(path).map_err(|source| Error::Filesystem {
+            op: "read",
+            path: path.clone(),
+            source,
+        })?;
+        let doc: JsonValue = serde_saphyr::from_str(&raw)?;
+        let source_key =
+            path.file_stem().and_then(|s| s.to_str()).unwrap_or("<unknown>").to_string();
+
+        let Some(claims) = doc.get("claims").and_then(JsonValue::as_array) else {
+            continue;
+        };
+
+        for claim in claims {
+            if let Some(slug) = claim.get("component").and_then(JsonValue::as_str) {
+                match catalog.status_of(slug) {
+                    None => {
+                        findings.push(catalog_drift_summary(&format!(
+                            "evidence/{source_key}.yaml: claim carries `component: {slug}` \
+                             but no entry exists in the component catalog"
+                        )));
+                    }
+                    Some(ComponentStatus::Rejected) => {
+                        findings.push(catalog_drift_summary(&format!(
+                            "evidence/{source_key}.yaml: claim carries `component: {slug}` \
+                             but the catalog entry has `status: rejected`"
+                        )));
+                    }
+                    Some(ComponentStatus::Confirmed) => {}
+                }
+            }
+
+            // `notes.candidate_component` is informational — a
+            // `rejected` catalog entry intentionally suppresses
+            // the hint (the operator decided not to promote). Only
+            // flag when the slug is entirely absent from the catalog,
+            // since that means the operator hasn't triaged it yet.
+            // We do NOT emit a finding for absent candidate_component
+            // slugs — untriaged suggestions are expected and should
+            // not block validation.
+        }
+    }
+
+    findings.sort_by(|a, b| a.detail.cmp(&b.detail));
+    Ok(findings)
+}
+
+fn catalog_drift_summary(detail: &str) -> ValidationSummary {
+    ValidationSummary {
+        status: ValidationStatus::Fail,
+        rule_id: "slice-catalog-drift".into(),
+        rule: "Evidence `component:` directives resolve to confirmed catalog entries".into(),
+        detail: Some(detail.to_string()),
+    }
 }
 
 /// Path the operator sees in each finding's detail. Anchored at the

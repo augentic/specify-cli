@@ -776,6 +776,248 @@ body without metadata lines yet
     }
 }
 
+// ---------------------------------------------------------------------------
+// RFC-31 D5 — `slice validate` catalog drift gate
+// ---------------------------------------------------------------------------
+
+/// Evidence with a `component:` directive on a claim.
+const EVIDENCE_WITH_COMPONENT: &str = "source: ui-screens
+adapter: screenshots
+authority: behaviour
+candidate: my-slice
+claims:
+  - kind: region
+    claim-id: task-list-footer
+    component: tab-bar
+    statement: \"Bottom tab bar with three tabs.\"
+";
+
+/// Evidence with `notes.candidate_component` (informational hint,
+/// not a hard `component:` directive).
+const EVIDENCE_WITH_CANDIDATE_COMPONENT: &str = "source: ui-screens
+adapter: screenshots
+authority: behaviour
+candidate: my-slice
+claims:
+  - kind: region
+    claim-id: task-list-header
+    notes:
+      candidate_component: hero-banner
+    statement: \"Hero banner at top of screen.\"
+";
+
+/// A minimal catalog YAML with one confirmed and one rejected entry.
+const CATALOG_YAML: &str = "version: 1
+components:
+  tab-bar:
+    status: confirmed
+    description: \"Bottom navigation across the primary app sections.\"
+  hero-banner:
+    status: rejected
+    description: \"Not a real shared component.\"
+";
+
+/// Plan that declares a `ui-screens` source for the `my-slice` entry.
+const PLAN_WITH_UI_SCREENS: &str = "\
+name: rfc31-catalog
+lifecycle: pending
+sources:
+  ui-screens:
+    adapter: screenshots
+    path: ./screens
+slices:
+  - name: my-slice
+    target: omnia@v1
+    status: pending
+    sources:
+      - { key: ui-screens, candidate: my-slice }
+";
+
+/// Stage a slice with Evidence containing `component:` directives
+/// and optionally a component catalog.
+fn stage_slice_with_catalog(evidence: &str, catalog: Option<&str>, plan: Option<&str>) -> Project {
+    let project = Project::init().with_schemas();
+    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let slice_dir = project.slices_dir().join("my-slice");
+    let evidence_dir = slice_dir.join("evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
+    fs::write(evidence_dir.join("ui-screens.yaml"), evidence).expect("write evidence");
+
+    if let Some(cat) = catalog {
+        let catalog_dir = project.root().join(".specify/design-system");
+        fs::create_dir_all(&catalog_dir).expect("mkdir design-system");
+        fs::write(catalog_dir.join("components.yaml"), cat).expect("write catalog");
+    }
+
+    if let Some(yaml) = plan {
+        project.seed_plan(yaml);
+    }
+    project
+}
+
+#[test]
+fn validate_skips_catalog_drift_when_no_catalog_exists() {
+    let project =
+        stage_slice_with_catalog(EVIDENCE_WITH_COMPONENT, None, Some(PLAN_WITH_UI_SCREENS));
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "slice-catalog-drift",
+                "catalog drift gate must skip when no catalog exists"
+            );
+        }
+    }
+}
+
+#[test]
+fn validate_passes_when_component_slug_is_confirmed() {
+    let project = stage_slice_with_catalog(
+        EVIDENCE_WITH_COMPONENT,
+        Some(CATALOG_YAML),
+        Some(PLAN_WITH_UI_SCREENS),
+    );
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "slice-catalog-drift",
+                "no catalog drift row may appear when component is confirmed; got results: {results:#?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn validate_detects_missing_catalog_entry() {
+    let catalog_without_tab_bar = "version: 1\ncomponents:\n  card-row:\n    status: confirmed\n";
+    let project = stage_slice_with_catalog(
+        EVIDENCE_WITH_COMPONENT,
+        Some(catalog_without_tab_bar),
+        Some(PLAN_WITH_UI_SCREENS),
+    );
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "validation");
+    let results = value["results"].as_array().expect("results array");
+    let detail = results
+        .iter()
+        .find(|r| r["rule-id"] == "slice-catalog-drift")
+        .and_then(|r| r["detail"].as_str())
+        .expect("slice-catalog-drift row must be present");
+    assert!(
+        detail.contains("tab-bar") && detail.contains("no entry exists"),
+        "drift detail should name the missing slug, got: {detail}"
+    );
+}
+
+#[test]
+fn validate_detects_rejected_catalog_entry() {
+    let catalog_with_rejected = "version: 1\ncomponents:\n  tab-bar:\n    status: rejected\n";
+    let project = stage_slice_with_catalog(
+        EVIDENCE_WITH_COMPONENT,
+        Some(catalog_with_rejected),
+        Some(PLAN_WITH_UI_SCREENS),
+    );
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "validation");
+    let results = value["results"].as_array().expect("results array");
+    let detail = results
+        .iter()
+        .find(|r| r["rule-id"] == "slice-catalog-drift")
+        .and_then(|r| r["detail"].as_str())
+        .expect("slice-catalog-drift row must be present");
+    assert!(
+        detail.contains("tab-bar") && detail.contains("rejected"),
+        "drift detail should describe the rejected status, got: {detail}"
+    );
+}
+
+#[test]
+fn validate_does_not_flag_candidate_component_notes() {
+    let project = stage_slice_with_catalog(
+        EVIDENCE_WITH_CANDIDATE_COMPONENT,
+        Some(CATALOG_YAML),
+        Some(PLAN_WITH_UI_SCREENS),
+    );
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "slice-catalog-drift",
+                "candidate_component notes must not trigger catalog drift; got results: {results:#?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn validate_passes_with_empty_catalog() {
+    let empty_catalog = "version: 1\ncomponents: {}\n";
+    let evidence_no_component = "source: ui-screens
+adapter: screenshots
+authority: behaviour
+candidate: my-slice
+claims:
+  - kind: region
+    claim-id: task-list-body
+    statement: \"Main task list body.\"
+";
+    let project = stage_slice_with_catalog(
+        evidence_no_component,
+        Some(empty_catalog),
+        Some(PLAN_WITH_UI_SCREENS),
+    );
+    let assert = specify()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "slice-catalog-drift",
+                "empty catalog with no component directives must not trigger drift"
+            );
+        }
+    }
+}
+
 #[test]
 fn validate_skips_provenance_when_no_metadata_lines_present() {
     // pre-2.0 (or pre-synthesis) state. The provenance gate must
