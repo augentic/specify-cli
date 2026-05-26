@@ -5,7 +5,7 @@
 //! finding emitted by `specdev check --format json` to carry a closed
 //! severity from `{critical, important, suggestion, optional}`. The
 //! authoring `Finding` type does not currently carry a severity field
-//! ([`crates/authoring/src/finding.rs`] exposes only `rule_id`,
+//! (`crates/authoring/src/finding.rs` exposes only `rule_id`,
 //! `message`, and `location`); the mapping is therefore by
 //! rule-id family, with a [`Severity::Important`] default for any
 //! unclassified rule id.

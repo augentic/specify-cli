@@ -25,7 +25,7 @@
 //! pin that declaration order so a future refactor cannot silently
 //! shift the sort.
 //!
-//! [`Vec::sort_by`] is a stable sort, so ties on the closed four-tuple
+//! [`slice::sort_by`] is a stable sort, so ties on the closed four-tuple
 //! preserve CH-12's lexical intra-directory ordering. That keeps
 //! same-id-prefix rules from the same overlay rung in the order
 //! `list_rule_files` produced them.
@@ -43,8 +43,8 @@ use crate::codex::{CodexRule, ResolvedCodex, ResolvedRule};
 
 /// Sort `entries` in place by the closed RFC-28 four-tuple.
 ///
-/// See the module docs for the ordering rationale. [`Vec::sort_by`] is
-/// stable, so ties on the four-tuple preserve CH-12's lexical
+/// See the module docs for the ordering rationale. [`slice::sort_by`]
+/// is stable, so ties on the four-tuple preserve CH-12's lexical
 /// intra-directory ordering.
 pub fn sort_resolved(entries: &mut [ResolvedRuleEntry]) {
     entries.sort_by(|a, b| {
@@ -64,7 +64,7 @@ pub fn sort_resolved(entries: &mut [ResolvedRuleEntry]) {
 /// # Errors
 ///
 /// Returns the same [`ResolveError`] variants as the underlying
-/// [`super::super::resolve`] call; sort + lift are infallible.
+/// [`mod@super::super::resolve`] call; sort + lift are infallible.
 pub fn build_resolved_codex(inputs: &ResolveInputs<'_>) -> Result<ResolvedCodex, ResolveError> {
     let mut entries = resolve_and_filter(inputs)?;
     sort_resolved(&mut entries);

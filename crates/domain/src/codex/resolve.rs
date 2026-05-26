@@ -49,7 +49,7 @@
 //!   [`filter`] module (CH-13). [`resolve`] returns the unfiltered pool;
 //!   call [`resolve_and_filter`] (or compose [`filter`] manually) to
 //!   get the narrowed view.
-//! - Stable export ordering — CH-14 lives in the sibling [`sort`]
+//! - Stable export ordering — CH-14 lives in the sibling `sort`
 //!   module. CH-12 only enforces deterministic intra-directory lexical
 //!   order so test goldens stay stable; the closed four-tuple sort and
 //!   the [`super::ResolvedCodex`] envelope are assembled by
