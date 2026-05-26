@@ -31,10 +31,20 @@
     reason = "RFC-28 mandates wire type names CodexRule and ResolvedCodex; renaming to avoid the codex prefix would obscure the spec mapping."
 )]
 
+pub mod finding;
 pub mod fingerprint;
 pub mod parse;
+pub mod resolve;
 
+pub use finding::{
+    FindingError, validate, validate_evidence_size, validate_finding, validate_finding_json,
+    validate_fingerprint,
+};
 pub use parse::{ParseError, parse_codex_rule, parse_codex_rule_file};
+pub use resolve::{
+    ResolveError, ResolveInputs, ResolvedRuleEntry, build_resolved_codex, filter, resolve,
+    resolve_and_filter, sort_resolved,
+};
 use serde::{Deserialize, Serialize};
 
 /// Closed severity enum per RFC-28 §"Resolved codex export". Variants

@@ -28,17 +28,29 @@ pub(crate) const FUSION_JSON_SCHEMA: &str =
 const COMPONENTS_JSON_SCHEMA: &str =
     include_str!("../../../schemas/design-system/components.schema.json");
 // RFC-28 Phase 2 runtime codex and review schemas. Visible across the
-// crate in test builds so the `codex` module can validate its DTO
-// round-trips against the same wire schemas the resolver and finding
-// validators will consume in CH-12+/CH-16; CH-16 will un-gate these
-// when it lands the public `validate_*` helpers.
-#[cfg(test)]
+// crate so the `codex` module can validate its DTO round-trips and
+// drive the runtime `validate_*` helpers. `REVIEW_FINDING_JSON_SCHEMA`
+// is the production input to `codex::finding::validate_finding`
+// (CH-16); the resolved-codex and codex-rule schemas remain available
+// to the resolver tests and will feed the CH-17 export validator.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "consumed by codex-DTO round-trip tests today; CH-17 will validate `specrun codex export` payloads against this schema at runtime."
+    )
+)]
 pub(crate) const RESOLVED_CODEX_JSON_SCHEMA: &str =
     include_str!("../../../schemas/codex/resolved.schema.json");
-#[cfg(test)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "consumed by codex-DTO round-trip tests today; reserved for CH-17 frontmatter validation at runtime."
+    )
+)]
 pub(crate) const CODEX_RULE_JSON_SCHEMA: &str =
     include_str!("../../../schemas/codex/codex-rule.schema.json");
-#[cfg(test)]
 pub(crate) const REVIEW_FINDING_JSON_SCHEMA: &str =
     include_str!("../../../schemas/review/finding.schema.json");
 
@@ -330,7 +342,7 @@ fn child_pointer(parent: &str, property: &str) -> String {
     if parent.is_empty() { format!("/{property}") } else { format!("{parent}/{property}") }
 }
 
-fn compile_schema(schema_source: &str) -> Result<Validator> {
+pub(crate) fn compile_schema(schema_source: &str) -> Result<Validator> {
     let schema: JsonValue = serde_json::from_str(schema_source).map_err(|err| Error::Diag {
         code: "schema-meta-loadable",
         detail: format!("embedded JSON Schema does not parse as JSON: {err}"),
