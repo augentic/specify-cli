@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use serde::Serialize;
 use specify_error::{Error, ValidationSummary};
 
-use crate::shared::format::Format;
+pub use crate::output::{emit, Format};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
@@ -72,33 +72,6 @@ pub fn report(format: Format, err: &Error) -> Exit {
         eprintln!("error: {serialise_err}");
     }
     code
-}
-
-/// Emit `payload` through `writer` in the requested format. JSON
-/// serialises the body directly via `serde_json::to_writer_pretty`;
-/// Text delegates to `render_text`. The single signature covers
-/// both success (stdout) and failure (stderr) — there is one entry
-/// point for all structured output. Callers construct the locked
-/// writer at the boundary so the sink choice is visible at the
-/// call site.
-///
-/// # Errors
-///
-/// Propagates the underlying serialization or I/O error.
-pub fn emit<T: Serialize>(
-    mut writer: Box<dyn Write>, format: Format, payload: &T,
-    render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
-) -> Result<(), Error> {
-    match format {
-        Format::Json => {
-            serde_json::to_writer_pretty(&mut writer, payload).map_err(|err| Error::Diag {
-                code: "json-serialize-failed",
-                detail: format!("failed to serialize JSON response: {err}"),
-            })?;
-            writeln!(writer).map_err(Error::Io)
-        }
-        Format::Text => render_text(&mut writer, payload).map_err(Error::Io),
-    }
 }
 
 /// Failure envelope used by [`report`] for every error variant. For

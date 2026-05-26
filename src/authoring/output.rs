@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::Path;
 
 use serde::Serialize;
@@ -32,11 +33,23 @@ pub enum CheckStatus {
     Error,
 }
 
-pub fn render_text(result: &Result<(std::path::PathBuf, Vec<Finding>), ToolingError>) {
+pub fn check_body(result: &Result<(std::path::PathBuf, Vec<Finding>), ToolingError>) -> CheckBody {
     match result {
-        Ok((_, findings)) if findings.is_empty() => {
-            println!("All checks passed.");
-        }
+        Ok((_, findings)) => CheckBody::from(findings.as_slice()),
+        Err(error) => CheckBody {
+            status: CheckStatus::Error,
+            results: Vec::new(),
+            error: Some(error.to_string()),
+        },
+    }
+}
+
+pub fn write_check_text(
+    w: &mut dyn Write, _body: &CheckBody,
+    result: &Result<(std::path::PathBuf, Vec<Finding>), ToolingError>,
+) -> std::io::Result<()> {
+    match result {
+        Ok((framework_root, findings)) if findings.is_empty() => writeln!(w, "All checks passed."),
         Ok((framework_root, findings)) => {
             for finding in findings {
                 eprintln!("FAIL: {}: {}", finding.rule_id, finding.message);
@@ -45,24 +58,12 @@ pub fn render_text(result: &Result<(std::path::PathBuf, Vec<Finding>), ToolingEr
                 }
             }
             eprintln!("{} check failure(s).", findings.len());
+            Ok(())
         }
-        Err(error) => eprintln!("error: {error}"),
-    }
-}
-
-pub fn render_json(result: &Result<(std::path::PathBuf, Vec<Finding>), ToolingError>) {
-    let body = match result {
-        Ok((_, findings)) => CheckBody::from(findings.as_slice()),
-        Err(error) => CheckBody {
-            status: CheckStatus::Error,
-            results: Vec::new(),
-            error: Some(error.to_string()),
-        },
-    };
-    if let Err(error) = serde_json::to_writer_pretty(std::io::stdout().lock(), &body) {
-        eprintln!("error: {error}");
-    } else {
-        println!();
+        Err(error) => {
+            eprintln!("error: {error}");
+            Ok(())
+        }
     }
 }
 

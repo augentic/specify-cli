@@ -4,8 +4,8 @@ use specify_authoring::error::ToolingError;
 use specify_authoring::exit::{Exit, exit_from_result};
 use specify_authoring::finding::Finding;
 
-use crate::authoring::output::{render_json, render_text};
-use crate::shared::format::Format;
+use crate::authoring::output::{check_body, write_check_text};
+use crate::output::{self, Format};
 
 pub fn run(format: Format, framework_root: std::path::PathBuf) -> Exit {
     let result = (|| -> Result<(std::path::PathBuf, Vec<Finding>), ToolingError> {
@@ -14,9 +14,13 @@ pub fn run(format: Format, framework_root: std::path::PathBuf) -> Exit {
         Ok((framework_root, check::run(&ctx)))
     })();
 
-    match format {
-        Format::Text => render_text(&result),
-        Format::Json => render_json(&result),
+    let body = check_body(&result);
+    if let Err(error) =
+        output::emit(Box::new(std::io::stdout().lock()), format, &body, |w, body| {
+            write_check_text(w, body, &result)
+        })
+    {
+        eprintln!("error: {error}");
     }
 
     match result {

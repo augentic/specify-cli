@@ -15,7 +15,7 @@ use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
 use crate::runtime::commands::tool::cli::ToolAction;
 use crate::runtime::commands::workspace::cli::WorkspaceAction;
-pub use crate::shared::format::Format;
+pub use crate::output::Format;
 
 #[derive(Parser)]
 #[command(

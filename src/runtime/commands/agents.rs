@@ -73,7 +73,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::shared::format::Format;
+    use crate::output::Format;
 
     fn write_minimal_adapter(project_dir: &Path) {
         let adapter_dir = project_dir.join("adapters").join("targets").join("mini");

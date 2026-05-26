@@ -2,7 +2,7 @@
 
 use clap::{Parser, Subcommand};
 
-use crate::shared::format::Format;
+use crate::output::Format;
 
 #[derive(Debug, Parser)]
 #[command(
