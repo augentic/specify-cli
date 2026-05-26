@@ -7,6 +7,7 @@ pub mod links;
 mod plugins;
 mod prose;
 pub mod scenarios;
+pub mod schema_links;
 mod skill_body;
 pub mod skill_frontmatter;
 pub mod tools;
@@ -29,6 +30,7 @@ pub use scenarios::{
     RULE_STALE_RECORDED_TRACE, ScenariosCheck, check_recorded_trace_freshness,
     validate_scenario_frontmatter,
 };
+pub use schema_links::SchemaLinksCheck;
 pub use skill_body::{
     SkillBodyLineCount, SkillEnvelopeJsonInBody, SkillFrontmatterRestatement,
     SkillInlineJsonTooLong, SkillInvalidCriticalPath, SkillMissingCriticalPath,
@@ -80,6 +82,7 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
         &SkillStepBodyDuplicatesCriticalPath,
         &SkillFrontmatterRestatement,
         &SkillVariableCoverage,
+        &SchemaLinksCheck,
     ];
     let mut findings = Vec::new();
 
