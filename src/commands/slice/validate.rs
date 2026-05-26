@@ -344,14 +344,11 @@ fn collect_catalog_drift_findings(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<Val
                 }
             }
 
-            // `notes.candidate_component` is informational — a
-            // `rejected` catalog entry intentionally suppresses
-            // the hint (the operator decided not to promote). Only
-            // flag when the slug is entirely absent from the catalog,
-            // since that means the operator hasn't triaged it yet.
-            // We do NOT emit a finding for absent candidate_component
-            // slugs — untriaged suggestions are expected and should
-            // not block validation.
+            // `notes.candidate_component` is purely informational
+            // (a hint from the adapter's stage-6 detection). It never
+            // triggers `slice-catalog-drift` regardless of whether
+            // the slug is in the catalog, absent, or rejected. Only
+            // hard `component:` directives above are checked.
         }
     }
 

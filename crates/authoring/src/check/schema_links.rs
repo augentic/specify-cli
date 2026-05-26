@@ -29,7 +29,6 @@ impl Check for SchemaLinksCheck {
 /// integration tests).
 pub fn run_on_root(root: &std::path::Path) -> Vec<Finding> {
     let url_re = schema_url_pattern();
-    let fence_re = fenced_code_pattern();
     let inline_re = inline_code_pattern();
 
     let mut findings = Vec::new();
@@ -45,15 +44,19 @@ pub fn run_on_root(root: &std::path::Path) -> Vec<Finding> {
             Err(_) => continue,
         };
 
-        let stripped = {
-            let no_fence = fence_re.replace_all(&content, "");
-            inline_re.replace_all(&no_fence, "").into_owned()
-        };
-
         let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
 
-        for (line_idx, line) in stripped.lines().enumerate() {
-            for cap in url_re.captures_iter(line) {
+        let mut in_fence = false;
+        for (line_idx, line) in content.lines().enumerate() {
+            if line.trim_start().starts_with("```") {
+                in_fence = !in_fence;
+                continue;
+            }
+            if in_fence {
+                continue;
+            }
+            let cleaned = inline_re.replace_all(line, "");
+            for cap in url_re.captures_iter(&cleaned) {
                 let tool = cap.get(1).map(|m| m.as_str()).unwrap_or("");
                 let name_with_ext = cap.get(2).map(|m| m.as_str()).unwrap_or("");
                 let name = name_with_ext.strip_suffix(".schema.json").unwrap_or(name_with_ext);
@@ -120,11 +123,6 @@ fn schema_url_pattern() -> &'static Regex {
         )
         .expect("valid schema URL pattern")
     })
-}
-
-fn fenced_code_pattern() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"```[\s\S]*?```").expect("valid fence pattern"))
 }
 
 fn inline_code_pattern() -> &'static Regex {

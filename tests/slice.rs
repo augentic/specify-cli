@@ -862,7 +862,8 @@ fn validate_skips_catalog_drift_when_no_catalog_exists() {
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert();
+        .assert()
+        .success();
     let stderr = assert.get_output().stderr.clone();
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
         && let Some(results) = value["results"].as_array()
@@ -887,7 +888,8 @@ fn validate_passes_when_component_slug_is_confirmed() {
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert();
+        .assert()
+        .success();
     let stderr = assert.get_output().stderr.clone();
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
         && let Some(results) = value["results"].as_array()
@@ -968,7 +970,8 @@ fn validate_does_not_flag_candidate_component_notes() {
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert();
+        .assert()
+        .success();
     let stderr = assert.get_output().stderr.clone();
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
         && let Some(results) = value["results"].as_array()
@@ -1003,7 +1006,8 @@ claims:
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert();
+        .assert()
+        .success();
     let stderr = assert.get_output().stderr.clone();
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
         && let Some(results) = value["results"].as_array()

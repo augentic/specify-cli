@@ -136,15 +136,27 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
             // `component: <slug>` in the composition must resolve to
             // a confirmed entry and every confirmed entry should be
             // referenced at least once.
-            if let Some(ref catalog_path) = discover_catalog(&target)
-                && let Some(catalog_value) = parse_yaml_file(catalog_path)
-            {
-                check_catalog_cross_references(
-                    &instance,
-                    &catalog_value,
-                    &mut errors,
-                    &mut warnings,
-                );
+            //
+            // Unlike tokens/assets (which are auto-invoked and report
+            // their own parse errors), the catalog has no sibling
+            // validator — report read/parse failures explicitly.
+            if let Some(ref catalog_path) = discover_catalog(&target) {
+                match parse_catalog_file(catalog_path) {
+                    Ok(catalog_value) => {
+                        check_catalog_cross_references(
+                            &instance,
+                            &catalog_value,
+                            &mut errors,
+                            &mut warnings,
+                        );
+                    }
+                    Err(message) => {
+                        errors.push(json!({
+                            "path": "",
+                            "message": message,
+                        }));
+                    }
+                }
             }
         }
         Err(err) => {
@@ -449,6 +461,28 @@ fn build_node_skeleton(node: &Value) -> Skeleton {
     }
     let (key, val) = map.iter().next().expect("len 1");
     if key == "group" { build_group_skeleton(val) } else { Skeleton::Item(key.clone()) }
+}
+
+// ── Catalog parsing (RFC-31 D5/D6) ────────────────────────────────
+
+/// Read and parse the component catalog with explicit error reporting.
+/// Unlike `parse_yaml_file` (which returns `None` silently because its
+/// callers have an auto-invoked sibling validator), the catalog has no
+/// prior validation step — a present-but-invalid file must surface as
+/// a composition-mode error rather than being silently skipped.
+fn parse_catalog_file(path: &Path) -> std::result::Result<Value, String> {
+    let source = std::fs::read_to_string(path).map_err(|err| {
+        format!(
+            "component catalog at {} is not readable: {err}",
+            path.display()
+        )
+    })?;
+    serde_saphyr::from_str::<Value>(&source).map_err(|err| {
+        format!(
+            "component catalog at {} contains invalid YAML: {err}",
+            path.display()
+        )
+    })
 }
 
 // ── Catalog cross-reference (RFC-31 D5/D6) ────────────────────────

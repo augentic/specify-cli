@@ -18,7 +18,7 @@
         "properties": {
           "status": {
             "enum": ["confirmed", "rejected"],
-            "description": "`confirmed` — the build should factor this as a shared component. `rejected` — the operator has decided this is not a real shared component; suppresses `slice-catalog-drift` warnings."
+            "description": "`confirmed` — the build should factor this as a shared component. `rejected` — the operator has decided this is not a real shared component; claims with this slug will not trigger `slice-catalog-drift` findings."
           },
           "description": {
             "type": "string",
