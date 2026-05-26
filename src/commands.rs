@@ -47,6 +47,22 @@ pub fn run(cli: Cli) -> Exit {
                     resolve_adapter(format, Axis::Source, &name, &project_dir)
                 }
             }),
+            SourceAction::Preview {
+                adapter,
+                source,
+                candidate,
+                out,
+                project_dir,
+            } => dispatch(format, || {
+                source::preview::preview(
+                    format,
+                    &adapter,
+                    &source,
+                    &candidate,
+                    out.as_deref(),
+                    &project_dir,
+                )
+            }),
         },
         Commands::Target { action } => match action {
             TargetAction::Resolve { value, project_dir } => {
