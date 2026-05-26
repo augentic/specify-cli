@@ -13,6 +13,7 @@ readme = "../../README.md"
 workspace = true
 
 [dependencies]
+base16ct.workspace = true
 futures-util.workspace = true
 jiff.workspace = true
 semver.workspace = true

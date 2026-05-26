@@ -106,7 +106,14 @@ fn compare(authoring: &Path, vendored: &Path) -> Vec<Finding> {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    Sha256::digest(bytes)
+        .iter()
+        .copied()
+        .flat_map(|byte| [HEX[usize::from(byte >> 4)], HEX[usize::from(byte & 0x0f)]])
+        .map(char::from)
+        .collect()
 }
 
 fn finding(message: String, path: PathBuf) -> Finding {

@@ -331,8 +331,8 @@ that captures the redo work; the original slice's `done` row stays
 as the historical record.
 
 Archive is a filesystem operation, not a lifecycle state. `specify
-plan finalize` moves `change.md` + `plan.yaml` into
-`.specify/archive/<plan-name>/`, but the plan-level lifecycle stamp
+plan archive` moves `change.md` + `plan.yaml` into
+`.specify/archive/plans/`, but the plan-level lifecycle stamp
 inside the archived `plan.yaml` stays at `reviewed`.
 There is no `archived` enum variant on `plan.yaml.lifecycle` — the
 on-disk location of the file is the archived signal, not a stored

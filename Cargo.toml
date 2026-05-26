@@ -148,6 +148,7 @@ verbose_file_reads = "warn"
 
 [workspace.dependencies]
 assert_cmd = "2"
+base16ct = { version = "0.2", features = ["alloc"] }
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 futures-util = "0.3"

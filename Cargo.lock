@@ -4559,6 +4559,7 @@ dependencies = [
 name = "specify-tool"
 version = "0.3.0"
 dependencies = [
+ "base16ct",
  "futures-util",
  "jiff",
  "jsonschema",

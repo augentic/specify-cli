@@ -39,10 +39,10 @@ fn invalid_tool_entry_shape_fails() {
     write_adapter(&root, "vectis", "tools:\n  - name: vectis\n    version: 0.3.0\n");
 
     let findings = run_first_party_tool_declarations(&ctx_for(&root));
-    assert_eq!(findings.len(), 3);
+    assert_eq!(findings.len(), 2);
     assert!(findings.iter().all(|f| f.rule_id == "tools.invalid-declaration"));
     assert!(findings.iter().any(|f| f.message.contains("must be { name, version } objects")));
-    assert!(findings.iter().any(|f| f.message.contains("without prerelease metadata")));
+    assert!(findings.iter().any(|f| f.message.contains("'contract' package must be")));
 }
 
 #[test]
