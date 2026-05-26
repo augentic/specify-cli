@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.specify.dev/specify/design-system/components.schema.json",
+  "title": "Component Catalog",
+  "description": "Validates `.specify/design-system/components.yaml`, the operator-curated component catalog (RFC-31 D5). Each entry declares a shared UI component that the Vectis target factors into shared code at build time. The catalog follows the same operator-curated pattern as `tokens.yaml` and `assets.yaml`.",
+  "type": "object",
+  "required": ["version", "components"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "components": {
+      "type": "object",
+      "description": "Map of component slugs to their metadata. Keys are kebab-case identifiers.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status"],
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": ["confirmed", "rejected"],
+            "description": "`confirmed` — the build should factor this as a shared component. `rejected` — the operator has decided this is not a real shared component; claims with this slug will not trigger `slice-catalog-drift` findings."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable note for operators and agents."
+          }
+        }
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+      }
+    }
+  }
+}

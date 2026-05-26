@@ -20,4 +20,12 @@ pub enum ToolAction {
     },
     /// Remove unused cache entries for the current project.
     Gc,
+    /// Print a tool-owned schema by name (delegates to the tool's
+    /// `schema` subcommand).
+    Schema {
+        /// Declared tool name (e.g. `vectis`, `contract`).
+        name: String,
+        /// Schema name within the tool (e.g. `tokens`, `assets`).
+        schema: String,
+    },
 }

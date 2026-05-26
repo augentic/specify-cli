@@ -6,6 +6,7 @@ pub mod adapter;
 pub mod change;
 pub mod cmd;
 pub mod config;
+pub mod design_system;
 pub mod discovery;
 pub mod evidence;
 pub mod init;

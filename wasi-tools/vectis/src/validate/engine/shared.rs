@@ -1,5 +1,8 @@
-//! Shared primitives: embedded schemas, lazy-compiled validators, and
-//! the JSON-Pointer / YAML helpers every per-mode handler reuses.
+//! Shared primitives: lazy-compiled validators and the JSON-Pointer /
+//! YAML helpers every per-mode handler reuses.
+//!
+//! The embedded schema sources themselves live in [`crate::embedded`];
+//! this module owns only the lazy `OnceLock` validators built from them.
 
 use std::path::Path;
 use std::sync::OnceLock;
@@ -7,25 +10,8 @@ use std::sync::OnceLock;
 use jsonschema::Validator;
 use serde_json::Value;
 
+use crate::embedded::{ASSETS_SCHEMA_SOURCE, COMPOSITION_SCHEMA_SOURCE, TOKENS_SCHEMA_SOURCE};
 use crate::validate::error::VectisError;
-
-/// Embedded `tokens.schema.json`. Vendored from the upstream
-/// `adapters/vectis/tokens.schema.json` in the `specify` repo; the
-/// upstream is canonical and any edit there must be mirrored here
-/// byte-for-byte.
-const TOKENS_SCHEMA_SOURCE: &str = include_str!("../../../embedded/tokens.schema.json");
-
-/// Embedded `assets.schema.json`. Vendored from the upstream
-/// `adapters/vectis/assets.schema.json` in the `specify` repo;
-/// same byte-identity discipline as the tokens copy.
-const ASSETS_SCHEMA_SOURCE: &str = include_str!("../../../embedded/assets.schema.json");
-
-/// Embedded `composition.schema.json`. Vendored from the upstream
-/// `adapters/vectis/composition.schema.json` in the `specify`
-/// repo. Shared between `layout` mode (unwired-subset runtime) and
-/// `composition` mode (full lifecycle runtime); same byte-identity
-/// discipline as the tokens / assets copies.
-const COMPOSITION_SCHEMA_SOURCE: &str = include_str!("../../../embedded/composition.schema.json");
 
 /// Lazily compiled tokens validator. Compiling once per process avoids
 /// re-parsing the embedded schema on every invocation; `validate all`

@@ -631,3 +631,91 @@ finishes; string operation names never survive past the manifest loader.
   `["build", "merge", "shape"]`). Derived `Ord` on
   `{Source,Target}Operation` is intentional because enum variants are
   declared in kebab-alphabetical wire order.
+
+## RFC-31 D1 — Tool-owned schemas
+
+Every JSON Schema is owned by the repo of the WASI tool (or the CLI)
+that runs it. Plugin briefs reference schemas exclusively by their
+canonical `$id` URL and never contain schema bodies. The plugin repo's
+`adapters/targets/vectis/schemas/` directory carries only a README
+that documents the canonical URLs and the `specrun tool schema`
+quickstart. The three Vectis runtime schemas (`tokens`, `assets`,
+`composition`) live solely in
+[`wasi-tools/vectis/embedded/`](./wasi-tools/vectis/embedded/); the
+previous "byte-identity discipline" duplication and manual mirroring
+obligation are retired.
+
+## RFC-31 D2 — `specrun tool schema` verb
+
+`specrun tool schema <tool> <name>` is a convenience wrapper that
+delegates to the tool's `schema <name>` subcommand via the existing
+`tool::run` path and passes through the guest's exit code. Exits `0`
+when the schema is emitted to stdout; exits `2` for an unknown tool or
+unknown schema name. Implementation:
+[`src/commands/tool/schema.rs`](./src/commands/tool/schema.rs) on the
+host side, [`wasi-tools/vectis/src/schema.rs`](./wasi-tools/vectis/src/schema.rs)
+on the guest side. The contract tool returns exit `2` for any schema
+name (no schemas declared).
+
+## RFC-31 D3 — Schema `$id` convention
+
+Tool-owned schemas use a stable `$id` of the form
+`https://schemas.specify.dev/<tool>/<name>.schema.json`. The URL is a
+logical identifier; it does not need to resolve to a hosted copy. The
+convention settles the prior disagreement between
+`adapters/vectis/...` and `targets/vectis/...` paths. CLI-owned
+framework schemas (e.g. the component catalog) use
+`https://schemas.specify.dev/specify/<path>`. The
+`links.brief-schema-link-resolve` predicate in
+[`crates/authoring/src/check/schema_links.rs`](./crates/authoring/src/check/schema_links.rs)
+enforces that every `schemas.specify.dev` URL cited in adapter briefs
+resolves to a known schema in the hardcoded registry.
+
+## RFC-31 D4 — `specrun source preview`
+
+`specrun source preview <adapter> --source <path> [--candidate <id>...]
+[--out <path>]` is a workflow-free verb: it resolves the source adapter,
+validates `--source`, scaffolds `${out}/evidence/`, and emits a summary
+of adapter info and brief paths. No `.specify/` writes, no journal
+events. The verb uses `dispatch` (not `scoped`) so no `.specify/`
+directory is required. Implementation:
+[`src/commands/source/preview.rs`](./src/commands/source/preview.rs).
+The v1 ships against the agent-run fallback (the agent reads the brief
+and executes it into the scaffolded output directory); full runner
+integration depends on RFC-29 wave A (`specrun source enumerate` /
+`specrun source extract` as first-class CLI verbs).
+
+## RFC-31 D5 — Component catalog
+
+An operator-curated file at `.specify/design-system/components.yaml`
+declares shared UI components (`status: confirmed | rejected`). The
+schema is CLI-owned at
+[`schemas/design-system/components.schema.json`](./schemas/design-system/components.schema.json);
+the domain type is `ComponentsCatalog` in
+[`crates/domain/src/design_system.rs`](./crates/domain/src/design_system.rs)
+with `load()`, `confirmed_slugs()`, `rejected_slugs()`, and
+`status_of()` accessors. The catalog is opt-in — projects without the
+file work exactly as before. Slugs are kebab-case
+(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`). `specrun slice validate` enforces
+`slice-catalog-drift`: every Evidence claim carrying `component: <slug>`
+must resolve to a confirmed catalog entry; absent or rejected entries
+are findings. `notes.candidate_component` annotations are
+informational-only and do not trigger drift. Validation gates at
+position 4 in `validate_pre_adapter_gates` (after fusion drift,
+authority override, and discovery alias).
+
+## RFC-31 D6 — Vectis catalog consumer
+
+The Vectis target's `build` brief reads `.specify/design-system/components.yaml`
+and factors shared component code per confirmed entry per in-scope shell
+tree. The brief additions live in the plugin repo under
+`adapters/targets/vectis/briefs/build/`. The Vectis WASI tool's
+`validate composition` mode (check 5 in
+[`wasi-tools/vectis/src/validate/engine/composition.rs`](./wasi-tools/vectis/src/validate/engine/composition.rs))
+enforces catalog cross-references: every `component: <slug>` in
+`composition.yaml` must resolve to a confirmed catalog entry (missing
+or rejected = error); every confirmed catalog entry should have at
+least one reference (unreferenced = warning). Catalog discovery uses
+[`wasi-tools/vectis/src/validate/engine/paths.rs`](./wasi-tools/vectis/src/validate/engine/paths.rs)
+to locate the file from the project root. When the catalog is absent,
+the check is silently skipped.

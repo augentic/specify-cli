@@ -157,7 +157,7 @@ fn assert_validation_rule(value: &Value, rule_id: &str) {
 fn help_lists_active_verbs() {
     let assert = specify().args(["tool", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    for verb in ["run", "fetch", "gc"] {
+    for verb in ["run", "fetch", "gc", "schema"] {
         assert!(stdout.contains(verb), "tool --help must list `{verb}`, got:\n{stdout}");
     }
 }

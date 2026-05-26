@@ -9,7 +9,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use super::assets::collect_asset_references;
-use super::paths::{discover_artifact, resolve_default_path};
+use super::paths::{discover_artifact, discover_catalog, resolve_default_path};
 use super::run_inner;
 use super::shared::{composition_validator, escape_pointer_token, parse_yaml_file};
 use crate::validate::ValidateMode;
@@ -17,7 +17,7 @@ use crate::validate::error::VectisError;
 
 /// Validate `composition.yaml` as the lifecycle artifact.
 ///
-/// The mode performs four checks:
+/// The mode performs five checks:
 ///
 /// 1. **Schema validation** against the embedded composition schema
 ///    (shared with `layout` mode — one schema, two runtime layers).
@@ -38,6 +38,13 @@ use crate::validate::error::VectisError;
 ///    against the discovered manifests' id sets. Unresolved
 ///    references become composition-mode errors with
 ///    JSON-Pointer-shaped paths.
+/// 5. **Catalog cross-reference** (RFC-31 D5/D6) — when
+///    `.specify/design-system/components.yaml` is discoverable,
+///    every `component: <slug>` in the composition must resolve to
+///    a `confirmed` catalog entry (rejected or missing entries are
+///    errors), and every confirmed catalog entry should have ≥1
+///    `component:` reference (warning, not error). Absent catalogs
+///    are silently skipped.
 ///
 /// `maps_to` / `bind` / `event` / overlay `trigger` / navigation
 /// target full resolution is deferred. The schema's regex patterns
@@ -60,9 +67,7 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
     })?;
 
     let mut errors: Vec<Value> = Vec::new();
-    // Composition mode has no warning class in v1; the empty array
-    // stays in the envelope so the shape matches the other modes.
-    let warnings: Vec<Value> = Vec::new();
+    let mut warnings: Vec<Value> = Vec::new();
     let mut results: Vec<Value> = Vec::new();
 
     match serde_saphyr::from_str::<Value>(&source) {
@@ -124,6 +129,34 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
                 && let Some(assets_value) = parse_yaml_file(assets_path)
             {
                 resolve_asset_references(&instance, &assets_value, &mut errors);
+            }
+
+            // Catalog cross-reference (RFC-31 D5/D6). When the
+            // project-level component catalog exists, every
+            // `component: <slug>` in the composition must resolve to
+            // a confirmed entry and every confirmed entry should be
+            // referenced at least once.
+            //
+            // Unlike tokens/assets (which are auto-invoked and report
+            // their own parse errors), the catalog has no sibling
+            // validator — report read/parse failures explicitly.
+            if let Some(ref catalog_path) = discover_catalog(&target) {
+                match parse_catalog_file(catalog_path) {
+                    Ok(catalog_value) => {
+                        check_catalog_cross_references(
+                            &instance,
+                            &catalog_value,
+                            &mut errors,
+                            &mut warnings,
+                        );
+                    }
+                    Err(message) => {
+                        errors.push(json!({
+                            "path": "",
+                            "message": message,
+                        }));
+                    }
+                }
             }
         }
         Err(err) => {
@@ -428,4 +461,110 @@ fn build_node_skeleton(node: &Value) -> Skeleton {
     }
     let (key, val) = map.iter().next().expect("len 1");
     if key == "group" { build_group_skeleton(val) } else { Skeleton::Item(key.clone()) }
+}
+
+// ── Catalog parsing (RFC-31 D5/D6) ────────────────────────────────
+
+/// Read and parse the component catalog with explicit error reporting.
+/// Unlike `parse_yaml_file` (which returns `None` silently because its
+/// callers have an auto-invoked sibling validator), the catalog has no
+/// prior validation step — a present-but-invalid file must surface as
+/// a composition-mode error rather than being silently skipped.
+fn parse_catalog_file(path: &Path) -> std::result::Result<Value, String> {
+    let source = std::fs::read_to_string(path).map_err(|err| {
+        format!(
+            "component catalog at {} is not readable: {err}",
+            path.display()
+        )
+    })?;
+    serde_saphyr::from_str::<Value>(&source).map_err(|err| {
+        format!(
+            "component catalog at {} contains invalid YAML: {err}",
+            path.display()
+        )
+    })
+}
+
+// ── Catalog cross-reference (RFC-31 D5/D6) ────────────────────────
+
+/// Cross-reference every `component: <slug>` in the composition
+/// against the operator-curated component catalog.
+///
+/// - A slug absent from the catalog → error.
+/// - A slug with `status: rejected` → error.
+/// - A slug with `status: confirmed` → OK.
+/// - A confirmed catalog entry with zero `component:` references in
+///   the composition → warning (the entry exists but is unused in
+///   this artifact).
+fn check_catalog_cross_references(
+    instance: &Value, catalog: &Value, errors: &mut Vec<Value>, warnings: &mut Vec<Value>,
+) {
+    let Some(components) = catalog.get("components").and_then(Value::as_object) else {
+        return;
+    };
+
+    let mut slug_refs: Vec<(String, String)> = Vec::new();
+    collect_component_slugs(instance, "", &mut slug_refs);
+
+    for (slug, path) in &slug_refs {
+        match components.get(slug.as_str()) {
+            None => {
+                errors.push(json!({
+                    "path": path,
+                    "message": format!(
+                        "component slug `{slug}` is not present in the component catalog",
+                    ),
+                }));
+            }
+            Some(entry) => {
+                if entry.get("status").and_then(Value::as_str) == Some("rejected") {
+                    errors.push(json!({
+                        "path": path,
+                        "message": format!(
+                            "component slug `{slug}` has `status: rejected` in the component catalog",
+                        ),
+                    }));
+                }
+            }
+        }
+    }
+
+    let used: std::collections::BTreeSet<&str> =
+        slug_refs.iter().map(|(s, _)| s.as_str()).collect();
+    for (slug, entry) in components {
+        if entry.get("status").and_then(Value::as_str) == Some("confirmed")
+            && !used.contains(slug.as_str())
+        {
+            warnings.push(json!({
+                "path": "",
+                "message": format!(
+                    "confirmed catalog entry `{slug}` has no `component: {slug}` reference in composition.yaml",
+                ),
+            }));
+        }
+    }
+}
+
+/// Walk a composition document and collect every `component: <slug>`
+/// directive as a `(slug, json_pointer_path)` pair.
+fn collect_component_slugs(node: &Value, json_path: &str, out: &mut Vec<(String, String)>) {
+    match node {
+        Value::Object(map) => {
+            for (key, val) in map {
+                let child_path = format!("{json_path}/{}", escape_pointer_token(key));
+                if key == "group"
+                    && let Some(slug) = val.get("component").and_then(Value::as_str)
+                {
+                    out.push((slug.to_string(), child_path.clone()));
+                }
+                collect_component_slugs(val, &child_path, out);
+            }
+        }
+        Value::Array(arr) => {
+            for (i, v) in arr.iter().enumerate() {
+                collect_component_slugs(v, &format!("{json_path}/{i}"), out);
+            }
+        }
+        _ => {}
+    }
 }

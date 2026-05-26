@@ -32,4 +32,37 @@ pub enum SourceAction {
         #[arg(long)]
         explain: bool,
     },
+
+    /// Run a source adapter's enumerate + extract in isolation
+    /// (RFC-31 D4).
+    ///
+    /// Resolves the adapter manifest, validates the `--source` path,
+    /// scaffolds the output directory with an `evidence/` subtree, and
+    /// emits a summary of adapter info and brief paths. The agent then
+    /// executes the briefs against the prepared environment.
+    ///
+    /// Workflow-free: nothing is written into `.specify/`, no lifecycle
+    /// moves, and no journal events fire. Output lives entirely under
+    /// `--out`.
+    Preview {
+        /// Kebab-case source-adapter name (e.g. `screenshots`,
+        /// `code-typescript`, `documentation`).
+        adapter: String,
+        /// Bound source path (`$SOURCE_DIR` for the adapter's briefs).
+        #[arg(long)]
+        source: PathBuf,
+        /// Restrict extraction to specific candidate IDs; defaults to
+        /// all candidates discovered by `enumerate`.
+        #[arg(long)]
+        candidate: Vec<String>,
+        /// Output directory for Evidence files (default:
+        /// `.specify-preview/`). Created if absent.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Project directory used for adapter resolution (defaults to
+        /// the current directory). Does not require an initialised
+        /// `.specify/` directory.
+        #[arg(long, default_value = ".")]
+        project_dir: PathBuf,
+    },
 }
