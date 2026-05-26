@@ -25,6 +25,8 @@ const PLAN_JSON_SCHEMA: &str = include_str!("../../../schemas/plan/plan.schema.j
 const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.schema.json");
 pub(crate) const FUSION_JSON_SCHEMA: &str =
     include_str!("../../../schemas/slice/fusion.schema.json");
+const COMPONENTS_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/design-system/components.schema.json");
 
 /// Validate `plan` against the embedded `schemas/plan/plan.schema.json`.
 ///
@@ -180,6 +182,30 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
     if summaries.is_empty() { Ok(()) } else { Err(Error::Validation { results: summaries }) }
 }
 
+/// Validate raw `components.yaml` content against the embedded
+/// `schemas/design-system/components.schema.json`.
+///
+/// `source_path` labels error messages with the originating file.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
+pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()> {
+    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed(
+            "catalog-schema",
+            "components.yaml conforms to schemas/design-system/components.schema.json",
+            format!("{}: YAML parse failed: {err}", source_path.display()),
+        )
+    })?;
+    err_from_failures(validation_failures(
+        &instance,
+        COMPONENTS_JSON_SCHEMA,
+        "catalog-schema",
+        "components.yaml conforms to schemas/design-system/components.schema.json",
+    ))
+}
+
 fn read_yaml_as_json(path: &Path) -> std::result::Result<JsonValue, String> {
     let raw = fs::read_to_string(path).map_err(|err| format!("read failed: {err}"))?;
     serde_saphyr::from_str(&raw).map_err(|err| format!("YAML parse failed: {err}"))
@@ -322,6 +348,12 @@ mod tests {
     #[test]
     fn fusion_schema_compiles() {
         compile_schema(FUSION_JSON_SCHEMA).expect("fusion schema compiles");
+    }
+
+    /// Embedded components catalog schema parses and compiles.
+    #[test]
+    fn components_schema_compiles() {
+        compile_schema(COMPONENTS_JSON_SCHEMA).expect("components schema compiles");
     }
 
     /// An empty evidence directory (or missing one) passes — empty

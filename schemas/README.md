@@ -18,6 +18,7 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 | [`vectis/template-manifest.schema.json`](vectis/template-manifest.schema.json) | Validates `templates/vectis/manifest.yaml`, the source-to-target assembly map consumed by `wasi-tools/vectis/build.rs`. |
 | [`cache-meta.schema.json`](cache-meta.schema.json) | Validates schema cache metadata written under `.specify/.cache`. |
 | [`context-lock.schema.json`](context-lock.schema.json) | Validates `.specify/context.lock`, the sidecar used by init-time AGENTS.md generation. |
+| [`design-system/components.schema.json`](design-system/components.schema.json) | Validates `.specify/design-system/components.yaml`, the operator-curated component catalog (RFC-31 D5). Declares shared UI components that the Vectis target factors into shared code at build time. |
 
 ## Bundled workflow schema
 
