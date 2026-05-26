@@ -7,8 +7,8 @@ use specify_tool::cache;
 
 use super::dto::{GcBody, write_gc_text};
 use super::{build_inventory, emit_warnings_to_stderr, kept_by_scope};
-use crate::cli::Format;
-use crate::context::Ctx;
+use crate::runtime::cli::Format;
+use crate::runtime::context::Ctx;
 
 pub fn run(ctx: &Ctx) -> Result<()> {
     let inventory = build_inventory(ctx)?;

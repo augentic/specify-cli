@@ -1,4 +1,4 @@
-pub mod context;
+pub mod agents;
 mod init;
 pub mod plan;
 pub mod registry;
@@ -16,13 +16,13 @@ use serde::Serialize;
 use specify_domain::adapter::{Axis, SourceAdapter, TargetAdapter};
 use specify_error::Result;
 
-use crate::cli::{Cli, Commands, Format};
-use crate::commands::source::cli::SourceAction;
-use crate::commands::target::cli::TargetAction;
-use crate::commands::tool::cli::ToolAction;
-use crate::commands::workspace::cli::WorkspaceAction;
-use crate::context::Ctx;
-use crate::output::{self, Exit, report};
+use crate::runtime::cli::{Cli, Commands, Format};
+use crate::runtime::commands::source::cli::SourceAction;
+use crate::runtime::commands::target::cli::TargetAction;
+use crate::runtime::commands::tool::cli::ToolAction;
+use crate::runtime::commands::workspace::cli::WorkspaceAction;
+use crate::runtime::context::Ctx;
+use crate::runtime::output::{self, Exit, report};
 
 pub fn run(cli: Cli) -> Exit {
     let format = cli.format;

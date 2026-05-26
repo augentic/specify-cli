@@ -13,7 +13,7 @@ use super::markers::{
 };
 use super::{CommandDetection, Detection, DetectionWarning, LintDetection, RuntimeDetection};
 
-pub(in crate::commands::context) fn detect_root_markers(project_dir: &Path) -> Detection {
+pub(in crate::runtime::commands::agents) fn detect_root_markers(project_dir: &Path) -> Detection {
     let mut detector = Detector::new(project_dir);
     detector.detect_rust();
     detector.detect_node();

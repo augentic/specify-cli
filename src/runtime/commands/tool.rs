@@ -22,7 +22,7 @@ use specify_tool::load::{self};
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
 
 use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_scope = ToolScope::Project {

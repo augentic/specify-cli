@@ -10,11 +10,11 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_hub, omnia_schema_dir, parse_stdout, run_git, specify};
+use common::{Project, init_hub, omnia_schema_dir, parse_stdout, run_git, specrun};
 
 #[test]
 fn workspace_help_lists_active_subcommands() {
-    let assert = specify().args(["workspace", "--help"]).assert().success();
+    let assert = specrun().args(["workspace", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["sync", "push"] {
         assert!(
@@ -39,7 +39,7 @@ fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
     .unwrap();
     let gitignore_before = fs::read_to_string(tmp.path().join(".gitignore")).ok();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "sync", "ghost"])
         .assert()
@@ -87,7 +87,7 @@ fn rfc14_c01_workspace_sync_selects_projects_without_materialising_unselected_sl
     )
     .unwrap();
 
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["workspace", "sync", "orders", "billing"])
         .assert()
@@ -115,7 +115,7 @@ fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
     )
     .unwrap();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "push", "ghost", "--dry-run"])
         .assert()
@@ -158,14 +158,14 @@ fn rfc14_c04_workspace_prepare_hidden_helper_returns_structured_json() {
     )
     .unwrap();
 
-    let help = specify().args(["workspace", "--help"]).assert().success();
+    let help = specrun().args(["workspace", "--help"]).assert().success();
     let help_stdout = String::from_utf8(help.get_output().stdout.clone()).expect("help utf8");
     assert!(
         !help_stdout.contains("prepare"),
         "executor helper must stay hidden from human workspace help, got:\n{help_stdout}"
     );
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "prepare", "alpha", "--change", "demo-change"])
         .assert()
@@ -213,7 +213,7 @@ fn rfc14_c04_workspace_prepare_surfaces_origin_head_diagnostic_key() {
     )
     .unwrap();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "prepare", "alpha", "--change", "demo-change"])
         .assert()
@@ -236,7 +236,7 @@ fn rfc14_c04_workspace_prepare_surfaces_origin_head_diagnostic_key() {
 #[test]
 fn rfc3a_c35_workspace_sync_absent_registry_exits_zero() {
     let project = Project::init();
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "workspace", "sync"])
         .assert()
@@ -253,7 +253,7 @@ fn rfc3a_c35_workspace_sync_two_local_symlink_peers() {
     fs::create_dir_all(peer.join(".specify")).expect("peer .specify");
     let root = tmp.path().join("root");
     fs::create_dir_all(&root).expect("root");
-    specify()
+    specrun()
         .current_dir(&root)
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -275,7 +275,7 @@ projects:
 ";
     fs::write(root.join("registry.yaml"), reg).expect("registry");
 
-    specify().current_dir(&root).args(["workspace", "sync"]).assert().success();
+    specrun().current_dir(&root).args(["workspace", "sync"]).assert().success();
 
     assert!(root.join(".specify/workspace/alpha").exists());
     assert!(root.join(".specify/workspace/beta").exists());

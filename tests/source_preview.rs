@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 mod common;
-use common::{parse_stderr, parse_stdout, repo_root, specify};
+use common::{parse_stderr, parse_stdout, repo_root, specrun};
 use tempfile::tempdir;
 
 fn plugin_fixtures_root() -> PathBuf {
@@ -40,7 +40,7 @@ fn preview_succeeds_without_specify_dir() {
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
@@ -72,7 +72,7 @@ fn preview_creates_output_directory() {
 
     let out_dir = root.join("custom-out");
 
-    specify()
+    specrun()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
@@ -97,7 +97,7 @@ fn preview_default_out_creates_specify_preview() {
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
-    specify()
+    specrun()
         .current_dir(root)
         .args(["source", "preview", "code-typescript"])
         .arg("--source")
@@ -122,7 +122,7 @@ fn preview_passes_candidates_through() {
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
@@ -146,7 +146,7 @@ fn preview_fails_when_source_path_missing() {
     let root = tmp.path();
     stage_source_adapter(root, "code-typescript");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
@@ -169,7 +169,7 @@ fn preview_fails_when_adapter_not_found() {
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "no-such-adapter"])
         .arg("--source")

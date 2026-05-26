@@ -6,8 +6,8 @@ use specify_tool::cache::Status as CacheStatus;
 
 use super::dto::{FetchBody, ToolFetchRow, cache_status_for, row_for, write_fetch_text};
 use super::{build_inventory, emit_warnings_to_stderr, select};
-use crate::cli::Format;
-use crate::context::Ctx;
+use crate::runtime::cli::Format;
+use crate::runtime::context::Ctx;
 
 pub fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
     let inventory = build_inventory(ctx)?;

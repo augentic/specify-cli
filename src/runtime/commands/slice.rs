@@ -18,7 +18,7 @@ mod validate;
 
 use cli::{SliceAction, SliceMergeAction, SliceTaskAction};
 
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 /// Default omnia [`ArtifactClass`] set: `specs` (3-way merge) and
 /// `contracts` (opaque replace). Single source of truth in the

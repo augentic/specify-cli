@@ -1,6 +1,6 @@
 //! `specrun tool run` handler — transparent shim over the underlying
 //! WASI binary that returns the guest's exit byte verbatim via
-//! [`crate::output::Exit::Code`].
+//! [`crate::runtime::output::Exit::Code`].
 
 use jiff::Timestamp;
 use specify_error::Result;
@@ -8,7 +8,7 @@ use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
 
 use super::{build_inventory, emit_warnings_to_stderr, find};
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
     let inventory = build_inventory(ctx)?;

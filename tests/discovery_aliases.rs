@@ -17,7 +17,7 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_stderr, specify};
+use common::{Project, parse_stderr, specrun};
 
 /// Discovery document with one candidate per source key plus a
 /// kebab-case alias for the password-reset candidate. Mirrors the
@@ -66,7 +66,7 @@ fn plan_add_resolves_alias_to_canonical_id() {
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -104,7 +104,7 @@ fn plan_add_structured_form_persists_canonical_id_when_slice_differs() {
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -135,7 +135,7 @@ fn plan_add_unknown_candidate_in_discovery_refused() {
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -167,7 +167,7 @@ fn plan_add_without_discovery_md_skips_alias_resolution() {
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -199,13 +199,13 @@ fn plan_amend_add_alias_mutates_discovery_md() {
 
     // `specrun plan amend` requires the target slice to exist on
     // the plan; create one so the orthogonal alias edits land.
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
         .assert()
         .success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -237,13 +237,13 @@ fn plan_amend_add_alias_refused_on_collision() {
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -274,14 +274,14 @@ fn plan_amend_remove_alias_is_idempotent() {
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "password-reset-request", "--target", "omnia@v1"])
         .assert()
         .success();
 
     // First remove: drops the alias.
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -293,7 +293,7 @@ fn plan_amend_remove_alias_is_idempotent() {
         .assert()
         .success();
     // Second remove: no-op (idempotent per workflow §D6).
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -322,13 +322,13 @@ fn plan_amend_add_alias_then_resolves_in_same_invocation() {
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
         .assert()
         .success();
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",
@@ -384,7 +384,7 @@ fn slice_validate_surfaces_discovery_alias_collision() {
     let slice_dir = project.root().join(".specify/slices/test-slice");
     fs::create_dir_all(&slice_dir).expect("mkdir slice");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "test-slice"])
         .assert()
@@ -412,14 +412,14 @@ fn plan_amend_alias_survives_reapplied_discovery() {
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
 
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["plan", "add", "password-reset-request", "--target", "omnia@v1"])
         .assert()
         .success();
 
     // Operator-added alias via `plan amend`.
-    specify()
+    specrun()
         .current_dir(project.root())
         .args([
             "plan",

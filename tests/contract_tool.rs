@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{parse_json, repo_root, sha256_hex, specify};
+use common::{parse_json, repo_root, sha256_hex, specrun};
 
 fn contract_wasm() -> PathBuf {
     repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
@@ -85,7 +85,7 @@ fn preserves_validator_json_for_clean() {
         "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 1.0.0\n  x-specify-id: user-api\n",
     );
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(&fixture.project)
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
         .arg("tool")
@@ -111,7 +111,7 @@ fn preserves_validator_findings_exit_code() {
         "openapi: '3.1.0'\ninfo:\n  title: User API\n  version: 2024-01-15\n",
     );
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(&fixture.project)
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
         .arg("tool")

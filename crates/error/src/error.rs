@@ -125,7 +125,7 @@ impl Error {
     /// `None` when the variant has no actionable follow-up beyond the
     /// `#[error("…")]` body.
     ///
-    /// The renderer in `src/output.rs` calls this to surface guidance
+    /// The renderer in `src/runtime/output.rs` calls this to surface guidance
     /// alongside the kebab discriminant on a TTY, while keeping the
     /// machine-readable JSON envelope compact. New hints land here
     /// (typed-arm for typed variants; `Self::Diag { code, .. }` arm for

@@ -5,7 +5,7 @@ use specify_domain::registry::Registry;
 use specify_error::Result;
 
 use super::dto::{ValidateBody, write_validate_text};
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let path = Registry::path(&ctx.project_dir).display().to_string();

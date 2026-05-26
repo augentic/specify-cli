@@ -20,8 +20,8 @@ use super::args::{
 };
 use super::entry::{Action, EntryBody, write_entry_text};
 use super::{check_project, plan_ref};
-use crate::cli::{AliasAssign, SliceSourceArg};
-use crate::context::Ctx;
+use crate::runtime::cli::{AliasAssign, SliceSourceArg};
+use crate::runtime::context::Ctx;
 
 #[expect(
     clippy::too_many_arguments,

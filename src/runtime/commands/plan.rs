@@ -20,7 +20,7 @@ use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
 use self::cli::PlanAction;
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
     match action {

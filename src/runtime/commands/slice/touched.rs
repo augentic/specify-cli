@@ -10,7 +10,7 @@ use specify_domain::slice::{
 use specify_error::{Error, Result};
 
 use super::artifact_classes;
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub(super) fn specs(ctx: &Ctx, name: String, scan: bool, set: &[String]) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);

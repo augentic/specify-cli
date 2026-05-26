@@ -13,7 +13,7 @@ use specify_domain::slice::SliceMetadata;
 use specify_error::{Error, Result};
 
 use super::{detect, fingerprint, render};
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub(super) struct RenderAssembly {
     pub(super) input: render::Input,

@@ -1,4 +1,4 @@
-//! Init-time AGENTS.md context generation. Heavy lifting lives in
+//! Init-time AGENTS.md fence generation. Heavy lifting lives in
 //! submodules; this module owns the small set of helpers
 //! (`render_document` plus IO/error-mapping shims) used by init.
 
@@ -14,12 +14,12 @@ mod generate;
 mod lock;
 mod render;
 
-pub(super) use generate::for_init as generate_for_init;
+pub use generate::for_init as generate_for_init;
 #[cfg(test)]
 use specify_domain::config::Layout;
 use specify_error::{Error, Result};
 
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 fn render_document(ctx: &Ctx) -> Result<(String, fingerprint::ContextFingerprint)> {
     let assembly = assemble::render_input(ctx)?;
@@ -73,7 +73,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::cli::Format;
+    use crate::shared::format::Format;
 
     fn write_minimal_adapter(project_dir: &Path) {
         let adapter_dir = project_dir.join("adapters").join("targets").join("mini");

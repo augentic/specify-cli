@@ -9,7 +9,7 @@ use specify_domain::slice::atomic::bytes_write;
 use specify_domain::task::{Task, mark_complete, parse_tasks};
 use specify_error::Result;
 
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub(super) fn progress(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);

@@ -11,7 +11,7 @@ use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
 use super::{Ref, plan_ref, require_file};
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;

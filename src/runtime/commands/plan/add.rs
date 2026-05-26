@@ -16,8 +16,8 @@ use specify_error::Result;
 use super::args::{bindings_from_args, load_discovery, parse_target_flag};
 use super::entry::{Action, EntryBody, write_entry_text};
 use super::{check_project, plan_ref};
-use crate::cli::{AuthorityOverrideKindAssign, SliceSourceArg};
-use crate::context::Ctx;
+use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg};
+use crate::runtime::context::Ctx;
 
 #[expect(
     clippy::too_many_arguments,

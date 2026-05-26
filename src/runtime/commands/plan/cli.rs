@@ -4,7 +4,7 @@
 
 use clap::{ArgAction, Subcommand};
 
-use crate::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
+use crate::runtime::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 
 /// Plan-authoring verbs (`specrun plan *`).
 #[derive(Subcommand)]

@@ -1,0 +1,49 @@
+use std::io::Write;
+
+use serde::Serialize;
+use specify_domain::registry::Registry;
+use specify_domain::registry::workspace::sync_projects;
+use specify_error::Result;
+
+use super::registry_missing;
+use crate::runtime::context::Ctx;
+
+pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
+    let registry = Registry::load(&ctx.project_dir)?;
+    let synced = if let Some(reg) = registry.as_ref() {
+        let selected = reg.select(projects)?;
+        sync_projects(&ctx.project_dir, &selected)?;
+        true
+    } else if !projects.is_empty() {
+        return Err(registry_missing());
+    } else {
+        false
+    };
+    let message = (!synced).then_some("no registry declared at registry.yaml; nothing to sync");
+    ctx.write(
+        &SyncBody {
+            registry,
+            synced,
+            message,
+        },
+        write_sync_text,
+    )?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct SyncBody {
+    registry: Option<Registry>,
+    synced: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'static str>,
+}
+
+fn write_sync_text(w: &mut dyn Write, body: &SyncBody) -> std::io::Result<()> {
+    if body.synced {
+        writeln!(w, "workspace sync complete")
+    } else {
+        writeln!(w, "no registry declared at registry.yaml; nothing to sync")
+    }
+}

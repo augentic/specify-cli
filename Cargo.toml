@@ -11,11 +11,11 @@ readme = "README.md"
 
 [[bin]]
 name = "specrun"
-path = "src/runtime.rs"
+path = "src/bin/specrun.rs"
 
 [[bin]]
 name = "specdev"
-path = "src/authoring.rs"
+path = "src/bin/specdev.rs"
 
 [dependencies]
 clap.workspace = true

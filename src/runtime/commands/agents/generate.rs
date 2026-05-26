@@ -4,9 +4,9 @@ use specify_domain::slice::atomic::bytes_write;
 use specify_error::{Error, Result};
 
 use super::{context_lock_path, error_from_fence, fences, lock, read_optional, render_document};
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
-pub(in crate::commands) fn for_init(ctx: &Ctx) -> Result<Outcome> {
+pub fn for_init(ctx: &Ctx) -> Result<Outcome> {
     let body = body(ctx)?;
     Ok(Outcome {
         changed: body.changed,
@@ -15,9 +15,9 @@ pub(in crate::commands) fn for_init(ctx: &Ctx) -> Result<Outcome> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::commands) struct Outcome {
-    pub(in crate::commands) changed: bool,
-    pub(in crate::commands) disposition: &'static str,
+pub struct Outcome {
+    pub changed: bool,
+    pub disposition: &'static str,
 }
 
 fn body(ctx: &Ctx) -> Result<Body> {

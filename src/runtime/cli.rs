@@ -4,17 +4,18 @@
 
 use std::str::FromStr;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 use specify_domain::evidence::ClaimKind;
 
-use crate::commands::plan::cli::PlanAction;
-use crate::commands::registry::cli::RegistryAction;
-use crate::commands::slice::cli::SliceAction;
-use crate::commands::source::cli::SourceAction;
-use crate::commands::target::cli::TargetAction;
-use crate::commands::tool::cli::ToolAction;
-use crate::commands::workspace::cli::WorkspaceAction;
+use crate::runtime::commands::plan::cli::PlanAction;
+use crate::runtime::commands::registry::cli::RegistryAction;
+use crate::runtime::commands::slice::cli::SliceAction;
+use crate::runtime::commands::source::cli::SourceAction;
+use crate::runtime::commands::target::cli::TargetAction;
+use crate::runtime::commands::tool::cli::ToolAction;
+use crate::runtime::commands::workspace::cli::WorkspaceAction;
+pub use crate::shared::format::Format;
 
 #[derive(Parser)]
 #[command(
@@ -31,12 +32,6 @@ pub struct Cli {
     /// out from skills.
     #[arg(long, env = "SPECRUN_FORMAT", default_value = "text", global = true)]
     pub(crate) format: Format,
-}
-
-#[derive(Copy, Clone, ValueEnum, PartialEq, Eq)]
-pub enum Format {
-    Text,
-    Json,
 }
 
 #[derive(Subcommand)]

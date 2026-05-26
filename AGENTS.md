@@ -24,7 +24,16 @@ WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`
 
 ## Exit codes
 
-Part of the CLI wire contract. `Exit::from(&Error)` in [`src/output.rs`](./src/output.rs) is the single source of truth.
+Part of the CLI wire contract. `Exit::from(&Error)` in [`src/runtime/output.rs`](./src/runtime/output.rs) is the single source of truth.
+
+## Repository map
+
+```text
+src/runtime/          specrun dispatch (workflow CLI)
+src/authoring/        specdev dispatch (framework checks CLI)
+crates/domain/        workflow domain logic
+crates/authoring/     check predicates (library; not the specdev binary tree)
+```
 
 | Code | Name | When |
 |---|---|---|

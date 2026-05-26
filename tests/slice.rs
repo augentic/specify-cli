@@ -12,7 +12,7 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_json, specify};
+use common::{Project, parse_json, specrun};
 
 // ---------------------------------------------------------------------------
 // slice create
@@ -21,7 +21,7 @@ use common::{Project, parse_json, specify};
 #[test]
 fn create_writes_dir_and_metadata() {
     let project = Project::init();
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "my-slice"])
         .assert()
@@ -49,7 +49,7 @@ fn create_writes_dir_and_metadata() {
 #[test]
 fn create_rejects_uppercase_name() {
     let project = Project::init();
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "BadName"])
         .assert()
@@ -66,8 +66,8 @@ fn create_rejects_uppercase_name() {
 #[test]
 fn create_errors_on_collision() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-    let assert = specify()
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "my-slice"])
         .assert()
@@ -81,8 +81,8 @@ fn create_errors_on_collision() {
 #[test]
 fn create_continue_reuses_existing_dir() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-    let assert = specify()
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "my-slice", "--if-exists", "continue"])
         .assert()
@@ -99,10 +99,10 @@ fn create_continue_reuses_existing_dir() {
 #[test]
 fn transition_walks_happy_path() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
     for target in ["refined", "built"] {
-        let assert = specify()
+        let assert = specrun()
             .current_dir(project.root())
             .args(["--format", "json", "slice", "transition", "my-slice", target])
             .assert()
@@ -121,9 +121,9 @@ fn transition_walks_happy_path() {
 #[test]
 fn transition_rejects_illegal_edge() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     // Refining -> Built is not a legal edge (must pass through refined).
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "transition", "my-slice", "built"])
         .assert()
@@ -140,9 +140,9 @@ fn transition_rejects_merged_target() {
     // that bookkeeping, so the dispatcher refuses the value with an
     // argument-error envelope (exit 2) before lifecycle ever runs.
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "transition", "my-slice", "merged"])
         .assert()
@@ -168,7 +168,7 @@ fn transition_rejects_merged_target() {
 #[test]
 fn touched_specs_classifies_new_vs_modified() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.slices_dir().join("my-slice");
 
     // Adapter `alpha` — no baseline, should classify as `new`.
@@ -181,7 +181,7 @@ fn touched_specs_classifies_new_vs_modified() {
     fs::create_dir_all(slice_dir.join("specs/beta")).unwrap();
     fs::write(slice_dir.join("specs/beta/spec.md"), "# Beta delta\n").unwrap();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "touched-specs", "my-slice", "--scan"])
         .assert()
@@ -206,9 +206,9 @@ fn touched_specs_classifies_new_vs_modified() {
 #[test]
 fn touched_specs_accepts_explicit_list() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -236,20 +236,20 @@ fn touched_specs_accepts_explicit_list() {
 fn overlap_reports_shared_adapters() {
     let project = Project::init();
     // Two active slices both claim `login`.
-    specify().current_dir(project.root()).args(["slice", "create", "first"]).assert().success();
-    specify().current_dir(project.root()).args(["slice", "create", "second"]).assert().success();
-    specify()
+    specrun().current_dir(project.root()).args(["slice", "create", "first"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "second"]).assert().success();
+    specrun()
         .current_dir(project.root())
         .args(["slice", "touched-specs", "first", "--set", "login:new,oauth:new"])
         .assert()
         .success();
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["slice", "touched-specs", "second", "--set", "login:modified"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "overlap", "first"])
         .assert()
@@ -266,20 +266,20 @@ fn overlap_reports_shared_adapters() {
 #[test]
 fn overlap_empty_for_disjoint_slices() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
-    specify().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
-    specify()
+    specrun().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
+    specrun()
         .current_dir(project.root())
         .args(["slice", "touched-specs", "alpha", "--set", "aa:new"])
         .assert()
         .success();
-    specify()
+    specrun()
         .current_dir(project.root())
         .args(["slice", "touched-specs", "beta", "--set", "bb:new"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "overlap", "alpha"])
         .assert()
@@ -295,9 +295,9 @@ fn overlap_empty_for_disjoint_slices() {
 #[test]
 fn drop_transitions_and_archives() {
     let project = Project::init();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args([
             "--format",
@@ -366,7 +366,7 @@ fn phase_outcome_round_trips_serde() {
 
 #[test]
 fn top_level_help_lists_source_and_target_axis_verbs() {
-    let assert = specify().arg("--help").assert().success();
+    let assert = specrun().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("slice"), "RFC-25 --help must still list `slice`, got:\n{stdout}");
     assert!(
@@ -399,7 +399,7 @@ fn top_level_help_lists_source_and_target_axis_verbs() {
 /// `specrun slice validate` on it.
 fn stage_slice_with_spec(spec_md: &str, plan_yaml: Option<&str>) -> Project {
     let project = Project::init().with_schemas();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let specs_dir = project.slices_dir().join("my-slice/specs/login");
     fs::create_dir_all(&specs_dir).expect("mkdir specs/login");
     fs::write(specs_dir.join("spec.md"), spec_md).expect("write spec.md");
@@ -444,7 +444,7 @@ fn validate_rejects_missing_id_with_exit_two() {
                 Status: agreed\n\n\
                 body\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -460,7 +460,7 @@ fn validate_rejects_malformed_id_with_exit_two() {
                 Sources: [legacy-monolith]\n\
                 Status: agreed\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -475,7 +475,7 @@ fn validate_rejects_missing_sources_with_exit_two() {
                 ID: REQ-001\n\
                 Status: agreed\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -490,7 +490,7 @@ fn validate_rejects_missing_status_with_exit_two() {
                 ID: REQ-001\n\
                 Sources: [legacy-monolith]\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -506,7 +506,7 @@ fn validate_rejects_unknown_status_value_with_exit_two() {
                 Sources: [legacy-monolith]\n\
                 Status: maybe\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -525,7 +525,7 @@ fn validate_rejects_source_key_not_in_plan_with_exit_two() {
                 Sources: [phantom]\n\
                 Status: agreed\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -544,7 +544,7 @@ fn validate_rejects_tag_status_mismatch_with_exit_two() {
                 Sources: [legacy-monolith]\n\
                 Status: agreed\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -622,7 +622,7 @@ fn stage_slice_with_fusion() -> Project {
 #[test]
 fn validate_passes_on_clean_fusion_inputs() {
     let project = stage_slice_with_fusion();
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -663,7 +663,7 @@ fn validate_detects_req_id_drift_when_spec_md_has_extra_requirement() {
     );
     fs::write(&spec_path, extended).expect("rewrite spec.md");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -692,7 +692,7 @@ fn validate_detects_contributing_claim_drift_when_evidence_claim_renamed() {
     let modified = CLEAN_EVIDENCE_YAML.replace("claim-id: REQ-001", "claim-id: REQ-999-renamed");
     fs::write(&evidence_path, modified).expect("rewrite evidence");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -719,7 +719,7 @@ fn validate_skips_drift_gate_when_fusion_yaml_absent() {
     // still validate. (Any other adapter-level rules can still
     // surface, but no drift row may appear.)
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -758,7 +758,7 @@ body without metadata lines yet
     fs::create_dir_all(&evidence_dir).expect("mkdir");
     fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
         .expect("write evidence");
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -837,7 +837,7 @@ slices:
 /// and optionally a component catalog.
 fn stage_slice_with_catalog(evidence: &str, catalog: Option<&str>, plan: Option<&str>) -> Project {
     let project = Project::init().with_schemas();
-    specify().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.slices_dir().join("my-slice");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
@@ -859,7 +859,7 @@ fn stage_slice_with_catalog(evidence: &str, catalog: Option<&str>, plan: Option<
 fn validate_skips_catalog_drift_when_no_catalog_exists() {
     let project =
         stage_slice_with_catalog(EVIDENCE_WITH_COMPONENT, None, Some(PLAN_WITH_UI_SCREENS));
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -884,7 +884,7 @@ fn validate_passes_when_component_slug_is_confirmed() {
         Some(CATALOG_YAML),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -910,7 +910,7 @@ fn validate_detects_missing_catalog_entry() {
         Some(catalog_without_tab_bar),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -938,7 +938,7 @@ fn validate_detects_rejected_catalog_entry() {
         Some(catalog_with_rejected),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -965,7 +965,7 @@ fn validate_does_not_flag_candidate_component_notes() {
         Some(CATALOG_YAML),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -1000,7 +1000,7 @@ claims:
         Some(empty_catalog),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -1029,7 +1029,7 @@ fn validate_skips_provenance_when_no_metadata_lines_present() {
                 ID: REQ-001\n\n\
                 body that has no Sources or Status yet\n";
     let project = stage_slice_with_spec(spec, None);
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();

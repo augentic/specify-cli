@@ -16,8 +16,8 @@ use serde::Serialize;
 use specify_domain::adapter::SourceAdapter;
 use specify_error::{Error, Result};
 
-use crate::cli::Format;
-use crate::output;
+use crate::runtime::cli::Format;
+use crate::runtime::output;
 
 const DEFAULT_OUT_DIR: &str = ".specify-preview";
 

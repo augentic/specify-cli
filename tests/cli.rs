@@ -11,11 +11,11 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{omnia_schema_dir, specify};
+use common::{omnia_schema_dir, specrun};
 
 #[test]
 fn help_exits_zero_and_prints_usage() {
-    let assert = specify().arg("--help").assert().success();
+    let assert = specrun().arg("--help").assert().success();
     let output = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(
         output.contains("specify") && output.contains("Usage"),
@@ -32,7 +32,7 @@ fn version_too_old_exits_three_json() {
     // agnostic and the assertions below only touch the envelope.
     let tmp = tempdir().unwrap();
     // Fresh init to produce a real project.
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -49,7 +49,7 @@ fn version_too_old_exits_three_json() {
     );
     fs::write(&config_path, edited).unwrap();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "slice", "validate", "."])
         .assert()

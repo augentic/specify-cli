@@ -14,7 +14,7 @@ use specify_domain::merge::{
 use specify_error::{Error, Result};
 
 use super::artifact_classes;
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 

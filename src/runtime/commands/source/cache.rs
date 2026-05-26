@@ -10,8 +10,8 @@ use specify_domain::adapter as adapter_mod;
 use specify_domain::adapter::{CacheLayout, SourceOperation};
 use specify_error::Result;
 
-use crate::cli::Format;
-use crate::output;
+use crate::runtime::cli::Format;
+use crate::runtime::output;
 
 /// One row emitted for `specrun source resolve --explain`.
 #[derive(Serialize)]

@@ -10,7 +10,7 @@ mod validate;
 use specify_error::Result;
 
 use self::cli::RegistryAction;
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub fn run(ctx: &Ctx, action: RegistryAction) -> Result<()> {
     match action {

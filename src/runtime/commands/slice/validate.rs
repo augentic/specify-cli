@@ -18,7 +18,7 @@ use specify_domain::spec::provenance::{self, ParsedSpec, RequirementTag};
 use specify_domain::validate::validate_slice;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);

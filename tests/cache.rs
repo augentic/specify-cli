@@ -3,7 +3,7 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_stdout, specify};
+use common::{Project, parse_stdout, specrun};
 
 #[test]
 fn source_resolve_explain_prints_empty_fingerprint_chain() {
@@ -23,7 +23,7 @@ fn source_resolve_explain_prints_empty_fingerprint_chain() {
     fs::write(adapter_dir.join("extract.md"), "---\nid: extract\ndescription: extract\n---\n")
         .expect("write extract brief");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "source", "resolve", "code-typescript", "--explain"])
         .arg("--project-dir")
@@ -34,7 +34,7 @@ fn source_resolve_explain_prints_empty_fingerprint_chain() {
     assert_eq!(body["adapter"], "code-typescript");
     assert!(body["entries"].as_array().expect("entries array").is_empty());
 
-    let assert_text = specify()
+    let assert_text = specrun()
         .current_dir(project.root())
         .args(["source", "resolve", "code-typescript", "--explain"])
         .arg("--project-dir")

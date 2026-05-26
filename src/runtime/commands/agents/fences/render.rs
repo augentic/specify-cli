@@ -6,7 +6,7 @@ use super::parse::{FenceError, parse_document};
 
 /// Kind of write the planner selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::commands::context) enum WriteDisposition {
+pub(in crate::runtime::commands::agents) enum WriteDisposition {
     /// `AGENTS.md` was absent, so the full generated document should be created.
     Create,
     /// `AGENTS.md` was unfenced and `--force` allowed a full rewrite.
@@ -19,15 +19,15 @@ pub(in crate::commands::context) enum WriteDisposition {
 
 /// Pure write-plan result for `AGENTS.md`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::commands::context) struct PlannedWrite {
+pub(in crate::runtime::commands::agents) struct PlannedWrite {
     /// Complete bytes that should be persisted to `AGENTS.md`.
-    pub(in crate::commands::context) bytes: Vec<u8>,
+    pub(in crate::runtime::commands::agents) bytes: Vec<u8>,
     /// Policy decision used to produce `bytes`.
-    pub(in crate::commands::context) disposition: WriteDisposition,
+    pub(in crate::runtime::commands::agents) disposition: WriteDisposition,
 }
 
 /// Compose final `AGENTS.md` bytes according to the context fence policy.
-pub(in crate::commands::context) fn plan_agents_write(
+pub(in crate::runtime::commands::agents) fn plan_agents_write(
     existing: Option<&[u8]>, generated_document: &[u8], force: bool,
 ) -> Result<PlannedWrite, FenceError> {
     let generated =

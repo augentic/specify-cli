@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 
 mod common;
-use common::{parse_json, repo_root, sha256_hex, specify};
+use common::{parse_json, repo_root, sha256_hex, specrun};
 
 fn contract_wasm() -> PathBuf {
     repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
@@ -85,7 +85,7 @@ fn schema_contract_no_schemas_exits_nonzero() {
 
     let fixture = scaffold_project_with_tool("contract", &wasm);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(&fixture.project)
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
         .args(["tool", "schema", "contract", "tokens"])
@@ -110,7 +110,7 @@ fn schema_vectis_tokens_returns_valid_json() {
 
     let fixture = scaffold_project_with_tool("vectis", &wasm);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(&fixture.project)
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
         .args(["tool", "schema", "vectis", "tokens"])
@@ -136,7 +136,7 @@ fn schema_vectis_unknown_name_exits_nonzero() {
 
     let fixture = scaffold_project_with_tool("vectis", &wasm);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(&fixture.project)
         .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
         .args(["tool", "schema", "vectis", "nonexistent"])
@@ -160,7 +160,7 @@ fn schema_undeclared_tool_exits_two() {
         std::env::temp_dir().join(format!("specify-tool-schema-undeclared-{}", std::process::id()));
     fs::create_dir_all(&cache).expect("create cache");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project)
         .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["--format", "json", "tool", "schema", "nosuch", "tokens"])
@@ -174,7 +174,7 @@ fn schema_undeclared_tool_exits_two() {
 
 #[test]
 fn help_lists_schema_verb() {
-    let assert = specify().args(["tool", "--help"]).assert().success();
+    let assert = specrun().args(["tool", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("schema"), "tool --help must list `schema`, got:\n{stdout}");
 }

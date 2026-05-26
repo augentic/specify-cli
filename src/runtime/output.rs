@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use serde::Serialize;
 use specify_error::{Error, ValidationSummary};
 
-use crate::cli::Format;
+use crate::shared::format::Format;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
@@ -60,7 +60,7 @@ impl From<&Error> for Exit {
 ///
 /// Single dispatcher entry point: handlers return
 /// `Result<T, specify_error::Error>` and the run loop in
-/// [`crate::commands`] hands the error here. The body shape is
+/// [`crate::runtime::commands`] hands the error here. The body shape is
 /// always [`ErrorBody`]; for `Error::Validation`, the body's
 /// `results` field carries the per-row failures.
 pub fn report(format: Format, err: &Error) -> Exit {

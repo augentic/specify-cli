@@ -8,7 +8,7 @@ use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
 
 use super::dto::{RemoveBody, write_remove_text};
-use crate::context::Ctx;
+use crate::runtime::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
     let path_buf = Registry::path(&ctx.project_dir);

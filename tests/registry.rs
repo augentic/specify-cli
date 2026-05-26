@@ -11,19 +11,19 @@ use serde_json::Value;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_hub, omnia_schema_dir, parse_stderr, parse_stdout, specify};
+use common::{Project, init_hub, omnia_schema_dir, parse_stderr, parse_stdout, specrun};
 
 #[test]
 fn init_hub_validate_succeeds_on_empty() {
     let tmp = tempdir().unwrap();
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .args(["--name", "platform-hub", "--hub"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -35,7 +35,7 @@ fn init_hub_validate_succeeds_on_empty() {
 #[test]
 fn init_hub_validate_rejects_dot_url() {
     let tmp = tempdir().unwrap();
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .args(["--name", "platform-hub", "--hub"])
@@ -55,7 +55,7 @@ fn init_hub_validate_rejects_dot_url() {
     )
     .unwrap();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -79,7 +79,7 @@ fn registry_add_round_trips_through_show() {
 
     // Hub registries reject `url: .` (hub-cannot-be-project) but accept
     // remote-url entries — the canonical multi-repo shape.
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args([
             "--format",
@@ -116,7 +116,7 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args([
             "--format",
@@ -145,7 +145,7 @@ fn registry_add_rejects_non_kebab() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args([
             "--format",
@@ -177,7 +177,7 @@ fn registry_remove_succeeds_and_round_trips() {
     for (name, url) in
         [("alpha", "git@github.com:org/alpha.git"), ("beta", "git@github.com:org/beta.git")]
     {
-        specify()
+        specrun()
             .current_dir(tmp.path())
             .args([
                 "--format",
@@ -196,7 +196,7 @@ fn registry_remove_succeeds_and_round_trips() {
             .success();
     }
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "remove", "beta"])
         .assert()
@@ -221,7 +221,7 @@ fn registry_remove_warns_on_plan_ref() {
     for (name, url) in
         [("alpha", "git@github.com:org/alpha.git"), ("beta", "git@github.com:org/beta.git")]
     {
-        specify()
+        specrun()
             .current_dir(tmp.path())
             .args([
                 "--format",
@@ -242,18 +242,18 @@ fn registry_remove_warns_on_plan_ref() {
 
     // Author a plan with one entry pointing at alpha. The merged
     // `specrun plan create` scaffolds plan.yaml (change.md scaffold moved to /spec:plan).
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "create", "demo"])
         .assert()
         .success();
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "add", "alpha-feature", "--project", "alpha"])
         .assert()
         .success();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "remove", "alpha"])
         .assert()
@@ -273,7 +273,7 @@ fn registry_remove_unknown_project_errors() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "remove", "ghost"])
         .assert()
@@ -290,7 +290,7 @@ fn registry_remove_refuses_when_absent() {
     let tmp = tempdir().unwrap();
     // Plain init (no hub) — single-repo project has no registry.yaml
     // by default.
-    specify()
+    specrun()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -299,7 +299,7 @@ fn registry_remove_refuses_when_absent() {
         .success();
     assert!(!tmp.path().join("registry.yaml").exists());
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "remove", "alpha"])
         .assert()
@@ -377,7 +377,7 @@ fn write_registry(project: &Project, body: &str) {
 fn registry_validate_absent() {
     let project = Project::init();
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -388,7 +388,7 @@ fn registry_validate_absent() {
     assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
 
     let text =
-        specify().current_dir(project.root()).args(["registry", "validate"]).assert().success();
+        specrun().current_dir(project.root()).args(["registry", "validate"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
     assert!(
         stdout.contains("no registry declared"),
@@ -401,7 +401,7 @@ fn registry_validate_well_formed() {
     let project = Project::init();
     write_registry(&project, REGISTRY_SINGLE);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -417,7 +417,7 @@ fn registry_validate_multi_project() {
     let project = Project::init();
     write_registry(&project, REGISTRY_THREE);
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -433,7 +433,7 @@ fn registry_validate_malformed_version() {
     let project = Project::init();
     write_registry(&project, "version: 2\nprojects: []\n");
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -464,7 +464,7 @@ projects:
 ",
     );
 
-    let assert = specify()
+    let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -492,7 +492,7 @@ projects:
     );
 
     let assert =
-        specify().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
+        specrun().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
 }
 
@@ -502,7 +502,7 @@ fn registry_validate_unknown_key() {
     write_registry(&project, "version: 1\nversions: 2\nprojects: []\n");
 
     let assert =
-        specify().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
+        specrun().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
 }
 
@@ -512,5 +512,5 @@ fn registry_validate_unknown_key() {
 fn registry_validate_on_bare_repo() {
     let project = Project::init();
     assert!(!project.root().join("registry.yaml").exists(), "bare repo must not have a registry");
-    specify().current_dir(project.root()).args(["registry", "validate"]).assert().success();
+    specrun().current_dir(project.root()).args(["registry", "validate"]).assert().success();
 }

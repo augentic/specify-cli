@@ -7,10 +7,10 @@ use specify_domain::config::{ProjectConfig, is_workspace_clone};
 use specify_domain::init::{InitOptions, InitResult, init};
 use specify_error::{Error, Result};
 
-use crate::cli::Format;
-use crate::commands::context;
-use crate::context::Ctx;
-use crate::output;
+use crate::runtime::cli::Format;
+use crate::runtime::commands::agents;
+use crate::runtime::context::Ctx;
+use crate::runtime::output;
 
 /// Display a path as the canonical absolute form when it exists; fall back
 /// to the lossy display when it does not (e.g. a path we just deleted).
@@ -134,7 +134,7 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option
         project_dir: project_dir.to_path_buf(),
         config,
     };
-    let outcome = context::generate_for_init(&ctx)?;
+    let outcome = agents::generate_for_init(&ctx)?;
     debug_assert!(
         outcome.changed,
         "init context generation is called only when AGENTS.md is absent"

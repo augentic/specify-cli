@@ -17,7 +17,7 @@ need full fidelity reach for the downstream crate's own type directly.
 ## Exit codes
 
 The binary commits to a four-slot exit-code table. `Exit::from(&Error)`
-in `src/output.rs` is the single source of truth; every dispatcher routes
+in `src/runtime/output.rs` is the single source of truth; every dispatcher routes
 its error through it. `Exit::Code(u8)` is reserved for `specrun tool
 run` WASI passthrough.
 
@@ -652,7 +652,7 @@ delegates to the tool's `schema <name>` subcommand via the existing
 `tool::run` path and passes through the guest's exit code. Exits `0`
 when the schema is emitted to stdout; exits `2` for an unknown tool or
 unknown schema name. Implementation:
-[`src/commands/tool/schema.rs`](./src/commands/tool/schema.rs) on the
+[`src/runtime/commands/tool/schema.rs`](./src/runtime/commands/tool/schema.rs) on the
 host side, [`wasi-tools/vectis/src/schema.rs`](./wasi-tools/vectis/src/schema.rs)
 on the guest side. The contract tool returns exit `2` for any schema
 name (no schemas declared).
@@ -679,7 +679,7 @@ validates `--source`, scaffolds `${out}/evidence/`, and emits a summary
 of adapter info and brief paths. No `.specify/` writes, no journal
 events. The verb uses `dispatch` (not `scoped`) so no `.specify/`
 directory is required. Implementation:
-[`src/commands/source/preview.rs`](./src/commands/source/preview.rs).
+[`src/runtime/commands/source/preview.rs`](./src/runtime/commands/source/preview.rs).
 The v1 ships against the agent-run fallback (the agent reads the brief
 and executes it into the scaffolded output directory); full runner
 integration depends on RFC-29 wave A (`specrun source enumerate` /

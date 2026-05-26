@@ -15,14 +15,14 @@ use specify_domain::discovery::{Discovery, DiscoveryResolveError};
 use specify_domain::evidence::ClaimKind;
 use specify_error::{Error, Result};
 
-use crate::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
+use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 
 /// Validate `--source <key>=<adapter>:<binding>` arguments and
 /// collapse them into the structured [`SourceBinding`] map
 /// `Plan::init` expects. Refuses duplicate keys with the stable
 /// `plan-source-duplicate-key` diagnostic.
 ///
-/// Wire grammar (parsed in [`crate::cli::SourceArg::from_str`]):
+/// Wire grammar (parsed in [`crate::runtime::cli::SourceArg::from_str`]):
 ///
 /// - `<key>=<adapter>:<path>` → `SourceBinding { adapter, path: Some(_), value: None }`.
 /// - `<key>=<adapter>:value:<literal>` → `SourceBinding { adapter, path: None, value: Some(_) }`.

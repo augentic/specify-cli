@@ -7,8 +7,8 @@ use specify_domain::config::{Layout, ProjectConfig};
 use specify_domain::init::adapter_name_from_value;
 use specify_error::Error;
 
-use crate::cli::Format;
-use crate::output;
+use crate::runtime::output;
+use crate::shared::format::Format;
 
 /// Shared context for every subcommand that operates inside an
 /// initialised `.specify/` project. Created once at the top of each
