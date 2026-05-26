@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use serde::Serialize;
 use specify_error::{Error, ValidationSummary};
 
-pub use crate::output::{emit, Format};
+pub use crate::output::{Format, emit};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]

@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 use clap_complete::Shell;
 use specify_domain::evidence::ClaimKind;
 
+pub use crate::output::Format;
 use crate::runtime::commands::plan::cli::PlanAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
 use crate::runtime::commands::slice::cli::SliceAction;
@@ -15,7 +16,6 @@ use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
 use crate::runtime::commands::tool::cli::ToolAction;
 use crate::runtime::commands::workspace::cli::WorkspaceAction;
-pub use crate::output::Format;
 
 #[derive(Parser)]
 #[command(

@@ -7,6 +7,8 @@ use specify_authoring::check::codex::{
     run_codex_check,
 };
 
+const CODEX_RULE_PREFIX: &str = "codex.";
+
 fn write_framework_scaffold(root: &Path) {
     fs::create_dir_all(root.join("adapters/sources")).expect("sources dir");
     fs::create_dir_all(root.join("adapters/targets")).expect("targets dir");
@@ -88,6 +90,91 @@ fn namespace_ownership_violation_on_wrong_prefix() {
                 && finding.message.contains("VECTIS-001")
         }),
         "expected namespace ownership finding, got: {findings:?}"
+    );
+}
+
+#[test]
+fn src_rule_under_source_adapter_passes_full_codex_check() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    write_framework_scaffold(temp.path());
+    write_codex_rule(
+        temp.path(),
+        "adapters/sources/documentation/codex/some-rule.md",
+        &valid_rule("SRC-999"),
+    );
+
+    let findings = run_codex_check(&ctx_for(temp.path()));
+    let codex_findings: Vec<_> =
+        findings.iter().filter(|finding| finding.rule_id.starts_with(CODEX_RULE_PREFIX)).collect();
+    assert!(
+        codex_findings.is_empty(),
+        "expected no codex.* findings for a valid SRC-* rule under a source adapter, got: {codex_findings:?}",
+    );
+}
+
+#[test]
+fn frame_rule_under_target_adapter_rejected_by_integration_check() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    write_framework_scaffold(temp.path());
+    write_codex_rule(
+        temp.path(),
+        "adapters/targets/omnia/codex/frame-misplaced.md",
+        &valid_rule("FRAME-001"),
+    );
+
+    let findings = run_codex_check(&ctx_for(temp.path()));
+    assert!(
+        findings.iter().any(|finding| {
+            finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
+                && finding.message.contains("FRAME-*")
+                && finding.message.contains("RFC-32")
+                && finding.message.contains("FRAME-001")
+        }),
+        "expected FRAME-* ownership violation citing the RFC-32 reservation, got: {findings:?}",
+    );
+}
+
+#[test]
+fn reserved_hint_kind_shape_validates_without_schema_finding() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    write_framework_scaffold(temp.path());
+    write_codex_rule(
+        temp.path(),
+        "adapters/shared/codex/universal/reserved-hint.md",
+        r#"---
+id: UNI-999
+title: Reserved Hint Shape Test
+severity: important
+trigger: When validating that RFC-32 reserved hint kinds shape-check only.
+deterministic_hints:
+  - kind: namespace-owner
+    value: adapters/shared/codex/universal
+  - kind: set-coverage
+    value: SRC,UNI,OMNIA,VECTIS,IFACE,RUST,SEC,ORG,FRAME
+---
+
+## Rule
+
+Body for a rule that exercises RFC-32 reserved deterministic hint kinds. The
+authoring schema accepts the kinds; `check::codex` performs shape validation
+only and does not execute the hints.
+"#,
+    );
+
+    let findings = run_codex_check(&ctx_for(temp.path()));
+    let schema_findings: Vec<_> =
+        findings.iter().filter(|finding| finding.rule_id == RULE_SCHEMA_VIOLATION).collect();
+    assert!(
+        schema_findings.is_empty(),
+        "reserved hint kinds should pass shape validation without codex.schema-violation findings, got: {schema_findings:?}",
+    );
+    let ownership_findings: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+        .collect();
+    assert!(
+        ownership_findings.is_empty(),
+        "UNI-* under adapters/shared/codex/universal must not trip namespace ownership, got: {ownership_findings:?}",
     );
 }
 
