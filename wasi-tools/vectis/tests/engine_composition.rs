@@ -620,3 +620,256 @@ fn composition_missing_file_returns_invalid_project_error() {
         other => panic!("expected InvalidProject for missing file, got {other:?}"),
     }
 }
+
+// ── Catalog cross-reference tests (RFC-31 D5/D6) ──────────────────
+
+/// Materialise a composition project with an optional component
+/// catalog at `.specify/design-system/components.yaml`.
+fn write_composition_with_catalog(
+    composition: &str, catalog: Option<&str>,
+) -> (TempDir, PathBuf) {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+    let comp_path = tmp.path().join("composition.yaml");
+    std::fs::write(&comp_path, composition).expect("write composition.yaml");
+    if let Some(yaml) = catalog {
+        let catalog_dir = tmp.path().join(".specify/design-system");
+        std::fs::create_dir_all(&catalog_dir).expect("mkdir .specify/design-system");
+        std::fs::write(catalog_dir.join("components.yaml"), yaml).expect("write catalog");
+    }
+    (tmp, comp_path)
+}
+
+/// When no catalog is present the check is silently skipped — no
+/// errors, no warnings. This is the opt-in baseline.
+#[test]
+fn catalog_absent_skips_silently() {
+    let yaml = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          component: tab-bar
+          direction: row
+          items:
+            - text:
+                content: Home
+            - text:
+                content: Settings
+";
+    let (_tmp, comp_path) = write_composition_with_catalog(yaml, None);
+    let envelope = run_composition(&comp_path);
+    assert!(errors_array(&envelope).is_empty(), "no catalog = no catalog errors: {envelope}");
+    assert!(warnings_array(&envelope).is_empty(), "no catalog = no warnings: {envelope}");
+}
+
+/// A `component: <slug>` that resolves to a `confirmed` catalog entry
+/// passes cleanly.
+#[test]
+fn catalog_confirmed_slug_passes() {
+    let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          component: tab-bar
+          direction: row
+          items:
+            - text:
+                content: Home
+            - text:
+                content: Settings
+";
+    let catalog = "version: 1\ncomponents:\n  tab-bar:\n    status: confirmed\n";
+    let (_tmp, comp_path) = write_composition_with_catalog(composition, Some(catalog));
+    let envelope = run_composition(&comp_path);
+    assert!(errors_array(&envelope).is_empty(), "confirmed slug = no errors: {envelope}");
+    assert!(warnings_array(&envelope).is_empty(), "confirmed + used = no warnings: {envelope}");
+}
+
+/// A `component: <slug>` absent from the catalog is an error.
+#[test]
+fn catalog_missing_slug_is_error() {
+    let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          component: tab-bar
+          direction: row
+          items:
+            - text:
+                content: Home
+";
+    let catalog = "version: 1\ncomponents:\n  card-row:\n    status: confirmed\n";
+    let (_tmp, comp_path) = write_composition_with_catalog(composition, Some(catalog));
+    let envelope = run_composition(&comp_path);
+    let errors = errors_array(&envelope);
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component slug `tab-bar` is not present in the component catalog")),
+        "expected missing-slug error: {errors:?}"
+    );
+}
+
+/// A `component: <slug>` whose catalog entry is `rejected` is an
+/// error.
+#[test]
+fn catalog_rejected_slug_is_error() {
+    let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - group:
+          component: tab-bar
+          direction: row
+          items:
+            - text:
+                content: Home
+";
+    let catalog = "version: 1\ncomponents:\n  tab-bar:\n    status: rejected\n";
+    let (_tmp, comp_path) = write_composition_with_catalog(composition, Some(catalog));
+    let envelope = run_composition(&comp_path);
+    let errors = errors_array(&envelope);
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component slug `tab-bar` has `status: rejected`")),
+        "expected rejected-slug error: {errors:?}"
+    );
+}
+
+/// A confirmed catalog entry with zero `component:` references in
+/// the composition emits a warning (not an error).
+#[test]
+fn catalog_unreferenced_confirmed_entry_is_warning() {
+    let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+";
+    let catalog = "version: 1\ncomponents:\n  tab-bar:\n    status: confirmed\n";
+    let (_tmp, comp_path) = write_composition_with_catalog(composition, Some(catalog));
+    let envelope = run_composition(&comp_path);
+    assert!(errors_array(&envelope).is_empty(), "unreferenced confirmed = no error: {envelope}");
+    let warns = warnings_array(&envelope);
+    assert!(
+        warns.iter().any(|w| w["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("confirmed catalog entry `tab-bar` has no `component: tab-bar` reference")),
+        "expected unreferenced-confirmed warning: {warns:?}"
+    );
+}
+
+/// A rejected catalog entry with no references does NOT emit a
+/// warning — `rejected` means the operator intentionally declined
+/// the component.
+#[test]
+fn catalog_unreferenced_rejected_entry_no_warning() {
+    let composition = r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      - text:
+          content: hi
+";
+    let catalog = "version: 1\ncomponents:\n  hero-banner:\n    status: rejected\n";
+    let (_tmp, comp_path) = write_composition_with_catalog(composition, Some(catalog));
+    let envelope = run_composition(&comp_path);
+    assert!(errors_array(&envelope).is_empty(), "no errors expected: {envelope}");
+    assert!(warnings_array(&envelope).is_empty(), "rejected entry = no warning: {envelope}");
+}
+
+/// Mixed scenario: one confirmed-and-used, one confirmed-but-unused,
+/// one missing, one rejected-but-referenced.
+#[test]
+fn catalog_mixed_cross_reference_scenario() {
+    let composition = r"version: 1
+screens:
+  a:
+    name: A
+    body:
+      - group:
+          component: tab-bar
+          direction: row
+          items:
+            - text:
+                content: Home
+            - text:
+                content: Settings
+  b:
+    name: B
+    body:
+      - group:
+          component: tab-bar
+          direction: row
+          items:
+            - text:
+                content: Home
+            - text:
+                content: Settings
+      - group:
+          component: hero-banner
+          direction: column
+          items:
+            - text:
+                content: Welcome
+      - group:
+          component: mystery
+          direction: column
+          items:
+            - text:
+                content: Unknown
+";
+    let catalog = r"version: 1
+components:
+  tab-bar:
+    status: confirmed
+  card-row:
+    status: confirmed
+  hero-banner:
+    status: rejected
+";
+    let (_tmp, comp_path) = write_composition_with_catalog(composition, Some(catalog));
+    let envelope = run_composition(&comp_path);
+    let errors = errors_array(&envelope);
+    let warns = warnings_array(&envelope);
+
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component slug `hero-banner` has `status: rejected`")),
+        "expected rejected error for hero-banner: {errors:?}"
+    );
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("component slug `mystery` is not present in the component catalog")),
+        "expected missing error for mystery: {errors:?}"
+    );
+    assert!(
+        !errors.iter().any(|e| e["message"].as_str().unwrap_or("").contains("`tab-bar`")),
+        "tab-bar is confirmed and used — no error expected: {errors:?}"
+    );
+    assert!(
+        warns.iter().any(|w| w["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("confirmed catalog entry `card-row`")),
+        "expected unreferenced warning for card-row: {warns:?}"
+    );
+}

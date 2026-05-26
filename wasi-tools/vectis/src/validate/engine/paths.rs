@@ -177,6 +177,19 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Locate the operator-curated component catalog for a Vectis project.
+///
+/// The catalog lives at `.specify/design-system/components.yaml`
+/// relative to the project root (RFC-31 D5). Returns `Some(path)`
+/// when the file exists; `None` otherwise (opt-in — absent catalogs
+/// are silently skipped).
+#[must_use]
+pub fn discover_catalog(start: &Path) -> Option<PathBuf> {
+    let project_root = find_project_root(start)?;
+    let path = project_root.join(".specify/design-system/components.yaml");
+    if path.is_file() { Some(path) } else { None }
+}
+
 /// Map a [`ValidateMode`] to the `artifacts:` map key it resolves
 /// against. `ValidateMode::All` has no per-mode key (the convenience
 /// verb dispatches each per-mode handler in turn) and returns `None`.
