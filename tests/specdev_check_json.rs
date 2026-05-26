@@ -193,14 +193,14 @@ fn write_source_adapter_manifest(root: &Path, name: &str) {
     fs::write(
         &path,
         format!(
-            r#"name: {name}
+            r"name: {name}
 version: 1
 axis: source
 description: Synthetic source adapter for specdev golden tests.
 briefs:
   enumerate: briefs/enumerate.md
   extract: briefs/extract.md
-"#
+"
         ),
     )
     .expect("source adapter.yaml");
@@ -209,7 +209,7 @@ briefs:
 /// Render a structurally-valid codex rule body with the supplied id.
 fn valid_rule_body(id: &str) -> String {
     format!(
-        r#"---
+        r"---
 id: {id}
 title: Synthetic Test Rule
 severity: important
@@ -219,7 +219,7 @@ trigger: When the test harness needs a structurally-valid codex rule.
 ## Rule
 
 Body preserved so the rule passes shape validation.
-"#
+"
     )
 }
 
@@ -242,7 +242,7 @@ fn write_target_adapter_manifest(root: &Path, name: &str) {
     fs::write(
         &path,
         format!(
-            r#"name: {name}
+            r"name: {name}
 version: 1
 axis: target
 description: Synthetic target adapter for specdev golden tests.
@@ -250,7 +250,7 @@ briefs:
   shape: briefs/shape.md
   build: briefs/build.md
   merge: briefs/merge.md
-"#
+"
         ),
     )
     .expect("adapter.yaml");
@@ -417,7 +417,7 @@ fn violations_tree_emits_expected_envelope() {
     write_codex_rule(
         temp.path(),
         "adapters/shared/codex/universal/bad-frontmatter.md",
-        r#"---
+        r"---
 id: UNI-001
 title: Missing required fields
 ---
@@ -425,7 +425,7 @@ title: Missing required fields
 ## Rule
 
 Body without trigger and severity.
-"#,
+",
     );
 
     write_target_adapter_manifest(temp.path(), "omnia");
@@ -505,7 +505,7 @@ fn missing_framework_root_still_emits_envelope_on_stdout() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
-    assert!(stderr.contains("error:"), "expected `error:` prefix on stderr; got:\n{stderr}",);
+    assert!(stderr.contains("error:"), "expected `error:` prefix on stderr; got:\n{stderr}");
 }
 
 /// (5) Default text output on a clean tree still prints the
