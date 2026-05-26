@@ -2,6 +2,7 @@
 
 mod cli;
 mod commands;
+pub mod map_finding;
 mod output;
 pub mod severity;
 

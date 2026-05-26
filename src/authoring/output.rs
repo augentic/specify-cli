@@ -4,6 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 use specify_authoring::error::ToolingError;
 use specify_authoring::finding::{Finding, Location};
+use specify_domain::codex::{ReviewFinding, Severity};
 use specify_error::ValidationSummary;
 
 #[derive(Serialize)]
@@ -64,6 +65,56 @@ pub fn write_check_text(
             eprintln!("error: {error}");
             Ok(())
         }
+    }
+}
+
+/// RFC-28 §"Review result envelope" body emitted by
+/// `specdev check --format json`.
+///
+/// The envelope is intentionally closed: only `version`, `summary`,
+/// and `findings` ship to stdout. Infrastructure errors that prevent
+/// the checks from running surface as exit code `1` plus an
+/// `error: ...` line on stderr (handled by the
+/// [`crate::authoring::commands::check`] handler), and the envelope on
+/// stdout collapses to `{version: 1, summary: {all zero}, findings: []}`
+/// so consumers can rely on a stable shape regardless of outcome.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ReviewFindingsBody {
+    pub version: u32,
+    pub summary: SeveritySummary,
+    pub findings: Vec<ReviewFinding>,
+}
+
+/// Per-severity counts for [`ReviewFindingsBody::summary`]. All four
+/// keys are always present; severities with zero findings serialize as
+/// `0` rather than being omitted.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub struct SeveritySummary {
+    pub critical: usize,
+    pub important: usize,
+    pub suggestion: usize,
+    pub optional: usize,
+}
+
+/// Build a [`ReviewFindingsBody`] for `findings`, computing the
+/// per-severity summary from the input vector.
+#[must_use]
+pub fn review_findings_body(findings: Vec<ReviewFinding>) -> ReviewFindingsBody {
+    let mut summary = SeveritySummary::default();
+    for finding in &findings {
+        match finding.severity {
+            Severity::Critical => summary.critical += 1,
+            Severity::Important => summary.important += 1,
+            Severity::Suggestion => summary.suggestion += 1,
+            Severity::Optional => summary.optional += 1,
+        }
+    }
+    ReviewFindingsBody {
+        version: 1,
+        summary,
+        findings,
     }
 }
 

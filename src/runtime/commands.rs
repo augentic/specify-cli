@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod codex;
 mod init;
 pub mod plan;
 pub mod registry;
@@ -17,6 +18,7 @@ use specify_domain::adapter::{Axis, SourceAdapter, TargetAdapter};
 use specify_error::Result;
 
 use crate::runtime::cli::{Cli, Commands, Format};
+use crate::runtime::commands::codex::cli::CodexAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
 use crate::runtime::commands::tool::cli::ToolAction;
@@ -68,6 +70,30 @@ pub fn run(cli: Cli) -> Exit {
             TargetAction::Resolve { value, project_dir } => {
                 dispatch(format, || resolve_adapter(format, Axis::Target, &value, &project_dir))
             }
+        },
+        Commands::Codex { action } => match action {
+            CodexAction::Export {
+                codex_root,
+                target,
+                sources,
+                artifacts,
+                languages,
+                include_deprecated,
+                include_unmatched,
+                project_dir,
+            } => dispatch(format, || {
+                codex::export::run(
+                    format,
+                    codex_root.as_deref(),
+                    &target,
+                    &sources,
+                    &artifacts,
+                    &languages,
+                    include_deprecated,
+                    include_unmatched,
+                    &project_dir,
+                )
+            }),
         },
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => run_tool(format, &name, args),

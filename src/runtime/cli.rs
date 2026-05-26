@@ -9,6 +9,7 @@ use clap_complete::Shell;
 use specify_domain::evidence::ClaimKind;
 
 pub use crate::output::Format;
+use crate::runtime::commands::codex::cli::CodexAction;
 use crate::runtime::commands::plan::cli::PlanAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
 use crate::runtime::commands::slice::cli::SliceAction;
@@ -81,6 +82,15 @@ pub enum Commands {
     Target {
         #[command(subcommand)]
         action: TargetAction,
+    },
+
+    /// Codex resolution operations (RFC-28). Read-only: no
+    /// `.specify/` writes, no journal events. Today the only verb is
+    /// `export`, which streams a `ResolvedCodex` JSON envelope built
+    /// from the shared / source / target overlay tree.
+    Codex {
+        #[command(subcommand)]
+        action: CodexAction,
     },
 
     /// WASI tool runner.

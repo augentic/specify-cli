@@ -15,8 +15,17 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
 
-    /// Output format. `text` by default; pass `--format json` (or set
-    /// `SPECDEV_FORMAT=json`) for structured validation summaries.
+    /// Output format. `text` (the default) emits the human-oriented
+    /// stdout / stderr summary unchanged. `json` emits an RFC-28
+    /// §"Review result envelope" body
+    /// (`{version: 1, summary, findings: [ReviewFinding]}`) to stdout
+    /// on both success and failure; the exit code is `2` when any
+    /// findings are present (existing validation semantics) and `1`
+    /// when an infrastructure error prevents the checks from running,
+    /// in which case the envelope on stdout collapses to
+    /// `{version: 1, summary: {all zero}, findings: []}` and the
+    /// underlying error surfaces on stderr. Set `SPECDEV_FORMAT=json`
+    /// to default to the structured envelope.
     #[arg(long, env = "SPECDEV_FORMAT", default_value = "text", global = true)]
     pub format: Format,
 }
