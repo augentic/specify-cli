@@ -862,12 +862,11 @@ fn validate_skips_catalog_drift_when_no_catalog_exists() {
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert()
-        .success();
+        .assert();
     let stderr = assert.get_output().stderr.clone();
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
-        && let Some(results) = value["results"].as_array()
-    {
+    let value: serde_json::Value =
+        serde_json::from_slice(&stderr).expect("command must emit JSON to stderr");
+    if let Some(results) = value["results"].as_array() {
         for r in results {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert_ne!(
@@ -888,12 +887,11 @@ fn validate_passes_when_component_slug_is_confirmed() {
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert()
-        .success();
+        .assert();
     let stderr = assert.get_output().stderr.clone();
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
-        && let Some(results) = value["results"].as_array()
-    {
+    let value: serde_json::Value =
+        serde_json::from_slice(&stderr).expect("command must emit JSON to stderr");
+    if let Some(results) = value["results"].as_array() {
         for r in results {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert_ne!(
@@ -970,12 +968,11 @@ fn validate_does_not_flag_candidate_component_notes() {
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert()
-        .success();
+        .assert();
     let stderr = assert.get_output().stderr.clone();
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
-        && let Some(results) = value["results"].as_array()
-    {
+    let value: serde_json::Value =
+        serde_json::from_slice(&stderr).expect("command must emit JSON to stderr");
+    if let Some(results) = value["results"].as_array() {
         for r in results {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert_ne!(
@@ -1006,12 +1003,11 @@ claims:
     let assert = specify()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert()
-        .success();
+        .assert();
     let stderr = assert.get_output().stderr.clone();
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
-        && let Some(results) = value["results"].as_array()
-    {
+    let value: serde_json::Value =
+        serde_json::from_slice(&stderr).expect("command must emit JSON to stderr");
+    if let Some(results) = value["results"].as_array() {
         for r in results {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert_ne!(
