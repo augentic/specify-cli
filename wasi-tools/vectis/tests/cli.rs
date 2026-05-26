@@ -1,11 +1,15 @@
-//! CLI coverage for the `vectis validate` subcommand surface.
+//! CLI coverage for the `vectis` subcommand surface.
 
 use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::tempdir;
 
+fn vectis() -> Command {
+    Command::cargo_bin("vectis").expect("binary `vectis` is present")
+}
+
 fn vectis_validate() -> Command {
-    let mut cmd = Command::cargo_bin("vectis").expect("binary `vectis` is present");
+    let mut cmd = vectis();
     cmd.arg("validate");
     cmd
 }
@@ -106,5 +110,50 @@ fn all_mode_recurses_findings_exit_code() {
             entry["report"]["errors"].as_array().is_some_and(|errors| !errors.is_empty())
         }),
         "expected nested findings in all-mode payload: {value}"
+    );
+}
+
+// ── schema subcommand ──────────────────────────────────────────────
+
+fn vectis_schema() -> Command {
+    let mut cmd = vectis();
+    cmd.arg("schema");
+    cmd
+}
+
+#[test]
+fn schema_tokens_exits_zero_with_valid_json() {
+    let assert = vectis_schema().arg("tokens").assert().success();
+    let value = parse_json(&assert.get_output().stdout);
+    assert!(value["$id"].as_str().is_some(), "$id field must be present");
+    assert_eq!(value["title"], "Specify Tokens Artifact");
+}
+
+#[test]
+fn schema_assets_exits_zero_with_valid_json() {
+    let assert = vectis_schema().arg("assets").assert().success();
+    let value = parse_json(&assert.get_output().stdout);
+    assert!(value["$id"].as_str().is_some_and(|id| id.contains("assets")));
+}
+
+#[test]
+fn schema_composition_exits_zero_with_valid_json() {
+    let assert = vectis_schema().arg("composition").assert().success();
+    let value = parse_json(&assert.get_output().stdout);
+    assert!(value["$id"].as_str().is_some_and(|id| id.contains("composition")));
+}
+
+#[test]
+fn schema_unknown_exits_two_with_error_envelope() {
+    let assert = vectis_schema().arg("nonexistent").assert().failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(value["error"], "unknown-schema");
+    assert_eq!(value["exit-code"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("nonexistent"),
+        "error message should mention the requested name"
     );
 }

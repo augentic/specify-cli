@@ -215,3 +215,27 @@ fn json_body_matches_byte_sequence() {
         }\n";
     assert_eq!(masked, expected);
 }
+
+// ── schema subcommand ──────────────────────────────────────────────
+
+#[test]
+fn schema_exits_two_with_no_schemas_declared() {
+    let assert = cmd().args(["schema", "tokens"]).assert().code(2);
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let value: Value = serde_json::from_str(&stdout).expect("valid JSON");
+
+    assert_eq!(value["error"], "no-schemas-declared");
+    assert_eq!(value["exit-code"], 2);
+    assert!(
+        value["message"].as_str().unwrap_or("").contains("no embedded schemas"),
+        "message explains absence: {value}"
+    );
+}
+
+#[test]
+fn schema_without_name_exits_two() {
+    let assert = cmd().arg("schema").assert().code(2);
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).unwrap();
+    let value: Value = serde_json::from_str(&stdout).expect("valid JSON");
+    assert_eq!(value["error"], "no-schemas-declared");
+}

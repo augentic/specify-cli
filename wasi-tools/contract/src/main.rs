@@ -105,8 +105,28 @@ enum OutputFormat {
 }
 
 fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("schema") {
+        return schema_stub(args.get(2).map(String::as_str));
+    }
     let args = Args::parse();
     run(&args.baseline_dir, args.format)
+}
+
+/// No-op `schema` handler — the contract tool declares no embedded
+/// schemas. Returns exit 2 with a structured error body so the host
+/// CLI's `specrun tool schema` can report the absence uniformly.
+fn schema_stub(name: Option<&str>) -> ExitCode {
+    let body = serde_json::json!({
+        "error": "no-schemas-declared",
+        "message": format!(
+            "contract tool declares no embedded schemas{}",
+            name.map(|n| format!(" (requested: {n})")).unwrap_or_default()
+        ),
+        "exit-code": EXIT_INVOCATION_ERROR,
+    });
+    println!("{}", serde_json::to_string_pretty(&body).expect("body is JSON-safe"));
+    ExitCode::from(EXIT_INVOCATION_ERROR)
 }
 
 fn run(baseline_dir: &std::path::Path, format: OutputFormat) -> ExitCode {
