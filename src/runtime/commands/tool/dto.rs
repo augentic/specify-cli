@@ -7,8 +7,6 @@ use specify_error::Result;
 use specify_tool::cache::{self, Status as CacheStatus};
 use specify_tool::manifest::{Tool, ToolScope, ToolScopeKind};
 
-pub(super) type CacheKey = (String, String, String);
-
 #[derive(Debug, Clone)]
 pub(super) struct ScopedTool {
     pub(super) scope: ToolScope,
