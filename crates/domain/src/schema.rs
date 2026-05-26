@@ -27,6 +27,20 @@ pub(crate) const FUSION_JSON_SCHEMA: &str =
     include_str!("../../../schemas/slice/fusion.schema.json");
 const COMPONENTS_JSON_SCHEMA: &str =
     include_str!("../../../schemas/design-system/components.schema.json");
+// RFC-28 Phase 2 runtime codex and review schemas. Visible across the
+// crate in test builds so the `codex` module can validate its DTO
+// round-trips against the same wire schemas the resolver and finding
+// validators will consume in CH-12+/CH-16; CH-16 will un-gate these
+// when it lands the public `validate_*` helpers.
+#[cfg(test)]
+pub(crate) const RESOLVED_CODEX_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/codex/resolved.schema.json");
+#[cfg(test)]
+pub(crate) const CODEX_RULE_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/codex/codex-rule.schema.json");
+#[cfg(test)]
+pub(crate) const REVIEW_FINDING_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/review/finding.schema.json");
 
 /// Validate `plan` against the embedded `schemas/plan/plan.schema.json`.
 ///
@@ -354,6 +368,145 @@ mod tests {
     #[test]
     fn components_schema_compiles() {
         compile_schema(COMPONENTS_JSON_SCHEMA).expect("components schema compiles");
+    }
+
+    /// Embedded resolved codex export schema parses and compiles
+    /// (RFC-28 §Resolved codex export).
+    #[test]
+    fn resolved_codex_schema_compiles() {
+        compile_schema(RESOLVED_CODEX_JSON_SCHEMA).expect("resolved codex schema compiles");
+    }
+
+    /// Embedded vendored codex-rule schema parses and compiles. The
+    /// runtime copy is byte-identical to
+    /// `crates/authoring/schemas/codex-rule.schema.json`; the
+    /// `codex.schema-drift` predicate (CH-09) enforces parity.
+    #[test]
+    fn codex_rule_schema_compiles() {
+        compile_schema(CODEX_RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
+    }
+
+    /// Embedded `ReviewFinding` schema parses and compiles
+    /// (RFC-28 §Structured review finding schema).
+    #[test]
+    fn review_finding_schema_compiles() {
+        compile_schema(REVIEW_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
+    }
+
+    /// The `UNI-014` example from RFC-28 §Resolved codex export
+    /// validates cleanly against the resolved-codex schema.
+    #[test]
+    fn resolved_codex_schema_accepts_rfc_example() {
+        let instance = serde_json::json!({
+            "version": 1,
+            "target-adapter": "omnia",
+            "source-adapters": ["code-typescript"],
+            "rules": [
+                {
+                    "rule-id": "UNI-014",
+                    "title": "Hardcoded Configuration",
+                    "severity": "important",
+                    "trigger": "Generated code embeds environment-specific configuration instead of routing it through declared configuration.",
+                    "review-mode": "hybrid",
+                    "origin": "shared",
+                    "path-root": "codex-root",
+                    "path": "adapters/shared/codex/universal/hardcoded-configuration.md",
+                    "applicability": {
+                        "adapters": ["omnia"],
+                        "languages": ["rust"],
+                        "artifacts": ["code"]
+                    },
+                    "deterministic-hints": [
+                        {
+                            "kind": "regex",
+                            "value": "https?://",
+                            "description": "Literal URL in generated code."
+                        }
+                    ],
+                    "references": [
+                        {
+                            "label": "Omnia guardrails",
+                            "path": "adapters/targets/omnia/references/guardrails.md"
+                        }
+                    ],
+                    "body": "## Rule\n\nConfiguration values that vary between deployments must not be hardcoded in generated code.\n",
+                    "deprecated": null
+                }
+            ]
+        });
+        let validator =
+            compile_schema(RESOLVED_CODEX_JSON_SCHEMA).expect("resolved codex schema compiles");
+        let errors: Vec<String> =
+            validator.iter_errors(&instance).map(|e| validation_error_detail(&e)).collect();
+        assert!(errors.is_empty(), "RFC-28 UNI-014 example must validate; errors: {errors:?}");
+    }
+
+    /// The `FIND-0001` example from RFC-28 §Structured review finding
+    /// schema validates cleanly against the finding schema. The
+    /// fingerprint placeholder `sha256:...` from the RFC body is
+    /// replaced with a deterministic 64-hex-char digest so the
+    /// fingerprint pattern check passes.
+    #[test]
+    fn review_finding_schema_accepts_rfc_example() {
+        let instance = serde_json::json!({
+            "id": "FIND-0001",
+            "rule-id": "UNI-014",
+            "title": "Literal deployment URL in generated handler",
+            "severity": "important",
+            "source": "hybrid",
+            "target-adapter": "omnia",
+            "slice": "billing-invoice-export",
+            "artifact": "code",
+            "location": {
+                "path": "crates/invoice_export/src/config.rs",
+                "line": 18
+            },
+            "evidence": {
+                "kind": "snippet",
+                "value": "const BASE_URL: &str = \"https://api.example.com\";"
+            },
+            "impact": "Generated code will point every deployment at the same external endpoint.",
+            "remediation": "Read the endpoint from Omnia configuration and add a required config key to the design.",
+            "confidence": "high",
+            "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        });
+        let validator =
+            compile_schema(REVIEW_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
+        let errors: Vec<String> =
+            validator.iter_errors(&instance).map(|e| validation_error_detail(&e)).collect();
+        assert!(errors.is_empty(), "RFC-28 FIND-0001 example must validate; errors: {errors:?}");
+    }
+
+    /// The codex-rule frontmatter example in RFC-28 §Codex file shape
+    /// validates cleanly against the vendored codex-rule schema. This
+    /// pairs the frontmatter block (in YAML in the RFC) with its JSON
+    /// equivalent, so the runtime schema gets the same structural
+    /// coverage as the authoring schema.
+    #[test]
+    fn codex_rule_schema_accepts_rfc_example() {
+        let instance = serde_json::json!({
+            "id": "UNI-014",
+            "title": "Hardcoded Configuration",
+            "severity": "important",
+            "trigger": "Generated code embeds environment-specific configuration instead of routing it through declared configuration.",
+            "applicability": {
+                "adapters": ["omnia"],
+                "languages": ["rust"],
+                "artifacts": ["code"]
+            },
+            "review_mode": "hybrid",
+            "deterministic_hints": [
+                {
+                    "kind": "regex",
+                    "value": "https?://",
+                    "description": "Literal URL in generated code."
+                }
+            ]
+        });
+        let validator = compile_schema(CODEX_RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
+        let errors: Vec<String> =
+            validator.iter_errors(&instance).map(|e| validation_error_detail(&e)).collect();
+        assert!(errors.is_empty(), "RFC-28 UNI-014 frontmatter must validate; errors: {errors:?}");
     }
 
     /// An empty evidence directory (or missing one) passes — empty

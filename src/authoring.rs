@@ -3,6 +3,7 @@
 mod cli;
 mod commands;
 mod output;
+pub mod severity;
 
 use std::process::ExitCode;
 
