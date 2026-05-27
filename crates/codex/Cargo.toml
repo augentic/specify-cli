@@ -14,18 +14,18 @@ readme = "../../README.md"
 workspace = true
 
 [dependencies]
-specify-error = { workspace = true }
-specify-schema = { workspace = true }
-specify-tool = { workspace = true }
-glob = { workspace = true }
-ignore = { workspace = true }
-jsonschema = { workspace = true }
-rayon = { workspace = true }
-regex = { workspace = true }
-serde = { workspace = true }
-serde-saphyr = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
+glob.workspace = true
+ignore.workspace = true
+jsonschema.workspace = true
+rayon.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+specify-error.workspace = true
+specify-schema.workspace = true
+specify-tool.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile.workspace = true

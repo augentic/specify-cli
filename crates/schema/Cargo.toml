@@ -14,11 +14,11 @@ readme = "../../README.md"
 workspace = true
 
 [dependencies]
-specify-error = { workspace = true }
-jsonschema = { workspace = true }
-serde = { workspace = true }
-serde-saphyr = { workspace = true }
-serde_json = { workspace = true }
+jsonschema.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+specify-error.workspace = true
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile.workspace = true

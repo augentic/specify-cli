@@ -13,9 +13,45 @@ use std::fs;
 use std::path::Path;
 
 use assert_cmd::Command;
+use jsonschema::{Registry, Resource, Validator};
 use serde_json::Value;
-use specify_schema::{REVIEW_RESULT_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, validate_json_str};
+use specify_schema::{
+    REVIEW_FINDING_JSON_SCHEMA, REVIEW_RESULT_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA,
+};
 use tempfile::TempDir;
+
+const FINDING_SCHEMA_URL: &str =
+    "https://github.com/augentic/specify-cli/schemas/review/finding.schema.json";
+
+/// Compile the review-result envelope schema with the `finding.schema.json`
+/// child resource wired through a `jsonschema::Registry`. Mirrors the
+/// `specify_codex::review::diagnostics::json::render_value` setup so the
+/// e2e test re-validates the same shape the CLI emits.
+fn compile_review_result_validator() -> Validator {
+    let envelope: Value = serde_json::from_str(REVIEW_RESULT_JSON_SCHEMA).expect("envelope schema");
+    let finding: Value = serde_json::from_str(REVIEW_FINDING_JSON_SCHEMA).expect("finding schema");
+    let registry = Registry::new()
+        .add(FINDING_SCHEMA_URL, Resource::from_contents(finding))
+        .and_then(jsonschema::RegistryBuilder::prepare)
+        .expect("registry build");
+    jsonschema::options().with_registry(&registry).build(&envelope).expect("validator build")
+}
+
+fn compile_workspace_model_validator() -> Validator {
+    let schema: Value = serde_json::from_str(WORKSPACE_MODEL_JSON_SCHEMA).expect("parse schema");
+    jsonschema::validator_for(&schema).expect("validator build")
+}
+
+#[track_caller]
+fn assert_validates(validator: &Validator, stdout: &str, schema_label: &str) {
+    let instance: Value = serde_json::from_str(stdout)
+        .unwrap_or_else(|err| panic!("stdout is not JSON ({err}); raw:\n{stdout}"));
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    assert!(
+        errors.is_empty(),
+        "stdout failed schema validation ({schema_label}): {errors:?}; raw:\n{stdout}"
+    );
+}
 
 /// Scratch workspace used by the happy-path scenarios.
 ///
@@ -85,14 +121,18 @@ fn build_fixture() -> Fixture {
 
 fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::process::Output {
     let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
+    // The global `--format` toggles the error-envelope shape; the
+    // per-subcommand `--output-format` selects the §D6 closed set.
+    cmd.arg("--format").arg("json");
     cmd.arg("review");
     cmd.arg("run");
     cmd.arg("--target").arg("omnia");
     cmd.arg("--project-dir").arg(project);
-    cmd.arg("--format").arg("json");
+    cmd.arg("--output-format").arg("json");
     if let Some(codex) = codex {
         cmd.arg("--codex-root").arg(codex);
     }
+    cmd.env_remove("CODEX_ROOT");
     for arg in extra {
         cmd.arg(arg);
     }
@@ -115,14 +155,17 @@ fn review_emits_important_finding_and_exits_2() {
     );
 
     let stdout = std::str::from_utf8(&output.stdout).expect("utf8 stdout");
-    validate_json_str(REVIEW_RESULT_JSON_SCHEMA, stdout).expect("stdout matches review-result schema");
-
+    let validator = compile_review_result_validator();
+    assert_validates(&validator, stdout, "review-result");
     let envelope: Value = serde_json::from_str(stdout).expect("parse envelope");
     let important = envelope
         .pointer("/summary/important")
         .and_then(Value::as_u64)
         .expect("summary.important present");
-    assert!(important >= 1, "expected ≥1 important finding, got {important}; envelope:\n{envelope:#}");
+    assert!(
+        important >= 1,
+        "expected ≥1 important finding, got {important}; envelope:\n{envelope:#}"
+    );
 
     let rule_id = envelope
         .pointer("/findings/0/rule-id")
@@ -160,12 +203,14 @@ fn review_dump_model_emits_workspace_model_and_exits_0() {
     );
 
     let stdout = std::str::from_utf8(&output.stdout).expect("utf8 stdout");
-    validate_json_str(WORKSPACE_MODEL_JSON_SCHEMA, stdout).expect("stdout matches workspace-model schema");
+    let validator = compile_workspace_model_validator();
+    assert_validates(&validator, stdout, "workspace-model");
 }
 
-/// §D7 / §D8 negative: a missing codex root surfaces the closed
-/// `codex-root-required` rule id and exits 2 via the existing resolver
-/// validation path.
+/// §D7 / §D8 negative: with no `--codex-root`, no project-local
+/// `adapters/shared/codex/universal/` rung, and no
+/// `.specify/cache/codex/` cache, the resolver returns
+/// `codex-root-required`. The CLI surfaces it on stderr and exits 2.
 #[test]
 fn review_missing_codex_root_exits_2_with_codex_root_required() {
     let project_root = TempDir::new().expect("project tempdir");
@@ -174,8 +219,23 @@ fn review_missing_codex_root_exits_2_with_codex_root_required() {
     fs::write(project.join(".specify").join("project.yaml"), "name: review-e2e-missing\n")
         .expect("write project.yaml");
 
-    let bogus = project_root.path().join("does-not-exist");
-    let output = run_review(&project, Some(&bogus), &[]);
+    // Pass `--format json` so the failure envelope renders as JSON on
+    // stderr (with the kebab-case `rule-id` field). The text branch
+    // collapses to `error: validation failed: N errors` and would
+    // hide the closed `codex-root-required` discriminant.
+    let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
+    cmd.arg("--format")
+        .arg("json")
+        .arg("review")
+        .arg("run")
+        .arg("--target")
+        .arg("omnia")
+        .arg("--project-dir")
+        .arg(&project)
+        .arg("--output-format")
+        .arg("json")
+        .env_remove("CODEX_ROOT");
+    let output = cmd.output().expect("specrun invocation");
 
     assert_eq!(
         output.status.code(),

@@ -8,17 +8,23 @@ The workspace is leaf → root. `specify-error` is the dependency leaf and depen
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
+specify-schema                   # depends on specify-error (embedded JSON Schemas + jsonschema plumbing)
 specify-tool                     # depends on specify-error (WASI tool runner; wasmtime, gated)
-specify-domain                   # depends on specify-{error,tool} (every other domain module)
+specify-codex                    # standards layer — depends on specify-{error,schema,tool}; NOT on specify-domain
+specify-domain                   # workflow layer — depends on specify-{error,schema,tool}; NOT on specify-codex
 specify (root crate)             # wires every workspace crate above into the CLI binary
 ```
 
-Modules of note inside `specify-domain` (workflow reshapes from Wave 0):
+`specify-codex` and `specify-domain` are siblings: neither imports the other. The standards-layer-vs-workflow-layer split is a type-system invariant per RFC-32 §"Library layout" (review carries no lifecycle authority). Both depend on `specify-schema` so the embedded JSON Schemas live in one place.
+
+Modules of note across the workspace (workflow + standards layers):
 
 - `crates/domain/src/adapter/` — axis-split adapter loader. `SourceAdapter::resolve(name, project_dir)` and `TargetAdapter::resolve(name, project_dir)` are the per-axis entry points and the only manifest loaders after the F9 collapse + workflow §"Operations typed at parse boundary" split (the legacy axis-generic `Adapter::resolve(axis, …)` shape and `PipelineView` were retired). The closed `SourceOperation` / `TargetOperation` enums in `adapter/operation.rs` are the typed `briefs.keys()` carried by each manifest struct.
-- `crates/domain/src/schema.rs` — JSON Schemas (`plan.yaml`, per-source `Evidence`, adapter/source/target manifests) embedded via `include_str!` and validated through `jsonschema::Validator`.
 - `crates/domain/src/spec/provenance.rs` — `spec.md` requirement-block parser (`ID:` / `Sources:` / `Status:` lines, closed `RequirementStatus` enum, inline `[…]` tag coherence).
 - `crates/domain/src/journal.rs` — RFC-19 newline-delimited JSON event log at `<project_dir>/.specify/journal.jsonl`; closed `Event` / `EventKind` taxonomy with kebab-case wire ids and `snake_case` Rust variants joined by `#[serde(rename = "…")]`.
+- `crates/schema/src/` — embedded JSON Schema constants (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`, `FUSION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `CODEX_RULE_JSON_SCHEMA`, `RESOLVED_CODEX_JSON_SCHEMA`, `REVIEW_FINDING_JSON_SCHEMA`, `REVIEW_RESULT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) and the shared `jsonschema::Validator` plumbing (`compile_schema`, `validate_value`, `validate_serialisable`, `read_yaml_as_json`). Workflow and standards layers both consume schemas through this crate; nobody else embeds `include_str!`'d schema JSON.
+- `crates/codex/src/codex/` — RFC-28 codex parser, resolver pipeline, fingerprint algorithm, and finding validator (`parse.rs`, `resolve.rs`, `resolve/{filter,sort}.rs`, `fingerprint.rs`, `finding.rs`). Relocated out of `specify-domain` by the RFC-32 standards-layer split.
+- `crates/codex/src/review/` — RFC-32 review surface: `WorkspaceModel` DTOs (`model.rs`), the consumer indexer (`index/`), the deterministic hint interpreter for the closed Phase 2 kinds (`eval/{path_pattern,regex,schema,tool}.rs`), and the four diagnostic formatters (`diagnostics/{json,pretty,github,compact}.rs`) that back `specrun review`.
 
 WASI tools live in the sibling workspace at `wasi-tools/` (`wasi-tools/contract`, `wasi-tools/vectis`) and are carved out of the host workspace's discipline. Both carve-outs are self-contained — plugin-specific validation, scaffold, and rendering logic lives inside the carve-out and the host CLI consumes it only through `specrun tool run <name>`.
 
@@ -54,6 +60,7 @@ See [DECISIONS.md §"Exit codes"](./DECISIONS.md#exit-codes) for the long-form r
 | Workspace layout, WASI carve-outs, `Layout<'a>`, time injection, `ureq` hardening, atomic-write rationale, workflow domain modules, supply chain | [`docs/standards/architecture.md`](./docs/standards/architecture.md) |
 | `cargo nextest`, integration-first policy, golden files, `REGENERATE_GOLDENS` | [`docs/standards/testing.md`](./docs/standards/testing.md) |
 | Standing architectural decisions (error layering, exit codes, atomic writes, YAML library, wire compatibility, workflow type renames, plan lifecycle, adapter loader, journal events) | [`DECISIONS.md`](./DECISIONS.md) |
+| Engineering standards layer (`specify-codex` / `specify-schema`, `WorkspaceModel`, deterministic hints, `specrun review`) | [Parent repo `rfcs/rfc-32-standards-enforcement.md`](https://github.com/augentic/specify/blob/main/rfcs/rfc-32-standards-enforcement.md) |
 
 External references:
 
@@ -90,5 +97,5 @@ scripts/build-vectis-local.sh    # build wasi-tools/vectis with sha256 sidecars 
 2. For any Rust change, consult [`docs/standards/`](./docs/standards/) — at minimum the doc that matches the area you are editing, plus [`style.md`](./docs/standards/style.md) for cross-cutting rules.
 3. Run `cargo make ci` before committing. If it cannot run, say exactly why and which checks were run instead.
 4. When you remove a symbol, `rg <SymbolName> -- AGENTS.md DECISIONS.md docs/` and update every hit in the same PR.
-5. If you touch `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/domain/src/spec/provenance.rs`, `crates/domain/src/adapter/`, `crates/domain/src/journal.rs`, `crates/domain/src/schema.rs`, the `$CAPABILITY_DIR` env var, or the `adapter--<axis>--<slug>` tool cache scope: `rg <symbol>` across both this repo *and* the parent [`augentic/specify`](https://github.com/augentic/specify) plugin repo, and update every hit in the same PR (workflow §"Note to the implementing agent" applies — the workflow contract spans both repos).
+5. If you touch `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/domain/src/spec/provenance.rs`, `crates/domain/src/adapter/`, `crates/domain/src/journal.rs`, `crates/schema/src/`, `crates/codex/src/codex/`, `crates/codex/src/review/`, the `$CAPABILITY_DIR` env var, or the `adapter--<axis>--<slug>` tool cache scope: `rg <symbol>` across both this repo *and* the parent [`augentic/specify`](https://github.com/augentic/specify) plugin repo, and update every hit in the same PR (workflow §"Note to the implementing agent" applies — the workflow contract spans both repos).
 6. A fresh contributor should be able to reach any rule from this spine in three hops or fewer. If you find yourself adding prose here that isn't navigational, it belongs in one of the standards docs.

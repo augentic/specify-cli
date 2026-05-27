@@ -14,6 +14,18 @@
     {
       "body": "\n## Rule\n\nOmnia crates must run as stateless `wasm32-wasip2` guest components. Production code must not rely on native process features, background threads, direct filesystem/network/environment access, mutable global state, runtime singletons, blocking I/O, or crates that require an OS-backed runtime. State that must outlive one invocation belongs in host providers, not component memory.\n\nCompile-time constants and immutable `LazyLock` lookup tables are acceptable when they do not cache request data, credentials, provider results, or runtime state.\n\n## Look For\n\n- `std::env`, `std::fs`, `std::net`, `std::process`, `std::thread::spawn`, or synchronous I/O used in production guest code.\n- Runtime dependencies such as `tokio` as an application runtime, native `hyper` servers, `rand`, `uuid` generation that depends on runtime randomness, or dotenv-style configuration loaders.\n- `static mut`, `OnceCell`, `OnceLock`, `lazy_static!`, or `Mutex<HashMap<...>>` used as caches or mutable singleton state.\n- Background task, timer, circuit-breaker, worker-pool, retry daemon, or startup-loader patterns copied from a server process.\n- Assumptions that data loaded once will remain available across handler invocations.\n- Direct use of system clocks or sleeps for scheduling instead of invocation-time logic and provider-backed state.\n\n## Spec Guidance\n\nWhen source behavior depends on process lifetime, translate the requirement into an Omnia runtime pattern. Startup caches usually become cache-aside reads through `StateStore` plus the original data provider; periodic refresh usually becomes TTL-backed cache expiry; token caches usually become `Identity` provider calls.\n",
       "deprecated": null,
+      "deterministic-hints": [
+        {
+          "description": "Restrict the forbidden-std scan to Rust source files.",
+          "kind": "path-pattern",
+          "value": "**/*.rs"
+        },
+        {
+          "description": "Forbidden std namespace in Omnia WASM guest code.",
+          "kind": "regex",
+          "value": "\\bstd::(env|fs|net|process|thread::spawn)\\b"
+        }
+      ],
       "origin": "target",
       "path": "adapters/targets/omnia/codex/wasm-guest-runtime-constraints.md",
       "path-root": "codex-root",
@@ -245,6 +257,18 @@
     {
       "body": "\n## Rule\n\nKeep operational parameters discoverable and reviewable. Timeouts, URLs, retry counts, buffer sizes, page sizes, polling intervals, and similar values should be named constants or configuration rather than unexplained literals in behavior code.\n\n## Look For\n\n- Numeric literals in function calls that represent tunable parameters, such as timeout durations, retry counts, page sizes, or polling intervals.\n- URL strings embedded directly in handler code rather than sourced from configuration.\n- Magic numbers that require domain knowledge to understand, such as `42`, `1000`, or `86400`.\n- The same literal value repeated in multiple locations where a shared constant should be used.\n\n## Spec Guidance\n\nWhen the spec does not define operational parameters such as timeouts, page sizes, retry limits, or polling intervals, propose adding them as explicit design decisions so they are reviewed and documented.\n",
       "deprecated": null,
+      "deterministic-hints": [
+        {
+          "description": "Restrict the URL-literal scan to Rust source files.",
+          "kind": "path-pattern",
+          "value": "**/*.rs"
+        },
+        {
+          "description": "Literal HTTP(S) URL embedded in Rust source.",
+          "kind": "regex",
+          "value": "\\bhttps?://\\S+"
+        }
+      ],
       "origin": "shared",
       "path": "adapters/shared/codex/universal/hardcoded-configuration.md",
       "path-root": "codex-root",

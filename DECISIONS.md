@@ -719,3 +719,68 @@ least one reference (unreferenced = warning). Catalog discovery uses
 [`wasi-tools/vectis/src/validate/engine/paths.rs`](./wasi-tools/vectis/src/validate/engine/paths.rs)
 to locate the file from the project root. When the catalog is absent,
 the check is silently skipped.
+
+## RFC-32 — Standards layer split into `specify-codex` and `specify-schema`
+
+The standards surface (RFC-28 codex parser / resolver / finding
+validator and RFC-32 `WorkspaceModel`, indexer, deterministic hint
+interpreter, diagnostic formatters, and `specrun review` runner) lives
+in `specify-codex`, a sibling of `specify-domain` rather than a module
+inside it. `specify-schema` is the shared leaf: it owns every embedded
+JSON Schema constant (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
+`FUSION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `CODEX_RULE_JSON_SCHEMA`,
+`RESOLVED_CODEX_JSON_SCHEMA`, `REVIEW_FINDING_JSON_SCHEMA`,
+`REVIEW_RESULT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
+`jsonschema` plumbing (`compile_schema`, `validate_value`,
+`validate_serialisable`, `read_yaml_as_json`). `specify-schema` shares
+the leaf layer with `specify-error` and depends on no workspace crate
+other than `specify-error` itself.
+
+Dependency direction: `specify-codex` depends on `specify-error`,
+`specify-schema`, and `specify-tool` (for the `kind: tool` hint). It
+does **not** depend on `specify-domain`, and `specify-domain` does
+**not** depend on `specify-codex`. The sibling shape makes the
+§"Principles" / "No lifecycle authority in review" rule a type-system
+invariant: review code cannot reach for slice or plan lifecycle
+transitions because the workflow types are not visible from the
+standards layer. If a future workflow validator needs to mint a
+`ReviewFinding`, `specify-domain` gains a dependency on `specify-codex`
+at that point (leaf-→-root still holds); v1 does not need this and the
+sibling shape stays.
+
+The `specdev` predicate library (`crates/authoring/`) picks up
+`specify-codex` and `specify-schema` directly so codex predicates
+consume `CODEX_RULE_JSON_SCHEMA` and the typed `CodexRule` DTO without
+re-vendoring the schema. The root `specify` binary wires both halves
+together at the dispatcher boundary — `specrun review` consumes the
+standards layer for indexing and evaluation and the workflow layer for
+project / slice context resolution; the two halves never call each
+other directly. Refer to RFC-32 §"Library layout" for the long-form
+rationale (including the diagram and the per-crate dependency
+breakdown).
+
+## RFC-32 — Vendored codex-rule schema removed
+
+The standalone vendored copy of the codex-rule JSON Schema and its
+drift-detection predicate are retired. Specifically, the following
+artefacts are gone:
+
+- `crates/authoring/schemas/codex-rule.schema.json` (the vendored copy)
+- `scripts/sync-codex-schema.sh` (the manual mirroring helper)
+- `crates/authoring/src/check/codex_schema_drift.rs` (the CH-09
+  predicate implementation) and its integration test
+- The `codex.schema-drift` rule-id registration in the `specdev` check
+  registry
+
+`specify-authoring` now consumes the canonical schema directly via
+`specify_schema::CODEX_RULE_JSON_SCHEMA` (paired with the typed
+`CodexRule` DTO from `specify_codex`). One source of truth replaces the
+prior vendored / canonical pair, so no drift check is required — the
+predicate the vendored copy existed to support no longer has a class of
+failures to catch. The canonical schema lives at
+`schemas/codex/codex-rule.schema.json` (its `$id` was corrected to
+match the on-disk location as part of the same change); the `specify`
+binary embeds it through `specify-schema` like every other workflow and
+standards schema. Cross-repo prose that named `codex.schema-drift`
+(CH-09) or the sync script is removed in the same change. Refer to
+RFC-32 §"Eliminates the vendored codex-rule schema".
