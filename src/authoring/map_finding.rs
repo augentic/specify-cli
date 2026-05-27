@@ -53,16 +53,14 @@
 //! `rule_id: Some("FRAME-NNN")` and drop the `[...]` title prefix.
 
 use specify_authoring::finding::{Finding, Location};
-use specify_domain::codex::fingerprint::fingerprint;
-use specify_domain::codex::{
-    Artifact, FindingEvidence, FindingLocation, FindingSource, ReviewFinding,
-};
+use specify_codex::fingerprint::fingerprint;
+use specify_codex::{Artifact, FindingEvidence, FindingLocation, FindingSource, ReviewFinding};
 use specify_tool::sha256_hex;
 
 use crate::authoring::severity::severity_for;
 
 /// 16 `KiB` cap on the serialised evidence object per RFC-28 (mirror
-/// of `specify_domain::codex::finding::EVIDENCE_MAX_BYTES`, kept
+/// of `specify_codex::finding::EVIDENCE_MAX_BYTES`, kept
 /// local so the mapper does not import the validator).
 const EVIDENCE_MAX_BYTES: usize = 16 * 1024;
 
@@ -191,10 +189,8 @@ mod tests {
     use std::path::PathBuf;
 
     use specify_authoring::finding::{Finding, Location};
-    use specify_domain::codex::fingerprint::verify_fingerprint;
-    use specify_domain::codex::{
-        Artifact, FindingEvidence, FindingSource, Severity, validate_finding,
-    };
+    use specify_codex::fingerprint::verify_fingerprint;
+    use specify_codex::{Artifact, FindingEvidence, FindingSource, Severity, validate_finding};
 
     use super::{map_finding, map_findings};
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/augentic/specify-cli/schemas/authoring/codex-rule.schema.json",
+  "$id": "https://github.com/augentic/specify-cli/schemas/codex/codex-rule.schema.json",
   "title": "Specify codex rule frontmatter",
   "description": "Validates the YAML frontmatter block at the top of a codex rule markdown file. The schema applies only to the machine-readable frontmatter between the opening and closing `---` delimiters; Markdown body validation, including the required `## Rule` heading and duplicate-id checks across the first-party rule set, is handled by `specdev check`.",
   "type": "object",
@@ -107,21 +107,21 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": [
-              "path-pattern",
-              "regex",
-              "schema",
-              "tool",
-              "unique",
-              "reference-resolves",
-              "set-coverage",
-              "cardinality",
-              "constant-eq",
-              "set-eq",
-              "content-digest-eq",
-              "namespace-owner"
-            ],
-            "description": "Kind of deterministic signal the hint describes. The kinds `unique`, `reference-resolves`, `set-coverage`, `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`, and `namespace-owner` are reserved for RFC-32 declarative framework checks and are shape-validated only at this layer; no execution semantics are implied."
+            "description": "Kind of deterministic signal the hint describes. Phase 2 kinds (`path-pattern`, `regex`, `schema`, `tool`) are executed by the `specrun review` hint interpreter; reserved kinds carry `x-rfc32-status: reserved` and are accepted by RFC-28 exporters and tooling validators per RFC-32 §Hint kinds — reserved, but are shape-validated only at this layer with no execution semantics implied.",
+            "oneOf": [
+              { "const": "path-pattern" },
+              { "const": "regex" },
+              { "const": "schema" },
+              { "const": "tool" },
+              { "const": "unique", "x-rfc32-status": "reserved" },
+              { "const": "reference-resolves", "x-rfc32-status": "reserved" },
+              { "const": "set-coverage", "x-rfc32-status": "reserved" },
+              { "const": "cardinality", "x-rfc32-status": "reserved" },
+              { "const": "constant-eq", "x-rfc32-status": "reserved" },
+              { "const": "set-eq", "x-rfc32-status": "reserved" },
+              { "const": "content-digest-eq", "x-rfc32-status": "reserved" },
+              { "const": "namespace-owner", "x-rfc32-status": "reserved" }
+            ]
           },
           "value": {
             "type": "string",

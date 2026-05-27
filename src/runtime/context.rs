@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
@@ -28,7 +28,15 @@ impl Ctx {
     /// the format-aware exit code.
     pub(crate) fn load(format: Format) -> Result<Self, Error> {
         let current_dir = std::env::current_dir().map_err(Error::Io)?;
-        let project_dir = ProjectConfig::find_root(&current_dir).ok_or(Error::NotInitialized)?;
+        Self::load_at(format, &current_dir)
+    }
+
+    /// Variant of [`Self::load`] that walks from `start_dir` instead of
+    /// the process CWD. Used by handlers that accept a `--project-dir`
+    /// flag (e.g. `specrun review`); the resolved `project_dir` is the
+    /// nearest ancestor of `start_dir` containing `.specify/project.yaml`.
+    pub(crate) fn load_at(format: Format, start_dir: &Path) -> Result<Self, Error> {
+        let project_dir = ProjectConfig::find_root(start_dir).ok_or(Error::NotInitialized)?;
         let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             format,

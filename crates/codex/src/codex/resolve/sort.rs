@@ -21,7 +21,7 @@
 //! [`crate::codex`], so the derived [`Ord`] picks up the
 //! RFC-mandated comparator directly — no bespoke `_sort_key` helpers
 //! needed. The `severity_ordering_matches_rfc` and
-//! `origin_ordering_matches_rfc` tests in `crates/domain/src/codex.rs`
+//! `origin_ordering_matches_rfc` tests in `crates/codex/src/codex.rs`
 //! pin that declaration order so a future refactor cannot silently
 //! shift the sort.
 //!

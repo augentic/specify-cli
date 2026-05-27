@@ -45,17 +45,16 @@ struct ScenarioFile {
 
 /// Run scenario frontmatter validation only (tests / direct invocation).
 pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Finding> {
-    let validator =
-        match ctx.schema(ctx.framework_schema_dir().join(SchemaId::Scenario.file_name())) {
-            Ok(v) => v,
-            Err(error) => {
-                return vec![finding(
-                    RULE_SCHEMA_VIOLATION,
-                    format!("Scenario frontmatter: cannot load scenario schema: {error}"),
-                    None,
-                )];
-            }
-        };
+    let validator = match crate::schema::validator(ctx, SchemaId::Scenario) {
+        Ok(v) => v,
+        Err(error) => {
+            return vec![finding(
+                RULE_SCHEMA_VIOLATION,
+                format!("Scenario frontmatter: cannot load scenario schema: {error}"),
+                None,
+            )];
+        }
+    };
 
     let candidate_paths = discover_scenario_candidates(ctx);
     let mut opted = Vec::new();

@@ -25,10 +25,10 @@
 //! validators individually.
 
 use serde_json::Value as JsonValue;
+use specify_schema::{REVIEW_FINDING_JSON_SCHEMA, compile_schema};
 
 use super::ReviewFinding;
 use super::fingerprint::fingerprint;
-use crate::schema::{REVIEW_FINDING_JSON_SCHEMA, compile_schema};
 
 /// 16 `KiB` cap on the serialized evidence object per RFC-28
 /// §"Evidence union".
@@ -39,7 +39,7 @@ const EVIDENCE_MAX_BYTES: usize = 16 * 1024;
 pub enum FindingError {
     /// JSON-schema validation failed. The string carries every
     /// JSON-pointer + reason pair joined by `; `, mirroring the
-    /// `crate::schema::validate_value` aggregation style.
+    /// `specify_schema::validate_value` aggregation style.
     #[error("review finding schema validation failed: {0}")]
     Schema(String),
     /// Serialized evidence object exceeds the 16 `KiB` cap.

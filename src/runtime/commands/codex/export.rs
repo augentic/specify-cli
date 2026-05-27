@@ -1,7 +1,7 @@
 //! `specrun codex export` handler — RFC-28 §"Resolved codex export".
 //!
 //! Read-only. Builds the `ResolveInputs` struct from CLI args,
-//! delegates to [`specify_domain::codex::build_resolved_codex`], and
+//! delegates to [`specify_codex::build_resolved_codex`], and
 //! streams the resulting envelope to stdout as JSON. v1 supports
 //! JSON output only; the global `--format text` default at the
 //! `Cli` level surfaces as `Error::Argument` (exit 2) so the
@@ -19,7 +19,7 @@
 
 use std::path::{Path, PathBuf};
 
-use specify_domain::codex::{ResolveError, ResolveInputs, build_resolved_codex};
+use specify_codex::{ResolveError, ResolveInputs, build_resolved_codex};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
 use crate::runtime::cli::Format;
@@ -70,7 +70,7 @@ fn require_json(format: Format) -> Result<()> {
 /// Translate the CH-12/CH-14 resolver's typed error into the CLI's
 /// closed [`Error`] enum so `Exit::from(&Error)` picks the right
 /// exit code per `docs/standards/handler-shape.md`.
-fn map_resolve_error(err: ResolveError) -> Error {
+pub fn map_resolve_error(err: ResolveError) -> Error {
     match err {
         ResolveError::CodexRootRequired => Error::Validation {
             results: vec![ValidationSummary {

@@ -3,8 +3,8 @@
 //! Walks every `*.md` rule under `adapters/shared/codex/universal/`
 //! and `adapters/sources/documentation/codex/` in the sibling
 //! `augentic/specify` plugin checkout and asserts that
-//! [`specify_domain::codex::parse_codex_rule_file`] returns a
-//! [`specify_domain::codex::CodexRule`] for each one. Skips
+//! [`specify_codex::parse_codex_rule_file`] returns a
+//! [`specify_codex::CodexRule`] for each one. Skips
 //! cleanly when the plugin checkout is not available so the test
 //! is safe to run from any environment.
 //!
@@ -17,7 +17,7 @@
 
 use std::path::{Path, PathBuf};
 
-use specify_domain::codex::parse_codex_rule_file;
+use specify_codex::parse_codex_rule_file;
 
 /// Conventional sibling path to the plugin repo's adapter tree.
 fn plugin_adapters_dir() -> Option<PathBuf> {

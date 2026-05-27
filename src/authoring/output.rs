@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 use specify_authoring::error::ToolingError;
 use specify_authoring::finding::{Finding, Location};
-use specify_domain::codex::{ReviewFinding, Severity};
+use specify_codex::{ReviewFinding, Severity};
 use specify_error::ValidationSummary;
 
 #[derive(Serialize)]

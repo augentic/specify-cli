@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::p2::bindings::sync::Command;
+use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::{DirPerms, FilePerms, I32Exit, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use crate::error::ToolError;
@@ -72,12 +73,50 @@ impl WasiRunner {
     /// Returns permission errors before instantiation, or runtime errors when
     /// Wasmtime cannot compile, link, instantiate, or execute the component.
     pub fn run(&self, resolved: &ResolvedTool, ctx: &RunContext) -> Result<i32, ToolError> {
+        self.invoke(resolved, ctx, Stdio::Inherit).map(|outcome| outcome.exit_code)
+    }
+
+    /// Run a resolved WASI tool with stdout / stderr captured in memory.
+    ///
+    /// Mirrors [`Self::run`] but redirects the guest's stdout and stderr
+    /// into capped [`MemoryOutputPipe`] buffers so the host can examine
+    /// the output without printing to the inherited terminal. Used by
+    /// `specrun review`'s `kind: tool` evaluator to fold a tool's
+    /// `ReviewResult` envelope into the scan output (RFC-32 §D4).
+    ///
+    /// # Errors
+    ///
+    /// Same failure modes as [`Self::run`]; the captured buffers are
+    /// dropped on error.
+    pub fn run_captured(
+        &self, resolved: &ResolvedTool, ctx: &RunContext,
+    ) -> Result<CapturedOutput, ToolError> {
+        let stdout = MemoryOutputPipe::new(CAPTURE_BUFFER_BYTES);
+        let stderr = MemoryOutputPipe::new(CAPTURE_BUFFER_BYTES);
+        let outcome =
+            self.invoke(resolved, ctx, Stdio::Captured(stdout.clone(), stderr.clone()))?;
+        Ok(CapturedOutput {
+            stdout: stdout.contents().to_vec(),
+            stderr: stderr.contents().to_vec(),
+            exit_code: outcome.exit_code,
+        })
+    }
+
+    fn invoke(
+        &self, resolved: &ResolvedTool, ctx: &RunContext, stdio: Stdio,
+    ) -> Result<Outcome, ToolError> {
         let project_dir = canonical_project_dir(&ctx.project_dir)?;
         let capability_dir =
             canonical_capability_dir(&resolved.scope, ctx.capability_dir.as_deref())?;
         let preopens = prepare_preopens(resolved, &project_dir, capability_dir.as_deref())?;
-        let wasi =
-            build_wasi_ctx(resolved, ctx, &project_dir, capability_dir.as_deref(), &preopens)?;
+        let wasi = build_wasi_ctx(
+            resolved,
+            ctx,
+            &project_dir,
+            capability_dir.as_deref(),
+            &preopens,
+            stdio,
+        )?;
 
         let component =
             Component::from_file(&self.engine, &resolved.bytes_path).map_err(|err| {
@@ -109,12 +148,38 @@ impl WasiRunner {
             }
         })?;
 
-        match command.wasi_cli_run().call_run(&mut store) {
-            Ok(Ok(())) => Ok(0),
-            Ok(Err(())) => Ok(1),
-            Err(err) => map_guest_error(&err),
-        }
+        let exit_code = match command.wasi_cli_run().call_run(&mut store) {
+            Ok(Ok(())) => 0,
+            Ok(Err(())) => 1,
+            Err(err) => map_guest_error(&err)?,
+        };
+        Ok(Outcome { exit_code })
     }
+}
+
+/// Captured stdout / stderr bytes plus the guest exit code from a
+/// [`WasiRunner::run_captured`] invocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapturedOutput {
+    /// Verbatim stdout bytes captured from the guest.
+    pub stdout: Vec<u8>,
+    /// Verbatim stderr bytes captured from the guest.
+    pub stderr: Vec<u8>,
+    /// Process-style exit code returned by the guest.
+    pub exit_code: i32,
+}
+
+const CAPTURE_BUFFER_BYTES: usize = 1024 * 1024;
+
+#[derive(Debug)]
+enum Stdio {
+    Inherit,
+    Captured(MemoryOutputPipe, MemoryOutputPipe),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Outcome {
+    exit_code: i32,
 }
 
 struct WasiState {
@@ -201,7 +266,7 @@ fn prepare_preopens(
 
 fn build_wasi_ctx(
     resolved: &ResolvedTool, ctx: &RunContext, project_dir: &Path, capability_dir: Option<&Path>,
-    preopens: &[Preopen],
+    preopens: &[Preopen], stdio: Stdio,
 ) -> Result<WasiCtx, ToolError> {
     let mut builder = WasiCtxBuilder::new();
     builder
@@ -210,7 +275,15 @@ fn build_wasi_ctx(
         .allow_udp(false)
         .allow_ip_name_lookup(false);
 
-    builder.inherit_stdio();
+    match stdio {
+        Stdio::Inherit => {
+            builder.inherit_stdio();
+        }
+        Stdio::Captured(stdout, stderr) => {
+            builder.stdout(stdout);
+            builder.stderr(stderr);
+        }
+    }
 
     let mut argv = Vec::with_capacity(ctx.args.len() + 1);
     argv.push(resolved.tool.name.clone());

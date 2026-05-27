@@ -3,6 +3,7 @@ pub mod codex;
 mod init;
 pub mod plan;
 pub mod registry;
+pub mod review;
 pub mod slice;
 pub mod source;
 pub mod target;
@@ -19,6 +20,7 @@ use specify_error::Result;
 
 use crate::runtime::cli::{Cli, Commands, Format};
 use crate::runtime::commands::codex::cli::CodexAction;
+use crate::runtime::commands::review::cli::ReviewAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
 use crate::runtime::commands::tool::cli::ToolAction;
@@ -26,6 +28,10 @@ use crate::runtime::commands::workspace::cli::WorkspaceAction;
 use crate::runtime::context::Ctx;
 use crate::runtime::output::{self, Exit, report};
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "The top-level dispatcher mirrors the full subcommand surface; splitting per verb would scatter the contract and obscure parity with `Commands`."
+)]
 pub fn run(cli: Cli) -> Exit {
     let format = cli.format;
     match cli.command {
@@ -103,6 +109,33 @@ pub fn run(cli: Cli) -> Exit {
                 run_tool_with(format, &name, vec!["schema".to_string(), schema])
             }
         },
+        Commands::Review { action } => match action {
+            ReviewAction::Run {
+                codex_root,
+                target,
+                sources,
+                slice,
+                artifacts,
+                languages,
+                dump_model,
+                strict_hints,
+                output_format,
+                project_dir,
+            } => scoped_at(format, &project_dir, |ctx| {
+                review::run::run(
+                    ctx,
+                    codex_root.as_deref(),
+                    &target,
+                    &sources,
+                    slice.as_deref(),
+                    &artifacts,
+                    &languages,
+                    dump_model,
+                    strict_hints,
+                    output_format.into(),
+                )
+            }),
+        },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
@@ -139,6 +172,23 @@ where
     F: FnOnce(&Ctx) -> Result<()>,
 {
     let ctx = match Ctx::load(format) {
+        Ok(ctx) => ctx,
+        Err(err) => return report(format, &err),
+    };
+    match f(&ctx) {
+        Ok(()) => Exit::Success,
+        Err(err) => report(format, &err),
+    }
+}
+
+/// Variant of [`scoped`] that loads `Ctx` against an explicit
+/// project directory instead of the process CWD. Used by handlers
+/// that take a `--project-dir` flag (e.g. `specrun review`).
+fn scoped_at<F>(format: Format, project_dir: &Path, f: F) -> Exit
+where
+    F: FnOnce(&Ctx) -> Result<()>,
+{
+    let ctx = match Ctx::load_at(format, project_dir) {
         Ok(ctx) => ctx,
         Err(err) => return report(format, &err),
     };

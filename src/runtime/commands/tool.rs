@@ -19,10 +19,11 @@ use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
 
-use self::dto::{Inventory, ScopedTool, WarningRow, warning_row};
+pub(super) use self::dto::{Inventory, ScopedTool};
+use self::dto::{WarningRow, warning_row};
 use crate::runtime::context::Ctx;
 
-fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
+pub fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_scope = ToolScope::Project {
         project_name: ctx.config.name.clone(),
     };

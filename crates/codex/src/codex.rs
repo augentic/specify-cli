@@ -517,14 +517,14 @@ pub struct ReviewFinding {
 mod tests {
     use jsonschema::Validator;
     use serde_json::{Value as JsonValue, json};
+    use specify_schema::{
+        CODEX_RULE_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA, REVIEW_FINDING_JSON_SCHEMA,
+    };
 
     use super::{
         Applicability, Artifact, CodexRule, Confidence, Deprecated, DeterministicHint,
         FindingEvidence, FindingLocation, FindingSource, FindingStatus, HintKind, Origin, PathRoot,
         Reference, ResolvedCodex, ResolvedRule, ReviewFinding, ReviewMode, Severity,
-    };
-    use crate::schema::{
-        CODEX_RULE_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA, REVIEW_FINDING_JSON_SCHEMA,
     };
 
     fn validator(schema_source: &str) -> Validator {

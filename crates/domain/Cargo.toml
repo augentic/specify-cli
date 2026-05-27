@@ -15,11 +15,11 @@ workspace = true
 
 [dependencies]
 specify-error = { workspace = true }
+specify-schema = { workspace = true }
 specify-tool = { workspace = true }
 jiff = { workspace = true }
 clap = { workspace = true }
 glob = { workspace = true }
-jsonschema = { workspace = true }
 petgraph = { workspace = true }
 regex = { workspace = true }
 semver = { workspace = true }
@@ -28,12 +28,12 @@ serde-saphyr = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
 tempfile = { workspace = true }
-thiserror = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
 
 [dev-dependencies]
+jsonschema = { workspace = true }
 tempfile = { workspace = true }
 serde_json = { workspace = true }
 regex = { workspace = true }

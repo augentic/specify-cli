@@ -20,14 +20,15 @@
 //!
 //! # Schema vs wire shape
 //!
-//! The vendored schema at
-//! `schemas/codex/codex-rule.schema.json` is byte-identical to the
-//! authoring schema enforced by `specdev check`, so it carries
-//! `snake_case` keys. Validation runs against the original raw
-//! frontmatter, *before* the `snake_case -> kebab-case` lift, which
-//! keeps schema semantics aligned with what authors actually wrote
-//! on disk. The lift then rewrites keys at every nesting level so
-//! the value can deserialize cleanly into [`CodexRule`].
+//! The canonical schema at `schemas/codex/codex-rule.schema.json` is
+//! the single source of truth for both the runtime resolver and
+//! `specdev check`'s codex-frontmatter predicate (RFC-32 §"Eliminates
+//! the vendored codex-rule schema"). It carries `snake_case` keys.
+//! Validation runs against the original raw frontmatter, *before* the
+//! `snake_case -> kebab-case` lift, which keeps schema semantics
+//! aligned with what authors actually wrote on disk. The lift then
+//! rewrites keys at every nesting level so the value can deserialize
+//! cleanly into [`CodexRule`].
 //!
 //! # Out of scope
 //!
@@ -42,14 +43,15 @@ use std::{fs, io};
 
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use specify_error::ValidationStatus;
+use specify_schema::validate_value;
 
 use super::CodexRule;
-use crate::schema::validate_value;
 
-/// Vendored codex-rule frontmatter schema; byte-identical to the
-/// authoring copy under `crates/authoring/schemas/`. Drift between
-/// the two copies is enforced by the `codex.schema-drift`
-/// predicate (CH-09).
+/// Canonical codex-rule frontmatter schema, also exposed at
+/// [`specify_schema::CODEX_RULE_JSON_SCHEMA`]. Per RFC-32
+/// §"Eliminates the vendored codex-rule schema", this is the single
+/// source of truth — `specdev check`'s codex predicate compiles the
+/// same constant via `specify-authoring`.
 const CODEX_RULE_SCHEMA: &str = include_str!("../../../../schemas/codex/codex-rule.schema.json");
 
 /// Failure modes for [`parse_codex_rule`] / [`parse_codex_rule_file`].

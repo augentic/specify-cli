@@ -2,7 +2,7 @@
 //!
 //! Exercises the runtime codex export contract — RFC-28 §"Resolved
 //! codex export" and §"Codex root resolution (v1)" — via the
-//! [`specify_domain::codex::build_resolved_codex`] library entrypoint
+//! [`specify_codex::build_resolved_codex`] library entrypoint
 //! for the positive scenarios and `assert_cmd` for the negative
 //! `codex-root-required` scenario (the latter end-to-end proof that
 //! the CH-17 CLI plumbing wires through to `Exit::ValidationFailed`).
@@ -40,7 +40,7 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::Value;
-use specify_domain::codex::{ResolveInputs, ResolvedCodex, build_resolved_codex};
+use specify_codex::{ResolveInputs, ResolvedCodex, build_resolved_codex};
 use tempfile::tempdir;
 
 /// Locate the `augentic/specify` plugin-repo checkout. Returns
@@ -168,11 +168,7 @@ fn omnia_with_documentation_source_overlay() {
         .iter()
         .find(|r| r.rule_id == "SRC-001")
         .expect("SRC-001 must appear when documentation source is bound");
-    assert_eq!(
-        src_001.origin,
-        specify_domain::codex::Origin::Source,
-        "SRC-001 must carry origin=source",
-    );
+    assert_eq!(src_001.origin, specify_codex::Origin::Source, "SRC-001 must carry origin=source");
 
     let value = serde_json::to_value(&resolved).expect("to_value");
     assert_golden(&value, "omnia-with-documentation");

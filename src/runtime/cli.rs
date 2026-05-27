@@ -12,6 +12,7 @@ pub use crate::output::Format;
 use crate::runtime::commands::codex::cli::CodexAction;
 use crate::runtime::commands::plan::cli::PlanAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
+use crate::runtime::commands::review::cli::ReviewAction;
 use crate::runtime::commands::slice::cli::SliceAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
@@ -36,10 +37,6 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Top-level clap subcommands mirror the CLI surface; boxing one branch would add dispatch noise without improving runtime behavior."
-)]
 pub enum Commands {
     /// Initialize .specify/ in a project.
     ///
@@ -97,6 +94,14 @@ pub enum Commands {
     Tool {
         #[command(subcommand)]
         action: ToolAction,
+    },
+
+    /// Deterministic review (RFC-32 Phase 2). Resolves applicable codex
+    /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
+    /// and emits the §D9 review-result envelope. Read-only.
+    Review {
+        #[command(subcommand)]
+        action: ReviewAction,
     },
 
     /// Slice lifecycle operations — one `refine → build → merge` loop.
