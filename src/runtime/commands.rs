@@ -3,6 +3,7 @@ pub mod codex;
 mod init;
 pub mod plan;
 pub mod registry;
+pub mod review;
 pub mod slice;
 pub mod source;
 pub mod target;
@@ -19,6 +20,7 @@ use specify_error::Result;
 
 use crate::runtime::cli::{Cli, Commands, Format};
 use crate::runtime::commands::codex::cli::CodexAction;
+use crate::runtime::commands::review::cli::ReviewAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
 use crate::runtime::commands::tool::cli::ToolAction;
@@ -26,6 +28,10 @@ use crate::runtime::commands::workspace::cli::WorkspaceAction;
 use crate::runtime::context::Ctx;
 use crate::runtime::output::{self, Exit, report};
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "The top-level dispatcher mirrors the full subcommand surface; splitting per verb would scatter the contract and obscure parity with `Commands`."
+)]
 pub fn run(cli: Cli) -> Exit {
     let format = cli.format;
     match cli.command {
@@ -96,10 +102,39 @@ pub fn run(cli: Cli) -> Exit {
             }),
         },
         Commands::Tool { action } => match action {
-            ToolAction::Run { name, args } => run_tool(format, &name, args),
+            ToolAction::Run { name, args } => run_tool_with(format, &name, args),
             ToolAction::Fetch { name } => scoped(format, |ctx| tool::fetch(ctx, name.as_deref())),
             ToolAction::Gc => scoped(format, tool::gc),
-            ToolAction::Schema { name, schema } => run_tool_schema(format, &name, &schema),
+            ToolAction::Schema { name, schema } => {
+                run_tool_with(format, &name, vec!["schema".to_string(), schema])
+            }
+        },
+        Commands::Review { action } => match action {
+            ReviewAction::Run {
+                codex_root,
+                target,
+                sources,
+                slice,
+                artifacts,
+                languages,
+                dump_model,
+                strict_hints,
+                output_format,
+                project_dir,
+            } => scoped_at(format, &project_dir, |ctx| {
+                review::run::run(
+                    ctx,
+                    codex_root.as_deref(),
+                    &target,
+                    &sources,
+                    slice.as_deref(),
+                    &artifacts,
+                    &languages,
+                    dump_model,
+                    strict_hints,
+                    output_format.into(),
+                )
+            }),
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
@@ -146,6 +181,23 @@ where
     }
 }
 
+/// Variant of [`scoped`] that loads `Ctx` against an explicit
+/// project directory instead of the process CWD. Used by handlers
+/// that take a `--project-dir` flag (e.g. `specrun review`).
+fn scoped_at<F>(format: Format, project_dir: &Path, f: F) -> Exit
+where
+    F: FnOnce(&Ctx) -> Result<()>,
+{
+    let ctx = match Ctx::load_at(format, project_dir) {
+        Ok(ctx) => ctx,
+        Err(err) => return report(format, &err),
+    };
+    match f(&ctx) {
+        Ok(()) => Exit::Success,
+        Err(err) => report(format, &err),
+    }
+}
+
 /// Run a command that does NOT need project context but may still
 /// fail with an `Error` (e.g. `source resolve` / `target resolve`).
 /// The `Ctx`-bearing peer is [`scoped`].
@@ -159,31 +211,17 @@ where
     }
 }
 
-/// `tool run` is the only handler that mints a [`Exit::Code`] exit;
+/// Tool execution is the only handler path that mints a [`Exit::Code`] exit;
 /// see [DECISIONS.md §"Exit codes"](../DECISIONS.md#exit-codes) for
 /// the rationale. Handled outside the `Result<()>` channel so the
 /// success branch can carry the guest's exit code rather than
 /// collapsing to `Success`.
-fn run_tool(format: Format, name: &str, args: Vec<String>) -> Exit {
+fn run_tool_with(format: Format, name: &str, args: Vec<String>) -> Exit {
     let ctx = match Ctx::load(format) {
         Ok(ctx) => ctx,
         Err(err) => return report(format, &err),
     };
     match tool::run(&ctx, name, args) {
-        Ok(0) => Exit::Success,
-        Ok(code) => Exit::Code(code),
-        Err(err) => report(format, &err),
-    }
-}
-
-/// `tool schema` delegates to the tool's `schema` subcommand and
-/// passes through the guest's exit code, mirroring [`run_tool`].
-fn run_tool_schema(format: Format, name: &str, schema: &str) -> Exit {
-    let ctx = match Ctx::load(format) {
-        Ok(ctx) => ctx,
-        Err(err) => return report(format, &err),
-    };
-    match tool::schema(&ctx, name, schema) {
         Ok(0) => Exit::Success,
         Ok(code) => Exit::Code(code),
         Err(err) => report(format, &err),

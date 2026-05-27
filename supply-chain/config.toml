@@ -118,6 +118,10 @@ criteria = "safe-to-deploy"
 version = "0.5.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.bstr]]
+version = "1.12.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.bytecount]]
 version = "0.6.9"
 criteria = "safe-to-deploy"
@@ -224,6 +228,14 @@ criteria = "safe-to-deploy"
 
 [[exemptions.crc32fast]]
 version = "1.5.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.crossbeam-deque]]
+version = "0.8.6"
+criteria = "safe-to-deploy"
+
+[[exemptions.crossbeam-epoch]]
+version = "0.9.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.crossbeam-utils]]
@@ -462,6 +474,10 @@ criteria = "safe-to-deploy"
 version = "0.33.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.globset]]
+version = "0.4.18"
+criteria = "safe-to-deploy"
+
 [[exemptions.granit-parser]]
 version = "0.0.2"
 criteria = "safe-to-deploy"
@@ -552,6 +568,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.idna_adapter]]
 version = "1.2.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.ignore]]
+version = "0.4.25"
 criteria = "safe-to-deploy"
 
 [[exemptions.im-rc]]
@@ -932,6 +952,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rand_xoshiro]]
 version = "0.6.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.rayon]]
+version = "1.12.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.redox_syscall]]

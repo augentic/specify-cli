@@ -8,7 +8,7 @@ use walkdir::WalkDir;
 
 use crate::context::Context;
 use crate::finding::{Check, Finding, Location};
-use crate::helpers::{strip_html_comments, under_symlink, walk_skill_files};
+use crate::helpers::{strip_html_comments, walk_markdown_files, walk_skill_files};
 
 const RULE_UNRESOLVED: &str = "links.unresolved";
 const RULE_BROKEN_REFERENCE: &str = "links.broken-reference";
@@ -43,7 +43,7 @@ fn check_markdown_links(root: &Path) -> Vec<Finding> {
     let inline_re = inline_code_pattern();
 
     let mut findings = Vec::new();
-    for path in walk_markdown_files(root).unwrap_or_default() {
+    for path in walk_markdown_files(root, root).unwrap_or_default() {
         let path_str = path_for_match(&path);
         if path_matches_any(&path_str, skip)
             || skip_rfc_markdown_path(&path_str)
@@ -145,7 +145,7 @@ fn check_directives(root: &Path) -> Vec<Finding> {
     let registry = build_skill_registry(root);
 
     let mut findings = Vec::new();
-    for path in walk_markdown_files(root).unwrap_or_default() {
+    for path in walk_markdown_files(root, root).unwrap_or_default() {
         let path_str = path_for_match(&path);
         if path_matches_any(&path_str, skip) || skip_test_fixtures(&path_str) {
             continue;
@@ -209,26 +209,6 @@ fn build_skill_registry(root: &Path) -> HashMap<String, HashSet<String>> {
     }
 
     registry
-}
-
-fn walk_markdown_files(root: &Path) -> Result<Vec<PathBuf>, std::io::Error> {
-    let mut out = Vec::new();
-    for entry in WalkDir::new(root).follow_links(false).into_iter() {
-        let entry = entry?;
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let path = entry.into_path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
-            continue;
-        }
-        if under_symlink(root, &path).unwrap_or(true) {
-            continue;
-        }
-        out.push(path);
-    }
-    out.sort();
-    Ok(out)
 }
 
 fn markdown_link_skip_patterns() -> &'static [Regex] {

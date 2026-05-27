@@ -1,77 +1,19 @@
 //! Integration tests for `specrun tool schema`.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use tempfile::tempdir;
 
 mod common;
-use common::{parse_json, repo_root, sha256_hex, specrun};
+use common::{parse_json, repo_root, scaffold_tool_project, specrun};
 
 fn contract_wasm() -> PathBuf {
     repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
 }
 
 fn vectis_wasm() -> PathBuf {
-    repo_root().join("wasi-tools/target/wasm32-wasip2/release/vectis.wasm")
-}
-
-use std::sync::atomic::{AtomicU64, Ordering};
-
-struct SchemaFixture {
-    _tmp: tempfile::TempDir,
-    project: PathBuf,
-    cache: PathBuf,
-}
-
-fn scaffold_project_with_tool(tool_name: &str, wasm_path: &Path) -> SchemaFixture {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-
-    let tmp = tempdir().expect("tempdir");
-    let project = tmp.path().to_path_buf();
-    let adapter = project.join("adapters/targets/test-adp");
-    let briefs = adapter.join("briefs");
-    fs::create_dir_all(project.join(".specify")).expect("create .specify");
-    fs::create_dir_all(&briefs).expect("create adapter briefs");
-
-    let cache = std::env::temp_dir()
-        .join(format!("specify-tool-schema-{tool_name}-{}-{n}", std::process::id()));
-    fs::create_dir_all(&cache).expect("create cache");
-
-    fs::write(
-        project.join(".specify/project.yaml"),
-        "name: schema-test\nadapter: test-adp\nrules: {}\n",
-    )
-    .expect("write project.yaml");
-    fs::write(
-        adapter.join("adapter.yaml"),
-        "name: test-adp\nversion: 1\naxis: target\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test adapter\n",
-    )
-    .expect("write adapter.yaml");
-    for op in ["shape", "build", "merge"] {
-        fs::write(
-            briefs.join(format!("{op}.md")),
-            format!("---\nid: {op}\ndescription: {op} brief\n---\n"),
-        )
-        .expect("write brief");
-    }
-
-    let source = format!("file://{}", wasm_path.display());
-    let sha256 = sha256_hex(wasm_path);
-    fs::write(
-        adapter.join("tools.yaml"),
-        format!(
-            "tools:\n  - name: {tool_name}\n    version: 0.1.0\n    source: \"{source}\"\n    sha256: \"{sha256}\"\n    permissions:\n      read: []\n      write: []\n"
-        ),
-    )
-    .expect("write tools.yaml");
-
-    SchemaFixture {
-        _tmp: tmp,
-        project,
-        cache,
-    }
+    repo_root().join("target/vectis-wasi-tools/release/vectis.wasm")
 }
 
 #[test]
@@ -83,11 +25,12 @@ fn schema_contract_no_schemas_exits_nonzero() {
         wasm.display()
     );
 
-    let fixture = scaffold_project_with_tool("contract", &wasm);
+    let tmp = tempdir().expect("tempdir");
+    let (project, cache) = scaffold_tool_project(&tmp, "contract", &wasm);
 
     let assert = specrun()
-        .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
+        .current_dir(&project)
+        .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["tool", "schema", "contract", "tokens"])
         .assert()
         .failure();
@@ -108,11 +51,12 @@ fn schema_vectis_tokens_returns_valid_json() {
         return;
     }
 
-    let fixture = scaffold_project_with_tool("vectis", &wasm);
+    let tmp = tempdir().expect("tempdir");
+    let (project, cache) = scaffold_tool_project(&tmp, "vectis", &wasm);
 
     let assert = specrun()
-        .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
+        .current_dir(&project)
+        .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["tool", "schema", "vectis", "tokens"])
         .assert()
         .success();
@@ -134,11 +78,12 @@ fn schema_vectis_unknown_name_exits_nonzero() {
         return;
     }
 
-    let fixture = scaffold_project_with_tool("vectis", &wasm);
+    let tmp = tempdir().expect("tempdir");
+    let (project, cache) = scaffold_tool_project(&tmp, "vectis", &wasm);
 
     let assert = specrun()
-        .current_dir(&fixture.project)
-        .env("SPECIFY_TOOLS_CACHE", &fixture.cache)
+        .current_dir(&project)
+        .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["tool", "schema", "vectis", "nonexistent"])
         .assert()
         .failure();

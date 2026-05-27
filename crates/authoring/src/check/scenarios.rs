@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 use crate::context::Context;
 use crate::finding::{Check, Finding, Location};
 use crate::helpers::{relative_display, under_symlink};
-use crate::schema::{SchemaId, collect_errors_for_test};
+use crate::schema::{SchemaId, collect_errors};
 
 pub const RULE_SCHEMA_VIOLATION: &str = "scenarios.schema-violation";
 pub const RULE_STAGES_NOT_CONTIGUOUS: &str = "scenarios.stages-not-contiguous-prefix";
@@ -45,17 +45,16 @@ struct ScenarioFile {
 
 /// Run scenario frontmatter validation only (tests / direct invocation).
 pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Finding> {
-    let validator =
-        match ctx.schema(ctx.framework_schema_dir().join(SchemaId::Scenario.file_name())) {
-            Ok(v) => v,
-            Err(error) => {
-                return vec![finding(
-                    RULE_SCHEMA_VIOLATION,
-                    format!("Scenario frontmatter: cannot load scenario schema: {error}"),
-                    None,
-                )];
-            }
-        };
+    let validator = match crate::schema::validator(ctx, SchemaId::Scenario) {
+        Ok(v) => v,
+        Err(error) => {
+            return vec![finding(
+                RULE_SCHEMA_VIOLATION,
+                format!("Scenario frontmatter: cannot load scenario schema: {error}"),
+                None,
+            )];
+        }
+    };
 
     let candidate_paths = discover_scenario_candidates(ctx);
     let mut opted = Vec::new();
@@ -92,7 +91,7 @@ pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Finding> {
 
     for sc in &opted {
         let value = JsonValue::Object(sc.frontmatter.clone().into_iter().collect());
-        if let Err(errors) = collect_errors_for_test(&validator, &value) {
+        if let Err(errors) = collect_errors(&validator, &value) {
             for error in errors {
                 let at = if error.instance_path.is_empty() {
                     "/".to_string()

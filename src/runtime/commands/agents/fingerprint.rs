@@ -80,7 +80,7 @@ impl InputCollector {
                 let bytes = fs::read(absolute).map_err(Error::Io)?;
                 Ok(InputFingerprint {
                     path: relative.clone(),
-                    sha256: sha256_hex(&bytes),
+                    sha256: specify_tool::sha256_hex(&bytes),
                 })
             })
             .collect()
@@ -122,11 +122,7 @@ pub(super) fn body_sha256(body: &[u8]) -> String {
 }
 
 fn prefixed_sha256(bytes: &[u8]) -> String {
-    format!("sha256:{}", sha256_hex(bytes))
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    specify_tool::sha256_hex(bytes)
+    format!("sha256:{}", specify_tool::sha256_hex(bytes))
 }
 
 fn repo_relative_path(project_dir: &Path, path: &Path) -> Result<String, Error> {

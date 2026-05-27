@@ -29,7 +29,7 @@
 //!    matches the canonicalised tempdir root with the literal
 //!    `<FRAMEWORK_ROOT>` placeholder.
 //! 3. Recompute the fingerprint via
-//!    [`specify_domain::codex::fingerprint::fingerprint`] against
+//!    [`specify_codex::fingerprint::fingerprint`] against
 //!    the normalised finding. The stored fingerprint then reflects
 //!    the placeholder-anchored canonical preimage.
 //! 4. Re-serialise and compare/regenerate the placeholder-anchored
@@ -59,8 +59,8 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::{Value, json};
-use specify_domain::codex::finding::validate_finding_json;
-use specify_domain::codex::{ReviewFinding, fingerprint};
+use specify_codex::finding::validate_finding_json;
+use specify_codex::{ReviewFinding, fingerprint};
 use tempfile::TempDir;
 
 /// Replacement token for the canonicalised framework-root prefix in

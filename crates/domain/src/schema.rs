@@ -1,58 +1,31 @@
-//! JSON Schema validation hooks for RFC-25 on-disk artifacts.
+//! Domain-shaped JSON Schema validation hooks for RFC-25 on-disk
+//! artifacts.
 //!
-//! Covers `plan.yaml` (refined for structured `slices[].sources[]`
-//! bindings, the `target` field, and the slice-level `divergence` enum)
-//! and per-source `Evidence` files under `.specify/slices/<name>/evidence/`.
+//! The raw JSON-Schema plumbing and embedded constants live in
+//! [`specify_schema`] per RFC-32 §"Library layout"; this module holds
+//! the workflow-aware wrappers — they import [`crate::change::Plan`],
+//! aggregate per-file findings into a single
+//! [`specify_error::Error::Validation`] payload, and pin the wire
+//! `rule_id` strings the CLI surfaces.
 //!
-//! Schemas are embedded at compile time via `include_str!` so the binary
-//! carries them with no runtime filesystem lookup. The validators
-//! return [`Error::Validation`] on a schema mismatch so the CLI exits
-//! with code 2 (`Exit::ValidationFailed` in the binary crate).
+//! Schemas are embedded by [`specify_schema::constants`] via
+//! `include_str!`. The validators return [`Error::Validation`] on a
+//! schema mismatch so the CLI exits with code 2
+//! (`Exit::ValidationFailed` in the binary crate).
 
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use jsonschema::Validator;
-use jsonschema::error::{ValidationError, ValidationErrorKind};
-use serde::Serialize;
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+pub use specify_schema::{
+    CODEX_RULE_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FUSION_JSON_SCHEMA,
+    PLAN_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA, REVIEW_FINDING_JSON_SCHEMA, compile_schema,
+    read_yaml_as_json, validate_serialisable, validate_value,
+};
 
 use crate::change::Plan;
-
-const PLAN_JSON_SCHEMA: &str = include_str!("../../../schemas/plan/plan.schema.json");
-const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.schema.json");
-pub(crate) const FUSION_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/slice/fusion.schema.json");
-const COMPONENTS_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/design-system/components.schema.json");
-// RFC-28 Phase 2 runtime codex and review schemas. Visible across the
-// crate so the `codex` module can validate its DTO round-trips and
-// drive the runtime `validate_*` helpers. `REVIEW_FINDING_JSON_SCHEMA`
-// is the production input to `codex::finding::validate_finding`
-// (CH-16); the resolved-codex and codex-rule schemas remain available
-// to the resolver tests and will feed the CH-17 export validator.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "consumed by codex-DTO round-trip tests today; CH-17 will validate `specrun codex export` payloads against this schema at runtime."
-    )
-)]
-pub(crate) const RESOLVED_CODEX_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/codex/resolved.schema.json");
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "consumed by codex-DTO round-trip tests today; reserved for CH-17 frontmatter validation at runtime."
-    )
-)]
-pub(crate) const CODEX_RULE_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/codex/codex-rule.schema.json");
-pub(crate) const REVIEW_FINDING_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/review/finding.schema.json");
 
 /// Validate `plan` against the embedded `schemas/plan/plan.schema.json`.
 ///
@@ -232,11 +205,6 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
     ))
 }
 
-fn read_yaml_as_json(path: &Path) -> std::result::Result<JsonValue, String> {
-    let raw = fs::read_to_string(path).map_err(|err| format!("read failed: {err}"))?;
-    serde_saphyr::from_str(&raw).map_err(|err| format!("YAML parse failed: {err}"))
-}
-
 fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationSummary {
     let detail = summary.detail.take().unwrap_or_default();
     summary.detail = Some(if detail.is_empty() {
@@ -245,29 +213,6 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
         format!("{}: {}", path.display(), detail)
     });
     summary
-}
-
-/// Serialise `value` to JSON and validate against `schema_source`.
-///
-/// Returns `Ok(())` on a clean validation; otherwise an
-/// [`Error::Validation`] whose [`ValidationSummary`] entries carry
-/// `rule_id` and `rule`.
-///
-/// # Errors
-///
-/// - [`Error::Diag`] when `value` is not JSON-serialisable.
-/// - [`Error::Validation`] when the instance fails the schema.
-pub fn validate_serialisable<T: Serialize>(
-    value: &T, schema_source: &str, rule_id: &str, rule: &str, serialise_code: &'static str,
-    serialise_label: &str,
-) -> Result<(), Error> {
-    let instance = serde_json::to_value(value).map_err(|err| Error::Diag {
-        code: serialise_code,
-        detail: format!(
-            "failed to serialise {serialise_label} to JSON for schema validation: {err}"
-        ),
-    })?;
-    err_from_failures(validation_failures(&instance, schema_source, rule_id, rule))
 }
 
 fn validation_failures(
@@ -283,127 +228,9 @@ fn err_from_failures(results: Vec<ValidationSummary>) -> Result<()> {
     if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
 }
 
-/// Validate `instance` against the embedded JSON Schema `schema_source`.
-///
-/// Returns one `Pass`-status [`ValidationSummary`] entry on a clean
-/// validation, one `Fail` entry with the joined error list on a schema
-/// mismatch, or a single `Fail` carrying the meta-failure reason if the
-/// embedded schema itself cannot be parsed or compiled. Callers wrap
-/// the resulting vector into the [`Error`] variant that suits their
-/// exit-code policy: structural manifest checks fold failures into
-/// [`Error::Diag`] (exit 1); plan / evidence checks fold into
-/// [`Error::Validation`] (exit 2).
-#[must_use]
-pub fn validate_value(
-    instance: &JsonValue, schema_source: &str, rule_id: &str, rule: &str,
-) -> Vec<ValidationSummary> {
-    let validator = match compile_schema(schema_source) {
-        Ok(v) => v,
-        Err(err) => {
-            return vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: rule_id.into(),
-                rule: rule.into(),
-                detail: Some(err.to_string()),
-            }];
-        }
-    };
-    let errors: Vec<String> =
-        validator.iter_errors(instance).map(|err| validation_error_detail(&err)).collect();
-    if errors.is_empty() {
-        vec![ValidationSummary {
-            status: ValidationStatus::Pass,
-            rule_id: rule_id.into(),
-            rule: rule.into(),
-            detail: None,
-        }]
-    } else {
-        vec![ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: rule_id.into(),
-            rule: rule.into(),
-            detail: Some(errors.join("; ")),
-        }]
-    }
-}
-
-fn validation_error_detail(err: &ValidationError<'_>) -> String {
-    let path = match err.kind() {
-        ValidationErrorKind::AdditionalProperties { unexpected } if unexpected.len() == 1 => {
-            child_pointer(&err.instance_path().to_string(), &unexpected[0])
-        }
-        _ => err.instance_path().to_string(),
-    };
-    format!("{path}: {err}")
-}
-
-fn child_pointer(parent: &str, property: &str) -> String {
-    let property = property.replace('~', "~0").replace('/', "~1");
-    if parent.is_empty() { format!("/{property}") } else { format!("{parent}/{property}") }
-}
-
-pub(crate) fn compile_schema(schema_source: &str) -> Result<Validator> {
-    let schema: JsonValue = serde_json::from_str(schema_source).map_err(|err| Error::Diag {
-        code: "schema-meta-loadable",
-        detail: format!("embedded JSON Schema does not parse as JSON: {err}"),
-    })?;
-    jsonschema::validator_for(&schema).map_err(|err| Error::Diag {
-        code: "schema-meta-compilable",
-        detail: format!("embedded JSON Schema does not compile: {err}"),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Embedded plan schema parses and compiles. Cheap smoke that
-    /// catches a corrupted `include_str!` import.
-    #[test]
-    fn plan_schema_compiles() {
-        compile_schema(PLAN_JSON_SCHEMA).expect("plan schema compiles");
-    }
-
-    /// Embedded evidence schema parses and compiles.
-    #[test]
-    fn evidence_schema_compiles() {
-        compile_schema(EVIDENCE_JSON_SCHEMA).expect("evidence schema compiles");
-    }
-
-    /// Embedded fusion schema parses and compiles.
-    #[test]
-    fn fusion_schema_compiles() {
-        compile_schema(FUSION_JSON_SCHEMA).expect("fusion schema compiles");
-    }
-
-    /// Embedded components catalog schema parses and compiles.
-    #[test]
-    fn components_schema_compiles() {
-        compile_schema(COMPONENTS_JSON_SCHEMA).expect("components schema compiles");
-    }
-
-    /// Embedded resolved codex export schema parses and compiles
-    /// (RFC-28 §Resolved codex export).
-    #[test]
-    fn resolved_codex_schema_compiles() {
-        compile_schema(RESOLVED_CODEX_JSON_SCHEMA).expect("resolved codex schema compiles");
-    }
-
-    /// Embedded vendored codex-rule schema parses and compiles. The
-    /// runtime copy is byte-identical to
-    /// `crates/authoring/schemas/codex-rule.schema.json`; the
-    /// `codex.schema-drift` predicate (CH-09) enforces parity.
-    #[test]
-    fn codex_rule_schema_compiles() {
-        compile_schema(CODEX_RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
-    }
-
-    /// Embedded `ReviewFinding` schema parses and compiles
-    /// (RFC-28 §Structured review finding schema).
-    #[test]
-    fn review_finding_schema_compiles() {
-        compile_schema(REVIEW_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
-    }
 
     /// The `UNI-014` example from RFC-28 §Resolved codex export
     /// validates cleanly against the resolved-codex schema.
@@ -448,8 +275,7 @@ mod tests {
         });
         let validator =
             compile_schema(RESOLVED_CODEX_JSON_SCHEMA).expect("resolved codex schema compiles");
-        let errors: Vec<String> =
-            validator.iter_errors(&instance).map(|e| validation_error_detail(&e)).collect();
+        let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
         assert!(errors.is_empty(), "RFC-28 UNI-014 example must validate; errors: {errors:?}");
     }
 
@@ -484,16 +310,12 @@ mod tests {
         });
         let validator =
             compile_schema(REVIEW_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
-        let errors: Vec<String> =
-            validator.iter_errors(&instance).map(|e| validation_error_detail(&e)).collect();
+        let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
         assert!(errors.is_empty(), "RFC-28 FIND-0001 example must validate; errors: {errors:?}");
     }
 
     /// The codex-rule frontmatter example in RFC-28 §Codex file shape
-    /// validates cleanly against the vendored codex-rule schema. This
-    /// pairs the frontmatter block (in YAML in the RFC) with its JSON
-    /// equivalent, so the runtime schema gets the same structural
-    /// coverage as the authoring schema.
+    /// validates cleanly against the vendored codex-rule schema.
     #[test]
     fn codex_rule_schema_accepts_rfc_example() {
         let instance = serde_json::json!({
@@ -516,8 +338,7 @@ mod tests {
             ]
         });
         let validator = compile_schema(CODEX_RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
-        let errors: Vec<String> =
-            validator.iter_errors(&instance).map(|e| validation_error_detail(&e)).collect();
+        let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
         assert!(errors.is_empty(), "RFC-28 UNI-014 frontmatter must validate; errors: {errors:?}");
     }
 

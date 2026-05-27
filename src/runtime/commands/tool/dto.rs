@@ -7,19 +7,42 @@ use specify_error::Result;
 use specify_tool::cache::{self, Status as CacheStatus};
 use specify_tool::manifest::{Tool, ToolScope, ToolScopeKind};
 
-pub(super) type CacheKey = (String, String, String);
-
 #[derive(Debug, Clone)]
-pub(super) struct ScopedTool {
+pub struct ScopedTool {
     pub(super) scope: ToolScope,
     pub(super) tool: Tool,
 }
 
+impl ScopedTool {
+    /// Borrow the resolved scope (project / plugin) the tool was
+    /// declared in. Used by `commands::review` to invoke a declared
+    /// WASI tool with the right capability root.
+    pub const fn scope(&self) -> &ToolScope {
+        &self.scope
+    }
+
+    /// Borrow the tool record (name, version, source, permissions).
+    pub const fn tool(&self) -> &Tool {
+        &self.tool
+    }
+}
+
 #[derive(Debug)]
-pub(super) struct Inventory {
+pub struct Inventory {
     pub(super) tools: Vec<ScopedTool>,
     pub(super) warnings: Vec<WarningRow>,
     pub(super) scopes: Vec<ToolScope>,
+}
+
+impl Inventory {
+    /// Look up the declared tool with the given `name`, or return
+    /// `None` if no declaration matches. Project-scope declarations
+    /// shadow plugin-scope declarations per the merge contract in
+    /// [`specify_tool::load::merge_scoped`].
+    #[must_use]
+    pub fn find(&self, name: &str) -> Option<&ScopedTool> {
+        self.tools.iter().find(|scoped| scoped.tool.name == name)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

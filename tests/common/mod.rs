@@ -14,6 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use assert_cmd::Command;
 use serde_json::Value;
@@ -82,6 +83,56 @@ pub fn stamp_slice_outcome(
 pub fn sha256_hex(path: &Path) -> String {
     let bytes = fs::read(path).expect("read bytes for sha256");
     specify_tool::sha256_hex(&bytes)
+}
+
+/// Scaffold a minimal target-adapter project declaring a single WASI tool.
+///
+/// The caller owns `tmp`, keeping the project root alive for the test duration.
+pub fn scaffold_tool_project(
+    tmp: &TempDir, tool_name: &str, wasm_path: &Path,
+) -> (PathBuf, PathBuf) {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    let project = tmp.path().to_path_buf();
+    let adapter = project.join("adapters/targets/test-adp");
+    let briefs = adapter.join("briefs");
+    fs::create_dir_all(project.join(".specify")).expect("create .specify");
+    fs::create_dir_all(&briefs).expect("create adapter briefs");
+
+    let cache = std::env::temp_dir()
+        .join(format!("specify-tool-schema-{tool_name}-{}-{n}", std::process::id()));
+    fs::create_dir_all(&cache).expect("create cache");
+
+    fs::write(
+        project.join(".specify/project.yaml"),
+        "name: schema-test\nadapter: test-adp\nrules: {}\n",
+    )
+    .expect("write project.yaml");
+    fs::write(
+        adapter.join("adapter.yaml"),
+        "name: test-adp\nversion: 1\naxis: target\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test adapter\n",
+    )
+    .expect("write adapter.yaml");
+    for op in ["shape", "build", "merge"] {
+        fs::write(
+            briefs.join(format!("{op}.md")),
+            format!("---\nid: {op}\ndescription: {op} brief\n---\n"),
+        )
+        .expect("write brief");
+    }
+
+    let source = format!("file://{}", wasm_path.display());
+    let sha256 = sha256_hex(wasm_path);
+    fs::write(
+        adapter.join("tools.yaml"),
+        format!(
+            "tools:\n  - name: {tool_name}\n    version: 0.1.0\n    source: \"{source}\"\n    sha256: \"{sha256}\"\n    permissions:\n      read: []\n      write: []\n"
+        ),
+    )
+    .expect("write tools.yaml");
+
+    (project, cache)
 }
 
 /// Deterministic git author/committer identity for tests that exercise

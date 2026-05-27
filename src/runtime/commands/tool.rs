@@ -7,24 +7,23 @@ mod dto;
 mod fetch;
 mod gc;
 mod run;
-mod schema;
 
 use std::collections::{HashMap, HashSet};
 
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
 pub(super) use run::run;
-pub(super) use schema::schema;
 use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
 use specify_domain::init::adapter_name_from_value;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
 
-use self::dto::{CacheKey, Inventory, ScopedTool, WarningRow, warning_row};
+pub(super) use self::dto::{Inventory, ScopedTool};
+use self::dto::{WarningRow, warning_row};
 use crate::runtime::context::Ctx;
 
-fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
+pub fn build_inventory(ctx: &Ctx) -> Result<Inventory> {
     let project_scope = ToolScope::Project {
         project_name: ctx.config.name.clone(),
     };
@@ -94,8 +93,8 @@ fn select<'a>(inventory: &'a Inventory, name: Option<&str>) -> Result<Vec<&'a Sc
     }
 }
 
-fn kept_by_scope(inventory: &Inventory) -> HashMap<ToolScope, HashSet<CacheKey>> {
-    let mut kept: HashMap<ToolScope, HashSet<CacheKey>> =
+fn kept_by_scope(inventory: &Inventory) -> HashMap<ToolScope, HashSet<(String, String, String)>> {
+    let mut kept: HashMap<ToolScope, HashSet<(String, String, String)>> =
         inventory.scopes.iter().cloned().map(|scope| (scope, HashSet::new())).collect();
     for scoped in &inventory.tools {
         kept.entry(scoped.scope.clone()).or_default().insert((

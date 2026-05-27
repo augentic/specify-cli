@@ -26,9 +26,11 @@ semver.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
+specify-codex.workspace = true
 specify-domain.workspace = true
 specify-authoring.workspace = true
 specify-error.workspace = true
+specify-schema.workspace = true
 specify-tool.workspace = true
 strum.workspace = true
 thiserror.workspace = true
@@ -44,10 +46,12 @@ workspace = true
 
 [workspace]
 members = [
-    "crates/error",
-    "crates/domain",
-    "crates/tool",
     "crates/authoring",
+    "crates/codex",
+    "crates/domain",
+    "crates/error",
+    "crates/schema",
+    "crates/tool",
 ]
 
 [workspace.package]
@@ -148,23 +152,28 @@ verbose_file_reads = "warn"
 
 [workspace.dependencies]
 assert_cmd = "2"
+base16ct = { version = "0.2", features = ["alloc"] }
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 futures-util = "0.3"
 glob = "0.3"
+ignore = "0.4"
 jiff = { version = "0.2", default-features = false, features = ["serde", "std"] }
 jsonschema = { version = "0.46", default-features = false }
 libc = "0.2"
 petgraph = "0.8"
+rayon = "1"
 regex = "1"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde-saphyr = "0.0.26"
 serde_json = "1"
 sha2 = "0.11"
-specify-domain = { path = "crates/domain" }
 specify-authoring = { path = "crates/authoring" }
+specify-codex = { path = "crates/codex" }
+specify-domain = { path = "crates/domain" }
 specify-error = { path = "crates/error" }
+specify-schema = { path = "crates/schema" }
 specify-tool = { path = "crates/tool" }
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3"

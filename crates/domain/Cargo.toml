@@ -14,26 +14,26 @@ readme = "../../README.md"
 workspace = true
 
 [dependencies]
-specify-error = { workspace = true }
-specify-tool = { workspace = true }
-jiff = { workspace = true }
-clap = { workspace = true }
-glob = { workspace = true }
-jsonschema = { workspace = true }
-petgraph = { workspace = true }
-regex = { workspace = true }
-semver = { workspace = true }
-serde = { workspace = true }
-serde-saphyr = { workspace = true }
-serde_json = { workspace = true }
-strum = { workspace = true }
-tempfile = { workspace = true }
-thiserror = { workspace = true }
+clap.workspace = true
+glob.workspace = true
+jiff.workspace = true
+petgraph.workspace = true
+regex.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+specify-error.workspace = true
+specify-schema.workspace = true
+specify-tool.workspace = true
+strum.workspace = true
+tempfile.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-libc = { workspace = true }
+libc.workspace = true
 
 [dev-dependencies]
-tempfile = { workspace = true }
-serde_json = { workspace = true }
-regex = { workspace = true }
+jsonschema.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

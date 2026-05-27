@@ -1,0 +1,31 @@
+[package]
+name = "specify-codex"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Specify codex crate: RFC-28 codex rule parser, resolver, and review-finding validators (RFC-32 standards-layer split)"
+categories = ["development-tools"]
+keywords = ["specify", "codex", "rfc"]
+readme = "../../README.md"
+
+[lints]
+workspace = true
+
+[dependencies]
+glob.workspace = true
+ignore.workspace = true
+jsonschema.workspace = true
+rayon.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+specify-error.workspace = true
+specify-schema.workspace = true
+specify-tool.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

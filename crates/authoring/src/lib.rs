@@ -1,3 +1,27 @@
+//! Framework authoring checks for `augentic/specify`.
+//!
+//! Library crate behind the `specdev check` binary. The root `specify`
+//! crate wires this checker into the `specdev` dispatcher; this crate
+//! itself is `publish = false` and depends only on shared / standards
+//! crates so framework-repo predicates never become part of the
+//! `specrun` workflow dispatcher.
+//!
+//! ## Dependency overview
+//!
+//! - [`specify_error`] — shared error layering (`Error::Validation`,
+//!   `ValidationSummary`) and the kebab-case wire discriminants.
+//! - [`specify_schema`] — canonical embedded JSON Schemas
+//!   (including `CODEX_RULE_JSON_SCHEMA`) and the shared `jsonschema`
+//!   plumbing (`compile_schema`, `validate_value`,
+//!   `validate_serialisable`, `read_yaml_as_json`). The codex
+//!   predicates consume the canonical schema through this crate
+//!   directly — see [DECISIONS.md] for the long-form RFC-32 rationale.
+//! - [`specify_codex`] — the standards-layer crate providing the typed
+//!   `CodexRule` DTO and the RFC-28 codex parser / resolver / finding
+//!   validator that the codex-shape predicates depend on.
+//!
+//! [DECISIONS.md]: https://github.com/augentic/specify-cli/blob/main/DECISIONS.md
+
 pub mod check;
 pub mod context;
 pub mod error;

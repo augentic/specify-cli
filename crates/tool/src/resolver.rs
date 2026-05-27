@@ -14,6 +14,7 @@ pub mod local;
 
 use crate::cache::{self, MODULE_FILENAME, SIDECAR_FILENAME, SIDECAR_SCHEMA_VERSION, Sidecar};
 use crate::error::ToolError;
+use crate::hash::sha256_hex;
 use crate::manifest::{PackageRequest, Tool, ToolScope, ToolSource};
 use crate::package::{self, AcquiredBytes, persist_temp};
 
@@ -200,7 +201,7 @@ fn buffered_into_acquired(bytes: &[u8], dest_hint: &Path) -> Result<AcquiredByte
         .map_err(|err| ToolError::cache_io("create local staging parent", parent, err))?;
     let temp = NamedTempFile::new_in(parent)
         .map_err(|err| ToolError::cache_io("create local staging tempfile", parent, err))?;
-    let sha256 = digest::sha256_hex(bytes);
+    let sha256 = sha256_hex(bytes);
     fs::write(temp.path(), bytes)
         .map_err(|err| ToolError::cache_io("write local staging tempfile", temp.path(), err))?;
     Ok(AcquiredBytes {
@@ -300,7 +301,7 @@ mod tests {
             temp.write_all(bytes).expect("write mock package bytes");
             Ok(AcquiredBytes {
                 temp,
-                sha256: digest::sha256_hex(bytes),
+                sha256: sha256_hex(bytes),
                 package_metadata: Some(PackageMetadata {
                     name: request.name_ref(),
                     version: request.version.clone(),

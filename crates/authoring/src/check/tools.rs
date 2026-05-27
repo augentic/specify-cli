@@ -83,11 +83,6 @@ const RETIRED_HELPER_PATTERNS: &[RetiredHelperPattern] = &[
     },
 ];
 
-fn version_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^(\d+\.\d+\.\d+)$").expect("version regex"))
-}
-
 fn retired_helper_regexes() -> &'static [(&'static RetiredHelperPattern, Regex)] {
     static CACHE: OnceLock<Vec<(&'static RetiredHelperPattern, Regex)>> = OnceLock::new();
     CACHE.get_or_init(|| {
@@ -258,17 +253,6 @@ fn resolve_adapter_declarations(ctx: &Context, adapter: &str) -> Option<Resolved
             continue;
         };
 
-        if !version_re().is_match(version) {
-            shape_findings.push(invalid_declaration(
-                &rel,
-                &path,
-                &format!(
-                    "tool '{name}' version '{version}' must be `<major>.<minor>.<patch>` without prerelease metadata"
-                ),
-            ));
-            continue;
-        }
-
         declarations.insert(name.to_string(), format!("specify:{name}@{version}"));
     }
 
@@ -345,15 +329,4 @@ fn collect_markdown_under(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn version_re_accepts_semver_triple() {
-        assert!(version_re().is_match("0.3.0"));
-        assert!(!version_re().is_match("0.3.0-rc.1"));
-    }
 }

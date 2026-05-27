@@ -210,7 +210,7 @@ crates/foo/src/
     └── render.rs
 ```
 
-**Module length cap** — keep new modules ≤ 400 lines; the workspace tripwire (`cargo make file-size`) fails any source file that grows past 600. When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `<parent>/<module>.rs` + `<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
+**Module length cap** — keep new modules ≤ 400 lines. When a file outgrows that, split by concern (one verb per file, model vs IO vs transitions, etc.) before adding more code. Prefer `<parent>/<module>.rs` + `<parent>/<module>/<concern>.rs` over a single fat file with `// ---` separators.
 
 ## No-op forwarders
 

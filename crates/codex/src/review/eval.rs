@@ -1,0 +1,526 @@
+//! Hint interpreter umbrella per RFC-32 §"Hint kinds — Phase 2"
+//! and §"Evaluation algorithm".
+//!
+//! v1 (Phase 2) ships the four executable hint kinds the RFC lists
+//! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
+//! [`HintKind::Tool`]) plus the §D5 reserved-kind summary policy
+//! (`review.reserved-hint-skipped`). Each rule's hints are partitioned
+//! by kind and evaluated in the fixed order
+//! `path-pattern → schema → regex → tool` so the cheap filters narrow
+//! the candidate file set before the subprocess boundary fires.
+//!
+//! When a rule carries multiple `path-pattern` hints they UNION — a
+//! file is a candidate when it matches any of the supplied patterns —
+//! so authors can list independent globs without writing a single
+//! brace-expansion. When a rule carries zero `path-pattern` hints the
+//! candidate set defaults to every [`crate::review::File`] in
+//! [`crate::review::WorkspaceModel`]; per-kind sub-evaluators apply
+//! their own [`crate::review::FileKind`] filter (e.g. regex skips
+//! binaries).
+//!
+//! # Reserved-kind policy (§D5)
+//!
+//! Reserved hint kinds (`unique`, `reference-resolves`, `set-coverage`,
+//! `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`,
+//! `namespace-owner`) parse cleanly from the codex authoring schema
+//! but never execute in v1. [`evaluate`] records each occurrence as a
+//! [`ReservedSkipped`] entry on the returned [`HintEvalOutcome`]; the
+//! caller accumulates the entries across every rule it evaluates and
+//! folds them into a single `review.reserved-hint-skipped` summary
+//! finding via [`reserved_hint_summary`]. Strict mode upgrades the
+//! summary to severity `important`; the `rule_id` is the same in both
+//! modes so dashboards aggregate across strict / non-strict runs.
+//!
+//! # Evidence cap (RFC-28 §"Evidence union")
+//!
+//! Every finding minted here passes through
+//! [`crate::rules::validate_evidence_size`] before [`compute_fingerprint`]
+//! signs it. Snippet-evidence findings that exceed the 16 `KiB` cap are
+//! truncated by halving the snippet value (clamped to a UTF-8 char
+//! boundary) and appending a `…[truncated]` marker until the
+//! serialised evidence object fits, then re-fingerprinted. Structured
+//! evidence too large to inline collapses to
+//! `{"truncated": true}`. Findings with [`crate::rules::FindingEvidence::Digest`]
+//! evidence above the cap are not produced by v1 evaluators; the
+//! truncation loop bails on them rather than synthesising a bogus
+//! payload.
+
+pub mod path_pattern;
+pub mod regex;
+pub mod schema;
+pub mod tool;
+
+use std::path::{Path, PathBuf};
+
+use thiserror::Error;
+pub use tool::{ToolOutput, ToolRunError, ToolRunner};
+
+use crate::review::WorkspaceModel;
+use crate::rules::fingerprint::fingerprint as compute_fingerprint;
+use crate::rules::{
+    Artifact, Confidence, DeterministicHint, FindingEvidence, FindingLocation, FindingSource,
+    HintKind, ResolvedRule, ReviewFinding, Severity, validate_evidence_size,
+};
+
+/// Closed failure mode for the hint interpreter.
+///
+/// Variants map to the §D8 exit-code table at the handler boundary —
+/// `Unsupported`, `SchemaCompile`, `SchemaResolve`, `RegexCompile`,
+/// `Filesystem`, and `ToolInvocation` are infrastructure failures
+/// the caller maps to `Error::Validation` (exit 2) or
+/// `Error::Filesystem` (exit 1) per §D8. Recoverable per-finding
+/// states (`tool.invocation-failed`, `tool.undeclared`, the §D5
+/// summary) flow back as [`ReviewFinding`] entries on the Ok path.
+#[derive(Debug, Error)]
+pub enum HintError {
+    /// Hint shape outside the v1 contract (reserved kinds called
+    /// directly, `http(s)://` schema refs, glob negation, …).
+    #[error("rule {rule_id}: hint kind {kind:?} unsupported: {reason}")]
+    Unsupported {
+        /// Originating rule id.
+        rule_id: String,
+        /// Hint kind that triggered the rejection.
+        kind: HintKind,
+        /// Static reason copied into operator-facing diagnostics.
+        reason: &'static str,
+    },
+    /// JSON Schema referenced by a `kind: schema` hint failed to
+    /// compile.
+    #[error("rule {rule_id}: schema {schema_ref} failed to compile: {detail}")]
+    SchemaCompile {
+        /// Originating rule id.
+        rule_id: String,
+        /// Schema reference verbatim from the hint's `value`.
+        schema_ref: String,
+        /// Compiler error message.
+        detail: String,
+    },
+    /// Schema reference could not be resolved (unknown registered id,
+    /// missing project file, escapes `project_dir` via `..`,
+    /// `http(s)://` ref).
+    #[error("rule {rule_id}: schema {schema_ref} could not be resolved: {reason}")]
+    SchemaResolve {
+        /// Originating rule id.
+        rule_id: String,
+        /// Schema reference verbatim from the hint's `value`.
+        schema_ref: String,
+        /// Free-form resolution reason.
+        reason: String,
+    },
+    /// Regex pattern carried by a `kind: regex` hint did not compile.
+    #[error("rule {rule_id}: regex {pattern} failed to compile: {source}")]
+    RegexCompile {
+        /// Originating rule id.
+        rule_id: String,
+        /// Pattern verbatim from the hint's `value`.
+        pattern: String,
+        /// Underlying `regex` crate error.
+        #[source]
+        source: ::regex::Error,
+    },
+    /// Tool invocation failed at the runtime boundary (the WASI host
+    /// could not invoke the declared tool). Recoverable
+    /// non-zero-exit outcomes flow as `tool.invocation-failed`
+    /// findings on the Ok path per §D4.
+    #[error("rule {rule_id}: tool {tool} invocation failed: {detail}")]
+    ToolInvocation {
+        /// Originating rule id.
+        rule_id: String,
+        /// Tool name from the hint's `value`.
+        tool: String,
+        /// Free-form invocation failure detail.
+        detail: String,
+    },
+    /// Reserved variant — `tool.undeclared` is emitted as a finding
+    /// on the Ok path per §D4. The variant is preserved on the
+    /// closed enum so callers exhaustively match every §D4-mandated
+    /// surface.
+    #[error("rule {rule_id}: tool {tool} not declared by the project")]
+    ToolUndeclared {
+        /// Originating rule id.
+        rule_id: String,
+        /// Tool name from the hint's `value`.
+        tool: String,
+    },
+    /// Filesystem I/O against a candidate file failed during
+    /// evaluation (the indexer normally skips unreadable files but
+    /// races between scan and eval can still surface here).
+    #[error("filesystem {op} on {path}: {source}", path = path.display())]
+    Filesystem {
+        /// Operation name (`read`, `parse`, …).
+        op: &'static str,
+        /// Path the operation targeted.
+        path: PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// One reserved-kind hint occurrence captured per call to [`evaluate`].
+///
+/// Caller accumulates [`ReservedSkipped`] entries across every rule
+/// in the scan and feeds the aggregate to [`reserved_hint_summary`]
+/// to mint the single §D5 summary finding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReservedSkipped {
+    /// Rule that carried the reserved hint.
+    pub rule_id: String,
+    /// Index of the hint inside the rule's `deterministic_hints`
+    /// list (0-based).
+    pub hint_index: usize,
+    /// The reserved kind that was skipped.
+    pub kind: HintKind,
+}
+
+/// Per-rule output of [`evaluate`].
+#[derive(Debug, Clone)]
+pub struct HintEvalOutcome {
+    /// Findings minted for this rule's executable hints.
+    pub findings: Vec<ReviewFinding>,
+    /// Reserved-kind hint occurrences encountered while iterating
+    /// the rule's hints.
+    pub reserved_skipped: Vec<ReservedSkipped>,
+    /// Finding-id counter passed into the next [`evaluate`] call so
+    /// `FIND-NNNN` ids stay monotonic across rules in the same scan.
+    pub next_id_counter: u64,
+}
+
+/// Evaluate a single rule's hints against the workspace model.
+///
+/// Hints are partitioned by kind and run in the order
+/// `path-pattern → schema → regex → tool` per §"Evaluation algorithm".
+/// `path-pattern` hits build the candidate file set the later kinds
+/// consume; reserved kinds collect into [`HintEvalOutcome::reserved_skipped`]
+/// without minting any findings inside this call.
+///
+/// `start_id_counter` seeds the `FIND-NNNN` id sequence; the caller
+/// threads [`HintEvalOutcome::next_id_counter`] into the next call so
+/// ids stay monotonic across rules.
+///
+/// # Errors
+///
+/// Any [`HintError`] variant — see the per-variant docs.
+pub fn evaluate(
+    rule: &ResolvedRule, hints: &[DeterministicHint], model: &WorkspaceModel, project_dir: &Path,
+    tool_runner: &dyn ToolRunner, start_id_counter: u64,
+) -> Result<HintEvalOutcome, HintError> {
+    let mut findings: Vec<ReviewFinding> = Vec::new();
+    let mut reserved_skipped: Vec<ReservedSkipped> = Vec::new();
+    let mut next_id = start_id_counter;
+
+    let mut path_pattern_hints: Vec<&DeterministicHint> = Vec::new();
+    let mut schema_hints: Vec<&DeterministicHint> = Vec::new();
+    let mut regex_hints: Vec<&DeterministicHint> = Vec::new();
+    let mut tool_hints: Vec<&DeterministicHint> = Vec::new();
+
+    for (idx, hint) in hints.iter().enumerate() {
+        match hint.kind {
+            HintKind::PathPattern => path_pattern_hints.push(hint),
+            HintKind::Schema => schema_hints.push(hint),
+            HintKind::Regex => regex_hints.push(hint),
+            HintKind::Tool => tool_hints.push(hint),
+            kind => reserved_skipped.push(ReservedSkipped {
+                rule_id: rule.rule_id.clone(),
+                hint_index: idx,
+                kind,
+            }),
+        }
+    }
+
+    let candidates = build_candidate_set(rule, &path_pattern_hints, model)?;
+
+    for hint in schema_hints {
+        let mut new = schema::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in regex_hints {
+        let mut new = regex::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in tool_hints {
+        let mut new =
+            tool::evaluate(rule, hint, &candidates, project_dir, tool_runner, &mut next_id)?;
+        findings.append(&mut new);
+    }
+
+    Ok(HintEvalOutcome {
+        findings,
+        reserved_skipped,
+        next_id_counter: next_id,
+    })
+}
+
+/// Mint the §D5 reserved-hint summary finding from accumulated
+/// [`ReservedSkipped`] entries, or return `None` when the input is
+/// empty.
+///
+/// `strict_hints` upgrades the finding's severity from `optional` to
+/// `important`; the `rule_id` is `review.reserved-hint-skipped` in
+/// both modes per §D5.
+#[must_use]
+pub fn reserved_hint_summary(
+    skipped: &[ReservedSkipped], strict_hints: bool,
+) -> Option<ReviewFinding> {
+    if skipped.is_empty() {
+        return None;
+    }
+    let pairs: Vec<serde_json::Value> =
+        skipped.iter().map(|s| serde_json::json!([s.rule_id, s.hint_index])).collect();
+    let evidence = FindingEvidence::Structured {
+        summary: "Reserved hint kinds awaiting implementation".to_string(),
+        data: serde_json::json!({ "pairs": pairs }),
+        locations: None,
+    };
+    let severity = if strict_hints { Severity::Important } else { Severity::Optional };
+    let mut finding = ReviewFinding {
+        id: "FIND-RESERVED".to_string(),
+        rule_id: Some("review.reserved-hint-skipped".to_string()),
+        related_rule_ids: None,
+        title: "Reserved hint kinds awaiting implementation".to_string(),
+        severity,
+        source: FindingSource::Deterministic,
+        target_adapter: None,
+        source_adapter: None,
+        slice: None,
+        change: None,
+        artifact: Artifact::Unknown,
+        location: None,
+        evidence,
+        impact: format!("{} reserved hint occurrence(s) skipped this scan.", skipped.len()),
+        remediation: "Implement the reserved hint kind or remove the hint until support lands."
+            .to_string(),
+        confidence: Some(Confidence::High),
+        fingerprint: String::new(),
+        status: None,
+    };
+    clamp_evidence(&mut finding);
+    finding.fingerprint = compute_fingerprint(&finding);
+    Some(finding)
+}
+
+fn build_candidate_set(
+    rule: &ResolvedRule, path_pattern_hints: &[&DeterministicHint], model: &WorkspaceModel,
+) -> Result<Vec<PathBuf>, HintError> {
+    if path_pattern_hints.is_empty() {
+        let mut paths: Vec<PathBuf> = model.files.iter().map(|f| PathBuf::from(&f.path)).collect();
+        paths.sort();
+        return Ok(paths);
+    }
+    let mut set: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+    for hint in path_pattern_hints {
+        for path in path_pattern::evaluate(rule, hint, model)? {
+            set.insert(path);
+        }
+    }
+    Ok(set.into_iter().collect())
+}
+
+/// Build a finding from rule-derived defaults (severity, target
+/// adapter, impact, remediation), apply the §"Evidence cap"
+/// truncation, and stamp the RFC-28 fingerprint.
+pub(crate) fn make_finding(
+    rule: &ResolvedRule, id_num: u64, title: String, location: Option<FindingLocation>,
+    evidence: FindingEvidence,
+) -> ReviewFinding {
+    let mut finding = ReviewFinding {
+        id: format!("FIND-{id_num:04}"),
+        rule_id: Some(rule.rule_id.clone()),
+        related_rule_ids: None,
+        title,
+        severity: rule.severity,
+        source: FindingSource::Deterministic,
+        target_adapter: single_adapter(rule),
+        source_adapter: None,
+        slice: None,
+        change: None,
+        artifact: Artifact::Code,
+        location,
+        evidence,
+        impact: rule.trigger.clone(),
+        remediation: format!("See {}", rule.path),
+        confidence: Some(Confidence::High),
+        fingerprint: String::new(),
+        status: None,
+    };
+    clamp_evidence(&mut finding);
+    finding.fingerprint = compute_fingerprint(&finding);
+    finding
+}
+
+/// Build a finding with an explicit `rule_id` / `severity` (for the
+/// synthetic `tool.undeclared` and `tool.invocation-failed` shapes).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The synthetic-finding builder mirrors the wire shape and is not on a hot path; collapsing into a struct would only obscure call sites."
+)]
+pub(crate) fn make_synthetic_finding(
+    id_num: u64, rule_id: &str, title: String, severity: Severity,
+    location: Option<FindingLocation>, evidence: FindingEvidence, impact: String,
+    remediation: String, target_adapter: Option<String>,
+) -> ReviewFinding {
+    let mut finding = ReviewFinding {
+        id: format!("FIND-{id_num:04}"),
+        rule_id: Some(rule_id.to_string()),
+        related_rule_ids: None,
+        title,
+        severity,
+        source: FindingSource::Deterministic,
+        target_adapter,
+        source_adapter: None,
+        slice: None,
+        change: None,
+        artifact: Artifact::Code,
+        location,
+        evidence,
+        impact,
+        remediation,
+        confidence: Some(Confidence::High),
+        fingerprint: String::new(),
+        status: None,
+    };
+    clamp_evidence(&mut finding);
+    finding.fingerprint = compute_fingerprint(&finding);
+    finding
+}
+
+/// Stamp `id` and recompute the fingerprint on a finding produced
+/// outside the rule-derived defaults (e.g. forwarded from a tool's
+/// stdout). Applies the evidence-cap truncation before signing.
+pub(crate) fn restamp_finding(finding: &mut ReviewFinding, id_num: u64) {
+    finding.id = format!("FIND-{id_num:04}");
+    clamp_evidence(finding);
+    finding.fingerprint = compute_fingerprint(finding);
+}
+
+fn single_adapter(rule: &ResolvedRule) -> Option<String> {
+    let adapters = rule.applicability.as_ref().and_then(|a| a.adapters.as_ref())?;
+    if adapters.len() != 1 {
+        return None;
+    }
+    let raw = adapters[0].as_str();
+    Some(raw.split_once('@').map_or_else(|| raw.to_owned(), |(name, _)| name.to_owned()))
+}
+
+const TRUNCATION_MARKER: &str = "…[truncated]";
+const CLAMP_ITERATION_LIMIT: usize = 32;
+
+fn clamp_evidence(finding: &mut ReviewFinding) {
+    let mut iter = 0;
+    while validate_evidence_size(finding).is_err() && iter < CLAMP_ITERATION_LIMIT {
+        iter += 1;
+        match &mut finding.evidence {
+            FindingEvidence::Snippet { value } => {
+                if value.is_empty() {
+                    break;
+                }
+                let target = value.len() / 2;
+                let mut cut = target;
+                while cut > 0 && !value.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                value.truncate(cut);
+                value.push_str(TRUNCATION_MARKER);
+            }
+            FindingEvidence::Structured { data, locations, .. } => {
+                *data = serde_json::json!({ "truncated": true });
+                *locations = None;
+            }
+            FindingEvidence::Digest { .. } => break,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rules::{Origin, PathRoot};
+
+    fn rule(adapters: Option<Vec<String>>) -> ResolvedRule {
+        ResolvedRule {
+            rule_id: "UNI-001".into(),
+            title: "t".into(),
+            severity: Severity::Important,
+            trigger: "trigger".into(),
+            review_mode: None,
+            applicability: adapters.map(|a| crate::rules::Applicability {
+                adapters: Some(a),
+                languages: None,
+                artifacts: None,
+                paths: None,
+            }),
+            deterministic_hints: None,
+            references: None,
+            origin: Origin::Shared,
+            path_root: PathRoot::CodexRoot,
+            path: "shared/UNI-001.md".into(),
+            body: String::new(),
+            deprecated: None,
+        }
+    }
+
+    #[test]
+    fn single_adapter_strips_version_suffix() {
+        let r = rule(Some(vec!["omnia@v2".into()]));
+        assert_eq!(single_adapter(&r).as_deref(), Some("omnia"));
+    }
+
+    #[test]
+    fn single_adapter_returns_none_when_multiple() {
+        let r = rule(Some(vec!["omnia".into(), "vectis".into()]));
+        assert!(single_adapter(&r).is_none());
+    }
+
+    #[test]
+    fn reserved_summary_is_empty_when_no_skipped() {
+        assert!(reserved_hint_summary(&[], false).is_none());
+    }
+
+    #[test]
+    fn reserved_summary_uses_stable_rule_id_in_both_modes() {
+        let skipped = vec![ReservedSkipped {
+            rule_id: "UNI-099".into(),
+            hint_index: 0,
+            kind: HintKind::Unique,
+        }];
+        let optional = reserved_hint_summary(&skipped, false).expect("present");
+        let strict = reserved_hint_summary(&skipped, true).expect("present");
+        assert_eq!(optional.rule_id.as_deref(), Some("review.reserved-hint-skipped"));
+        assert_eq!(strict.rule_id.as_deref(), Some("review.reserved-hint-skipped"));
+        assert_eq!(optional.severity, Severity::Optional);
+        assert_eq!(strict.severity, Severity::Important);
+    }
+
+    #[test]
+    fn clamp_truncates_oversize_snippet() {
+        let mut finding = ReviewFinding {
+            id: "FIND-0001".into(),
+            rule_id: Some("UNI-001".into()),
+            related_rule_ids: None,
+            title: "t".into(),
+            severity: Severity::Important,
+            source: FindingSource::Deterministic,
+            target_adapter: None,
+            source_adapter: None,
+            slice: None,
+            change: None,
+            artifact: Artifact::Code,
+            location: None,
+            evidence: FindingEvidence::Snippet {
+                value: "a".repeat(64 * 1024),
+            },
+            impact: "i".into(),
+            remediation: "r".into(),
+            confidence: Some(Confidence::High),
+            fingerprint: String::new(),
+            status: None,
+        };
+        clamp_evidence(&mut finding);
+        validate_evidence_size(&finding).expect("evidence fits within cap");
+        if let FindingEvidence::Snippet { value } = &finding.evidence {
+            assert!(value.ends_with(TRUNCATION_MARKER));
+        } else {
+            panic!("snippet variant preserved");
+        }
+    }
+}

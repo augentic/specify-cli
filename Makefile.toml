@@ -68,7 +68,7 @@ install_crate = "cargo-outdated"
 [tasks.test]
 command = "cargo"
 args = ["nextest", "run", "--all", "--all-features", "--no-tests=pass"]
-dependencies = ["clean"]
+dependencies = ["clean", "vectis-wasm"]
 env = { RUSTFLAGS = "-Dwarnings" }
 
 # Test Doc

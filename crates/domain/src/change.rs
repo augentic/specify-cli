@@ -1,8 +1,6 @@
 //! Specify change orchestration: plan-driven multi-slice changes, the
-//! operator-facing `change.md` brief, the `plan.yaml` state machine,
-//! and the closure verb `specify change finalize`.
+//! operator-facing `change.md` brief, and the `plan.yaml` state machine.
 
-pub mod finalize;
 mod plan;
 
 pub use plan::core::{

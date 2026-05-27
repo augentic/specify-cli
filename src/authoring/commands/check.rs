@@ -59,7 +59,7 @@ mod tests {
 
     use serde_json::Value as JsonValue;
     use specify_authoring::finding::{Finding, Location};
-    use specify_domain::codex::{Severity, validate_finding};
+    use specify_codex::{Severity, validate_finding};
 
     use crate::authoring::map_finding::map_findings;
     use crate::authoring::output::review_findings_body;
