@@ -80,7 +80,12 @@ pub fn build(
     let per_file: Vec<PerFile> = discovered
         .par_iter()
         .map(|file| PerFile {
-            file: files::to_file_fact(file),
+            file: File {
+                path: file.relative.clone(),
+                kind: file.kind,
+                language: file.language.clone(),
+                sha256: None,
+            },
             frontmatter: frontmatter::extract(file),
             sections: markdown::extract_sections(file),
             links: markdown::extract_links(file),

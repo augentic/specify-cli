@@ -47,8 +47,7 @@
 //!
 //! - Applicability + deprecation filtering — see the sibling
 //!   [`filter`] module (CH-13). [`resolve`] returns the unfiltered pool;
-//!   call [`resolve_and_filter`] (or compose [`filter`] manually) to
-//!   get the narrowed view.
+//!   call [`filter`] on that result to get the narrowed view.
 //! - Stable export ordering — CH-14 lives in the sibling `sort`
 //!   module. CH-12 only enforces deterministic intra-directory lexical
 //!   order so test goldens stay stable; the closed four-tuple sort and
@@ -61,7 +60,7 @@ mod sort;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-pub use filter::{filter, resolve_and_filter};
+pub use filter::filter;
 pub use sort::{build_resolved_codex, sort_resolved};
 
 use super::parse::{ParseError, parse_codex_rule_file};
@@ -74,8 +73,8 @@ use super::{CodexRule, Origin, PathRoot};
 /// `target_adapter`, and `source_adapters`. CH-13's [`filter`]
 /// additionally consumes `artifact_paths`, `languages`,
 /// `include_deprecated`, and `include_unmatched`. Calling
-/// [`resolve_and_filter`] composes both so the standard call site
-/// passes a single populated struct.
+/// Callers compose [`resolve`] then [`filter`] when they need the
+/// narrowed pool; [`build_resolved_codex`] is the export entry point.
 #[derive(Debug, Clone)]
 pub struct ResolveInputs<'a> {
     /// Project root used for adapter resolution and optional

@@ -65,12 +65,19 @@
 //! single first-party typo would be more disruptive than dropping the
 //! rule from the export. A future authoring-check could elevate this to
 //! a hard error.
+//!
+//! # Composition
+//!
+//! Call [`super::resolve`] first, then pass its `Vec<ResolvedRuleEntry>`
+//! to [`filter`] — e.g. `filter(super::resolve(inputs)?, inputs)`.
+//! [`build_resolved_codex`] in the sibling `sort` module is the
+//! conventional export entry point.
 
 use std::path::{Path, PathBuf};
 
 use glob::{MatchOptions, Pattern};
 
-use super::{ResolveError, ResolveInputs, ResolvedRuleEntry};
+use super::{ResolveInputs, ResolvedRuleEntry};
 use crate::codex::CodexRule;
 
 /// RFC-28 §"Path glob semantics (`applicability.paths`)": case-sensitive,
@@ -95,23 +102,6 @@ pub fn filter(
         .filter(|entry| keeps_deprecated(&entry.rule, inputs.include_deprecated))
         .filter(|entry| applicability_matches(&entry.rule, inputs))
         .collect()
-}
-
-/// Compose CH-12's [`super::resolve`] with [`filter`] in one call.
-///
-/// Most callers (CH-14 ordering, CH-17 CLI export) want the resolved,
-/// filtered, deduplicated pool — not the raw discovery output — so this
-/// is the conventional entry point for downstream chunks.
-///
-/// # Errors
-///
-/// Returns the same [`ResolveError`] variants as [`super::resolve`]; the
-/// filter step itself is infallible.
-pub fn resolve_and_filter(
-    inputs: &ResolveInputs<'_>,
-) -> Result<Vec<ResolvedRuleEntry>, ResolveError> {
-    let entries = super::resolve(inputs)?;
-    Ok(filter(entries, inputs))
 }
 
 /// `true` when the rule survives the deprecation filter.

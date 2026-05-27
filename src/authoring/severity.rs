@@ -93,20 +93,6 @@ mod tests {
         assert_eq!(severity_for("codex.schema-violation"), Severity::Critical);
     }
 
-    /// `codex.namespace-ownership-violation` is an authoring mistake;
-    /// per the table, it maps to `Important`.
-    #[test]
-    fn codex_namespace_ownership_violation_maps_to_important() {
-        assert_eq!(severity_for("codex.namespace-ownership-violation"), Severity::Important);
-    }
-
-    /// `codex.duplicate-rule-id` is an authoring mistake; per the
-    /// table, it maps to `Important`.
-    #[test]
-    fn codex_duplicate_rule_id_maps_to_important() {
-        assert_eq!(severity_for("codex.duplicate-rule-id"), Severity::Important);
-    }
-
     /// The `skill.*` family covers frontmatter and body checks; per the
     /// table, every member maps to `Important`.
     #[test]

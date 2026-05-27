@@ -167,17 +167,6 @@ pub fn discover(
     })
 }
 
-/// Convert a [`DiscoveredFile`] into the model's `File` row.
-#[must_use]
-pub fn to_file_fact(discovered: &DiscoveredFile) -> crate::review::File {
-    crate::review::File {
-        path: discovered.relative.clone(),
-        kind: discovered.kind,
-        language: discovered.language.clone(),
-        sha256: None,
-    }
-}
-
 fn build_always_ignore(project_dir: &Path) -> Result<ignore::overrides::Override, IndexError> {
     let mut builder = OverrideBuilder::new(project_dir);
     for pattern in ALWAYS_IGNORE_GLOBS {

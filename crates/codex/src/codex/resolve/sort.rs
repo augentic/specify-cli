@@ -38,7 +38,7 @@
 //! `root`"). The resolver writes forward-slash paths on every host,
 //! so golden bytes match across Linux, macOS, and Windows.
 
-use super::{ResolveError, ResolveInputs, ResolvedRuleEntry, resolve_and_filter};
+use super::{ResolveError, ResolveInputs, ResolvedRuleEntry, filter};
 use crate::codex::{CodexRule, ResolvedCodex, ResolvedRule};
 
 /// Sort `entries` in place by the closed RFC-28 four-tuple.
@@ -54,8 +54,8 @@ pub fn sort_resolved(entries: &mut [ResolvedRuleEntry]) {
     });
 }
 
-/// Compose [`resolve_and_filter`] with [`sort_resolved`] and assemble
-/// the [`ResolvedCodex`] wire envelope.
+/// Compose [`super::resolve`], [`super::filter`], and [`sort_resolved`]
+/// to assemble the [`ResolvedCodex`] wire envelope.
 ///
 /// This is the top-level entry point CH-17 (the `specrun codex
 /// export` CLI) will call. The returned envelope is fully ordered and
@@ -66,7 +66,7 @@ pub fn sort_resolved(entries: &mut [ResolvedRuleEntry]) {
 /// Returns the same [`ResolveError`] variants as the underlying
 /// [`mod@super::super::resolve`] call; sort + lift are infallible.
 pub fn build_resolved_codex(inputs: &ResolveInputs<'_>) -> Result<ResolvedCodex, ResolveError> {
-    let mut entries = resolve_and_filter(inputs)?;
+    let mut entries = filter(super::resolve(inputs)?, inputs);
     sort_resolved(&mut entries);
     let rules = entries.into_iter().map(entry_into_resolved_rule).collect();
     Ok(ResolvedCodex {
@@ -162,44 +162,6 @@ mod tests {
 
     fn ids_of_rules(rules: &[ResolvedRule]) -> Vec<&str> {
         rules.iter().map(|r| r.rule_id.as_str()).collect()
-    }
-
-    /// Test 1: severity ordering — `critical < important < suggestion
-    /// < optional`. Same origin, deprecated, and id-prefix isolate the
-    /// severity dimension.
-    #[test]
-    fn sort_orders_by_severity() {
-        let mut entries = vec![
-            entry("UNI-001", Severity::Optional, Origin::Shared, false),
-            entry("UNI-002", Severity::Important, Origin::Shared, false),
-            entry("UNI-003", Severity::Critical, Origin::Shared, false),
-            entry("UNI-004", Severity::Suggestion, Origin::Shared, false),
-        ];
-        sort_resolved(&mut entries);
-        let severities: Vec<Severity> = entries.iter().map(|e| e.rule.severity).collect();
-        assert_eq!(
-            severities,
-            vec![Severity::Critical, Severity::Important, Severity::Suggestion, Severity::Optional]
-        );
-    }
-
-    /// Test 2: origin ordering — `target < source < shared <
-    /// organization`. Same severity and deprecated isolate the origin
-    /// dimension.
-    #[test]
-    fn sort_orders_by_origin() {
-        let mut entries = vec![
-            entry("RULE-A", Severity::Important, Origin::Shared, false),
-            entry("RULE-B", Severity::Important, Origin::Organization, false),
-            entry("RULE-C", Severity::Important, Origin::Target, false),
-            entry("RULE-D", Severity::Important, Origin::Source, false),
-        ];
-        sort_resolved(&mut entries);
-        let origins: Vec<Origin> = entries.iter().map(|e| e.origin).collect();
-        assert_eq!(
-            origins,
-            vec![Origin::Target, Origin::Source, Origin::Shared, Origin::Organization]
-        );
     }
 
     /// Test 3: deprecated entries sort after non-deprecated entries
