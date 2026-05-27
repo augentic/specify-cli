@@ -10,10 +10,10 @@ mod eval_support;
 use std::fs;
 
 use eval_support::{NoToolRunner, hint, make_rule};
-use specify_codex::codex::{FindingEvidence, HintKind};
 use specify_codex::review::ScanProfile;
 use specify_codex::review::eval::{ToolRunner, evaluate};
 use specify_codex::review::index::build;
+use specify_codex::rules::{FindingEvidence, HintKind};
 
 #[test]
 fn schema_hint_against_codex_rule_flags_invalid_frontmatter() {

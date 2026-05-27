@@ -14,7 +14,7 @@
 //! `Exit::from(&Error)`. `scan_profile: framework` is reserved for
 //! RFC-34 and surfaces here as [`IndexError::UnsupportedScanProfile`].
 
-pub mod codex;
+pub mod discover;
 pub mod files;
 pub mod frontmatter;
 pub mod markdown;
@@ -111,7 +111,7 @@ pub fn build(
         link.resolves = resolve_link(project_dir, &link.from_path, &link.to_raw, &known_paths);
     }
 
-    let codex_rules = codex::discover(project_dir);
+    let codex_rules = discover::discover(project_dir);
 
     files_out.sort_by(|a, b| a.path.cmp(&b.path));
     frontmatter_out.sort_by(|a, b| a.path.cmp(&b.path));

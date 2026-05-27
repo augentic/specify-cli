@@ -16,10 +16,10 @@
 //! are parsed; markdown files fall back to their extracted
 //! frontmatter via [`crate::review::WorkspaceModel::frontmatter`].
 //! The `target: frontmatter` extension from the RFC body is reserved
-//! — the closed [`crate::codex::DeterministicHint`] shape carries no
+//! — the closed [`crate::rules::DeterministicHint`] shape carries no
 //! `target` field, so v1 cannot opt into it.
 //!
-//! Each `iter_errors` entry maps to one [`crate::codex::ReviewFinding`]
+//! Each `iter_errors` entry maps to one [`crate::rules::ReviewFinding`]
 //! with `Structured` evidence carrying the failing JSON-pointer.
 
 use std::collections::HashMap;
@@ -35,10 +35,10 @@ use specify_schema::{
 };
 
 use super::{HintError, make_finding};
-use crate::codex::{
+use crate::review::WorkspaceModel;
+use crate::rules::{
     DeterministicHint, FindingEvidence, FindingLocation, ResolvedRule, ReviewFinding,
 };
-use crate::review::WorkspaceModel;
 
 static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     HashMap::from([

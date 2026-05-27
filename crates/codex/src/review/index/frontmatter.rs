@@ -28,7 +28,7 @@ pub fn extract(file: &DiscoveredFile) -> Option<Frontmatter> {
         return None;
     }
     // Codex rule frontmatter is surfaced via the `codex_rule` family
-    // per the doc-comment on `super::codex`; the two surfaces would
+    // per the doc-comment on `super::discover`; the two surfaces would
     // double-count if the generic extractor also fired here.
     if file.relative.starts_with(".specify/cache/codex/") {
         return None;

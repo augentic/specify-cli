@@ -7,10 +7,10 @@
 //! (`line + column`, `line only`, and `no location at all`).
 
 use serde_json::json;
-use specify_codex::codex::{
+use specify_codex::review::diagnostics::{ReviewResult, ReviewResultVersion, ReviewSummary};
+use specify_codex::rules::{
     Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, ReviewFinding, Severity,
 };
-use specify_codex::review::diagnostics::{ReviewResult, ReviewResultVersion, ReviewSummary};
 
 /// Three-finding fixture covering the rendering matrix S8 needs to
 /// exercise.

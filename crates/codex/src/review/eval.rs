@@ -34,13 +34,13 @@
 //! # Evidence cap (RFC-28 §"Evidence union")
 //!
 //! Every finding minted here passes through
-//! [`crate::codex::validate_evidence_size`] before [`compute_fingerprint`]
+//! [`crate::rules::validate_evidence_size`] before [`compute_fingerprint`]
 //! signs it. Snippet-evidence findings that exceed the 16 `KiB` cap are
 //! truncated by halving the snippet value (clamped to a UTF-8 char
 //! boundary) and appending a `…[truncated]` marker until the
 //! serialised evidence object fits, then re-fingerprinted. Structured
 //! evidence too large to inline collapses to
-//! `{"truncated": true}`. Findings with [`crate::codex::FindingEvidence::Digest`]
+//! `{"truncated": true}`. Findings with [`crate::rules::FindingEvidence::Digest`]
 //! evidence above the cap are not produced by v1 evaluators; the
 //! truncation loop bails on them rather than synthesising a bogus
 //! payload.
@@ -55,12 +55,12 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 pub use tool::{ToolOutput, ToolRunError, ToolRunner};
 
-use crate::codex::fingerprint::fingerprint as compute_fingerprint;
-use crate::codex::{
+use crate::review::WorkspaceModel;
+use crate::rules::fingerprint::fingerprint as compute_fingerprint;
+use crate::rules::{
     Artifact, Confidence, DeterministicHint, FindingEvidence, FindingLocation, FindingSource,
     HintKind, ResolvedRule, ReviewFinding, Severity, validate_evidence_size,
 };
-use crate::review::WorkspaceModel;
 
 /// Closed failure mode for the hint interpreter.
 ///
@@ -434,7 +434,7 @@ fn clamp_evidence(finding: &mut ReviewFinding) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex::{Origin, PathRoot};
+    use crate::rules::{Origin, PathRoot};
 
     fn rule(adapters: Option<Vec<String>>) -> ResolvedRule {
         ResolvedRule {
@@ -443,7 +443,7 @@ mod tests {
             severity: Severity::Important,
             trigger: "trigger".into(),
             review_mode: None,
-            applicability: adapters.map(|a| crate::codex::Applicability {
+            applicability: adapters.map(|a| crate::rules::Applicability {
                 adapters: Some(a),
                 languages: None,
                 artifacts: None,

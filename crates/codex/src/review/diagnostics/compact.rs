@@ -14,7 +14,7 @@
 use std::fmt::Write as _;
 
 use super::{RenderError, ReviewResult};
-use crate::codex::{ReviewFinding, Severity};
+use crate::rules::{ReviewFinding, Severity};
 
 /// Render `result` as one tab-separated line per finding plus a
 /// trailing newline.

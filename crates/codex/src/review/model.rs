@@ -35,7 +35,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 
-use crate::codex::Origin;
+use crate::rules::Origin;
 
 /// Type-level pin of the `WorkspaceModel` envelope version.
 ///
@@ -253,7 +253,7 @@ pub struct MarketplaceEntry {
 ///
 /// Named `CodexRuleFact` rather than `CodexRule` so the entity-fact
 /// shape does not collide with the parsed-frontmatter
-/// [`crate::codex::CodexRule`] DTO that ships its full body.
+/// [`crate::rules::CodexRule`] DTO that ships its full body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct CodexRuleFact {
@@ -263,7 +263,7 @@ pub struct CodexRuleFact {
     /// Project-relative path of the codex rule markdown file.
     pub path: String,
     /// Which codex tree contributed the rule. Reuses the RFC-28
-    /// [`crate::codex::Origin`] enum so resolver and review surfaces
+    /// [`crate::rules::Origin`] enum so resolver and review surfaces
     /// share one type.
     pub origin: Origin,
     /// Path back to the originating [`Frontmatter`] fact so

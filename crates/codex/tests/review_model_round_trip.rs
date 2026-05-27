@@ -12,12 +12,12 @@
 //!    miss.
 
 use serde_json::{Map, Value, json};
-use specify_codex::codex::Origin;
 use specify_codex::review::{
     AdapterAxis, AdapterManifest, CodexRuleFact, File, FileKind, Frontmatter, MarkdownLink,
     MarkdownSection, MarketplaceEntry, ScanProfile, Skill, Symlink, TextMatch, WorkspaceModel,
     WorkspaceModelVersion,
 };
+use specify_codex::rules::Origin;
 use specify_error::ValidationStatus;
 use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 

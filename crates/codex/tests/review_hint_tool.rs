@@ -13,10 +13,10 @@ mod eval_support;
 use std::fs;
 
 use eval_support::{FakeToolRunner, NoToolRunner, hint, make_rule};
-use specify_codex::codex::{FindingEvidence, HintKind, Severity, validate_evidence_size};
 use specify_codex::review::ScanProfile;
 use specify_codex::review::eval::{ReservedSkipped, ToolRunner, evaluate, reserved_hint_summary};
 use specify_codex::review::index::build;
+use specify_codex::rules::{FindingEvidence, HintKind, Severity, validate_evidence_size};
 
 fn synthetic_envelope_stdout() -> Vec<u8> {
     let body = serde_json::json!({

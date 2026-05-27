@@ -18,10 +18,10 @@
 //!
 //! Both [`super::super::Severity`] and [`super::super::Origin`] are
 //! declared with variants in the RFC sort order in
-//! [`crate::codex`], so the derived [`Ord`] picks up the
+//! [`crate::rules`], so the derived [`Ord`] picks up the
 //! RFC-mandated comparator directly — no bespoke `_sort_key` helpers
 //! needed. The `severity_ordering_matches_rfc` and
-//! `origin_ordering_matches_rfc` tests in `crates/codex/src/codex.rs`
+//! `origin_ordering_matches_rfc` tests in `crates/codex/src/rules.rs`
 //! pin that declaration order so a future refactor cannot silently
 //! shift the sort.
 //!
@@ -39,7 +39,7 @@
 //! so golden bytes match across Linux, macOS, and Windows.
 
 use super::{ResolveError, ResolveInputs, ResolvedRuleEntry, filter};
-use crate::codex::{CodexRule, ResolvedCodex, ResolvedRule};
+use crate::rules::{CodexRule, ResolvedCodex, ResolvedRule};
 
 /// Sort `entries` in place by the closed RFC-28 four-tuple.
 ///
@@ -127,7 +127,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::codex::{Deprecated, Origin, PathRoot, Severity};
+    use crate::rules::{Deprecated, Origin, PathRoot, Severity};
 
     fn rule(id: &str, severity: Severity, deprecated: bool) -> CodexRule {
         CodexRule {

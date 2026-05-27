@@ -10,7 +10,7 @@
 use std::fmt::Write as _;
 
 use super::{RenderError, ReviewResult};
-use crate::codex::{FindingLocation, ReviewFinding, Severity};
+use crate::rules::{FindingLocation, ReviewFinding, Severity};
 
 /// Render `result` as colourised terminal output.
 ///

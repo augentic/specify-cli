@@ -78,7 +78,7 @@ use std::path::{Path, PathBuf};
 use glob::{MatchOptions, Pattern};
 
 use super::{ResolveInputs, ResolvedRuleEntry};
-use crate::codex::CodexRule;
+use crate::rules::CodexRule;
 
 /// RFC-28 §"Path glob semantics (`applicability.paths`)": case-sensitive,
 /// `/` is the only separator, leading dots match literally.
@@ -234,7 +234,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::codex::{Applicability, Deprecated, Origin, PathRoot, Severity};
+    use crate::rules::{Applicability, Deprecated, Origin, PathRoot, Severity};
 
     fn make_rule(
         id: &str, applicability: Option<Applicability>, deprecated: Option<Deprecated>,

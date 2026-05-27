@@ -11,7 +11,7 @@
 //! candidate's project-relative path as the sole positional argument.
 //! The closed `{artifact}` / `{project_dir}` / `{rule_id}` placeholder
 //! set named in the RFC body cannot be expanded in v1 because the
-//! closed [`crate::codex::DeterministicHint`] shape carries no
+//! closed [`crate::rules::DeterministicHint`] shape carries no
 //! `args:` field; extending the hint shape is RFC-28's responsibility,
 //! not this evaluator's.
 //!
@@ -37,10 +37,10 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use super::{HintError, make_synthetic_finding, restamp_finding};
-use crate::codex::{
+use crate::review::diagnostics::ReviewResult;
+use crate::rules::{
     DeterministicHint, FindingEvidence, FindingLocation, ResolvedRule, ReviewFinding, Severity,
 };
-use crate::review::diagnostics::ReviewResult;
 
 const STDERR_MAX_BYTES: usize = 8 * 1024;
 

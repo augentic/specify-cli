@@ -1,7 +1,7 @@
 //! `kind: regex` evaluator per RFC-32 §"Hint kinds — Phase 2".
 //!
 //! Compiles the hint's `value` once and walks each text candidate
-//! line by line, emitting one [`crate::codex::ReviewFinding`] per
+//! line by line, emitting one [`crate::rules::ReviewFinding`] per
 //! match with a 1-indexed `line` / `column` location and the matched
 //! line clipped to a bounded char count in the `Snippet` evidence
 //! payload.
@@ -20,10 +20,10 @@ use std::path::{Path, PathBuf};
 use ::regex::Regex;
 
 use super::{HintError, make_finding};
-use crate::codex::{
+use crate::review::{FileKind, WorkspaceModel};
+use crate::rules::{
     DeterministicHint, FindingEvidence, FindingLocation, ResolvedRule, ReviewFinding,
 };
-use crate::review::{FileKind, WorkspaceModel};
 
 const SNIPPET_MAX_CHARS: usize = 240;
 

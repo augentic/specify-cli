@@ -5,11 +5,11 @@
 //! `<project_dir>/.specify/cache/codex/` (populated by `specrun init`
 //! and refreshed by `specrun workspace sync`). This module walks that
 //! tree, reuses the RFC-28 frontmatter parser
-//! ([`crate::codex::parse::parse_codex_rule_file`]), and emits one
+//! ([`crate::rules::parse::parse_codex_rule_file`]), and emits one
 //! [`CodexRuleFact`] per `*.md` rule found.
 //!
 //! Origin inference is by path shape, mirroring the resolver's
-//! overlay precedence in [`mod@crate::codex::resolve`]:
+//! overlay precedence in [`mod@crate::rules::resolve`]:
 //!
 //! - `adapters/targets/<name>/codex/…` → [`Origin::Target`]
 //! - `adapters/sources/<name>/codex/…` → [`Origin::Source`]
@@ -31,9 +31,9 @@ use std::path::Path;
 
 use ignore::WalkBuilder;
 
-use crate::codex::Origin;
-use crate::codex::parse::parse_codex_rule_file;
 use crate::review::CodexRuleFact;
+use crate::rules::Origin;
+use crate::rules::parse::parse_codex_rule_file;
 
 const CACHE_ROOT: &str = ".specify/cache/codex";
 

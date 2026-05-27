@@ -201,7 +201,7 @@ fn snake_to_kebab_keys(value: JsonValue) -> JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex::{HintKind, ReviewMode, Severity};
+    use crate::rules::{HintKind, ReviewMode, Severity};
 
     const HARDCODED_CONFIGURATION: &str =
         include_str!("../../tests/fixtures/codex/hardcoded-configuration.md");

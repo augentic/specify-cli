@@ -11,10 +11,10 @@
 
 use std::path::Path;
 
-use specify_codex::codex::{
+use specify_codex::review::eval::{ToolOutput, ToolRunError, ToolRunner};
+use specify_codex::rules::{
     Applicability, DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule, Severity,
 };
-use specify_codex::review::eval::{ToolOutput, ToolRunError, ToolRunner};
 
 pub fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {
     ResolvedRule {

@@ -20,7 +20,7 @@ pub mod pretty;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
-use crate::codex::{ReviewFinding, Severity};
+use crate::rules::{ReviewFinding, Severity};
 
 /// Type-level pin of the [`ReviewResult`] envelope version.
 ///
@@ -158,7 +158,7 @@ mod tests {
     use serde_json::Value;
 
     use super::{ReviewResultVersion, ReviewSummary};
-    use crate::codex::{
+    use crate::rules::{
         Artifact, Confidence, FindingEvidence, FindingSource, ReviewFinding, Severity,
     };
 

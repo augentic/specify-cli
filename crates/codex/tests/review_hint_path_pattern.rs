@@ -12,10 +12,10 @@ mod eval_support;
 use std::fs;
 
 use eval_support::{NoToolRunner, hint, make_rule};
-use specify_codex::codex::{HintKind, Severity};
 use specify_codex::review::ScanProfile;
 use specify_codex::review::eval::{ToolRunner, evaluate};
 use specify_codex::review::index::build;
+use specify_codex::rules::{HintKind, Severity};
 
 #[test]
 fn path_pattern_narrows_candidate_set_for_subsequent_kinds() {

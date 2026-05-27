@@ -18,8 +18,8 @@ use std::path::PathBuf;
 use glob::Pattern;
 
 use super::HintError;
-use crate::codex::{DeterministicHint, HintKind, ResolvedRule};
 use crate::review::WorkspaceModel;
+use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
 
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, model: &WorkspaceModel,

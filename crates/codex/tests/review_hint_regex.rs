@@ -10,10 +10,10 @@ mod eval_support;
 use std::fs;
 
 use eval_support::{NoToolRunner, hint, make_rule};
-use specify_codex::codex::{FindingEvidence, HintKind};
 use specify_codex::review::ScanProfile;
 use specify_codex::review::eval::{ToolRunner, evaluate};
 use specify_codex::review::index::build;
+use specify_codex::rules::{FindingEvidence, HintKind};
 
 #[test]
 fn regex_matches_text_files_and_skips_binaries() {

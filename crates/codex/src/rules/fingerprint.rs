@@ -63,7 +63,7 @@
 use serde_json::Value;
 use specify_tool::sha256_hex;
 
-use crate::codex::{FindingEvidence, FindingLocation, ReviewFinding};
+use crate::rules::{FindingEvidence, FindingLocation, ReviewFinding};
 
 /// Wire-format version embedded into every fingerprint preimage.
 const FINGERPRINT_VERSION: &str = "v1";
@@ -199,7 +199,7 @@ mod tests {
     use serde_json::json;
 
     use super::{canonical_json, fingerprint, verify_fingerprint};
-    use crate::codex::{
+    use crate::rules::{
         Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, FindingStatus,
         ReviewFinding, Severity,
     };

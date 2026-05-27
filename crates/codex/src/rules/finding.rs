@@ -188,8 +188,8 @@ mod tests {
         EVIDENCE_MAX_BYTES, FindingError, validate, validate_evidence_size, validate_finding,
         validate_finding_json, validate_fingerprint,
     };
-    use crate::codex::fingerprint::fingerprint;
-    use crate::codex::{
+    use crate::rules::fingerprint::fingerprint;
+    use crate::rules::{
         Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, ReviewFinding,
         Severity,
     };
