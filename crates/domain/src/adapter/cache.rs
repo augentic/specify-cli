@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// Inputs are byte-stable per source — operators who pin the four
 /// inputs at a known set can re-run any prior `/spec:execute` and
-/// expect byte-stable cache hits. The fifth field (`candidate`) is
-/// `Some` for `extract` and `None` for `enumerate`.
+/// expect byte-stable cache hits. The fifth field (`lead`) is
+/// `Some` for `extract` and `None` for `survey`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct CacheFingerprint {
@@ -33,17 +33,17 @@ pub struct CacheFingerprint {
     /// `<name>@<version>` join of the adapter manifest fields.
     pub adapter: String,
     /// `sha256:<hex>` of the brief markdown file driving the
-    /// operation (`briefs/enumerate.md` or `briefs/extract.md`).
+    /// operation (`briefs/survey.md` or `briefs/extract.md`).
     pub brief_sha256: String,
     /// Declared-tool versions sorted by tool name (matches the
     /// `tools[]` declaration order from `adapter.yaml`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_versions: Vec<FingerprintToolVersion>,
     /// Candidate id this fingerprint resolved for. Present on
-    /// `extract` fingerprints, absent on `enumerate` (which is
-    /// candidate-set-shaped).
+    /// `extract` fingerprints, absent on `survey` (which is
+    /// lead-set-shaped).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub candidate: Option<String>,
+    pub lead: Option<String>,
 }
 
 impl CacheFingerprint {
@@ -52,7 +52,7 @@ impl CacheFingerprint {
     #[must_use]
     pub fn new(
         source: FingerprintSource, adapter: String, brief_sha256: String,
-        mut tool_versions: Vec<FingerprintToolVersion>, candidate: Option<String>,
+        mut tool_versions: Vec<FingerprintToolVersion>, lead: Option<String>,
     ) -> Self {
         tool_versions.sort_by(|a, b| a.name.cmp(&b.name));
         Self {
@@ -60,7 +60,7 @@ impl CacheFingerprint {
             adapter,
             brief_sha256,
             tool_versions,
-            candidate,
+            lead,
         }
     }
 
@@ -94,7 +94,7 @@ impl CacheFingerprint {
     /// field matches.
     ///
     /// Field order: `source`, `adapter`, `brief_sha256`,
-    /// `tool_versions`, `candidate` — the closed declaration order of
+    /// `tool_versions`, `lead` — the closed declaration order of
     /// [`CacheFingerprint`], which mirrors the extraction cache fingerprint contract input list.
     #[must_use]
     pub fn diff_reason(prior: &Self, current: &Self) -> Option<CacheMissReason> {
@@ -110,9 +110,9 @@ impl CacheFingerprint {
         if prior.tool_versions != current.tool_versions {
             return Some(CacheMissReason::ToolVersionChanged);
         }
-        if prior.candidate != current.candidate {
-            // No `candidate-changed` reason in the closed enum; the
-            // cache key crosses candidates by design and a candidate
+        if prior.lead != current.lead {
+            // No `lead-changed` reason in the closed enum; the
+            // cache key crosses leads by design and a lead
             // delta on the same (slice, source-key) lane reads as a
             // brand-new entry to the operator.
             return Some(CacheMissReason::NoPriorEntry);
@@ -241,7 +241,7 @@ mod tests {
     use super::*;
     use crate::journal::test_timestamp;
 
-    fn sample(adapter: &str, candidate: Option<&str>) -> CacheFingerprint {
+    fn sample(adapter: &str, lead: Option<&str>) -> CacheFingerprint {
         CacheFingerprint::new(
             FingerprintSource::Path {
                 path: "/repo/vendor/monolith".to_string(),
@@ -252,7 +252,7 @@ mod tests {
                 name: "tsc".to_string(),
                 version: Some("5.4.0".to_string()),
             }],
-            candidate.map(str::to_string),
+            lead.map(str::to_string),
         )
     }
 
@@ -281,10 +281,7 @@ mod tests {
         let json = serde_json::to_string(&fp).expect("serialise");
         assert!(json.contains(r#""source":{"kind":"value","sha256":"sha256:deadbeef"}"#));
         assert!(!json.contains("tool-versions"), "empty tool-versions must elide");
-        assert!(
-            !json.contains("candidate"),
-            "absent candidate must elide on enumerate fingerprint"
-        );
+        assert!(!json.contains("lead"), "absent lead must elide on survey fingerprint");
         let reparsed: CacheFingerprint = serde_json::from_str(&json).expect("reparse");
         assert_eq!(fp, reparsed);
     }
@@ -401,9 +398,9 @@ mod tests {
         tool_changed.tool_versions[0].version = Some("5.5.0".to_string());
         assert_ne!(tool_changed.digest(), baseline, "tool flip must change digest");
 
-        let mut candidate_changed = base;
-        candidate_changed.candidate = Some("c2".to_string());
-        assert_ne!(candidate_changed.digest(), baseline, "candidate flip must change digest");
+        let mut lead_changed = base;
+        lead_changed.lead = Some("c2".to_string());
+        assert_ne!(lead_changed.digest(), baseline, "lead flip must change digest");
     }
 
     #[test]

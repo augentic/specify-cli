@@ -198,7 +198,7 @@ version: 1
 axis: source
 description: Synthetic source adapter for specdev golden tests.
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 "
         ),

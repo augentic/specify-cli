@@ -7,7 +7,7 @@
 //! - Declarative rule id `CORE-004` ≅ `adapter.briefs-cover-operations`.
 //!   No imperative `Check` row is retired by this card: the JSON schema in
 //!   `source.schema.json` / `target.schema.json` already requires the full
-//!   `briefs.{enumerate,extract}` / `briefs.{shape,build,merge}` key set via
+//!   `briefs.{survey,extract}` / `briefs.{shape,build,merge}` key set via
 //!   `required: […]`, and that surface is owned end-to-end by C8's
 //!   `CORE-001` ≅ `adapter.schema-violation` migration. RFC-34 §F5 and
 //!   the C12 plan card explicitly permit landing the kind interpreter +
@@ -75,7 +75,7 @@ const BAD_SOURCE: &str = concat!(
     "axis: source\n",
     "description: Source adapter missing `extract:`.\n",
     "briefs:\n",
-    "  enumerate: briefs/enumerate.md\n",
+    "  survey: briefs/survey.md\n",
 );
 const BAD_TARGET: &str = concat!(
     "name: bad-target\n",
@@ -92,11 +92,11 @@ const GOOD_SOURCE: &str = concat!(
     "axis: source\n",
     "description: Fully covered source adapter (negative control).\n",
     "briefs:\n",
-    "  enumerate: briefs/enumerate.md\n",
+    "  survey: briefs/survey.md\n",
     "  extract: briefs/extract.md\n",
 );
 
-const SOURCE_OPERATIONS: &[&str] = &["enumerate", "extract"];
+const SOURCE_OPERATIONS: &[&str] = &["extract", "survey"];
 const TARGET_OPERATIONS: &[&str] = &["build", "merge", "shape"];
 
 fn stage_project(project_dir: &Path) {
@@ -121,7 +121,7 @@ fn stage_project(project_dir: &Path) {
 /// `adapters/{sources,targets}/<name>/adapter.yaml`, parses the
 /// `briefs:` map keys, and returns the
 /// `(adapter, axis, missing-operation)` triple set per the closed
-/// axis-appropriate operation enums (`SourceOperation` ≡ `{enumerate, extract}`,
+/// axis-appropriate operation enums (`SourceOperation` ≡ `{survey, extract}`,
 /// `TargetOperation` ≡ `{shape, build, merge}`).
 fn imperative_missing_set(project_dir: &Path) -> BTreeSet<(String, String, String)> {
     let mut out = BTreeSet::new();

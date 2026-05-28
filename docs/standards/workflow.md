@@ -4,7 +4,7 @@ The in-force contract this binary implements. Stable anchors that source code an
 
 ## Adapter vocabulary
 
-Two adapter roles — `source` (operations: `enumerate`, `extract`) and `target` (operations: `shape`, `build`, `merge`). The shared on-disk shape is `adapter.yaml`; per-axis schemas refine it. See the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
+Two adapter roles — `source` (operations: `survey`, `extract`) and `target` (operations: `shape`, `build`, `merge`). The shared on-disk shape is `adapter.yaml`; per-axis schemas refine it. See the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
 
 ## Adapter implementation shape
 
@@ -12,7 +12,7 @@ Per-adapter `adapter.yaml` carries `name`, `version`, `axis`, `description`, the
 
 ## Source adapter contract
 
-`axis: source`; `briefs.keys() ⊆ {enumerate, extract}`. `enumerate` writes `## Candidate inventory` blocks under `discovery.md` at plan time; `extract` writes one Evidence document per `(source-key, candidate-id)` pair at slice time. See [`schemas/source.schema.json`](../../schemas/source.schema.json) and [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json).
+`axis: source`; `briefs.keys() ⊆ {extract, survey}`. `survey` writes `## Lead inventory` blocks under `discovery.md` at plan time; `extract` writes one Evidence document per `(source-key, lead-id)` pair at slice time. See [`schemas/source.schema.json`](../../schemas/source.schema.json) and [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json).
 
 ## Target adapter contract
 
@@ -33,7 +33,7 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Discovery handshake
 
-`enumerate` writes `## Candidate inventory` blocks; the operator stamps `reviewed`; `extract` resolves `slices[].sources[].candidate` against `id`-then-`aliases[]`. Schema at [`schemas/discovery/candidate.schema.json`](../../schemas/discovery/candidate.schema.json); parser at [`crates/domain/src/discovery/document.rs`](../../crates/domain/src/discovery/document.rs).
+`survey` writes `## Lead inventory` blocks; the operator stamps `reviewed`; `extract` resolves `slices[].sources[].lead` against `id`-then-`aliases[]`. Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/domain/src/discovery/document.rs`](../../crates/domain/src/discovery/document.rs).
 
 ## The Plan
 
@@ -41,17 +41,17 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Workflow vocabulary
 
-`Slice`, `Candidate`, `Evidence`, `Source`, `Target`, `Plan`, `Discovery`. Definitions live in the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
+`Slice`, `Lead`, `Evidence`, `Source`, `Target`, `Plan`, `Discovery`. Definitions live in the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
 
 ## Plan-time fusion
 
-Core synthesis fuses candidates across sources at plan time and writes one `slices[]` row per fusion outcome. The closed `Divergence` enum (`none | likely | accepted | rejected`) records the fusion outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/domain/src/change/plan/core/model.rs`](../../crates/domain/src/change/plan/core/model.rs).
+Core synthesis fuses leads across sources at plan time and writes one `slices[]` row per fusion outcome. The closed `Divergence` enum (`none | likely | accepted | rejected`) records the fusion outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/domain/src/change/plan/core/model.rs`](../../crates/domain/src/change/plan/core/model.rs).
 
 ## Source
 
 `plan.yaml.sources.<key>` is the structured `{ adapter, path?, value? }` object with exactly one of `path` / `value`. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
 
-`Slice.sources` (a slice's per-source binding list) accepts the bare-string shorthand on parse and serialises as the structured `{ key, candidate }`. See [`DECISIONS.md` §"`SliceSourceBinding`: bare shorthand plus structured form"](../../DECISIONS.md#slicesourcebinding-bare-shorthand-plus-structured-form).
+`Slice.sources` (a slice's per-source binding list) accepts the bare-string shorthand on parse and serialises as the structured `{ key, lead }`. See [`DECISIONS.md` §"`SliceSourceBinding`: bare shorthand plus structured form"](../../DECISIONS.md#slicesourcebinding-bare-shorthand-plus-structured-form).
 
 ## Authority hierarchy
 
@@ -127,7 +127,7 @@ The CLI is the single writer of every `Divergence` variant. Operators flip `acce
 
 ## D6 — Discovery aliases
 
-Candidates carry an optional `aliases[]` bullet. `slices[].sources[].candidate` resolves first against `id`, then against any entry in `aliases[]`. Aliases live in a single namespace per `discovery.md`. Parser at [`crates/domain/src/discovery/document.rs`](../../crates/domain/src/discovery/document.rs); collision discriminant `discovery-alias-collision`.
+Leads carry an optional `aliases[]` bullet. `slices[].sources[].lead` resolves first against `id`, then against any entry in `aliases[]`. Aliases live in a single namespace per `discovery.md`. Parser at [`crates/domain/src/discovery/document.rs`](../../crates/domain/src/discovery/document.rs); collision discriminant `discovery-alias-collision`.
 
 ## D7 — `--auto-approve`
 
@@ -135,7 +135,7 @@ Candidates carry an optional `aliases[]` bullet. `slices[].sources[].candidate` 
 
 ## D8 — Cache fingerprint inputs
 
-Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, candidate id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/domain/src/adapter/cache.rs`](../../crates/domain/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
+Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, lead id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/domain/src/adapter/cache.rs`](../../crates/domain/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
 
 ## Reconciliation index
 

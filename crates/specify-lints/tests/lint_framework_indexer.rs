@@ -120,11 +120,10 @@ fn framework_extractors_each_emit_at_least_one_fact() {
         model.briefs.len() >= 2,
         "brief extractor must emit one fact per `briefs/*.md` (sources + targets)"
     );
-    assert!(model.briefs.iter().any(|b| b.operation == "enumerate"));
+    assert!(model.briefs.iter().any(|b| b.operation == "survey"));
     assert!(model.briefs.iter().any(|b| b.operation == "shape"));
-    let enumerate_brief =
-        model.briefs.iter().find(|b| b.operation == "enumerate").expect("enumerate brief");
-    assert_eq!(enumerate_brief.sections, vec!["Inputs".to_string(), "Output contract".to_string()]);
+    let survey_brief = model.briefs.iter().find(|b| b.operation == "survey").expect("survey brief");
+    assert_eq!(survey_brief.sections, vec!["Inputs".to_string(), "Output contract".to_string()]);
 }
 
 #[test]

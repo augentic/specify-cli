@@ -65,9 +65,9 @@ See [DECISIONS.md §"Exit codes"](./DECISIONS.md#exit-codes) for the long-form r
 External references:
 
 - [Parent repo `AGENTS.md`](https://github.com/augentic/specify/blob/main/AGENTS.md) — workflow vocabulary (slice / change), skill family, plan-driven loop, contract skills.
-- [`docs/standards/workflow.md`](./docs/standards/workflow.md) — the in-force workflow contract this binary implements. Defines the `source` / `target` / `plugin` / `axis` vocabulary, the kebab-case wire format, the `Source` / `Candidate` / `Evidence` / `Slice` implementation types, writer ownership, and the CLI surface. Stable `§`-anchors that source comments and skill briefs cite by name.
+- [`docs/standards/workflow.md`](./docs/standards/workflow.md) — the in-force workflow contract this binary implements. Defines the `source` / `target` / `plugin` / `axis` vocabulary, the kebab-case wire format, the `Source` / `Lead` / `Evidence` / `Slice` implementation types, writer ownership, and the CLI surface. Stable `§`-anchors that source comments and skill briefs cite by name.
 - [`docs/release.md`](./docs/release.md) — tagging and crates.io publish pipeline.
-- [`schemas/`](./schemas/) — JSON Schema files distributed with the binary (`adapter.schema.json`, `source.schema.json`, `target.schema.json`, `evidence.schema.json`, `discovery/candidate.schema.json`, and `plan/plan.schema.json`); the workflow contract pins each shape.
+- [`schemas/`](./schemas/) — JSON Schema files distributed with the binary (`adapter.schema.json`, `source.schema.json`, `target.schema.json`, `evidence.schema.json`, `discovery/lead.schema.json`, and `plan/plan.schema.json`); the workflow contract pins each shape.
 
 ## Quick toolchain
 

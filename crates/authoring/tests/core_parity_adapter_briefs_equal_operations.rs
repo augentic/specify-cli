@@ -32,7 +32,7 @@
 //!   `divergence` is `missing` for an operation in the closed
 //!   axis-appropriate enum absent from `briefs.keys()`, and `unexpected`
 //!   for a `briefs.keys()` entry absent from the enum
-//!   (`SourceOperation` ≡ `{enumerate, extract}`,
+//!   (`SourceOperation` ≡ `{survey, extract}`,
 //!   `TargetOperation` ≡ `{shape, build, merge}`).
 //! - Declarative behaviour: the framework-profile indexer extracts one
 //!   [`specify_lints::lint::AdapterManifest`] fact per well-formed
@@ -56,10 +56,10 @@
 //! Option A (functional parity) against a synthetic fixture. The test
 //! stages four adapter manifests exercising both divergence directions:
 //!
-//! - `bad-source` — declares `enumerate:` only; `extract:` is `missing`.
+//! - `bad-source` — declares `survey:` only; `extract:` is `missing`.
 //! - `bad-target` — declares `shape:` + `build:` + an `extra:` key; the
 //!   `extra:` key is `unexpected` and `merge:` is `missing`.
-//! - `extra-source` — declares the full `{enumerate, extract}` set plus a
+//! - `extra-source` — declares the full `{survey, extract}` set plus a
 //!   stray `legacy:` key; the `legacy:` key is `unexpected` (no missing).
 //! - `good-target` — declares the exact `{shape, build, merge}` set;
 //!   negative control.
@@ -105,7 +105,7 @@ const BAD_SOURCE: &str = concat!(
     "axis: source\n",
     "description: Source adapter missing `extract:`.\n",
     "briefs:\n",
-    "  enumerate: briefs/enumerate.md\n",
+    "  survey: briefs/survey.md\n",
 );
 const BAD_TARGET: &str = concat!(
     "name: bad-target\n",
@@ -123,7 +123,7 @@ const EXTRA_SOURCE: &str = concat!(
     "axis: source\n",
     "description: Source adapter with a complete set plus a stray key.\n",
     "briefs:\n",
-    "  enumerate: briefs/enumerate.md\n",
+    "  survey: briefs/survey.md\n",
     "  extract: briefs/extract.md\n",
     "  legacy: briefs/legacy.md\n",
 );
@@ -138,7 +138,7 @@ const GOOD_TARGET: &str = concat!(
     "  merge: briefs/merge.md\n",
 );
 
-const SOURCE_OPERATIONS: &[&str] = &["enumerate", "extract"];
+const SOURCE_OPERATIONS: &[&str] = &["extract", "survey"];
 const TARGET_OPERATIONS: &[&str] = &["build", "merge", "shape"];
 
 const DIVERGENCE_MISSING: &str = "missing";
@@ -168,7 +168,7 @@ fn stage_project(project_dir: &Path) {
 /// `briefs:` map keys, and returns the
 /// `(adapter, axis, divergence, operation)` quadruple set per the
 /// symmetric difference against the closed axis-appropriate operation
-/// enum (`SourceOperation` ≡ `{enumerate, extract}`,
+/// enum (`SourceOperation` ≡ `{survey, extract}`,
 /// `TargetOperation` ≡ `{shape, build, merge}`).
 fn imperative_divergence_set(project_dir: &Path) -> BTreeSet<(String, String, String, String)> {
     let mut out = BTreeSet::new();

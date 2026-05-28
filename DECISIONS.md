@@ -349,26 +349,26 @@ state.
 ## `SliceSourceBinding`: bare shorthand plus structured form
 
 `plan.yaml.slices[].sources` is a single in-memory struct
-(`{ key: String, candidate: Option<String> }`) with a custom
+(`{ key: String, lead: Option<String> }`) with a custom
 `Deserialize` impl that accepts two wire shapes and a custom
 `Serialize` impl that emits whichever shape produced the value:
 
 - **Bare string shorthand** — `legacy` parses to `key = "legacy"`,
-  `candidate = None`; serialises back as the bare string. The candidate
+  `lead = None`; serialises back as the bare string. The lead
   falls back to the owning slice's name at lookup time via
-  `SliceSourceBinding::candidate(slice_name)`, preserving the
+  `SliceSourceBinding::lead(slice_name)`, preserving the
   one-source-per-slice degenerate case (predominantly `intent`).
-- **Structured form** — `{ key: legacy, candidate: legacy-monolith }`
-  parses to `key = "legacy"`, `candidate = Some("legacy-monolith")`;
-  serialises back as the same `{ key, candidate }` map. Required
-  whenever the key and the candidate id differ.
+- **Structured form** — `{ key: legacy, lead: legacy-monolith }`
+  parses to `key = "legacy"`, `lead = Some("legacy-monolith")`;
+  serialises back as the same `{ key, lead }` map. Required
+  whenever the key and the lead id differ.
 
 Collapsing the two variants into one struct means every consumer
 (`validate`, `doctor`, `fusion`, CLI handlers) goes through the same
-`key()` / `candidate()` accessors instead of `match`-ing the
+`key()` / `lead()` accessors instead of `match`-ing the
 discriminator — the shorthand stays a pure parser concern. Construct in
 tests via `SliceSourceBinding::bare(key)` or
-`SliceSourceBinding::structured(key, candidate)` so the discipline
+`SliceSourceBinding::structured(key, lead)` so the discipline
 stays consistent. `plan amend --add-source <key>` and `plan create`
 share the same shorthand on the wire. Refer to workflow §`Slice.sources`.
 
@@ -423,7 +423,7 @@ catches contributing-claim → Evidence-claim drift, both via the
 
 The closed list of fingerprint
 inputs (`source path canonicalised | adapter name@version | brief
-sha256 | sorted declared-tool versions | candidate id`) lives on
+sha256 | sorted declared-tool versions | lead id`) lives on
 [`crate::adapter::cache::CacheFingerprint`]. CI that pins the four inputs
 common across runs can re-run any prior `/spec:execute` and expect
 byte-stable cache hits; CI observing any of the five
@@ -527,7 +527,7 @@ invocation carries both. Refer to workflow §Source and
 
 Source keys are plan-scoped; each key maps to exactly one binding
 under `Plan::sources`, but slices may reference the same key with
-different candidates.
+different leads.
 
 ## Adapter manifest requireds
 
@@ -634,7 +634,7 @@ finishes; string operation names never survive past the manifest loader.
   and string literals at call sites are gone.
 - **Wire invariant.** The `specrun source resolve` and
   `specrun target resolve` JSON envelopes' `operations: [...]` arrays
-  iterate in kebab-alphabetical order (e.g. `["enumerate", "extract"]`,
+  iterate in kebab-alphabetical order (e.g. `["extract", "survey"]`,
   `["build", "merge", "shape"]`). Derived `Ord` on
   `{Source,Target}Operation` is intentional because enum variants are
   declared in kebab-alphabetical wire order.
@@ -680,7 +680,7 @@ resolves to a known schema in the hardcoded registry.
 
 ## `specrun source preview`
 
-`specrun source preview <adapter> --source <path> [--candidate <id>...]
+`specrun source preview <adapter> --source <path> [--lead <id>...]
 [--out <path>]` is a workflow-free verb: it resolves the source adapter,
 validates `--source`, scaffolds `${out}/evidence/`, and emits a summary
 of adapter info and brief paths. No `.specify/` writes, no journal
@@ -689,7 +689,7 @@ directory is required. Implementation:
 [`src/runtime/commands/source/preview.rs`](./src/runtime/commands/source/preview.rs).
 The v1 ships against the agent-run fallback (the agent reads the brief
 and executes it into the scaffolded output directory); full runner
-integration depends on first-class `specrun source enumerate` /
+integration depends on first-class `specrun source survey` /
 `specrun source extract` runner support.
 
 ## Component catalog

@@ -248,7 +248,7 @@ pub struct Brief {
     /// Owning adapter slug (the directory under
     /// `adapters/{sources,targets}/`).
     pub adapter: String,
-    /// Operation slug for the brief (e.g. `enumerate`, `extract`,
+    /// Operation slug for the brief (e.g. `extract`, `survey`,
     /// `shape`, `build`, `merge`).
     pub operation: String,
     /// `##` heading titles found in the body, in document order

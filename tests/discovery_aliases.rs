@@ -1,17 +1,17 @@
-//! Integration tests for discovery alias contract — candidate aliases on
+//! Integration tests for discovery alias contract — lead aliases on
 //! `<project_dir>/discovery.md`.
 //!
 //! Covers the three operator-facing surfaces:
 //!
 //! - `specrun plan add --sources <key>=<alias>` rewrites the alias to
-//!   the canonical candidate id before persisting `plan.yaml`.
+//!   the canonical lead id before persisting `plan.yaml`.
 //! - `specrun plan amend --add-alias` / `--remove-alias` mutate
 //!   `discovery.md` and refuse the whole amend on any
 //!   `discovery-alias-collision`.
 //!
-//! Re-enumeration survival is documented at the bottom of this file —
+//! Re-survey survival is documented at the bottom of this file —
 //! the chosen design is "append-only edits live in discovery.md
-//! itself; re-enumeration is operator-driven and re-applies adapter
+//! itself; re-survey is operator-driven and re-applies adapter
 //! aliases as a union".
 
 use std::fs;
@@ -19,13 +19,13 @@ use std::fs;
 mod common;
 use common::{Project, parse_stderr, specrun};
 
-/// Discovery document with one candidate per source key plus a
-/// kebab-case alias for the password-reset candidate. Mirrors the
+/// Discovery document with one lead per source key plus a
+/// kebab-case alias for the password-reset lead. Mirrors the
 /// scenario in workflow §Acceptance #26-6.
 const DISCOVERY_MD: &str = "\
 # Discovery
 
-## Candidate inventory
+## Lead inventory
 
 ### user-registration
 
@@ -87,7 +87,7 @@ fn plan_add_resolves_alias_to_canonical_id() {
     assert!(
         saved.contains("- legacy"),
         "plan.yaml must carry the canonical id (bare-key shorthand because \
-         candidate == slice name):\n{saved}"
+         lead == slice name):\n{saved}"
     );
     assert!(
         !saved.contains("password-reset\n") && !saved.contains("password-reset,"),
@@ -97,7 +97,7 @@ fn plan_add_resolves_alias_to_canonical_id() {
 
 #[test]
 fn plan_add_structured_form_persists_canonical_id_when_slice_differs() {
-    // Slice name differs from candidate id, so the structured
+    // Slice name differs from lead id, so the structured
     // binding form survives. Aliases still resolve to the canonical
     // id.
     let project = Project::init();
@@ -109,7 +109,7 @@ fn plan_add_structured_form_persists_canonical_id_when_slice_differs() {
         .args([
             "plan",
             "add",
-            "password-reset-flow", // slice name differs from candidate id
+            "password-reset-flow", // slice name differs from lead id
             "--target",
             "omnia@v1",
             "--sources",
@@ -120,17 +120,17 @@ fn plan_add_structured_form_persists_canonical_id_when_slice_differs() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("candidate: password-reset-request"),
-        "expected canonical candidate id on disk, got:\n{saved}"
+        saved.contains("lead: password-reset-request"),
+        "expected canonical lead id on disk, got:\n{saved}"
     );
     assert!(!saved.contains("password-reset\n"), "alias must not survive on disk:\n{saved}");
 }
 
 #[test]
-fn plan_add_unknown_candidate_in_discovery_refused() {
+fn plan_add_unknown_lead_in_discovery_refused() {
     // discovery alias contract — when `discovery.md` exists, an unresolvable
-    // candidate token refuses at exit 2 with
-    // `discovery-candidate-unknown`.
+    // lead token refuses at exit 2 with
+    // `discovery-lead-unknown`.
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
@@ -151,18 +151,18 @@ fn plan_add_unknown_candidate_in_discovery_refused() {
         .assert()
         .failure();
     let code = assert.get_output().status.code().expect("exit code");
-    assert_eq!(code, 2, "unknown candidate must exit 2");
+    assert_eq!(code, 2, "unknown lead must exit 2");
 
     let body = parse_stderr(&assert.get_output().stderr, project.root());
     let results = body["results"].as_array().expect("results array");
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["rule-id"], "discovery-candidate-unknown");
+    assert_eq!(results[0]["rule-id"], "discovery-lead-unknown");
 }
 
 #[test]
 fn plan_add_without_discovery_md_skips_alias_resolution() {
     // Legacy backwards-compat: without `discovery.md`, the supplied
-    // candidate value round-trips verbatim. Pre-authority and fusion contract projects
+    // lead value round-trips verbatim. Pre-authority and fusion contract projects
     // continue to work unchanged.
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);
@@ -183,8 +183,8 @@ fn plan_add_without_discovery_md_skips_alias_resolution() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("candidate: opaque-candidate-id"),
-        "expected verbatim candidate value without discovery.md, got:\n{saved}"
+        saved.contains("lead: opaque-candidate-id"),
+        "expected verbatim lead value without discovery.md, got:\n{saved}"
     );
 }
 
@@ -222,7 +222,7 @@ fn plan_amend_add_alias_mutates_discovery_md() {
         updated.contains("aliases: [account-registration]"),
         "discovery.md must record the new alias, got:\n{updated}"
     );
-    // Pre-existing aliases on the password-reset candidate survive
+    // Pre-existing aliases on the password-reset lead survive
     // the amend unchanged.
     assert!(
         updated.contains("aliases: [password-reset]"),
@@ -232,7 +232,7 @@ fn plan_amend_add_alias_mutates_discovery_md() {
 
 #[test]
 fn plan_amend_add_alias_refused_on_collision() {
-    // Self-shadow: alias equals the bearing candidate's own id.
+    // Self-shadow: alias equals the bearing lead's own id.
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);
     seed_discovery(&project, DISCOVERY_MD);
@@ -252,7 +252,7 @@ fn plan_amend_add_alias_refused_on_collision() {
             "amend",
             "user-registration",
             "--add-alias",
-            "password-reset-request=user-registration", // would shadow another candidate's id
+            "password-reset-request=user-registration", // would shadow another lead's id
         ])
         .assert()
         .failure();
@@ -356,12 +356,12 @@ fn slice_validate_surfaces_discovery_alias_collision() {
     // surfaces every alias collision on the project's discovery.md.
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);
-    // Hand-author a colliding discovery.md (two candidates share
+    // Hand-author a colliding discovery.md (two leads share
     // the alias `shared`).
     seed_discovery(
         &project,
         "\
-## Candidate inventory
+## Lead inventory
 
 ### a
 
@@ -400,10 +400,10 @@ fn slice_validate_surfaces_discovery_alias_collision() {
 
 #[test]
 fn plan_amend_alias_survives_reapplied_discovery() {
-    // discovery alias contract §Acceptance #26-6 — re-enumeration survival.
+    // discovery alias contract §Acceptance #26-6 — re-survey survival.
     //
     // The chosen design (see file footer): operator-added aliases
-    // live in `discovery.md` itself; re-enumeration is an explicit
+    // live in `discovery.md` itself; re-survey is an explicit
     // operator step that takes the union with adapter-emitted
     // aliases. We model that here by re-writing discovery.md with
     // the operator's alias plus a fresh adapter emit (which adds
@@ -431,17 +431,17 @@ fn plan_amend_alias_survives_reapplied_discovery() {
         .assert()
         .success();
 
-    // Simulate re-enumeration: hand-author a discovery.md that
+    // Simulate re-survey: hand-author a discovery.md that
     // unions the original adapter aliases with the operator's new
-    // alias. This is the documented re-enumeration contract — the
-    // CLI does not own the union step (no automatic re-enumeration
+    // alias. This is the documented re-survey contract — the
+    // CLI does not own the union step (no automatic re-survey
     // exists today); operators or skill bodies preserve the alias
     // by re-emitting it. The test verifies the resulting union
     // resolves correctly through `--sources` and `slice validate`.
     seed_discovery(
         &project,
         "\
-## Candidate inventory
+## Lead inventory
 
 ### password-reset-request
 
@@ -456,6 +456,6 @@ fn plan_amend_alias_survives_reapplied_discovery() {
         fs::read_to_string(project.root().join("discovery.md")).expect("read discovery");
     assert!(
         discovery.contains("aliases: [password-reset, pwd-reset]"),
-        "post-re-enumerate union must preserve both adapter and operator aliases, got:\n{discovery}"
+        "post-re-survey union must preserve both adapter and operator aliases, got:\n{discovery}"
     );
 }

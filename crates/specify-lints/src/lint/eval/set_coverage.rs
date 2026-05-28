@@ -9,7 +9,7 @@
 //! `adapters/{sources,targets}/<name>/adapter.yaml` whose
 //! `briefs.keys()` set is missing one or more operations from the
 //! axis-appropriate closed enum
-//! (`SourceOperation::{Enumerate, Extract}` xor
+//! (`SourceOperation::{Extract, Survey}` xor
 //! `TargetOperation::{Shape, Build, Merge}`). The interpreter emits
 //! one [`crate::rules::LintFinding`] per `(adapter, missing-operation)`
 //! pair, with the manifest path as the finding's location and the
@@ -49,7 +49,7 @@ const SOURCE_ADAPTER_BRIEFS_COVER_OPERATIONS: &str = "adapter-briefs-cover-opera
 /// `specify_domain::adapter::SourceOperation` (kebab-case wire
 /// form). Held inline here so the standards-layer crate does not
 /// take a workflow-layer dependency.
-const SOURCE_OPERATIONS: &[&str] = &["enumerate", "extract"];
+const SOURCE_OPERATIONS: &[&str] = &["extract", "survey"];
 
 /// Closed target-adapter operation set kept in sync with
 /// `specify_domain::adapter::TargetOperation`.

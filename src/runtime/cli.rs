@@ -64,7 +64,7 @@ pub enum Commands {
     },
 
     /// Source adapter operations (workflow contract). Source adapters provide
-    /// `enumerate` + `extract` capabilities and are resolved against
+    /// `extract` + `survey` capabilities and are resolved against
     /// `adapters/sources/<name>/adapter.yaml` (in-repo) or
     /// `.specify/.cache/manifests/sources/<name>/` (agent manifest cache).
     Source {
@@ -229,14 +229,14 @@ impl FromStr for SourceArg {
 ///
 /// Wire forms (workflow §`Slice.sources`):
 ///
-/// - `<key>=<candidate-id>` — structured binding; both sides are
+/// - `<key>=<lead-id>` — structured binding; both sides are
 ///   non-empty kebab identifiers. Materialises via
 ///   [`specify_domain::change::SliceSourceBinding::structured`].
 /// - `<key>` — bare-string shorthand; sugar for
-///   `{ key: <key>, candidate: <slice.name> }`. Materialises via
+///   `{ key: <key>, lead: <slice.name> }`. Materialises via
 ///   [`specify_domain::change::SliceSourceBinding::bare`].
 ///
-/// Malformed inputs (empty key, empty candidate, dangling `=`, more
+/// Malformed inputs (empty key, empty lead, dangling `=`, more
 /// than one `=`) produce a `FromStr` error that clap surfaces as a
 /// standard usage diagnostic (exit code 2 via `Error::Argument` at
 /// the handler boundary).
@@ -244,10 +244,10 @@ impl FromStr for SourceArg {
 pub struct SliceSourceArg {
     pub(crate) key: String,
     /// `None` when the operator wrote the bare-string shorthand;
-    /// `Some(candidate)` otherwise. The handler downconverts to the
-    /// bare wire form when `candidate == slice.name` so the on-disk
+    /// `Some(lead)` otherwise. The handler downconverts to the
+    /// bare wire form when `lead == slice.name` so the on-disk
     /// `plan.yaml` stays minimal.
-    pub(crate) candidate: Option<String>,
+    pub(crate) lead: Option<String>,
 }
 
 /// Typed value for the per-slice `--authority-override <kind>=<key>`
@@ -268,16 +268,16 @@ pub struct AuthorityOverrideKindAssign {
 
 /// Typed value for `specrun plan amend --add-alias` /
 /// `--remove-alias` (discovery alias contract). Wire form is
-/// `<candidate-id>=<alias>`; both sides must be non-empty
+/// `<lead-id>=<alias>`; both sides must be non-empty
 /// kebab-case strings. The closed [`specify_error::is_kebab`]
 /// check runs at the handler boundary so the parser stays focused
 /// on the `=` split.
 #[derive(Clone, Debug)]
 pub struct AliasAssign {
-    /// Candidate id (left of `=`). The candidate must exist in
+    /// Lead id (left of `=`). The lead must exist in
     /// `discovery.md`; the handler refuses with
-    /// `discovery-candidate-unknown` otherwise.
-    pub(crate) candidate: String,
+    /// `discovery-lead-unknown` otherwise.
+    pub(crate) lead: String,
     /// Alias value (right of `=`).
     pub(crate) alias: String,
 }
@@ -286,19 +286,17 @@ impl FromStr for AliasAssign {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (candidate, alias) = s
+        let (lead, alias) = s
             .split_once('=')
-            .ok_or_else(|| format!("alias flag must be <candidate-id>=<alias>, got `{s}`"))?;
-        if candidate.is_empty() || alias.is_empty() {
-            return Err(format!(
-                "alias flag candidate and alias must both be non-empty, got `{s}`"
-            ));
+            .ok_or_else(|| format!("alias flag must be <lead-id>=<alias>, got `{s}`"))?;
+        if lead.is_empty() || alias.is_empty() {
+            return Err(format!("alias flag lead and alias must both be non-empty, got `{s}`"));
         }
         if alias.contains('=') {
             return Err(format!("alias flag value `{s}` must contain exactly one `=` separator"));
         }
         Ok(Self {
-            candidate: candidate.to_string(),
+            lead: lead.to_string(),
             alias: alias.to_string(),
         })
     }
@@ -340,22 +338,20 @@ impl FromStr for SliceSourceArg {
         if let Some((k, v)) = s.split_once('=') {
             if v.contains('=') {
                 return Err(format!(
-                    "--sources value `{s}` must be <key>=<candidate-id> with at most one `=`"
+                    "--sources value `{s}` must be <key>=<lead-id> with at most one `=`"
                 ));
             }
             if k.is_empty() || v.is_empty() {
-                return Err(format!(
-                    "--sources key and candidate-id must both be non-empty, got `{s}`"
-                ));
+                return Err(format!("--sources key and lead-id must both be non-empty, got `{s}`"));
             }
             Ok(Self {
                 key: k.to_string(),
-                candidate: Some(v.to_string()),
+                lead: Some(v.to_string()),
             })
         } else {
             Ok(Self {
                 key: s.to_string(),
-                candidate: None,
+                lead: None,
             })
         }
     }

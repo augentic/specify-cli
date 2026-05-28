@@ -54,7 +54,7 @@ fn source_resolve_local_returns_resolved_manifest() {
     assert_eq!(actual["location"], "local");
     let operations = actual["operations"].as_array().expect("operations array");
     let ops: Vec<&str> = operations.iter().map(|v| v.as_str().unwrap()).collect();
-    assert_eq!(ops, vec!["enumerate", "extract"]);
+    assert_eq!(ops, vec!["extract", "survey"]);
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
         resolved.ends_with("adapters/sources/code-typescript"),

@@ -5,7 +5,7 @@
 //! ```text
 //! .specify/.cache/extractions/<adapter>/
 //!     <fingerprint>/
-//!         evidence.yaml      # or candidate-set.md for enumerate
+//!         evidence.yaml      # or lead-set.md for survey
 //!         fingerprint.json   # full input record for audit
 //!     index.jsonl            # one row per cache write; append-only
 //! ```

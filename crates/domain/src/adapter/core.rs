@@ -2,7 +2,7 @@
 //!
 //! Source adapters and target adapters share a manifest shape on the
 //! wire (`adapter.yaml`) but carry disjoint closed operation sets:
-//! [`SourceOperation`] (`enumerate | extract`) vs. [`TargetOperation`]
+//! [`SourceOperation`] (`extract | survey`) vs. [`TargetOperation`]
 //! (`shape | build | merge`). The in-memory split into
 //! [`SourceAdapter`] / [`TargetAdapter`] pushes the kebab-string
 //! boundary out to the YAML parse step — `briefs.keys()` is now the
@@ -75,7 +75,7 @@ const TARGET_JSON_SCHEMA: &str = include_str!("../../../../schemas/target.schema
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum Axis {
-    /// Source adapter — `enumerate` + `extract`.
+    /// Source adapter — `extract` + `survey`.
     Source,
     /// Target adapter — `shape` + `build` + `merge`.
     Target,
@@ -223,7 +223,7 @@ pub struct SourceAdapter {
     pub axis: Axis,
     /// Typed source-operation → relative brief path map. Closed by
     /// `source.schema.json#/properties/briefs`: every source manifest
-    /// declares `enumerate` + `extract`. `briefs.keys()` is the
+    /// declares `extract` + `survey`. `briefs.keys()` is the
     /// canonical operation iterator — exposed via
     /// [`SourceAdapter::operations`].
     pub briefs: BTreeMap<SourceOperation, String>,
@@ -340,7 +340,7 @@ impl SourceAdapter {
     }
 
     /// Iterator over the source operations this adapter declares, in
-    /// ascending kebab-name order (`enumerate < extract`). After the
+    /// ascending kebab-name order (`extract < survey`). After the
     /// collapse of the dedicated `operations[]` field (review 1.A1)
     /// and the operation-type refactor (review 1.B1),
     /// `briefs.keys()` is the canonical typed operation source.
@@ -650,7 +650,7 @@ mod tests {
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 ";
         let manifest: SourceAdapter = serde_saphyr::from_str(yaml).expect("parse");
@@ -668,7 +668,7 @@ briefs:
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 cache: opt-out
 ";
@@ -676,7 +676,7 @@ cache: opt-out
         assert_eq!(manifest.cache, Some(CacheMode::OptOut));
         assert_eq!(
             manifest.operations().copied().collect::<Vec<_>>(),
-            vec![SourceOperation::Enumerate, SourceOperation::Extract]
+            vec![SourceOperation::Extract, SourceOperation::Survey]
         );
         let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
         assert!(
@@ -714,14 +714,14 @@ briefs:
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   shape: briefs/shape.md
 ";
         let err = serde_saphyr::from_str::<SourceAdapter>(yaml)
             .expect_err("unknown source operation must be rejected");
         let detail = err.to_string();
         assert!(
-            detail.contains("shape") || detail.contains("enumerate"),
+            detail.contains("shape") || detail.contains("survey"),
             "expected closed-enum diagnostic, got: {detail}"
         );
     }

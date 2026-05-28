@@ -3,5 +3,5 @@ version: 1
 axis: source
 description: Operator-supplied free-form intent. Minimal fixture.
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md

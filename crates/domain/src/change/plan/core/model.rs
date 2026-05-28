@@ -153,12 +153,12 @@ pub struct Entry {
     /// entry is eligible.
     #[serde(default)]
     pub depends_on: Vec<String>,
-    /// (source-key, candidate-id) bindings (workflow §`Slice.sources`).
+    /// (source-key, lead-id) bindings (workflow §`Slice.sources`).
     /// Each entry pairs a source key — referencing a top-level
-    /// [`Plan::sources`] entry — with the `candidate` id from
+    /// [`Plan::sources`] entry — with the `lead` id from
     /// `discovery.md` that contributed to the slice. The bare-string
     /// shorthand `<key>` is accepted on the wire as sugar for
-    /// `{ key: <key>, candidate: <slice.name> }`; in memory we
+    /// `{ key: <key>, lead: <slice.name> }`; in memory we
     /// preserve the on-disk form via [`SliceSourceBinding`].
     #[serde(default)]
     pub sources: Vec<SliceSourceBinding>,
@@ -172,7 +172,7 @@ pub struct Entry {
     /// workflow §Plan-time fusion — closed enum capturing slice-level
     /// fusion outcome. Absent on disk (the default) is semantic `none`.
     /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
-    /// materially-disagreeing candidate summaries; `Accepted` /
+    /// materially-disagreeing lead summaries; `Accepted` /
     /// `Rejected` are written by the operator at Gate 1 via
     /// `specrun plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -217,7 +217,7 @@ pub enum Divergence {
     #[serde(rename = "none")]
     None,
     /// Synthesised by `/spec:plan`'s `propose` sub-step on
-    /// materially-disagreeing candidate summaries.
+    /// materially-disagreeing lead summaries.
     Likely,
     /// Operator-stamped at Gate 1 — divergence acknowledged and
     /// accepted into the plan.
@@ -453,17 +453,17 @@ impl fmt::Display for TargetRefParseError {
 
 impl std::error::Error for TargetRefParseError {}
 
-/// One `(source-key, candidate-id)` binding under [`Entry::sources`].
+/// One `(source-key, lead-id)` binding under [`Entry::sources`].
 ///
 /// On the wire (workflow §`Slice.sources`) this is either:
 ///
 /// - a bare string `<key>` — shorthand for the structured form
-///   `{ key: <key>, candidate: <slice.name> }`; used predominantly in
+///   `{ key: <key>, lead: <slice.name> }`; used predominantly in
 ///   the degenerate `intent` case (`sources: [intent]`); or
-/// - a structured `{ key, candidate }` object.
+/// - a structured `{ key, lead }` object.
 ///
 /// Both shapes round-trip byte-identically: the bare shorthand is
-/// normalised at parse time into `candidate == None`, and `Serialize`
+/// normalised at parse time into `lead == None`, and `Serialize`
 /// emits the same shape the operator authored. Use
 /// [`SliceSourceBinding::bare`] / [`SliceSourceBinding::structured`] in
 /// tests instead of constructing the struct literal directly so the
@@ -473,29 +473,29 @@ pub struct SliceSourceBinding {
     /// Source key matching a top-level [`Plan::sources`] entry. Always
     /// present, regardless of which wire shape produced this value.
     pub key: String,
-    /// Candidate id from `discovery.md`. `None` denotes the bare-string
-    /// shorthand — the candidate falls back to the owning slice's name
-    /// via [`SliceSourceBinding::candidate`].
-    pub candidate: Option<String>,
+    /// Lead id from `discovery.md`. `None` denotes the bare-string
+    /// shorthand — the lead falls back to the owning slice's name
+    /// via [`SliceSourceBinding::lead`].
+    pub lead: Option<String>,
 }
 
 impl SliceSourceBinding {
-    /// Construct the bare-string shorthand form: candidate defaults to
+    /// Construct the bare-string shorthand form: lead defaults to
     /// the owning slice's name at lookup time.
     #[must_use]
     pub fn bare(key: impl Into<String>) -> Self {
         Self {
             key: key.into(),
-            candidate: None,
+            lead: None,
         }
     }
 
-    /// Construct the structured form with an explicit candidate id.
+    /// Construct the structured form with an explicit lead id.
     #[must_use]
-    pub fn structured(key: impl Into<String>, candidate: impl Into<String>) -> Self {
+    pub fn structured(key: impl Into<String>, lead: impl Into<String>) -> Self {
         Self {
             key: key.into(),
-            candidate: Some(candidate.into()),
+            lead: Some(lead.into()),
         }
     }
 
@@ -505,31 +505,31 @@ impl SliceSourceBinding {
         &self.key
     }
 
-    /// The candidate id this binding pairs with, falling back to the
+    /// The lead id this binding pairs with, falling back to the
     /// owning slice's name for the bare-string shorthand per the
     /// workflow contract §`Slice.sources`.
     #[must_use]
-    pub fn candidate<'a>(&'a self, slice_name: &'a str) -> &'a str {
-        self.candidate.as_deref().unwrap_or(slice_name)
+    pub fn lead<'a>(&'a self, slice_name: &'a str) -> &'a str {
+        self.lead.as_deref().unwrap_or(slice_name)
     }
 
     /// `true` when the binding was authored / will be emitted as the
     /// bare-string shorthand.
     #[must_use]
     pub const fn is_bare(&self) -> bool {
-        self.candidate.is_none()
+        self.lead.is_none()
     }
 }
 
 impl Serialize for SliceSourceBinding {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match &self.candidate {
+        match &self.lead {
             None => serializer.serialize_str(&self.key),
-            Some(candidate) => {
+            Some(lead) => {
                 use serde::ser::SerializeStruct;
                 let mut state = serializer.serialize_struct("SliceSourceBinding", 2)?;
                 state.serialize_field("key", &self.key)?;
-                state.serialize_field("candidate", candidate)?;
+                state.serialize_field("lead", lead)?;
                 state.end()
             }
         }
@@ -542,11 +542,11 @@ impl<'de> Deserialize<'de> for SliceSourceBinding {
         #[serde(untagged)]
         enum Wire {
             Bare(String),
-            Structured { key: String, candidate: String },
+            Structured { key: String, lead: String },
         }
         Ok(match Wire::deserialize(deserializer)? {
             Wire::Bare(key) => Self::bare(key),
-            Wire::Structured { key, candidate } => Self::structured(key, candidate),
+            Wire::Structured { key, lead } => Self::structured(key, lead),
         })
     }
 }

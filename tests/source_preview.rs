@@ -57,7 +57,7 @@ fn preview_succeeds_without_specify_dir() {
     let briefs = actual["briefs"].as_array().expect("briefs array");
     assert_eq!(briefs.len(), 2);
     let ops: Vec<&str> = briefs.iter().map(|b| b["operation"].as_str().unwrap()).collect();
-    assert!(ops.contains(&"enumerate"));
+    assert!(ops.contains(&"survey"));
     assert!(ops.contains(&"extract"));
 }
 
@@ -114,7 +114,7 @@ fn preview_default_out_creates_specify_preview() {
 }
 
 #[test]
-fn preview_passes_candidates_through() {
+fn preview_passes_leads_through() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
     stage_source_adapter(root, "code-typescript");
@@ -127,17 +127,17 @@ fn preview_passes_candidates_through() {
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
         .arg(&source_dir)
-        .args(["--candidate", "login-screen", "--candidate", "settings"])
+        .args(["--lead", "login-screen", "--lead", "settings"])
         .arg("--project-dir")
         .arg(root)
         .assert()
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, root);
-    let candidates = actual["candidates"].as_array().expect("candidates array");
-    assert_eq!(candidates.len(), 2);
-    assert_eq!(candidates[0], "login-screen");
-    assert_eq!(candidates[1], "settings");
+    let leads = actual["leads"].as_array().expect("leads array");
+    assert_eq!(leads.len(), 2);
+    assert_eq!(leads[0], "login-screen");
+    assert_eq!(leads[1], "settings");
 }
 
 #[test]

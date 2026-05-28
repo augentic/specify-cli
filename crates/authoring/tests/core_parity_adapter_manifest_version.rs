@@ -91,7 +91,7 @@ const BAD_SOURCE: &str = concat!(
     "axis: source\n",
     "description: Source adapter declaring the wrong manifest version.\n",
     "briefs:\n",
-    "  enumerate: briefs/enumerate.md\n",
+    "  survey: briefs/survey.md\n",
     "  extract: briefs/extract.md\n",
 );
 const BAD_TARGET: &str = concat!(
@@ -110,7 +110,7 @@ const GOOD_SOURCE: &str = concat!(
     "axis: source\n",
     "description: Conforming source adapter (negative control).\n",
     "briefs:\n",
-    "  enumerate: briefs/enumerate.md\n",
+    "  survey: briefs/survey.md\n",
     "  extract: briefs/extract.md\n",
 );
 

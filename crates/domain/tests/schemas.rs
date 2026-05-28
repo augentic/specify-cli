@@ -1,7 +1,7 @@
 //! Golden tests for the the workflow contract JSON Schemas shipped under
 //! `cli/schemas/`: `adapter.schema.json`, `source.schema.json`,
 //! `target.schema.json`, `evidence.schema.json`, and
-//! `discovery/candidate.schema.json`. Each schema gets a "valid"
+//! `discovery/lead.schema.json`. Each schema gets a "valid"
 //! fixture that must validate cleanly plus a small set of "invalid"
 //! fixtures (missing required field, wrong enum value, wrong type)
 //! that the schema must reject.
@@ -51,7 +51,7 @@ name: code-typescript
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 description: Extracts behavioural evidence from TypeScript codebases.
 ";
@@ -71,7 +71,7 @@ const PLUGIN_INVALID_NO_AXIS: &str = r"
 name: code-typescript
 version: 1
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 ";
 
@@ -80,7 +80,7 @@ name: code-typescript
 version: 1
 axis: lens
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 ";
 
@@ -89,7 +89,7 @@ name: CodeTypeScript
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 ";
 
@@ -98,7 +98,7 @@ name: code-typescript
 version: 1.5
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 ";
 
@@ -125,7 +125,7 @@ name: code-typescript
 version: 1
 axis: target
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 ";
 
@@ -134,7 +134,7 @@ name: code-typescript
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
   shape: briefs/shape.md
 ";
@@ -144,7 +144,7 @@ name: code-typescript
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
 ";
 
 #[test]
@@ -225,7 +225,7 @@ const EVIDENCE_VALID_REQUIREMENT: &str = r"
 source: legacy-monolith
 adapter: code-typescript
 authority: behaviour
-candidate: user-registration
+lead: user-registration
 claims:
   - kind: requirement
     claim-id: users.register.email-validation
@@ -237,7 +237,7 @@ const EVIDENCE_VALID_SPATIAL: &str = r"
 source: home-screenshot
 adapter: screenshots
 authority: documentation
-candidate: home-screen
+lead: home-screen
 claims:
   - kind: region
     path: screenshots/home.png
@@ -251,14 +251,14 @@ const EVIDENCE_VALID_EMPTY_CLAIMS: &str = r"
 source: intent
 adapter: intent
 authority: intent
-candidate: add-search-filter
+lead: add-search-filter
 claims: []
 ";
 
 const EVIDENCE_INVALID_MISSING_AUTHORITY: &str = r"
 source: legacy-monolith
 adapter: code-typescript
-candidate: user-registration
+lead: user-registration
 claims: []
 ";
 
@@ -266,7 +266,7 @@ const EVIDENCE_INVALID_BAD_AUTHORITY: &str = r"
 source: legacy-monolith
 adapter: code-typescript
 authority: unknown
-candidate: user-registration
+lead: user-registration
 claims: []
 ";
 
@@ -274,7 +274,7 @@ const EVIDENCE_INVALID_BAD_KIND: &str = r"
 source: legacy-monolith
 adapter: code-typescript
 authority: behaviour
-candidate: user-registration
+lead: user-registration
 claims:
   - kind: hunch
     claim-id: users.register.maybe
@@ -284,7 +284,7 @@ const EVIDENCE_INVALID_REQUIREMENT_NO_CLAIM_ID: &str = r"
 source: notes
 adapter: documentation
 authority: documentation
-candidate: password-reset
+lead: password-reset
 claims:
   - kind: requirement
     statement: Reset links expire after 30 minutes.
@@ -294,7 +294,7 @@ const EVIDENCE_INVALID_SOURCE_NOT_KEBAB: &str = r"
 source: LegacyMonolith
 adapter: code-typescript
 authority: behaviour
-candidate: user-registration
+lead: user-registration
 claims: []
 ";
 
@@ -320,34 +320,34 @@ fn evidence_rejects_missing_or_invalid_authority_and_kinds() {
     assert_invalid(&v, &yaml(EVIDENCE_INVALID_SOURCE_NOT_KEBAB), "evidence/source-not-kebab");
 }
 
-// --- discovery/candidate.schema.json --------------------------------
+// --- discovery/lead.schema.json --------------------------------
 
-const CANDIDATE_VALID: &str = r"
+const LEAD_VALID: &str = r"
 id: user-registration
 sources: [legacy-monolith]
 summary: Registration endpoint accepting email + password with RFC 5322 validation.
 ";
 
-const CANDIDATE_VALID_TENTATIVE: &str = r"
+const LEAD_VALID_TENTATIVE: &str = r"
 id: password-reset
 sources: [identity-design-notes, legacy-monolith]
 summary: Operator-initiated password reset via email link.
 tentative: true
 ";
 
-const CANDIDATE_INVALID_NO_SOURCES: &str = r"
+const LEAD_INVALID_NO_SOURCES: &str = r"
 id: user-registration
 sources: []
 summary: bad — sources must be non-empty.
 ";
 
-const CANDIDATE_INVALID_BAD_ID: &str = r"
+const LEAD_INVALID_BAD_ID: &str = r"
 id: User_Registration
 sources: [legacy-monolith]
 summary: Bad id.
 ";
 
-const CANDIDATE_INVALID_TENTATIVE_WRONG_TYPE: &str = r"
+const LEAD_INVALID_TENTATIVE_WRONG_TYPE: &str = r"
 id: user-registration
 sources: [legacy-monolith]
 summary: Bad tentative.
@@ -355,22 +355,18 @@ tentative: maybe
 ";
 
 #[test]
-fn candidate_accepts_minimal_and_tentative_shapes() {
-    let v = load("discovery/candidate.schema.json");
-    assert_valid(&v, &yaml(CANDIDATE_VALID), "candidate/minimal");
-    assert_valid(&v, &yaml(CANDIDATE_VALID_TENTATIVE), "candidate/tentative");
+fn lead_accepts_minimal_and_tentative_shapes() {
+    let v = load("discovery/lead.schema.json");
+    assert_valid(&v, &yaml(LEAD_VALID), "lead/minimal");
+    assert_valid(&v, &yaml(LEAD_VALID_TENTATIVE), "lead/tentative");
 }
 
 #[test]
-fn candidate_rejects_empty_sources_bad_id_and_wrong_tentative_type() {
-    let v = load("discovery/candidate.schema.json");
-    assert_invalid(&v, &yaml(CANDIDATE_INVALID_NO_SOURCES), "candidate/no-sources");
-    assert_invalid(&v, &yaml(CANDIDATE_INVALID_BAD_ID), "candidate/bad-id");
-    assert_invalid(
-        &v,
-        &yaml(CANDIDATE_INVALID_TENTATIVE_WRONG_TYPE),
-        "candidate/wrong-tentative-type",
-    );
+fn lead_rejects_empty_sources_bad_id_and_wrong_tentative_type() {
+    let v = load("discovery/lead.schema.json");
+    assert_invalid(&v, &yaml(LEAD_INVALID_NO_SOURCES), "lead/no-sources");
+    assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
+    assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_WRONG_TYPE), "lead/wrong-tentative-type");
 }
 
 // --- plan/plan.schema.json (source/target adapter split deltas) -------------------------
@@ -416,7 +412,7 @@ fn plan_schema_rejects_unknown_divergence_value() {
 }
 
 #[test]
-fn plan_schema_rejects_slice_source_missing_candidate_field() {
+fn plan_schema_rejects_slice_source_missing_lead_field() {
     let v = load("plan/plan.schema.json");
     let bad = r"
 name: bad
@@ -427,5 +423,5 @@ slices:
       - key: docs
     status: pending
 ";
-    assert_invalid(&v, &yaml(bad), "plan/v2/source-missing-candidate");
+    assert_invalid(&v, &yaml(bad), "plan/v2/source-missing-lead");
 }

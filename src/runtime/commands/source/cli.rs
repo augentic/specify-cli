@@ -33,7 +33,7 @@ pub enum SourceAction {
         explain: bool,
     },
 
-    /// Run a source adapter's enumerate + extract in isolation
+    /// Run a source adapter's survey + extract in isolation
     /// (`specrun source preview` contract).
     ///
     /// Resolves the adapter manifest, validates the `--source` path,
@@ -51,10 +51,10 @@ pub enum SourceAction {
         /// Bound source path (`$SOURCE_DIR` for the adapter's briefs).
         #[arg(long)]
         source: PathBuf,
-        /// Restrict extraction to specific candidate IDs; defaults to
-        /// all candidates discovered by `enumerate`.
+        /// Restrict extraction to specific lead IDs; defaults to
+        /// all leads discovered by `survey`.
         #[arg(long)]
-        candidate: Vec<String>,
+        lead: Vec<String>,
         /// Output directory for Evidence files (default:
         /// `.specify-preview/`). Created if absent.
         #[arg(long)]

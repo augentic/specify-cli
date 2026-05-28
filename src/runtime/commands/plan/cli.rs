@@ -82,8 +82,8 @@ pub enum PlanAction {
         #[arg(long = "depends-on", action = ArgAction::Append)]
         depends_on: Vec<String>,
         /// Per-slice source binding (repeatable). Wire form is
-        /// `<key>=<candidate-id>`; bare `<key>` is accepted as
-        /// shorthand for `{ key: <key>, candidate: <slice.name> }`
+        /// `<key>=<lead-id>`; bare `<key>` is accepted as
+        /// shorthand for `{ key: <key>, lead: <slice.name> }`
         /// per workflow §`Slice.sources`.
         #[arg(long = "sources", action = ArgAction::Append)]
         sources: Vec<SliceSourceArg>,
@@ -134,13 +134,13 @@ pub enum PlanAction {
         #[arg(long = "depends-on", num_args = 0.., value_delimiter = ',')]
         depends_on: Option<Vec<String>>,
         /// Replace per-slice source bindings wholesale. Each value
-        /// is `<key>=<candidate-id>` (or bare `<key>` shorthand).
+        /// is `<key>=<lead-id>` (or bare `<key>` shorthand).
         /// Pass `--sources` (no value) to clear; omit to leave
         /// unchanged.
         #[arg(long = "sources", num_args = 0.., value_delimiter = ',')]
         sources: Option<Vec<SliceSourceArg>>,
         /// Add a single per-slice source binding (repeatable). Each
-        /// value is `<key>=<candidate-id>` or the bare `<key>`
+        /// value is `<key>=<lead-id>` or the bare `<key>`
         /// shorthand per workflow §`Slice.sources`.
         #[arg(long = "add-source", action = ArgAction::Append)]
         add_source: Vec<SliceSourceArg>,
@@ -219,23 +219,23 @@ pub enum PlanAction {
             action = ArgAction::Append,
         )]
         clear_authority_overrides: Vec<String>,
-        /// Append an alias to a candidate in `<project_dir>/discovery.md`
-        /// (discovery alias contract). Wire form is `<candidate-id>=<alias>`; both
+        /// Append an alias to a lead in `<project_dir>/discovery.md`
+        /// (discovery alias contract). Wire form is `<lead-id>=<alias>`; both
         /// sides are kebab-case. Repeatable. Mutates `discovery.md`
         /// (NOT `plan.yaml`); the whole amend is refused at exit 2
         /// (`discovery-alias-collision`) when the new alias would
-        /// collide with any other candidate's `id` or `aliases[]` in
+        /// collide with any other lead's `id` or `aliases[]` in
         /// the same `discovery.md`. Operator additions through this
-        /// flag survive re-enumeration so long as the source adapter
-        /// keeps emitting the bearing candidate's `id` (discovery alias contract).
+        /// flag survive re-survey so long as the source adapter
+        /// keeps emitting the bearing lead's `id` (discovery alias contract).
         #[arg(long = "add-alias", action = ArgAction::Append)]
         add_alias: Vec<AliasAssign>,
-        /// Remove an alias from a candidate in
+        /// Remove an alias from a lead in
         /// `<project_dir>/discovery.md` (discovery alias contract). Wire form is
-        /// `<candidate-id>=<alias>`; idempotent (no-op when the
+        /// `<lead-id>=<alias>`; idempotent (no-op when the
         /// alias is already absent). Repeatable. The whole amend
-        /// fails at exit 2 (`discovery-candidate-unknown`) when no
-        /// candidate has the named id.
+        /// fails at exit 2 (`discovery-lead-unknown`) when no
+        /// lead has the named id.
         #[arg(long = "remove-alias", action = ArgAction::Append)]
         remove_alias: Vec<AliasAssign>,
     },

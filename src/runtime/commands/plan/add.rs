@@ -34,8 +34,8 @@ pub(super) fn add(
     }
 
     // discovery alias contract — resolve `--sources <key>=<alias>` to the
-    // canonical candidate `id` before persisting; the on-disk
-    // `plan.yaml.slices[].sources[].candidate` always carries the
+    // canonical lead `id` before persisting; the on-disk
+    // `plan.yaml.slices[].sources[].lead` always carries the
     // canonical id. Absence of `discovery.md` short-circuits to the
     // legacy (verbatim) path so existing tests and pre-authority and fusion contract
     // projects continue to work.

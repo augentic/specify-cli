@@ -64,7 +64,7 @@ fn resolves_source_adapter_from_local_directory() {
     assert_eq!(resolved.manifest.axis, Axis::Source);
     assert_eq!(
         resolved.manifest.operations().copied().collect::<Vec<_>>(),
-        vec![SourceOperation::Enumerate, SourceOperation::Extract]
+        vec![SourceOperation::Extract, SourceOperation::Survey]
     );
     assert_eq!(
         resolved.manifest.briefs.get(&SourceOperation::Extract).map(String::as_str),
@@ -183,7 +183,7 @@ fn cache_directory_wins_over_local_when_both_exist() {
 version: 7
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 description: Cached source adapter fixture.
 ",
@@ -218,7 +218,7 @@ fn schema_violations_reject_at_load_time() {
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   shape: briefs/shape.md
 ",
     )
@@ -259,19 +259,18 @@ fn resolves_captures_source_adapter_with_tools_array() {
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 tools:
   - name: replay-index
     version: 0.1.0
 description: >-
   Runtime capture source adapter. Walks a read-only capture tree under
-  `$SOURCE_DIR` and emits one candidate per observed handler entry point.
+  `$SOURCE_DIR` and emits one lead per observed handler entry point.
 ",
     )
     .expect("write captures manifest");
-    fs::write(manifest_dir.join("briefs/enumerate.md"), "# enumerate\n")
-        .expect("enumerate brief stub");
+    fs::write(manifest_dir.join("briefs/survey.md"), "# survey\n").expect("survey brief stub");
     fs::write(manifest_dir.join("briefs/extract.md"), "# extract\n").expect("extract brief stub");
 
     let resolved = SourceAdapter::resolve("captures", &project)
@@ -280,8 +279,8 @@ description: >-
     assert_eq!(resolved.manifest.axis, Axis::Source);
     assert_eq!(
         resolved.manifest.operations().copied().collect::<Vec<_>>(),
-        vec![SourceOperation::Enumerate, SourceOperation::Extract],
-        "captures declares enumerate + extract per workflow §Runtime source adapter"
+        vec![SourceOperation::Extract, SourceOperation::Survey],
+        "captures declares survey + extract per workflow §Runtime source adapter"
     );
     assert_eq!(
         resolved.manifest.briefs.get(&SourceOperation::Extract).map(String::as_str),

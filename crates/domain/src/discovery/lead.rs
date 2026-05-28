@@ -1,56 +1,56 @@
-//! In-memory representation of one `## Candidate inventory` block.
+//! In-memory representation of one `## Lead inventory` block.
 //!
-//! Mirrors `schemas/discovery/candidate.schema.json` — the kebab-case
-//! `id`, the non-empty `sources[]` keys that surfaced the candidate,
+//! Mirrors `schemas/discovery/lead.schema.json` — the kebab-case
+//! `id`, the non-empty `sources[]` keys that surfaced the lead,
 //! the one-line `summary`, the optional `tentative` flag set by
 //! `/spec:plan`'s `propose` sub-step on low-confidence cross-source
 //! merges, and (discovery alias contract) the optional `aliases[]` list. Operator
 //! additions through `specrun plan amend --add-alias` survive
-//! re-enumeration.
+//! re-survey.
 
 use serde::{Deserialize, Serialize};
 
-/// One block under `## Candidate inventory` in `discovery.md`.
+/// One block under `## Lead inventory` in `discovery.md`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct Candidate {
-    /// Stable kebab-case identifier. Re-enumeration replaces by `id`.
+pub struct Lead {
+    /// Stable kebab-case identifier. Re-survey replaces by `id`.
     pub id: String,
-    /// Non-empty list of source keys that surfaced this candidate.
+    /// Non-empty list of source keys that surfaced this lead.
     /// Each entry matches a top-level `plan.yaml.sources.<key>`
     /// binding; the on-disk schema rejects empty lists.
     pub sources: Vec<String>,
     /// One-line human-readable summary.
     pub summary: String,
     /// Optional uncertainty flag — set when `/spec:plan`'s `propose`
-    /// sub-step merged this candidate across sources with low
+    /// sub-step merged this lead across sources with low
     /// confidence; the operator reconciles at Gate 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tentative: Option<bool>,
-    /// Optional alias list (discovery alias contract). `slices[].sources[].candidate`
+    /// Optional alias list (discovery alias contract). `slices[].sources[].lead`
     /// resolves first against `id`, then against any entry in
     /// `aliases`. Empty list and missing field are equivalent on the
     /// wire.
-    #[serde(default, skip_serializing_if = "CandidateAliases::is_empty")]
-    pub aliases: CandidateAliases,
+    #[serde(default, skip_serializing_if = "LeadAliases::is_empty")]
+    pub aliases: LeadAliases,
 }
 
-/// Optional kebab-case alias list on a [`Candidate`].
+/// Optional kebab-case alias list on a [`Lead`].
 ///
 /// `#[serde(transparent)]` over `Vec<String>` so the on-disk shape is
 /// the bare YAML list under `aliases:`. Alias collisions with other
-/// candidates' `id` or `aliases[]` are caught by `specrun slice
+/// leads' `id` or `aliases[]` are caught by `specrun slice
 /// validate` (`discovery-alias-collision`); this type carries only
-/// the per-candidate slot.
+/// the per-lead slot.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct CandidateAliases {
+pub struct LeadAliases {
     /// Backing storage. Order is significant for byte-stable diffs;
     /// the schema enforces uniqueness via `uniqueItems: true`.
     pub names: Vec<String>,
 }
 
-impl CandidateAliases {
+impl LeadAliases {
     /// `true` when the alias list is empty (used by serde's
     /// `skip_serializing_if` to keep absent fields off the wire).
     #[must_use]
@@ -66,7 +66,7 @@ impl CandidateAliases {
     }
 }
 
-impl<S> FromIterator<S> for CandidateAliases
+impl<S> FromIterator<S> for LeadAliases
 where
     S: Into<String>,
 {
@@ -77,19 +77,19 @@ where
     }
 }
 
-impl Candidate {
-    /// `true` when `token` equals this candidate's `id` or any entry
+impl Lead {
+    /// `true` when `token` equals this lead's `id` or any entry
     /// in `aliases[]`.
     ///
-    /// discovery alias contract — `slices[].sources[].candidate` resolves first
+    /// discovery alias contract — `slices[].sources[].lead` resolves first
     /// against `id`, then against `aliases[]`; case-sensitive.
     #[must_use]
     pub fn resolves(&self, token: &str) -> bool {
         self.id == token || self.aliases.contains(token)
     }
 
-    /// Append `alias` to this candidate's `aliases[]`. Refuses when
-    /// the value equals the candidate's own `id` (a no-op edit with
+    /// Append `alias` to this lead's `aliases[]`. Refuses when
+    /// the value equals the lead's own `id` (a no-op edit with
     /// no operator value); idempotent when `alias` is already
     /// present.
     ///
@@ -97,16 +97,16 @@ impl Candidate {
     /// choice — `specrun plan amend --add-alias` is the operator's
     /// front door, and silently re-asserting a known alias is the
     /// least surprising shape there. Refusal on `id` collision is a
-    /// clean signal: the operator either typed the wrong candidate
+    /// clean signal: the operator either typed the wrong lead
     /// or means to remove a stale alias, and either resolution
     /// belongs at the keyboard, not in the writer.
     ///
-    /// Cross-candidate collisions (alias of this candidate equals
-    /// some other candidate's `id` or alias) are NOT caught here —
+    /// Cross-lead collisions (alias of this lead equals
+    /// some other lead's `id` or alias) are NOT caught here —
     /// the caller resolves that via
     /// [`super::Discovery::check_alias_collisions`] before
     /// persisting, so a single CLI invocation can refuse the whole
-    /// edit when any cross-candidate constraint trips.
+    /// edit when any cross-lead constraint trips.
     ///
     /// # Errors
     ///
@@ -115,7 +115,7 @@ impl Candidate {
     pub fn add_alias(&mut self, alias: String) -> Result<(), AliasCollision> {
         if alias == self.id {
             return Err(AliasCollision::EqualsOwnId {
-                candidate: self.id.clone(),
+                lead: self.id.clone(),
                 alias,
             });
         }
@@ -126,7 +126,7 @@ impl Candidate {
         Ok(())
     }
 
-    /// Remove `alias` from this candidate's `aliases[]`. Idempotent
+    /// Remove `alias` from this lead's `aliases[]`. Idempotent
     /// — silently returns when the alias is not present so
     /// `specrun plan amend --remove-alias` can be issued without a
     /// prior probe.
@@ -135,21 +135,21 @@ impl Candidate {
     }
 }
 
-/// Outcome of [`Candidate::add_alias`] when the operator-supplied
+/// Outcome of [`Lead::add_alias`] when the operator-supplied
 /// value cannot be appended.
 ///
 /// Only the local "alias equals my own id" case lives here; whole-
 /// document collisions are surfaced through
 /// [`super::DiscoveryAliasCollision`] so callers see the same wire
-/// shape whether the conflict was self-shadow or cross-candidate.
+/// shape whether the conflict was self-shadow or cross-lead.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AliasCollision {
-    /// The supplied alias equals the candidate's own `id`. No-op
+    /// The supplied alias equals the lead's own `id`. No-op
     /// edit; the operator likely typed the wrong target.
     EqualsOwnId {
-        /// Candidate whose `add_alias` refused.
-        candidate: String,
-        /// Alias value that collided with the candidate's id.
+        /// Lead whose `add_alias` refused.
+        lead: String,
+        /// Alias value that collided with the lead's id.
         alias: String,
     },
 }
@@ -157,9 +157,9 @@ pub enum AliasCollision {
 impl std::fmt::Display for AliasCollision {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EqualsOwnId { candidate, alias } => write!(
+            Self::EqualsOwnId { lead, alias } => write!(
                 f,
-                "alias `{alias}` equals candidate `{candidate}`'s own id; aliases must name a \
+                "alias `{alias}` equals lead `{lead}`'s own id; aliases must name a \
                  different surface form"
             ),
         }
@@ -178,7 +178,7 @@ mod tests {
 sources: [legacy]
 summary: Registration endpoint accepting email + password.
 ";
-        let parsed: Candidate = serde_saphyr::from_str(yaml).expect("parse");
+        let parsed: Lead = serde_saphyr::from_str(yaml).expect("parse");
         assert_eq!(parsed.id, "user-registration");
         assert!(parsed.aliases.is_empty(), "missing aliases must default to empty");
         assert_eq!(parsed.tentative, None);
@@ -197,56 +197,52 @@ aliases:
   - account-registration
   - user-signup
 ";
-        let parsed: Candidate = serde_saphyr::from_str(yaml).expect("parse");
+        let parsed: Lead = serde_saphyr::from_str(yaml).expect("parse");
         assert_eq!(parsed.aliases.names, vec!["account-registration", "user-signup"]);
 
         let rendered = serde_saphyr::to_string(&parsed).expect("serialise");
-        let reparsed: Candidate = serde_saphyr::from_str(&rendered).expect("reparse");
+        let reparsed: Lead = serde_saphyr::from_str(&rendered).expect("reparse");
         assert_eq!(parsed, reparsed);
     }
 
     #[test]
     fn resolves_id_then_aliases() {
-        let candidate = Candidate {
+        let lead = Lead {
             id: "user-registration".to_string(),
             sources: vec!["legacy".to_string()],
             summary: "Registration.".to_string(),
             tentative: None,
-            aliases: CandidateAliases::from_iter(["account-registration", "user-signup"]),
+            aliases: LeadAliases::from_iter(["account-registration", "user-signup"]),
         };
-        assert!(candidate.resolves("user-registration"));
-        assert!(candidate.resolves("account-registration"));
-        assert!(candidate.resolves("user-signup"));
-        assert!(
-            !candidate.resolves("USER-REGISTRATION"),
-            "case-sensitive per discovery alias contract"
-        );
-        assert!(!candidate.resolves("password-reset"));
+        assert!(lead.resolves("user-registration"));
+        assert!(lead.resolves("account-registration"));
+        assert!(lead.resolves("user-signup"));
+        assert!(!lead.resolves("USER-REGISTRATION"), "case-sensitive per discovery alias contract");
+        assert!(!lead.resolves("password-reset"));
     }
 
     #[test]
     fn add_alias_appends_new_value() {
-        let mut candidate = sample();
-        candidate.add_alias("account-registration".to_string()).expect("ok");
-        assert_eq!(candidate.aliases.names, vec!["account-registration"]);
+        let mut lead = sample();
+        lead.add_alias("account-registration".to_string()).expect("ok");
+        assert_eq!(lead.aliases.names, vec!["account-registration"]);
     }
 
     #[test]
     fn add_alias_idempotent_on_exact_duplicate() {
-        let mut candidate = sample();
-        candidate.aliases = CandidateAliases::from_iter(["account-registration"]);
-        candidate.add_alias("account-registration".to_string()).expect("idempotent ok");
-        assert_eq!(candidate.aliases.names, vec!["account-registration"]);
+        let mut lead = sample();
+        lead.aliases = LeadAliases::from_iter(["account-registration"]);
+        lead.add_alias("account-registration".to_string()).expect("idempotent ok");
+        assert_eq!(lead.aliases.names, vec!["account-registration"]);
     }
 
     #[test]
     fn add_alias_refuses_self_shadow() {
-        let mut candidate = sample();
-        let err =
-            candidate.add_alias("user-registration".to_string()).expect_err("self-shadow refused");
+        let mut lead = sample();
+        let err = lead.add_alias("user-registration".to_string()).expect_err("self-shadow refused");
         match err {
-            AliasCollision::EqualsOwnId { candidate, alias } => {
-                assert_eq!(candidate, "user-registration");
+            AliasCollision::EqualsOwnId { lead, alias } => {
+                assert_eq!(lead, "user-registration");
                 assert_eq!(alias, "user-registration");
             }
         }
@@ -254,27 +250,27 @@ aliases:
 
     #[test]
     fn remove_alias_idempotent_when_absent() {
-        let mut candidate = sample();
-        candidate.aliases = CandidateAliases::from_iter(["x", "y"]);
-        candidate.remove_alias("z");
-        assert_eq!(candidate.aliases.names, vec!["x", "y"]);
+        let mut lead = sample();
+        lead.aliases = LeadAliases::from_iter(["x", "y"]);
+        lead.remove_alias("z");
+        assert_eq!(lead.aliases.names, vec!["x", "y"]);
     }
 
     #[test]
     fn remove_alias_drops_named_entry() {
-        let mut candidate = sample();
-        candidate.aliases = CandidateAliases::from_iter(["x", "y", "z"]);
-        candidate.remove_alias("y");
-        assert_eq!(candidate.aliases.names, vec!["x", "z"]);
+        let mut lead = sample();
+        lead.aliases = LeadAliases::from_iter(["x", "y", "z"]);
+        lead.remove_alias("y");
+        assert_eq!(lead.aliases.names, vec!["x", "z"]);
     }
 
-    fn sample() -> Candidate {
-        Candidate {
+    fn sample() -> Lead {
+        Lead {
             id: "user-registration".to_string(),
             sources: vec!["legacy".to_string()],
             summary: "Registration.".to_string(),
             tentative: None,
-            aliases: CandidateAliases::default(),
+            aliases: LeadAliases::default(),
         }
     }
 
@@ -285,8 +281,8 @@ sources: [legacy]
 summary: Registration.
 rogue: true
 ";
-        let err = serde_saphyr::from_str::<Candidate>(yaml)
-            .expect_err("deny_unknown_fields must catch rogue");
+        let err =
+            serde_saphyr::from_str::<Lead>(yaml).expect_err("deny_unknown_fields must catch rogue");
         assert!(err.to_string().contains("rogue"), "expected error to name rogue, got: {err}");
     }
 }

@@ -8,4 +8,4 @@ Minimal brief fixture for the framework indexer.
 
 ## Output contract
 
-One candidate block under `## Candidate inventory`.
+One lead block under `## Lead inventory`.

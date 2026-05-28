@@ -262,7 +262,7 @@ pub struct ToolManifest {
 
 /// Plugin axis discriminator per workflow §Adapter axis.
 ///
-/// Source plugins (`enumerate` / `extract`) and target plugins
+/// Source plugins (`extract` / `survey`) and target plugins
 /// (`shape` / `build` / `merge`) share the `adapter.yaml` shape and
 /// on-disk filename; `Axis` is what disambiguates them in
 /// [`ToolScope::Plugin`] and in the cache layout under

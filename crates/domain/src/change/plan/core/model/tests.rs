@@ -222,9 +222,9 @@ slices:
     target: omnia@v1
     sources:
       - key: docs
-        candidate: account-pwd-reset
+        lead: account-pwd-reset
       - key: legacy
-        candidate: account-pwd-reset
+        lead: account-pwd-reset
     status: pending
 ";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
@@ -234,7 +234,7 @@ slices:
     let structured = &plan.entries[1].sources[0];
     assert!(!structured.is_bare(), "expected structured form, got {structured:?}");
     assert_eq!(structured.key(), "docs");
-    assert_eq!(structured.candidate("ignored-slice-name"), "account-pwd-reset");
+    assert_eq!(structured.lead("ignored-slice-name"), "account-pwd-reset");
     let rendered = serde_saphyr::to_string(&plan).expect("serialize");
     let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
     assert_eq!(plan, reparsed, "both binding shapes must survive a round-trip");
@@ -244,12 +244,12 @@ slices:
 fn slice_source_binding_normalises_shorthand() {
     let bare = SliceSourceBinding::bare("intent");
     assert_eq!(bare.key(), "intent");
-    assert_eq!(bare.candidate("add-search-filter"), "add-search-filter");
+    assert_eq!(bare.lead("add-search-filter"), "add-search-filter");
     assert!(bare.is_bare());
 
     let structured = SliceSourceBinding::structured("docs", "user-reg");
     assert_eq!(structured.key(), "docs");
-    assert_eq!(structured.candidate("ignored-slice-name"), "user-reg");
+    assert_eq!(structured.lead("ignored-slice-name"), "user-reg");
     assert!(!structured.is_bare());
 }
 
@@ -337,9 +337,9 @@ slices:
     status: pending
     sources:
       - key: runtime
-        candidate: user-registration
+        lead: user-registration
       - key: legacy-monolith
-        candidate: user-registration
+        lead: user-registration
     authority-override:
       requirement: runtime
       criterion: legacy-monolith

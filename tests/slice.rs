@@ -434,7 +434,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { key: legacy-monolith, candidate: my-slice }
+      - { key: legacy-monolith, lead: my-slice }
 ";
 
 #[test]
@@ -593,7 +593,7 @@ The system lets a registered user request a password reset link by email.
 const CLEAN_EVIDENCE_YAML: &str = "source: legacy-monolith
 adapter: code-typescript
 authority: behaviour
-candidate: my-slice
+lead: my-slice
 claims:
   - kind: requirement
     claim-id: REQ-001
@@ -784,7 +784,7 @@ body without metadata lines yet
 const EVIDENCE_WITH_COMPONENT: &str = "source: ui-screens
 adapter: screenshots
 authority: behaviour
-candidate: my-slice
+lead: my-slice
 claims:
   - kind: region
     claim-id: task-list-footer
@@ -797,7 +797,7 @@ claims:
 const EVIDENCE_WITH_CANDIDATE_COMPONENT: &str = "source: ui-screens
 adapter: screenshots
 authority: behaviour
-candidate: my-slice
+lead: my-slice
 claims:
   - kind: region
     claim-id: task-list-header
@@ -830,7 +830,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { key: ui-screens, candidate: my-slice }
+      - { key: ui-screens, lead: my-slice }
 ";
 
 /// Stage a slice with Evidence containing `component:` directives
@@ -989,7 +989,7 @@ fn validate_passes_with_empty_catalog() {
     let evidence_no_component = "source: ui-screens
 adapter: screenshots
 authority: behaviour
-candidate: my-slice
+lead: my-slice
 claims:
   - kind: region
     claim-id: task-list-body

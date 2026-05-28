@@ -109,13 +109,13 @@ mod tests {
     #[test]
     fn captures_h2_sections_in_order() {
         let file = brief(
-            "adapters/sources/intent/briefs/enumerate.md",
+            "adapters/sources/intent/briefs/survey.md",
             "# Title\n\n## Inputs\n\nbody\n\n## Output contract\n\nmore body\n",
         );
         let brief = extract(&file).expect("brief extracted");
         assert_eq!(brief.axis, AdapterAxis::Sources);
         assert_eq!(brief.adapter, "intent");
-        assert_eq!(brief.operation, "enumerate");
+        assert_eq!(brief.operation, "survey");
         assert_eq!(brief.sections, vec!["Inputs", "Output contract"]);
         assert!(brief.body_line_count >= 3);
     }

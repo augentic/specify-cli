@@ -1,6 +1,6 @@
 //! Closed source- and target-adapter operation enums.
 //!
-//! [`SourceOperation`] (`enumerate | extract`) and [`TargetOperation`]
+//! [`SourceOperation`] (`extract | survey`) and [`TargetOperation`]
 //! (`shape | build | merge`) are the typed `briefs.keys()` carried by
 //! the axis-specific manifest structs in `core.rs`. Living together in
 //! this module keeps the source/target operation pair symmetric and
@@ -9,7 +9,7 @@
 //! existing cache consumers reach for the type via the cache surface
 //! they already import from).
 //!
-//! Wire format is kebab-case on both sides (`enumerate | extract` /
+//! Wire format is kebab-case on both sides (`extract | survey` /
 //! `shape | build | merge`) — the [`Serialize`] / [`Deserialize`]
 //! derives, the [`strum::Display`] impl, and the [`strum::EnumString`]
 //! impl all share the same `kebab-case` rule, so the YAML manifest
@@ -26,7 +26,7 @@ use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 
-/// Closed source-adapter operation set (`enumerate | extract`).
+/// Closed source-adapter operation set (`extract | survey`).
 ///
 /// Source adapters declare exactly these two operations per
 /// workflow §Source adapter contract. The enum is the typed
@@ -57,20 +57,20 @@ use strum::EnumString;
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum SourceOperation {
-    /// Plan-time candidate discovery.
-    Enumerate,
     /// Slice-time evidence extraction.
     Extract,
+    /// Plan-time lead discovery.
+    Survey,
 }
 
 impl SourceOperation {
     /// Default cached-artifact filename per operation:
-    /// `evidence.yaml` for `extract`, `candidate-set.md` for `enumerate`.
+    /// `evidence.yaml` for `extract`, `lead-set.md` for `survey`.
     #[must_use]
     pub const fn artifact_name(self) -> &'static str {
         match self {
-            Self::Enumerate => "candidate-set.md",
             Self::Extract => "evidence.yaml",
+            Self::Survey => "lead-set.md",
         }
     }
 }
@@ -125,12 +125,9 @@ mod tests {
 
     #[test]
     fn source_operation_round_trips_kebab_case() {
-        assert_eq!(SourceOperation::Enumerate.to_string(), "enumerate");
+        assert_eq!(SourceOperation::Survey.to_string(), "survey");
         assert_eq!(SourceOperation::Extract.to_string(), "extract");
-        assert_eq!(
-            <SourceOperation as FromStr>::from_str("enumerate"),
-            Ok(SourceOperation::Enumerate)
-        );
+        assert_eq!(<SourceOperation as FromStr>::from_str("survey"), Ok(SourceOperation::Survey));
         assert_eq!(<SourceOperation as FromStr>::from_str("extract"), Ok(SourceOperation::Extract));
         <SourceOperation as FromStr>::from_str("shape")
             .expect_err("`shape` is a target op; must not parse as a SourceOperation");
@@ -163,7 +160,7 @@ mod tests {
         let err = serde_json::from_str::<SourceOperation>("\"foo\"")
             .expect_err("unknown source operation must fail");
         let detail = err.to_string();
-        assert!(detail.contains("foo") || detail.contains("enumerate"), "{detail}");
+        assert!(detail.contains("foo") || detail.contains("survey"), "{detail}");
 
         let err = serde_json::from_str::<TargetOperation>("\"define\"")
             .expect_err("legacy `define` rejected on the target axis");

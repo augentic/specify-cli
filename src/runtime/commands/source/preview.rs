@@ -37,12 +37,12 @@ struct PreviewBody {
     out: PathBuf,
     evidence_dir: PathBuf,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    candidates: Vec<String>,
+    leads: Vec<String>,
     briefs: Vec<BriefEntry>,
 }
 
 pub fn preview(
-    format: Format, adapter_name: &str, source: &Path, candidates: &[String], out: Option<&Path>,
+    format: Format, adapter_name: &str, source: &Path, leads: &[String], out: Option<&Path>,
     project_dir: &Path,
 ) -> Result<()> {
     if !source.exists() {
@@ -75,7 +75,7 @@ pub fn preview(
         source: source.to_path_buf(),
         out: out_dir,
         evidence_dir,
-        candidates: candidates.to_vec(),
+        leads: leads.to_vec(),
         briefs,
     };
 
@@ -88,8 +88,8 @@ fn write_preview_text(w: &mut dyn Write, body: &PreviewBody) -> std::io::Result<
     writeln!(w, "source: {}", body.source.display())?;
     writeln!(w, "out: {}", body.out.display())?;
     writeln!(w, "evidence: {}", body.evidence_dir.display())?;
-    if !body.candidates.is_empty() {
-        writeln!(w, "candidates: {}", body.candidates.join(", "))?;
+    if !body.leads.is_empty() {
+        writeln!(w, "leads: {}", body.leads.join(", "))?;
     }
     writeln!(w, "briefs:")?;
     for brief in &body.briefs {

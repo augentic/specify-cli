@@ -56,7 +56,7 @@ const GOOD_MANIFEST: &str = concat!(
     "axis: source\n",
     "description: Valid fixture.\n",
     "briefs:\n",
-    "  enumerate: briefs/enumerate.md\n",
+    "  survey: briefs/survey.md\n",
     "  extract: briefs/extract.md\n",
 );
 

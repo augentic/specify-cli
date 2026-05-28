@@ -9,7 +9,7 @@
 //! (see [`crate::lint::index::adapter::extract`]) and flags each
 //! `adapters/{sources,targets}/<name>/adapter.yaml` whose
 //! `briefs.keys()` set is not exactly the axis-appropriate closed
-//! operation enum (`SourceOperation::{Enumerate, Extract}` xor
+//! operation enum (`SourceOperation::{Extract, Survey}` xor
 //! `TargetOperation::{Shape, Build, Merge}`). The interpreter emits
 //! one [`crate::rules::LintFinding`] per `(adapter, divergence)`
 //! pair, where the divergence is either a `missing` operation (in the
@@ -59,7 +59,7 @@ const DIVERGENCE_UNEXPECTED: &str = "unexpected";
 /// `specify_domain::adapter::SourceOperation` (kebab-case wire
 /// form). Held inline here so the standards-layer crate does not
 /// take a workflow-layer dependency.
-const SOURCE_OPERATIONS: &[&str] = &["enumerate", "extract"];
+const SOURCE_OPERATIONS: &[&str] = &["extract", "survey"];
 
 /// Closed target-adapter operation set kept in sync with
 /// `specify_domain::adapter::TargetOperation`.

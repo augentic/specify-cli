@@ -175,10 +175,10 @@ fn populated_workspace_model_round_trips_through_schema() {
             raw: "// specify-ignore: UNI-014 — documented rationale that is long enough".into(),
         }],
         briefs: vec![Brief {
-            path: "adapters/sources/intent/briefs/enumerate.md".into(),
+            path: "adapters/sources/intent/briefs/survey.md".into(),
             axis: AdapterAxis::Sources,
             adapter: "intent".into(),
-            operation: "enumerate".into(),
+            operation: "survey".into(),
             sections: vec!["Inputs".into(), "Output contract".into()],
             body_line_count: 24,
         }],

@@ -129,10 +129,10 @@ mod tests {
     fn extracts_briefs_keys_when_declared() {
         let file = manifest(
             "adapters/sources/intent/adapter.yaml",
-            "name: intent\nversion: 1\nbriefs:\n  enumerate: briefs/enumerate.md\n  extract: briefs/extract.md\n",
+            "name: intent\nversion: 1\nbriefs:\n  survey: briefs/survey.md\n  extract: briefs/extract.md\n",
         );
         let manifest = extract(&file).expect("manifest extracted");
-        assert_eq!(manifest.brief_keys, vec!["enumerate".to_string(), "extract".to_string()]);
+        assert_eq!(manifest.brief_keys, vec!["extract".to_string(), "survey".to_string()]);
     }
 
     #[test]

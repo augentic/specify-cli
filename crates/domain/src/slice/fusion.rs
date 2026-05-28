@@ -614,7 +614,7 @@ rogue: true
             r"source: runtime
 adapter: captures
 authority: behaviour
-candidate: user-registration
+lead: user-registration
 claims:
   - kind: example
     claim-id: users.register.happy-path
@@ -628,7 +628,7 @@ claims:
             r"source: legacy
 adapter: code-typescript
 authority: behaviour
-candidate: user-registration
+lead: user-registration
 claims:
   - kind: excerpt
     claim-id: users.register.email-validation

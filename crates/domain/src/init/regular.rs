@@ -328,7 +328,7 @@ mod tests {
 version: 1
 axis: source
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 description: Colliding source adapter for the init-time uniqueness check.
 ",

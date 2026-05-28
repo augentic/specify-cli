@@ -210,18 +210,18 @@ fn apply_alias_edits(
             code: "discovery-not-found",
             detail: format!(
                 "--add-alias / --remove-alias require `{}` to exist; run `/spec:plan` to author \
-                 the candidate inventory first",
+                 the lead inventory first",
                 path.display()
             ),
         });
     }
 
     let mut discovery = Discovery::load(&path)?;
-    for AliasAssign { candidate, alias } in add_alias {
-        discovery.add_alias(candidate, alias)?;
+    for AliasAssign { lead, alias } in add_alias {
+        discovery.add_alias(lead, alias)?;
     }
-    for AliasAssign { candidate, alias } in remove_alias {
-        discovery.remove_alias(candidate, alias)?;
+    for AliasAssign { lead, alias } in remove_alias {
+        discovery.remove_alias(lead, alias)?;
     }
     // Catch pre-existing collisions when the operator only ran
     // --remove-alias; --add-alias already paid for itself.

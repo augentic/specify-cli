@@ -58,7 +58,7 @@ pub fn run(cli: Cli) -> Exit {
             SourceAction::Preview {
                 adapter,
                 source,
-                candidate,
+                lead,
                 out,
                 project_dir,
             } => dispatch(format, || {
@@ -66,7 +66,7 @@ pub fn run(cli: Cli) -> Exit {
                     format,
                     &adapter,
                     &source,
-                    &candidate,
+                    &lead,
                     out.as_deref(),
                     &project_dir,
                 )

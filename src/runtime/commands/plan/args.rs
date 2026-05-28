@@ -48,14 +48,14 @@ pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, Sour
 
 /// Materialise CLI `--sources` / `--add-source` arguments into the
 /// on-disk [`SliceSourceBinding`] shape, preferring the bare-string
-/// shorthand when the candidate id equals the slice's name
+/// shorthand when the lead id equals the slice's name
 /// (workflow §`Slice.sources`).
 ///
 /// discovery alias contract — when `discovery` is `Some(_)`, the operator-supplied
-/// candidate value is resolved against the loaded `discovery.md` so
+/// lead value is resolved against the loaded `discovery.md` so
 /// aliases rewrite to the canonical `id` before persisting. Unknown
 /// tokens or alias collisions surface as `Error::validation_failed`
-/// (exit 2) with the discriminants `discovery-candidate-unknown` and
+/// (exit 2) with the discriminants `discovery-lead-unknown` and
 /// `discovery-alias-collision` respectively. With `discovery` `None`
 /// (no `discovery.md` on disk) the discovery-absent passthrough
 /// applies — the supplied value is used verbatim.
@@ -68,48 +68,46 @@ pub fn bindings_from_args(
 fn binding_from_arg(
     arg: SliceSourceArg, slice_name: &str, discovery: Option<&Discovery>,
 ) -> Result<SliceSourceBinding> {
-    let candidate = match arg.candidate {
+    let lead = match arg.lead {
         None => None,
-        Some(value) => Some(resolve_candidate_token(&value, discovery)?),
+        Some(value) => Some(resolve_lead_token(&value, discovery)?),
     };
-    Ok(match candidate {
+    Ok(match lead {
         None => SliceSourceBinding::bare(arg.key),
-        Some(candidate) if candidate == slice_name => SliceSourceBinding::bare(arg.key),
-        Some(candidate) => SliceSourceBinding::structured(arg.key, candidate),
+        Some(lead) if lead == slice_name => SliceSourceBinding::bare(arg.key),
+        Some(lead) => SliceSourceBinding::structured(arg.key, lead),
     })
 }
 
-/// Rewrite a `--sources <key>=<value>` candidate token to the
+/// Rewrite a `--sources <key>=<value>` lead token to the
 /// canonical `id` discovered in `discovery.md`.
 ///
 /// When `discovery` is `None` (no `discovery.md` on disk), the
 /// token round-trips unchanged — the legacy path predates
 /// discovery alias contract and many tests operate without a discovery file.
-fn resolve_candidate_token(token: &str, discovery: Option<&Discovery>) -> Result<String> {
+fn resolve_lead_token(token: &str, discovery: Option<&Discovery>) -> Result<String> {
     let Some(discovery) = discovery else {
         return Ok(token.to_string());
     };
-    match discovery.resolve_candidate(token) {
-        Ok(candidate) => Ok(candidate.id.clone()),
+    match discovery.resolve_lead(token) {
+        Ok(lead) => Ok(lead.id.clone()),
         Err(DiscoveryResolveError::Unknown { token }) => Err(Error::validation_failed(
-            "discovery-candidate-unknown",
-            "--sources <key>=<value> must resolve to a candidate in discovery.md",
+            "discovery-lead-unknown",
+            "--sources <key>=<value> must resolve to a lead in discovery.md",
             format!(
-                "no candidate in discovery.md has an id or alias matching `{token}`; inspect \
+                "no lead in discovery.md has an id or alias matching `{token}`; inspect \
                  discovery.md directly to review the inventory"
             ),
         )),
-        Err(DiscoveryResolveError::Collision { token, candidates }) => {
-            Err(Error::validation_failed(
-                "discovery-alias-collision",
-                "candidate id and aliases share a single namespace per discovery.md",
-                format!(
-                    "`{token}` resolves to multiple candidates in discovery.md: {}; run \
+        Err(DiscoveryResolveError::Collision { token, leads }) => Err(Error::validation_failed(
+            "discovery-alias-collision",
+            "lead id and aliases share a single namespace per discovery.md",
+            format!(
+                "`{token}` resolves to multiple leads in discovery.md: {}; run \
                      `specrun slice validate` to enumerate every collision",
-                    candidates.join(", ")
-                ),
-            ))
-        }
+                leads.join(", ")
+            ),
+        )),
     }
 }
 

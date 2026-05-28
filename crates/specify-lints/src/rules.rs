@@ -79,9 +79,8 @@ pub enum Origin {
     Source,
     /// Shared rules (`adapters/shared/rules/...`).
     Shared,
-    /// Core pack overlay. Variant and sort slot only — the producing
-    /// path is wired in a follow-up card; no resolver/indexer site
-    /// emits this value yet.
+    /// Core pack overlay (`adapters/shared/rules/core/`). Excluded
+    /// from consumer exports unless `--include-core` is set.
     Core,
     /// Indexer fallback: cache rule files whose path does not match
     /// the closed adapter-shape probe in `infer_origin` under

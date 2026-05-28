@@ -293,7 +293,7 @@
         "operation": {
           "type": "string",
           "minLength": 1,
-          "description": "`WorkspaceModel` entity: operation slug for the brief (e.g. `enumerate`, `extract`, `shape`, `build`, `merge`)."
+          "description": "`WorkspaceModel` entity: operation slug for the brief (e.g. `extract`, `survey`, `shape`, `build`, `merge`)."
         },
         "sections": {
           "type": "array",
