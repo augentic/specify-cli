@@ -32,9 +32,8 @@ pub use scenarios::{
 };
 pub use schema_links::SchemaLinksCheck;
 pub use skill_body::{
-    BodyLineCount, EnvelopeJsonInBody, FrontmatterRestatement, InlineJsonTooLong,
-    InvalidCriticalPath, MissingCriticalPath, SectionLineCount, StepBodyDuplicatesCriticalPath,
-    VariableCoverage,
+    EnvelopeJsonInBody, FrontmatterRestatement, InlineJsonTooLong, InvalidCriticalPath,
+    MissingCriticalPath, SectionLineCount, StepBodyDuplicatesCriticalPath, VariableCoverage,
 };
 pub use skill_frontmatter::{
     ArgumentHintGrammar, DescriptionGrammar, FrontmatterSchema, NameDirMismatch,
@@ -71,7 +70,6 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
         &UnknownTool,
         &DescriptionGrammar,
         &ArgumentHintGrammar,
-        &BodyLineCount,
         &SectionLineCount,
         &MissingCriticalPath,
         &InvalidCriticalPath,

@@ -94,7 +94,8 @@ mod tests {
 
     /// The `skill.*` family covers frontmatter and body checks; per the
     /// table, every member maps to `Important`. `skill.duplicate-name`
-    /// was retired in RFC-34 C11 (now `CORE-003`) and is omitted.
+    /// was retired in RFC-34 C11 (now `CORE-003`) and `skill.body-line-count`
+    /// was retired in RFC-34 C13 (now `CORE-005`); both are omitted.
     #[test]
     fn skill_family_maps_to_important() {
         for rule_id in [
@@ -104,7 +105,6 @@ mod tests {
             "skill.unknown-tool",
             "skill.description-grammar",
             "skill.argument-hint-grammar",
-            "skill.body-line-count",
             "skill.section-line-count",
             "skill.missing-critical-path",
             "skill.invalid-critical-path",

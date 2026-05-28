@@ -2,9 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_authoring::Context;
-use specify_authoring::check::{
-    BodyLineCount, EnvelopeJsonInBody, InvalidCriticalPath, VariableCoverage,
-};
+use specify_authoring::check::{EnvelopeJsonInBody, InvalidCriticalPath, VariableCoverage};
 use specify_authoring::finding::Check;
 
 fn fixture_root(name: &str) -> PathBuf {
@@ -31,18 +29,6 @@ fn context_for_fixture(name: &str) -> Context {
 
 fn repeated_lines(prefix: &str, count: usize) -> String {
     (0..count).map(|i| format!("{prefix} {i}")).collect::<Vec<_>>().join("\n")
-}
-
-#[test]
-fn body_line_count_flags_long_body() {
-    let ctx = context_for_fixture("body-too-long");
-    write_skill(&fixture_root("body-too-long"), &repeated_lines("line", 201));
-
-    let findings = BodyLineCount.run(&ctx);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "skill.body-line-count");
-    assert!(findings[0].message.contains("body lines (limit 200)"));
-    assert!(findings[0].message.contains("Skill body too long"));
 }
 
 #[test]

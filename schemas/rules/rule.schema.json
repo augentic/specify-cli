@@ -131,7 +131,7 @@
               { "const": "unique" },
               { "const": "reference-resolves" },
               { "const": "set-coverage" },
-              { "const": "cardinality", "x-hint-status": "reserved" },
+              { "const": "cardinality" },
               { "const": "constant-eq", "x-hint-status": "reserved" },
               { "const": "set-eq", "x-hint-status": "reserved" },
               { "const": "content-digest-eq", "x-hint-status": "reserved" },

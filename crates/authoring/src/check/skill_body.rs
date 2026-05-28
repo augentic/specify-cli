@@ -7,13 +7,11 @@ use crate::error::ToolingError;
 use crate::finding::{Check, Finding, Location};
 use crate::helpers::{relative_display, skill_body_lines, walk_skill_files};
 
-const MAX_BODY_LINES: usize = 200;
 const CRITICAL_PATH_MIN_LINES: usize = 150;
 const CRITICAL_PATH_HEADING: &str = "## Critical Path";
 const MAX_INLINE_JSON_LINES: usize = 30;
 const MAX_SECTION_LINES: usize = 45;
 
-const RULE_BODY_LINE_COUNT: &str = "skill.body-line-count";
 const RULE_SECTION_LINE_COUNT: &str = "skill.section-line-count";
 const RULE_MISSING_CRITICAL_PATH: &str = "skill.missing-critical-path";
 const RULE_INVALID_CRITICAL_PATH: &str = "skill.invalid-critical-path";
@@ -22,9 +20,6 @@ const RULE_ENVELOPE_JSON_IN_BODY: &str = "skill.envelope-json-in-body";
 const RULE_STEP_BODY_DUPLICATES: &str = "skill.step-body-duplicates-critical-path";
 const RULE_FRONTMATTER_RESTATEMENT: &str = "skill.frontmatter-restatement";
 const RULE_VARIABLE_COVERAGE: &str = "skill.variable-coverage";
-
-/// Skill body must not exceed the global line budget.
-pub struct BodyLineCount;
 
 /// Each H2 section must stay within the per-section line budget.
 pub struct SectionLineCount;
@@ -60,7 +55,6 @@ macro_rules! impl_skill_body_check {
     };
 }
 
-impl_skill_body_check!(BodyLineCount, RULE_BODY_LINE_COUNT, check_body_line_count);
 impl_skill_body_check!(SectionLineCount, RULE_SECTION_LINE_COUNT, check_section_line_counts);
 impl_skill_body_check!(
     MissingCriticalPath,
@@ -85,32 +79,6 @@ impl_skill_body_check!(
     check_no_frontmatter_restatement
 );
 impl_skill_body_check!(VariableCoverage, RULE_VARIABLE_COVERAGE, check_variables);
-
-fn check_body_line_count(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
-    let root = ctx.framework_root();
-    let mut findings = Vec::new();
-
-    for path in walk_skill_files(root)? {
-        let rel = relative_display(root, &path);
-        let content = fs::read_to_string(&path)?;
-        let Some(lines) = skill_body_lines(&content) else {
-            continue;
-        };
-
-        if lines.len() > MAX_BODY_LINES {
-            findings.push(finding(
-                RULE_BODY_LINE_COUNT,
-                format!(
-                    "Skill body too long: {rel} — {} body lines (limit {MAX_BODY_LINES})",
-                    lines.len()
-                ),
-                Some(path),
-            ));
-        }
-    }
-
-    Ok(findings)
-}
 
 fn check_section_line_counts(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
     let root = ctx.framework_root();
