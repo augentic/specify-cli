@@ -134,7 +134,7 @@
               { "const": "cardinality" },
               { "const": "constant-eq" },
               { "const": "set-eq" },
-              { "const": "content-digest-eq", "x-hint-status": "reserved" },
+              { "const": "content-digest-eq" },
               { "const": "namespace-owner", "x-hint-status": "reserved" }
             ]
           },

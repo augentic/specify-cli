@@ -118,8 +118,9 @@ pub enum LintMode {
 ///
 /// Includes the executable v1 kinds (`path-pattern`, `regex`,
 /// `schema`, `tool`, `reference-resolves`, `unique`,
-/// `set-coverage`, `cardinality`, `constant-eq`, `set-eq`) and the
-/// Reserved hint kind kinds (`content-digest-eq`, `namespace-owner`).
+/// `set-coverage`, `cardinality`, `constant-eq`, `set-eq`,
+/// `content-digest-eq`) and the remaining reserved hint kind
+/// (`namespace-owner`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HintKind {
@@ -153,7 +154,9 @@ pub enum HintKind {
     /// tightening of [`Self::SetCoverage`] (v1 source discriminator:
     /// `adapter-briefs-equal-operations`).
     SetEq,
-    /// Reserved hint kind: assert two content digests are equal.
+    /// Assert that the content digest (SHA-256) of one file equals an
+    /// expected digest (v1 source discriminator:
+    /// `agent-teams-match-canonical`).
     ContentDigestEq,
     /// Reserved hint kind: assert a namespace owner.
     NamespaceOwner,
