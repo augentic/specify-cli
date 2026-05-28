@@ -308,8 +308,8 @@
         "path": { "$ref": "#/$defs/relativePath" },
         "origin": {
           "type": "string",
-          "enum": ["target", "source", "shared", "unknown"],
-          "description": "`WorkspaceModel` entity: which rules tree contributed the rule (target adapter, source adapter, shared universal tree, or `unknown` for cache files whose path does not match a recognized adapter shape)."
+          "enum": ["target", "source", "shared", "core", "unknown"],
+          "description": "`WorkspaceModel` entity: which rules tree contributed the rule (target adapter, source adapter, shared universal tree, core rules pack, or `unknown` for cache files whose path does not match a recognized adapter shape)."
         },
         "frontmatter-ref": {
           "$ref": "#/$defs/relativePath",
