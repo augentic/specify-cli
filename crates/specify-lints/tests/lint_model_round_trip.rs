@@ -14,9 +14,9 @@
 use serde_json::{Map, Value, json};
 use specify_error::ValidationStatus;
 use specify_lints::lint::{
-    AdapterAxis, AdapterManifest, File, FileKind, Frontmatter, MarkdownLink, MarkdownSection,
-    MarketplaceEntry, RuleIndexEntry, ScanProfile, Skill, Symlink, TextMatch, WorkspaceModel,
-    WorkspaceModelVersion,
+    AdapterAxis, AdapterManifest, File, FileKind, Frontmatter, IgnoreDirective, MarkdownLink,
+    MarkdownSection, MarketplaceEntry, RuleIndexEntry, ScanProfile, Skill, Symlink, TextMatch,
+    WorkspaceModel, WorkspaceModelVersion,
 };
 use specify_lints::rules::Origin;
 use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
@@ -51,6 +51,7 @@ fn empty_workspace_model_round_trips_through_schema() {
         marketplace_entries: vec![],
         rule_index: vec![],
         text_matches: vec![],
+        ignore_directives: vec![],
     };
 
     let value = serde_json::to_value(&model).expect("serialise empty model");
@@ -71,6 +72,7 @@ fn empty_workspace_model_round_trips_through_schema() {
         "marketplace_entries",
         "rule_index",
         "text_matches",
+        "ignore_directives",
     ] {
         assert!(
             value.get(required_array).and_then(Value::as_array).is_some_and(Vec::is_empty),
@@ -86,6 +88,10 @@ fn empty_workspace_model_round_trips_through_schema() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "Single fixture covers every entity family's rename_all wiring; splitting hides the contract."
+)]
 fn populated_workspace_model_round_trips_through_schema() {
     let mut frontmatter_fields: Map<String, Value> = Map::new();
     frontmatter_fields.insert("title".into(), json!("Refine"));
@@ -155,6 +161,14 @@ fn populated_workspace_model_round_trips_through_schema() {
             column: 1,
             pattern_id: "url".into(),
         }],
+        ignore_directives: vec![IgnoreDirective {
+            path: "src/lib.rs".into(),
+            line: 12,
+            rule_id: "UNI-014".into(),
+            rationale: Some("documented rationale that is long enough".into()),
+            target_line: 13,
+            raw: "// specify-ignore: UNI-014 — documented rationale that is long enough".into(),
+        }],
     };
 
     let value = serde_json::to_value(&model).expect("serialise populated model");
@@ -190,6 +204,13 @@ fn populated_workspace_model_round_trips_through_schema() {
     let text = value.pointer("/text_matches/0").expect("populated text_matches has index 0");
     assert!(text.get("pattern-id").is_some(), "text_matches.pattern-id missing");
     assert!(text.get("pattern_id").is_none());
+
+    let directive =
+        value.pointer("/ignore_directives/0").expect("populated ignore_directives has index 0");
+    assert!(directive.get("rule-id").is_some(), "ignore_directives.rule-id missing");
+    assert!(directive.get("rule_id").is_none());
+    assert!(directive.get("target-line").is_some(), "ignore_directives.target-line missing");
+    assert!(directive.get("target_line").is_none());
 
     let fm = value.pointer("/frontmatter/0").expect("populated frontmatter has index 0");
     assert!(fm.get("schema-id").is_some(), "frontmatter.schema-id missing");

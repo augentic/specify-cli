@@ -35,12 +35,12 @@
 //!   `kind: structured`.
 //!
 //! Producer-side fields — `id`, `title`, `severity`, `confidence`,
-//!   `status`, `change`, `slice`, `target-adapter`, `source-adapter`,
-//!   `related-rule-ids` — are deliberately excluded so that regrading
-//!   severity, attaching slice/change context after the fact,
-//!   rephrasing a title between scanner runs, or migrating between
-//!   producers cannot duplicate findings for the same underlying
-//!   issue.
+//!   `status`, `disposition`, `change`, `slice`, `target-adapter`,
+//!   `source-adapter`, `related-rule-ids` — are deliberately excluded
+//!   so that regrading severity, stamping a triage status, attaching
+//!   slice/change context after the fact, rephrasing a title between
+//!   scanner runs, or migrating between producers cannot duplicate
+//!   findings for the same underlying issue.
 //!
 //! # Canonical JSON
 //!
@@ -200,8 +200,8 @@ mod tests {
 
     use super::{canonical_json, fingerprint, verify_fingerprint};
     use crate::rules::{
-        Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, FindingStatus,
-        LintFinding, Severity,
+        Artifact, Confidence, DirectiveDisposition, DispositionSource, FindingDisposition,
+        FindingEvidence, FindingLocation, FindingSource, FindingStatus, LintFinding, Severity,
     };
 
     /// Minimal valid finding used as a shared template for the
@@ -239,6 +239,7 @@ mod tests {
             confidence: Some(Confidence::High),
             fingerprint: String::new(),
             status: None,
+            disposition: None,
         }
     }
 
@@ -255,9 +256,9 @@ mod tests {
     }
 
     /// (2) Mutating any producer-only field
-    /// (`id`, `title`, `severity`, `confidence`, `status`, `change`,
-    /// `slice`, `target-adapter`, `source-adapter`) MUST leave the
-    /// fingerprint unchanged.
+    /// (`id`, `title`, `severity`, `confidence`, `status`,
+    /// `disposition`, `change`, `slice`, `target-adapter`,
+    /// `source-adapter`) MUST leave the fingerprint unchanged.
     #[test]
     fn excluded_producer_fields_do_not_change_fingerprint() {
         type Mutation = fn(&mut LintFinding);
@@ -269,6 +270,18 @@ mod tests {
             |f| f.severity = Severity::Critical,
             |f| f.confidence = Some(Confidence::Low),
             |f| f.status = Some(FindingStatus::Accepted),
+            |f| f.status = Some(FindingStatus::Ignored),
+            |f| {
+                f.disposition = Some(FindingDisposition {
+                    source: DispositionSource::Directive,
+                    directive: Some(DirectiveDisposition {
+                        path: "crates/invoice_export/src/config.rs".into(),
+                        line: 17,
+                        rationale: "internal deploy only — endpoint pinned per ops policy".into(),
+                    }),
+                    since: None,
+                });
+            },
             |f| f.change = Some("other-change".into()),
             |f| f.slice = Some("other-slice".into()),
             |f| f.target_adapter = Some("vectis".into()),
@@ -560,6 +573,7 @@ mod tests {
             confidence: None,
             fingerprint: String::new(),
             status: None,
+            disposition: None,
         };
         assert_eq!(
             fingerprint(&finding),

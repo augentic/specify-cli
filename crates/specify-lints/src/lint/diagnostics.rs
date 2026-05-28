@@ -183,6 +183,7 @@ mod tests {
             fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
                 .into(),
             status: None,
+            disposition: None,
         }
     }
 

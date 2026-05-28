@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use specify_lints::HintKind;
+use specify_lints::{
+    Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, FindingStatus, HintKind,
+    Severity,
+};
 
 use super::*;
 
@@ -175,4 +178,93 @@ fn slice_tasks_parser_handles_both_touches_and_produces() {
     let text = "## Produces\n\n- a.md\n\n## Touches\n\n- b.md\n";
     let paths = parse_slice_tasks_paths(text);
     assert_eq!(paths, vec![PathBuf::from("a.md"), PathBuf::from("b.md")]);
+}
+
+fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> LintFinding {
+    LintFinding {
+        id: "FIND-0001".into(),
+        rule_id: Some("UNI-014".into()),
+        related_rule_ids: None,
+        title: "exit-test finding".into(),
+        severity,
+        source: FindingSource::Deterministic,
+        target_adapter: None,
+        source_adapter: None,
+        slice: None,
+        change: None,
+        artifact: Artifact::Code,
+        location: Some(FindingLocation {
+            path: "src/lib.rs".into(),
+            line: Some(1),
+            column: None,
+            end_line: None,
+            end_column: None,
+        }),
+        evidence: FindingEvidence::Snippet { value: "x".into() },
+        impact: "i".into(),
+        remediation: "r".into(),
+        confidence: Some(Confidence::High),
+        fingerprint: format!("sha256:{}", "0".repeat(64)),
+        status,
+        disposition: None,
+    }
+}
+
+fn exit_result(findings: Vec<LintFinding>) -> LintResult {
+    LintResult {
+        version: LintResultVersion,
+        summary: LintSummary::from_findings(&findings),
+        findings,
+    }
+}
+
+/// RFC-33a §"Exit and presentation semantics": exit 2 fires only
+/// when at least one finding carries `status: open` AND severity is
+/// critical or important. Ignored / false-positive findings stay in
+/// the envelope but do not block.
+#[test]
+fn decide_exit_is_status_aware() {
+    // Empty envelope → exit 0.
+    decide_exit(&exit_result(vec![])).expect("empty envelope must exit 0");
+
+    // Critical but ignored → exit 0.
+    let critical_ignored = exit_fixture_finding(Severity::Critical, Some(FindingStatus::Ignored));
+    decide_exit(&exit_result(vec![critical_ignored.clone()]))
+        .expect("ignored critical must not block");
+
+    // Important but false-positive → exit 0.
+    let important_fp =
+        exit_fixture_finding(Severity::Important, Some(FindingStatus::FalsePositive));
+    decide_exit(&exit_result(vec![important_fp.clone()]))
+        .expect("false-positive important must not block");
+
+    // Suggestion + Open → exit 0 (severity below the blocking
+    // threshold).
+    let open_suggestion = exit_fixture_finding(Severity::Suggestion, Some(FindingStatus::Open));
+    decide_exit(&exit_result(vec![open_suggestion])).expect("suggestion severity must not block");
+
+    // Critical + Open → exit 2.
+    let critical_open = exit_fixture_finding(Severity::Critical, Some(FindingStatus::Open));
+    let err = decide_exit(&exit_result(vec![critical_open])).expect_err("open critical blocks");
+    match err {
+        Error::Validation { results } => {
+            assert_eq!(results[0].rule_id, "review-findings-present");
+        }
+        other => panic!("expected Validation, got {other:?}"),
+    }
+
+    // Unset status + Important → exit 2 (raw scanner output).
+    let important_unset = exit_fixture_finding(Severity::Important, None);
+    let err =
+        decide_exit(&exit_result(vec![important_unset])).expect_err("unset status treated as open");
+    assert!(matches!(err, Error::Validation { .. }));
+
+    // Mixed: one ignored critical + one open important → blocks.
+    let mixed = vec![
+        critical_ignored,
+        important_fp,
+        exit_fixture_finding(Severity::Important, Some(FindingStatus::Open)),
+    ];
+    let err = decide_exit(&exit_result(mixed)).expect_err("any open critical/important blocks");
+    assert!(matches!(err, Error::Validation { .. }));
 }

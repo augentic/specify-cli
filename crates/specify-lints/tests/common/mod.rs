@@ -43,6 +43,7 @@ pub fn make_fixture() -> LintResult {
             confidence: Some(Confidence::High),
             fingerprint: format!("sha256:{}", "11".repeat(32)),
             status: None,
+            disposition: None,
         },
         LintFinding {
             id: "FIND-0002".into(),
@@ -73,6 +74,7 @@ pub fn make_fixture() -> LintResult {
             confidence: Some(Confidence::Medium),
             fingerprint: format!("sha256:{}", "22".repeat(32)),
             status: None,
+            disposition: None,
         },
         LintFinding {
             id: "FIND-0003".into(),
@@ -97,6 +99,7 @@ pub fn make_fixture() -> LintResult {
             confidence: Some(Confidence::Low),
             fingerprint: format!("sha256:{}", "33".repeat(32)),
             status: None,
+            disposition: None,
         },
     ];
 

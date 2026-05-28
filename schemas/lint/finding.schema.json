@@ -236,8 +236,7 @@
             },
             "rationale": {
               "type": "string",
-              "minLength": 1,
-              "description": "Free-form rationale captured verbatim from the directive comment. Short rationales (< 16 characters) still populate this field; the directive-validation pass emits `UNI-022` for them."
+              "description": "Free-form rationale captured verbatim from the directive comment. Short rationales (< 16 characters) still populate this field, and unrationaled directives populate the empty string; the directive-validation pass emits `UNI-022` for both cases. The wire shape carries the captured rationale verbatim so downstream tooling can render the raw text alongside the synthetic finding."
             }
           },
           "description": "Directive disposition payload populated when `source: directive`."

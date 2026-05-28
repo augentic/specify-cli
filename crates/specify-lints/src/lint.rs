@@ -23,6 +23,7 @@
 
 pub mod diagnostics;
 pub mod eval;
+pub mod ignore;
 pub mod index;
 pub mod model;
 

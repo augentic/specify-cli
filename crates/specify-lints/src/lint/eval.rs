@@ -293,6 +293,7 @@ pub fn reserved_hint_summary(
         confidence: Some(Confidence::High),
         fingerprint: String::new(),
         status: None,
+        disposition: None,
     };
     clamp_evidence(&mut finding);
     finding.fingerprint = compute_fingerprint(&finding);
@@ -342,6 +343,7 @@ pub(crate) fn make_finding(
         confidence: Some(Confidence::High),
         fingerprint: String::new(),
         status: None,
+        disposition: None,
     };
     clamp_evidence(&mut finding);
     finding.fingerprint = compute_fingerprint(&finding);
@@ -378,6 +380,7 @@ pub(crate) fn make_synthetic_finding(
         confidence: Some(Confidence::High),
         fingerprint: String::new(),
         status: None,
+        disposition: None,
     };
     clamp_evidence(&mut finding);
     finding.fingerprint = compute_fingerprint(&finding);
@@ -514,6 +517,7 @@ mod tests {
             confidence: Some(Confidence::High),
             fingerprint: String::new(),
             status: None,
+            disposition: None,
         };
         clamp_evidence(&mut finding);
         validate_evidence_size(&finding).expect("evidence fits within cap");

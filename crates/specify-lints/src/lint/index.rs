@@ -17,6 +17,7 @@
 pub mod discover;
 pub mod files;
 pub mod frontmatter;
+pub mod ignore_directives;
 pub mod markdown;
 pub mod symlinks;
 
@@ -25,7 +26,7 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 
 use crate::lint::{
-    File, Frontmatter, MarkdownLink, MarkdownSection, ScanProfile, WorkspaceModel,
+    File, Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, ScanProfile, WorkspaceModel,
     WorkspaceModelVersion,
 };
 
@@ -89,6 +90,7 @@ pub fn build(
             frontmatter: frontmatter::extract(file),
             sections: markdown::extract_sections(file),
             links: markdown::extract_links(file),
+            ignore_directives: ignore_directives::extract(file),
         })
         .collect();
 
@@ -96,6 +98,7 @@ pub fn build(
     let mut frontmatter_out: Vec<Frontmatter> = Vec::new();
     let mut sections_out: Vec<MarkdownSection> = Vec::new();
     let mut links_out: Vec<MarkdownLink> = Vec::new();
+    let mut ignore_directives_out: Vec<IgnoreDirective> = Vec::new();
     for entry in per_file {
         files_out.push(entry.file);
         if let Some(fm) = entry.frontmatter {
@@ -103,6 +106,7 @@ pub fn build(
         }
         sections_out.extend(entry.sections);
         links_out.extend(entry.links);
+        ignore_directives_out.extend(entry.ignore_directives);
     }
 
     let known_paths: std::collections::HashSet<String> =
@@ -122,6 +126,12 @@ pub fn build(
             .then_with(|| a.line.cmp(&b.line))
             .then_with(|| a.to_raw.cmp(&b.to_raw))
     });
+    ignore_directives_out.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then_with(|| a.line.cmp(&b.line))
+            .then_with(|| a.rule_id.cmp(&b.rule_id))
+    });
 
     Ok(WorkspaceModel {
         version: WorkspaceModelVersion,
@@ -139,6 +149,7 @@ pub fn build(
         marketplace_entries: Vec::new(),
         rule_index,
         text_matches: Vec::new(),
+        ignore_directives: ignore_directives_out,
     })
 }
 
@@ -147,6 +158,7 @@ struct PerFile {
     frontmatter: Option<Frontmatter>,
     sections: Vec<MarkdownSection>,
     links: Vec<MarkdownLink>,
+    ignore_directives: Vec<IgnoreDirective>,
 }
 
 /// Resolve a markdown link target. URL-style targets (matching

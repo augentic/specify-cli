@@ -227,6 +227,7 @@ mod tests {
             confidence: Some(Confidence::High),
             fingerprint: String::new(),
             status: None,
+            disposition: None,
         };
         finding.fingerprint = fingerprint(&finding);
         finding

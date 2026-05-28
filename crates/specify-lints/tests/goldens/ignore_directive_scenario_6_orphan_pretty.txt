@@ -1,0 +1,8 @@
+Specify review — 2 finding(s)
+[IMPORTANT] UNI-014 UNI-014 test rule: matched `https?://` (app.rs:2:25)
+  impact: Trigger for UNI-014
+  remediation: See shared/UNI-014.md
+[IMPORTANT] UNI-023 specify-ignore directive does not match any finding (app.rs:1)
+  impact: Directive references UNI-999 but no finding for that rule fires on the target line.
+  remediation: Remove the directive, fix the rule id, or restore the underlying finding it was meant to suppress.
+Summary: 0 critical, 2 important, 0 suggestion, 0 optional

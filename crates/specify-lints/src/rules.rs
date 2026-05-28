@@ -198,18 +198,85 @@ pub enum Confidence {
 }
 
 /// Triage status for a [`LintFinding`]. Omitted by raw scanners and
-/// populated by review reports or CI state.
+/// populated by review reports, the RFC-33a directive post-pass, or
+/// CI state.
+///
+/// `Ignored` is set by the directive pass when a `specify-ignore`
+/// directive matches a finding; `FalsePositive` is set by the same
+/// pass when the directive's rationale begins with `false-positive:`.
+/// Wire spelling stays kebab-case (`ignored`, `false-positive`, …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FindingStatus {
-    /// Untriaged; default for fresh findings.
+    /// Untriaged; default for fresh findings and the only
+    /// default-blocking value at exit time.
     Open,
+    /// Demoted by a matching `specify-ignore` directive (RFC-33a).
+    Ignored,
     /// Resolved by a code change.
     Fixed,
     /// Operator-acknowledged; will not be fixed.
     Accepted,
     /// Producer-mistaken; the finding does not apply.
     FalsePositive,
+}
+
+/// Origin of a non-`open` `status` on a [`LintFinding`].
+///
+/// Closed discriminator for the `disposition.source` wire field.
+/// RFC-33a producers emit `Directive`; RFC-33b will additively add
+/// `Baseline` when it lands. Wire spelling is kebab-case
+/// (`directive`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DispositionSource {
+    /// `specify-ignore` directive in the scanned source.
+    Directive,
+}
+
+/// `disposition.directive` payload populated when
+/// [`FindingDisposition::source`] is [`DispositionSource::Directive`].
+///
+/// Carries the verbatim directive site (`path`, `line`) and the
+/// free-form `rationale` captured from the comment. The
+/// directive-validation pass surfaces short rationales as `UNI-022`
+/// findings; the rationale string itself is still captured here so
+/// downstream tooling can render it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct DirectiveDisposition {
+    /// Project-relative path of the source file containing the
+    /// directive comment.
+    pub path: String,
+    /// 1-based line of the directive comment itself (not the target
+    /// line the directive applies to).
+    pub line: u32,
+    /// Free-form rationale captured verbatim from the directive
+    /// comment.
+    pub rationale: String,
+}
+
+/// Origin of a non-`open` finding status on a [`LintFinding`].
+///
+/// Unset when `status` is `open` or absent; required to carry
+/// `source` when present. RFC-33a producers populate `directive`;
+/// RFC-33b will additively populate a `baseline` sub-field when it
+/// lands. `since` is reserved for downstream tooling and left unset
+/// by RFC-33a emitters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct FindingDisposition {
+    /// Closed discriminator naming the disposition's origin.
+    pub source: DispositionSource,
+    /// Directive payload, populated when `source` is
+    /// [`DispositionSource::Directive`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directive: Option<DirectiveDisposition>,
+    /// Optional free-form marker indicating when the disposition took
+    /// effect (commit hash, ISO-8601 timestamp, release tag, …).
+    /// RFC-33a emitters leave this unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub since: Option<String>,
 }
 
 /// Inclusive narrowing filter — all populated dimensions match (AND).
@@ -509,9 +576,15 @@ pub struct LintFinding {
     /// algorithm". Format `sha256:<64 hex chars>`.
     pub fingerprint: String,
     /// Triage status. Omitted by raw scanners; populated by review
-    /// reports or CI state.
+    /// reports, the RFC-33a directive post-pass, or CI state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<FindingStatus>,
+    /// Origin of a non-`open` `status`. Unset when `status` is
+    /// `open` or absent. RFC-33a producers populate
+    /// `disposition.directive`; the field is excluded from the
+    /// fingerprint per the schema's fingerprint contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disposition: Option<FindingDisposition>,
 }
 
 #[cfg(test)]
@@ -521,9 +594,10 @@ mod tests {
     use specify_schema::{LINT_FINDING_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA};
 
     use super::{
-        Applicability, Artifact, Confidence, Deprecated, DeterministicHint, FindingEvidence,
-        FindingLocation, FindingSource, FindingStatus, HintKind, LintFinding, LintMode, Origin,
-        PathRoot, Reference, ResolvedRule, ResolvedRules, Rule, Severity,
+        Applicability, Artifact, Confidence, Deprecated, DeterministicHint, DirectiveDisposition,
+        DispositionSource, FindingDisposition, FindingEvidence, FindingLocation, FindingSource,
+        FindingStatus, HintKind, LintFinding, LintMode, Origin, PathRoot, Reference, ResolvedRule,
+        ResolvedRules, Rule, Severity,
     };
 
     fn validator(schema_source: &str) -> Validator {
@@ -713,6 +787,7 @@ mod tests {
             fingerprint:
                 "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
             status: None,
+            disposition: None,
         };
         let value = serde_json::to_value(&finding).expect("serialise");
         assert_validates(LINT_FINDING_JSON_SCHEMA, &value);
@@ -783,6 +858,7 @@ mod tests {
                 fingerprint:
                     "sha256:0000000000000000000000000000000000000000000000000000000000000000".into(),
                 status: Some(FindingStatus::Open),
+                disposition: None,
             };
             let value = serde_json::to_value(&finding).expect("serialise");
             assert_validates(LINT_FINDING_JSON_SCHEMA, &value);
@@ -790,5 +866,131 @@ mod tests {
                 serde_json::from_value(value).expect("round-trip evidence variant");
             assert_eq!(finding, parsed);
         }
+    }
+
+    /// Template for the RFC-33a disposition round-trips below.
+    fn disposition_fixture(
+        status: FindingStatus, disposition: Option<FindingDisposition>,
+    ) -> LintFinding {
+        LintFinding {
+            id: "FIND-0007".into(),
+            rule_id: Some("UNI-014".into()),
+            related_rule_ids: None,
+            title: "Literal deployment URL in generated handler".into(),
+            severity: Severity::Important,
+            source: FindingSource::Deterministic,
+            target_adapter: Some("omnia".into()),
+            source_adapter: None,
+            slice: None,
+            change: None,
+            artifact: Artifact::Code,
+            location: Some(FindingLocation {
+                path: "crates/invoice_export/src/config.rs".into(),
+                line: Some(18),
+                column: None,
+                end_line: None,
+                end_column: None,
+            }),
+            evidence: FindingEvidence::Snippet {
+                value: "const BASE_URL: &str = \"https://api.example.com\";".into(),
+            },
+            impact: "Generated code points every deployment at one endpoint.".into(),
+            remediation: "Route the endpoint through Omnia configuration.".into(),
+            confidence: Some(Confidence::High),
+            fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                .into(),
+            status: Some(status),
+            disposition,
+        }
+    }
+
+    /// RFC-33a D5 + D6: a finding stamped `status: ignored` plus a
+    /// populated `disposition.directive` round-trips through the
+    /// canonical JSON shape, validates against the embedded schema,
+    /// and deserialises back to an identical struct.
+    #[test]
+    fn ignored_finding_with_directive_disposition_round_trips() {
+        let finding = disposition_fixture(
+            FindingStatus::Ignored,
+            Some(FindingDisposition {
+                source: DispositionSource::Directive,
+                directive: Some(DirectiveDisposition {
+                    path: "crates/invoice_export/src/config.rs".into(),
+                    line: 17,
+                    rationale: "internal deploy only — endpoint pinned per ops policy".into(),
+                }),
+                since: None,
+            }),
+        );
+        let value = serde_json::to_value(&finding).expect("serialise");
+        assert_validates(LINT_FINDING_JSON_SCHEMA, &value);
+        assert_eq!(value.get("status").and_then(JsonValue::as_str), Some("ignored"));
+        let disposition = value.get("disposition").expect("disposition emitted");
+        assert_eq!(disposition.get("source").and_then(JsonValue::as_str), Some("directive"));
+        let directive = disposition.get("directive").expect("directive sub-field emitted");
+        assert_eq!(
+            directive.get("path").and_then(JsonValue::as_str),
+            Some("crates/invoice_export/src/config.rs")
+        );
+        assert_eq!(directive.get("line").and_then(JsonValue::as_u64), Some(17));
+        assert!(
+            directive
+                .get("rationale")
+                .and_then(JsonValue::as_str)
+                .is_some_and(|r| r.starts_with("internal deploy only")),
+            "rationale must round-trip verbatim",
+        );
+        let parsed: LintFinding = serde_json::from_value(value).expect("round-trip");
+        assert_eq!(finding, parsed);
+    }
+
+    /// RFC-33a D6: when `disposition` is unset the canonical JSON
+    /// MUST omit the key entirely so RFC-28's byte-stable shape for
+    /// raw scanner output is preserved.
+    #[test]
+    fn open_finding_omits_disposition_key() {
+        let finding = disposition_fixture(FindingStatus::Open, None);
+        let value = serde_json::to_value(&finding).expect("serialise");
+        assert_validates(LINT_FINDING_JSON_SCHEMA, &value);
+        assert!(
+            value.get("disposition").is_none(),
+            "canonical JSON must omit the disposition key when unset; got {value}",
+        );
+        let parsed: LintFinding = serde_json::from_value(value).expect("round-trip");
+        assert_eq!(finding, parsed);
+    }
+
+    /// RFC-33a D5: a directive whose rationale begins with the
+    /// `false-positive:` prefix flips the status to
+    /// `false-positive` while still carrying the directive
+    /// disposition. Locks the wire spelling and the verbatim
+    /// rationale.
+    #[test]
+    fn false_positive_finding_with_directive_disposition_round_trips() {
+        let finding = disposition_fixture(
+            FindingStatus::FalsePositive,
+            Some(FindingDisposition {
+                source: DispositionSource::Directive,
+                directive: Some(DirectiveDisposition {
+                    path: "crates/invoice_export/src/config.rs".into(),
+                    line: 17,
+                    rationale: "false-positive: scanner mis-flags the test stub URL".into(),
+                }),
+                since: None,
+            }),
+        );
+        let value = serde_json::to_value(&finding).expect("serialise");
+        assert_validates(LINT_FINDING_JSON_SCHEMA, &value);
+        assert_eq!(value.get("status").and_then(JsonValue::as_str), Some("false-positive"));
+        let rationale = value
+            .pointer("/disposition/directive/rationale")
+            .and_then(JsonValue::as_str)
+            .expect("rationale present");
+        assert!(
+            rationale.starts_with("false-positive:"),
+            "rationale must lead with the false-positive prefix; got {rationale}",
+        );
+        let parsed: LintFinding = serde_json::from_value(value).expect("round-trip");
+        assert_eq!(finding, parsed);
     }
 }

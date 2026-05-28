@@ -55,6 +55,7 @@
       "path": "doc.md"
     }
   ],
+  "ignore_directives": [],
   "languages": [],
   "markdown_links": [
     {

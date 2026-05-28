@@ -206,6 +206,115 @@ fn review_dump_model_emits_workspace_model_and_exits_0() {
     assert_validates(&validator, stdout, "workspace-model");
 }
 
+/// RFC-33a §"Journal event" (D8): every completed scan appends one
+/// `lint-completed` line to `.specify/journal.jsonl` with the closed
+/// `snake_case` payload shape. The fixture wires a Markdown directive
+/// that demotes the UNI-100 TODO finding so the asserted counts
+/// straddle both buckets (`ignored: 1`, `open: 0`) and the scan exits
+/// clean (`exit_code: 0`) — proving the journal `exit_code` mirrors
+/// the status-aware exit decision RFC-33a §"Exit and presentation
+/// semantics" defines.
+#[test]
+fn lint_run_emits_lint_completed_journal_event() {
+    use std::path::PathBuf;
+
+    let root = TempDir::new().expect("create tempdir");
+    let project: PathBuf = root.path().join("project");
+    let codex: PathBuf = root.path().join("rules");
+    fs::create_dir_all(project.join(".specify")).expect("mkdir project/.specify");
+    fs::create_dir_all(codex.join("adapters/shared/rules/universal")).expect("mkdir codex");
+
+    fs::write(project.join(".specify").join("project.yaml"), "name: review-journal-e2e\n")
+        .expect("write project.yaml");
+
+    // `<!-- specify-ignore: UNI-100 — … -->` lands on line 2 so the
+    // directive's `target_line` resolves to the next non-blank,
+    // non-comment line: the TODO on line 3.
+    fs::write(
+        project.join("notes.md"),
+        concat!(
+            "# Project notes\n",
+            "<!-- specify-ignore: UNI-100 — accepted tech-debt sentinel for the demo -->\n",
+            "TODO: drop scaffolding.\n",
+        ),
+    )
+    .expect("write notes.md");
+
+    fs::write(
+        codex.join("adapters/shared/rules/universal/uni-100.md"),
+        concat!(
+            "---\n",
+            "id: UNI-100\n",
+            "title: Forbid scaffolding TODOs\n",
+            "severity: important\n",
+            "trigger: TODO comments leak development scaffolding into shipped artefacts.\n",
+            "lint_mode: deterministic\n",
+            "deterministic_hints:\n",
+            "  - kind: regex\n",
+            "    value: TODO\n",
+            "---\n",
+            "## Rule\n\nStrip scaffolding TODOs before merge.\n",
+        ),
+    )
+    .expect("write UNI-100");
+
+    let output = run_review(&project, Some(&codex), &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "directive demotes the only finding to `ignored`; scan must exit 0; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let raw = fs::read_to_string(project.join(".specify").join("journal.jsonl"))
+        .expect("read journal.jsonl");
+    let last_line =
+        raw.lines().rfind(|l| !l.is_empty()).expect("journal must contain at least one line");
+    let event: Value = serde_json::from_str(last_line)
+        .unwrap_or_else(|err| panic!("last journal line is not JSON ({err}): {last_line}"));
+
+    assert_eq!(
+        event.pointer("/event").and_then(Value::as_str),
+        Some("lint-completed"),
+        "last journal line must be the lint-completed event; got:\n{event:#}",
+    );
+
+    let payload = event.get("payload").expect("payload object present");
+    assert_eq!(payload.pointer("/scope/target").and_then(Value::as_str), Some("omnia"));
+    assert!(
+        payload.pointer("/scope/slice").is_some_and(Value::is_null),
+        "slice must serialise to JSON null when --slice is absent; payload:\n{payload:#}",
+    );
+    assert!(
+        payload.pointer("/scope/artifact").is_some_and(Value::is_null),
+        "artifact must serialise to JSON null on full scans; payload:\n{payload:#}",
+    );
+    assert_eq!(
+        payload.pointer("/counts/open").and_then(Value::as_u64),
+        Some(0),
+        "the only finding is directive-demoted; open bucket must be empty: {payload:#}",
+    );
+    assert_eq!(
+        payload.pointer("/counts/ignored").and_then(Value::as_u64),
+        Some(1),
+        "the directive demotes UNI-100; ignored bucket must be 1: {payload:#}",
+    );
+    assert_eq!(payload.pointer("/counts/false_positive").and_then(Value::as_u64), Some(0));
+    assert_eq!(payload.pointer("/baseline_present").and_then(Value::as_bool), Some(false));
+    assert_eq!(payload.pointer("/exit_code").and_then(Value::as_i64), Some(0));
+    assert!(
+        payload.pointer("/duration_ms").and_then(Value::as_u64).is_some(),
+        "duration_ms must be present and serialise as a JSON number: {payload:#}",
+    );
+
+    for forbidden in ["duration-ms", "baseline-present", "false-positive", "exit-code"] {
+        assert!(
+            !last_line.contains(&format!("\"{forbidden}\"")),
+            "lint-completed payload must use snake_case field names; raw:\n{last_line}",
+        );
+    }
+}
+
 /// rules-root resolution / lint exit mapping negative: with no `--rules-root`, no project-local
 /// `adapters/shared/rules/universal/` rung, and no
 /// `.specify/cache/rules/` cache, the resolver returns

@@ -22,17 +22,23 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
+use jiff::Timestamp;
+use specify_domain::journal::{
+    self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
+};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_lints::lint::diagnostics::{
     Format as DiagnosticsFormat, LintResult, LintResultVersion, LintSummary, RenderError, render,
 };
 use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
 use specify_lints::lint::eval::{HintError, evaluate, reserved_hint_summary};
+use specify_lints::lint::ignore::{apply as apply_directives, blocking_findings_present};
 use specify_lints::lint::index::{IndexError, build as build_model};
 use specify_lints::lint::{ScanProfile, WorkspaceModel};
 use specify_lints::{
-    LintFinding, LintMode, ResolveInputs, ResolvedRule, Severity, build_resolved_rules,
+    FindingStatus, LintFinding, LintMode, ResolveInputs, ResolvedRule, build_resolved_rules,
 };
 use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_serialisable};
 use specify_tool::host::{RunContext, WasiRunner};
@@ -57,6 +63,7 @@ pub fn run(
     artifacts: &[PathBuf], languages: &[String], dump_model: bool, strict_hints: bool,
     format: DiagnosticsFormat,
 ) -> Result<()> {
+    let started_at = Instant::now();
     let artifact_set = compose_artifact_set(&ctx.project_dir, slice, artifacts)?;
     let resolved_root = resolve_rules_root(ctx, rules_root);
 
@@ -101,9 +108,18 @@ pub fn run(
         next_id = outcome.next_id_counter;
     }
 
+    let outcome =
+        apply_directives(&mut findings, &model.ignore_directives, &resolved.rules, next_id);
+    findings.extend(outcome.synthetics);
+    next_id = outcome.next_id_counter;
+
     if let Some(summary) = reserved_hint_summary(&reserved, strict_hints) {
         findings.push(summary);
     }
+    // `next_id` is intentionally not consumed further in v1; future
+    // post-passes (RFC-33b baseline matching, telemetry IDs) will
+    // continue to thread it.
+    let _ = next_id;
 
     let result = LintResult {
         version: LintResultVersion,
@@ -114,6 +130,16 @@ pub fn run(
     let rendered = render(format, &result).map_err(map_render_error)?;
     println!("{rendered}");
 
+    let exit_code: i32 = if blocking_findings_present(&result.findings) { 2 } else { 0 };
+    emit_lint_completed(
+        ctx,
+        target,
+        slice,
+        artifacts,
+        &result.findings,
+        started_at.elapsed().as_millis(),
+        exit_code,
+    );
     decide_exit(&result)
 }
 
@@ -226,15 +252,69 @@ fn emit_dump_model(model: &WorkspaceModel) -> Result<()> {
     Ok(())
 }
 
-/// Decide exit per lint exit mapping last row: any `critical | important`
-/// finding lands `Exit::ValidationFailed` (code 2); everything else
-/// returns `Ok(())` (code 0).
-fn decide_exit(result: &LintResult) -> Result<()> {
-    let elevated = result
-        .findings
+/// Build a [`LintCompletedPayload`] from the final finding set and
+/// append it to the project journal per RFC-33a §"Journal event"
+/// (D8). Best-effort: serialise/IO failures are logged to stderr and
+/// swallowed so a telemetry hiccup never overrides the scan's exit
+/// code (mirrors the safety stance documented on the variant
+/// itself).
+///
+/// `baseline_present` is hard-coded `false`; RFC-33b makes it
+/// scan-derived when it lands.
+fn emit_lint_completed(
+    ctx: &Ctx, target: &str, slice: Option<&str>, artifacts: &[PathBuf], findings: &[LintFinding],
+    duration_ms: u128, exit_code: i32,
+) {
+    let scope = LintScope {
+        target: (!target.is_empty()).then(|| target.to_string()),
+        slice: slice.map(str::to_string),
+        // Populate `artifact` only when the scan was narrowed to
+        // exactly one path; multi-artifact and full scans leave the
+        // field `null` per the variant doc.
+        artifact: (artifacts.len() == 1).then(|| artifacts[0].display().to_string()),
+    };
+    let counts = LintCounts {
+        open: count_status(findings, None),
+        ignored: count_status(findings, Some(FindingStatus::Ignored)),
+        false_positive: count_status(findings, Some(FindingStatus::FalsePositive)),
+    };
+    let payload = LintCompletedPayload {
+        scope,
+        duration_ms: u64::try_from(duration_ms).unwrap_or(u64::MAX),
+        counts,
+        baseline_present: false,
+        exit_code,
+    };
+    let event = Event::new(Timestamp::now(), EventKind::LintCompleted(payload));
+    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
+        eprintln!("specrun lint: failed to append lint-completed journal event: {err}");
+    }
+}
+
+/// Count findings whose `status` matches `target`. Passing `None`
+/// counts the `open` bucket per RFC-33a — an unset `status` is
+/// treated as `Open`, matching the status-aware exit predicate in
+/// [`specify_lints::lint::ignore::blocking_findings_present`].
+fn count_status(findings: &[LintFinding], target: Option<FindingStatus>) -> u32 {
+    let count = findings
         .iter()
-        .any(|f| matches!(f.severity, Severity::Critical | Severity::Important));
-    if !elevated {
+        .filter(|f| {
+            target.map_or_else(
+                || matches!(f.status, None | Some(FindingStatus::Open)),
+                |want| f.status == Some(want),
+            )
+        })
+        .count();
+    u32::try_from(count).unwrap_or(u32::MAX)
+}
+
+/// Decide exit per RFC-33a §"Exit and presentation semantics": exit 2
+/// only when at least one finding carries `status: open` AND
+/// `severity ∈ {critical, important}`. Findings demoted to `ignored`
+/// or `false-positive` by the directive pass remain in the envelope
+/// but do not block.
+fn decide_exit(result: &LintResult) -> Result<()> {
+    if !blocking_findings_present(&result.findings) {
         return Ok(());
     }
     let detail = format!(
@@ -248,7 +328,7 @@ fn decide_exit(result: &LintResult) -> Result<()> {
         results: vec![ValidationSummary {
             status: ValidationStatus::Fail,
             rule_id: "review-findings-present".to_string(),
-            rule: "deterministic review surfaced critical/important findings".to_string(),
+            rule: "deterministic review surfaced open critical/important findings".to_string(),
             detail: Some(detail),
         }],
     })
@@ -431,7 +511,7 @@ impl ToolRunner for WasiToolRunner {
         let resolved = specify_tool::resolver::resolve(
             scoped.scope(),
             scoped.tool(),
-            jiff::Timestamp::now(),
+            Timestamp::now(),
             &self.project_dir,
         )
         .map_err(|err| ToolRunError::Runtime(err.to_string()))?;

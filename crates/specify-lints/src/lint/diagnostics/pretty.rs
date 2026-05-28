@@ -12,7 +12,7 @@
 use std::fmt::Write as _;
 
 use super::{LintResult, RenderError};
-use crate::rules::{FindingLocation, LintFinding, Severity};
+use crate::rules::{FindingLocation, FindingStatus, LintFinding, Severity};
 
 /// Render `result` as colourised terminal output.
 ///
@@ -37,14 +37,30 @@ pub fn render(result: &LintResult) -> Result<String, RenderError> {
 
 fn write_finding(out: &mut String, finding: &LintFinding) {
     let tag = paint(finding.severity, severity_tag(finding.severity));
+    let status = status_tag(finding.status);
     let rule = finding.rule_id.as_deref().map_or(String::new(), |id| format!(" {id}"));
     let location = finding
         .location
         .as_ref()
         .map_or(String::new(), |loc| format!(" ({})", format_location(loc)));
-    let _ = writeln!(out, "{tag}{rule} {title}{location}", title = finding.title);
+    let _ = writeln!(out, "{tag}{status}{rule} {title}{location}", title = finding.title);
     let _ = writeln!(out, "  impact: {}", finding.impact);
     let _ = writeln!(out, "  remediation: {}", finding.remediation);
+}
+
+/// RFC-33a §"Exit and presentation semantics": render the demoted
+/// status next to the severity tag so a glance at the pretty output
+/// shows why a finding is non-blocking. The `Open` (and unset) case
+/// renders nothing so the common, unfiltered run is byte-identical
+/// to the pre-RFC-33a output.
+const fn status_tag(status: Option<FindingStatus>) -> &'static str {
+    match status {
+        Some(FindingStatus::Ignored) => " [ignored]",
+        Some(FindingStatus::FalsePositive) => " [false-positive]",
+        Some(FindingStatus::Fixed) => " [fixed]",
+        Some(FindingStatus::Accepted) => " [accepted]",
+        None | Some(FindingStatus::Open) => "",
+    }
 }
 
 const fn severity_tag(severity: Severity) -> &'static str {

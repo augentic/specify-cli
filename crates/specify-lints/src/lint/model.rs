@@ -287,6 +287,43 @@ pub struct TextMatch {
     pub pattern_id: String,
 }
 
+/// `ignore_directive` fact per the `WorkspaceModel` entity families.
+///
+/// Produced by the RFC-33a indexer pass that recognises
+/// `specify-ignore: <RULE-ID> — <rationale>` comments across the
+/// closed comment-style list (C-family, hash, HTML, SQL/Lua).
+/// Malformed directives (missing or empty rationale) are still
+/// emitted with `rationale = None` so the directive-validation pass
+/// can synthesise `UNI-022` / `UNI-023` findings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct IgnoreDirective {
+    /// Project-relative path of the file containing the directive
+    /// comment.
+    pub path: String,
+    /// 1-based line of the directive comment itself.
+    pub line: u32,
+    /// Rule id named by the directive. Not pattern-pinned so
+    /// malformed ids surface as `UNI-023` candidates downstream.
+    pub rule_id: String,
+    /// Verbatim rationale text from the directive. `None` when the
+    /// directive lacked a rationale (the directive-validation pass
+    /// emits `UNI-022` for that case).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    /// 1-based line the directive applies to. Inline trailing
+    /// directives target their own line; block-leading directives
+    /// target the next non-blank, non-comment line; directives at
+    /// end-of-file with no following target line use the line
+    /// number one past the file's last line so the validation pass
+    /// can detect orphan placement.
+    pub target_line: u32,
+    /// Raw directive comment text as captured by the indexer,
+    /// including delimiters (e.g. `// specify-ignore: …`,
+    /// `/* specify-ignore: … */`).
+    pub raw: String,
+}
+
 /// v1 `WorkspaceModel` envelope per the standards-layer contract §"`WorkspaceModel`" and
 /// §"Schema location".
 ///
@@ -341,6 +378,12 @@ pub struct WorkspaceModel {
     /// `text_match` facts from the optional precomputed regex
     /// index.
     pub text_matches: Vec<TextMatch>,
+    /// `ignore_directive` facts from the RFC-33a directive indexer.
+    /// Optional in v1 envelopes per the schema; the producer always
+    /// serialises the array so consumers see one consistent wire
+    /// shape.
+    #[serde(default)]
+    pub ignore_directives: Vec<IgnoreDirective>,
 }
 
 #[cfg(test)]

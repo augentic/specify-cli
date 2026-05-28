@@ -28,6 +28,7 @@
 //! | (deterministic producer)               | `confidence` = `None`                  |
 //! | `fingerprint::fingerprint(&self)`      | `fingerprint`                          |
 //! | (raw scanner output)                   | `status` = `None`                      |
+//! | (raw scanner output)                   | `disposition` = `None`                 |
 //!
 //! ### Decision: imperative `rule_id` vs closed codex `rule-id`
 //!
@@ -128,6 +129,7 @@ fn map_one(input: &Finding, index: usize) -> LintFinding {
         confidence: None,
         fingerprint: String::new(),
         status: None,
+        disposition: None,
     };
     review.fingerprint = fingerprint(&review);
     review
