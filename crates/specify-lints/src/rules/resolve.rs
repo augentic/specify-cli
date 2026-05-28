@@ -76,7 +76,7 @@ use super::{Origin, PathRoot, Rule};
 /// CH-12's [`resolve`] consumes `project_dir`, `rules_root`,
 /// `target_adapter`, and `source_adapters`. CH-13's [`filter`]
 /// additionally consumes `artifact_paths`, `languages`,
-/// `include_deprecated`, and `include_unmatched`. Calling
+/// `include_deprecated`, `include_unmatched`, and `include_core`.
 /// Callers compose [`resolve`] then [`filter`] when they need the
 /// narrowed pool; [`build_resolved_rules`] is the export entry point.
 #[derive(Debug, Clone)]
@@ -103,6 +103,11 @@ pub struct ResolveInputs<'a> {
     /// Whether rules with populated applicability dimensions the
     /// caller did not satisfy are included. Toggled by CH-13.
     pub include_unmatched: bool,
+    /// Whether rules with [`super::Origin::Core`] appear in the
+    /// export. Default off per RFC-34 §A3 / §F3 ("Consumer-export
+    /// filtering"): consumer-project review runs never evaluate
+    /// `CORE-*` hints by accident.
+    pub include_core: bool,
 }
 
 /// Pre-sort intermediate emitted by [`resolve`].
@@ -412,6 +417,7 @@ mod tests {
             languages: &[],
             include_deprecated: false,
             include_unmatched: false,
+            include_core: false,
         }
     }
 
@@ -869,6 +875,7 @@ mod tests {
             languages: &languages,
             include_deprecated: true,
             include_unmatched: true,
+            include_core: true,
         };
 
         let result = resolve(&inputs).expect("resolve succeeds with CH-13 inputs populated");

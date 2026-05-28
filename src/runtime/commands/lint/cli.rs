@@ -64,6 +64,13 @@ pub enum LintAction {
         #[arg(long)]
         strict_hints: bool,
 
+        /// Include `CORE-*` rules resolved from
+        /// `adapters/shared/rules/core/` (RFC-34 §A3 / §F3).
+        /// Default off — consumer-project review runs never evaluate
+        /// `CORE-*` hints unless the caller opts in.
+        #[arg(long)]
+        include_core: bool,
+
         /// Output format. Closed Phase 2 set per the diagnostics formatter set:
         /// `{ json, pretty, github, compact }`; default `pretty`.
         ///

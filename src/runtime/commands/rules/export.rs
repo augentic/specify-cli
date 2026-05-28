@@ -34,7 +34,7 @@ use crate::runtime::output;
 pub fn run(
     format: Format, rules_root: Option<&Path>, target: &str, sources: &[String],
     artifacts: &[PathBuf], languages: &[String], include_deprecated: bool, include_unmatched: bool,
-    project_dir: &Path,
+    include_core: bool, project_dir: &Path,
 ) -> Result<()> {
     require_json(format)?;
 
@@ -47,6 +47,7 @@ pub fn run(
         languages,
         include_deprecated,
         include_unmatched,
+        include_core,
     };
 
     let resolved = build_resolved_rules(&inputs).map_err(map_resolve_error)?;
@@ -120,9 +121,19 @@ mod tests {
     /// `Exit::from` lands on exit 2 (argument shape).
     #[test]
     fn rejects_text_format_with_argument_error() {
-        let err =
-            run(Format::Text, None, "omnia", &[], &[], &[], false, false, &PathBuf::from("."))
-                .expect_err("text format must be rejected");
+        let err = run(
+            Format::Text,
+            None,
+            "omnia",
+            &[],
+            &[],
+            &[],
+            false,
+            false,
+            false,
+            &PathBuf::from("."),
+        )
+        .expect_err("text format must be rejected");
         match err {
             Error::Argument { flag, detail } => {
                 assert_eq!(flag, "--format");

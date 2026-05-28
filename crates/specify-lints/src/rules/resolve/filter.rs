@@ -9,15 +9,22 @@
 //!
 //! # Precedence
 //!
-//! Two filters run in a fixed order:
+//! Three filters run in a fixed order:
 //!
-//! 1. **Deprecation** — entries whose [`Rule::deprecated`] is
+//! 1. **Origin (`core`)** — entries with [`super::super::Origin::Core`]
+//!    are dropped unless [`ResolveInputs::include_core`] is set, per
+//!    RFC-34 §A3 / §F3 ("Consumer-export filtering"). The check runs
+//!    **first** so `CORE-*` rules never reach the deprecation or
+//!    applicability passes on a default consumer export — even if the
+//!    rule's `applicability` block would have accepted them.
+//! 2. **Deprecation** — entries whose [`Rule::deprecated`] is
 //!    populated are dropped unless [`ResolveInputs::include_deprecated`]
-//!    is set. Deprecation runs **first** so an `--include-deprecated`
-//!    rule still walks through applicability normally (§"Overlay precedence": "Export includes every rule that passes
-//!    applicability filtering" — `include_deprecated` does not bypass
-//!    applicability).
-//! 2. **Applicability** — a rule with no `applicability` block always
+//!    is set. Deprecation runs before applicability so an
+//!    `--include-deprecated` rule still walks through applicability
+//!    normally (§"Overlay precedence": "Export includes every rule that
+//!    passes applicability filtering" — `include_deprecated` does not
+//!    bypass applicability).
+//! 3. **Applicability** — a rule with no `applicability` block always
 //!    passes ("A rule with no `applicability` block applies wherever
 //!    its root applies"). A rule with an `applicability` block must
 //!    pass **every populated dimension** (AND semantics).
@@ -77,7 +84,7 @@ use std::path::{Path, PathBuf};
 use glob::{MatchOptions, Pattern};
 
 use super::{ResolveInputs, ResolvedRuleEntry};
-use crate::rules::Rule;
+use crate::rules::{Origin, Rule};
 
 /// Rule path-glob semantics (`applicability.paths`): case-sensitive,
 /// `/` is the only separator, leading dots match literally.
@@ -87,10 +94,11 @@ const PATH_MATCH_OPTIONS: MatchOptions = MatchOptions {
     require_literal_leading_dot: false,
 };
 
-/// Apply deprecation + applicability filters to a CH-12 result.
+/// Apply origin + deprecation + applicability filters to a CH-12 result.
 ///
-/// Deprecation runs first; applicability runs against the survivors.
-/// See the module docs for the closed precedence rules and per-dimension
+/// Origin (`core`) runs first; deprecation runs against those
+/// survivors; applicability runs against the survivors of both. See
+/// the module docs for the closed precedence rules and per-dimension
 /// matching semantics.
 #[must_use]
 pub fn filter(
@@ -98,9 +106,19 @@ pub fn filter(
 ) -> Vec<ResolvedRuleEntry> {
     entries
         .into_iter()
+        .filter(|entry| keeps_core(entry.origin, inputs.include_core))
         .filter(|entry| keeps_deprecated(&entry.rule, inputs.include_deprecated))
         .filter(|entry| applicability_matches(&entry.rule, inputs))
         .collect()
+}
+
+/// `true` when the entry survives the consumer-export `core` filter.
+///
+/// RFC-34 §A3 / §F3: rules resolved from `adapters/shared/rules/core/`
+/// (i.e. [`Origin::Core`]) are excluded from the export by default; the
+/// caller opts in via `--include-core`.
+const fn keeps_core(origin: Origin, include_core: bool) -> bool {
+    !matches!(origin, Origin::Core) || include_core
 }
 
 /// `true` when the rule survives the deprecation filter.
@@ -296,6 +314,16 @@ mod tests {
             languages,
             include_deprecated,
             include_unmatched,
+            include_core: false,
+        }
+    }
+
+    fn core_entry(id: &str) -> ResolvedRuleEntry {
+        ResolvedRuleEntry {
+            rule: make_rule(id, None, None),
+            origin: Origin::Core,
+            path_root: PathRoot::RulesRoot,
+            path: format!("adapters/shared/rules/core/{id}.md"),
         }
     }
 
@@ -590,5 +618,69 @@ mod tests {
         let inputs = make_inputs("omnia", &[], &paths, &[], false, false);
         let out = filter(vec![entry], &inputs);
         assert!(out.is_empty());
+    }
+
+    /// RFC-34 §A3 / §F3: a [`Origin::Core`] entry is dropped on a
+    /// default consumer export — `--include-core` is off.
+    #[test]
+    fn core_origin_excluded_by_default() {
+        let entry = core_entry("CORE-001");
+        let inputs = make_inputs("omnia", &[], &[], &[], false, false);
+        let out = filter(vec![entry], &inputs);
+        assert!(out.is_empty(), "core rules must not appear without --include-core");
+    }
+
+    /// RFC-34 §A3: with `--include-core` set, the core entry passes
+    /// the origin filter and rides through the remaining filters
+    /// unchanged. Origin metadata is preserved on the surviving entry.
+    #[test]
+    fn core_origin_passes_when_flag_set() {
+        let entry = core_entry("CORE-001");
+        let mut inputs = make_inputs("omnia", &[], &[], &[], false, false);
+        inputs.include_core = true;
+        let out = filter(vec![entry], &inputs);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].origin, Origin::Core);
+        assert_eq!(out[0].rule.id, "CORE-001");
+    }
+
+    /// `--include-core` is orthogonal to other origins: shared / source
+    /// / target entries flow through whether the flag is on or off.
+    #[test]
+    fn core_filter_is_orthogonal_to_other_origins() {
+        let shared = make_entry("UNI-001", None, None);
+        let core = core_entry("CORE-001");
+        let inputs = make_inputs("omnia", &[], &[], &[], false, false);
+        let out = filter(vec![shared.clone(), core.clone()], &inputs);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].rule.id, "UNI-001");
+
+        let mut inputs = make_inputs("omnia", &[], &[], &[], false, false);
+        inputs.include_core = true;
+        let out = filter(vec![shared, core], &inputs);
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().any(|e| e.rule.id == "UNI-001"));
+        assert!(out.iter().any(|e| e.rule.id == "CORE-001"));
+    }
+
+    /// Origin runs before deprecation: a deprecated core rule with
+    /// `--include-deprecated` set still falls out of the export when
+    /// `--include-core` is off.
+    #[test]
+    fn core_filter_runs_before_deprecation() {
+        let entry = ResolvedRuleEntry {
+            rule: make_rule("CORE-DEP", None, Some(deprecation_meta())),
+            origin: Origin::Core,
+            path_root: PathRoot::RulesRoot,
+            path: "adapters/shared/rules/core/CORE-DEP.md".to_string(),
+        };
+        let inputs = make_inputs("omnia", &[], &[], &[], true, false);
+        assert!(filter(vec![entry.clone()], &inputs).is_empty());
+
+        let mut inputs = make_inputs("omnia", &[], &[], &[], true, false);
+        inputs.include_core = true;
+        let out = filter(vec![entry], &inputs);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].origin, Origin::Core);
     }
 }

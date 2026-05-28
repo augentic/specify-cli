@@ -61,7 +61,7 @@ use crate::runtime::context::Ctx;
 pub fn run(
     ctx: &Ctx, rules_root: Option<&Path>, target: &str, sources: &[String], slice: Option<&str>,
     artifacts: &[PathBuf], languages: &[String], dump_model: bool, strict_hints: bool,
-    format: DiagnosticsFormat,
+    include_core: bool, format: DiagnosticsFormat,
 ) -> Result<()> {
     let started_at = Instant::now();
     let artifact_set = compose_artifact_set(&ctx.project_dir, slice, artifacts)?;
@@ -76,6 +76,7 @@ pub fn run(
         languages,
         include_deprecated: false,
         include_unmatched: false,
+        include_core,
     };
     let resolved = build_resolved_rules(&inputs).map_err(map_resolve_error)?;
 

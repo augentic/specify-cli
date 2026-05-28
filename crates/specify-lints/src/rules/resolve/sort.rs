@@ -232,6 +232,7 @@ mod tests {
             languages: &[],
             include_deprecated: false,
             include_unmatched: false,
+            include_core: false,
         };
         build_resolved_rules(&inputs).expect("build_resolved_rules succeeds")
     }

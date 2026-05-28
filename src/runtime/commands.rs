@@ -86,6 +86,7 @@ pub fn run(cli: Cli) -> Exit {
                 languages,
                 include_deprecated,
                 include_unmatched,
+                include_core,
                 project_dir,
             } => dispatch(format, || {
                 rules::export::run(
@@ -97,6 +98,7 @@ pub fn run(cli: Cli) -> Exit {
                     &languages,
                     include_deprecated,
                     include_unmatched,
+                    include_core,
                     &project_dir,
                 )
             }),
@@ -119,6 +121,7 @@ pub fn run(cli: Cli) -> Exit {
                 languages,
                 dump_model,
                 strict_hints,
+                include_core,
                 output_format,
                 project_dir,
             } => scoped_at(format, &project_dir, |ctx| {
@@ -132,6 +135,7 @@ pub fn run(cli: Cli) -> Exit {
                     &languages,
                     dump_model,
                     strict_hints,
+                    include_core,
                     output_format.into(),
                 )
             }),

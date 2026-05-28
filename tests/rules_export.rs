@@ -76,6 +76,7 @@ fn run_export(
         languages: &[],
         include_deprecated,
         include_unmatched: false,
+        include_core: false,
     };
     build_resolved_rules(&inputs).expect("build_resolved_rules succeeds")
 }
@@ -273,6 +274,97 @@ fn omnia_agent_consumable_assertions() {
         !body.contains("\"replaced_by\""),
         "snake_case wire key `replaced_by` must not appear in the export envelope",
     );
+}
+
+/// RFC-34 §A3 / §F3 CLI smoke test: a hand-built rules-root tree with
+/// a `CORE-*` rule under `adapters/shared/rules/core/` excludes that
+/// rule from `specrun rules export` by default and includes it under
+/// `--include-core`. Uses `assert_cmd` so the closed CLI plumbing
+/// (clap struct → handler → resolver) is exercised end-to-end.
+#[test]
+fn include_core_flag_toggles_core_rules() {
+    let rules_root = tempdir().expect("rules root tempdir");
+    let project = tempdir().expect("project tempdir");
+
+    write_rule_fixture(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+        "UNI-001",
+        "Universal anchor",
+    );
+    // C7 lands the canonical `CORE-001`; this fixture uses a high
+    // out-of-the-way id (`CORE-999`) so the test never collides with
+    // a future first-party core rule.
+    write_rule_fixture(
+        &rules_root.path().join("adapters/shared/rules/core/CORE-fixture.md"),
+        "CORE-999",
+        "Core fixture",
+    );
+
+    let off = export_via_cli(rules_root.path(), project.path(), false);
+    let off_rules =
+        off.pointer("/rules").and_then(Value::as_array).expect("rules array on default export");
+    assert!(
+        !off_rules.iter().any(|r| rule_id(r) == "CORE-999"),
+        "CORE-999 must NOT appear without --include-core; got: {off_rules:#?}",
+    );
+    assert!(
+        off_rules.iter().any(|r| rule_id(r) == "UNI-001"),
+        "UNI-001 must still appear without --include-core; got: {off_rules:#?}",
+    );
+
+    let on = export_via_cli(rules_root.path(), project.path(), true);
+    let on_rules =
+        on.pointer("/rules").and_then(Value::as_array).expect("rules array with --include-core");
+    let core_rule = on_rules
+        .iter()
+        .find(|r| rule_id(r) == "CORE-999")
+        .expect("CORE-999 must appear with --include-core");
+    assert_eq!(
+        core_rule.pointer("/origin").and_then(Value::as_str),
+        Some("core"),
+        "core fixture must carry origin=core in the envelope",
+    );
+}
+
+/// Write a minimal rule fixture that satisfies the CH-11 parser and
+/// the codex-rule schema. Mirrors the helper used by the resolver's
+/// unit tests in `crates/specify-lints/src/rules/resolve.rs`.
+fn write_rule_fixture(path: &Path, id: &str, title: &str) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("create parent dir");
+    }
+    let body = format!(
+        "---\nid: {id}\ntitle: {title}\nseverity: important\ntrigger: Synthetic RFC-34 C4 fixture trigger sentence long enough for schema.\n---\n\n## Rule\n\nBody for {id}.\n",
+    );
+    fs::write(path, body).expect("write rule fixture");
+}
+
+/// Invoke `specrun rules export` against an explicit rules root and
+/// parse the JSON envelope on stdout. `include_core` toggles the
+/// closed RFC-34 flag.
+fn export_via_cli(rules_root: &Path, project: &Path, include_core: bool) -> Value {
+    let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
+    cmd.args(["--format", "json", "rules", "export", "--target", "omnia"])
+        .args(["--rules-root".as_ref(), rules_root.as_os_str()])
+        .args(["--project-dir".as_ref(), project.as_os_str()]);
+    if include_core {
+        cmd.arg("--include-core");
+    }
+    let output = cmd.output().expect("specrun invocation");
+    assert!(
+        output.status.success(),
+        "specrun rules export failed (status: {:?}); stderr:\n{}\nstdout:\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout),
+    );
+    let stdout = std::str::from_utf8(&output.stdout).expect("utf8 stdout");
+    serde_json::from_str(stdout)
+        .unwrap_or_else(|err| panic!("stdout is not JSON ({err}); raw:\n{stdout}"))
+}
+
+fn rule_id(rule: &Value) -> &str {
+    rule.pointer("/rule-id").and_then(Value::as_str).unwrap_or("")
 }
 
 /// Negative scenario: a project dir with no shared rules tree, no
