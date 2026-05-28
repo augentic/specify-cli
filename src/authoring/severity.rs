@@ -73,11 +73,11 @@ pub fn severity_for(rule_id: &str) -> Severity {
 #[cfg(test)]
 mod tests {
     use specify_authoring::check::{
-        RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_DUPLICATE_NAME,
-        RULE_DUPLICATE_RULE_ID, RULE_MISSING_FRONTMATTER, RULE_MISSING_MANIFEST,
-        RULE_NAME_DIRECTORY_MISMATCH, RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-        RULE_RECORDED_TRACE_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS, RULE_STALE_RECORDED_TRACE,
-        RULE_UNKNOWN_TOOL, SCENARIO_RULE_ARTIFACT_PATH_UNSAFE, SCENARIO_RULE_BODY_ID_MISMATCH,
+        RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_DUPLICATE_RULE_ID,
+        RULE_MISSING_FRONTMATTER, RULE_MISSING_MANIFEST, RULE_NAME_DIRECTORY_MISMATCH,
+        RULE_NAMESPACE_OWNERSHIP_VIOLATION, RULE_RECORDED_TRACE_VIOLATION,
+        RULE_STAGES_NOT_CONTIGUOUS, RULE_STALE_RECORDED_TRACE, RULE_UNKNOWN_TOOL,
+        SCENARIO_RULE_ARTIFACT_PATH_UNSAFE, SCENARIO_RULE_BODY_ID_MISMATCH,
         SCENARIO_RULE_DUPLICATE_ID, SCENARIO_RULE_SCHEMA_VIOLATION, SKILL_RULE_SCHEMA_VIOLATION,
     };
     use specify_lints::Severity;
@@ -93,14 +93,14 @@ mod tests {
     }
 
     /// The `skill.*` family covers frontmatter and body checks; per the
-    /// table, every member maps to `Important`.
+    /// table, every member maps to `Important`. `skill.duplicate-name`
+    /// was retired in RFC-34 C11 (now `CORE-003`) and is omitted.
     #[test]
     fn skill_family_maps_to_important() {
         for rule_id in [
             "skill.schema-violation",
             "skill.missing-frontmatter",
             "skill.name-directory-mismatch",
-            "skill.duplicate-name",
             "skill.unknown-tool",
             "skill.description-grammar",
             "skill.argument-hint-grammar",
@@ -161,7 +161,6 @@ mod tests {
             // skill frontmatter
             RULE_ARGUMENT_HINT_GRAMMAR,
             RULE_DESCRIPTION_GRAMMAR,
-            RULE_DUPLICATE_NAME,
             RULE_MISSING_FRONTMATTER,
             RULE_NAME_DIRECTORY_MISMATCH,
             SKILL_RULE_SCHEMA_VIOLATION,

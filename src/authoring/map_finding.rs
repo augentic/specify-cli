@@ -33,7 +33,7 @@
 //! ### Decision: imperative `rule_id` vs closed codex `rule-id`
 //!
 //! `crates/authoring/src/finding.rs` returns a static authoring
-//! identifier such as `rules.schema-violation`, `skill.duplicate-name`,
+//! identifier such as `rules.schema-violation`, `skill.unknown-tool`,
 //! or `links.broken-reference`. The wire schema at
 //! `schemas/lint/finding.schema.json` constrains `rule-id` to the
 //! closed codex regex
@@ -234,7 +234,7 @@ mod tests {
         let critical = map_finding(&fixture("rules.schema-violation", "boom", None, 1, None));
         assert_eq!(critical.severity, Severity::Critical);
 
-        let important = map_finding(&fixture("skill.duplicate-name", "dup", None, 1, None));
+        let important = map_finding(&fixture("skill.unknown-tool", "dup", None, 1, None));
         assert_eq!(important.severity, Severity::Important);
     }
 
@@ -263,12 +263,12 @@ mod tests {
     }
 
     /// (4) Authoring imperative ids (`rules.schema-violation`,
-    /// `skill.duplicate-name`, ...) do not match the codex `rule-id`
+    /// `skill.unknown-tool`, ...) do not match the codex `rule-id`
     /// regex, so the mapper leaves `rule_id: None` and keeps the
     /// schema legal.
     #[test]
     fn rule_id_is_omitted_for_imperative_ids() {
-        for rule in ["rules.schema-violation", "skill.duplicate-name", "links.broken-reference"] {
+        for rule in ["rules.schema-violation", "skill.unknown-tool", "links.broken-reference"] {
             let mapped = map_finding(&fixture(rule, "msg", None, 1, None));
             assert!(mapped.rule_id.is_none(), "{rule} must yield rule_id: None");
         }
@@ -278,7 +278,7 @@ mod tests {
     /// scanners, so `source` is always `Deterministic`.
     #[test]
     fn source_is_deterministic() {
-        let mapped = map_finding(&fixture("skill.duplicate-name", "msg", None, 1, None));
+        let mapped = map_finding(&fixture("skill.unknown-tool", "msg", None, 1, None));
         assert_eq!(mapped.source, FindingSource::Deterministic);
     }
 
@@ -287,7 +287,7 @@ mod tests {
     /// until a future enrichment pass classifies them.
     #[test]
     fn artifact_is_unknown_and_context_is_empty() {
-        let mapped = map_finding(&fixture("skill.duplicate-name", "msg", None, 1, None));
+        let mapped = map_finding(&fixture("skill.unknown-tool", "msg", None, 1, None));
         assert_eq!(mapped.artifact, Artifact::Unknown);
         assert!(mapped.slice.is_none());
         assert!(mapped.change.is_none());
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn location_widens_usize_fields_and_clears_range_endings() {
         let mapped =
-            map_finding(&fixture("skill.duplicate-name", "msg", Some("foo/bar.md"), 42, Some(7)));
+            map_finding(&fixture("skill.unknown-tool", "msg", Some("foo/bar.md"), 42, Some(7)));
         let loc = mapped.location.expect("location must round-trip");
         assert_eq!(loc.path, "foo/bar.md");
         assert_eq!(loc.line, Some(42));
@@ -318,9 +318,9 @@ mod tests {
     #[test]
     fn map_findings_assigns_sequential_ids() {
         let inputs = vec![
-            fixture("skill.duplicate-name", "a", None, 1, None),
-            fixture("skill.duplicate-name", "b", None, 1, None),
-            fixture("skill.duplicate-name", "c", None, 1, None),
+            fixture("skill.unknown-tool", "a", None, 1, None),
+            fixture("skill.unknown-tool", "b", None, 1, None),
+            fixture("skill.unknown-tool", "c", None, 1, None),
         ];
         let mapped = map_findings(&inputs);
         let ids: Vec<&str> = mapped.iter().map(|f| f.id.as_str()).collect();
@@ -334,8 +334,8 @@ mod tests {
     #[test]
     fn fingerprint_is_deterministic_across_runs() {
         let input = fixture(
-            "skill.duplicate-name",
-            "duplicate `name:` field in skill frontmatter",
+            "skill.unknown-tool",
+            "unknown `allowed-tools` entry in skill frontmatter",
             Some("plugins/spec/skills/build/SKILL.md"),
             3,
             Some(1),
@@ -368,7 +368,7 @@ mod tests {
     fn oversize_message_becomes_digest_evidence() {
         let big_message = "a".repeat(17 * 1024);
         let mapped = map_finding(&fixture(
-            "skill.duplicate-name",
+            "skill.unknown-tool",
             &big_message,
             Some("plugins/spec/skills/build/SKILL.md"),
             1,
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn path_separators_are_normalised_to_forward_slash() {
         let mapped =
-            map_finding(&fixture("skill.duplicate-name", "msg", Some("foo\\bar\\baz.md"), 1, None));
+            map_finding(&fixture("skill.unknown-tool", "msg", Some("foo\\bar\\baz.md"), 1, None));
         let loc = mapped.location.expect("location must round-trip");
         assert_eq!(loc.path, "foo/bar/baz.md", "back-slashes must be rewritten to forward slashes");
     }

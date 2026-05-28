@@ -203,11 +203,22 @@ fn parse_heading(line: &str) -> Option<(u8, String)> {
 /// Scan a single line for `[label](target)` markdown links. The
 /// scanner is intentionally simple: it ignores backslash escapes,
 /// reference-style links, and image links (which already mismatch the
-/// `[label]` shape via the leading `!`).
+/// `[label]` shape via the leading `!`). Inline code spans (single,
+/// double, or triple backticks) are skipped so a literal
+/// `` `[label](target)` `` snippet in prose does not surface as a
+/// link fact.
 fn scan_line_for_links(line: &str, from_path: &str, line_no: u32, out: &mut Vec<MarkdownLink>) {
     let bytes = line.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
+        if bytes[i] == b'`' {
+            let run = backtick_run(bytes, i);
+            if let Some(close) = find_backtick_run_close(bytes, i + run, run) {
+                i = close + run;
+                continue;
+            }
+            break;
+        }
         if bytes[i] != b'[' {
             i += 1;
             continue;
@@ -240,6 +251,30 @@ fn scan_line_for_links(line: &str, from_path: &str, line_no: u32, out: &mut Vec<
         }
         i = close_paren + 1;
     }
+}
+
+fn backtick_run(bytes: &[u8], start: usize) -> usize {
+    let mut n = 0;
+    while start + n < bytes.len() && bytes[start + n] == b'`' {
+        n += 1;
+    }
+    n
+}
+
+fn find_backtick_run_close(bytes: &[u8], start: usize, run: usize) -> Option<usize> {
+    let mut i = start;
+    while i < bytes.len() {
+        if bytes[i] != b'`' {
+            i += 1;
+            continue;
+        }
+        let here = backtick_run(bytes, i);
+        if here == run {
+            return Some(i);
+        }
+        i += here;
+    }
+    None
 }
 
 fn find_unescaped(bytes: &[u8], start: usize, needle: u8) -> Option<usize> {
@@ -329,6 +364,17 @@ mod tests {
         let f = markdown("doc.md", "logo: ![alt](./logo.png) and [real](./a.md)\n");
         let links = extract_links(&f);
         assert_eq!(links.len(), 1);
+        assert_eq!(links[0].to_raw, "./a.md");
+    }
+
+    #[test]
+    fn inline_code_links_are_ignored() {
+        let f = markdown(
+            "doc.md",
+            "see `[label](target)` and a real [one](./a.md), plus ``backtick `inside` `` text\n",
+        );
+        let links = extract_links(&f);
+        assert_eq!(links.len(), 1, "only the un-coded link should surface: {links:?}");
         assert_eq!(links[0].to_raw, "./a.md");
     }
 }

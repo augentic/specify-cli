@@ -37,10 +37,10 @@ pub use skill_body::{
     VariableCoverage,
 };
 pub use skill_frontmatter::{
-    ArgumentHintGrammar, DescriptionGrammar, DuplicateName, FrontmatterSchema, NameDirMismatch,
-    RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_DUPLICATE_NAME,
-    RULE_MISSING_FRONTMATTER, RULE_NAME_DIRECTORY_MISMATCH,
-    RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION, RULE_UNKNOWN_TOOL, UnknownTool,
+    ArgumentHintGrammar, DescriptionGrammar, FrontmatterSchema, NameDirMismatch,
+    RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_MISSING_FRONTMATTER,
+    RULE_NAME_DIRECTORY_MISMATCH, RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION,
+    RULE_UNKNOWN_TOOL, UnknownTool,
 };
 pub use tools::{DeclaredToolInvocations, FirstPartyTools};
 
@@ -68,7 +68,6 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
         &ScenariosCheck,
         &FrontmatterSchema,
         &NameDirMismatch,
-        &DuplicateName,
         &UnknownTool,
         &DescriptionGrammar,
         &ArgumentHintGrammar,

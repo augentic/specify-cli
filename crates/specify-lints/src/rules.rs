@@ -117,8 +117,8 @@ pub enum LintMode {
 /// Closed v1 deterministic-hint kind enum.
 ///
 /// Includes the executable v1 kinds (`path-pattern`, `regex`,
-/// `schema`, `tool`) and the Reserved hint kind kinds (`unique`,
-/// `reference-resolves`, `set-coverage`, `cardinality`,
+/// `schema`, `tool`, `reference-resolves`, `unique`) and the
+/// Reserved hint kind kinds (`set-coverage`, `cardinality`,
 /// `constant-eq`, `set-eq`, `content-digest-eq`, `namespace-owner`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -131,9 +131,10 @@ pub enum HintKind {
     Schema,
     /// Invoke a declared WASI tool.
     Tool,
-    /// Reserved hint kind: assert a set is unique.
+    /// Assert that some field across a candidate set is unique
+    /// (v1 source discriminator: `skill-name`).
     Unique,
-    /// Reserved hint kind: every reference resolves.
+    /// Every reference resolves (v1 source discriminator: `markdown-link`).
     ReferenceResolves,
     /// Reserved hint kind: a value set covers a required domain.
     SetCoverage,

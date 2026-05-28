@@ -5,11 +5,12 @@
 //! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
 //! [`HintKind::Tool`]) plus the reserved-hint diagnostics reserved-kind summary policy
 //! (`review.reserved-hint-skipped`). RFC-34 §F6 PR 2 adds
-//! [`HintKind::ReferenceResolves`] in the same family. Each rule's
-//! hints are partitioned by kind and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → regex → tool` so the
-//! cheap filters narrow the candidate file set before the subprocess
-//! boundary fires.
+//! [`HintKind::ReferenceResolves`] and PR 3 adds [`HintKind::Unique`]
+//! in the same family. Each rule's hints are partitioned by kind and
+//! evaluated in the fixed order
+//! `path-pattern → schema → reference-resolves → unique → regex → tool`
+//! so the cheap filters narrow the candidate file set before the
+//! subprocess boundary fires.
 //!
 //! When a rule carries multiple `path-pattern` hints they UNION — a
 //! file is a candidate when it matches any of the supplied patterns —
@@ -22,7 +23,7 @@
 //!
 //! # Reserved-kind policy (reserved-hint diagnostics)
 //!
-//! Remaining reserved hint kinds (`unique`, `set-coverage`,
+//! Remaining reserved hint kinds (`set-coverage`,
 //! `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`,
 //! `namespace-owner`) parse cleanly from the codex authoring schema
 //! but never execute in v1. [`evaluate`] records each occurrence as a
@@ -52,6 +53,7 @@ pub mod reference_resolves;
 pub mod regex;
 pub mod schema;
 pub mod tool;
+pub mod unique;
 
 use std::path::{Path, PathBuf};
 
@@ -215,6 +217,7 @@ pub fn evaluate(
     let mut path_pattern_hints: Vec<&DeterministicHint> = Vec::new();
     let mut schema_hints: Vec<&DeterministicHint> = Vec::new();
     let mut reference_resolves_hints: Vec<&DeterministicHint> = Vec::new();
+    let mut unique_hints: Vec<&DeterministicHint> = Vec::new();
     let mut regex_hints: Vec<&DeterministicHint> = Vec::new();
     let mut tool_hints: Vec<&DeterministicHint> = Vec::new();
 
@@ -223,6 +226,7 @@ pub fn evaluate(
             HintKind::PathPattern => path_pattern_hints.push(hint),
             HintKind::Schema => schema_hints.push(hint),
             HintKind::ReferenceResolves => reference_resolves_hints.push(hint),
+            HintKind::Unique => unique_hints.push(hint),
             HintKind::Regex => regex_hints.push(hint),
             HintKind::Tool => tool_hints.push(hint),
             kind => reserved_skipped.push(ReservedSkipped {
@@ -241,6 +245,10 @@ pub fn evaluate(
     }
     for hint in reference_resolves_hints {
         let mut new = reference_resolves::evaluate(rule, hint, &candidates, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in unique_hints {
+        let mut new = unique::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
     for hint in regex_hints {
@@ -493,7 +501,7 @@ mod tests {
         let skipped = vec![ReservedSkipped {
             rule_id: "UNI-099".into(),
             hint_index: 0,
-            kind: HintKind::Unique,
+            kind: HintKind::SetCoverage,
         }];
         let optional = reserved_hint_summary(&skipped, false).expect("present");
         let strict = reserved_hint_summary(&skipped, true).expect("present");

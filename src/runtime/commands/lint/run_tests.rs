@@ -70,7 +70,7 @@ const HINT_VALIDATION_CASES: &[ValidationCase<HintError>] = &[
     ValidationCase {
         err: || HintError::Unsupported {
             rule_id: RULE_ID.into(),
-            kind: HintKind::Unique,
+            kind: HintKind::SetCoverage,
             reason: "reserved",
         },
         rule_id: "review-unsupported-hint-kind",

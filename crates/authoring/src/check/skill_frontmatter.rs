@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,7 +14,6 @@ use crate::schema::{SchemaError, SchemaId, validate_frontmatter};
 pub const RULE_SCHEMA_VIOLATION: &str = "skill.schema-violation";
 pub const RULE_MISSING_FRONTMATTER: &str = "skill.missing-frontmatter";
 pub const RULE_NAME_DIRECTORY_MISMATCH: &str = "skill.name-directory-mismatch";
-pub const RULE_DUPLICATE_NAME: &str = "skill.duplicate-name";
 pub const RULE_UNKNOWN_TOOL: &str = "skill.unknown-tool";
 pub const RULE_DESCRIPTION_GRAMMAR: &str = "skill.description-grammar";
 pub const RULE_ARGUMENT_HINT_GRAMMAR: &str = "skill.argument-hint-grammar";
@@ -29,9 +28,6 @@ pub struct FrontmatterSchema;
 
 /// Require `name:` to carry the containing plugin's discovery prefix.
 pub struct NameDirMismatch;
-
-/// Require globally unique skill `name:` values.
-pub struct DuplicateName;
 
 /// Whitelist `allowed-tools` entries against the known Cursor tool set.
 pub struct UnknownTool;
@@ -54,13 +50,6 @@ impl Check for NameDirMismatch {
         check_name_directory_mismatch(ctx).unwrap_or_else(|error| {
             vec![infrastructure_finding(RULE_NAME_DIRECTORY_MISMATCH, error)]
         })
-    }
-}
-
-impl Check for DuplicateName {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
-        check_duplicate_names(ctx)
-            .unwrap_or_else(|error| vec![infrastructure_finding(RULE_DUPLICATE_NAME, error)])
     }
 }
 
@@ -180,35 +169,6 @@ fn check_name_directory_mismatch(ctx: &Context) -> Result<Vec<Finding>, ToolingE
                 entry.rel
             ),
             &entry.path,
-        ));
-    }
-
-    Ok(findings)
-}
-
-fn check_duplicate_names(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
-    let mut names_by_value: HashMap<String, Vec<String>> = HashMap::new();
-
-    for entry in load_skill_entries(ctx)? {
-        let Some(frontmatter) = &entry.frontmatter else {
-            continue;
-        };
-        let Some(name) = frontmatter.get("name").and_then(JsonValue::as_str) else {
-            continue;
-        };
-        names_by_value.entry(name.to_string()).or_default().push(entry.rel.clone());
-    }
-
-    let mut findings = Vec::new();
-    for (name, paths) in names_by_value {
-        if paths.len() <= 1 {
-            continue;
-        }
-        let path = ctx.framework_root().join(paths[0].replace('/', std::path::MAIN_SEPARATOR_STR));
-        findings.push(finding(
-            RULE_DUPLICATE_NAME,
-            format!("Duplicate skill name '{name}' across SKILL.md files: {}", paths.join(", ")),
-            &path,
         ));
     }
 

@@ -56,7 +56,7 @@ pub struct LintAction {
     /// surface from RFC-34 §F2 `specdev lint --rule CORE-001`).
     /// Repeatable; empty means "evaluate every applicable rule".
     /// Does not filter the imperative pass — authoring rule ids
-    /// (`rules.schema-violation`, `skill.duplicate-name`, …) do not
+    /// (`rules.schema-violation`, `skill.unknown-tool`, …) do not
     /// match the closed codex `rule-id` regex.
     #[arg(long = "rule", value_name = "RULE_ID")]
     pub rules: Vec<String>,

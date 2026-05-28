@@ -128,7 +128,7 @@
               { "const": "regex" },
               { "const": "schema" },
               { "const": "tool" },
-              { "const": "unique", "x-hint-status": "reserved" },
+              { "const": "unique" },
               { "const": "reference-resolves" },
               { "const": "set-coverage", "x-hint-status": "reserved" },
               { "const": "cardinality", "x-hint-status": "reserved" },
