@@ -1,18 +1,26 @@
 use std::fs;
 use std::path::Path;
 
-use jsonschema::ValidationError;
-use serde_json::Value as JsonValue;
-
 use crate::context::Context;
 use crate::finding::{Check, Finding, Location};
-use crate::helpers::{under_symlink, walk_matching_files};
+use crate::helpers::under_symlink;
 
-pub const RULE_SCHEMA_VIOLATION: &str = "adapter.schema-violation";
 pub const RULE_MISSING_MANIFEST: &str = "adapter.missing-manifest";
 const ADAPTER_FILENAME: &str = "adapter.yaml";
 
-/// Adapter manifest validation against `specify-cli` runtime schemas.
+/// Adapter directory health predicate.
+///
+/// Schema validation against `source.schema.json` / `target.schema.json`
+/// was retired in RFC-34 C8 — `CORE-001` ≅ `adapter.schema` now owns
+/// that surface via a `path-pattern` + `schema` deterministic hint
+/// pair (`adapters/shared/rules/core/CORE-001-adapter-schema.md` in the
+/// framework repo). The parity test
+/// `crates/authoring/tests/core_parity_adapter_schema.rs` proves the
+/// declarative pipeline cites the same `iter_errors` instance pointers
+/// as the deleted imperative row, with the documented rule-id mapping
+/// `adapter.schema-violation` ↔ `CORE-001`. The missing-manifest check
+/// below stays imperative until a future card maps it onto a
+/// reserved-kind hint (`set-coverage` candidate).
 pub struct AdapterCheck;
 
 impl Check for AdapterCheck {
@@ -23,34 +31,8 @@ impl Check for AdapterCheck {
 
 pub fn run_adapter_check(ctx: &Context) -> Vec<Finding> {
     let mut findings = Vec::new();
-
     findings.extend(check_missing_manifests(ctx, &ctx.sources_dir()));
     findings.extend(check_missing_manifests(ctx, &ctx.targets_dir()));
-
-    match load_runtime_validator(ctx, "source.schema.json") {
-        Ok(validator) => {
-            findings.extend(validate_manifests(
-                ctx,
-                &validator,
-                &ctx.sources_dir(),
-                "source.schema.json",
-            ));
-        }
-        Err(finding) => findings.push(finding),
-    }
-
-    match load_runtime_validator(ctx, "target.schema.json") {
-        Ok(validator) => {
-            findings.extend(validate_manifests(
-                ctx,
-                &validator,
-                &ctx.targets_dir(),
-                "target.schema.json",
-            ));
-        }
-        Err(finding) => findings.push(finding),
-    }
-
     findings
 }
 
@@ -89,168 +71,13 @@ fn check_missing_manifests(ctx: &Context, axis_dir: &Path) -> Vec<Finding> {
     findings
 }
 
-fn validate_manifests(
-    ctx: &Context, validator: &jsonschema::Validator, axis_dir: &Path, schema_file: &str,
-) -> Vec<Finding> {
-    let Ok(paths) = walk_matching_files(ctx.framework_root(), axis_dir, ADAPTER_FILENAME) else {
-        return Vec::new();
-    };
-
-    let mut findings = Vec::new();
-    for path in paths {
-        findings.extend(validate_manifest(ctx, validator, &path, schema_file));
-    }
-    findings
-}
-
-fn validate_manifest(
-    ctx: &Context, validator: &jsonschema::Validator, path: &Path, _schema_file: &str,
-) -> Vec<Finding> {
-    let rel = relative_path(ctx, path);
-    let raw = match fs::read_to_string(path) {
-        Ok(contents) => contents,
-        Err(source) => {
-            return vec![schema_finding(
-                path,
-                format!("Adapter validation failed: {rel} — read failed: {source}"),
-            )];
-        }
-    };
-
-    let value: JsonValue = match serde_saphyr::from_str(&raw) {
-        Ok(value) => value,
-        Err(source) => {
-            return vec![schema_finding(
-                path,
-                format!("Adapter validation failed: {rel} — YAML parse failed: {source}"),
-            )];
-        }
-    };
-
-    if validator.is_valid(&value) {
-        return Vec::new();
-    }
-
-    validator
-        .iter_errors(&value)
-        .map(|error| {
-            schema_finding(
-                path,
-                format!("Adapter validation failed: {rel} — {}", format_schema_error(&error)),
-            )
-        })
-        .collect()
-}
-
-fn load_runtime_validator(
-    ctx: &Context, schema_file: &str,
-) -> Result<std::sync::Arc<jsonschema::Validator>, Finding> {
-    let path = ctx.specify_cli_schemas_dir().join(schema_file);
-    ctx.schema(&path).map_err(|error| Finding {
-        rule_id: RULE_SCHEMA_VIOLATION,
-        message: format!(
-            "Adapter validation failed: could not load runtime schema {}: {error}",
-            path.display()
-        ),
-        location: None,
-    })
-}
-
-fn schema_finding(path: &Path, message: String) -> Finding {
-    Finding {
-        rule_id: RULE_SCHEMA_VIOLATION,
-        message,
-        location: Some(Location {
-            path: path.to_path_buf(),
-            line: 1,
-            column: None,
-        }),
-    }
-}
-
 fn relative_path(ctx: &Context, path: &Path) -> String {
     path.strip_prefix(ctx.framework_root()).unwrap_or(path).display().to_string()
-}
-
-/// Mirror `formatSchemaError()` from `scripts/checks/_shared.ts`.
-fn format_schema_error(error: &ValidationError<'_>) -> String {
-    use jsonschema::error::ValidationErrorKind;
-
-    let at = {
-        let path = error.instance_path().to_string();
-        if path.is_empty() { "/".to_string() } else { path }
-    };
-
-    match &error.kind() {
-        ValidationErrorKind::Required { property } => {
-            let missing =
-                property.as_str().map(str::to_string).unwrap_or_else(|| property.to_string());
-            format!("{at} missing required property '{missing}'")
-        }
-        ValidationErrorKind::AdditionalProperties { unexpected } => {
-            let property = unexpected.first().map_or("?", String::as_str);
-            format!("{at} unknown property '{property}'")
-        }
-        ValidationErrorKind::Enum { options } => {
-            let allowed = format_allowed_values(options);
-            format!("{at} must be one of {allowed}")
-        }
-        ValidationErrorKind::Pattern { pattern } => {
-            format!("{at} must match {pattern}")
-        }
-        _ => {
-            let message = error.to_string();
-            format!("{at} {message}").trim().to_string()
-        }
-    }
-}
-
-fn format_allowed_values(options: &JsonValue) -> String {
-    let Some(values) = options.as_array() else {
-        return options.to_string();
-    };
-    values
-        .iter()
-        .map(|value| {
-            if value.is_string() {
-                serde_json::to_string(value).unwrap_or_else(|_| value.to_string())
-            } else {
-                value.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn format_schema_error_required_matches_deno_shape() {
-        let schema = serde_json::json!({
-            "type": "object",
-            "required": ["name"],
-            "properties": { "name": { "type": "string" } }
-        });
-        let validator = jsonschema::validator_for(&schema).expect("schema compiles");
-        let instance = serde_json::json!({});
-        let error = validator.iter_errors(&instance).next().expect("required error");
-        assert_eq!(format_schema_error(&error), "/ missing required property 'name'");
-    }
-
-    #[test]
-    fn format_schema_error_additional_property_matches_deno_shape() {
-        let schema = serde_json::json!({
-            "type": "object",
-            "additionalProperties": false,
-            "properties": { "name": { "type": "string" } }
-        });
-        let validator = jsonschema::validator_for(&schema).expect("schema compiles");
-        let instance = serde_json::json!({ "extra": true });
-        let error = validator.iter_errors(&instance).next().expect("additionalProperties error");
-        assert_eq!(format_schema_error(&error), "/ unknown property 'extra'");
-    }
 
     #[test]
     fn relative_path_strips_framework_root() {

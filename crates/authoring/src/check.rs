@@ -12,7 +12,7 @@ mod skill_body;
 pub mod skill_frontmatter;
 pub mod tools;
 
-pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, RULE_SCHEMA_VIOLATION, run_adapter_check};
+pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, run_adapter_check};
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
 pub use docs_quality::{HistoryCitation, MissingDiagramAsset, TextPipelineDiagram};
@@ -37,11 +37,10 @@ pub use skill_body::{
     VariableCoverage,
 };
 pub use skill_frontmatter::{
+    ArgumentHintGrammar, DescriptionGrammar, DuplicateName, FrontmatterSchema, NameDirMismatch,
     RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_DUPLICATE_NAME,
     RULE_MISSING_FRONTMATTER, RULE_NAME_DIRECTORY_MISMATCH,
-    RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION, RULE_UNKNOWN_TOOL,
-    ArgumentHintGrammar, DescriptionGrammar, DuplicateName, FrontmatterSchema, NameDirMismatch,
-    UnknownTool,
+    RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION, RULE_UNKNOWN_TOOL, UnknownTool,
 };
 pub use tools::{DeclaredToolInvocations, FirstPartyTools};
 

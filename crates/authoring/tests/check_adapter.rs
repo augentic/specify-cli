@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use specify_authoring::Context;
-use specify_authoring::check::{RULE_MISSING_MANIFEST, RULE_SCHEMA_VIOLATION, run_adapter_check};
+use specify_authoring::check::{RULE_MISSING_MANIFEST, run_adapter_check};
 
 fn scaffold_framework(root: &Path) {
     fs::create_dir_all(root.join("plugins")).expect("plugins");
@@ -10,34 +10,10 @@ fn scaffold_framework(root: &Path) {
     fs::create_dir_all(root.join("adapters/targets")).expect("targets");
 }
 
-#[test]
-fn schema_violation_on_invalid_source_manifest() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    scaffold_framework(temp.path());
-
-    let adapter_dir = temp.path().join("adapters/sources/bad-source");
-    fs::create_dir_all(&adapter_dir).expect("adapter dir");
-    fs::write(adapter_dir.join("adapter.yaml"), "name: bad-source\nversion: 1\naxis: source\n")
-        .expect("write manifest");
-
-    let ctx = Context::from_framework_root(temp.path()).expect("context");
-
-    let findings = run_adapter_check(&ctx);
-
-    let schema_findings: Vec<_> =
-        findings.iter().filter(|finding| finding.rule_id == RULE_SCHEMA_VIOLATION).collect();
-    assert!(!schema_findings.is_empty(), "expected schema violation findings, got: {findings:?}");
-    assert!(
-        schema_findings
-            .iter()
-            .any(|finding| finding.message.contains("Adapter validation failed:")),
-        "expected Deno-shaped adapter validation message, got: {findings:?}"
-    );
-    assert!(
-        schema_findings.iter().any(|finding| finding.message.contains("missing required property")),
-        "expected missing required property detail, got: {findings:?}"
-    );
-}
+// Schema-violation coverage moved to the declarative pipeline; see
+// `core_parity_adapter_schema::core_001_matches_imperative_schema_row`
+// for the equivalence proof against the retired
+// `adapter.schema-violation` predicate row (RFC-34 C8 / §F5).
 
 #[test]
 fn missing_manifest_on_adapter_directory_without_yaml() {
