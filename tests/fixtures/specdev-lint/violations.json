@@ -20,12 +20,12 @@
         "kind": "snippet",
         "value": "Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' under rules owner 'omnia')"
       },
-      "fingerprint": "sha256:4f7265e1a520600d2d8e47ae56b82cc87d4451f10693ff444500f8e126e4ae8e",
+      "fingerprint": "sha256:c0f1ceda4084f04aa92942254e4bd0b9f0bafe2c6bdc63f0ab1665c815a36241",
       "id": "FIND-0002",
       "impact": "Authoring check 'rules.namespace-ownership-violation' failed.",
       "location": {
         "line": 1,
-        "path": "<FRAMEWORK_ROOT>/adapters/targets/omnia/rules/frame-misplaced.md"
+        "path": "adapters/targets/omnia/rules/frame-misplaced.md"
       },
       "remediation": "Resolve the violation reported by 'rules.namespace-ownership-violation'. See the finding message for details.",
       "severity": "important",
@@ -38,12 +38,12 @@
         "kind": "snippet",
         "value": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"severity\" is a required property"
       },
-      "fingerprint": "sha256:9308bdd4a18f78637af57e287a87f7b728af1f86a4dd7f156668b931d52a5ae1",
+      "fingerprint": "sha256:86de3de1d730aab45b6911b254d8f3af713a998460273c3c1206d9abf7443c95",
       "id": "FIND-0003",
       "impact": "Authoring check 'rules.schema-violation' failed.",
       "location": {
         "line": 1,
-        "path": "<FRAMEWORK_ROOT>/adapters/shared/rules/universal/bad-frontmatter.md"
+        "path": "adapters/shared/rules/universal/bad-frontmatter.md"
       },
       "remediation": "Resolve the violation reported by 'rules.schema-violation'. See the finding message for details.",
       "severity": "critical",
@@ -56,12 +56,12 @@
         "kind": "snippet",
         "value": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"trigger\" is a required property"
       },
-      "fingerprint": "sha256:e9f264c970cfae4df1436e74f5f2df9be95fb721b6822c2bc8bda4cb9786dc02",
+      "fingerprint": "sha256:6c5071f94b164d1dafb174da3dcefc17aabecc0a65238a20520d0daee0fae501",
       "id": "FIND-0004",
       "impact": "Authoring check 'rules.schema-violation' failed.",
       "location": {
         "line": 1,
-        "path": "<FRAMEWORK_ROOT>/adapters/shared/rules/universal/bad-frontmatter.md"
+        "path": "adapters/shared/rules/universal/bad-frontmatter.md"
       },
       "remediation": "Resolve the violation reported by 'rules.schema-violation'. See the finding message for details.",
       "severity": "critical",

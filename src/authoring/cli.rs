@@ -2,6 +2,7 @@
 
 use clap::{Parser, Subcommand};
 
+use crate::authoring::commands::lint::LintAction;
 use crate::output::Format;
 
 #[derive(Debug, Parser)]
@@ -15,27 +16,23 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
 
-    /// Output format. `text` (the default) emits the human-oriented
-    /// stdout / stderr summary unchanged. `json` emits a structured lint
-    /// §"Review result envelope" body
-    /// (`{version: 1, summary, findings: [LintFinding]}`) to stdout
-    /// on both success and failure; the exit code is `2` when any
-    /// findings are present (existing validation semantics) and `1`
-    /// when an infrastructure error prevents the checks from running,
-    /// in which case the envelope on stdout collapses to
-    /// `{version: 1, summary: {all zero}, findings: []}` and the
-    /// underlying error surfaces on stderr. Set `SPECDEV_FORMAT=json`
-    /// to default to the structured envelope.
+    /// Failure-envelope shape on infrastructure error. `text` (the
+    /// default) emits the human-oriented `error: ...` line on
+    /// stderr; `json` emits the empty `LintResult` envelope on
+    /// stdout alongside the stderr error message so structured
+    /// consumers can rely on a stable wire shape. The per-subcommand
+    /// `lint --output-format` flag controls the success-body format
+    /// (`{ json, pretty, github, compact }`); when unset, the
+    /// success body inherits this flag (`json` → `Json`, `text` →
+    /// `Pretty`).
     #[arg(long, env = "SPECDEV_FORMAT", default_value = "text", global = true)]
     pub format: Format,
 }
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Run framework authoring lint over a framework repo root.
-    Lint {
-        /// Path to the augentic/specify framework repository.
-        #[arg(long, env = "SPECDEV_FRAMEWORK_ROOT")]
-        framework_root: std::path::PathBuf,
-    },
+    /// Lint the framework repo — combine the imperative `Check`
+    /// predicates with the declarative deterministic-hint
+    /// interpreter and emit one structured envelope per run.
+    Lint(LintAction),
 }
