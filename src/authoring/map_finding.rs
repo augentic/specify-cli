@@ -37,7 +37,7 @@
 //! or `links.unresolved`. The wire schema at
 //! `schemas/lint/finding.schema.json` constrains `rule-id` to the
 //! closed codex regex
-//! `^(UNI|SRC|FRAME|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
+//! `^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
 //! Setting `rule_id: Some("rules.schema-violation".into())` would
 //! therefore fail schema validation.
 //!

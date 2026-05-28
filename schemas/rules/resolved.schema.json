@@ -40,7 +40,7 @@
   "$defs": {
     "ruleId": {
       "type": "string",
-      "pattern": "^(UNI|SRC|FRAME|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$",
+      "pattern": "^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$",
       "description": "Closed v1 rule-id namespace (`UNI`, `SRC`, `FRAME`, `RUST`, `IFACE`, `SEC`, `OMNIA`, `VECTIS`, `ORG`) with three-digit numeric suffixes. Mirrors `rule.schema.json#/$defs/ruleId`."
     },
     "adapterRef": {

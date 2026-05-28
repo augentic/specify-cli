@@ -124,7 +124,7 @@
     },
     "ruleId": {
       "type": "string",
-      "pattern": "^(UNI|SRC|FRAME|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$",
+      "pattern": "^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$",
       "description": "Mirrors `codex/resolved.schema.json#/$defs/ruleId` and `crates/authoring/schemas/rule.schema.json#/$defs/ruleId`."
     },
     "adapterRef": {

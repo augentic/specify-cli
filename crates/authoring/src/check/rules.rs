@@ -15,6 +15,7 @@ pub const RULE_NAMESPACE_OWNERSHIP_VIOLATION: &str = "rules.namespace-ownership-
 pub const RULE_DUPLICATE_RULE_ID: &str = "rules.duplicate-rule-id";
 
 const SHARED_RULES_OWNER: &str = "universal";
+const CORE_RULES_OWNER: &str = "core";
 
 static RULE_HEADING_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^## Rule\s*$").expect("rule heading regex"));
@@ -31,6 +32,7 @@ static BUILTIN_NAMESPACES: LazyLock<HashMap<&'static str, HashSet<&'static str>>
     LazyLock::new(|| {
         HashMap::from([
             (SHARED_RULES_OWNER, HashSet::from(["UNI"])),
+            (CORE_RULES_OWNER, HashSet::from(["CORE"])),
             ("omnia", HashSet::from(["OMNIA", "RUST", "SEC"])),
             ("contracts", HashSet::from(["IFACE"])),
             ("vectis", HashSet::from(["VECTIS"])),
@@ -250,9 +252,12 @@ fn discover_rule_files(ctx: &Context) -> Result<Vec<PathBuf>, crate::error::Tool
         }
     }
 
-    let shared_dir = ctx.adapters_shared_dir().join("rules").join(SHARED_RULES_OWNER);
-    if shared_dir.is_dir() {
-        let files = walk_matching_files(framework_root, &shared_dir, ".md")?;
+    for owner in [SHARED_RULES_OWNER, CORE_RULES_OWNER] {
+        let pack_dir = ctx.adapters_shared_dir().join("rules").join(owner);
+        if !pack_dir.is_dir() {
+            continue;
+        }
+        let files = walk_matching_files(framework_root, &pack_dir, ".md")?;
         for path in files {
             if is_rules_readme(&path) {
                 continue;
@@ -305,9 +310,11 @@ fn namespace_owner_for_path(ctx: &Context, path: &Path) -> Option<String> {
         }
     }
 
-    let shared_dir = ctx.adapters_shared_dir().join("rules").join(SHARED_RULES_OWNER);
-    if path.strip_prefix(&shared_dir).is_ok() {
-        return Some(SHARED_RULES_OWNER.to_string());
+    for owner in [SHARED_RULES_OWNER, CORE_RULES_OWNER] {
+        let pack_dir = ctx.adapters_shared_dir().join("rules").join(owner);
+        if path.strip_prefix(&pack_dir).is_ok() {
+            return Some(owner.to_string());
+        }
     }
 
     None
@@ -506,6 +513,81 @@ mod tests {
                     && finding.message.contains("documentation")
             }),
             "expected FRAME placement violation under source adapter, got: {findings:?}",
+        );
+    }
+
+    #[test]
+    fn core_rule_under_core_pack_passes() {
+        let temp = TempDir::new().expect("tempdir");
+        scaffold_framework(temp.path());
+        write_rule(temp.path(), "adapters/shared/rules/core/CORE-fixture.md", "CORE-001");
+
+        let findings = run_rules_check(&ctx_for(temp.path()));
+        let ownership: Vec<_> = findings
+            .iter()
+            .filter(|finding| finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+            .collect();
+        assert!(
+            ownership.is_empty(),
+            "CORE-* under adapters/shared/rules/core/ should pass, got: {ownership:?}",
+        );
+    }
+
+    #[test]
+    fn core_rule_under_target_adapter_rejected() {
+        let temp = TempDir::new().expect("tempdir");
+        scaffold_framework(temp.path());
+        write_rule(temp.path(), "adapters/targets/omnia/rules/core-misplaced.md", "CORE-001");
+
+        let findings = run_rules_check(&ctx_for(temp.path()));
+        assert!(
+            findings.iter().any(|finding| {
+                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
+                    && finding.message.contains("rules owner 'omnia' may only use")
+                    && finding.message.contains("OMNIA-*")
+                    && finding.message.contains("CORE-001")
+            }),
+            "expected CORE-* under target adapter to be rejected, got: {findings:?}",
+        );
+    }
+
+    #[test]
+    fn core_rule_under_source_adapter_rejected() {
+        let temp = TempDir::new().expect("tempdir");
+        scaffold_framework(temp.path());
+        write_rule(
+            temp.path(),
+            "adapters/sources/documentation/rules/core-misplaced.md",
+            "CORE-007",
+        );
+
+        let findings = run_rules_check(&ctx_for(temp.path()));
+        assert!(
+            findings.iter().any(|finding| {
+                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
+                    && finding.message.contains("rules owner 'documentation' may only use")
+                    && finding.message.contains("SRC-*")
+                    && finding.message.contains("CORE-007")
+            }),
+            "expected CORE-* under source adapter to be rejected, got: {findings:?}",
+        );
+    }
+
+    #[test]
+    fn non_core_rule_under_core_pack_rejected() {
+        let temp = TempDir::new().expect("tempdir");
+        scaffold_framework(temp.path());
+        write_rule(temp.path(), "adapters/shared/rules/core/foreign.md", "UNI-001");
+
+        let findings = run_rules_check(&ctx_for(temp.path()));
+        assert!(
+            findings.iter().any(|finding| {
+                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
+                    && finding.message.contains("rules owner 'core' may only use")
+                    && finding.message.contains("CORE-*")
+                    && finding.message.contains("UNI-001")
+            }),
+            "expected non-CORE-* under core pack to be rejected, got: {findings:?}",
         );
     }
 

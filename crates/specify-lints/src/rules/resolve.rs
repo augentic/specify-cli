@@ -161,6 +161,7 @@ pub enum ResolveError {
 }
 
 const SHARED_REL: &str = "adapters/shared/rules/universal";
+const CORE_REL: &str = "adapters/shared/rules/core";
 const MANIFEST_CACHE_REL: &str = ".specify/.cache/manifests";
 
 /// Discover every rule visible to `inputs` and parse it.
@@ -187,6 +188,20 @@ pub fn resolve(inputs: &ResolveInputs<'_>) -> Result<Vec<ResolvedRuleEntry>, Res
             entries.push(ResolvedRuleEntry {
                 rule,
                 origin: Origin::Shared,
+                path_root: PathRoot::RulesRoot,
+                path: rel,
+            });
+        }
+    }
+
+    let core_dir = rules_root.join(CORE_REL);
+    if core_dir.is_dir() {
+        for path in list_rule_files(&core_dir)? {
+            let rel = relative_path(&rules_root, &path);
+            let rule = parse(&path)?;
+            entries.push(ResolvedRuleEntry {
+                rule,
+                origin: Origin::Core,
                 path_root: PathRoot::RulesRoot,
                 path: rel,
             });
@@ -427,6 +442,37 @@ mod tests {
         assert_eq!(entry.origin, Origin::Shared);
         assert_eq!(entry.path_root, PathRoot::RulesRoot);
         assert_eq!(entry.path, "adapters/shared/rules/universal/uni-001.md");
+    }
+
+    /// Core pack root (RFC-34 §F3): rules under
+    /// `adapters/shared/rules/core/` resolve with `Origin::Core` and
+    /// `PathRoot::RulesRoot`, alongside any shared-pack rules.
+    #[test]
+    fn core_rules_from_explicit_rules_root() {
+        let rules_root = TempDir::new().expect("rules root");
+        let project = TempDir::new().expect("project");
+        write_rule(
+            &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+            "UNI-001",
+            "Shared universal",
+        );
+        write_rule(
+            &rules_root.path().join("adapters/shared/rules/core/CORE-fixture.md"),
+            "CORE-001",
+            "Core fixture",
+        );
+
+        let sources = no_sources();
+        let result = resolve(&inputs(project.path(), Some(rules_root.path()), "omnia", &sources))
+            .expect("resolve succeeds with core pack");
+
+        let core = result.iter().find(|e| e.rule.id == "CORE-001").expect("core rule present");
+        assert_eq!(core.origin, Origin::Core);
+        assert_eq!(core.path_root, PathRoot::RulesRoot);
+        assert_eq!(core.path, "adapters/shared/rules/core/CORE-fixture.md");
+
+        let shared = result.iter().find(|e| e.rule.id == "UNI-001").expect("shared still present");
+        assert_eq!(shared.origin, Origin::Shared);
     }
 
     /// Test 2: monorepo / co-located case — no `--rules-root`, but the
