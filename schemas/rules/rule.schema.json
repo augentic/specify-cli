@@ -122,7 +122,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "description": "Kind of deterministic signal the hint describes. Phase 2 kinds (`path-pattern`, `regex`, `schema`, `tool`) are executed by the `specrun lint` hint interpreter; reserved kinds are accepted by rules exporters and tooling validators, but are shape-validated only at this layer with no execution semantics implied.",
+            "description": "Kind of deterministic signal the hint describes. Every kind in the enum is executed by the `specrun lint` hint interpreter, which carries one `eval/<kind>.rs` interpreter module per `const`; no kind is reserved. Adding a new kind requires landing its interpreter in the same change.",
             "oneOf": [
               { "const": "path-pattern" },
               { "const": "regex" },
