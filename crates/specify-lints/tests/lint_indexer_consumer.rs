@@ -147,8 +147,12 @@ fn byte_stable_across_runs() {
 }
 
 #[test]
-fn framework_scan_profile_rejected() {
+fn framework_scan_profile_now_accepted() {
+    // RFC-34 C5 activated `scan_profile: framework`; the consumer
+    // fixture has no framework-shaped files so the framework walk
+    // yields an essentially empty model, but it must no longer
+    // surface `IndexError::UnsupportedScanProfile`.
     let tempdir = stage_fixture();
-    let err = build(tempdir.path(), ScanProfile::Framework, &[], &[]).expect_err("must reject");
-    assert!(format!("{err}").contains("unsupported scan profile"));
+    let model = build(tempdir.path(), ScanProfile::Framework, &[], &[]).expect("framework ok");
+    assert_eq!(model.scan_profile, ScanProfile::Framework);
 }

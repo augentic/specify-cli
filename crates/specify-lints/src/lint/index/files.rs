@@ -16,6 +16,7 @@ use std::sync::LazyLock;
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 
+use super::symlinks::FollowMode;
 use super::{IndexError, symlinks};
 use crate::lint::{FileKind, Symlink};
 
@@ -122,7 +123,7 @@ pub fn discover(
             continue;
         };
         if file_type.is_symlink() {
-            if let Some(fact) = symlinks::record(path, project_dir) {
+            if let Some(fact) = symlinks::record(path, project_dir, FollowMode::Record) {
                 symlinks_out.push(fact);
             }
             continue;

@@ -60,6 +60,10 @@ const INDEX_CASES: &[ValidationCase<IndexError>] = &[
         err: || IndexError::OverrideCompile("bad glob".into()),
         rule_id: "review-index-override-compile",
     },
+    ValidationCase {
+        err: || IndexError::Filesystem("symlink cycle at <link>".into()),
+        rule_id: "review-index-filesystem",
+    },
 ];
 
 const HINT_VALIDATION_CASES: &[ValidationCase<HintError>] = &[

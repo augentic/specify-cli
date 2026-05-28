@@ -342,17 +342,23 @@ fn decide_exit(result: &LintResult) -> Result<()> {
 /// | `UnsupportedScanProfile`    | `Validation { review-unsupported-scan-profile }` | 2 |
 /// | `ProjectDirMissing`         | `Validation { review-project-dir-missing }`      | 2 |
 /// | `OverrideCompile`           | `Validation { review-index-override-compile }`   | 2 |
+/// | `Filesystem`                | `Validation { review-index-filesystem }`         | 2 |
 fn map_index_error(err: IndexError) -> Error {
     match err {
         IndexError::UnsupportedScanProfile(profile) => Error::validation_failed(
             "review-unsupported-scan-profile",
-            "v1 supports only scan_profile: consumer",
+            "scan profile is not supported",
             format!("requested scan profile: {profile:?}"),
         ),
         IndexError::ProjectDirMissing(path) => Error::validation_failed(
             "review-project-dir-missing",
             "project directory does not exist",
             path.display().to_string(),
+        ),
+        IndexError::Filesystem(detail) => Error::validation_failed(
+            "review-index-filesystem",
+            "filesystem error during indexer walk",
+            detail,
         ),
         IndexError::OverrideCompile(detail) => Error::validation_failed(
             "review-index-override-compile",

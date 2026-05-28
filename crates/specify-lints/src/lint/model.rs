@@ -190,7 +190,11 @@ pub struct MarkdownLink {
 }
 
 /// `symlink` fact per the `WorkspaceModel` entity families.
-/// Symlinks are recorded but not traversed by the file scan contract.
+///
+/// Recorded but not traversed under the consumer file scan contract;
+/// the framework profile additionally follows the link and records
+/// the resolved canonical endpoint in [`Self::resolved_target`] per
+/// the standards-layer contract §F1.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Symlink {
@@ -201,6 +205,13 @@ pub struct Symlink {
     pub target: String,
     /// `true` when the link target does not exist on disk.
     pub broken: bool,
+    /// Project-relative path of the resolved endpoint after
+    /// canonicalisation. Populated only by the framework scan
+    /// profile per §F1 (`follow` mode); absent under the consumer
+    /// profile and absent for broken links the walker could not
+    /// resolve.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_target: Option<String>,
 }
 
 /// `skill` fact per the `WorkspaceModel` entity families —
@@ -217,6 +228,60 @@ pub struct Skill {
     /// Path back to the originating [`Frontmatter`] fact so
     /// consumers can join through the frontmatter table.
     pub frontmatter_ref: String,
+    /// Number of non-frontmatter body lines under the skill body.
+    /// Populated by the framework profile; absent when the indexer
+    /// did not compute it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_line_count: Option<u32>,
+}
+
+/// `brief` fact per the `WorkspaceModel` entity families —
+/// extracted from `adapters/**/briefs/*.md` under the framework
+/// profile.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Brief {
+    /// Project-relative path of the brief markdown file.
+    pub path: String,
+    /// Owning adapter axis (`sources` xor `targets`).
+    pub axis: AdapterAxis,
+    /// Owning adapter slug (the directory under
+    /// `adapters/{sources,targets}/`).
+    pub adapter: String,
+    /// Operation slug for the brief (e.g. `enumerate`, `extract`,
+    /// `shape`, `build`, `merge`).
+    pub operation: String,
+    /// `##` heading titles found in the body, in document order
+    /// after fence and HTML-comment stripping.
+    pub sections: Vec<String>,
+    /// Total non-empty markdown body lines (frontmatter excluded
+    /// when present).
+    pub body_line_count: u32,
+}
+
+/// `agent_team` fact per the `WorkspaceModel` entity families.
+///
+/// Produced by the framework profile when it follows an
+/// `agent-teams.md` symlink into the canonical review-team-protocol
+/// document. The endpoint pair plus content digest lets the
+/// review-team drift rule reason about both sides of the link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct AgentTeam {
+    /// Project-relative path of the `agent-teams.md` symlink itself.
+    pub path: String,
+    /// Symlink target as recorded by `read_link` (may be relative
+    /// or absolute, possibly outside the project tree).
+    pub target_raw: String,
+    /// Project-relative path of the resolved canonical endpoint
+    /// when it lives under `project_dir`; absent when the target
+    /// resolves outside the tree or could not be canonicalised.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_target: Option<String>,
+    /// Hex-encoded SHA-256 of the resolved target file's bytes.
+    /// Absent when the target is unreadable or broken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_sha256: Option<String>,
 }
 
 /// `adapter_manifest` fact per the `WorkspaceModel` entity families
@@ -384,6 +449,18 @@ pub struct WorkspaceModel {
     /// shape.
     #[serde(default)]
     pub ignore_directives: Vec<IgnoreDirective>,
+    /// `brief` facts from `adapters/**/briefs/*.md` under the
+    /// framework scan profile. Optional in v1 envelopes; producers
+    /// omit the field when empty so the consumer profile's wire
+    /// shape is unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub briefs: Vec<Brief>,
+    /// `agent_team` facts from followed `agent-teams.md` symlinks
+    /// under the framework scan profile. Optional in v1 envelopes;
+    /// producers omit the field when empty so the consumer
+    /// profile's wire shape is unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_teams: Vec<AgentTeam>,
 }
 
 #[cfg(test)]

@@ -1,24 +1,34 @@
-//! Consumer indexer per the standards-layer contract §"`WorkspaceModel`" and
-//! the file scan contract — Consumer scan scope.
+//! Consumer and framework indexer per the standards-layer contract
+//! §"`WorkspaceModel`" and the file scan contract.
 //!
-//! v1 (Phase 2) ships the consumer scan: a `.gitignore`-aware file
-//! walk, per-file extractors that run in parallel via `rayon`, and a
+//! Phase 2 ships the consumer scan: a `.gitignore`-aware file walk,
+//! per-file extractors that run in parallel via `rayon`, and a
 //! sequential second pass that records symlinks, discovers codex
-//! rules, and resolves cross-file edges. The byte-stable assembly
-//! follows `WorkspaceModel` stability: every output collection is sorted by
-//! its documented sort key before envelope emission so the JSON
-//! serialisation is reproducible irrespective of thread scheduling.
+//! rules, and resolves cross-file edges. RFC-34 adds the framework
+//! profile per §F1: a wider include set, follow-the-link symlink
+//! traversal with cycle detection, and dedicated extractors for
+//! `plugins/**/SKILL.md`, `adapters/**/adapter.yaml`,
+//! `.cursor-plugin/marketplace.json`, `**/agent-teams.md` symlinks,
+//! and `adapters/**/briefs/*.md`.
 //!
-//! The umbrella owns the [`build`] entry point and the closed
-//! [`IndexError`] enum the runtime maps to exit codes via
-//! `Exit::from(&Error)`. `scan_profile: framework` is reserved for
-//! future framework scanning and surfaces here as [`IndexError::UnsupportedScanProfile`].
+//! Both profiles share the same per-file extractors (`frontmatter`,
+//! `markdown`, `ignore_directives`) and the same `WorkspaceModel`
+//! assembly invariants (byte-stable enumeration, sorted output
+//! collections). The umbrella owns the [`build`] entry point and the
+//! closed [`IndexError`] enum the runtime maps to exit codes via
+//! `Exit::from(&Error)`.
 
+pub mod adapter;
+pub mod agent_teams;
+pub mod brief;
 pub mod discover;
 pub mod files;
+pub mod framework;
 pub mod frontmatter;
 pub mod ignore_directives;
 pub mod markdown;
+pub mod marketplace;
+pub mod skill;
 pub mod symlinks;
 
 use std::path::{Path, PathBuf};
@@ -26,41 +36,54 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 
 use crate::lint::{
-    File, Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, ScanProfile, WorkspaceModel,
-    WorkspaceModelVersion,
+    AdapterManifest, AgentTeam, Brief, File, Frontmatter, IgnoreDirective, MarkdownLink,
+    MarkdownSection, MarketplaceEntry, ScanProfile, Skill, WorkspaceModel, WorkspaceModelVersion,
 };
 
 /// Closed error set for [`build`].
 ///
 /// Per-file extractor failures (malformed YAML frontmatter,
 /// unreadable bytes, etc.) collapse to silent per-file skips in v1;
-/// reserved-hint diagnostics reserves the `index.warning` finding for S7's hint
-/// runner. Only conditions the indexer cannot meaningfully recover
-/// from surface as `Err`.
+/// reserved-hint diagnostics reserves the `index.warning` finding
+/// for the hint runner. Only conditions the indexer cannot
+/// meaningfully recover from surface as `Err`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum IndexError {
-    /// `scan_profile: framework` is reserved for a future framework scan; v1 supports
-    /// only [`ScanProfile::Consumer`].
-    #[error("unsupported scan profile: {0:?} (v1 supports only `consumer`)")]
+    /// Reserved for an unsupported profile addition; v1 supports
+    /// `consumer` and `framework`. Carried as part of the public
+    /// wire contract so existing exit-code mappings continue to
+    /// compile.
+    #[error("unsupported scan profile: {0:?}")]
     UnsupportedScanProfile(ScanProfile),
     /// `project_dir` is not an existing directory; the walk cannot
     /// proceed.
     #[error("project directory not found: {0}")]
     ProjectDirMissing(PathBuf),
     /// Always-ignore override compilation failed. Indicates a
-    /// programmer error in [`files`]'s static glob list.
+    /// programmer error in the static glob list.
     #[error("always-ignore override compilation failed: {0}")]
     OverrideCompile(String),
+    /// Filesystem-level abort during the framework walk per §F1 —
+    /// e.g. a symlink cycle the walker cannot make progress through.
+    #[error("filesystem error during framework scan: {0}")]
+    Filesystem(String),
 }
 
-/// Build the consumer [`WorkspaceModel`] for `project_dir`.
+/// Build the [`WorkspaceModel`] for `project_dir` under the
+/// requested profile.
 ///
-/// When `artifact_paths` is empty the walk roots at `project_dir`;
-/// otherwise each entry becomes a project-relative walk root per
-/// lint scope resolution. `languages`, when non-empty, narrows the discovered
-/// file set to extensions whose inferred language token matches one
-/// of the supplied tokens — unknown / binary files are kept so that
+/// Under [`ScanProfile::Consumer`] the walk roots at `project_dir`
+/// (or each `artifact_paths` root when supplied) and the indexer
+/// runs the consumer-scope extractors. Under [`ScanProfile::Framework`]
+/// the walk applies the §F1 include set, follows symlinks with
+/// cycle detection, and runs the framework extractors
+/// (`skill`, `adapter`, `marketplace`, `agent_teams`, `brief`) in
+/// addition to the shared markdown / frontmatter passes.
+///
+/// `languages`, when non-empty, narrows the discovered file set to
+/// extensions whose inferred language token matches one of the
+/// supplied tokens; unknown / binary files are kept so that
 /// symlinks and asset-adjacent files still appear in the model.
 ///
 /// # Errors
@@ -70,10 +93,15 @@ pub enum IndexError {
 pub fn build(
     project_dir: &Path, scan_profile: ScanProfile, artifact_paths: &[PathBuf], languages: &[String],
 ) -> Result<WorkspaceModel, IndexError> {
-    if scan_profile != ScanProfile::Consumer {
-        return Err(IndexError::UnsupportedScanProfile(scan_profile));
+    match scan_profile {
+        ScanProfile::Consumer => build_consumer(project_dir, artifact_paths, languages),
+        ScanProfile::Framework => build_framework(project_dir, artifact_paths, languages),
     }
+}
 
+fn build_consumer(
+    project_dir: &Path, artifact_paths: &[PathBuf], languages: &[String],
+) -> Result<WorkspaceModel, IndexError> {
     let discovery = files::discover(project_dir, artifact_paths, languages)?;
     let discovered = discovery.files;
     let symlinks_facts = discovery.symlinks;
@@ -119,19 +147,9 @@ pub fn build(
 
     files_out.sort_by(|a, b| a.path.cmp(&b.path));
     frontmatter_out.sort_by(|a, b| a.path.cmp(&b.path));
-    sections_out.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.line_start.cmp(&b.line_start)));
-    links_out.sort_by(|a, b| {
-        a.from_path
-            .cmp(&b.from_path)
-            .then_with(|| a.line.cmp(&b.line))
-            .then_with(|| a.to_raw.cmp(&b.to_raw))
-    });
-    ignore_directives_out.sort_by(|a, b| {
-        a.path
-            .cmp(&b.path)
-            .then_with(|| a.line.cmp(&b.line))
-            .then_with(|| a.rule_id.cmp(&b.rule_id))
-    });
+    sort_sections(&mut sections_out);
+    sort_links(&mut links_out);
+    sort_ignore_directives(&mut ignore_directives_out);
 
     Ok(WorkspaceModel {
         version: WorkspaceModelVersion,
@@ -150,7 +168,130 @@ pub fn build(
         rule_index,
         text_matches: Vec::new(),
         ignore_directives: ignore_directives_out,
+        briefs: Vec::new(),
+        agent_teams: Vec::new(),
     })
+}
+
+fn build_framework(
+    project_dir: &Path, artifact_paths: &[PathBuf], languages: &[String],
+) -> Result<WorkspaceModel, IndexError> {
+    let discovery = framework::discover(project_dir, artifact_paths, languages)?;
+    let discovered = discovery.files;
+    let symlinks_facts = discovery.symlinks;
+    let agent_teams_facts = discovery.agent_teams;
+
+    let per_file: Vec<FrameworkPerFile> = discovered
+        .par_iter()
+        .map(|file| FrameworkPerFile {
+            file: File {
+                path: file.relative.clone(),
+                kind: file.kind,
+                language: file.language.clone(),
+                sha256: None,
+            },
+            frontmatter: frontmatter::extract(file),
+            sections: markdown::extract_sections(file),
+            links: markdown::extract_links(file),
+            ignore_directives: ignore_directives::extract(file),
+            skill: skill::extract(file),
+            manifest: adapter::extract(file),
+            marketplace_entries: marketplace::extract(file),
+            brief: brief::extract(file),
+        })
+        .collect();
+
+    let mut files_out: Vec<File> = Vec::with_capacity(per_file.len());
+    let mut frontmatter_out: Vec<Frontmatter> = Vec::new();
+    let mut sections_out: Vec<MarkdownSection> = Vec::new();
+    let mut links_out: Vec<MarkdownLink> = Vec::new();
+    let mut ignore_directives_out: Vec<IgnoreDirective> = Vec::new();
+    let mut skills_out: Vec<Skill> = Vec::new();
+    let mut manifests_out: Vec<AdapterManifest> = Vec::new();
+    let mut marketplace_out: Vec<MarketplaceEntry> = Vec::new();
+    let mut briefs_out: Vec<Brief> = Vec::new();
+    for entry in per_file {
+        files_out.push(entry.file);
+        if let Some(fm) = entry.frontmatter {
+            frontmatter_out.push(fm);
+        }
+        sections_out.extend(entry.sections);
+        links_out.extend(entry.links);
+        ignore_directives_out.extend(entry.ignore_directives);
+        if let Some(skill) = entry.skill {
+            skills_out.push(skill);
+        }
+        if let Some(manifest) = entry.manifest {
+            manifests_out.push(manifest);
+        }
+        marketplace_out.extend(entry.marketplace_entries);
+        if let Some(brief) = entry.brief {
+            briefs_out.push(brief);
+        }
+    }
+
+    let known_paths: std::collections::HashSet<String> =
+        files_out.iter().map(|f| f.path.clone()).collect();
+    for link in &mut links_out {
+        link.resolves = resolve_link(project_dir, &link.from_path, &link.to_raw, &known_paths);
+    }
+
+    let rule_index = discover::discover(project_dir);
+
+    files_out.sort_by(|a, b| a.path.cmp(&b.path));
+    frontmatter_out.sort_by(|a, b| a.path.cmp(&b.path));
+    sort_sections(&mut sections_out);
+    sort_links(&mut links_out);
+    sort_ignore_directives(&mut ignore_directives_out);
+    skills_out.sort_by(|a, b| a.path.cmp(&b.path));
+    manifests_out.sort_by(|a, b| a.path.cmp(&b.path));
+    marketplace_out.sort_by(|a, b| a.path_in_manifest.cmp(&b.path_in_manifest));
+    briefs_out.sort_by(|a, b| a.path.cmp(&b.path));
+    let mut agent_teams_facts = agent_teams_facts;
+    agent_teams_facts.sort_by(|a: &AgentTeam, b: &AgentTeam| a.path.cmp(&b.path));
+
+    Ok(WorkspaceModel {
+        version: WorkspaceModelVersion,
+        project_dir: project_dir.to_string_lossy().into_owned(),
+        scan_profile: ScanProfile::Framework,
+        artifact_paths: artifact_paths.iter().map(|p| p.to_string_lossy().into_owned()).collect(),
+        languages: languages.to_vec(),
+        files: files_out,
+        frontmatter: frontmatter_out,
+        markdown_sections: sections_out,
+        markdown_links: links_out,
+        symlinks: symlinks_facts,
+        skills: skills_out,
+        adapter_manifests: manifests_out,
+        marketplace_entries: marketplace_out,
+        rule_index,
+        text_matches: Vec::new(),
+        ignore_directives: ignore_directives_out,
+        briefs: briefs_out,
+        agent_teams: agent_teams_facts,
+    })
+}
+
+fn sort_sections(sections: &mut [MarkdownSection]) {
+    sections.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.line_start.cmp(&b.line_start)));
+}
+
+fn sort_links(links: &mut [MarkdownLink]) {
+    links.sort_by(|a, b| {
+        a.from_path
+            .cmp(&b.from_path)
+            .then_with(|| a.line.cmp(&b.line))
+            .then_with(|| a.to_raw.cmp(&b.to_raw))
+    });
+}
+
+fn sort_ignore_directives(directives: &mut [IgnoreDirective]) {
+    directives.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then_with(|| a.line.cmp(&b.line))
+            .then_with(|| a.rule_id.cmp(&b.rule_id))
+    });
 }
 
 struct PerFile {
@@ -159,6 +300,18 @@ struct PerFile {
     sections: Vec<MarkdownSection>,
     links: Vec<MarkdownLink>,
     ignore_directives: Vec<IgnoreDirective>,
+}
+
+struct FrameworkPerFile {
+    file: File,
+    frontmatter: Option<Frontmatter>,
+    sections: Vec<MarkdownSection>,
+    links: Vec<MarkdownLink>,
+    ignore_directives: Vec<IgnoreDirective>,
+    skill: Option<Skill>,
+    manifest: Option<AdapterManifest>,
+    marketplace_entries: Vec<MarketplaceEntry>,
+    brief: Option<Brief>,
 }
 
 /// Resolve a markdown link target. URL-style targets (matching

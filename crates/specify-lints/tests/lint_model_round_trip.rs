@@ -14,9 +14,9 @@
 use serde_json::{Map, Value, json};
 use specify_error::ValidationStatus;
 use specify_lints::lint::{
-    AdapterAxis, AdapterManifest, File, FileKind, Frontmatter, IgnoreDirective, MarkdownLink,
-    MarkdownSection, MarketplaceEntry, RuleIndexEntry, ScanProfile, Skill, Symlink, TextMatch,
-    WorkspaceModel, WorkspaceModelVersion,
+    AdapterAxis, AdapterManifest, AgentTeam, Brief, File, FileKind, Frontmatter, IgnoreDirective,
+    MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, ScanProfile, Skill, Symlink,
+    TextMatch, WorkspaceModel, WorkspaceModelVersion,
 };
 use specify_lints::rules::Origin;
 use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
@@ -52,6 +52,8 @@ fn empty_workspace_model_round_trips_through_schema() {
         rule_index: vec![],
         text_matches: vec![],
         ignore_directives: vec![],
+        briefs: vec![],
+        agent_teams: vec![],
     };
 
     let value = serde_json::to_value(&model).expect("serialise empty model");
@@ -132,12 +134,14 @@ fn populated_workspace_model_round_trips_through_schema() {
             path: "adapters/targets/omnia/references/agent-teams.md".into(),
             target: "../../../shared/agent-teams.md".into(),
             broken: false,
+            resolved_target: Some("docs/reference/review-team-protocol.md".into()),
         }],
         skills: vec![Skill {
             name: "refine".into(),
             path: "plugins/spec/skills/refine/SKILL.md".into(),
             plugin: "spec".into(),
             frontmatter_ref: "plugins/spec/skills/refine/SKILL.md".into(),
+            body_line_count: Some(42),
         }],
         adapter_manifests: vec![AdapterManifest {
             axis: AdapterAxis::Targets,
@@ -168,6 +172,20 @@ fn populated_workspace_model_round_trips_through_schema() {
             rationale: Some("documented rationale that is long enough".into()),
             target_line: 13,
             raw: "// specify-ignore: UNI-014 — documented rationale that is long enough".into(),
+        }],
+        briefs: vec![Brief {
+            path: "adapters/sources/intent/briefs/enumerate.md".into(),
+            axis: AdapterAxis::Sources,
+            adapter: "intent".into(),
+            operation: "enumerate".into(),
+            sections: vec!["Inputs".into(), "Output contract".into()],
+            body_line_count: 24,
+        }],
+        agent_teams: vec![AgentTeam {
+            path: "adapters/targets/omnia/references/agent-teams.md".into(),
+            target_raw: "../../../shared/agent-teams.md".into(),
+            resolved_target: Some("docs/reference/review-team-protocol.md".into()),
+            target_sha256: Some("0".repeat(64)),
         }],
     };
 
