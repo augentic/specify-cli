@@ -37,7 +37,8 @@ use rayon::prelude::*;
 
 use crate::lint::{
     AdapterManifest, AgentTeam, Brief, File, Frontmatter, IgnoreDirective, MarkdownLink,
-    MarkdownSection, MarketplaceEntry, ScanProfile, Skill, WorkspaceModel, WorkspaceModelVersion,
+    MarkdownSection, MarketplaceEntry, ScanProfile, Skill, Symlink, WorkspaceModel,
+    WorkspaceModelVersion,
 };
 
 /// Closed error set for [`build`].
@@ -230,6 +231,17 @@ fn build_framework(
         }
     }
 
+    // The framework walker follows symlinks (`follow_links(true)`) so
+    // any file reachable both at its canonical path and through a
+    // symlinked ancestor is recorded twice — once via each path. The
+    // canonical-path copy resolves relative `[label](target)` links
+    // correctly; the symlink-traversed copy joins them against the
+    // wrong parent and would surface spurious `reference-resolves`
+    // failures (CORE-002 et al.). Drop the symlink-traversed copies
+    // so reference resolution matches the retired imperative
+    // `links.unresolved` predicate's `follow_links(false)` behaviour.
+    drop_symlink_traversed_links(&mut links_out, &symlinks_facts);
+
     let known_paths: std::collections::HashSet<String> =
         files_out.iter().map(|f| f.path.clone()).collect();
     for link in &mut links_out {
@@ -314,6 +326,23 @@ struct FrameworkPerFile {
     brief: Option<Brief>,
 }
 
+/// Strip markdown-link facts whose `from_path` was reached through
+/// a symlinked ancestor recorded in `symlinks_facts`. Pairs with
+/// [`build_framework`]'s post-discovery cleanup; see the call-site
+/// comment for the rationale.
+fn drop_symlink_traversed_links(links: &mut Vec<MarkdownLink>, symlinks_facts: &[Symlink]) {
+    if symlinks_facts.is_empty() {
+        return;
+    }
+    links.retain(|link| {
+        !symlinks_facts.iter().any(|s| {
+            link.from_path == s.path
+                || link.from_path.starts_with(s.path.as_str())
+                    && link.from_path[s.path.len()..].starts_with('/')
+        })
+    });
+}
+
 /// Resolve a markdown link target. URL-style targets (matching
 /// `^[a-z][a-z0-9+\-.]*://`) leave `resolves` unset; relative paths
 /// are joined against `from_path`'s parent and checked against both
@@ -394,5 +423,50 @@ mod tests {
     fn normalise_collapses_dot_segments() {
         let p = normalise_relative(Path::new("docs/./foo/../bar.md"));
         assert_eq!(p, PathBuf::from("docs/bar.md"));
+    }
+
+    #[test]
+    fn drop_symlink_traversed_links_strips_descendants_and_the_link_itself() {
+        let symlinks = vec![Symlink {
+            path: "plugins/spec/skills/merge/references".to_string(),
+            target: "../../references".to_string(),
+            broken: false,
+            resolved_target: Some("plugins/spec/references".to_string()),
+        }];
+        let mut links = vec![
+            MarkdownLink {
+                from_path: "plugins/spec/skills/merge/references/artifact-conventions.md".into(),
+                to_raw: "../../../docs/x.md".into(),
+                line: 1,
+                resolves: None,
+            },
+            MarkdownLink {
+                from_path: "plugins/spec/skills/merge/references".into(),
+                to_raw: "ignored".into(),
+                line: 1,
+                resolves: None,
+            },
+            MarkdownLink {
+                from_path: "plugins/spec/references/artifact-conventions.md".into(),
+                to_raw: "../../../docs/x.md".into(),
+                line: 1,
+                resolves: None,
+            },
+            MarkdownLink {
+                from_path: "plugins/spec/skills/merge/references-extra/x.md".into(),
+                to_raw: "../sibling.md".into(),
+                line: 1,
+                resolves: None,
+            },
+        ];
+        drop_symlink_traversed_links(&mut links, &symlinks);
+        let kept: Vec<&str> = links.iter().map(|l| l.from_path.as_str()).collect();
+        assert_eq!(
+            kept,
+            vec![
+                "plugins/spec/references/artifact-conventions.md",
+                "plugins/spec/skills/merge/references-extra/x.md",
+            ]
+        );
     }
 }

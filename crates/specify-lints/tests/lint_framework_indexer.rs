@@ -60,7 +60,12 @@ fn stage_fixture() -> TempDir {
 
     // `agent-teams.md` symlink in `adapters/targets/omnia/references/`
     // pointing at the canonical `docs/reference/review-team-protocol.md`.
-    let link_path = tempdir.path().join("adapters/targets/omnia/references/agent-teams.md");
+    // The `references/` parent isn't checked in (git doesn't track empty
+    // dirs); create it before placing the link so the cross-platform
+    // symlink calls below have a valid parent.
+    let link_dir = tempdir.path().join("adapters/targets/omnia/references");
+    fs::create_dir_all(&link_dir).expect("create link parent");
+    let link_path = link_dir.join("agent-teams.md");
     let link_target = "../../../../docs/reference/review-team-protocol.md";
     #[cfg(unix)]
     std::os::unix::fs::symlink(link_target, &link_path).expect("create unix symlink");
