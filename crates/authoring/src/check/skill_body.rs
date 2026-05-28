@@ -73,11 +73,7 @@ impl_skill_body_check!(
     check_invalid_critical_path
 );
 impl_skill_body_check!(InlineJsonTooLong, RULE_INLINE_JSON_TOO_LONG, check_inline_json_blocks);
-impl_skill_body_check!(
-    EnvelopeJsonInBody,
-    RULE_ENVELOPE_JSON_IN_BODY,
-    check_no_envelope_examples
-);
+impl_skill_body_check!(EnvelopeJsonInBody, RULE_ENVELOPE_JSON_IN_BODY, check_no_envelope_examples);
 impl_skill_body_check!(
     StepBodyDuplicatesCriticalPath,
     RULE_STEP_BODY_DUPLICATES,
@@ -429,9 +425,7 @@ fn is_envelope_body(body: &[String]) -> bool {
     has_ok && (has_data || has_error)
 }
 
-fn check_step_body_vs_critical_path(
-    ctx: &Context,
-) -> Result<Vec<Finding>, ToolingError> {
+fn check_step_body_vs_critical_path(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 

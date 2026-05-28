@@ -34,7 +34,7 @@
 //!
 //! `crates/authoring/src/finding.rs` returns a static authoring
 //! identifier such as `rules.schema-violation`, `skill.duplicate-name`,
-//! or `links.unresolved`. The wire schema at
+//! or `links.broken-reference`. The wire schema at
 //! `schemas/lint/finding.schema.json` constrains `rule-id` to the
 //! closed codex regex
 //! `^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
@@ -268,7 +268,7 @@ mod tests {
     /// schema legal.
     #[test]
     fn rule_id_is_omitted_for_imperative_ids() {
-        for rule in ["rules.schema-violation", "skill.duplicate-name", "links.unresolved"] {
+        for rule in ["rules.schema-violation", "skill.duplicate-name", "links.broken-reference"] {
             let mapped = map_finding(&fixture(rule, "msg", None, 1, None));
             assert!(mapped.rule_id.is_none(), "{rule} must yield rule_id: None");
         }
@@ -351,8 +351,8 @@ mod tests {
     #[test]
     fn stored_fingerprint_verifies() {
         let mapped = map_finding(&fixture(
-            "links.unresolved",
-            "broken markdown link",
+            "links.broken-reference",
+            "broken markdown reference",
             Some("docs/intro.md"),
             10,
             None,

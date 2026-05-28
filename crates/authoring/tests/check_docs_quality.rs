@@ -2,9 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use specify_authoring::Context;
-use specify_authoring::check::{
-    HistoryCitation, MissingDiagramAsset, TextPipelineDiagram,
-};
+use specify_authoring::check::{HistoryCitation, MissingDiagramAsset, TextPipelineDiagram};
 use specify_authoring::finding::Check;
 
 fn scaffold_framework_root(root: &Path) {

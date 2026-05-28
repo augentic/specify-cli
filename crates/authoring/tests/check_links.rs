@@ -32,15 +32,6 @@ fn copy_dir_all(from: &Path, to: &Path) {
 }
 
 #[test]
-fn markdown_links_flag_missing_targets() {
-    let (_temp, root) = assemble_fixture("markdown_broken");
-    let findings = run_on_root(&root);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "links.unresolved");
-    assert!(findings[0].message.contains("missing.md"));
-}
-
-#[test]
 fn skill_reference_links_flag_missing_targets() {
     let (_temp, root) = assemble_fixture("reference_broken");
     let findings: Vec<_> = run_on_root(&root)

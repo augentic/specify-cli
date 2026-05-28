@@ -6,9 +6,9 @@ mod plan;
 pub use plan::core::{
     Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, Severity,
     SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
-    TargetRefParseError, orphan_authority_override_keys,
-    emit_authority_override_seed_events, entry_mut, mutate_authority_overrides,
-    reject_orphan_overrides, unknown_slice_err,
+    TargetRefParseError, emit_authority_override_seed_events, entry_mut,
+    mutate_authority_overrides, orphan_authority_override_keys, reject_orphan_overrides,
+    unknown_slice_err,
 };
 pub use plan::doctor::{
     CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,

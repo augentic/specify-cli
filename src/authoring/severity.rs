@@ -119,11 +119,11 @@ mod tests {
     }
 
     /// The `links.*` family is a documentation-quality gate; per the
-    /// table, every member maps to `Important`.
+    /// table, every member maps to `Important`. `links.unresolved`
+    /// was retired in RFC-34 C10 (now `CORE-002`) and is omitted.
     #[test]
     fn links_family_maps_to_important() {
         for rule_id in [
-            "links.unresolved",
             "links.broken-reference",
             "links.unresolved-directive",
             "links.brief-schema-link-resolve",

@@ -193,9 +193,7 @@ where
 /// Parse `--authority-override <slice> <kind>=<source-key>` repeats
 /// into the typed `(slice, kind, source-key)` tuple
 /// [`specify_domain::change::mutate_authority_overrides`] expects.
-pub fn parse_override_assigns(
-    raw: &[String],
-) -> Result<Vec<(String, ClaimKind, String)>> {
+pub fn parse_override_assigns(raw: &[String]) -> Result<Vec<(String, ClaimKind, String)>> {
     Ok(parse_slice_pair_args::<AuthorityOverrideKindAssign>(raw, "--authority-override")?
         .into_iter()
         .map(|(slice, a)| (slice, a.kind, a.source_key))

@@ -4,10 +4,12 @@
 //! v1 (Phase 2) ships the four executable hint kinds the contract lists
 //! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
 //! [`HintKind::Tool`]) plus the reserved-hint diagnostics reserved-kind summary policy
-//! (`review.reserved-hint-skipped`). Each rule's hints are partitioned
-//! by kind and evaluated in the fixed order
-//! `path-pattern → schema → regex → tool` so the cheap filters narrow
-//! the candidate file set before the subprocess boundary fires.
+//! (`review.reserved-hint-skipped`). RFC-34 §F6 PR 2 adds
+//! [`HintKind::ReferenceResolves`] in the same family. Each rule's
+//! hints are partitioned by kind and evaluated in the fixed order
+//! `path-pattern → schema → reference-resolves → regex → tool` so the
+//! cheap filters narrow the candidate file set before the subprocess
+//! boundary fires.
 //!
 //! When a rule carries multiple `path-pattern` hints they UNION — a
 //! file is a candidate when it matches any of the supplied patterns —
@@ -20,7 +22,7 @@
 //!
 //! # Reserved-kind policy (reserved-hint diagnostics)
 //!
-//! Reserved hint kinds (`unique`, `reference-resolves`, `set-coverage`,
+//! Remaining reserved hint kinds (`unique`, `set-coverage`,
 //! `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`,
 //! `namespace-owner`) parse cleanly from the codex authoring schema
 //! but never execute in v1. [`evaluate`] records each occurrence as a
@@ -46,6 +48,7 @@
 //! payload.
 
 pub mod path_pattern;
+pub mod reference_resolves;
 pub mod regex;
 pub mod schema;
 pub mod tool;
@@ -211,6 +214,7 @@ pub fn evaluate(
 
     let mut path_pattern_hints: Vec<&DeterministicHint> = Vec::new();
     let mut schema_hints: Vec<&DeterministicHint> = Vec::new();
+    let mut reference_resolves_hints: Vec<&DeterministicHint> = Vec::new();
     let mut regex_hints: Vec<&DeterministicHint> = Vec::new();
     let mut tool_hints: Vec<&DeterministicHint> = Vec::new();
 
@@ -218,6 +222,7 @@ pub fn evaluate(
         match hint.kind {
             HintKind::PathPattern => path_pattern_hints.push(hint),
             HintKind::Schema => schema_hints.push(hint),
+            HintKind::ReferenceResolves => reference_resolves_hints.push(hint),
             HintKind::Regex => regex_hints.push(hint),
             HintKind::Tool => tool_hints.push(hint),
             kind => reserved_skipped.push(ReservedSkipped {
@@ -232,6 +237,10 @@ pub fn evaluate(
 
     for hint in schema_hints {
         let mut new = schema::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in reference_resolves_hints {
+        let mut new = reference_resolves::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
     for hint in regex_hints {
