@@ -167,7 +167,8 @@ fn extract_skill_directive(rest: &str) -> (String, Option<SkillDirective>) {
 ///
 /// # Errors
 ///
-/// Returns an error if the operation fails.
+/// [`Error::Diag`] `task-not-found` if no task line carries
+/// `task_number`.
 ///
 /// # Panics
 ///

@@ -112,7 +112,7 @@ fn emit_init_result(
         context_skipped: context_skip_reason.is_some(),
         context_skip_reason,
     };
-    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_text)?;
+    output::emit(&mut std::io::stdout().lock(), format, &body, write_text)?;
     Ok(())
 }
 

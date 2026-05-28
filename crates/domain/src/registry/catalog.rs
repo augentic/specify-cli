@@ -87,17 +87,17 @@ impl Registry {
         project_dir.join("registry.yaml")
     }
 
-    /// Load + shape-validate the registry.
-    ///
-    /// - `Ok(None)` — the file is absent. The registry is optional
-    ///   and a missing file is *not* an error.
-    /// - `Ok(Some(_))` — file parsed and shape-validated.
-    /// - `Err(_)` — malformed YAML, unknown keys, wrong `version`,
-    ///   kebab-case / required-field / duplicate-name violations.
+    /// Load + shape-validate the registry. A missing file is *not* an
+    /// error — the registry is optional and yields `Ok(None)`.
     ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
+    /// - [`Error::Diag`] `registry-read-failed` if the file exists but
+    ///   cannot be read.
+    /// - [`Error::Diag`] `registry-malformed` if the YAML is invalid or
+    ///   carries unknown keys.
+    /// - The first shape violation from [`Registry::validate_shape`]
+    ///   (wrong `version`, kebab-case / required-field / duplicate-name).
     pub fn load(project_dir: &Path) -> Result<Option<Self>, Error> {
         let path = Self::path(project_dir);
         if !path.exists() {

@@ -327,15 +327,9 @@ impl SourceAdapter {
     /// - `adapter-schema-violation` — manifest fails the source-axis
     ///   JSON Schema.
     pub fn resolve(name: &str, project_dir: &Path) -> Result<ResolvedSourceAdapter, Error> {
-        let (location, manifest_path, raw_value) = load_validated(Axis::Source, name, project_dir)?;
-
-        let manifest: Self = serde_json::from_value(raw_value).map_err(|err| Error::Diag {
-            code: "adapter-manifest-malformed",
-            detail: format!("failed to deserialize {}: {err}", manifest_path.display()),
-        })?;
-
+        let (manifest, location, manifest_path) =
+            resolve_typed::<Self>(Axis::Source, name, project_dir)?;
         check_axis_and_name(Axis::Source, name, manifest.axis, &manifest.name, &manifest_path)?;
-
         Ok(ResolvedSourceAdapter { manifest, location })
     }
 
@@ -373,15 +367,9 @@ impl TargetAdapter {
     /// - `adapter-schema-violation` — manifest fails the target-axis
     ///   JSON Schema.
     pub fn resolve(name: &str, project_dir: &Path) -> Result<ResolvedTargetAdapter, Error> {
-        let (location, manifest_path, raw_value) = load_validated(Axis::Target, name, project_dir)?;
-
-        let manifest: Self = serde_json::from_value(raw_value).map_err(|err| Error::Diag {
-            code: "adapter-manifest-malformed",
-            detail: format!("failed to deserialize {}: {err}", manifest_path.display()),
-        })?;
-
+        let (manifest, location, manifest_path) =
+            resolve_typed::<Self>(Axis::Target, name, project_dir)?;
         check_axis_and_name(Axis::Target, name, manifest.axis, &manifest.name, &manifest_path)?;
-
         Ok(ResolvedTargetAdapter { manifest, location })
     }
 
@@ -395,15 +383,34 @@ impl TargetAdapter {
     }
 }
 
+/// Locate, schema-validate, and typed-deserialise an adapter manifest
+/// of the axis-specific shape `M`.
+///
+/// Wraps [`load_validated`] with the `serde_json::from_value` step that
+/// was duplicated byte-for-byte between [`SourceAdapter::resolve`] and
+/// [`TargetAdapter::resolve`]. Returns the parsed manifest, its
+/// [`AdapterLocation`], and the canonical manifest path; callers run the
+/// axis/name coherence check ([`check_axis_and_name`]) against the
+/// typed manifest fields and wrap the result into the matching
+/// `Resolved*Adapter`.
+fn resolve_typed<M: serde::de::DeserializeOwned>(
+    axis: Axis, name: &str, project_dir: &Path,
+) -> Result<(M, AdapterLocation, PathBuf), Error> {
+    let (location, manifest_path, raw_value) = load_validated(axis, name, project_dir)?;
+    let manifest: M = serde_json::from_value(raw_value).map_err(|err| Error::Diag {
+        code: "adapter-manifest-malformed",
+        detail: format!("failed to deserialize {}: {err}", manifest_path.display()),
+    })?;
+    Ok((manifest, location, manifest_path))
+}
+
 /// Shared load + schema-validate pipeline used by both axis-specific
 /// resolvers.
 ///
 /// Returns the [`AdapterLocation`] tag (whose [`AdapterLocation::path`]
 /// is the root directory), the canonical manifest path (for error
 /// messages), and the schema-validated `serde_json::Value` ready for
-/// typed deserialisation by the caller. Keeps the duplicated bytes
-/// between [`SourceAdapter::resolve`] and [`TargetAdapter::resolve`]
-/// down to a single `serde_json::from_value` + axis/name check.
+/// typed deserialisation by [`resolve_typed`].
 fn load_validated(
     axis: Axis, name: &str, project_dir: &Path,
 ) -> Result<(AdapterLocation, PathBuf, serde_json::Value), Error> {
@@ -456,46 +463,15 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
         });
     };
     // Cross-axis uniqueness invariant — see DECISIONS.md
-    // §"Adapter name uniqueness". The probe is process-memoised
-    // (per `(project_dir, axis, name)`) so the per-resolve hot path
-    // pays for the FS stat exactly once per session. `init` /
-    // `init --hub` and the manifest-cache write boundary both call
-    // [`check_axis_unique_for_name`] eagerly, so steady-state
-    // resolves usually hit the memo on first reach.
-    check_axis_unique_for_name_memo(axis, name, project_dir, location.path())?;
-    Ok(location)
-}
-
-/// Per-session memo for the cross-axis uniqueness probe. Keyed by
-/// `(project_dir, axis, name)` so a re-resolve of the same adapter
-/// in the same process avoids re-walking `adapters/{sources,targets}/`
-/// and the matching cache mirrors. Only "verified clean" pairs are
-/// stored; collisions surface every time so callers always observe
-/// the diagnostic until the operator fixes the manifest tree.
-fn check_axis_unique_for_name_memo(
-    axis: Axis, name: &str, project_dir: &Path, located_path: &Path,
-) -> Result<(), Error> {
-    use std::collections::HashSet;
-    use std::sync::{Mutex, OnceLock};
-
-    type Memo = Mutex<HashSet<(PathBuf, Axis, String)>>;
-    static VERIFIED: OnceLock<Memo> = OnceLock::new();
-
-    let key = (project_dir.to_path_buf(), axis, name.to_string());
-    if let Ok(guard) = VERIFIED.get_or_init(|| Mutex::new(HashSet::new())).lock()
-        && guard.contains(&key)
-    {
-        return Ok(());
-    }
-
+    // §"Adapter name uniqueness". `specrun` is fork-and-exit, so the
+    // pair of `is_file` probes below is cheaper than memoising them
+    // behind process-global state; `init` / `init --hub` and the
+    // manifest-cache write boundary call [`check_axis_unique_for_name`]
+    // eagerly on the same invariant.
     if let Some(sibling) = sibling_manifest_path(axis.opposite(), name, project_dir) {
-        return Err(axis_collision_error(name, axis, located_path, &sibling));
+        return Err(axis_collision_error(name, axis, location.path(), &sibling));
     }
-
-    if let Ok(mut guard) = VERIFIED.get_or_init(|| Mutex::new(HashSet::new())).lock() {
-        guard.insert(key);
-    }
-    Ok(())
+    Ok(location)
 }
 
 /// Probe the (axis, name) pair for an `adapter.yaml` under both the

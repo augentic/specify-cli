@@ -52,7 +52,7 @@ pub fn explain(format: Format, adapter: &str, project_dir: &Path) -> Result<()> 
             })
             .collect(),
     };
-    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_explain_text)?;
+    output::emit(&mut std::io::stdout().lock(), format, &body, write_explain_text)?;
     Ok(())
 }
 

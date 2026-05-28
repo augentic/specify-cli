@@ -65,17 +65,17 @@ pub struct ProjectConfig {
 impl ProjectConfig {
     /// Load `.specify/project.yaml` from `project_dir`.
     ///
-    /// - Returns `Err(Error::NotInitialized)` if the file is absent.
-    /// - Propagates YAML parse failures as `Error::YamlDe`.
-    /// - Enforces the `specify_version` floor: if the pinned version in
-    ///   the file is newer than `CARGO_PKG_VERSION`, returns
-    ///   `Err(Error::CliTooOld { required, found })`.
-    ///   Unparseable pinned versions are tolerated — we prefer a
-    ///   permissive stance for a human-edited file.
+    /// Enforces the `specify_version` floor: a pinned version newer than
+    /// `CARGO_PKG_VERSION` is rejected, but an unparseable pin is
+    /// tolerated — we prefer a permissive stance for a human-edited file.
     ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
+    /// - [`Error::NotInitialized`] if `.specify/project.yaml` is absent.
+    /// - [`Error::Io`] if the file exists but cannot be read.
+    /// - [`Error::YamlDe`] if the file is not valid project YAML.
+    /// - [`Error::CliTooOld`] if the pinned `specify_version` floor is
+    ///   newer than this binary's version.
     pub fn load(project_dir: &Path) -> Result<Self, Error> {
         let path = Layout::new(project_dir).config_path();
         let text = match std::fs::read_to_string(&path) {

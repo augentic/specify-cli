@@ -11,7 +11,7 @@ use specify_error::Error;
 use super::parse::system_time_to_utc;
 use super::{BaselineConflict, MergePreviewEntry, OpaqueAction, OpaquePreviewEntry};
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
-use crate::merge::merge::merge;
+use crate::merge::engine::merge;
 use crate::merge::validate::validate_baseline;
 
 /// File name for the optional composition delta that lives at the top

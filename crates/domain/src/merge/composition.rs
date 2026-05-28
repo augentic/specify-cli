@@ -4,7 +4,7 @@
 use serde_json::Value;
 use specify_error::Error;
 
-use crate::merge::merge::{MergeOperation, MergeResult};
+use crate::merge::engine::{MergeOperation, MergeResult};
 
 /// Merge a composition delta into an optional baseline.
 ///
@@ -14,7 +14,13 @@ use crate::merge::merge::{MergeOperation, MergeResult};
 ///
 /// # Errors
 ///
-/// Returns an error if the operation fails.
+/// Returns an [`Error::Diag`] whose `code` names the failure: a
+/// malformed/empty/non-mapping delta (`composition-delta-malformed`,
+/// `composition-delta-empty`, `composition-delta-not-mapping`), an
+/// unparseable or screens-less baseline (`composition-baseline-malformed`,
+/// `composition-baseline-no-screens`), aggregated screen-level operation
+/// conflicts (`composition-screen-conflict`), or a re-serialisation
+/// failure (`composition-serialize-failed`).
 pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Error> {
     let delta_doc: Value = serde_saphyr::from_str(delta_text).map_err(|e| Error::Diag {
         code: "composition-delta-malformed",

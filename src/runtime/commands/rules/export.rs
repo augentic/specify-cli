@@ -52,7 +52,7 @@ pub fn run(
 
     let resolved = build_resolved_rules(&inputs).map_err(map_resolve_error)?;
 
-    output::emit(Box::new(std::io::stdout().lock()), Format::Json, &resolved, |_, _| Ok(()))?;
+    output::emit(&mut std::io::stdout().lock(), Format::Json, &resolved, |_, _| Ok(()))?;
     Ok(())
 }
 

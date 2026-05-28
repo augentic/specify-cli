@@ -17,7 +17,10 @@ impl Registry {
     ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
+    /// Returns the first violation as an [`Error::Diag`] whose `code` names
+    /// the broken invariant — e.g. `registry-version-unsupported`,
+    /// `registry-project-name-empty`, `registry-project-name-not-kebab`,
+    /// or a duplicate-name / malformed-`url` discriminant.
     pub fn validate_shape(&self) -> Result<(), Error> {
         if self.version != 1 {
             return Err(Error::Diag {

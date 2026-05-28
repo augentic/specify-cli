@@ -9,7 +9,7 @@ use serde::Serialize;
 use specify_error::Error;
 
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
-use crate::merge::merge::MergeResult;
+use crate::merge::engine::MergeResult;
 use crate::slice::{
     LifecycleStatus, Outcome, OutcomeKind, SliceMetadata, SpecKind, TargetOperation, actions,
 };
@@ -135,7 +135,7 @@ pub struct BaselineConflict {
 ///   baselines.
 /// - [`Error::Diag { code: "merge-non-utf8-name" }`] for the rare
 ///   non-I/O failure that has no `Error::Filesystem` op equivalent.
-/// - Whatever [`Error`] the inner [`crate::merge::merge::merge`] or
+/// - Whatever [`Error`] the inner [`crate::merge::engine::merge`] or
 ///   [`crate::merge::composition::merge`] surfaces, propagated unchanged.
 pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewResult, Error> {
     let three_way = plan_three_way(slice_dir, classes)?;

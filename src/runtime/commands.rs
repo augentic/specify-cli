@@ -266,31 +266,45 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 /// identifier and stripped to leave the kebab name for the lookup
 /// (workflow §CLI surface).
 fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) -> Result<()> {
-    let body = match axis {
+    // Common envelope shape; only the per-axis resolver and the
+    // `@version` strip (target-only) differ.
+    let (name, resolved_path, location, operations, description) = match axis {
         Axis::Source => {
             let resolved = SourceAdapter::resolve(value, project_dir)?;
-            ResolveBody {
-                axis: axis.dir_segment(),
-                name: resolved.manifest.name.clone(),
-                resolved_path: resolved.location.path().display().to_string(),
-                location: resolved.location.label(),
-                operations: resolved.manifest.operations().map(ToString::to_string).collect(),
-                description: resolved.manifest.description.clone(),
-            }
+            let operations = resolved.manifest.operations().map(ToString::to_string).collect();
+            let resolved_path = resolved.location.path().display().to_string();
+            let location = resolved.location.label();
+            (
+                resolved.manifest.name,
+                resolved_path,
+                location,
+                operations,
+                resolved.manifest.description,
+            )
         }
         Axis::Target => {
             let name = value.split_once('@').map_or(value, |(n, _)| n);
             let resolved = TargetAdapter::resolve(name, project_dir)?;
-            ResolveBody {
-                axis: axis.dir_segment(),
-                name: resolved.manifest.name.clone(),
-                resolved_path: resolved.location.path().display().to_string(),
-                location: resolved.location.label(),
-                operations: resolved.manifest.operations().map(ToString::to_string).collect(),
-                description: resolved.manifest.description.clone(),
-            }
+            let operations = resolved.manifest.operations().map(ToString::to_string).collect();
+            let resolved_path = resolved.location.path().display().to_string();
+            let location = resolved.location.label();
+            (
+                resolved.manifest.name,
+                resolved_path,
+                location,
+                operations,
+                resolved.manifest.description,
+            )
         }
     };
-    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_resolve_text)?;
+    let body = ResolveBody {
+        axis: axis.dir_segment(),
+        name,
+        resolved_path,
+        location,
+        operations,
+        description,
+    };
+    output::emit(&mut std::io::stdout().lock(), format, &body, write_resolve_text)?;
     Ok(())
 }

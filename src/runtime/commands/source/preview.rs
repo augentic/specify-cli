@@ -79,7 +79,7 @@ pub fn preview(
         briefs,
     };
 
-    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_preview_text)?;
+    output::emit(&mut std::io::stdout().lock(), format, &body, write_preview_text)?;
     Ok(())
 }
 

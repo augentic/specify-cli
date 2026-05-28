@@ -93,6 +93,6 @@ impl Ctx {
     pub(crate) fn write<T: Serialize>(
         &self, body: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
     ) -> Result<(), Error> {
-        output::emit(Box::new(std::io::stdout().lock()), self.format, body, render_text)
+        output::emit(&mut std::io::stdout().lock(), self.format, body, render_text)
     }
 }

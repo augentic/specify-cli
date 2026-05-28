@@ -95,7 +95,10 @@ pub enum MergeOperation {
 ///
 /// # Errors
 ///
-/// Returns an error if the operation fails.
+/// [`Error::Diag`] `merge-spec-conflicts` when one or more delta blocks
+/// cannot be applied — a `RENAMED`/`MODIFIED`/`REMOVED` id missing from
+/// the baseline, or an `ADDED` id that already exists. All such
+/// conflicts are aggregated into the one error.
 #[expect(
     clippy::too_many_lines,
     reason = "Single-shot merge driver: heading walk + delta classification + conflict aggregation in one pass."

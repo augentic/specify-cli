@@ -554,16 +554,14 @@ Adapter names are unique across axes — a name is declared under
 mirrors). Eagerly enforced at `specrun init` time (inside
 `crates/domain/src/init/cache.rs::cache_adapter`, before the target
 cache directory is rewritten) and at `*Adapter::resolve` time. The
-resolve-time probe is process-memoised per `(project_dir, axis, name)`
-in `crates/domain/src/adapter/core.rs::check_axis_unique_for_name_memo`,
-so a re-resolve of the same adapter in the same session avoids
-re-walking `adapters/{sources,targets}/` and the matching cache
-mirrors — operators see the diagnostic on first reach but pay no FS
-stat cost on every subsequent resolve. The public
-`check_axis_unique_for_name(axis, name, project_dir)` helper is the
+resolve-time probe lives in
+`crates/domain/src/adapter/core.rs::locate_axis`, which checks the
+opposite axis for a sibling `adapter.yaml` via `sibling_manifest_path`
+on every resolve. `specrun` is fork-and-exit, so the pair of `is_file`
+probes is cheaper than memoising them behind process-global state. The
+public `check_axis_unique_for_name(axis, name, project_dir)` helper is the
 one-sided variant `init` calls before the side it is about to
-install exists on disk; it is unmemoised because each `init` is the
-once-per-install boundary. Collisions surface as `Error::Validation`
+install exists on disk. Collisions surface as `Error::Validation`
 with the kebab-case discriminant `adapter-name-axis-collision`; the
 wire body names both the axis the loader was asked for and the
 colliding sibling axis so operators can rename or delete one side

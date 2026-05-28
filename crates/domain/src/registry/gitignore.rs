@@ -20,7 +20,8 @@ const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/works
 ///
 /// # Errors
 ///
-/// Returns an error if the operation fails.
+/// [`Error::Io`] if the existing `.gitignore` cannot be read, or if the
+/// rewritten file cannot be written back.
 pub fn ensure_gitignore_entries(project_dir: &Path) -> Result<(), Error> {
     let path = project_dir.join(".gitignore");
     let existing = match fs::read_to_string(&path) {
