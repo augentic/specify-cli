@@ -116,11 +116,10 @@ pub enum LintMode {
 
 /// Closed v1 deterministic-hint kind enum.
 ///
-/// Includes the executable v1 kinds (`path-pattern`, `regex`,
-/// `schema`, `tool`, `reference-resolves`, `unique`,
-/// `set-coverage`, `cardinality`, `constant-eq`, `set-eq`,
-/// `content-digest-eq`) and the remaining reserved hint kind
-/// (`namespace-owner`).
+/// After C17 every kind is executable: `path-pattern`, `regex`,
+/// `schema`, `tool`, `reference-resolves`, `unique`, `set-coverage`,
+/// `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`, and
+/// `namespace-owner`. No kind is reserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HintKind {
@@ -158,7 +157,9 @@ pub enum HintKind {
     /// expected digest (v1 source discriminator:
     /// `agent-teams-match-canonical`).
     ContentDigestEq,
-    /// Reserved hint kind: assert a namespace owner.
+    /// Assert that each rule file's id-namespace prefix is authored
+    /// only under the directory that owns that namespace (v1 source
+    /// discriminator: `rule-namespace-matches-owner`).
     NamespaceOwner,
 }
 

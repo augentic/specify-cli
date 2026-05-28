@@ -133,39 +133,26 @@ fn tool_invocation_failed_truncates_oversize_stderr() {
     assert!(finding.fingerprint.starts_with("sha256:"));
 }
 
+// After C17 no hint kind is reserved, so `evaluate` can no longer
+// populate `reserved_skipped`. The reserved-kind machinery survives as
+// forward-compat scaffolding for any future kind landed reserved; this
+// test exercises the summary-minting fold directly by constructing a
+// `ReservedSkipped` value (its `kind` is just a `HintKind` field, so
+// any variant works as a sample) and asserting `reserved_hint_summary`
+// still mints the `review.reserved-hint-skipped` finding in both modes.
 #[test]
-fn reserved_kind_collected_and_summary_minted() {
-    let tmp = tempfile::tempdir().expect("tmp");
-    fs::write(tmp.path().join("a.rs"), "fn x(){}\n").expect("write");
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
-    let rule = make_rule("UNI-906", vec![hint(HintKind::NamespaceOwner, "skills")]);
-    let runner: &dyn ToolRunner = &NoToolRunner;
+fn reserved_summary_folds_skipped_entries_in_both_modes() {
+    let skipped = vec![ReservedSkipped {
+        rule_id: "UNI-906".to_string(),
+        hint_index: 0,
+        kind: HintKind::NamespaceOwner,
+    }];
 
-    let outcome = evaluate(
-        &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
-        &model,
-        tmp.path(),
-        runner,
-        1,
-    )
-    .expect("evaluate ok");
-
-    assert!(outcome.findings.is_empty(), "reserved kinds emit no findings inline");
-    assert_eq!(
-        outcome.reserved_skipped,
-        vec![ReservedSkipped {
-            rule_id: "UNI-906".to_string(),
-            hint_index: 0,
-            kind: HintKind::NamespaceOwner,
-        }]
-    );
-
-    let optional = reserved_hint_summary(&outcome.reserved_skipped, false).expect("present");
+    let optional = reserved_hint_summary(&skipped, false).expect("present");
     assert_eq!(optional.rule_id.as_deref(), Some("review.reserved-hint-skipped"));
     assert_eq!(optional.severity, Severity::Optional);
 
-    let strict = reserved_hint_summary(&outcome.reserved_skipped, true).expect("present");
+    let strict = reserved_hint_summary(&skipped, true).expect("present");
     assert_eq!(strict.rule_id.as_deref(), Some("review.reserved-hint-skipped"));
     assert_eq!(strict.severity, Severity::Important);
 

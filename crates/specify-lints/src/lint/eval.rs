@@ -8,10 +8,11 @@
 //! [`HintKind::ReferenceResolves`], PR 3 adds [`HintKind::Unique`],
 //! C12 adds [`HintKind::SetCoverage`], C13 adds
 //! [`HintKind::Cardinality`], C14 adds [`HintKind::ConstantEq`],
-//! C15 adds [`HintKind::SetEq`], and C16 adds
-//! [`HintKind::ContentDigestEq`] in the same family. Each rule's
+//! C15 adds [`HintKind::SetEq`], C16 adds
+//! [`HintKind::ContentDigestEq`], and C17 adds
+//! [`HintKind::NamespaceOwner`] in the same family. Each rule's
 //! hints are partitioned by kind and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → regex → tool`
+//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → namespace-owner → regex → tool`
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
@@ -26,16 +27,20 @@
 //!
 //! # Reserved-kind policy (reserved-hint diagnostics)
 //!
-//! The remaining reserved hint kind (`namespace-owner`) parses
-//! cleanly
-//! from the codex authoring schema
-//! but never execute in v1. [`evaluate`] records each occurrence as a
-//! [`ReservedSkipped`] entry on the returned [`HintEvalOutcome`]; the
-//! caller accumulates the entries across every rule it evaluates and
-//! folds them into a single `review.reserved-hint-skipped` summary
-//! finding via [`reserved_hint_summary`]. Strict mode upgrades the
-//! summary to severity `important`; the `rule_id` is the same in both
-//! modes so dashboards aggregate across strict / non-strict runs.
+//! After C17 NO hint kind is reserved — every [`HintKind`] variant has
+//! an executable interpreter and the partition above is exhaustive
+//! over executable arms. The reserved-kind machinery
+//! ([`ReservedSkipped`], [`HintEvalOutcome::reserved_skipped`],
+//! [`reserved_hint_summary`], the `review.reserved-hint-skipped`
+//! finding) stays as forward-compat scaffolding: a future kind landed
+//! as reserved before its interpreter would push a [`ReservedSkipped`]
+//! entry, the caller would accumulate the entries across every rule it
+//! evaluates, and [`reserved_hint_summary`] would fold them into a
+//! single `review.reserved-hint-skipped` summary finding (strict mode
+//! upgrades the severity from `optional` to `important`; the `rule_id`
+//! is the same in both modes so dashboards aggregate across strict /
+//! non-strict runs). With no reserved kind present,
+//! [`HintEvalOutcome::reserved_skipped`] is always empty in real runs.
 //!
 //! # Evidence cap (the structured evidence union)
 //!
@@ -54,6 +59,7 @@
 pub mod cardinality;
 pub mod constant_eq;
 pub mod content_digest_eq;
+pub mod namespace_owner;
 pub mod path_pattern;
 pub mod reference_resolves;
 pub mod regex;
@@ -202,11 +208,12 @@ pub struct HintEvalOutcome {
 /// Evaluate a single rule's hints against the workspace model.
 ///
 /// Hints are partitioned by kind and run in the order
-/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → regex → tool`
+/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → namespace-owner → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
-/// consume; reserved kinds collect into [`HintEvalOutcome::reserved_skipped`]
-/// without minting any findings inside this call.
+/// consume. No hint kind is reserved after C17, so
+/// [`HintEvalOutcome::reserved_skipped`] stays empty in real runs; the
+/// field remains for forward-compat with any future reserved kind.
 ///
 /// `start_id_counter` seeds the `FIND-NNNN` id sequence; the caller
 /// threads [`HintEvalOutcome::next_id_counter`] into the next call so
@@ -220,7 +227,9 @@ pub fn evaluate(
     tool_runner: &dyn ToolRunner, start_id_counter: u64,
 ) -> Result<HintEvalOutcome, HintError> {
     let mut findings: Vec<LintFinding> = Vec::new();
-    let mut reserved_skipped: Vec<ReservedSkipped> = Vec::new();
+    // No hint kind is reserved after C17; the machinery stays as
+    // forward-compat scaffolding for any future kind landed reserved.
+    let reserved_skipped: Vec<ReservedSkipped> = Vec::new();
     let mut next_id = start_id_counter;
 
     let mut path_pattern_hints: Vec<&DeterministicHint> = Vec::new();
@@ -232,10 +241,11 @@ pub fn evaluate(
     let mut constant_eq_hints: Vec<&DeterministicHint> = Vec::new();
     let mut set_eq_hints: Vec<&DeterministicHint> = Vec::new();
     let mut content_digest_eq_hints: Vec<&DeterministicHint> = Vec::new();
+    let mut namespace_owner_hints: Vec<&DeterministicHint> = Vec::new();
     let mut regex_hints: Vec<&DeterministicHint> = Vec::new();
     let mut tool_hints: Vec<&DeterministicHint> = Vec::new();
 
-    for (idx, hint) in hints.iter().enumerate() {
+    for hint in hints {
         match hint.kind {
             HintKind::PathPattern => path_pattern_hints.push(hint),
             HintKind::Schema => schema_hints.push(hint),
@@ -246,13 +256,9 @@ pub fn evaluate(
             HintKind::ConstantEq => constant_eq_hints.push(hint),
             HintKind::SetEq => set_eq_hints.push(hint),
             HintKind::ContentDigestEq => content_digest_eq_hints.push(hint),
+            HintKind::NamespaceOwner => namespace_owner_hints.push(hint),
             HintKind::Regex => regex_hints.push(hint),
             HintKind::Tool => tool_hints.push(hint),
-            kind @ HintKind::NamespaceOwner => reserved_skipped.push(ReservedSkipped {
-                rule_id: rule.rule_id.clone(),
-                hint_index: idx,
-                kind,
-            }),
         }
     }
 
@@ -288,6 +294,10 @@ pub fn evaluate(
     }
     for hint in content_digest_eq_hints {
         let mut new = content_digest_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in namespace_owner_hints {
+        let mut new = namespace_owner::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
     for hint in regex_hints {

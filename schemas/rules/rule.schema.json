@@ -135,7 +135,7 @@
               { "const": "constant-eq" },
               { "const": "set-eq" },
               { "const": "content-digest-eq" },
-              { "const": "namespace-owner", "x-hint-status": "reserved" }
+              { "const": "namespace-owner" }
             ]
           },
           "value": {
