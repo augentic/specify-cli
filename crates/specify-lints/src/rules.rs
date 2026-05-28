@@ -16,9 +16,10 @@
 //!   `body`) on top of the codex-rule shape.
 //! - [`LintFinding`] / [`FindingEvidence`] / [`FindingLocation`] /
 //!   [`FindingSource`] / [`Artifact`] / [`Confidence`] /
-//!   [`FindingStatus`] are the structured review-finding shape shared
-//!   by `specrun lint`, target adapter review briefs, and CI
-//!   annotations (CH-16/CH-21).
+//!   [`FindingStatus`] / [`FindingDisposition`] /
+//!   [`DirectiveDisposition`] / [`DispositionSource`] are the
+//!   structured review-finding shape shared by `specrun lint`, target
+//!   adapter review briefs, and CI annotations (CH-16/CH-21).
 //!
 //! Severity comparator order is `Critical < Important < Suggestion <
 //! Optional` and origin order is `Target < Source < Shared <

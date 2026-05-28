@@ -15,8 +15,7 @@ impl Plan {
     /// working directory `.specify/plans/<plan.name>/` and the
     /// operator brief (`change.md`) — into the archive directory.
     ///
-    /// Archive semantics
-    /// change plan archive`"):
+    /// Archive semantics (`change plan archive`):
     ///
     /// 1. Load the plan at `path`.
     /// 2. Collect every entry whose status is non-terminal for archival

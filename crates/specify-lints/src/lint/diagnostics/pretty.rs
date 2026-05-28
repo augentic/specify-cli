@@ -1,6 +1,8 @@
-//! Terminal formatter per the diagnostics formatter set — severity tag, rule id, title,
-//! source location, and an indented impact/remediation block per
-//! finding plus a tally footer mirroring [`super::LintSummary`].
+//! Terminal formatter per the diagnostics formatter set.
+//!
+//! Emits a severity tag, rule id, title, source location, and an
+//! indented impact/remediation block per finding plus a tally footer
+//! mirroring [`super::LintSummary`].
 //!
 //! ANSI escape codes are hand-written so the crate avoids a colour
 //! dependency. The `NO_COLOR` environment variable, when set

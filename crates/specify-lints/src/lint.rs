@@ -1,4 +1,9 @@
-//! Review surface per [DECISIONS.md §"Standards layer split into `specify-lints` and `specify-schema"](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema) and §"`WorkspaceModel`".
+//! Review surface for the deterministic lint layer.
+//!
+//! Cross-references: the standards-layer split lives in
+//! [DECISIONS.md § Standards layer split into `specify-lints` and `specify-schema`](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema)
+//! and the `WorkspaceModel` envelope is pinned by
+//! [DECISIONS.md § `WorkspaceModel`](../../DECISIONS.md#workspacemodel).
 //!
 //! Sibling umbrella to [`crate::rules`]: this module owns the
 //! `specrun lint` deterministic review pipeline — `WorkspaceModel` DTOs,

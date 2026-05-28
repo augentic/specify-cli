@@ -98,17 +98,22 @@
     "fingerprint": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$",
-      "description": "Stable hash of `(rule-id, location, evidence-payload)` for the structured lint finding schema fingerprint algorithm. Excludes producer-controlled fields (`id`, `title`, `severity`, `confidence`, `status`, `change`, `slice`, `target-adapter`, `source-adapter`)."
+      "description": "Stable hash of `(rule-id, location, evidence-payload)` for the structured lint finding schema fingerprint algorithm. Excludes producer-controlled fields (`id`, `title`, `severity`, `confidence`, `status`, `disposition`, `change`, `slice`, `target-adapter`, `source-adapter`)."
     },
     "status": {
       "type": "string",
       "enum": [
         "open",
+        "ignored",
         "fixed",
         "accepted",
         "false-positive"
       ],
-      "description": "Triage status. Omitted by raw scanners; populated by review reports or CI state."
+      "description": "Triage status. Omitted by raw scanners; populated by review reports, the directive post-pass, or CI state. The `ignored` value is set by the RFC-33a directive post-pass on findings matched by a `specify-ignore` directive; `false-positive` is set by the same pass when the directive's rationale begins with `false-positive:`. `open` is the only default-blocking value."
+    },
+    "disposition": {
+      "$ref": "#/$defs/disposition",
+      "description": "Origin of a non-`open` `status`. Unset when `status` is `open` or absent; required to carry `source` when present. RFC-33a producers populate `disposition.directive`."
     }
   },
   "$defs": {
@@ -196,6 +201,54 @@
       "items": {
         "$ref": "#/$defs/location"
       }
+    },
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "directive"
+          ],
+          "description": "Origin of the non-`open` status decision. RFC-33a producers emit `directive`; RFC-33b will widen this enum additively to add `baseline` when it lands."
+        },
+        "directive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "line",
+            "rationale"
+          ],
+          "properties": {
+            "path": {
+              "$ref": "#/$defs/relativePathPattern",
+              "description": "Project-relative path of the source file containing the `specify-ignore` directive."
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-based line of the directive comment itself (not the target line that the directive applies to)."
+            },
+            "rationale": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Free-form rationale captured verbatim from the directive comment. Short rationales (< 16 characters) still populate this field; the directive-validation pass emits `UNI-022` for them."
+            }
+          },
+          "description": "Directive disposition payload populated when `source: directive`."
+        },
+        "since": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional free-form marker indicating when the disposition took effect (e.g. a commit hash, ISO-8601 timestamp, or release tag). RFC-33a emitters leave this unset; reserved for downstream tooling."
+        }
+      },
+      "description": "Origin of a non-`open` finding status. `source` is the closed discriminator and is always required when the disposition object is present."
     },
     "evidence": {
       "type": "object",

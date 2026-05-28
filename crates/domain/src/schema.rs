@@ -2,7 +2,7 @@
 //! artifacts.
 //!
 //! The raw JSON-Schema plumbing and embedded constants live in
-//! [`specify_schema`] per [DECISIONS.md §"Standards layer split into `specify-lints` and `specify-schema"](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema); this module holds
+//! [`specify_schema`] per [DECISIONS.md § Standards layer split into `specify-lints` and `specify-schema`](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema); this module holds
 //! the workflow-aware wrappers — they import [`crate::change::Plan`],
 //! aggregate per-file findings into a single
 //! [`specify_error::Error::Validation`] payload, and pin the wire

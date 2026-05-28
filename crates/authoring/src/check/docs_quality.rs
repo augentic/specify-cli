@@ -191,10 +191,9 @@ fn has_specify_history_citation(text: &str) -> bool {
         let rest = &search[idx + retired_upper.len()..];
         if let Some(number) =
             parse_design_history_number(rest.strip_prefix('-').or_else(|| rest.strip_prefix(' ')))
+            && number < 100
         {
-            if number < 100 {
-                return true;
-            }
+            return true;
         }
         search = advance_one(rest);
     }

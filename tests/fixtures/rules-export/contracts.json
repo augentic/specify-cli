@@ -277,6 +277,28 @@
       "trigger": "Weakly typed values are used where enums, newtypes, or stronger domain types would prevent invalid states."
     },
     {
+      "body": "\n## Rule\n\nEvery in-source `specify-ignore` directive must name a rule id and carry a non-empty rationale that explains, in human terms, why the finding is being tolerated at that location. Suppressing a finding without explanation strips the next reader of the context they need to decide whether the directive still applies, and undermines the operator policy that directives are a deliberate exception rather than a silent mute.\n\nThe 16-character minimum on the rationale is the floor at which a rationale is long enough to be useful to a reviewer; shorter rationales are accepted by the parser but reported under this rule so the operator can replace them with a real explanation. This is a workflow-hygiene rule: it ships at `important` because every unrationaled directive is a small but durable knowledge gap, and accumulating them is how a project drifts from \"we acknowledge this exception\" to \"we forgot why this is here.\"\n\n## Look For\n\n- A directive of the form `specify-ignore: <RULE-ID>` with no following em-dash (or `--`) and rationale.\n- A directive with the delimiter present but the rationale text empty or whitespace-only.\n- A rationale shorter than 16 characters (for example, `bug`, `fix later`, `todo`).\n- Rationales that paraphrase the directive itself rather than explaining why the finding is tolerated (for example, `ignore this`).\n- Drive-by suppression added in the same change as the protected code with no commit-message or in-line rationale context.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/ignore-directive-missing-rationale.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-022",
+      "severity": "important",
+      "title": "Ignore Directive Missing Rationale",
+      "trigger": "A `specify-ignore` directive omits its rationale or carries a rationale shorter than 16 characters."
+    },
+    {
+      "body": "\n## Rule\n\nA `specify-ignore` directive must suppress a real finding. When a directive's rule id does not match any finding emitted for the next non-blank, non-comment line, the directive is an orphan — it does nothing today, but it leaves the reader with the impression that an exception is in force at that location. Orphan directives accumulate over time as the underlying rule, hint, or code path drifts, and they silently fail to suppress whatever finding the operator may have meant to suppress next.\n\n`important` is the defensible tier here because a dead directive is an authored statement of intent that no longer matches reality: unlike ordinary dead code (UNI-013, `suggestion`), it actively misleads the next reader about what is being tolerated at that location, and the fix is mechanical — delete the directive or restore the underlying finding it was meant to suppress.\n\n## Look For\n\n- A directive whose rule id belongs to a rule that has since been retired or renumbered.\n- A directive left behind after the offending code was refactored so the finding no longer fires.\n- A directive whose target line is empty or comment-only because of an intervening reformat (the directive now applies to a line that emits no finding).\n- A copy-pasted directive carried into a file where the targeted finding never fired in the first place.\n- A directive whose rule id does not belong to any rule resolved by the current scan (typo, wrong namespace, or a rule from a codex tree not loaded in this project).\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/ignore-directive-orphan.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-023",
+      "severity": "important",
+      "title": "Ignore Directive Orphan",
+      "trigger": "A `specify-ignore` directive names a rule id that does not match any finding on its target line."
+    },
+    {
       "body": "\n## Rule\n\nRemove or justify code that cannot execute. Dead code and unreachable paths hide stale behavior, missing dispatch wiring, and incorrect assumptions even when the compiler cannot prove they are unreachable.\n\n## Look For\n\n- Functions or methods with no call site in the codebase.\n- Match or switch arms that are unreachable because an earlier arm catches all matching values.\n- Code after unconditional `return`, `break`, `continue`, or `throw`.\n- Conditional branches guarded by conditions that are always true or always false given the surrounding context.\n- Event variants defined in the data model but never dispatched by any view or handler.\n",
       "deprecated": null,
       "origin": "shared",

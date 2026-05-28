@@ -1,6 +1,6 @@
 //! Embedded JSON Schemas and the JSON-Schema validation plumbing
 //! shared between `specify-domain` (workflow artifacts) and the future
-//! `specify-lints` standards-layer crate, per [DECISIONS.md §"Standards layer split into `specify-lints` and `specify-schema"](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema).
+//! `specify-lints` standards-layer crate, per [DECISIONS.md § Standards layer split into `specify-lints` and `specify-schema`](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema).
 //!
 //! Schemas are bundled at compile time via `include_str!` so the binary
 //! carries them with no runtime filesystem lookup. The helpers in

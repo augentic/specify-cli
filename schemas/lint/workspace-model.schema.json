@@ -99,6 +99,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/textMatch" },
       "description": "`WorkspaceModel` entity: `text_match` facts from the optional precomputed regex index."
+    },
+    "ignore_directives": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ignoreDirective" },
+      "description": "`WorkspaceModel` entity: `ignore_directive` facts from the RFC-33a indexer pass that recognises `specify-ignore: <RULE-ID> — <rationale>` comments across the closed comment-style list. Optional in v1 envelopes until the indexer extractor lands; consumers MUST tolerate the field's absence."
     }
   },
   "$defs": {
@@ -332,6 +337,42 @@
           "type": "string",
           "minLength": 1,
           "description": "`WorkspaceModel` entity: stable identifier for the precomputed regex pattern that produced this match."
+        }
+      }
+    },
+    "ignoreDirective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line", "rule-id", "target-line", "raw"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath",
+          "description": "`WorkspaceModel` entity: project-relative path of the file containing the directive comment."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line of the directive comment itself."
+        },
+        "rule-id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: rule id named by the directive (matches the rule schema's `id` regex; not pattern-pinned here so malformed directives can still surface as `UNI-022` / `UNI-023` candidates)."
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Verbatim rationale text from the directive comment. Absent when the directive was malformed (missing or empty rationale); the directive-validation pass emits `UNI-022` in that case."
+        },
+        "target-line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line the directive applies to. Inline trailing directives target their own line; block-leading directives target the next non-blank, non-comment line."
+        },
+        "raw": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Raw directive comment text as captured by the indexer, including delimiters; used by formatters that surface the original source spelling."
         }
       }
     }
