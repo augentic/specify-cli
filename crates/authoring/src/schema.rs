@@ -3,27 +3,27 @@ use std::path::{Path, PathBuf};
 
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
-use specify_schema::CODEX_RULE_JSON_SCHEMA;
+use specify_schema::RULE_JSON_SCHEMA;
 
 use crate::context::Context;
 use crate::error::ToolingError;
 use crate::helpers::skill_frontmatter;
 
 /// Cache key for the embedded codex-rule schema. The schema is compiled from
-/// the in-memory [`CODEX_RULE_JSON_SCHEMA`] constant rather than a filesystem
+/// the in-memory [`RULE_JSON_SCHEMA`] constant rather than a filesystem
 /// path, so the synthetic key keeps the rest of [`Context::schema_cache`]
 /// machinery uniform.
-const EMBEDDED_CODEX_RULE_CACHE_KEY: &str = "<embedded>/codex-rule.schema.json";
+const EMBEDDED_CODEX_RULE_CACHE_KEY: &str = "<embedded>/rule.schema.json";
 
 /// Framework-only JSON Schema identifiers.
 ///
-/// `CodexRule` resolves to the embedded constant
-/// [`specify_schema::CODEX_RULE_JSON_SCHEMA`]; the rest resolve to files under
+/// `Rule` resolves to the embedded constant
+/// [`specify_schema::RULE_JSON_SCHEMA`]; the rest resolve to files under
 /// `crates/authoring/schemas/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SchemaId {
     Skill,
-    CodexRule,
+    Rule,
     Scenario,
     Marketplace,
 }
@@ -34,7 +34,7 @@ impl SchemaId {
     pub const fn file_name(self) -> Option<&'static str> {
         match self {
             Self::Skill => Some("skill.schema.json"),
-            Self::CodexRule => None,
+            Self::Rule => None,
             Self::Scenario => Some("scenario.schema.json"),
             Self::Marketplace => Some("marketplace.schema.json"),
         }
@@ -44,9 +44,7 @@ impl SchemaId {
 /// Embedded schema source for `schema_id`, when one is compiled in.
 fn embedded_schema(schema_id: SchemaId) -> Option<(PathBuf, &'static str)> {
     match schema_id {
-        SchemaId::CodexRule => {
-            Some((PathBuf::from(EMBEDDED_CODEX_RULE_CACHE_KEY), CODEX_RULE_JSON_SCHEMA))
-        }
+        SchemaId::Rule => Some((PathBuf::from(EMBEDDED_CODEX_RULE_CACHE_KEY), RULE_JSON_SCHEMA)),
         SchemaId::Skill | SchemaId::Scenario | SchemaId::Marketplace => None,
     }
 }
@@ -80,7 +78,7 @@ pub fn schema_path(ctx: &Context, schema_id: SchemaId) -> Option<PathBuf> {
 /// Lazily compile a framework schema via the shared context cache.
 ///
 /// Schemas backed by an in-memory constant (today only
-/// `SchemaId::CodexRule`, sourced from [`CODEX_RULE_JSON_SCHEMA`]) compile
+/// `SchemaId::Rule`, sourced from [`RULE_JSON_SCHEMA`]) compile
 /// from the embedded bytes and are cached under a synthetic path; the rest
 /// read from `crates/authoring/schemas/`.
 pub fn validator(

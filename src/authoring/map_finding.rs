@@ -32,12 +32,12 @@
 //! ### Decision: imperative `rule_id` vs closed codex `rule-id`
 //!
 //! `crates/authoring/src/finding.rs` returns a static authoring
-//! identifier such as `codex.schema-violation`, `skill.duplicate-name`,
+//! identifier such as `rules.schema-violation`, `skill.duplicate-name`,
 //! or `links.unresolved`. The wire schema at
 //! `schemas/lint/finding.schema.json` constrains `rule-id` to the
 //! closed codex regex
 //! `^(UNI|SRC|FRAME|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
-//! Setting `rule_id: Some("codex.schema-violation".into())` would
+//! Setting `rule_id: Some("rules.schema-violation".into())` would
 //! therefore fail schema validation.
 //!
 //! To preserve the schema's closed contract while keeping the
@@ -53,14 +53,14 @@
 //! `rule_id: Some("FRAME-NNN")` and drop the `[...]` title prefix.
 
 use specify_authoring::finding::{Finding, Location};
-use specify_codex::fingerprint::fingerprint;
-use specify_codex::{Artifact, FindingEvidence, FindingLocation, FindingSource, LintFinding};
+use specify_lints::fingerprint::fingerprint;
+use specify_lints::{Artifact, FindingEvidence, FindingLocation, FindingSource, LintFinding};
 use specify_tool::sha256_hex;
 
 use crate::authoring::severity::severity_for;
 
 /// 16 `KiB` cap on the serialised evidence object per RFC-28 (mirror
-/// of `specify_codex::finding::EVIDENCE_MAX_BYTES`, kept
+/// of `specify_lints::finding::EVIDENCE_MAX_BYTES`, kept
 /// local so the mapper does not import the validator).
 const EVIDENCE_MAX_BYTES: usize = 16 * 1024;
 
@@ -189,8 +189,8 @@ mod tests {
     use std::path::PathBuf;
 
     use specify_authoring::finding::{Finding, Location};
-    use specify_codex::fingerprint::verify_fingerprint;
-    use specify_codex::{Artifact, FindingEvidence, FindingSource, Severity, validate_finding};
+    use specify_lints::fingerprint::verify_fingerprint;
+    use specify_lints::{Artifact, FindingEvidence, FindingSource, Severity, validate_finding};
 
     use super::{map_finding, map_findings};
 
@@ -215,9 +215,9 @@ mod tests {
     #[test]
     fn mapper_output_validates_against_review_finding_schema() {
         let input = fixture(
-            "codex.schema-violation",
-            "Codex rule frontmatter failed schema validation.",
-            Some("adapters/shared/codex/universal/example.md"),
+            "rules.schema-violation",
+            "Rule frontmatter failed schema validation.",
+            Some("adapters/shared/rules/universal/example.md"),
             12,
             Some(4),
         );
@@ -229,7 +229,7 @@ mod tests {
     /// rules map to Important via CH-20's table.
     #[test]
     fn severity_table_wires_through() {
-        let critical = map_finding(&fixture("codex.schema-violation", "boom", None, 1, None));
+        let critical = map_finding(&fixture("rules.schema-violation", "boom", None, 1, None));
         assert_eq!(critical.severity, Severity::Critical);
 
         let important = map_finding(&fixture("skill.duplicate-name", "dup", None, 1, None));
@@ -242,14 +242,14 @@ mod tests {
     #[test]
     fn title_prefixes_authoring_rule_id_in_brackets() {
         let mapped = map_finding(&fixture(
-            "codex.schema-violation",
-            "Codex rule frontmatter failed schema validation.\nsecond line ignored",
+            "rules.schema-violation",
+            "Rule frontmatter failed schema validation.\nsecond line ignored",
             None,
             1,
             None,
         ));
         assert!(
-            mapped.title.starts_with("[codex.schema-violation] "),
+            mapped.title.starts_with("[rules.schema-violation] "),
             "title must lead with the authoring rule id: {}",
             mapped.title,
         );
@@ -260,13 +260,13 @@ mod tests {
         );
     }
 
-    /// (4) Authoring imperative ids (`codex.schema-violation`,
+    /// (4) Authoring imperative ids (`rules.schema-violation`,
     /// `skill.duplicate-name`, ...) do not match the codex `rule-id`
     /// regex, so the mapper leaves `rule_id: None` and keeps the
     /// schema legal.
     #[test]
     fn rule_id_is_omitted_for_imperative_ids() {
-        for rule in ["codex.schema-violation", "skill.duplicate-name", "links.unresolved"] {
+        for rule in ["rules.schema-violation", "skill.duplicate-name", "links.unresolved"] {
             let mapped = map_finding(&fixture(rule, "msg", None, 1, None));
             assert!(mapped.rule_id.is_none(), "{rule} must yield rule_id: None");
         }

@@ -3,7 +3,7 @@
 //! Composes the standards-layer pipeline:
 //!
 //! 1. Resolve `--slice` / `--artifact` scope per RFC-32 §D2.
-//! 2. Build the resolved codex (`specify_codex::build_resolved_codex`)
+//! 2. Build the resolved codex (`specify_lints::build_resolved_rules`)
 //!    using the same artifact / language filters as the indexer so
 //!    the resolved rule set and the scan set agree.
 //! 3. Build the consumer `WorkspaceModel` (`lint::index::build`).
@@ -23,17 +23,17 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_codex::lint::diagnostics::{
+use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_lints::lint::diagnostics::{
     Format as DiagnosticsFormat, LintResult, LintResultVersion, LintSummary, RenderError, render,
 };
-use specify_codex::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_codex::lint::eval::{HintError, evaluate, reserved_hint_summary};
-use specify_codex::lint::index::{IndexError, build as build_model};
-use specify_codex::lint::{ScanProfile, WorkspaceModel};
-use specify_codex::{
-    LintFinding, LintMode, ResolveInputs, ResolvedRule, Severity, build_resolved_codex,
+use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
+use specify_lints::lint::eval::{HintError, evaluate, reserved_hint_summary};
+use specify_lints::lint::index::{IndexError, build as build_model};
+use specify_lints::lint::{ScanProfile, WorkspaceModel};
+use specify_lints::{
+    LintFinding, LintMode, ResolveInputs, ResolvedRule, Severity, build_resolved_rules,
 };
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_serialisable};
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
@@ -53,16 +53,16 @@ use crate::runtime::context::Ctx;
     reason = "Arguments mirror the closed RFC-32 §`specrun lint` (Phase 2 CLI) set; the handler threads the clap-derived surface verbatim through to ResolveInputs and lint::index::build."
 )]
 pub fn run(
-    ctx: &Ctx, codex_root: Option<&Path>, target: &str, sources: &[String], slice: Option<&str>,
+    ctx: &Ctx, rules_root: Option<&Path>, target: &str, sources: &[String], slice: Option<&str>,
     artifacts: &[PathBuf], languages: &[String], dump_model: bool, strict_hints: bool,
     format: DiagnosticsFormat,
 ) -> Result<()> {
     let artifact_set = compose_artifact_set(&ctx.project_dir, slice, artifacts)?;
-    let resolved_root = resolve_codex_root(ctx, codex_root);
+    let resolved_root = resolve_rules_root(ctx, rules_root);
 
     let inputs = ResolveInputs {
         project_dir: &ctx.project_dir,
-        codex_root: resolved_root.as_deref(),
+        rules_root: resolved_root.as_deref(),
         target_adapter: target,
         source_adapters: sources,
         artifact_paths: &artifact_set,
@@ -70,7 +70,7 @@ pub fn run(
         include_deprecated: false,
         include_unmatched: false,
     };
-    let resolved = build_resolved_codex(&inputs).map_err(map_resolve_error)?;
+    let resolved = build_resolved_rules(&inputs).map_err(map_resolve_error)?;
 
     let model = build_model(&ctx.project_dir, ScanProfile::Consumer, &artifact_set, languages)
         .map_err(map_index_error)?;
@@ -81,7 +81,7 @@ pub fn run(
 
     let runner = WasiToolRunner::new(ctx)?;
     let mut findings: Vec<LintFinding> = Vec::new();
-    let mut reserved: Vec<specify_codex::lint::eval::ReservedSkipped> = Vec::new();
+    let mut reserved: Vec<specify_lints::lint::eval::ReservedSkipped> = Vec::new();
     let mut next_id: u64 = 1;
 
     for rule in &resolved.rules {
@@ -117,21 +117,21 @@ pub fn run(
     decide_exit(&result)
 }
 
-/// Resolve the codex root per RFC-32 §D7.
+/// Resolve the rules root per RFC-32 §D7.
 ///
-/// Order: explicit `--codex-root` (clap-bound to `CODEX_ROOT` env)
-/// → `<project_dir>/.specify/cache/codex/` when present → defer to
-/// `build_resolved_codex`, which performs the monorepo probe and
-/// surfaces `codex-root-required` when every step misses.
+/// Order: explicit `--rules-root` (clap-bound to `RULES_ROOT` env)
+/// → `<project_dir>/.specify/cache/rules/` when present → defer to
+/// `build_resolved_rules`, which performs the monorepo probe and
+/// surfaces `rules-root-required` when every step misses.
 ///
 /// The §D7 step that walks a bundled tree alongside the binary
 /// install is intentionally not implemented in v1; consumer projects
-/// pin a codex via `--codex-root` or the project cache rung.
-fn resolve_codex_root(ctx: &Ctx, flag: Option<&Path>) -> Option<PathBuf> {
+/// pin a codex via `--rules-root` or the project cache rung.
+fn resolve_rules_root(ctx: &Ctx, flag: Option<&Path>) -> Option<PathBuf> {
     if let Some(path) = flag {
         return Some(path.to_path_buf());
     }
-    let cache = ctx.project_dir.join(".specify").join("cache").join("codex");
+    let cache = ctx.project_dir.join(".specify").join("cache").join("rules");
     cache.is_dir().then_some(cache)
 }
 
@@ -385,7 +385,7 @@ fn map_render_error(err: RenderError) -> Error {
     }
 }
 
-/// `ToolRunner` impl bridging `specify-codex`'s standards-layer
+/// `ToolRunner` impl bridging `specify-lints`'s standards-layer
 /// trait to the runtime's declared WASI tool inventory.
 ///
 /// Owns the inventory built from `project.yaml` + the active target

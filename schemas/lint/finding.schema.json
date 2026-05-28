@@ -19,11 +19,11 @@
   "properties": {
     "id": {
       "$ref": "#/$defs/findingId",
-      "description": "Producer-local stable id for this run (e.g. `FIND-0001`). NOT the codex rule id; report-local heading ids such as `SEC-1` or `UNI-3` also live here when emitted as JSON."
+      "description": "Producer-local stable id for this run (e.g. `FIND-0001`). NOT the rule id; report-local heading ids such as `SEC-1` or `UNI-3` also live here when emitted as JSON."
     },
     "rule-id": {
       "$ref": "#/$defs/ruleId",
-      "description": "Codex rule id (e.g. `UNI-014`). Required when the finding maps to a codex rule; absent for findings that do not cite codex policy."
+      "description": "Rule id (e.g. `UNI-014`). Required when the finding maps to a rule; absent for findings that do not cite codex policy."
     },
     "related-rule-ids": {
       "type": "array",
@@ -120,7 +120,7 @@
     "ruleId": {
       "type": "string",
       "pattern": "^(UNI|SRC|FRAME|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$",
-      "description": "Mirrors `codex/resolved.schema.json#/$defs/ruleId` and `crates/authoring/schemas/codex-rule.schema.json#/$defs/ruleId`."
+      "description": "Mirrors `codex/resolved.schema.json#/$defs/ruleId` and `crates/authoring/schemas/rule.schema.json#/$defs/ruleId`."
     },
     "adapterRef": {
       "type": "string",

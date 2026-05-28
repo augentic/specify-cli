@@ -8,14 +8,14 @@ use clap::Subcommand;
 #[derive(Subcommand)]
 pub enum RulesAction {
     /// Resolve and export the codex envelope as JSON (RFC-28
-    /// §"Resolved codex export").
+    /// §"Resolved rules export").
     ///
     /// Read-only: no `.specify/` writes, no lifecycle transitions,
     /// no journal events. The handler probes for shared `UNI-*`
-    /// rules (via `--codex-root` or a project-local
-    /// `adapters/shared/codex/universal/` tree), discovers the
+    /// rules (via `--rules-root` or a project-local
+    /// `adapters/shared/rules/universal/` tree), discovers the
     /// `--target` and `--source` overlays per RFC-28 §"Resolution
-    /// roots", and streams the sorted `ResolvedCodex` envelope to
+    /// roots", and streams the sorted `ResolvedRules` envelope to
     /// stdout.
     ///
     /// Only `--format json` is supported in v1; text output is
@@ -23,13 +23,13 @@ pub enum RulesAction {
     /// at the `Cli` level surfaces as an explicit argument error so
     /// the closed JSON-only contract stays visible.
     Export {
-        /// Codex root supplying shared `UNI-*` rules and codex-root
+        /// Codex root supplying shared `UNI-*` rules and rules-root
         /// fallback overlays (RFC-28 §"Codex root resolution
         /// (v1)"). When omitted the resolver probes the
-        /// project-local `adapters/shared/codex/universal/` tree;
-        /// failing that, exits with `codex-root-required`.
+        /// project-local `adapters/shared/rules/universal/` tree;
+        /// failing that, exits with `rules-root-required`.
         #[arg(long)]
-        codex_root: Option<PathBuf>,
+        rules_root: Option<PathBuf>,
 
         /// Target-adapter name (kebab, optionally `<name>@v<major>`).
         /// Required.

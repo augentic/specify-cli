@@ -12,20 +12,20 @@
 use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
-use specify_codex::lint::diagnostics::Format as DiagnosticsFormat;
+use specify_lints::lint::diagnostics::Format as DiagnosticsFormat;
 
 #[derive(Subcommand)]
 pub enum LintAction {
-    /// Resolve applicable codex rules, build a `WorkspaceModel`,
+    /// Resolve applicable rules, build a `WorkspaceModel`,
     /// evaluate deterministic hints, and emit the RFC-28 review
     /// envelope (RFC-32 §"`specrun lint` (Phase 2 CLI)").
     Run {
         /// Codex root supplying shared `UNI-*` rules. Resolution
-        /// order (RFC-32 §D7): this flag → `$CODEX_ROOT` env →
-        /// project's `.specify/cache/codex/` → bundled tree.
-        /// Validation failure exits 2 with `codex-root-required`.
-        #[arg(long, env = "CODEX_ROOT")]
-        codex_root: Option<PathBuf>,
+        /// order (RFC-32 §D7): this flag → `$RULES_ROOT` env →
+        /// project's `.specify/cache/rules/` → bundled tree.
+        /// Validation failure exits 2 with `rules-root-required`.
+        #[arg(long, env = "RULES_ROOT")]
+        rules_root: Option<PathBuf>,
 
         /// Target-adapter name (kebab, optionally `<name>@v<major>`).
         #[arg(long)]
@@ -87,7 +87,7 @@ pub enum LintAction {
 
 /// Clap-derivable mirror of [`DiagnosticsFormat`] per RFC-32 §D6.
 ///
-/// Kept distinct from the `specify-codex` enum so the standards crate
+/// Kept distinct from the `specify-lints` enum so the standards crate
 /// stays runtime-agnostic; the [`From`] impl below is the single
 /// adapter. The wire spelling matches the RFC §D6 closed set
 /// (`compact`, `github`, `json`, `pretty`).

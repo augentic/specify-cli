@@ -1,15 +1,15 @@
 //! RFC-28 CH-18 golden tests for `specrun rules export`.
 //!
-//! Exercises the runtime codex export contract — RFC-28 §"Resolved
-//! codex export" and §"Codex root resolution (v1)" — via the
-//! [`specify_codex::build_resolved_codex`] library entrypoint
+//! Exercises the runtime rules export contract — RFC-28 §"Resolved
+//! rules export" and §"Codex root resolution (v1)" — via the
+//! [`specify_lints::build_resolved_rules`] library entrypoint
 //! for the positive scenarios and `assert_cmd` for the negative
-//! `codex-root-required` scenario (the latter end-to-end proof that
+//! `rules-root-required` scenario (the latter end-to-end proof that
 //! the CH-17 CLI plumbing wires through to `Exit::ValidationFailed`).
 //!
 //! ## Sibling-repo dependency
 //!
-//! Golden tests resolve their codex root against the
+//! Golden tests resolve their rules root against the
 //! [`augentic/specify`](https://github.com/augentic/specify) plugin
 //! checkout — the canonical source of `UNI-*`, target overlays, and
 //! the CH-05 `SRC-001` fixture. The checkout location is configurable
@@ -23,7 +23,7 @@
 //! ## Regenerating goldens
 //!
 //! Golden JSON fixtures live under
-//! `tests/fixtures/codex-export/<scenario>.json`. They are
+//! `tests/fixtures/rules-export/<scenario>.json`. They are
 //! pretty-printed (`serde_json::to_string_pretty`, 2-space indent) with
 //! a single trailing newline. To refresh after an intentional change to
 //! the export shape or sibling-repo codex content:
@@ -40,7 +40,7 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::Value;
-use specify_codex::{ResolveInputs, ResolvedCodex, build_resolved_codex};
+use specify_lints::{ResolveInputs, ResolvedRules, build_resolved_rules};
 use tempfile::tempdir;
 
 /// Locate the `augentic/specify` plugin-repo checkout. Returns
@@ -57,19 +57,19 @@ fn plugin_repo_path() -> Option<PathBuf> {
 
 /// Resolve the directory where golden fixtures live.
 fn goldens_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("codex-export")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("rules-export")
 }
 
 /// Build the export envelope by calling the library entrypoint
 /// directly. The project dir is a fresh tempdir so no project-local
-/// adapter rungs interfere with the codex-root fallback path.
+/// adapter rungs interfere with the rules-root fallback path.
 fn run_export(
-    codex_root: &Path, target: &str, sources: &[String], include_deprecated: bool,
-) -> ResolvedCodex {
+    rules_root: &Path, target: &str, sources: &[String], include_deprecated: bool,
+) -> ResolvedRules {
     let project = tempdir().expect("project tempdir");
     let inputs = ResolveInputs {
         project_dir: project.path(),
-        codex_root: Some(codex_root),
+        rules_root: Some(rules_root),
         target_adapter: target,
         source_adapters: sources,
         artifact_paths: &[],
@@ -77,7 +77,7 @@ fn run_export(
         include_deprecated,
         include_unmatched: false,
     };
-    build_resolved_codex(&inputs).expect("build_resolved_codex succeeds")
+    build_resolved_rules(&inputs).expect("build_resolved_rules succeeds")
 }
 
 /// Compare `actual` against `<goldens_dir>/<name>.json`, or write the
@@ -115,15 +115,15 @@ fn assert_golden(actual: &Value, name: &str) {
     );
 }
 
-/// RFC-28 §"Resolved codex export": exporting against the `omnia`
+/// RFC-28 §"Resolved rules export": exporting against the `omnia`
 /// target carries shared `UNI-*` rules plus the omnia overlay.
 #[test]
 fn omnia_golden() {
-    let Some(codex_root) = plugin_repo_path() else {
+    let Some(rules_root) = plugin_repo_path() else {
         eprintln!("SKIP omnia_golden: ../specify checkout not found");
         return;
     };
-    let resolved = run_export(&codex_root, "omnia", &[], false);
+    let resolved = run_export(&rules_root, "omnia", &[], false);
     let value = serde_json::to_value(&resolved).expect("to_value");
     assert_golden(&value, "omnia");
 }
@@ -131,11 +131,11 @@ fn omnia_golden() {
 /// `vectis` target overlay rolls up alongside the shared rules.
 #[test]
 fn vectis_golden() {
-    let Some(codex_root) = plugin_repo_path() else {
+    let Some(rules_root) = plugin_repo_path() else {
         eprintln!("SKIP vectis_golden: ../specify checkout not found");
         return;
     };
-    let resolved = run_export(&codex_root, "vectis", &[], false);
+    let resolved = run_export(&rules_root, "vectis", &[], false);
     let value = serde_json::to_value(&resolved).expect("to_value");
     assert_golden(&value, "vectis");
 }
@@ -143,11 +143,11 @@ fn vectis_golden() {
 /// `contracts` target overlay rolls up alongside the shared rules.
 #[test]
 fn contracts_golden() {
-    let Some(codex_root) = plugin_repo_path() else {
+    let Some(rules_root) = plugin_repo_path() else {
         eprintln!("SKIP contracts_golden: ../specify checkout not found");
         return;
     };
-    let resolved = run_export(&codex_root, "contracts", &[], false);
+    let resolved = run_export(&rules_root, "contracts", &[], false);
     let value = serde_json::to_value(&resolved).expect("to_value");
     assert_golden(&value, "contracts");
 }
@@ -156,19 +156,19 @@ fn contracts_golden() {
 /// the `documentation` source adapter is bound to the export context.
 #[test]
 fn omnia_with_documentation_source_overlay() {
-    let Some(codex_root) = plugin_repo_path() else {
+    let Some(rules_root) = plugin_repo_path() else {
         eprintln!("SKIP omnia_with_documentation_source_overlay: ../specify checkout not found");
         return;
     };
     let sources = vec!["documentation".to_string()];
-    let resolved = run_export(&codex_root, "omnia", &sources, false);
+    let resolved = run_export(&rules_root, "omnia", &sources, false);
 
     let src_001 = resolved
         .rules
         .iter()
         .find(|r| r.rule_id == "SRC-001")
         .expect("SRC-001 must appear when documentation source is bound");
-    assert_eq!(src_001.origin, specify_codex::Origin::Source, "SRC-001 must carry origin=source");
+    assert_eq!(src_001.origin, specify_lints::Origin::Source, "SRC-001 must carry origin=source");
 
     let value = serde_json::to_value(&resolved).expect("to_value");
     assert_golden(&value, "omnia-with-documentation");
@@ -180,11 +180,11 @@ fn omnia_with_documentation_source_overlay() {
 /// makes a future deprecation visible as a focused diff.
 #[test]
 fn omnia_include_deprecated() {
-    let Some(codex_root) = plugin_repo_path() else {
+    let Some(rules_root) = plugin_repo_path() else {
         eprintln!("SKIP omnia_include_deprecated: ../specify checkout not found");
         return;
     };
-    let resolved = run_export(&codex_root, "omnia", &[], true);
+    let resolved = run_export(&rules_root, "omnia", &[], true);
     let value = serde_json::to_value(&resolved).expect("to_value");
     assert_golden(&value, "omnia-include-deprecated");
 }
@@ -196,13 +196,13 @@ fn omnia_include_deprecated() {
 /// the goldens themselves use.
 #[test]
 fn stable_ordering_byte_identical() {
-    let Some(codex_root) = plugin_repo_path() else {
+    let Some(rules_root) = plugin_repo_path() else {
         eprintln!("SKIP stable_ordering_byte_identical: ../specify checkout not found");
         return;
     };
-    let first = serde_json::to_string_pretty(&run_export(&codex_root, "omnia", &[], false))
+    let first = serde_json::to_string_pretty(&run_export(&rules_root, "omnia", &[], false))
         .expect("first pretty");
-    let second = serde_json::to_string_pretty(&run_export(&codex_root, "omnia", &[], false))
+    let second = serde_json::to_string_pretty(&run_export(&rules_root, "omnia", &[], false))
         .expect("second pretty");
     assert_eq!(first, second, "two consecutive exports must be byte-identical");
 }
@@ -224,12 +224,12 @@ fn stable_ordering_byte_identical() {
 ///   spelled with the kebab-case wire key.
 #[test]
 fn omnia_agent_consumable_assertions() {
-    let Some(codex_root) = plugin_repo_path() else {
+    let Some(rules_root) = plugin_repo_path() else {
         eprintln!("SKIP omnia_agent_consumable_assertions: ../specify checkout not found");
         return;
     };
     let sources = vec!["documentation".to_string()];
-    let resolved = run_export(&codex_root, "omnia", &sources, true);
+    let resolved = run_export(&rules_root, "omnia", &sources, true);
 
     assert!(
         resolved.rules.iter().any(|r| r.body.contains("## Rule")),
@@ -265,7 +265,7 @@ fn omnia_agent_consumable_assertions() {
 
     // Wire-key check: serialise the envelope and verify the
     // kebab-case `replaced-by` form is the only spelling present, per
-    // RFC-28 §"Resolved codex export". This holds whether or not any
+    // RFC-28 §"Resolved rules export". This holds whether or not any
     // deprecated rule actually appears today (no `replaced_by` token
     // can exist either way).
     let body = serde_json::to_string(&resolved).expect("serialise");
@@ -275,13 +275,13 @@ fn omnia_agent_consumable_assertions() {
     );
 }
 
-/// Negative scenario: a project dir with no shared codex tree, no
-/// `--codex-root`, must exit `2` (validation) with `codex-root-required`
+/// Negative scenario: a project dir with no shared rules tree, no
+/// `--rules-root`, must exit `2` (validation) with `rules-root-required`
 /// surfaced through the error envelope. Exercises the CH-17 CLI
 /// plumbing end-to-end so the wire contract for the closed
-/// `ResolveError::CodexRootRequired` mapping stays pinned.
+/// `ResolveError::RulesRootRequired` mapping stays pinned.
 #[test]
-fn negative_codex_root_required() {
+fn negative_rules_root_required() {
     let project = tempdir().expect("project tempdir");
 
     let output = Command::cargo_bin("specrun")
@@ -306,5 +306,5 @@ fn negative_codex_root_required() {
         .pointer("/results/0/rule-id")
         .and_then(Value::as_str)
         .expect("envelope must carry results[0].rule-id");
-    assert_eq!(rule_id, "codex-root-required", "envelope:\n{envelope:#}");
+    assert_eq!(rule_id, "rules-root-required", "envelope:\n{envelope:#}");
 }

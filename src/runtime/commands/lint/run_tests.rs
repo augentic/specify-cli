@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use specify_codex::HintKind;
+use specify_lints::HintKind;
 
 use super::*;
 
@@ -14,8 +14,8 @@ fn fake_rule() -> ResolvedRule {
         applicability: None,
         deterministic_hints: None,
         references: None,
-        origin: specify_codex::Origin::Shared,
-        path_root: specify_codex::PathRoot::CodexRoot,
+        origin: specify_lints::Origin::Shared,
+        path_root: specify_lints::PathRoot::RulesRoot,
         path: "shared/UNI-001.md".into(),
         body: String::new(),
         deprecated: None,
@@ -71,7 +71,7 @@ const HINT_VALIDATION_CASES: &[ValidationCase<HintError>] = &[
     ValidationCase {
         err: || HintError::SchemaCompile {
             rule_id: RULE_ID.into(),
-            schema_ref: "codex-rule".into(),
+            schema_ref: "rule".into(),
             detail: "compile failed".into(),
         },
         rule_id: "review-schema-compile-failed",

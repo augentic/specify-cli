@@ -79,7 +79,7 @@ pub fn run(cli: Cli) -> Exit {
         },
         Commands::Rules { action } => match action {
             RulesAction::Export {
-                codex_root,
+                rules_root,
                 target,
                 sources,
                 artifacts,
@@ -90,7 +90,7 @@ pub fn run(cli: Cli) -> Exit {
             } => dispatch(format, || {
                 rules::export::run(
                     format,
-                    codex_root.as_deref(),
+                    rules_root.as_deref(),
                     &target,
                     &sources,
                     &artifacts,
@@ -111,7 +111,7 @@ pub fn run(cli: Cli) -> Exit {
         },
         Commands::Lint { action } => match action {
             LintAction::Run {
-                codex_root,
+                rules_root,
                 target,
                 sources,
                 slice,
@@ -124,7 +124,7 @@ pub fn run(cli: Cli) -> Exit {
             } => scoped_at(format, &project_dir, |ctx| {
                 lint::run::run(
                     ctx,
-                    codex_root.as_deref(),
+                    rules_root.as_deref(),
                     &target,
                     &sources,
                     slice.as_deref(),

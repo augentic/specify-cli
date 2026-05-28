@@ -4566,9 +4566,9 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-authoring",
- "specify-codex",
  "specify-domain",
  "specify-error",
+ "specify-lints",
  "specify-schema",
  "specify-tool",
  "strum 0.28.0",
@@ -4587,30 +4587,11 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "sha2 0.11.0",
- "specify-codex",
  "specify-error",
+ "specify-lints",
  "specify-schema",
  "tempfile",
  "walkdir",
-]
-
-[[package]]
-name = "specify-codex"
-version = "0.3.0"
-dependencies = [
- "glob",
- "ignore",
- "jsonschema",
- "rayon",
- "regex",
- "serde",
- "serde-saphyr",
- "serde_json",
- "specify-error",
- "specify-schema",
- "specify-tool",
- "tempfile",
- "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4643,6 +4624,25 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "strum 0.28.0",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "specify-lints"
+version = "0.3.0"
+dependencies = [
+ "glob",
+ "ignore",
+ "jsonschema",
+ "rayon",
+ "regex",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "specify-error",
+ "specify-schema",
+ "specify-tool",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

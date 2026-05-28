@@ -19,7 +19,7 @@
     "skills",
     "adapter_manifests",
     "marketplace_entries",
-    "codex_rules",
+    "rule_index",
     "text_matches"
   ],
   "properties": {
@@ -90,10 +90,10 @@
       "items": { "$ref": "#/$defs/marketplaceEntry" },
       "description": "Per RFC-32 §Core entity families (v1) — `marketplace_entry` facts from `.cursor-plugin/marketplace.json`."
     },
-    "codex_rules": {
+    "rule_index": {
       "type": "array",
-      "items": { "$ref": "#/$defs/codexRule" },
-      "description": "Per RFC-32 §Core entity families (v1) — `codex_rule` facts from codex tree discovery (reuses the RFC-28 parser)."
+      "items": { "$ref": "#/$defs/ruleIndexEntry" },
+      "description": "Per RFC-32 §Core entity families (v1) — `rule_index` facts from rules tree discovery (reuses the RFC-28 parser)."
     },
     "text_matches": {
       "type": "array",
@@ -290,7 +290,7 @@
         }
       }
     },
-    "codexRule": {
+    "ruleIndexEntry": {
       "type": "object",
       "additionalProperties": false,
       "required": ["rule-id", "path", "origin", "frontmatter-ref"],
@@ -298,13 +298,13 @@
         "rule-id": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — codex rule id (matches the RFC-28 codex-rule schema's `id` regex)."
+          "description": "Per RFC-32 §Core entity families (v1) — rule id (matches the RFC-28 rule schema's `id` regex)."
         },
         "path": { "$ref": "#/$defs/relativePath" },
         "origin": {
           "type": "string",
           "enum": ["target", "source", "shared", "organization"],
-          "description": "Per RFC-32 §Core entity families (v1) — which codex tree contributed the rule (target adapter, source adapter, shared universal tree, or organization-local overlay)."
+          "description": "Per RFC-32 §Core entity families (v1) — which rules tree contributed the rule (target adapter, source adapter, shared universal tree, or organization-local overlay)."
         },
         "frontmatter-ref": {
           "$ref": "#/$defs/relativePath",

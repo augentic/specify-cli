@@ -4,69 +4,69 @@
       "artifact": "unknown",
       "evidence": {
         "kind": "snippet",
-        "value": "Codex rule duplicate id 'UNI-100' across files: adapters/shared/codex/universal/uni-100-first.md, adapters/shared/codex/universal/uni-100-second.md"
+        "value": "Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
       },
-      "fingerprint": "sha256:8fec9eff12028a747d2b1d8c2635359ba92be82b1c3f503e7e616c792d3a657d",
+      "fingerprint": "sha256:36d75d794ddaf8703e4fe6c42c773d38a4ac53328d8622c7079dc56f74f0b270",
       "id": "FIND-0001",
-      "impact": "Authoring check 'codex.duplicate-rule-id' failed.",
-      "remediation": "Resolve the violation reported by 'codex.duplicate-rule-id'. See the finding message for details.",
+      "impact": "Authoring check 'rules.duplicate-rule-id' failed.",
+      "remediation": "Resolve the violation reported by 'rules.duplicate-rule-id'. See the finding message for details.",
       "severity": "important",
       "source": "deterministic",
-      "title": "[codex.duplicate-rule-id] Codex rule duplicate id 'UNI-100' across files: adapters/shared/codex/universal/uni-100-first.md, adapters/shared/codex/universal/uni-100-second.md"
+      "title": "[rules.duplicate-rule-id] Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
     },
     {
       "artifact": "unknown",
       "evidence": {
         "kind": "snippet",
-        "value": "Codex namespace ownership: adapters/targets/omnia/codex/frame-misplaced.md — FRAME-* ids are reserved by RFC-32 for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' under codex owner 'omnia')"
+        "value": "Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved by RFC-32 for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' under rules owner 'omnia')"
       },
-      "fingerprint": "sha256:9af3afe162ab3c892cb5334bd4c7291f67da71e3ec35b9daf36b65d0a540c300",
+      "fingerprint": "sha256:1844b62526c66d8de352c143e5f606f62e85760c65361f2fe7b178b7a20199d8",
       "id": "FIND-0002",
-      "impact": "Authoring check 'codex.namespace-ownership-violation' failed.",
+      "impact": "Authoring check 'rules.namespace-ownership-violation' failed.",
       "location": {
         "line": 1,
-        "path": "<FRAMEWORK_ROOT>/adapters/targets/omnia/codex/frame-misplaced.md"
+        "path": "<FRAMEWORK_ROOT>/adapters/targets/omnia/rules/frame-misplaced.md"
       },
-      "remediation": "Resolve the violation reported by 'codex.namespace-ownership-violation'. See the finding message for details.",
+      "remediation": "Resolve the violation reported by 'rules.namespace-ownership-violation'. See the finding message for details.",
       "severity": "important",
       "source": "deterministic",
-      "title": "[codex.namespace-ownership-violation] Codex namespace ownership: adapters/targets/omnia/codex/frame-misplaced.md — FRAME-* ids are reserved by RFC-32 for framework-repo declarative rules and may not …"
+      "title": "[rules.namespace-ownership-violation] Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved by RFC-32 for framework-repo declarative rules and may not …"
     },
     {
       "artifact": "unknown",
       "evidence": {
         "kind": "snippet",
-        "value": "Codex rule frontmatter: adapters/shared/codex/universal/bad-frontmatter.md — / \"severity\" is a required property"
+        "value": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"severity\" is a required property"
       },
-      "fingerprint": "sha256:8e9b701a660ce65c65ddb98333c5ff30b7ed289c54a6db3f16d452f2938c017d",
+      "fingerprint": "sha256:9308bdd4a18f78637af57e287a87f7b728af1f86a4dd7f156668b931d52a5ae1",
       "id": "FIND-0003",
-      "impact": "Authoring check 'codex.schema-violation' failed.",
+      "impact": "Authoring check 'rules.schema-violation' failed.",
       "location": {
         "line": 1,
-        "path": "<FRAMEWORK_ROOT>/adapters/shared/codex/universal/bad-frontmatter.md"
+        "path": "<FRAMEWORK_ROOT>/adapters/shared/rules/universal/bad-frontmatter.md"
       },
-      "remediation": "Resolve the violation reported by 'codex.schema-violation'. See the finding message for details.",
+      "remediation": "Resolve the violation reported by 'rules.schema-violation'. See the finding message for details.",
       "severity": "critical",
       "source": "deterministic",
-      "title": "[codex.schema-violation] Codex rule frontmatter: adapters/shared/codex/universal/bad-frontmatter.md — / \"severity\" is a required property"
+      "title": "[rules.schema-violation] Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"severity\" is a required property"
     },
     {
       "artifact": "unknown",
       "evidence": {
         "kind": "snippet",
-        "value": "Codex rule frontmatter: adapters/shared/codex/universal/bad-frontmatter.md — / \"trigger\" is a required property"
+        "value": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"trigger\" is a required property"
       },
-      "fingerprint": "sha256:a2ff028391f127d1bfefb0b722d7623e0c8d5abb21473c18181b4489adb2a896",
+      "fingerprint": "sha256:e9f264c970cfae4df1436e74f5f2df9be95fb721b6822c2bc8bda4cb9786dc02",
       "id": "FIND-0004",
-      "impact": "Authoring check 'codex.schema-violation' failed.",
+      "impact": "Authoring check 'rules.schema-violation' failed.",
       "location": {
         "line": 1,
-        "path": "<FRAMEWORK_ROOT>/adapters/shared/codex/universal/bad-frontmatter.md"
+        "path": "<FRAMEWORK_ROOT>/adapters/shared/rules/universal/bad-frontmatter.md"
       },
-      "remediation": "Resolve the violation reported by 'codex.schema-violation'. See the finding message for details.",
+      "remediation": "Resolve the violation reported by 'rules.schema-violation'. See the finding message for details.",
       "severity": "critical",
       "source": "deterministic",
-      "title": "[codex.schema-violation] Codex rule frontmatter: adapters/shared/codex/universal/bad-frontmatter.md — / \"trigger\" is a required property"
+      "title": "[rules.schema-violation] Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"trigger\" is a required property"
     }
   ],
   "summary": {

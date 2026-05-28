@@ -15,12 +15,12 @@
 //! ```text
 //! | Authoring rule-id                                | RFC-28 severity |
 //! | ------------------------------------------------ | --------------- |
-//! | codex.schema-violation                           | critical        |
+//! | rules.schema-violation                           | critical        |
 //! | adapter.*                                        | important       |
 //! | agent-teams.*                                    | important       |
 //! | brief.*                                          | important       |
-//! | codex.duplicate-rule-id                          | important       |
-//! | codex.namespace-ownership-violation              | important       |
+//! | rules.duplicate-rule-id                          | important       |
+//! | rules.namespace-ownership-violation              | important       |
 //! | docs.*                                           | important       |
 //! | links.*                                          | important       |
 //! | plugins.*                                        | important       |
@@ -33,8 +33,8 @@
 //!
 //! ### Calibration
 //!
-//! Only `codex.schema-violation` is elevated to `Critical`: a malformed
-//! codex rule file is a fundamental schema breakage that breaks every
+//! Only `rules.schema-violation` is elevated to `Critical`: a malformed
+//! rule file is a fundamental schema breakage that breaks every
 //! downstream consumer of the resolved codex (`specrun rules export`,
 //! review tooling, target adapter overlays). Every other authoring
 //! rule — duplicate rule ids, namespace-ownership violations, skill /
@@ -54,18 +54,18 @@
 //! dependency on `specify-domain`. CH-20 is a building block for that
 //! mapper, so the severity table must live in the binary layer too.
 
-use specify_codex::Severity;
+use specify_lints::Severity;
 
 /// Map an authoring `Finding::rule_id` to the closed RFC-28
 /// [`Severity`] enum.
 ///
 /// Unknown rule ids fall through to [`Severity::Important`] — the
 /// default escalation level documented for adapter overlays in
-/// RFC-28 §"Resolved codex export".
+/// RFC-28 §"Resolved rules export".
 #[must_use]
 pub fn severity_for(rule_id: &str) -> Severity {
     match rule_id {
-        "codex.schema-violation" => Severity::Critical,
+        "rules.schema-violation" => Severity::Critical,
         _ => Severity::Important,
     }
 }
@@ -81,16 +81,16 @@ mod tests {
         SCENARIO_RULE_BODY_ID_MISMATCH, SCENARIO_RULE_DUPLICATE_ID, SCENARIO_RULE_SCHEMA_VIOLATION,
         SKILL_RULE_SCHEMA_VIOLATION,
     };
-    use specify_codex::Severity;
+    use specify_lints::Severity;
 
     use super::severity_for;
 
-    /// `codex.schema-violation` is the one rule the table elevates to
-    /// `Critical` (RFC-28 §"Resolved codex export" — schema breakage
+    /// `rules.schema-violation` is the one rule the table elevates to
+    /// `Critical` (RFC-28 §"Resolved rules export" — schema breakage
     /// blocks every downstream consumer of the resolved codex).
     #[test]
     fn codex_schema_violation_maps_to_critical() {
-        assert_eq!(severity_for("codex.schema-violation"), Severity::Critical);
+        assert_eq!(severity_for("rules.schema-violation"), Severity::Critical);
     }
 
     /// The `skill.*` family covers frontmatter and body checks; per the

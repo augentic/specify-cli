@@ -83,7 +83,7 @@ pub enum Commands {
 
     /// Rules resolution operations (RFC-28). Read-only: no
     /// `.specify/` writes, no journal events. Today the only verb is
-    /// `export`, which streams a `ResolvedCodex` JSON envelope built
+    /// `export`, which streams a `ResolvedRules` JSON envelope built
     /// from the shared / source / target codex overlay tree.
     Rules {
         #[command(subcommand)]

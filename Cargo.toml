@@ -26,7 +26,7 @@ semver.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
-specify-codex.workspace = true
+specify-lints.workspace = true
 specify-domain.workspace = true
 specify-authoring.workspace = true
 specify-error.workspace = true
@@ -47,7 +47,7 @@ workspace = true
 [workspace]
 members = [
     "crates/authoring",
-    "crates/codex",
+    "crates/specify-lints",
     "crates/domain",
     "crates/error",
     "crates/schema",
@@ -170,7 +170,7 @@ serde-saphyr = "0.0.26"
 serde_json = "1"
 sha2 = "0.11"
 specify-authoring = { path = "crates/authoring" }
-specify-codex = { path = "crates/codex" }
+specify-lints = { path = "crates/specify-lints" }
 specify-domain = { path = "crates/domain" }
 specify-error = { path = "crates/error" }
 specify-schema = { path = "crates/schema" }

@@ -7,9 +7,9 @@ use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_error::ValidationStatus;
 use specify_schema::{
-    CODEX_RULE_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FUSION_JSON_SCHEMA,
-    LINT_FINDING_JSON_SCHEMA, LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA,
-    RESOLVED_CODEX_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
+    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FUSION_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
+    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
+    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
 };
 
 #[test]
@@ -34,12 +34,12 @@ fn components_schema_compiles() {
 
 #[test]
 fn resolved_codex_schema_compiles() {
-    compile_schema(RESOLVED_CODEX_JSON_SCHEMA).expect("resolved codex schema compiles");
+    compile_schema(RESOLVED_RULES_JSON_SCHEMA).expect("resolved codex schema compiles");
 }
 
 #[test]
 fn codex_rule_schema_compiles() {
-    compile_schema(CODEX_RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
+    compile_schema(RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn workspace_model_schema_accepts_minimal_envelope() {
         "skills": [],
         "adapter_manifests": [],
         "marketplace_entries": [],
-        "codex_rules": [],
+        "rule_index": [],
         "text_matches": []
     });
     let summaries = validate_value(
@@ -197,9 +197,9 @@ fn codex_rule_schema_accepts_each_reserved_hint_kind() {
         });
         let summaries = validate_value(
             &instance,
-            CODEX_RULE_JSON_SCHEMA,
-            "codex-rule",
-            "codex rule fixture per reserved kind",
+            RULE_JSON_SCHEMA,
+            "rule",
+            "rule fixture per reserved kind",
         );
         assert!(
             summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),

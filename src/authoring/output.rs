@@ -4,8 +4,8 @@ use std::path::Path;
 use serde::Serialize;
 use specify_authoring::error::ToolingError;
 use specify_authoring::finding::{Finding, Location};
-use specify_codex::{LintFinding, Severity};
 use specify_error::ValidationSummary;
+use specify_lints::{LintFinding, Severity};
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]

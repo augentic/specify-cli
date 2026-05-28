@@ -1,7 +1,7 @@
-//! `specrun rules export` handler — RFC-28 §"Resolved codex export".
+//! `specrun rules export` handler — RFC-28 §"Resolved rules export".
 //!
 //! Read-only. Builds the `ResolveInputs` struct from CLI args,
-//! delegates to [`specify_codex::build_resolved_codex`], and
+//! delegates to [`specify_lints::build_resolved_rules`], and
 //! streams the resulting envelope to stdout as JSON. v1 supports
 //! JSON output only; the global `--format text` default at the
 //! `Cli` level surfaces as `Error::Argument` (exit 2) so the
@@ -12,15 +12,15 @@
 //!
 //! | `ResolveError` variant   | `Error` variant         | Exit |
 //! |--------------------------|-------------------------|------|
-//! | `CodexRootRequired`      | `Validation`            | 2    |
+//! | `RulesRootRequired`      | `Validation`            | 2    |
 //! | `DuplicateRuleId`        | `Validation`            | 2    |
 //! | `Parse`                  | `Validation`            | 2    |
 //! | `Filesystem`             | `Filesystem { op }`     | 1    |
 
 use std::path::{Path, PathBuf};
 
-use specify_codex::{ResolveError, ResolveInputs, build_resolved_codex};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_lints::{ResolveError, ResolveInputs, build_resolved_rules};
 
 use crate::runtime::cli::Format;
 use crate::runtime::output;
@@ -32,7 +32,7 @@ use crate::runtime::output;
     reason = "Arguments mirror the closed RFC-28 §Resolution inputs set; the handler threads the clap-derived surface through verbatim into ResolveInputs."
 )]
 pub fn run(
-    format: Format, codex_root: Option<&Path>, target: &str, sources: &[String],
+    format: Format, rules_root: Option<&Path>, target: &str, sources: &[String],
     artifacts: &[PathBuf], languages: &[String], include_deprecated: bool, include_unmatched: bool,
     project_dir: &Path,
 ) -> Result<()> {
@@ -40,7 +40,7 @@ pub fn run(
 
     let inputs = ResolveInputs {
         project_dir,
-        codex_root,
+        rules_root,
         target_adapter: target,
         source_adapters: sources,
         artifact_paths: artifacts,
@@ -49,7 +49,7 @@ pub fn run(
         include_unmatched,
     };
 
-    let resolved = build_resolved_codex(&inputs).map_err(map_resolve_error)?;
+    let resolved = build_resolved_rules(&inputs).map_err(map_resolve_error)?;
 
     output::emit(Box::new(std::io::stdout().lock()), Format::Json, &resolved, |_, _| Ok(()))?;
     Ok(())
@@ -72,16 +72,16 @@ fn require_json(format: Format) -> Result<()> {
 /// exit code per `docs/standards/handler-shape.md`.
 pub fn map_resolve_error(err: ResolveError) -> Error {
     match err {
-        ResolveError::CodexRootRequired => Error::Validation {
+        ResolveError::RulesRootRequired => Error::Validation {
             results: vec![ValidationSummary {
                 status: ValidationStatus::Fail,
-                rule_id: "codex-root-required".to_string(),
-                rule: "shared UNI-* rules require --codex-root or a project-local \
-                       adapters/shared/codex/universal/ tree"
+                rule_id: "rules-root-required".to_string(),
+                rule: "shared UNI-* rules require --rules-root or a project-local \
+                       adapters/shared/rules/universal/ tree"
                     .to_string(),
                 detail: Some(
-                    "pass --codex-root pointing at a tree containing \
-                     adapters/shared/codex/universal/"
+                    "pass --rules-root pointing at a tree containing \
+                     adapters/shared/rules/universal/"
                         .to_string(),
                 ),
             }],
@@ -89,7 +89,7 @@ pub fn map_resolve_error(err: ResolveError) -> Error {
         ResolveError::DuplicateRuleId { id, paths } => Error::Validation {
             results: vec![ValidationSummary {
                 status: ValidationStatus::Fail,
-                rule_id: "codex-duplicate-rule-id".to_string(),
+                rule_id: "rules-duplicate-rule-id".to_string(),
                 rule: format!("rule id '{id}' appears in multiple files"),
                 detail: Some(paths),
             }],
@@ -97,8 +97,8 @@ pub fn map_resolve_error(err: ResolveError) -> Error {
         ResolveError::Parse { path, error } => Error::Validation {
             results: vec![ValidationSummary {
                 status: ValidationStatus::Fail,
-                rule_id: "codex-parse-error".to_string(),
-                rule: format!("failed to parse codex rule {}", path.display()),
+                rule_id: "rules-parse-error".to_string(),
+                rule: format!("failed to parse rule {}", path.display()),
                 detail: Some(error.to_string()),
             }],
         },
@@ -132,16 +132,16 @@ mod tests {
         }
     }
 
-    /// `codex-root-required` from CH-12 maps to a single-finding
+    /// `rules-root-required` from CH-12 maps to a single-finding
     /// `Error::Validation` so the wire envelope carries the closed
     /// kebab discriminant in `results[].rule-id`.
     #[test]
-    fn maps_codex_root_required_to_validation() {
-        let err = map_resolve_error(ResolveError::CodexRootRequired);
+    fn maps_rules_root_required_to_validation() {
+        let err = map_resolve_error(ResolveError::RulesRootRequired);
         match err {
             Error::Validation { results } => {
                 assert_eq!(results.len(), 1);
-                assert_eq!(results[0].rule_id, "codex-root-required");
+                assert_eq!(results[0].rule_id, "rules-root-required");
             }
             other => panic!("expected Error::Validation, got {other:?}"),
         }
@@ -158,7 +158,7 @@ mod tests {
         });
         match err {
             Error::Validation { results } => {
-                assert_eq!(results[0].rule_id, "codex-duplicate-rule-id");
+                assert_eq!(results[0].rule_id, "rules-duplicate-rule-id");
                 assert!(results[0].rule.contains("UNI-001"));
                 assert_eq!(results[0].detail.as_deref(), Some("a.md, b.md"));
             }

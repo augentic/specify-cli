@@ -59,7 +59,7 @@ mod tests {
 
     use serde_json::Value as JsonValue;
     use specify_authoring::finding::{Finding, Location};
-    use specify_codex::{Severity, validate_finding};
+    use specify_lints::{Severity, validate_finding};
 
     use crate::authoring::map_finding::map_findings;
     use crate::authoring::output::review_findings_body;
@@ -91,13 +91,13 @@ mod tests {
     }
 
     /// (2) Mixed severities are counted correctly: one Critical
-    /// (`codex.schema-violation`) and two Important
+    /// (`rules.schema-violation`) and two Important
     /// (`skill.duplicate-name`) findings produce the expected per-key
     /// counts.
     #[test]
     fn mixed_severities_are_counted_correctly() {
         let inputs = vec![
-            fixture("codex.schema-violation", "schema breakage"),
+            fixture("rules.schema-violation", "schema breakage"),
             fixture("skill.duplicate-name", "dup one"),
             fixture("skill.duplicate-name", "dup two"),
         ];
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn every_finding_in_envelope_validates_against_schema() {
         let inputs = vec![
-            fixture("codex.schema-violation", "schema breakage"),
+            fixture("rules.schema-violation", "schema breakage"),
             fixture("skill.duplicate-name", "duplicate"),
             fixture("links.unresolved", "broken markdown link"),
         ];
@@ -174,12 +174,12 @@ mod tests {
         assert!(value.get("findings").and_then(JsonValue::as_array).is_some());
     }
 
-    /// (6) Severity wire-up sanity: a `codex.schema-violation` is
+    /// (6) Severity wire-up sanity: a `rules.schema-violation` is
     /// counted under `critical`, exercising both the CH-20 severity
     /// table and the body's match arms.
     #[test]
     fn critical_authoring_rule_lands_in_critical_bucket() {
-        let mapped = map_findings(&[fixture("codex.schema-violation", "boom")]);
+        let mapped = map_findings(&[fixture("rules.schema-violation", "boom")]);
         assert_eq!(mapped[0].severity, Severity::Critical);
 
         let body = review_findings_body(mapped);

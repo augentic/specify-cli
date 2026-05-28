@@ -1,0 +1,306 @@
+{
+  "rules": [
+    {
+      "body": "\n## Rule\n\nOmnia business logic must treat host resources as provider adapters. External I/O, configuration, identity tokens, durable state, document/table/blob storage, publishing, and broadcast access must flow through `omnia_sdk` provider traits on explicit generic `provider: &P` bounds. Domain crates must not construct host clients, call raw WASI modules, open sockets or files, or hide I/O behind custom abstractions.\n\nFunction bounds should name only the provider traits the function actually calls. Handler bounds should be the union of the traits required by the handler and the helpers it invokes.\n\n## Look For\n\n- Direct client construction such as `reqwest::Client`, `mongodb::Client`, `RedisClient::connect`, `TableClient`, `BlobServiceClient`, `Producer::new`, or storage SDK clients.\n- Forbidden storage or transport crates such as `reqwest`, `redis`, `sqlx`, `diesel`, `mongodb`, `azure_storage_blobs`, `aws-sdk-s3`, or host-side `hyper`.\n- Calls to raw WASI modules or guest boundary helpers from domain crates instead of `omnia_sdk` traits.\n- Functions that perform I/O but do not accept a generic `provider: &P` argument with matching trait bounds.\n- Handler bounds missing a provider trait used by a helper, or blanket bounds that obscure which I/O the handler performs.\n- Custom wrapper clients around provider traits that make tests mock the wrapper instead of the Omnia provider adapter.\n\n## Spec Guidance\n\nWhen artifacts describe an external dependency but not its Omnia adapter, ask for the provider mapping instead of recreating the source runtime client. Prefer the closest first-party provider: `HttpRequest`, `Config`, `Identity`, `StateStore`, `TableStore`, `DocumentStore`, `Blobstore`, `Publish`, or `Broadcast`.\n",
+      "deprecated": null,
+      "origin": "target",
+      "path": "adapters/targets/omnia/rules/provider-only-host-access.md",
+      "path-root": "rules-root",
+      "rule-id": "OMNIA-001",
+      "severity": "critical",
+      "title": "Provider-Only Host Access",
+      "trigger": "An Omnia Rust crate performs external I/O, reads configuration, stores state, publishes messages, or accesses identity without going through Omnia SDK provider traits."
+    },
+    {
+      "body": "\n## Rule\n\nOmnia crates must run as stateless `wasm32-wasip2` guest components. Production code must not rely on native process features, background threads, direct filesystem/network/environment access, mutable global state, runtime singletons, blocking I/O, or crates that require an OS-backed runtime. State that must outlive one invocation belongs in host providers, not component memory.\n\nCompile-time constants and immutable `LazyLock` lookup tables are acceptable when they do not cache request data, credentials, provider results, or runtime state.\n\n## Look For\n\n- `std::env`, `std::fs`, `std::net`, `std::process`, `std::thread::spawn`, or synchronous I/O used in production guest code.\n- Runtime dependencies such as `tokio` as an application runtime, native `hyper` servers, `rand`, `uuid` generation that depends on runtime randomness, or dotenv-style configuration loaders.\n- `static mut`, `OnceCell`, `OnceLock`, `lazy_static!`, or `Mutex<HashMap<...>>` used as caches or mutable singleton state.\n- Background task, timer, circuit-breaker, worker-pool, retry daemon, or startup-loader patterns copied from a server process.\n- Assumptions that data loaded once will remain available across handler invocations.\n- Direct use of system clocks or sleeps for scheduling instead of invocation-time logic and provider-backed state.\n\n## Spec Guidance\n\nWhen source behavior depends on process lifetime, translate the requirement into an Omnia runtime pattern. Startup caches usually become cache-aside reads through `StateStore` plus the original data provider; periodic refresh usually becomes TTL-backed cache expiry; token caches usually become `Identity` provider calls.\n",
+      "deprecated": null,
+      "deterministic-hints": [
+        {
+          "description": "Restrict the forbidden-std scan to Rust source files.",
+          "kind": "path-pattern",
+          "value": "**/*.rs"
+        },
+        {
+          "description": "Forbidden std namespace in Omnia WASM guest code.",
+          "kind": "regex",
+          "value": "\\bstd::(env|fs|net|process|thread::spawn)\\b"
+        }
+      ],
+      "origin": "target",
+      "path": "adapters/targets/omnia/rules/wasm-guest-runtime-constraints.md",
+      "path-root": "rules-root",
+      "rule-id": "OMNIA-002",
+      "severity": "critical",
+      "title": "WASM Guest Runtime Constraints",
+      "trigger": "An Omnia guest relies on process, thread, filesystem, environment, randomness, mutable global state, blocking I/O, or native runtime behavior unavailable in wasm32-wasip2."
+    },
+    {
+      "body": "\n## Rule\n\nProduction Omnia handler paths must handle fallible operations by returning `omnia_sdk::Result` with an appropriate `omnia_sdk::Error` classification, stable code, description, and useful context. Do not use panic-based control flow outside tests.\n\nUse `bad_request!` for invalid caller input, `bad_gateway!` for upstream provider or dependency failures, `server_error!` for internal invariant failures, and domain error conversions when stable error codes matter. Add context at parse, serialization, provider, and conversion boundaries before mapping errors into the SDK model.\n\n## Look For\n\n- `unwrap()`, `expect()`, `panic!`, `todo!`, `unimplemented!`, unchecked indexing, or `unreachable!` in non-test handler paths.\n- `let _ = fallible_call(...)`, ignored `Result`s, swallowed provider errors, or fallback values that hide failed work.\n- Public handler or domain functions returning `anyhow::Error`, string errors, or custom errors that do not convert to `omnia_sdk::Error`.\n- Method-style constructors such as `Error::bad_request(...)` or `Error::not_found(...)`, which are not the Omnia SDK error API.\n- Provider failures mapped to generic internal errors when they should be dependency failures.\n- Error codes built from variable data instead of stable snake_case identifiers.\n- Generic descriptions such as \"failed\" or \"invalid input\" that omit the operation, field, or dependency involved.\n\n## Spec Guidance\n\nIf artifacts define error codes or classifications, preserve them rather than inventing a finer-grained error model. If the spec is silent, propose the smallest useful error contract: invalid input, not found, upstream dependency failure, and internal invariant failure.\n",
+      "deprecated": null,
+      "origin": "target",
+      "path": "adapters/targets/omnia/rules/classified-errors-no-panics.md",
+      "path-root": "rules-root",
+      "rule-id": "RUST-001",
+      "severity": "critical",
+      "title": "Classified SDK Errors, No Panic Paths",
+      "trigger": "Production Rust handler code can panic, discard a fallible result, or return an error that bypasses Omnia SDK classification."
+    },
+    {
+      "body": "\n## Rule\n\nSecrets, credentials, connection strings, and access tokens must be supplied by the Omnia host and reached through approved provider traits. Source code must not contain literal secrets, read environment variables directly, construct storage authentication headers manually, derive tokens from keys, log secret values, or persist tokens in component state.\n\nAuthenticated HTTP should follow the `Config` -> `Identity::access_token` -> `HttpRequest::fetch` sequence. Storage, database, document, table, blob, and publish authentication should use the corresponding Omnia provider instead of raw signed requests or embedded credentials.\n\n## Look For\n\n- Literal API keys, bearer tokens, connection strings, passwords, private keys, SAS tokens, SharedKey credentials, or certificate material.\n- `std::env::var`, dotenv loaders, or config files used to retrieve secrets inside a guest component.\n- `Authorization` headers built from hardcoded strings, configuration values that are themselves tokens, or manually generated HMAC signatures.\n- Azure Table, blob storage, SQL, Redis, MongoDB, or message-broker access implemented with raw credentials instead of `DocumentStore`, `TableStore`, `Blobstore`, `StateStore`, `Publish`, or `Identity`.\n- `tracing`, `println!`, debug output, error descriptions, or test snapshots that include secret values or bearer tokens.\n- Tokens cached in `static`, `OnceCell`, `StateStore`, request structs, or serialized output.\n\n## Spec Guidance\n\nSpecs and designs should name the required config keys, identity names, and provider adapters, not secret values. If a source migration exposes an environment variable containing a secret, capture the dependency as host-managed configuration or identity and keep the value out of artifacts.\n",
+      "deprecated": null,
+      "origin": "target",
+      "path": "adapters/targets/omnia/rules/host-managed-secrets-identity.md",
+      "path-root": "rules-root",
+      "rule-id": "SEC-001",
+      "severity": "critical",
+      "title": "Host-Managed Secrets and Identity",
+      "trigger": "An Omnia crate embeds, derives, logs, persists, or reads credentials or tokens outside the host-managed Config and Identity provider flow."
+    },
+    {
+      "body": "\n## Rule\n\nValidate all user-supplied or external data at the boundary before domain logic consumes it. Validation should cover text normalization, required values, numeric ranges, identifier existence, and external payload shape.\n\n## Look For\n\n- Handler entry points that accept strings from the user without trimming whitespace or rejecting empty values.\n- Numeric parameters without range or sign validation.\n- ID lookups that assume the referenced item exists, with no guard for missing targets.\n- Data received from external APIs consumed without schema or type validation.\n\n## Spec Guidance\n\nWhen the spec is silent on validation rules for a user action, propose explicit acceptance criteria such as \"title must be non-empty after trimming\" or \"quantity must be 1..999\".\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/unvalidated-input.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-002",
+      "severity": "critical",
+      "title": "Unvalidated Input",
+      "trigger": "User-supplied or external data enters a handler or domain boundary without validation."
+    },
+    {
+      "body": "\n## Rule\n\nHandle serialization and deserialization failures explicitly. A failed encode, decode, or boundary conversion must not be silently swallowed, crash the process, or fall back to a value that can corrupt state.\n\n## Look For\n\n- Serialize or deserialize calls with no error handling or a catch-all that discards the error.\n- Types crossing a serialization boundary, such as FFI, persistence, or network, that are missing required derive macros or protocol conformances.\n- Deserialization failures that fall back to a default value which could overwrite valid persisted data.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/serialization-failures.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-003",
+      "severity": "critical",
+      "title": "Serialization / Deserialization Failures Not Handled",
+      "trigger": "Fallible encode or decode operations can fail without a handled error path."
+    },
+    {
+      "body": "\n## Rule\n\nReason through the control flow and state transitions that implement each behavior. Missing edges, inverted conditions, impossible branches, and boundary mistakes should be fixed or traced back to a missing scenario in the spec.\n\n## Look For\n\n- State machine transitions with missing edges, where state A can reach state B but the handler for that transition is absent.\n- Inverted boolean conditions, such as `if !condition` where `if condition` was intended.\n- Off-by-one errors in index arithmetic or boundary checks.\n- Conditions that are always true or always false, making one branch unreachable.\n\n## Spec Guidance\n\nWhen a state transition is missing because the spec never defined that edge case, propose a new scenario rather than an ad hoc code fix.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/logic-bugs.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-004",
+      "severity": "critical",
+      "title": "Logic Bugs",
+      "trigger": "Control flow, conditions, or state transitions can produce behavior that contradicts the intended domain logic."
+    },
+    {
+      "body": "\n## Rule\n\nProtect shared mutable state and async workflows against unsafe interleavings. The implementation should define the isolation, ordering, cancellation, or in-flight guards needed to keep state consistent.\n\n## Look For\n\n- State mutations performed outside the expected isolation context, such as updating UI state from a background thread.\n- Two async operations that can complete in either order, where only one ordering is handled correctly.\n- Missing operation in-flight guards that allow a second operation to start before the first completes, corrupting shared state.\n- Broad-scope cleanup, such as removing all pending operations for an item, that can interfere with an unrelated in-flight operation.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/concurrency-issues.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-006",
+      "severity": "critical",
+      "title": "Race Conditions and Concurrency Bugs",
+      "trigger": "Shared mutable state or in-flight operations can interleave in an order the implementation does not safely handle."
+    },
+    {
+      "body": "\n## Rule\n\nHandle or safely propagate failures from operations that can throw, panic, trap, or otherwise terminate execution. A recoverable failure should not crash the host process or leave the user without a recovery path.\n\n## Look For\n\n- Calls to operations that can fail, such as I/O, parsing, arithmetic, or collection access, without error handling, try/catch, or result propagation.\n- Force-unwrap patterns that assume a value is always present when it may not be.\n- Index-based collection access without bounds checking.\n- Division or modulo operations without zero-divisor guards.\n- FFI boundary methods that panic instead of returning an error type.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/unhandled-exceptions.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-010",
+      "severity": "critical",
+      "title": "Unhandled Exceptions / Panics Causing Crashes",
+      "trigger": "A fallible operation can terminate the process because the failure is not handled or propagated safely."
+    },
+    {
+      "body": "\n## Rule\n\nPreserve compatibility for persisted state across schema changes. Added, removed, renamed, or retyped fields need migration logic, safe defaults, or other compatibility handling so existing data is not lost or made unreadable.\n\n## Look For\n\n- Persisted-state struct changes, such as new fields, renamed fields, or changed types, without corresponding default annotations or migration code.\n- Removed fields that cause existing stored data to fail schema validation.\n- Enum variants added to a persisted type without a fallback for unrecognised values in old data.\n- Missing integration tests that verify deserialization of data stored by the previous version.\n\n## Spec Guidance\n\nWhen the spec does not address data migration for model changes, propose forward-compatibility requirements or a migration strategy.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/persisted-state-compatibility.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-012",
+      "severity": "critical",
+      "title": "Backward-Incompatible Changes to Persisted State",
+      "trigger": "A persisted model changes shape without migration or backward-compatible deserialization behavior."
+    },
+    {
+      "body": "\n## Rule\n\nDo not embed secrets or credentials directly in source code. Secrets grant access to protected resources and should be supplied through approved secret management or configuration mechanisms rather than committed literals.\n\n## Look For\n\n- String literals matching known secret prefixes such as `sk-`, `pk-`, `ghp_`, `Bearer `, `AKIA`, or `xox-`.\n- Variables or constants named `password`, `secret`, `token`, `api_key`, `apikey`, `auth`, or `credential` assigned a literal value.\n- Base64-encoded strings longer than 20 characters in `const` or `static` declarations.\n- URLs containing embedded credentials, such as `https://user:pass@...`.\n- Private keys or certificates inlined as string literals.\n\n## Exemption\n\nPlaceholder or example values such as `https://api.example.com`, `your-api-key-here`, and test fixtures with obviously fake tokens are acceptable.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/hardcoded-secrets.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-018",
+      "severity": "critical",
+      "title": "Hardcoded Secrets and Credentials",
+      "trigger": "Source code contains literal credentials, tokens, keys, connection strings, or private key material."
+    },
+    {
+      "body": "\n## Rule\n\nTreat untrusted input as data, not executable code or structure. Validate at the boundary and use parameterization, escaping, canonicalization, builders, or allowlists before the input reaches dangerous sinks.\n\n## Look For\n\n- SQL or query injection: string concatenation or interpolation used to build database queries, search filters, or ORM conditions from user-supplied values.\n- Command injection: user input passed to shell execution, process spawning, or system command APIs without escaping or allowlisting.\n- Cross-site scripting: user-supplied text embedded in HTML, XML, or markup output without escaping.\n- Path traversal: user-controlled values used in file path construction without canonicalization, prefix validation, or allowlisting.\n- Template injection: user input interpolated into template engines, expression evaluators, or DSL interpreters that can execute arbitrary logic.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/injection-vulnerabilities.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-019",
+      "severity": "critical",
+      "title": "Injection Vulnerabilities",
+      "trigger": "Untrusted input can reach an execution, query, path, template, markup, or structured-output sink without sanitization or parameterization."
+    },
+    {
+      "body": "\n## Rule\n\nDo not deserialize untrusted input directly into privileged internal domain types without validation and limits. The target type and payload bounds should prevent privilege injection, unexpected fields, polymorphic abuse, and denial of service.\n\n## Look For\n\n- Deserializing untrusted input directly into internal domain types that carry privilege or authorization state, such as a `User` struct with an `is_admin` field populated from an external payload.\n- Accepting serialized data from an external source without schema validation, allowing unexpected fields to be injected.\n- Deserializing into polymorphic or trait-object types where the concrete type is attacker-controlled.\n- Large or deeply nested payloads deserialized without size limits, enabling denial of service via memory exhaustion or stack overflow.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/unsafe-deserialization.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-020",
+      "severity": "critical",
+      "title": "Unsafe Deserialization of Untrusted Data",
+      "trigger": "Untrusted serialized data is decoded into types or shapes that can bypass validation, escalate privileges, or exhaust resources."
+    },
+    {
+      "body": "\n## Rule\n\nAuthenticate callers and authorize the requested action before exposing sensitive data or changing protected state. Server-side or trusted-boundary checks must not rely solely on client-supplied claims.\n\n## Look For\n\n- Handler entry points that accept and act on requests without checking for an authentication token, session, or identity credential.\n- Endpoints that return sensitive data, such as PII, financial records, or internal system state, without verifying the caller has read access.\n- State-mutating operations such as create, update, or delete that do not verify the caller has write permission for the target resource.\n- Authorization checks that rely solely on client-supplied role or permission claims without server-side verification.\n- Inconsistent enforcement: some handlers in a module check auth while others in the same module do not, suggesting an oversight.\n\n## Spec Guidance\n\nWhen the spec does not define which operations require authentication or what authorization model applies, propose adding access control requirements before fixing the code.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/missing-auth.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-021",
+      "severity": "critical",
+      "title": "Missing Authentication or Authorization Checks",
+      "trigger": "A handler accesses sensitive data or mutates protected state without verifying identity and permissions."
+    },
+    {
+      "body": "\n## Rule\n\nDo not let language defaults or ambiguous sentinel values represent meaningful domain state unless that state is explicitly valid. Model unknown, unloaded, empty, and intentionally absent values distinctly when the distinction affects behavior.\n\n## Look For\n\n- Struct fields whose default value is used at runtime but has no domain meaning, such as `count: 0` where zero is indistinguishable from \"unknown\".\n- Optional or nullable fields accessed before the value is populated by an async load, with no guard or loading-state check.\n- Default enum variants that silently swallow missing data rather than representing a genuine initial state.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/uninitialised-defaults.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-001",
+      "severity": "important",
+      "title": "Uninitialised or Incorrectly Defaulted Values",
+      "trigger": "A default, sentinel, nil, zero, or empty value is used where that state has no valid domain meaning."
+    },
+    {
+      "body": "\n## Rule\n\nBound retained resources and release them when they are no longer needed. Accumulated data, subscriptions, retained references, and long-lived async work need caps, eviction, cancellation, or cleanup paths.\n\n## Look For\n\n- Collections such as lists, maps, or queues that receive `.push()`, `.append()`, or `.insert()` without a corresponding removal, cap, or eviction policy.\n- Event listeners, observers, or subscriptions registered without a matching unsubscribe or cancellation path.\n- Strong reference cycles between objects, especially closures capturing their owning object.\n- Long-lived async tasks or futures that are never cancelled when they become irrelevant.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/resource-leaks.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-005",
+      "severity": "important",
+      "title": "Unbounded Growth and Resource Leaks",
+      "trigger": "Collections, queues, caches, subscriptions, observers, or async work can grow or remain alive without bounds."
+    },
+    {
+      "body": "\n## Rule\n\nAvoid redundant or excessive external calls. Prefer batching, debouncing, deduplication, caching, or using data already available when those choices preserve the required behavior.\n\n## Look For\n\n- Re-fetching data the app already has, such as a full reload after receiving a real-time update that already contains the new state.\n- N+1 call patterns: looping over items and making one external call per item when a batch API exists.\n- Missing debounce on rapid-fire user actions that each trigger a network call.\n- Fetch-on-navigate patterns that re-request unchanged data without caching or staleness checks.\n\n## Spec Guidance\n\nWhen the spec mandates behavior that inherently creates chattiness, such as refreshing the full list on every keystroke, propose a spec amendment with a more efficient interaction pattern.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/chatty-external-calls.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-007",
+      "severity": "important",
+      "title": "Unnecessarily Chatty External Calls",
+      "trigger": "External systems are called redundantly or excessively where batching, caching, debouncing, or deduplication is expected."
+    },
+    {
+      "body": "\n## Rule\n\nKeep instrumentation useful and safe. Important failures should leave enough diagnostic signal, hot paths should not emit noisy per-item logs, and logs must not include sensitive data or debug-only output in production paths.\n\n## Look For\n\n- Error or failure branches that silently discard the error with no log statement, metric, or diagnostic output.\n- Log statements inside tight loops or per-item processing that would produce excessive output at scale.\n- Personally identifiable information, tokens, or credentials interpolated into log messages.\n- Debug-only output such as `println!`, `dbg!`, `print()`, or `debugPrint()` remaining in production code.\n\n## Spec Guidance\n\nWhen the spec has no observability requirements but the app clearly needs them, propose adding an observability section that covers error tracking, performance metrics, or other required diagnostics.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/instrumentation-issues.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-008",
+      "severity": "important",
+      "title": "Instrumentation and Logging Balance",
+      "trigger": "Error paths lack diagnostics, hot paths log excessively, or logs can expose sensitive data."
+    },
+    {
+      "body": "\n## Rule\n\nDo not partially handle an error in a way that leaves visible side effects while still reporting the operation as failed. Handle the error completely at the right layer, or propagate it with enough context for the caller to handle it.\n\n## Look For\n\n- Catch blocks that mutate shared state, such as a model, view, or database, before re-throwing or returning an error so the mutation persists even though the operation failed.\n- Error handlers that convert a specific, informative error into a generic one, losing diagnostic context.\n- Try/catch at a low level that swallows errors which the caller needs to know about, such as returning a default from a helper when the caller should show an error state.\n- Nested error handling where an inner handler partially handles and the outer handler also partially handles, with neither completing the job.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/handle-then-throw.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-009",
+      "severity": "important",
+      "title": "Handle-Then-Throw Anti-Pattern",
+      "trigger": "An error path performs partial handling or side effects and then rethrows, replaces, or swallows the error."
+    },
+    {
+      "body": "\n## Rule\n\nExternal calls should define timeout, retry, cancellation, and failure behavior appropriate to the operation. Hanging calls must not block effect chains indefinitely or leave the app non-responsive without explanation.\n\n## Look For\n\n- HTTP requests dispatched without a configured timeout.\n- SSE or WebSocket connections with no reconnection strategy after disconnect.\n- Effect handlers that await a response indefinitely with no timeout or cancellation path.\n- Retry logic that retries without backoff, risking a tight retry loop on persistent failures.\n\n## Spec Guidance\n\nWhen the spec does not define timeout or retry behavior for external calls, propose resilience requirements such as timeout duration, retry count, backoff strategy, and user-facing indication of failure.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/missing-timeout-retry.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-011",
+      "severity": "important",
+      "title": "Missing Timeout or Retry on External Calls",
+      "trigger": "An external call or connection can hang or fail transiently without timeout, retry, cancellation, or user-visible failure behavior."
+    },
+    {
+      "body": "\n## Rule\n\nKeep operational parameters discoverable and reviewable. Timeouts, URLs, retry counts, buffer sizes, page sizes, polling intervals, and similar values should be named constants or configuration rather than unexplained literals in behavior code.\n\n## Look For\n\n- Numeric literals in function calls that represent tunable parameters, such as timeout durations, retry counts, page sizes, or polling intervals.\n- URL strings embedded directly in handler code rather than sourced from configuration.\n- Magic numbers that require domain knowledge to understand, such as `42`, `1000`, or `86400`.\n- The same literal value repeated in multiple locations where a shared constant should be used.\n\n## Spec Guidance\n\nWhen the spec does not define operational parameters such as timeouts, page sizes, retry limits, or polling intervals, propose adding them as explicit design decisions so they are reviewed and documented.\n",
+      "deprecated": null,
+      "deterministic-hints": [
+        {
+          "description": "Restrict the URL-literal scan to Rust source files.",
+          "kind": "path-pattern",
+          "value": "**/*.rs"
+        },
+        {
+          "description": "Literal HTTP(S) URL embedded in Rust source.",
+          "kind": "regex",
+          "value": "\\bhttps?://\\S+"
+        }
+      ],
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-014",
+      "severity": "important",
+      "title": "Hardcoded Configuration Values",
+      "trigger": "Operational parameters are embedded as literals instead of named constants or configuration."
+    },
+    {
+      "body": "\n## Rule\n\nEnsure closures and async blocks observe the state they are meant to use at execution time. Avoid stale snapshots when the value may change between capture and execution, and avoid references whose owning scope can invalidate them.\n\n## Look For\n\n- Async blocks or callbacks that capture local variables which are mutated between the capture point and the execution point.\n- Closures that capture a model state snapshot before an async operation, then use the snapshot when the operation resolves even though the model may have changed in the interim.\n- Event handlers that capture loop variables or iterator state.\n- Closures capturing mutable references where the owning scope may invalidate the reference before the closure runs.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/stale-closure-captures.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-015",
+      "severity": "important",
+      "title": "Stale Closure Captures",
+      "trigger": "A closure or async block can execute after captured values have changed or become invalid."
+    },
+    {
+      "body": "\n## Rule\n\nUse domain types to make invalid states unrepresentable where practical. Prefer enums, newtypes, and constrained types over plain strings, booleans, or loosely typed values when the domain has known valid values or distinct identifiers.\n\n## Look For\n\n- Fields typed as `String` that hold values from a known, closed set, such as status codes, filter names, categories, or roles.\n- ID fields typed as plain `String` that are interchangeable with unrelated IDs, such as a user ID accidentally passed where an item ID is expected.\n- Boolean parameters where more than two states exist or may exist in the future.\n- Struct fields whose valid values are constrained, but the constraint is only enforced at one call site rather than by the type system.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/type-safety-erosion.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-017",
+      "severity": "important",
+      "title": "Type Safety Erosion",
+      "trigger": "Weakly typed values are used where enums, newtypes, or stronger domain types would prevent invalid states."
+    },
+    {
+      "body": "\n## Rule\n\nRemove or justify code that cannot execute. Dead code and unreachable paths hide stale behavior, missing dispatch wiring, and incorrect assumptions even when the compiler cannot prove they are unreachable.\n\n## Look For\n\n- Functions or methods with no call site in the codebase.\n- Match or switch arms that are unreachable because an earlier arm catches all matching values.\n- Code after unconditional `return`, `break`, `continue`, or `throw`.\n- Conditional branches guarded by conditions that are always true or always false given the surrounding context.\n- Event variants defined in the data model but never dispatched by any view or handler.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/dead-code.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-013",
+      "severity": "suggestion",
+      "title": "Dead Code and Unreachable Paths",
+      "trigger": "Code, handlers, branches, or model variants appear impossible to execute."
+    },
+    {
+      "body": "\n## Rule\n\nError messages should carry enough diagnostic context to identify what operation failed, on what data, and why. Avoid messages that require reproducing the issue just to locate the failing path.\n\n## Look For\n\n- Generic error messages with no specifics, such as \"operation failed\", \"invalid input\", or \"something went wrong\".\n- Error messages that omit the item ID, field name, or value that caused the failure.\n- Catch blocks that log the error type but not the error message or underlying cause.\n- Multiple error sites using identical messages, making it impossible to determine which site produced the error in logs.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/error-message-quality.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-016",
+      "severity": "suggestion",
+      "title": "Error Message Quality",
+      "trigger": "An error path reports a generic message without enough context to identify the failed operation, data, or cause."
+    }
+  ],
+  "source-adapters": [],
+  "target-adapter": "omnia",
+  "version": 1
+}

@@ -2,12 +2,12 @@ use std::fs;
 use std::path::Path;
 
 use specify_authoring::Context;
-use specify_authoring::check::codex::{
+use specify_authoring::check::rules::{
     RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, RULE_SCHEMA_VIOLATION,
-    run_codex_check,
+    run_rules_check,
 };
 
-const CODEX_RULE_PREFIX: &str = "codex.";
+const RULES_CHECK_PREFIX: &str = "rules.";
 
 fn write_framework_scaffold(root: &Path) {
     fs::create_dir_all(root.join("adapters/sources")).expect("sources dir");
@@ -16,12 +16,12 @@ fn write_framework_scaffold(root: &Path) {
     fs::create_dir_all(root.join("plugins")).expect("plugins dir");
 }
 
-fn write_codex_rule(root: &Path, rel_path: &str, body: &str) {
+fn write_rule_file(root: &Path, rel_path: &str, body: &str) {
     let path = root.join(rel_path);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("codex rule parent dir");
+        fs::create_dir_all(parent).expect("rule parent dir");
     }
-    fs::write(path, body).expect("codex rule");
+    fs::write(path, body).expect("rule");
 }
 
 fn valid_rule(id: &str) -> String {
@@ -48,9 +48,9 @@ fn ctx_for(root: &Path) -> Context {
 fn schema_violation_on_invalid_frontmatter() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
-    write_codex_rule(
+    write_rule_file(
         temp.path(),
-        "adapters/shared/codex/universal/bad-frontmatter.md",
+        "adapters/shared/rules/universal/bad-frontmatter.md",
         r#"---
 id: UNI-001
 title: Missing required fields
@@ -62,12 +62,12 @@ Body without trigger and severity.
 "#,
     );
 
-    let findings = run_codex_check(&ctx_for(temp.path()));
+    let findings = run_rules_check(&ctx_for(temp.path()));
     let schema_findings: Vec<_> =
         findings.iter().filter(|finding| finding.rule_id == RULE_SCHEMA_VIOLATION).collect();
     assert!(!schema_findings.is_empty(), "expected schema violation findings, got: {findings:?}");
     assert!(
-        schema_findings.iter().any(|finding| finding.message.contains("Codex rule frontmatter:")),
+        schema_findings.iter().any(|finding| finding.message.contains("Rule frontmatter:")),
         "expected frontmatter validation message, got: {findings:?}"
     );
 }
@@ -76,17 +76,17 @@ Body without trigger and severity.
 fn namespace_ownership_violation_on_wrong_prefix() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
-    write_codex_rule(
+    write_rule_file(
         temp.path(),
-        "adapters/targets/omnia/codex/wrong-namespace.md",
+        "adapters/targets/omnia/rules/wrong-namespace.md",
         &valid_rule("VECTIS-001"),
     );
 
-    let findings = run_codex_check(&ctx_for(temp.path()));
+    let findings = run_rules_check(&ctx_for(temp.path()));
     assert!(
         findings.iter().any(|finding| {
             finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
-                && finding.message.contains("codex owner 'omnia' may only use")
+                && finding.message.contains("rules owner 'omnia' may only use")
                 && finding.message.contains("VECTIS-001")
         }),
         "expected namespace ownership finding, got: {findings:?}"
@@ -97,18 +97,18 @@ fn namespace_ownership_violation_on_wrong_prefix() {
 fn src_rule_under_source_adapter_passes_full_codex_check() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
-    write_codex_rule(
+    write_rule_file(
         temp.path(),
-        "adapters/sources/documentation/codex/some-rule.md",
+        "adapters/sources/documentation/rules/some-rule.md",
         &valid_rule("SRC-999"),
     );
 
-    let findings = run_codex_check(&ctx_for(temp.path()));
-    let codex_findings: Vec<_> =
-        findings.iter().filter(|finding| finding.rule_id.starts_with(CODEX_RULE_PREFIX)).collect();
+    let findings = run_rules_check(&ctx_for(temp.path()));
+    let rules_findings: Vec<_> =
+        findings.iter().filter(|finding| finding.rule_id.starts_with(RULES_CHECK_PREFIX)).collect();
     assert!(
-        codex_findings.is_empty(),
-        "expected no codex.* findings for a valid SRC-* rule under a source adapter, got: {codex_findings:?}",
+        rules_findings.is_empty(),
+        "expected no rules.* findings for a valid SRC-* rule under a source adapter, got: {rules_findings:?}",
     );
 }
 
@@ -116,13 +116,13 @@ fn src_rule_under_source_adapter_passes_full_codex_check() {
 fn frame_rule_under_target_adapter_rejected_by_integration_check() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
-    write_codex_rule(
+    write_rule_file(
         temp.path(),
-        "adapters/targets/omnia/codex/frame-misplaced.md",
+        "adapters/targets/omnia/rules/frame-misplaced.md",
         &valid_rule("FRAME-001"),
     );
 
-    let findings = run_codex_check(&ctx_for(temp.path()));
+    let findings = run_rules_check(&ctx_for(temp.path()));
     assert!(
         findings.iter().any(|finding| {
             finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
@@ -138,9 +138,9 @@ fn frame_rule_under_target_adapter_rejected_by_integration_check() {
 fn reserved_hint_kind_shape_validates_without_schema_finding() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
-    write_codex_rule(
+    write_rule_file(
         temp.path(),
-        "adapters/shared/codex/universal/reserved-hint.md",
+        "adapters/shared/rules/universal/reserved-hint.md",
         r#"---
 id: UNI-999
 title: Reserved Hint Shape Test
@@ -148,7 +148,7 @@ severity: important
 trigger: When validating that RFC-32 reserved hint kinds shape-check only.
 deterministic_hints:
   - kind: namespace-owner
-    value: adapters/shared/codex/universal
+    value: adapters/shared/rules/universal
   - kind: set-coverage
     value: SRC,UNI,OMNIA,VECTIS,IFACE,RUST,SEC,ORG,FRAME
 ---
@@ -156,17 +156,17 @@ deterministic_hints:
 ## Rule
 
 Body for a rule that exercises RFC-32 reserved deterministic hint kinds. The
-authoring schema accepts the kinds; `check::codex` performs shape validation
+authoring schema accepts the kinds; `check::rules` performs shape validation
 only and does not execute the hints.
 "#,
     );
 
-    let findings = run_codex_check(&ctx_for(temp.path()));
+    let findings = run_rules_check(&ctx_for(temp.path()));
     let schema_findings: Vec<_> =
         findings.iter().filter(|finding| finding.rule_id == RULE_SCHEMA_VIOLATION).collect();
     assert!(
         schema_findings.is_empty(),
-        "reserved hint kinds should pass shape validation without codex.schema-violation findings, got: {schema_findings:?}",
+        "reserved hint kinds should pass shape validation without rules.schema-violation findings, got: {schema_findings:?}",
     );
     let ownership_findings: Vec<_> = findings
         .iter()
@@ -174,7 +174,7 @@ only and does not execute the hints.
         .collect();
     assert!(
         ownership_findings.is_empty(),
-        "UNI-* under adapters/shared/codex/universal must not trip namespace ownership, got: {ownership_findings:?}",
+        "UNI-* under adapters/shared/rules/universal must not trip namespace ownership, got: {ownership_findings:?}",
     );
 }
 
@@ -182,18 +182,18 @@ only and does not execute the hints.
 fn duplicate_rule_id_across_files() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
-    write_codex_rule(
+    write_rule_file(
         temp.path(),
-        "adapters/shared/codex/universal/first-duplicate.md",
+        "adapters/shared/rules/universal/first-duplicate.md",
         &valid_rule("UNI-003"),
     );
-    write_codex_rule(
+    write_rule_file(
         temp.path(),
-        "adapters/shared/codex/universal/second-duplicate.md",
+        "adapters/shared/rules/universal/second-duplicate.md",
         &valid_rule("UNI-003"),
     );
 
-    let findings = run_codex_check(&ctx_for(temp.path()));
+    let findings = run_rules_check(&ctx_for(temp.path()));
     assert!(
         findings.iter().any(|finding| {
             finding.rule_id == RULE_DUPLICATE_RULE_ID

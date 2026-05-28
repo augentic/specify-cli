@@ -1,9 +1,9 @@
 //! End-to-end binary tests for `specrun lint run` (RFC-32 §"`specrun
 //! review` (Phase 2 CLI)").
 //!
-//! Exercises the wired clap surface, `--codex-root` resolution per §D7,
+//! Exercises the wired clap surface, `--rules-root` resolution per §D7,
 //! the `--dump-model` debug branch, and the §D8 exit-code map for the
-//! `codex-root-required` negative scenario. The deterministic happy
+//! `rules-root-required` negative scenario. The deterministic happy
 //! path uses a single shared `kind: regex` UNI-100 rule that matches a
 //! literal `TODO` token in the project — chosen because the regex
 //! evaluator is the simplest Phase 2 hint that surfaces an
@@ -25,7 +25,7 @@ const FINDING_SCHEMA_URL: &str =
 
 /// Compile the review-result envelope schema with the `finding.schema.json`
 /// child resource wired through a `jsonschema::Registry`. Mirrors the
-/// `specify_codex::lint::diagnostics::json::render_value` setup so the
+/// `specify_lints::lint::diagnostics::json::render_value` setup so the
 /// e2e test re-validates the same shape the CLI emits.
 fn compile_review_result_validator() -> Validator {
     let envelope: Value = serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("envelope schema");
@@ -61,8 +61,8 @@ fn assert_validates(validator: &Validator, stdout: &str, schema_label: &str) {
 ///   declaring the `contract` tool so the `kind: tool` hint family at
 ///   least passes the §D4 `is_declared` half) plus a `notes.md` file
 ///   carrying the literal `TODO` token the UNI-100 regex hint matches.
-/// - `codex_dir/` — a fresh codex tree with one shared rule under
-///   `adapters/shared/codex/universal/uni-100.md`. The rule's
+/// - `codex_dir/` — a fresh rules tree with one shared rule under
+///   `adapters/shared/rules/universal/uni-100.md`. The rule's
 ///   `kind: regex` hint pattern is `TODO`.
 struct Fixture {
     _root: TempDir,
@@ -73,9 +73,9 @@ struct Fixture {
 fn build_fixture() -> Fixture {
     let root = TempDir::new().expect("create tempdir");
     let project = root.path().join("project");
-    let codex = root.path().join("codex");
+    let codex = root.path().join("rules");
     fs::create_dir_all(project.join(".specify")).expect("mkdir project/.specify");
-    fs::create_dir_all(codex.join("adapters/shared/codex/universal")).expect("mkdir codex");
+    fs::create_dir_all(codex.join("adapters/shared/rules/universal")).expect("mkdir codex");
 
     fs::write(
         project.join(".specify").join("project.yaml"),
@@ -93,7 +93,7 @@ fn build_fixture() -> Fixture {
         .expect("write notes.md");
 
     fs::write(
-        codex.join("adapters/shared/codex/universal/uni-100.md"),
+        codex.join("adapters/shared/rules/universal/uni-100.md"),
         concat!(
             "---\n",
             "id: UNI-100\n",
@@ -129,9 +129,9 @@ fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::proc
     cmd.arg("--project-dir").arg(project);
     cmd.arg("--output-format").arg("json");
     if let Some(codex) = codex {
-        cmd.arg("--codex-root").arg(codex);
+        cmd.arg("--rules-root").arg(codex);
     }
-    cmd.env_remove("CODEX_ROOT");
+    cmd.env_remove("RULES_ROOT");
     for arg in extra {
         cmd.arg(arg);
     }
@@ -206,12 +206,12 @@ fn review_dump_model_emits_workspace_model_and_exits_0() {
     assert_validates(&validator, stdout, "workspace-model");
 }
 
-/// §D7 / §D8 negative: with no `--codex-root`, no project-local
-/// `adapters/shared/codex/universal/` rung, and no
-/// `.specify/cache/codex/` cache, the resolver returns
-/// `codex-root-required`. The CLI surfaces it on stderr and exits 2.
+/// §D7 / §D8 negative: with no `--rules-root`, no project-local
+/// `adapters/shared/rules/universal/` rung, and no
+/// `.specify/cache/rules/` cache, the resolver returns
+/// `rules-root-required`. The CLI surfaces it on stderr and exits 2.
 #[test]
-fn review_missing_codex_root_exits_2_with_codex_root_required() {
+fn review_missing_rules_root_exits_2_with_rules_root_required() {
     let project_root = TempDir::new().expect("project tempdir");
     let project = project_root.path().join("project");
     fs::create_dir_all(project.join(".specify")).expect("mkdir project/.specify");
@@ -221,7 +221,7 @@ fn review_missing_codex_root_exits_2_with_codex_root_required() {
     // Pass `--format json` so the failure envelope renders as JSON on
     // stderr (with the kebab-case `rule-id` field). The text branch
     // collapses to `error: validation failed: N errors` and would
-    // hide the closed `codex-root-required` discriminant.
+    // hide the closed `rules-root-required` discriminant.
     let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
     cmd.arg("--format")
         .arg("json")
@@ -233,7 +233,7 @@ fn review_missing_codex_root_exits_2_with_codex_root_required() {
         .arg(&project)
         .arg("--output-format")
         .arg("json")
-        .env_remove("CODEX_ROOT");
+        .env_remove("RULES_ROOT");
     let output = cmd.output().expect("specrun invocation");
 
     assert_eq!(
@@ -244,7 +244,7 @@ fn review_missing_codex_root_exits_2_with_codex_root_required() {
     );
     let stderr = std::str::from_utf8(&output.stderr).expect("utf8 stderr");
     assert!(
-        stderr.contains("codex-root-required"),
-        "stderr must mention codex-root-required; got:\n{stderr}"
+        stderr.contains("rules-root-required"),
+        "stderr must mention rules-root-required; got:\n{stderr}"
     );
 }

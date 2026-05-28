@@ -29,7 +29,7 @@
 //!    matches the canonicalised tempdir root with the literal
 //!    `<FRAMEWORK_ROOT>` placeholder.
 //! 3. Recompute the fingerprint via
-//!    [`specify_codex::fingerprint::fingerprint`] against
+//!    [`specify_lints::fingerprint::fingerprint`] against
 //!    the normalised finding. The stored fingerprint then reflects
 //!    the placeholder-anchored canonical preimage.
 //! 4. Re-serialise and compare/regenerate the placeholder-anchored
@@ -59,8 +59,8 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::{Value, json};
-use specify_codex::finding::validate_finding_json;
-use specify_codex::{LintFinding, fingerprint};
+use specify_lints::finding::validate_finding_json;
+use specify_lints::{LintFinding, fingerprint};
 use tempfile::TempDir;
 
 /// Replacement token for the canonicalised framework-root prefix in
@@ -184,8 +184,8 @@ fn write_scaffold(root: &Path) {
 /// Write a minimal source-adapter manifest at
 /// `adapters/sources/<name>/adapter.yaml` so
 /// `adapter.missing-manifest` does not fire when a `<name>` source
-/// adapter directory is created (e.g. by writing a codex rule under
-/// `adapters/sources/<name>/codex/`).
+/// adapter directory is created (e.g. by writing a rule under
+/// `adapters/sources/<name>/rules/`).
 fn write_source_adapter_manifest(root: &Path, name: &str) {
     let path = root.join("adapters").join("sources").join(name).join("adapter.yaml");
     fs::create_dir_all(path.parent().expect("source adapter parent"))
@@ -206,14 +206,14 @@ briefs:
     .expect("source adapter.yaml");
 }
 
-/// Render a structurally-valid codex rule body with the supplied id.
+/// Render a structurally-valid rule body with the supplied id.
 fn valid_rule_body(id: &str) -> String {
     format!(
         r"---
 id: {id}
 title: Synthetic Test Rule
 severity: important
-trigger: When the test harness needs a structurally-valid codex rule.
+trigger: When the test harness needs a structurally-valid rule.
 ---
 
 ## Rule
@@ -223,12 +223,12 @@ Body preserved so the rule passes shape validation.
     )
 }
 
-/// Write a codex rule file under `<root>/<rel_path>`, creating any
+/// Write a rule file under `<root>/<rel_path>`, creating any
 /// missing parents.
 fn write_codex_rule(root: &Path, rel_path: &str, body: &str) {
     let path = root.join(rel_path);
     fs::create_dir_all(path.parent().expect("rule parent")).expect("mkdir rule parent");
-    fs::write(&path, body).expect("write codex rule");
+    fs::write(&path, body).expect("write rule");
 }
 
 /// Write a minimal target-adapter manifest at
@@ -359,7 +359,7 @@ fn clean_tree_emits_empty_envelope() {
     write_source_adapter_manifest(temp.path(), "documentation");
     write_codex_rule(
         temp.path(),
-        "adapters/sources/documentation/codex/src-001.md",
+        "adapters/sources/documentation/rules/src-001.md",
         &valid_rule_body("SRC-001"),
     );
 
@@ -401,22 +401,22 @@ fn violations_tree_emits_expected_envelope() {
 
     write_codex_rule(
         temp.path(),
-        "adapters/shared/codex/universal/uni-999.md",
+        "adapters/shared/rules/universal/uni-999.md",
         &valid_rule_body("UNI-999"),
     );
     write_codex_rule(
         temp.path(),
-        "adapters/shared/codex/universal/uni-100-first.md",
+        "adapters/shared/rules/universal/uni-100-first.md",
         &valid_rule_body("UNI-100"),
     );
     write_codex_rule(
         temp.path(),
-        "adapters/shared/codex/universal/uni-100-second.md",
+        "adapters/shared/rules/universal/uni-100-second.md",
         &valid_rule_body("UNI-100"),
     );
     write_codex_rule(
         temp.path(),
-        "adapters/shared/codex/universal/bad-frontmatter.md",
+        "adapters/shared/rules/universal/bad-frontmatter.md",
         r"---
 id: UNI-001
 title: Missing required fields
@@ -431,7 +431,7 @@ Body without trigger and severity.
     write_target_adapter_manifest(temp.path(), "omnia");
     write_codex_rule(
         temp.path(),
-        "adapters/targets/omnia/codex/frame-misplaced.md",
+        "adapters/targets/omnia/rules/frame-misplaced.md",
         &valid_rule_body("FRAME-001"),
     );
 
@@ -518,7 +518,7 @@ fn default_text_output_says_all_checks_passed() {
     write_source_adapter_manifest(temp.path(), "documentation");
     write_codex_rule(
         temp.path(),
-        "adapters/sources/documentation/codex/src-001.md",
+        "adapters/sources/documentation/rules/src-001.md",
         &valid_rule_body("SRC-001"),
     );
 
