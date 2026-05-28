@@ -133,7 +133,7 @@
               { "const": "set-coverage" },
               { "const": "cardinality" },
               { "const": "constant-eq" },
-              { "const": "set-eq", "x-hint-status": "reserved" },
+              { "const": "set-eq" },
               { "const": "content-digest-eq", "x-hint-status": "reserved" },
               { "const": "namespace-owner", "x-hint-status": "reserved" }
             ]

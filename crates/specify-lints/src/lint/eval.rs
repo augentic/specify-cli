@@ -7,10 +7,10 @@
 //! (`review.reserved-hint-skipped`). RFC-34 §F6 PR 2 adds
 //! [`HintKind::ReferenceResolves`], PR 3 adds [`HintKind::Unique`],
 //! C12 adds [`HintKind::SetCoverage`], C13 adds
-//! [`HintKind::Cardinality`], and C14 adds [`HintKind::ConstantEq`]
-//! in the same family. Each rule's hints are partitioned by kind
-//! and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → regex → tool`
+//! [`HintKind::Cardinality`], C14 adds [`HintKind::ConstantEq`], and
+//! C15 adds [`HintKind::SetEq`] in the same family. Each rule's
+//! hints are partitioned by kind and evaluated in the fixed order
+//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → regex → tool`
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
@@ -25,7 +25,7 @@
 //!
 //! # Reserved-kind policy (reserved-hint diagnostics)
 //!
-//! Remaining reserved hint kinds (`set-eq`, `content-digest-eq`,
+//! Remaining reserved hint kinds (`content-digest-eq`,
 //! `namespace-owner`) parse cleanly
 //! from the codex authoring schema
 //! but never execute in v1. [`evaluate`] records each occurrence as a
@@ -57,6 +57,7 @@ pub mod reference_resolves;
 pub mod regex;
 pub mod schema;
 pub mod set_coverage;
+pub mod set_eq;
 pub mod tool;
 pub mod unique;
 
@@ -199,7 +200,7 @@ pub struct HintEvalOutcome {
 /// Evaluate a single rule's hints against the workspace model.
 ///
 /// Hints are partitioned by kind and run in the order
-/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → regex → tool`
+/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
 /// consume; reserved kinds collect into [`HintEvalOutcome::reserved_skipped`]
@@ -227,6 +228,7 @@ pub fn evaluate(
     let mut set_coverage_hints: Vec<&DeterministicHint> = Vec::new();
     let mut cardinality_hints: Vec<&DeterministicHint> = Vec::new();
     let mut constant_eq_hints: Vec<&DeterministicHint> = Vec::new();
+    let mut set_eq_hints: Vec<&DeterministicHint> = Vec::new();
     let mut regex_hints: Vec<&DeterministicHint> = Vec::new();
     let mut tool_hints: Vec<&DeterministicHint> = Vec::new();
 
@@ -239,6 +241,7 @@ pub fn evaluate(
             HintKind::SetCoverage => set_coverage_hints.push(hint),
             HintKind::Cardinality => cardinality_hints.push(hint),
             HintKind::ConstantEq => constant_eq_hints.push(hint),
+            HintKind::SetEq => set_eq_hints.push(hint),
             HintKind::Regex => regex_hints.push(hint),
             HintKind::Tool => tool_hints.push(hint),
             kind => reserved_skipped.push(ReservedSkipped {
@@ -273,6 +276,10 @@ pub fn evaluate(
     }
     for hint in constant_eq_hints {
         let mut new = constant_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in set_eq_hints {
+        let mut new = set_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
     for hint in regex_hints {
@@ -525,7 +532,7 @@ mod tests {
         let skipped = vec![ReservedSkipped {
             rule_id: "UNI-099".into(),
             hint_index: 0,
-            kind: HintKind::SetEq,
+            kind: HintKind::ContentDigestEq,
         }];
         let optional = reserved_hint_summary(&skipped, false).expect("present");
         let strict = reserved_hint_summary(&skipped, true).expect("present");

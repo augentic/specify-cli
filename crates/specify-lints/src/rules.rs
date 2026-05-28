@@ -118,8 +118,8 @@ pub enum LintMode {
 ///
 /// Includes the executable v1 kinds (`path-pattern`, `regex`,
 /// `schema`, `tool`, `reference-resolves`, `unique`,
-/// `set-coverage`, `cardinality`, `constant-eq`) and the Reserved
-/// hint kind kinds (`set-eq`, `content-digest-eq`, `namespace-owner`).
+/// `set-coverage`, `cardinality`, `constant-eq`, `set-eq`) and the
+/// Reserved hint kind kinds (`content-digest-eq`, `namespace-owner`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HintKind {
@@ -148,7 +148,10 @@ pub enum HintKind {
     /// configured constant (v1 source discriminator:
     /// `adapter-manifest-version-equals-v1`).
     ConstantEq,
-    /// Reserved hint kind: assert two sets are equal.
+    /// Assert that the values some candidate file declares are
+    /// exactly equal to a closed expected set — the two-sided
+    /// tightening of [`Self::SetCoverage`] (v1 source discriminator:
+    /// `adapter-briefs-equal-operations`).
     SetEq,
     /// Reserved hint kind: assert two content digests are equal.
     ContentDigestEq,
