@@ -388,7 +388,7 @@ mod tests {
         let path = root.join(rel);
         fs::create_dir_all(path.parent().expect("rule parent dir")).expect("create parent");
         let body = format!(
-            "---\nid: {id}\ntitle: Test Rule\nseverity: important\ntrigger: When testing codex validation in specdev check.\n---\n\n## Rule\n\nBody.\n"
+            "---\nid: {id}\ntitle: Test Rule\nseverity: important\ntrigger: When testing codex validation in specdev lint.\n---\n\n## Rule\n\nBody.\n"
         );
         fs::write(path, body).expect("write rule");
     }

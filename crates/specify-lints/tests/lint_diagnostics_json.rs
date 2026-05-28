@@ -1,7 +1,7 @@
 //! `Format::Json` formatter — `LintResult` envelope wire envelope.
 //!
 //! Locks two invariants S9 (`specrun lint --format json`) and any
-//! future Option-A consumer (`specdev check --format json`) depend on:
+//! future Option-A consumer (`specdev lint --format json`) depend on:
 //!
 //! 1. The valid envelope round-trips: `render` schema-validates and
 //!    the pretty-printed body deserialises back to an equal

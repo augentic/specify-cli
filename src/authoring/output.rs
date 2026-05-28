@@ -69,7 +69,7 @@ pub fn write_check_text(
 }
 
 /// `LintResult` envelope" body emitted by
-/// `specdev check --format json`.
+/// `specdev lint --format json`.
 ///
 /// The envelope is intentionally closed: only `version`, `summary`,
 /// and `findings` ship to stdout. Infrastructure errors that prevent

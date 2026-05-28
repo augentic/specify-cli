@@ -7,9 +7,9 @@ use crate::output::Format;
 #[derive(Debug, Parser)]
 #[command(
     name = "specdev",
-    about = "Framework authoring checks for augentic/specify",
+    about = "Framework authoring lint for augentic/specify",
     version,
-    after_help = "Common entry points:\n  specdev check --framework-root .\n  make check"
+    after_help = "Common entry points:\n  specdev lint --framework-root .\n  make check"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -32,8 +32,8 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Run framework consistency checks over a framework repo root.
-    Check {
+    /// Run framework authoring lint over a framework repo root.
+    Lint {
         /// Path to the augentic/specify framework repository.
         #[arg(long, env = "SPECDEV_FRAMEWORK_ROOT")]
         framework_root: std::path::PathBuf,

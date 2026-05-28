@@ -1,6 +1,6 @@
 //! Framework authoring checks for `augentic/specify`.
 //!
-//! Library crate behind the `specdev check` binary. The root `specify`
+//! Library crate behind the `specdev lint` binary. The root `specify`
 //! crate wires this checker into the `specdev` dispatcher; this crate
 //! itself is `publish = false` and depends only on shared / standards
 //! crates so framework-repo predicates never become part of the

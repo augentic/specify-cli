@@ -59,7 +59,7 @@
 //!   excludes the rule unless `include_unmatched`.
 //!
 //! Malformed glob patterns are treated as **non-matching** rather than
-//! aborting the resolver. `specdev check` catches
+//! aborting the resolver. `specdev lint` catches
 //! authoring bugs in patterns; surfacing a hard error here over a
 //! single first-party typo would be more disruptive than dropping the
 //! rule from the export. A future authoring-check could elevate this to

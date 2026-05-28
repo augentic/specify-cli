@@ -4,7 +4,7 @@
 //! v1 (Phase 2) ships the four formatters the diagnostics formatter set names as the
 //! closed Phase 2 set ([`Format::Json`], [`Format::Pretty`],
 //! [`Format::Github`], [`Format::Compact`]). Rendering lives in this
-//! module so `specrun lint` (Phase 2) and `specdev check --format
+//! module so `specrun lint` (Phase 2) and `specdev lint --format
 //! json` cannot drift.
 //!
 //! Only the [`Format::Json`] formatter validates against

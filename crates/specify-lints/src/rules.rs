@@ -450,7 +450,7 @@ pub enum FindingEvidence {
 /// Structured review finding per the rules contract.
 ///
 /// Shared by deterministic scanners (`specrun lint`), framework
-/// JSON export (`specdev check --format json`), target adapter
+/// JSON export (`specdev lint --format json`), target adapter
 /// review briefs, model-assisted scorers, CI annotations, and
 /// dashboards.
 ///

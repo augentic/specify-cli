@@ -1,4 +1,4 @@
-//! Golden tests for `specdev check --format json`.
+//! Golden tests for `specdev lint --format json`.
 //!
 //! These tests pin the byte-stable wire envelope emitted by the
 //! `specdev` binary's `--format json` mode (CH-22 plumbing, CH-21
@@ -33,7 +33,7 @@
 //!    the normalised finding. The stored fingerprint then reflects
 //!    the placeholder-anchored canonical preimage.
 //! 4. Re-serialise and compare/regenerate the placeholder-anchored
-//!    envelope against `tests/fixtures/specdev-check/<name>.json`.
+//!    envelope against `tests/fixtures/specdev-lint/<name>.json`.
 //!
 //! The resulting goldens are machine-portable and self-consistent:
 //! consumers replaying the test on any host produce the same path
@@ -70,7 +70,7 @@ const FRAMEWORK_ROOT_PLACEHOLDER: &str = "<FRAMEWORK_ROOT>";
 
 /// Resolve the directory where golden fixtures live.
 fn goldens_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("specdev-check")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("specdev-lint")
 }
 
 /// Write the minimal directory and file scaffold that
@@ -256,12 +256,12 @@ briefs:
     .expect("adapter.yaml");
 }
 
-/// Run `specdev check --framework-root <root> --format json` and
+/// Run `specdev lint --framework-root <root> --format json` and
 /// return the (exit code, stdout, stderr) triple.
 fn run_specdev_json(root: &Path) -> (Option<i32>, Vec<u8>, Vec<u8>) {
     let output = Command::cargo_bin("specdev")
         .expect("cargo_bin(specdev)")
-        .args(["check", "--framework-root"])
+        .args(["lint", "--framework-root"])
         .arg(root)
         .args(["--format", "json"])
         .output()
@@ -390,7 +390,7 @@ fn clean_tree_emits_empty_envelope() {
 /// (2) A framework tree carrying one schema violation, one
 /// namespace-ownership violation, and one duplicate-id violation
 /// emits the populated envelope captured by
-/// `tests/fixtures/specdev-check/violations.json`. Every finding in
+/// `tests/fixtures/specdev-lint/violations.json`. Every finding in
 /// the envelope is additionally schema-validated via
 /// [`validate_finding_json`] (CH-16) — covering scenario (3) from
 /// CH-23 in the same test pass.
@@ -475,7 +475,7 @@ fn missing_framework_root_still_emits_envelope_on_stdout() {
 
     let output = Command::cargo_bin("specdev")
         .expect("cargo_bin(specdev)")
-        .args(["check", "--framework-root"])
+        .args(["lint", "--framework-root"])
         .arg(&missing)
         .args(["--format", "json"])
         .output()
@@ -524,7 +524,7 @@ fn default_text_output_says_all_checks_passed() {
 
     let output = Command::cargo_bin("specdev")
         .expect("cargo_bin(specdev)")
-        .args(["check", "--framework-root"])
+        .args(["lint", "--framework-root"])
         .arg(temp.path())
         .output()
         .expect("specdev invocation");

@@ -1,7 +1,7 @@
 //! CH-16: `LintFinding` validation helpers.
 //!
 //! Public validation surface consumed by CH-21's `specdev`-to-finding
-//! mapper, CH-22's `specdev check --format json` envelope, target
+//! mapper, CH-22's `specdev lint --format json` envelope, target
 //! adapter review briefs, and future `specrun lint` producers.
 //!
 //! Three orthogonal checks per the rules contract §"Structured review finding

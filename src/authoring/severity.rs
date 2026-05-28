@@ -2,7 +2,7 @@
 //! finding to the closed [`Severity`] enum.
 //!
 //! The framework-convergence contract requires every authoring
-//! finding emitted by `specdev check --format json` to carry a closed
+//! finding emitted by `specdev lint --format json` to carry a closed
 //! severity from `{critical, important, suggestion, optional}`. The
 //! authoring `Finding` type does not currently carry a severity field
 //! (`crates/authoring/src/finding.rs` exposes only `rule_id`,
