@@ -37,7 +37,7 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## The Plan
 
-`plan.yaml` shape is fixed by [`schemas/plan/plan.schema.json`](../../schemas/plan/plan.schema.json). Two stored lifecycle states (`pending | reviewed`); per-entry status is `pending | in-progress | done`. Writer ownership is split — see §"Writer ownership" below.
+`plan.yaml` shape is fixed by [`schemas/plan/plan.schema.json`](../../schemas/plan/plan.schema.json). Two stored lifecycle states (`pending | approved`); per-entry status is `pending | in-progress | done`. Writer ownership is split — see §"Writer ownership" below.
 
 ## Workflow vocabulary
 
@@ -129,9 +129,9 @@ The CLI is the single writer of every `Divergence` variant. Operators flip `acce
 
 Candidates carry an optional `aliases[]` bullet. `slices[].sources[].candidate` resolves first against `id`, then against any entry in `aliases[]`. Aliases live in a single namespace per `discovery.md`. Parser at [`crates/domain/src/discovery/document.rs`](../../crates/domain/src/discovery/document.rs); collision discriminant `discovery-alias-collision`.
 
-## D7 — `--auto-review`
+## D7 — `--auto-approve`
 
-`specrun plan create --auto-review` stamps Gate 1 in the same invocation when validation passes. Failure under `--auto-review` MUST NOT stamp; the operator re-runs after fixing.
+`specrun plan create --auto-approve` stamps Gate 1 in the same invocation when validation passes. Failure under `--auto-approve` MUST NOT stamp; the operator re-runs after fixing.
 
 ## D8 — Cache fingerprint inputs
 

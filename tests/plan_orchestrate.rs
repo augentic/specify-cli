@@ -630,25 +630,25 @@ fn plan_transition_undo_walks_in_progress_to_pending_then_refuses() {
 }
 
 #[test]
-fn plan_transition_plan_level_reviewed_json() {
+fn plan_transition_plan_level_approved_json() {
     // workflow §The plan gate: `specrun plan transition <plan-name>
-    // reviewed` is the operator-stamped Gate 1 transition. The plan
+    // approved` is the operator-stamped Gate 1 transition. The plan
     // name on the wire matches `plan.yaml.name`.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
     let assert = specrun()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "transition", "demo", "reviewed"])
+        .args(["--format", "json", "plan", "transition", "demo", "approved"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(actual["kind"], "plan");
     assert_eq!(actual["name"], "demo");
     assert_eq!(actual["previous"], "pending");
-    assert_eq!(actual["current"], "reviewed");
+    assert_eq!(actual["current"], "approved");
 
-    assert_golden("transition-plan-reviewed.json", actual);
+    assert_golden("transition-plan-approved.json", actual);
 }
 
 #[test]
@@ -864,30 +864,30 @@ fn plan_create_then_validate_passes_clean() {
     );
 }
 
-// -- plan create --auto-review (workflow §D7) ---------------------------
+// -- plan create --auto-approve (workflow §D7) ---------------------------
 
 #[test]
-fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
-    // workflow §D7: `--auto-review` is the operator's Gate-1 consent at
-    // create time. The on-disk plan carries `lifecycle: reviewed`
+fn plan_create_auto_approve_stamps_approved_and_emits_journal_event() {
+    // workflow §D7: `--auto-approve` is the operator's Gate-1 consent at
+    // create time. The on-disk plan carries `lifecycle: approved`
     // directly (single atomic write — no transient `pending`
     // observable to readers) and the journal carries exactly one
-    // `plan.transition.reviewed` event matching the post-create stamp.
+    // `plan.transition.approved` event matching the post-create stamp.
     let project = Project::init();
 
     let assert = specrun()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "create", "fresh", "--auto-review"])
+        .args(["--format", "json", "plan", "create", "fresh", "--auto-approve"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(actual["name"], "fresh");
-    assert_eq!(actual["lifecycle"], "reviewed");
+    assert_eq!(actual["lifecycle"], "approved");
 
     let on_disk = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
     assert!(
-        on_disk.contains("lifecycle: reviewed"),
-        "plan.yaml must carry `lifecycle: reviewed` after --auto-review, got:\n{on_disk}"
+        on_disk.contains("lifecycle: approved"),
+        "plan.yaml must carry `lifecycle: approved` after --auto-approve, got:\n{on_disk}"
     );
     assert!(
         !on_disk.contains("lifecycle: pending"),
@@ -900,11 +900,11 @@ fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
     assert_eq!(
         lines.len(),
         1,
-        "exactly one journal event (plan.transition.reviewed) per --auto-review create, got:\n{raw}"
+        "exactly one journal event (plan.transition.approved) per --auto-approve create, got:\n{raw}"
     );
     assert!(
-        lines[0].contains(r#""event":"plan.transition.reviewed""#),
-        "first (and only) line must be plan.transition.reviewed, got:\n{}",
+        lines[0].contains(r#""event":"plan.transition.approved""#),
+        "first (and only) line must be plan.transition.approved, got:\n{}",
         lines[0]
     );
     assert!(
@@ -915,16 +915,16 @@ fn plan_create_auto_review_stamps_reviewed_and_emits_journal_event() {
 }
 
 #[test]
-fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
-    // workflow §D7: running `specrun plan transition <name> reviewed`
-    // after a successful `--auto-review` create must be a no-op —
-    // exit 0, no second `plan.transition.reviewed` event, plan.yaml
+fn plan_create_auto_approve_then_explicit_transition_is_idempotent_noop() {
+    // workflow §D7: running `specrun plan transition <name> approved`
+    // after a successful `--auto-approve` create must be a no-op —
+    // exit 0, no second `plan.transition.approved` event, plan.yaml
     // unchanged.
     let project = Project::init();
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "create", "fresh", "--auto-review"])
+        .args(["plan", "create", "fresh", "--auto-approve"])
         .assert()
         .success();
     let journal = project.root().join(".specify").join("journal.jsonl");
@@ -934,16 +934,16 @@ fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
 
     let assert = specrun()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "transition", "fresh", "reviewed"])
+        .args(["--format", "json", "plan", "transition", "fresh", "approved"])
         .assert()
         .success();
     let body = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(body["kind"], "plan");
     assert_eq!(
-        body["previous"], "reviewed",
-        "previous lifecycle must already be reviewed (no-op), got:\n{body}"
+        body["previous"], "approved",
+        "previous lifecycle must already be approved (no-op), got:\n{body}"
     );
-    assert_eq!(body["current"], "reviewed");
+    assert_eq!(body["current"], "approved");
 
     let plan_after = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
     assert_eq!(
@@ -954,13 +954,13 @@ fn plan_create_auto_review_then_explicit_transition_is_idempotent_noop() {
     let after_lines = after.lines().filter(|l| !l.is_empty()).count();
     assert_eq!(
         before_lines, after_lines,
-        "explicit `transition reviewed` after --auto-review must not append a second event"
+        "explicit `transition approved` after --auto-approve must not append a second event"
     );
 }
 
 #[test]
-fn plan_create_auto_review_invalid_name_refuses_same_as_without_flag() {
-    // workflow §D7: `--auto-review` does NOT bypass validation. An
+fn plan_create_auto_approve_invalid_name_refuses_same_as_without_flag() {
+    // workflow §D7: `--auto-approve` does NOT bypass validation. An
     // invalid (non-kebab) name refuses the create with the same
     // exit code and envelope as the post-create path; no `plan.yaml`
     // lands on disk and the journal stays untouched.
@@ -968,7 +968,7 @@ fn plan_create_auto_review_invalid_name_refuses_same_as_without_flag() {
 
     let assert = specrun()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "create", "Bad_Name", "--auto-review"])
+        .args(["--format", "json", "plan", "create", "Bad_Name", "--auto-approve"])
         .assert()
         .failure();
     let code = assert.get_output().status.code().expect("exit code");
@@ -978,22 +978,22 @@ fn plan_create_auto_review_invalid_name_refuses_same_as_without_flag() {
 
     assert!(
         !project.plan_path().exists(),
-        "plan.yaml must not be written when --auto-review fails validation"
+        "plan.yaml must not be written when --auto-approve fails validation"
     );
     let journal = project.root().join(".specify").join("journal.jsonl");
     assert!(
         !journal.exists(),
-        "journal must stay empty when --auto-review validation fails, found: {}",
+        "journal must stay empty when --auto-approve validation fails, found: {}",
         journal.display()
     );
 }
 
 #[test]
-fn plan_create_auto_review_validation_failure_emits_no_partial_events() {
-    // workflow §D7: validation failure under --auto-review must not
+fn plan_create_auto_approve_validation_failure_emits_no_partial_events() {
+    // workflow §D7: validation failure under --auto-approve must not
     // surface a partial-state event sequence — no orphan
     // `plan.propose.divergence` without the matching
-    // `plan.transition.reviewed`, no half-written plan.yaml. An
+    // `plan.transition.approved`, no half-written plan.yaml. An
     // unknown `--divergence-likely` slice (the cheapest validation
     // gate to trip on a fresh plan) must refuse the create and
     // leave the journal untouched.
@@ -1001,14 +1001,14 @@ fn plan_create_auto_review_validation_failure_emits_no_partial_events() {
 
     let assert = specrun()
         .current_dir(project.root())
-        .args(["plan", "create", "fresh", "--auto-review", "--divergence-likely", "ghost-slice"])
+        .args(["plan", "create", "fresh", "--auto-approve", "--divergence-likely", "ghost-slice"])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
 
     assert!(
         !project.plan_path().exists(),
-        "plan.yaml must not be written when --auto-review + --divergence-likely fails"
+        "plan.yaml must not be written when --auto-approve + --divergence-likely fails"
     );
     let journal = project.root().join(".specify").join("journal.jsonl");
     assert!(
@@ -1019,16 +1019,16 @@ fn plan_create_auto_review_validation_failure_emits_no_partial_events() {
 }
 
 #[test]
-fn plan_create_auto_review_then_validate_passes_clean() {
-    // The empty-scaffold + `--auto-review` combination must still
-    // validate cleanly — `--auto-review` is a Gate-1 consent flag,
+fn plan_create_auto_approve_then_validate_passes_clean() {
+    // The empty-scaffold + `--auto-approve` combination must still
+    // validate cleanly — `--auto-approve` is a Gate-1 consent flag,
     // not a validation bypass, but it also must not introduce any
     // new validation drift on the empty-scaffold path.
     let project = Project::init();
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "create", "fresh", "--auto-review"])
+        .args(["plan", "create", "fresh", "--auto-approve"])
         .assert()
         .success();
 

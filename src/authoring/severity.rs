@@ -35,7 +35,7 @@
 //!
 //! Only `codex.schema-violation` is elevated to `Critical`: a malformed
 //! codex rule file is a fundamental schema breakage that breaks every
-//! downstream consumer of the resolved codex (`specrun codex export`,
+//! downstream consumer of the resolved codex (`specrun rules export`,
 //! review tooling, target adapter overlays). Every other authoring
 //! rule — duplicate rule ids, namespace-ownership violations, skill /
 //! brief / link / docs / scenarios / tools / agent-teams families —
@@ -49,7 +49,7 @@
 //! This module deliberately lives at the binary boundary
 //! (`src/authoring/severity.rs`) and not in the `specify-authoring`
 //! library crate. Per RFC-28 §"Relationship to framework authoring",
-//! the CH-21 `Finding` → `ReviewFinding` mapper sits at the
+//! the CH-21 `Finding` → `LintFinding` mapper sits at the
 //! `specdev` binary boundary so `specify-authoring` does not take a
 //! dependency on `specify-domain`. CH-20 is a building block for that
 //! mapper, so the severity table must live in the binary layer too.

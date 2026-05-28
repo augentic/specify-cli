@@ -16,7 +16,7 @@
 //! mirrors the historical `specify_domain::codex::*` surface so call
 //! sites only change their crate prefix.
 
-pub mod review;
+pub mod lint;
 pub mod rules;
 
 pub use rules::*;

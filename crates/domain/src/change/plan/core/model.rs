@@ -57,8 +57,8 @@ pub enum Status {
 /// (workflow §Workflow vocabulary).
 ///
 /// Two stored states only — `pending` (default after `plan create`)
-/// and `reviewed` (operator-stamped at Gate 1 via
-/// `specrun plan transition <plan-name> reviewed`). "Currently
+/// and `approved` (operator-stamped at Gate 1 via
+/// `specrun plan transition <plan-name> approved`). "Currently
 /// executing" and "drained" are computed from per-entry [`Status`] at
 /// read time via [`Plan::is_executing`] / [`Plan::is_drained`].
 #[derive(
@@ -83,7 +83,7 @@ pub enum Lifecycle {
     #[default]
     Pending,
     /// Operator has stamped Gate 1 — `/spec:execute` is now legal.
-    Reviewed,
+    Approved,
 }
 
 /// In-memory model of `plan.yaml` (at the repo root).

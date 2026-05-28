@@ -82,7 +82,7 @@
         }
       }
     },
-    "review_mode": {
+    "lint_mode": {
       "type": "string",
       "enum": [
         "deterministic",
@@ -90,7 +90,7 @@
         "hybrid"
       ],
       "default": "model-assisted",
-      "description": "How this rule is expected to be reviewed. The review runner decides execution; this field only classifies the rule."
+      "description": "How this rule is expected to be linted. The lint runner decides execution; this field only classifies the rule."
     },
     "deterministic_hints": {
       "type": "array",
@@ -107,7 +107,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "description": "Kind of deterministic signal the hint describes. Phase 2 kinds (`path-pattern`, `regex`, `schema`, `tool`) are executed by the `specrun review` hint interpreter; reserved kinds carry `x-rfc32-status: reserved` and are accepted by RFC-28 exporters and tooling validators per RFC-32 §Hint kinds — reserved, but are shape-validated only at this layer with no execution semantics implied.",
+            "description": "Kind of deterministic signal the hint describes. Phase 2 kinds (`path-pattern`, `regex`, `schema`, `tool`) are executed by the `specrun lint` hint interpreter; reserved kinds carry `x-rfc32-status: reserved` and are accepted by RFC-28 exporters and tooling validators per RFC-32 §Hint kinds — reserved, but are shape-validated only at this layer with no execution semantics implied.",
             "oneOf": [
               { "const": "path-pattern" },
               { "const": "regex" },

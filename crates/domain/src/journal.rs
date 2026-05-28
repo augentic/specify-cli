@@ -6,7 +6,7 @@
 //! [`Event`]; readers tail the file and skip blank lines.
 //!
 //! Wire format is locked: event ids are dotted kebab-case
-//! (`plan.transition.reviewed`), payload field names are kebab-case
+//! (`plan.transition.approved`), payload field names are kebab-case
 //! (`plan-name`, `slice-name`, …), and the closed `from` / `to`
 //! enum is `none | likely | accepted | rejected`. Rust variant
 //! names stay `snake_case` and reach the wire through
@@ -58,9 +58,9 @@ impl Event {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "payload")]
 pub enum EventKind {
-    /// Gate 1 cleared — `specrun plan transition <plan-name> reviewed`.
-    #[serde(rename = "plan.transition.reviewed", rename_all = "kebab-case")]
-    PlanTransitionReviewed {
+    /// Gate 1 cleared — `specrun plan transition <plan-name> approved`.
+    #[serde(rename = "plan.transition.approved", rename_all = "kebab-case")]
+    PlanTransitionApproved {
         /// Plan name from `plan.yaml.name`.
         plan_name: String,
     },
@@ -69,7 +69,7 @@ pub enum EventKind {
     /// (`done → in-progress` and `in-progress → pending` each fire
     /// individually) so the journal records every step the operator
     /// took and replay traces line up with the forward-direction
-    /// `plan.transition.reviewed` / `slice.transition.*` cadence.
+    /// `plan.transition.approved` / `slice.transition.*` cadence.
     #[serde(rename = "plan.transition.undone", rename_all = "kebab-case")]
     PlanTransitionUndone {
         /// Plan name from `plan.yaml.name`.
@@ -337,7 +337,7 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 /// Used by CLI verbs that own more than one journal emit per
 /// invocation (e.g. `specrun plan create --auto-review`, which
 /// stages both `plan.propose.divergence` and
-/// `plan.transition.reviewed` in the same Gate-1 consent), and
+/// `plan.transition.approved` in the same Gate-1 consent), and
 /// equally by single-event callers via
 /// `append_batch(layout, std::slice::from_ref(&event))`.
 ///
@@ -411,7 +411,7 @@ mod tests {
     fn append_batch_writes_every_event_in_order_in_one_call() {
         // workflow §D7: `specrun plan create --auto-review` may emit
         // both `plan.propose.divergence` and
-        // `plan.transition.reviewed` in a single fsynced append.
+        // `plan.transition.approved` in a single fsynced append.
         // Exercise the batched helper to lock that contract.
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
@@ -425,7 +425,7 @@ mod tests {
             ),
             Event::new(
                 test_timestamp("2026-05-22T13:30:00Z"),
-                EventKind::PlanTransitionReviewed {
+                EventKind::PlanTransitionApproved {
                     plan_name: "fresh".to_string(),
                 },
             ),
@@ -440,8 +440,8 @@ mod tests {
             lines[0]
         );
         assert!(
-            lines[1].contains(r#""event":"plan.transition.reviewed""#),
-            "second line must be plan.transition.reviewed, got:\n{}",
+            lines[1].contains(r#""event":"plan.transition.approved""#),
+            "second line must be plan.transition.approved, got:\n{}",
             lines[1]
         );
     }
@@ -573,7 +573,7 @@ mod tests {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         for kind in [
-            EventKind::PlanTransitionReviewed {
+            EventKind::PlanTransitionApproved {
                 plan_name: "p".to_string(),
             },
             EventKind::PlanProposeDivergence {

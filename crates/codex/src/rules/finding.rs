@@ -1,14 +1,14 @@
-//! CH-16: `ReviewFinding` validation helpers.
+//! CH-16: `LintFinding` validation helpers.
 //!
 //! Public validation surface consumed by CH-21's `specdev`-to-finding
 //! mapper, CH-22's `specdev check --format json` envelope, target
-//! adapter review briefs, and future `specrun review` producers.
+//! adapter review briefs, and future `specrun lint` producers.
 //!
 //! Three orthogonal checks per RFC-28 §"Structured review finding
 //! schema":
 //!
 //! 1. **JSON Schema validation** — every wire field conforms to
-//!    `schemas/review/finding.schema.json` (kebab-case keys, closed
+//!    `schemas/lint/finding.schema.json` (kebab-case keys, closed
 //!    enums, evidence `oneOf`, fingerprint pattern, etc.).
 //! 2. **Evidence cap** — the serialized `evidence` object is bounded
 //!    at 16 `KiB` per RFC-28 §"Evidence union" §"Size constraints".
@@ -25,9 +25,9 @@
 //! validators individually.
 
 use serde_json::Value as JsonValue;
-use specify_schema::{REVIEW_FINDING_JSON_SCHEMA, compile_schema};
+use specify_schema::{LINT_FINDING_JSON_SCHEMA, compile_schema};
 
-use super::ReviewFinding;
+use super::LintFinding;
 use super::fingerprint::fingerprint;
 
 /// 16 `KiB` cap on the serialized evidence object per RFC-28
@@ -78,15 +78,15 @@ pub enum FindingError {
 ///
 /// Returns the first [`FindingError`] from [`validate_finding`],
 /// [`validate_evidence_size`], or [`validate_fingerprint`].
-pub fn validate(finding: &ReviewFinding) -> Result<(), FindingError> {
+pub fn validate(finding: &LintFinding) -> Result<(), FindingError> {
     validate_finding(finding)?;
     validate_evidence_size(finding)?;
     validate_fingerprint(finding)?;
     Ok(())
 }
 
-/// Validate a typed [`ReviewFinding`] against the embedded
-/// `schemas/review/finding.schema.json`.
+/// Validate a typed [`LintFinding`] against the embedded
+/// `schemas/lint/finding.schema.json`.
 ///
 /// Serializes the finding to a [`serde_json::Value`] and delegates to
 /// [`validate_finding_json`].
@@ -97,14 +97,14 @@ pub fn validate(finding: &ReviewFinding) -> Result<(), FindingError> {
 ///   serialized (unreachable for the derived `Serialize` impl).
 /// - [`FindingError::Schema`] when the wire shape violates the
 ///   embedded schema.
-pub fn validate_finding(finding: &ReviewFinding) -> Result<(), FindingError> {
+pub fn validate_finding(finding: &LintFinding) -> Result<(), FindingError> {
     let value =
         serde_json::to_value(finding).map_err(|err| FindingError::Serialize(err.to_string()))?;
     validate_finding_json(&value)
 }
 
 /// Validate a raw [`serde_json::Value`] against the embedded
-/// `schemas/review/finding.schema.json`.
+/// `schemas/lint/finding.schema.json`.
 ///
 /// Used by callers that need to validate hand-built JSON (e.g. when
 /// asserting the strict evidence `oneOf` rejects shapes that the
@@ -115,7 +115,7 @@ pub fn validate_finding(finding: &ReviewFinding) -> Result<(), FindingError> {
 /// Returns [`FindingError::Schema`] with a `; `-joined error list when
 /// the instance fails validation.
 pub fn validate_finding_json(value: &JsonValue) -> Result<(), FindingError> {
-    let validator = compile_schema(REVIEW_FINDING_JSON_SCHEMA)
+    let validator = compile_schema(LINT_FINDING_JSON_SCHEMA)
         .map_err(|err| FindingError::Schema(err.to_string()))?;
     let errors: Vec<String> =
         validator.iter_errors(value).map(|err| format!("{}: {err}", err.instance_path())).collect();
@@ -137,7 +137,7 @@ pub fn validate_finding_json(value: &JsonValue) -> Result<(), FindingError> {
 ///   (unreachable for the derived `Serialize` impl).
 /// - [`FindingError::EvidenceTooLarge`] when the serialized form
 ///   exceeds 16 `KiB`.
-pub fn validate_evidence_size(finding: &ReviewFinding) -> Result<(), FindingError> {
+pub fn validate_evidence_size(finding: &LintFinding) -> Result<(), FindingError> {
     let serialized = serde_json::to_string(&finding.evidence)
         .map_err(|err| FindingError::Serialize(err.to_string()))?;
     let actual = serialized.len();
@@ -162,7 +162,7 @@ pub fn validate_evidence_size(finding: &ReviewFinding) -> Result<(), FindingErro
 ///   shape is wrong.
 /// - [`FindingError::FingerprintMismatch`] when the recomputed value
 ///   differs from the stored one.
-pub fn validate_fingerprint(finding: &ReviewFinding) -> Result<(), FindingError> {
+pub fn validate_fingerprint(finding: &LintFinding) -> Result<(), FindingError> {
     let Some(hex) = finding.fingerprint.strip_prefix("sha256:") else {
         return Err(FindingError::FingerprintMalformed(finding.fingerprint.clone()));
     };
@@ -190,14 +190,14 @@ mod tests {
     };
     use crate::rules::fingerprint::fingerprint;
     use crate::rules::{
-        Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, ReviewFinding,
+        Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, LintFinding,
         Severity,
     };
 
     /// Minimal valid finding template; callers stamp the fingerprint
     /// from CH-15 and mutate the rest as needed.
-    fn sample_finding() -> ReviewFinding {
-        let mut finding = ReviewFinding {
+    fn sample_finding() -> LintFinding {
+        let mut finding = LintFinding {
             id: "FIND-0001".into(),
             rule_id: Some("UNI-014".into()),
             related_rule_ids: None,

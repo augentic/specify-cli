@@ -1,23 +1,23 @@
 //! Codex DTOs and runtime wire types per RFC-28.
 //!
 //! Provides the typed Rust shapes that round-trip cleanly through the
-//! schemas embedded under `schemas/codex/` and `schemas/review/`:
+//! schemas embedded under `schemas/codex/` and `schemas/lint/`:
 //!
 //! - [`CodexRule`] / [`Deprecated`] / [`Applicability`] /
 //!   [`DeterministicHint`] / [`Reference`] are the parsed-frontmatter
 //!   shape used by the CH-11 frontmatter parser. Field names are
-//!   kebab-case at every nesting level (`review-mode`,
+//!   kebab-case at every nesting level (`lint-mode`,
 //!   `deterministic-hints`, `replaced-by`); the parser performs the
 //!   `snake_case -> kebab-case` lift on the raw markdown side so the
 //!   in-memory shape matches the wire shape.
 //! - [`ResolvedCodex`] / [`ResolvedRule`] are the export envelope
-//!   emitted by `specrun codex export --format json` (CH-17). They
+//!   emitted by `specrun rules export --format json` (CH-17). They
 //!   add resolver-only fields ([`Origin`], [`PathRoot`], `path`,
 //!   `body`) on top of the codex-rule shape.
-//! - [`ReviewFinding`] / [`FindingEvidence`] / [`FindingLocation`] /
+//! - [`LintFinding`] / [`FindingEvidence`] / [`FindingLocation`] /
 //!   [`FindingSource`] / [`Artifact`] / [`Confidence`] /
 //!   [`FindingStatus`] are the structured review-finding shape shared
-//!   by `specrun review`, target adapter review briefs, and CI
+//!   by `specrun lint`, target adapter review briefs, and CI
 //!   annotations (CH-16/CH-21).
 //!
 //! Severity comparator order is `Critical < Important < Suggestion <
@@ -98,7 +98,7 @@ pub enum PathRoot {
 /// kebab-case (`deterministic`, `model-assisted`, `hybrid`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ReviewMode {
+pub enum LintMode {
     /// Rule is fully expressed as deterministic hints.
     Deterministic,
     /// Rule needs an SLM/LLM scorer.
@@ -142,8 +142,8 @@ pub enum HintKind {
     NamespaceOwner,
 }
 
-/// Producer attribution for a [`ReviewFinding`]. Distinct from the
-/// codex-rule [`ReviewMode`] enum because review findings may also
+/// Producer attribution for a [`LintFinding`]. Distinct from the
+/// codex-rule [`LintMode`] enum because review findings may also
 /// originate from a human reviewer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -158,7 +158,7 @@ pub enum FindingSource {
     Human,
 }
 
-/// Artifact category attribution for a [`ReviewFinding`].
+/// Artifact category attribution for a [`LintFinding`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Artifact {
@@ -184,7 +184,7 @@ pub enum Artifact {
     Unknown,
 }
 
-/// Producer self-rated confidence for a [`ReviewFinding`].
+/// Producer self-rated confidence for a [`LintFinding`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Confidence {
@@ -196,7 +196,7 @@ pub enum Confidence {
     Low,
 }
 
-/// Triage status for a [`ReviewFinding`]. Omitted by raw scanners and
+/// Triage status for a [`LintFinding`]. Omitted by raw scanners and
 /// populated by review reports or CI state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -297,7 +297,7 @@ pub struct CodexRule {
     pub trigger: String,
     /// How the rule is expected to be reviewed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub review_mode: Option<ReviewMode>,
+    pub lint_mode: Option<LintMode>,
     /// Inclusive narrowing filter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applicability: Option<Applicability>,
@@ -319,7 +319,7 @@ pub struct CodexRule {
 
 /// Read-only resolved view of shared, source-adapter, and
 /// target-adapter codex rules. Wire envelope emitted by
-/// `specrun codex export --format json` per RFC-28
+/// `specrun rules export --format json` per RFC-28
 /// §"Resolved codex export".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -355,7 +355,7 @@ pub struct ResolvedRule {
     pub trigger: String,
     /// How the rule is expected to be reviewed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub review_mode: Option<ReviewMode>,
+    pub lint_mode: Option<LintMode>,
     /// Inclusive narrowing filter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applicability: Option<Applicability>,
@@ -381,7 +381,7 @@ pub struct ResolvedRule {
 }
 
 /// File path plus optional line/column range carried by a
-/// [`ReviewFinding`] or by a `digest`/`structured` evidence variant.
+/// [`LintFinding`] or by a `digest`/`structured` evidence variant.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct FindingLocation {
@@ -402,7 +402,7 @@ pub struct FindingLocation {
     pub end_column: Option<u32>,
 }
 
-/// Closed evidence union for a [`ReviewFinding`].
+/// Closed evidence union for a [`LintFinding`].
 ///
 /// Internally tagged on `kind`; the wire shape's `oneOf` is encoded
 /// by serde's `tag = "kind"` with `additionalProperties: false` per
@@ -449,7 +449,7 @@ pub enum FindingEvidence {
 
 /// Structured review finding per RFC-28.
 ///
-/// Shared by deterministic scanners (`specrun review`), framework
+/// Shared by deterministic scanners (`specrun lint`), framework
 /// JSON export (`specdev check --format json`), target adapter
 /// review briefs, model-assisted scorers, CI annotations, and
 /// dashboards.
@@ -459,7 +459,7 @@ pub enum FindingEvidence {
 /// `rule_id` is the durable codex citation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct ReviewFinding {
+pub struct LintFinding {
     /// Producer-local stable id for this run (e.g. `FIND-0001`).
     pub id: String,
     /// Codex rule id (e.g. `UNI-014`); absent for findings that do
@@ -518,13 +518,13 @@ mod tests {
     use jsonschema::Validator;
     use serde_json::{Value as JsonValue, json};
     use specify_schema::{
-        CODEX_RULE_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA, REVIEW_FINDING_JSON_SCHEMA,
+        CODEX_RULE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA,
     };
 
     use super::{
         Applicability, Artifact, CodexRule, Confidence, Deprecated, DeterministicHint,
-        FindingEvidence, FindingLocation, FindingSource, FindingStatus, HintKind, Origin, PathRoot,
-        Reference, ResolvedCodex, ResolvedRule, ReviewFinding, ReviewMode, Severity,
+        FindingEvidence, FindingLocation, FindingSource, FindingStatus, HintKind, LintFinding,
+        LintMode, Origin, PathRoot, Reference, ResolvedCodex, ResolvedRule, Severity,
     };
 
     fn validator(schema_source: &str) -> Validator {
@@ -571,7 +571,7 @@ mod tests {
     }
 
     /// `CodexRule` round-trips its own JSON shape, exercising the
-    /// snake-to-kebab field renames (`review-mode`,
+    /// snake-to-kebab field renames (`lint-mode`,
     /// `deterministic-hints`).
     #[test]
     fn codex_rule_round_trips() {
@@ -580,7 +580,7 @@ mod tests {
             title: "Hardcoded Configuration".into(),
             severity: Severity::Important,
             trigger: "Generated code embeds environment-specific configuration instead of routing it through declared configuration.".into(),
-            review_mode: Some(ReviewMode::Hybrid),
+            lint_mode: Some(LintMode::Hybrid),
             applicability: Some(Applicability {
                 adapters: Some(vec!["omnia".into()]),
                 languages: Some(vec!["rust".into()]),
@@ -601,7 +601,7 @@ mod tests {
             body: "## Rule\n\nConfiguration values that vary between deployments must not be hardcoded in generated code.\n".into(),
         };
         let value = serde_json::to_value(&rule).expect("serialise");
-        assert_eq!(value.get("review-mode").and_then(JsonValue::as_str), Some("hybrid"));
+        assert_eq!(value.get("lint-mode").and_then(JsonValue::as_str), Some("hybrid"));
         assert!(value.get("deterministic-hints").is_some());
         let parsed: CodexRule = serde_json::from_value(value).expect("round-trip");
         assert_eq!(rule, parsed);
@@ -621,7 +621,7 @@ mod tests {
                 title: "Hardcoded Configuration".into(),
                 severity: Severity::Important,
                 trigger: "Generated code embeds environment-specific configuration instead of routing it through declared configuration.".into(),
-                review_mode: Some(ReviewMode::Hybrid),
+                lint_mode: Some(LintMode::Hybrid),
                 applicability: Some(Applicability {
                     adapters: Some(vec!["omnia".into()]),
                     languages: Some(vec!["rust".into()]),
@@ -683,7 +683,7 @@ mod tests {
     /// same struct.
     #[test]
     fn review_finding_round_trips_against_schema() {
-        let finding = ReviewFinding {
+        let finding = LintFinding {
             id: "FIND-0001".into(),
             rule_id: Some("UNI-014".into()),
             related_rule_ids: None,
@@ -716,8 +716,8 @@ mod tests {
             status: None,
         };
         let value = serde_json::to_value(&finding).expect("serialise");
-        assert_validates(REVIEW_FINDING_JSON_SCHEMA, &value);
-        let parsed: ReviewFinding = serde_json::from_value(value).expect("round-trip");
+        assert_validates(LINT_FINDING_JSON_SCHEMA, &value);
+        let parsed: LintFinding = serde_json::from_value(value).expect("round-trip");
         assert_eq!(finding, parsed);
     }
 
@@ -764,7 +764,7 @@ mod tests {
 
         // Each variant is a legal evidence payload inside a finding.
         for evidence in [snippet, digest, structured] {
-            let finding = ReviewFinding {
+            let finding = LintFinding {
                 id: "FIND-0001".into(),
                 rule_id: Some("UNI-014".into()),
                 related_rule_ids: None,
@@ -786,8 +786,8 @@ mod tests {
                 status: Some(FindingStatus::Open),
             };
             let value = serde_json::to_value(&finding).expect("serialise");
-            assert_validates(REVIEW_FINDING_JSON_SCHEMA, &value);
-            let parsed: ReviewFinding =
+            assert_validates(LINT_FINDING_JSON_SCHEMA, &value);
+            let parsed: LintFinding =
                 serde_json::from_value(value).expect("round-trip evidence variant");
             assert_eq!(finding, parsed);
         }

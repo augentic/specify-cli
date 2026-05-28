@@ -15,7 +15,7 @@ pub struct ScopedTool {
 
 impl ScopedTool {
     /// Borrow the resolved scope (project / plugin) the tool was
-    /// declared in. Used by `commands::review` to invoke a declared
+    /// declared in. Used by `commands::lint` to invoke a declared
     /// WASI tool with the right capability root.
     pub const fn scope(&self) -> &ToolScope {
         &self.scope

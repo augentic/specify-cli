@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 use specify_authoring::error::ToolingError;
 use specify_authoring::finding::{Finding, Location};
-use specify_codex::{ReviewFinding, Severity};
+use specify_codex::{LintFinding, Severity};
 use specify_error::ValidationSummary;
 
 #[derive(Serialize)]
@@ -80,13 +80,13 @@ pub fn write_check_text(
 /// so consumers can rely on a stable shape regardless of outcome.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct ReviewFindingsBody {
+pub struct LintFindingsBody {
     pub version: u32,
     pub summary: SeveritySummary,
-    pub findings: Vec<ReviewFinding>,
+    pub findings: Vec<LintFinding>,
 }
 
-/// Per-severity counts for [`ReviewFindingsBody::summary`]. All four
+/// Per-severity counts for [`LintFindingsBody::summary`]. All four
 /// keys are always present; severities with zero findings serialize as
 /// `0` rather than being omitted.
 #[derive(Serialize, Default)]
@@ -98,10 +98,10 @@ pub struct SeveritySummary {
     pub optional: usize,
 }
 
-/// Build a [`ReviewFindingsBody`] for `findings`, computing the
+/// Build a [`LintFindingsBody`] for `findings`, computing the
 /// per-severity summary from the input vector.
 #[must_use]
-pub fn review_findings_body(findings: Vec<ReviewFinding>) -> ReviewFindingsBody {
+pub fn review_findings_body(findings: Vec<LintFinding>) -> LintFindingsBody {
     let mut summary = SeveritySummary::default();
     for finding in &findings {
         match finding.severity {
@@ -111,7 +111,7 @@ pub fn review_findings_body(findings: Vec<ReviewFinding>) -> ReviewFindingsBody 
             Severity::Optional => summary.optional += 1,
         }
     }
-    ReviewFindingsBody {
+    LintFindingsBody {
         version: 1,
         summary,
         findings,

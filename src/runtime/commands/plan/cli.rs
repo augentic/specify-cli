@@ -30,17 +30,17 @@ pub enum PlanAction {
         /// this field — do not edit `plan.yaml` directly.
         #[arg(long = "divergence-likely", value_name = "SLICE", action = ArgAction::Append)]
         divergence_likely: Vec<String>,
-        /// Stamp `lifecycle: reviewed` atomically with create
+        /// Stamp `lifecycle: approved` atomically with create
         /// (workflow §D7). Typing this flag *is* the operator's
         /// Gate-1 consent — the CLI runs the same validation it
         /// runs on the post-create path, refuses the create on
         /// failure regardless of the flag, and on success writes a
-        /// single atomic `plan.yaml` carrying `lifecycle: reviewed`
-        /// plus the matching `plan.transition.reviewed` journal
+        /// single atomic `plan.yaml` carrying `lifecycle: approved`
+        /// plus the matching `plan.transition.approved` journal
         /// event. Valid on any plan shape (empty scaffold,
         /// single-slice, multi-slice).
-        #[arg(long = "auto-review", action = ArgAction::SetTrue)]
-        auto_review: bool,
+        #[arg(long = "auto-approve", action = ArgAction::SetTrue)]
+        auto_approve: bool,
         /// Pre-seed a per-slice `authority-override` entry on a
         /// named slice (workflow §D3). Each occurrence takes two
         /// positional values: the slice name and a
@@ -53,7 +53,7 @@ pub enum PlanAction {
         /// orphan-key check. One
         /// `plan.amend.authority-override` journal event fires per
         /// resolved entry in the same batched append as
-        /// `--auto-review` / `--divergence-likely`.
+        /// `--auto-approve` / `--divergence-likely`.
         #[arg(
             long = "authority-override",
             value_names = ["SLICE", "KIND=KEY"],
@@ -244,9 +244,9 @@ pub enum PlanAction {
     /// Two transition shapes share this verb (workflow §CLI surface):
     ///
     /// - **Plan-level Gate 1 stamp** — `<name>` is the plan name and
-    ///   `<target>` is `reviewed`. Operator-only — `/spec:plan` MUST
+    ///   `<target>` is `approved`. Operator-only — `/spec:plan` MUST
     ///   NOT call this verb; skill bodies stop at `pending` and print
-    ///   the literal `specrun plan transition <name> reviewed`
+    ///   the literal `specrun plan transition <name> approved`
     ///   command in their closing hint for the operator to run.
     /// - **Per-entry close** — `<name>` is a plan-entry name and
     ///   `<target>` is `done`. The `/spec:merge` skill is the
@@ -257,10 +257,10 @@ pub enum PlanAction {
     /// no per-entry `blocked`, `failed`, or `skipped` state — build
     /// failures and merge conflicts leave the active entry `in-progress`.
     Transition {
-        /// Plan name (for plan-level `reviewed`) or kebab-case entry
+        /// Plan name (for plan-level `approved`) or kebab-case entry
         /// name (for per-entry `done` / `--undo`).
         name: String,
-        /// Transition target — `reviewed` (plan-level) or `done`
+        /// Transition target — `approved` (plan-level) or `done`
         /// (per-entry). Omit when `--undo` is set.
         #[arg(required_unless_present = "undo")]
         target: Option<String>,
@@ -269,7 +269,7 @@ pub enum PlanAction {
         /// refuses to skip rungs — undoing a `done` entry to
         /// `pending` MUST run twice so the journal records each step
         /// independently. Fires one `plan.transition.undone` event
-        /// per call. Plan-level `reviewed` cannot be undone; un-stamp
+        /// per call. Plan-level `approved` cannot be undone; un-stamp
         /// by editing `plan.yaml` directly (out of scope for v1).
         #[arg(long = "undo", action = ArgAction::SetTrue, conflicts_with = "target")]
         undo: bool,

@@ -33,7 +33,7 @@ impl Ctx {
 
     /// Variant of [`Self::load`] that walks from `start_dir` instead of
     /// the process CWD. Used by handlers that accept a `--project-dir`
-    /// flag (e.g. `specrun review`); the resolved `project_dir` is the
+    /// flag (e.g. `specrun lint`); the resolved `project_dir` is the
     /// nearest ancestor of `start_dir` containing `.specify/project.yaml`.
     pub(crate) fn load_at(format: Format, start_dir: &Path) -> Result<Self, Error> {
         let project_dir = ProjectConfig::find_root(start_dir).ok_or(Error::NotInitialized)?;

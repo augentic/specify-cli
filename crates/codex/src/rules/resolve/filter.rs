@@ -245,7 +245,7 @@ mod tests {
             severity: Severity::Important,
             trigger: "Synthetic CH-13 filter fixture trigger sentence long enough for schema."
                 .into(),
-            review_mode: None,
+            lint_mode: None,
             applicability,
             deterministic_hints: None,
             references: None,

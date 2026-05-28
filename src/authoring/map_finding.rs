@@ -1,5 +1,5 @@
 //! CH-21: map a `specify_authoring::Finding` to a structured RFC-28
-//! [`ReviewFinding`].
+//! [`LintFinding`].
 //!
 //! This module deliberately lives at the binary boundary
 //! (`src/authoring/map_finding.rs`) alongside CH-20's
@@ -12,7 +12,7 @@
 //!
 //! ## Mapping table
 //!
-//! | `Finding` source                       | `ReviewFinding` field                  |
+//! | `Finding` source                       | `LintFinding` field                  |
 //! | -------------------------------------- | -------------------------------------- |
 //! | sequence index (1-based, 4-digit)      | `id` = `"FIND-{NNNN}"`                 |
 //! | `rule_id` (authoring imperative)       | `title` prefix `"[{rule_id}] ..."`     |
@@ -34,7 +34,7 @@
 //! `crates/authoring/src/finding.rs` returns a static authoring
 //! identifier such as `codex.schema-violation`, `skill.duplicate-name`,
 //! or `links.unresolved`. The wire schema at
-//! `schemas/review/finding.schema.json` constrains `rule-id` to the
+//! `schemas/lint/finding.schema.json` constrains `rule-id` to the
 //! closed codex regex
 //! `^(UNI|SRC|FRAME|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
 //! Setting `rule_id: Some("codex.schema-violation".into())` would
@@ -54,7 +54,7 @@
 
 use specify_authoring::finding::{Finding, Location};
 use specify_codex::fingerprint::fingerprint;
-use specify_codex::{Artifact, FindingEvidence, FindingLocation, FindingSource, ReviewFinding};
+use specify_codex::{Artifact, FindingEvidence, FindingLocation, FindingSource, LintFinding};
 use specify_tool::sha256_hex;
 
 use crate::authoring::severity::severity_for;
@@ -77,36 +77,36 @@ const EVIDENCE_MARGIN_BYTES: usize = 1024;
 /// comment / dashboard rendering predictable.
 const TITLE_MAX_CHARS: usize = 200;
 
-/// Map a single authoring [`Finding`] to a [`ReviewFinding`] with id
+/// Map a single authoring [`Finding`] to a [`LintFinding`] with id
 /// `FIND-0001`.
 ///
 /// Equivalent to `map_findings(&[input.clone()]).into_iter().next()`
 /// but avoids the allocation. The fingerprint is computed last so
 /// every other field is hashed exactly as serialised.
 #[must_use]
-pub fn map_finding(input: &Finding) -> ReviewFinding {
+pub fn map_finding(input: &Finding) -> LintFinding {
     map_one(input, 1)
 }
 
-/// Map a batch of authoring [`Finding`]s to [`ReviewFinding`]s,
+/// Map a batch of authoring [`Finding`]s to [`LintFinding`]s,
 /// assigning sequential `FIND-{NNNN}` ids in input order (1-based,
 /// 4-digit zero-padded).
 ///
 /// The sequence is producer-local: it MUST NOT be assumed stable
 /// across runs because reordering in upstream `Check::run`
 /// implementations will shuffle the ids. Callers that need a stable
-/// dedup key SHOULD use [`ReviewFinding::fingerprint`] instead.
+/// dedup key SHOULD use [`LintFinding::fingerprint`] instead.
 #[must_use]
-pub fn map_findings(inputs: &[Finding]) -> Vec<ReviewFinding> {
+pub fn map_findings(inputs: &[Finding]) -> Vec<LintFinding> {
     inputs.iter().enumerate().map(|(idx, finding)| map_one(finding, idx + 1)).collect()
 }
 
-fn map_one(input: &Finding, index: usize) -> ReviewFinding {
+fn map_one(input: &Finding, index: usize) -> LintFinding {
     let title = build_title(input.rule_id, &input.message);
     let evidence = build_evidence(&input.message);
     let location = input.location.as_ref().map(map_location);
 
-    let mut review = ReviewFinding {
+    let mut review = LintFinding {
         id: format!("FIND-{index:04}"),
         rule_id: None,
         related_rule_ids: None,

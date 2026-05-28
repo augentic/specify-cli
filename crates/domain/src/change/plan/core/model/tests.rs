@@ -64,14 +64,14 @@ fn lifecycle_defaults_to_pending() {
 
 #[test]
 fn lifecycle_round_trips() {
-    let yaml = "name: foo\nlifecycle: reviewed\nslices: []\n";
-    let plan: Plan = serde_saphyr::from_str(yaml).expect("parse reviewed");
-    assert_eq!(plan.lifecycle, Lifecycle::Reviewed);
+    let yaml = "name: foo\nlifecycle: approved\nslices: []\n";
+    let plan: Plan = serde_saphyr::from_str(yaml).expect("parse approved");
+    assert_eq!(plan.lifecycle, Lifecycle::Approved);
 
     let rendered = serde_saphyr::to_string(&plan).expect("serialize");
     assert!(
-        rendered.contains("lifecycle: reviewed"),
-        "serialised plan must carry kebab-case lifecycle: reviewed, got:\n{rendered}"
+        rendered.contains("lifecycle: approved"),
+        "serialised plan must carry kebab-case lifecycle: approved, got:\n{rendered}"
     );
 }
 
@@ -257,7 +257,7 @@ fn slice_source_binding_helpers_normalise_bare_shorthand() {
 fn is_drained_only_when_all_done() {
     let plan = Plan {
         name: "demo".into(),
-        lifecycle: Lifecycle::Reviewed,
+        lifecycle: Lifecycle::Approved,
         sources: BTreeMap::new(),
         entries: vec![
             Entry {
@@ -294,7 +294,7 @@ fn is_drained_only_when_all_done() {
 fn is_executing_when_any_in_progress() {
     let plan = Plan {
         name: "demo".into(),
-        lifecycle: Lifecycle::Reviewed,
+        lifecycle: Lifecycle::Approved,
         sources: BTreeMap::new(),
         entries: vec![
             Entry {

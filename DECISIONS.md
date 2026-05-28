@@ -298,7 +298,7 @@ probe order or manifest-cache layout.
 
 ## Plan lifecycle: two stored states
 
-`plan.yaml.lifecycle` is `pending | reviewed`. No other plan-level
+`plan.yaml.lifecycle` is `pending | approved`. No other plan-level
 states ship in v1; `in-progress` and `drained` were dropped from RFC-23
 in Wave 1.2 (`cli/W1.2`). Per-entry status remains a closed enum of
 `pending | in-progress | done` and the writer ownership is split:
@@ -306,7 +306,7 @@ in Wave 1.2 (`cli/W1.2`). Per-entry status remains a closed enum of
 writer of `in-progress`, and `slice merge` (via `plan transition <entry>
 done` invoked by the `/spec:merge` skill body) writes `done`. "Drained"
 is computed at read time as "every entry is `done`", not stored.
-`specrun plan transition <plan-name> reviewed` is Gate 1 and is
+`specrun plan transition <plan-name> approved` is Gate 1 and is
 operator-only — the CLI does not gate it (the call is ungated so
 operators can run it from any shell), but the `--help` text documents
 the rule and `/spec:plan` skill bodies MUST NOT call it. Refer to
@@ -319,7 +319,7 @@ skip rungs — it implements exactly `Done → InProgress` and
 `pending` MUST run twice. Each step emits one
 `plan.transition.undone` journal event carrying `{ plan-name,
 slice-name, from, to }` so replay traces line up with the
-forward-direction cadence (`plan.transition.reviewed`,
+forward-direction cadence (`plan.transition.approved`,
 `slice.transition.*`). Plan-level lifecycle has no undo path in v1:
 once stamped, `reviewed` only un-sets by hand-editing `plan.yaml`
 (out of scope for the CLI) or by dropping and re-creating the plan.
@@ -434,7 +434,7 @@ variants are `snake_case` and bridge to the wire via
 
 | Wire id | Emitted by |
 |---|---|
-| `plan.transition.reviewed` | `specrun plan transition <plan> reviewed` (Gate 1 stamp). |
+| `plan.transition.approved` | `specrun plan transition <plan> approved` (Gate 1 stamp). |
 | `plan.transition.undone` | `specrun plan transition <entry> --undo` (per-entry reverse rung; one event per rung). |
 | `plan.propose.divergence` | `/spec:plan` `propose` sub-step when it flips a slice to `divergence: likely`. |
 | `plan.amend.divergence` | `specrun plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
@@ -479,7 +479,7 @@ each transition:
 | `in-progress` (per-entry) | `specrun plan next` | Sole writer; the `/spec:execute` loop calls it once per slice. |
 | `done` (per-entry) | `specrun plan transition <entry> done` | Called by `/spec:merge` after `specrun slice merge` succeeds. |
 | `pending` (plan-level) | `specrun plan create` | `/spec:plan` scaffolds the plan in `pending`. |
-| `reviewed` (plan-level) | `specrun plan transition <plan> reviewed` | Operator-only (Gate 1). The CLI is ungated; `/spec:plan` MUST NOT call this verb — `--help` text documents the rule and the skill body is the actual gate. |
+| `reviewed` (plan-level) | `specrun plan transition <plan> approved` | Operator-only (Gate 1). The CLI is ungated; `/spec:plan` MUST NOT call this verb — `--help` text documents the rule and the skill body is the actual gate. |
 
 The plan-level `reviewed` row is the lightest-touch shape the RFC
 allows: a wholly operator-driven stamp with no CLI-side authentication.
@@ -724,13 +724,13 @@ the check is silently skipped.
 
 The standards surface (RFC-28 codex parser / resolver / finding
 validator and RFC-32 `WorkspaceModel`, indexer, deterministic hint
-interpreter, diagnostic formatters, and `specrun review` runner) lives
+interpreter, diagnostic formatters, and `specrun lint` runner) lives
 in `specify-codex`, a sibling of `specify-domain` rather than a module
 inside it. `specify-schema` is the shared leaf: it owns every embedded
 JSON Schema constant (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
 `FUSION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `CODEX_RULE_JSON_SCHEMA`,
-`RESOLVED_CODEX_JSON_SCHEMA`, `REVIEW_FINDING_JSON_SCHEMA`,
-`REVIEW_RESULT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
+`RESOLVED_CODEX_JSON_SCHEMA`, `LINT_FINDING_JSON_SCHEMA`,
+`LINT_RESULT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
 `jsonschema` plumbing (`compile_schema`, `validate_value`,
 `validate_serialisable`, `read_yaml_as_json`). `specify-schema` shares
 the leaf layer with `specify-error` and depends on no workspace crate
@@ -744,7 +744,7 @@ does **not** depend on `specify-domain`, and `specify-domain` does
 invariant: review code cannot reach for slice or plan lifecycle
 transitions because the workflow types are not visible from the
 standards layer. If a future workflow validator needs to mint a
-`ReviewFinding`, `specify-domain` gains a dependency on `specify-codex`
+`LintFinding`, `specify-domain` gains a dependency on `specify-codex`
 at that point (leaf-→-root still holds); v1 does not need this and the
 sibling shape stays.
 
@@ -752,7 +752,7 @@ The `specdev` predicate library (`crates/authoring/`) picks up
 `specify-codex` and `specify-schema` directly so codex predicates
 consume `CODEX_RULE_JSON_SCHEMA` and the typed `CodexRule` DTO without
 re-vendoring the schema. The root `specify` binary wires both halves
-together at the dispatcher boundary — `specrun review` consumes the
+together at the dispatcher boundary — `specrun lint` consumes the
 standards layer for indexing and evaluation and the workflow layer for
 project / slice context resolution; the two halves never call each
 other directly. Refer to RFC-32 §"Library layout" for the long-form

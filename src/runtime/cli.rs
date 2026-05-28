@@ -9,10 +9,10 @@ use clap_complete::Shell;
 use specify_domain::evidence::ClaimKind;
 
 pub use crate::output::Format;
-use crate::runtime::commands::codex::cli::CodexAction;
+use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
-use crate::runtime::commands::review::cli::ReviewAction;
+use crate::runtime::commands::rules::cli::RulesAction;
 use crate::runtime::commands::slice::cli::SliceAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
@@ -81,13 +81,13 @@ pub enum Commands {
         action: TargetAction,
     },
 
-    /// Codex resolution operations (RFC-28). Read-only: no
+    /// Rules resolution operations (RFC-28). Read-only: no
     /// `.specify/` writes, no journal events. Today the only verb is
     /// `export`, which streams a `ResolvedCodex` JSON envelope built
-    /// from the shared / source / target overlay tree.
-    Codex {
+    /// from the shared / source / target codex overlay tree.
+    Rules {
         #[command(subcommand)]
-        action: CodexAction,
+        action: RulesAction,
     },
 
     /// WASI tool runner.
@@ -96,12 +96,12 @@ pub enum Commands {
         action: ToolAction,
     },
 
-    /// Deterministic review (RFC-32 Phase 2). Resolves applicable codex
+    /// Deterministic lint (RFC-32 Phase 2). Resolves applicable codex
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
-    /// and emits the §D9 review-result envelope. Read-only.
-    Review {
+    /// and emits the §D9 lint-result envelope. Read-only.
+    Lint {
         #[command(subcommand)]
-        action: ReviewAction,
+        action: LintAction,
     },
 
     /// Slice lifecycle operations — one `refine → build → merge` loop.

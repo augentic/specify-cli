@@ -1,22 +1,22 @@
 //! Shared fixture for the RFC-32 S8 diagnostic formatter tests.
 //!
-//! Builds a [`ReviewResult`] exercising every shape that varies the
+//! Builds a [`LintResult`] exercising every shape that varies the
 //! per-formatter rendering: three different severities, all three
 //! [`FindingEvidence`] variants, the `Option<rule_id>` arm via one
 //! anonymous finding, and varied [`FindingLocation`] coverage
 //! (`line + column`, `line only`, and `no location at all`).
 
 use serde_json::json;
-use specify_codex::review::diagnostics::{ReviewResult, ReviewResultVersion, ReviewSummary};
+use specify_codex::lint::diagnostics::{LintResult, LintResultVersion, LintSummary};
 use specify_codex::rules::{
-    Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, ReviewFinding, Severity,
+    Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, LintFinding, Severity,
 };
 
 /// Three-finding fixture covering the rendering matrix S8 needs to
 /// exercise.
-pub fn make_fixture() -> ReviewResult {
+pub fn make_fixture() -> LintResult {
     let findings = vec![
-        ReviewFinding {
+        LintFinding {
             id: "FIND-0001".into(),
             rule_id: Some("UNI-014".into()),
             related_rule_ids: None,
@@ -44,7 +44,7 @@ pub fn make_fixture() -> ReviewResult {
             fingerprint: format!("sha256:{}", "11".repeat(32)),
             status: None,
         },
-        ReviewFinding {
+        LintFinding {
             id: "FIND-0002".into(),
             rule_id: None,
             related_rule_ids: None,
@@ -74,7 +74,7 @@ pub fn make_fixture() -> ReviewResult {
             fingerprint: format!("sha256:{}", "22".repeat(32)),
             status: None,
         },
-        ReviewFinding {
+        LintFinding {
             id: "FIND-0003".into(),
             rule_id: Some("ORG-001".into()),
             related_rule_ids: None,
@@ -100,9 +100,9 @@ pub fn make_fixture() -> ReviewResult {
         },
     ];
 
-    ReviewResult {
-        version: ReviewResultVersion,
-        summary: ReviewSummary::from_findings(&findings),
+    LintResult {
+        version: LintResultVersion,
+        summary: LintSummary::from_findings(&findings),
         findings,
     }
 }

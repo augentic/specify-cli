@@ -1,6 +1,6 @@
 //! `Plan::transition` and `Plan::transition_lifecycle` — the only
 //! writers of `Entry::status` for `done` and `Plan::lifecycle` for
-//! `reviewed`. Post-2.0 the legal edges are `Pending → InProgress`
+//! `approved`. Post-2.0 the legal edges are `Pending → InProgress`
 //! (written by `plan next`, never here) and `InProgress → Done` per
 //! entry, plus `Pending → Reviewed` plan-level (operator stamp at
 //! Gate 1, workflow §The plan gate; `/spec:plan` MUST NOT call it).
@@ -43,7 +43,7 @@ impl Plan {
     /// `plan-lifecycle-transition` when the edge is not legal.
     pub fn transition_lifecycle(&mut self, target: Lifecycle) -> Result<(), Error> {
         let current = self.lifecycle;
-        if matches!((current, target), (Lifecycle::Pending, Lifecycle::Reviewed)) {
+        if matches!((current, target), (Lifecycle::Pending, Lifecycle::Approved)) {
             self.lifecycle = target;
             Ok(())
         } else {
@@ -117,16 +117,16 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_pending_to_reviewed_then_terminal() {
+    fn lifecycle_pending_to_approved_then_terminal() {
         let mut plan = plan_with_changes(vec![change("a", Status::Pending)]);
-        plan.transition_lifecycle(Lifecycle::Reviewed).expect("pending -> reviewed ok");
-        assert_eq!(plan.lifecycle, Lifecycle::Reviewed);
-        let Err(Error::Diag { code, detail }) = plan.transition_lifecycle(Lifecycle::Reviewed)
+        plan.transition_lifecycle(Lifecycle::Approved).expect("pending -> approved ok");
+        assert_eq!(plan.lifecycle, Lifecycle::Approved);
+        let Err(Error::Diag { code, detail }) = plan.transition_lifecycle(Lifecycle::Approved)
         else {
-            panic!("reviewed -> reviewed must Err");
+            panic!("approved -> approved must Err");
         };
         assert_eq!(code, "plan-lifecycle-transition");
-        assert!(detail.contains("Reviewed"), "endpoint in: {detail:?}");
+        assert!(detail.contains("Approved"), "endpoint in: {detail:?}");
     }
 
     #[test]
@@ -162,22 +162,22 @@ mod tests {
     }
 
     #[test]
-    fn init_then_reviewed_models_auto_review_at_create() {
+    fn init_then_approved_models_auto_approve_at_create() {
         // workflow §D7: `--auto-review` composes `Plan::init` with
         // `Plan::transition_lifecycle(Reviewed)` before the single
         // atomic save. The resulting in-memory plan must carry
-        // `lifecycle: reviewed` so the post-init `Plan::save` writes
-        // `lifecycle: reviewed` directly with no transient `pending`
+        // `lifecycle: approved` so the post-init `Plan::save` writes
+        // `lifecycle: approved` directly with no transient `pending`
         // round trip through disk.
         let mut plan =
             Plan::init("fresh", std::collections::BTreeMap::new()).expect("init fresh ok");
         assert_eq!(plan.lifecycle, Lifecycle::Pending, "fresh init defaults to pending");
-        plan.transition_lifecycle(Lifecycle::Reviewed)
+        plan.transition_lifecycle(Lifecycle::Approved)
             .expect("--auto-review composes init + lifecycle stamp");
         assert_eq!(
             plan.lifecycle,
-            Lifecycle::Reviewed,
-            "in-memory plan must carry reviewed before save under --auto-review"
+            Lifecycle::Approved,
+            "in-memory plan must carry approved before save under --auto-review"
         );
     }
 }

@@ -91,7 +91,7 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     } else {
         writeln!(
             w,
-            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specrun plan create <name>` followed by `specrun plan add` and `specrun plan transition <name> reviewed`."
+            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specrun plan create <name>` followed by `specrun plan add` and `specrun plan transition <name> approved`."
         )?;
     }
     Ok(())

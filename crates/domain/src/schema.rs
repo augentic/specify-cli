@@ -21,7 +21,7 @@ use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 pub use specify_schema::{
     CODEX_RULE_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FUSION_JSON_SCHEMA,
-    PLAN_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA, REVIEW_FINDING_JSON_SCHEMA, compile_schema,
+    LINT_FINDING_JSON_SCHEMA, PLAN_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA, compile_schema,
     read_yaml_as_json, validate_serialisable, validate_value,
 };
 
@@ -246,7 +246,7 @@ mod tests {
                     "title": "Hardcoded Configuration",
                     "severity": "important",
                     "trigger": "Generated code embeds environment-specific configuration instead of routing it through declared configuration.",
-                    "review-mode": "hybrid",
+                    "lint-mode": "hybrid",
                     "origin": "shared",
                     "path-root": "codex-root",
                     "path": "adapters/shared/codex/universal/hardcoded-configuration.md",
@@ -309,7 +309,7 @@ mod tests {
             "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
         });
         let validator =
-            compile_schema(REVIEW_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
+            compile_schema(LINT_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
         let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
         assert!(errors.is_empty(), "RFC-28 FIND-0001 example must validate; errors: {errors:?}");
     }
@@ -328,7 +328,7 @@ mod tests {
                 "languages": ["rust"],
                 "artifacts": ["code"]
             },
-            "review_mode": "hybrid",
+            "lint_mode": "hybrid",
             "deterministic_hints": [
                 {
                     "kind": "regex",

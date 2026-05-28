@@ -63,7 +63,7 @@
 use serde_json::Value;
 use specify_tool::sha256_hex;
 
-use crate::rules::{FindingEvidence, FindingLocation, ReviewFinding};
+use crate::rules::{FindingEvidence, FindingLocation, LintFinding};
 
 /// Wire-format version embedded into every fingerprint preimage.
 const FINGERPRINT_VERSION: &str = "v1";
@@ -75,7 +75,7 @@ const FINGERPRINT_VERSION: &str = "v1";
 /// typically assign the returned value to that field before
 /// serialisation, or pass it through [`verify_fingerprint`].
 #[must_use]
-pub fn fingerprint(finding: &ReviewFinding) -> String {
+pub fn fingerprint(finding: &LintFinding) -> String {
     let rule_id = finding.rule_id.as_deref().unwrap_or("");
     let location = canonical_location(finding.location.as_ref());
     let evidence_hex = sha256_hex(evidence_payload(&finding.evidence).as_bytes());
@@ -100,7 +100,7 @@ pub fn fingerprint(finding: &ReviewFinding) -> String {
 }
 
 /// Recompute the fingerprint from `finding`'s other fields and
-/// compare against the stored [`ReviewFinding::fingerprint`].
+/// compare against the stored [`LintFinding::fingerprint`].
 ///
 /// Returns `true` only when:
 ///
@@ -110,7 +110,7 @@ pub fn fingerprint(finding: &ReviewFinding) -> String {
 ///    for byte (the recomputed value is always lowercase hex, so
 ///    uppercase stored hex naturally fails this comparison).
 #[must_use]
-pub fn verify_fingerprint(finding: &ReviewFinding) -> bool {
+pub fn verify_fingerprint(finding: &LintFinding) -> bool {
     let Some(hex) = finding.fingerprint.strip_prefix("sha256:") else {
         return false;
     };
@@ -201,15 +201,15 @@ mod tests {
     use super::{canonical_json, fingerprint, verify_fingerprint};
     use crate::rules::{
         Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, FindingStatus,
-        ReviewFinding, Severity,
+        LintFinding, Severity,
     };
 
     /// Minimal valid finding used as a shared template for the
     /// fingerprint mutation tests below. Callers mutate the returned
     /// value and recompute the fingerprint to assert which
     /// dimensions enter / do not enter the hash.
-    fn sample_finding() -> ReviewFinding {
-        ReviewFinding {
+    fn sample_finding() -> LintFinding {
+        LintFinding {
             id: "FIND-0001".into(),
             rule_id: Some("UNI-014".into()),
             related_rule_ids: None,
@@ -260,7 +260,7 @@ mod tests {
     /// fingerprint unchanged.
     #[test]
     fn excluded_producer_fields_do_not_change_fingerprint() {
-        type Mutation = fn(&mut ReviewFinding);
+        type Mutation = fn(&mut LintFinding);
         let baseline = fingerprint(&sample_finding());
 
         let cases: &[Mutation] = &[
@@ -533,7 +533,7 @@ mod tests {
     /// - `evidence = { kind: snippet, value: "let x = 1;" }`
     #[test]
     fn golden_fingerprint_pins_algorithm() {
-        let finding = ReviewFinding {
+        let finding = LintFinding {
             id: "FIND-0001".into(),
             rule_id: Some("UNI-014".into()),
             related_rule_ids: None,

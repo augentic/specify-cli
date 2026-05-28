@@ -11,7 +11,7 @@
 
 use std::path::Path;
 
-use specify_codex::review::eval::{ToolOutput, ToolRunError, ToolRunner};
+use specify_codex::lint::eval::{ToolOutput, ToolRunError, ToolRunner};
 use specify_codex::rules::{
     Applicability, DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule, Severity,
 };
@@ -22,7 +22,7 @@ pub fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {
         title: format!("{rule_id} test rule"),
         severity: Severity::Important,
         trigger: format!("Trigger for {rule_id}"),
-        review_mode: None,
+        lint_mode: None,
         applicability: None,
         deterministic_hints: if hints.is_empty() { None } else { Some(hints) },
         references: None,

@@ -57,7 +57,7 @@ pub fn sort_resolved(entries: &mut [ResolvedRuleEntry]) {
 /// Compose [`super::resolve`], [`super::filter`], and [`sort_resolved`]
 /// to assemble the [`ResolvedCodex`] wire envelope.
 ///
-/// This is the top-level entry point CH-17 (the `specrun codex
+/// This is the top-level entry point CH-17 (the `specrun rules
 /// export` CLI) will call. The returned envelope is fully ordered and
 /// ready for serialisation against `resolved.schema.json`.
 ///
@@ -95,7 +95,7 @@ fn entry_into_resolved_rule(entry: ResolvedRuleEntry) -> ResolvedRule {
         title,
         severity,
         trigger,
-        review_mode,
+        lint_mode,
         applicability,
         deterministic_hints,
         references,
@@ -107,7 +107,7 @@ fn entry_into_resolved_rule(entry: ResolvedRuleEntry) -> ResolvedRule {
         title,
         severity,
         trigger,
-        review_mode,
+        lint_mode,
         applicability,
         deterministic_hints,
         references,
@@ -135,7 +135,7 @@ mod tests {
             title: format!("{id} fixture"),
             severity,
             trigger: "Synthetic CH-14 sort fixture trigger sentence long enough for schema.".into(),
-            review_mode: None,
+            lint_mode: None,
             applicability: None,
             deterministic_hints: None,
             references: None,

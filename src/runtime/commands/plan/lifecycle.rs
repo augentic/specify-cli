@@ -158,17 +158,17 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 }
 
 /// `specrun plan transition <name> <target>` — dispatches to either
-/// the plan-level Gate 1 stamp (`<plan-name> reviewed`) or the
+/// the plan-level Gate 1 stamp (`<plan-name> approved`) or the
 /// per-entry close (`<entry-name> done`). `--undo` swaps the
 /// forward verb for the one-rung reverse walk on per-entry status
 /// (`done → in-progress`, `in-progress → pending`); plan-level
 /// lifecycle has no undo path in v1.
 ///
-/// `<plan-name> reviewed` against an already-reviewed plan is an
+/// `<plan-name> approved` against an already-approved plan is an
 /// idempotent no-op (exit 0, no journal event) per workflow §D7 —
 /// running the explicit transition after `specrun plan create
-/// --auto-review` must not double-stamp the lifecycle nor double-
-/// fire `plan.transition.reviewed`.
+/// --auto-approve` must not double-stamp the lifecycle nor double-
+/// fire `plan.transition.approved`.
 pub(super) fn transition(
     ctx: &Ctx, name: String, target: Option<String>, undo: bool,
 ) -> Result<()> {
@@ -189,13 +189,13 @@ pub(super) fn transition(
     })?;
     // workflow §Observability: every status / lifecycle move emits
     // exactly one journal event when the on-disk state actually
-    // changed. The same-state no-op path (already-`reviewed` plan)
+    // changed. The same-state no-op path (already-`approved` plan)
     // flags `changed = false` so we skip the emit.
     match (body.kind, body.changed) {
         (TransitionKind::Plan, true) => {
             let event = specify_domain::journal::Event::new(
                 Timestamp::now(),
-                specify_domain::journal::EventKind::PlanTransitionReviewed {
+                specify_domain::journal::EventKind::PlanTransitionApproved {
                     plan_name: body.name.clone(),
                 },
             );
@@ -230,7 +230,7 @@ fn dispatch_undo(
         return Err(Error::Argument {
             flag: "--undo",
             detail: "plan-level lifecycle has no undo path in v1; `--undo` operates on \
-                     per-entry status only. To un-stamp `reviewed`, edit `plan.yaml` directly \
+                     per-entry status only. To un-stamp `approved`, edit `plan.yaml` directly \
                      (out of scope for the CLI) or drop and re-create the plan."
                 .to_string(),
         });
@@ -255,12 +255,12 @@ fn dispatch_transition(
     plan: &mut Plan, plan_path: &std::path::Path, name: &str, target: &str,
 ) -> Result<TransitionBody> {
     if name == plan.name {
-        // Plan-level transition: only `reviewed` is legal.
+        // Plan-level transition: only `approved` is legal.
         return match target {
-            "reviewed" => {
+            "approved" => {
                 let previous = plan.lifecycle;
-                if matches!(previous, Lifecycle::Reviewed) {
-                    // workflow §D7: `--auto-review` already stamped
+                if matches!(previous, Lifecycle::Approved) {
+                    // workflow §D7: `--auto-approve` already stamped
                     // this plan; the explicit transition is the
                     // operator's belt-and-braces follow-up. No
                     // disk or journal write — `body.changed` is
@@ -275,7 +275,7 @@ fn dispatch_transition(
                         undo: None,
                     });
                 }
-                plan.transition_lifecycle(Lifecycle::Reviewed)?;
+                plan.transition_lifecycle(Lifecycle::Approved)?;
                 Ok(TransitionBody {
                     plan: plan_ref(plan, plan_path),
                     kind: TransitionKind::Plan,
@@ -321,8 +321,8 @@ fn plan_target_invalid(target: &str) -> Error {
     Error::Argument {
         flag: "<target>",
         detail: format!(
-            "plan-level transition target must be `reviewed`; got `{target}`. \
-             Run `specrun plan transition <plan-name> reviewed` to stamp Gate 1."
+            "plan-level transition target must be `approved`; got `{target}`. \
+             Run `specrun plan transition <plan-name> approved` to stamp Gate 1."
         ),
     }
 }
@@ -447,10 +447,10 @@ struct TransitionBody {
     previous: String,
     current: String,
     /// `false` when the transition was an idempotent no-op (workflow
-    /// §D7 — explicit `reviewed` after `--auto-review`); `true`
+    /// §D7 — explicit `approved` after `--auto-approve`); `true`
     /// when the lifecycle / status actually moved. The outer
     /// handler reads this to decide whether to fire the
-    /// `plan.transition.reviewed` journal event.
+    /// `plan.transition.approved` journal event.
     #[serde(skip)]
     changed: bool,
     /// Status pair the `--undo` walk visited, if any. `None` on

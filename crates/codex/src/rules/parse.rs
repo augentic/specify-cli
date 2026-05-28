@@ -3,7 +3,7 @@
 //! Splits a codex rule markdown file into YAML frontmatter +
 //! verbatim body, validates the frontmatter against the embedded
 //! `schemas/codex/codex-rule.schema.json`, lifts the `snake_case`
-//! authoring keys (`review_mode`, `deterministic_hints`,
+//! authoring keys (`lint_mode`, `deterministic_hints`,
 //! `replaced_by`) to the kebab-case wire shape carried by
 //! [`CodexRule`], and returns the typed rule with `body` set to the
 //! exact post-delimiter bytes.
@@ -178,7 +178,7 @@ fn split_frontmatter(content: &str) -> Result<(&str, &str), ParseError> {
 /// kebab-case.
 ///
 /// Codex rule frontmatter keys never contain `_` for any reason
-/// other than the `snake_case` authoring convention (`review_mode`,
+/// other than the `snake_case` authoring convention (`lint_mode`,
 /// `deterministic_hints`, `replaced_by`), so a blind `_` -> `-`
 /// rewrite is safe. String VALUES (e.g. adapter names like
 /// `code-typescript`) are untouched — only keys are transformed.
@@ -201,7 +201,7 @@ fn snake_to_kebab_keys(value: JsonValue) -> JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::{HintKind, ReviewMode, Severity};
+    use crate::rules::{HintKind, LintMode, Severity};
 
     const HARDCODED_CONFIGURATION: &str =
         include_str!("../../tests/fixtures/codex/hardcoded-configuration.md");
@@ -254,7 +254,7 @@ mod tests {
 
     /// `snake_case` authoring keys lift to the kebab-case wire shape
     /// carried by [`CodexRule`]. Covers every documented rename:
-    /// `review_mode`, `deterministic_hints`, and the nested
+    /// `lint_mode`, `deterministic_hints`, and the nested
     /// `deprecated.replaced_by`.
     #[test]
     fn snake_case_keys_lift_to_kebab_case() {
@@ -263,7 +263,7 @@ id: UNI-014
 title: Sample
 severity: important
 trigger: A short trigger sentence covering the rule context.
-review_mode: hybrid
+lint_mode: hybrid
 deterministic_hints:
   - kind: regex
     value: 'https?://'
@@ -277,7 +277,7 @@ deprecated:
 Body.
 ";
         let rule = parse_codex_rule(content).expect("parses");
-        assert_eq!(rule.review_mode, Some(ReviewMode::Hybrid));
+        assert_eq!(rule.lint_mode, Some(LintMode::Hybrid));
         let hints = rule.deterministic_hints.as_ref().expect("hints present");
         assert_eq!(hints.len(), 1);
         assert_eq!(hints[0].kind, HintKind::Regex);
@@ -289,10 +289,10 @@ Body.
         // Re-serialize and confirm the kebab-case wire form is
         // intact (no snake_case key leaks).
         let json = serde_json::to_string(&rule).expect("serialize");
-        assert!(json.contains("\"review-mode\""));
+        assert!(json.contains("\"lint-mode\""));
         assert!(json.contains("\"deterministic-hints\""));
         assert!(json.contains("\"replaced-by\""));
-        assert!(!json.contains("\"review_mode\""));
+        assert!(!json.contains("\"lint_mode\""));
         assert!(!json.contains("\"deterministic_hints\""));
         assert!(!json.contains("\"replaced_by\""));
     }
@@ -440,7 +440,7 @@ deterministic_hints:
     #[test]
     fn snake_to_kebab_only_touches_keys() {
         let input = serde_json::json!({
-            "review_mode": "hybrid",
+            "lint_mode": "hybrid",
             "applicability": {
                 "adapters": ["code-typescript", "documentation"],
             },
@@ -449,7 +449,7 @@ deterministic_hints:
             ],
         });
         let lifted = snake_to_kebab_keys(input);
-        assert_eq!(lifted["review-mode"], "hybrid");
+        assert_eq!(lifted["lint-mode"], "hybrid");
         assert_eq!(lifted["applicability"]["adapters"][0], "code-typescript");
         assert_eq!(lifted["deterministic-hints"][0]["value"], "snake_in_value_stays");
     }

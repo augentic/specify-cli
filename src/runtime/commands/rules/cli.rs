@@ -1,0 +1,70 @@
+//! Clap derive surface for `specrun rules *`. The umbrella `cli.rs`
+//! re-exports `RulesAction`.
+
+use std::path::PathBuf;
+
+use clap::Subcommand;
+
+#[derive(Subcommand)]
+pub enum RulesAction {
+    /// Resolve and export the codex envelope as JSON (RFC-28
+    /// §"Resolved codex export").
+    ///
+    /// Read-only: no `.specify/` writes, no lifecycle transitions,
+    /// no journal events. The handler probes for shared `UNI-*`
+    /// rules (via `--codex-root` or a project-local
+    /// `adapters/shared/codex/universal/` tree), discovers the
+    /// `--target` and `--source` overlays per RFC-28 §"Resolution
+    /// roots", and streams the sorted `ResolvedCodex` envelope to
+    /// stdout.
+    ///
+    /// Only `--format json` is supported in v1; text output is
+    /// deferred to a follow-up. The global `--format text` default
+    /// at the `Cli` level surfaces as an explicit argument error so
+    /// the closed JSON-only contract stays visible.
+    Export {
+        /// Codex root supplying shared `UNI-*` rules and codex-root
+        /// fallback overlays (RFC-28 §"Codex root resolution
+        /// (v1)"). When omitted the resolver probes the
+        /// project-local `adapters/shared/codex/universal/` tree;
+        /// failing that, exits with `codex-root-required`.
+        #[arg(long)]
+        codex_root: Option<PathBuf>,
+
+        /// Target-adapter name (kebab, optionally `<name>@v<major>`).
+        /// Required.
+        #[arg(long)]
+        target: String,
+
+        /// Source-adapter name bound to the export context;
+        /// repeatable. Each occurrence contributes one
+        /// `Origin::Source` overlay.
+        #[arg(long = "source", value_name = "NAME")]
+        sources: Vec<String>,
+
+        /// Project-relative artifact path passed to CH-13's
+        /// `applicability.paths` glob check; repeatable.
+        #[arg(long = "artifact", value_name = "PATH")]
+        artifacts: Vec<PathBuf>,
+
+        /// Lowercase language token passed to CH-13's
+        /// `applicability.languages` match; repeatable.
+        #[arg(long = "language", value_name = "TOKEN")]
+        languages: Vec<String>,
+
+        /// Include rules marked `deprecated:` in the export.
+        #[arg(long)]
+        include_deprecated: bool,
+
+        /// Include rules whose applicability dimensions the caller
+        /// did not satisfy.
+        #[arg(long)]
+        include_unmatched: bool,
+
+        /// Project directory used as the resolver's `project_dir`
+        /// (defaults to the current directory). Does not require
+        /// an initialised `.specify/`.
+        #[arg(long, default_value = ".")]
+        project_dir: PathBuf,
+    },
+}

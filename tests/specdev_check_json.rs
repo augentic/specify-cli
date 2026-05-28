@@ -25,7 +25,7 @@
 //!
 //! 1. Capture the binary's pretty-printed JSON envelope from stdout.
 //! 2. For each finding, deserialise into the typed
-//!    [`ReviewFinding`], swap any `location.path` prefix that
+//!    [`LintFinding`], swap any `location.path` prefix that
 //!    matches the canonicalised tempdir root with the literal
 //!    `<FRAMEWORK_ROOT>` placeholder.
 //! 3. Recompute the fingerprint via
@@ -60,7 +60,7 @@ use std::{env, fs};
 use assert_cmd::Command;
 use serde_json::{Value, json};
 use specify_codex::finding::validate_finding_json;
-use specify_codex::{ReviewFinding, fingerprint};
+use specify_codex::{LintFinding, fingerprint};
 use tempfile::TempDir;
 
 /// Replacement token for the canonicalised framework-root prefix in
@@ -298,8 +298,8 @@ fn normalize_envelope(envelope: Value, framework_root: &Path) -> Value {
     };
 
     for finding_json in findings.iter_mut() {
-        let mut finding: ReviewFinding = serde_json::from_value(finding_json.clone())
-            .expect("finding must deserialise into ReviewFinding");
+        let mut finding: LintFinding = serde_json::from_value(finding_json.clone())
+            .expect("finding must deserialise into LintFinding");
         if let Some(location) = finding.location.as_mut() {
             let raw = location.path.replace('\\', "/");
             if let Some(rest) = raw.strip_prefix(&prefix) {

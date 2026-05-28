@@ -1,9 +1,9 @@
 pub mod agents;
-pub mod codex;
 mod init;
+pub mod lint;
 pub mod plan;
 pub mod registry;
-pub mod review;
+pub mod rules;
 pub mod slice;
 pub mod source;
 pub mod target;
@@ -19,8 +19,8 @@ use specify_domain::adapter::{Axis, SourceAdapter, TargetAdapter};
 use specify_error::Result;
 
 use crate::runtime::cli::{Cli, Commands, Format};
-use crate::runtime::commands::codex::cli::CodexAction;
-use crate::runtime::commands::review::cli::ReviewAction;
+use crate::runtime::commands::lint::cli::LintAction;
+use crate::runtime::commands::rules::cli::RulesAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
 use crate::runtime::commands::tool::cli::ToolAction;
@@ -77,8 +77,8 @@ pub fn run(cli: Cli) -> Exit {
                 dispatch(format, || resolve_adapter(format, Axis::Target, &value, &project_dir))
             }
         },
-        Commands::Codex { action } => match action {
-            CodexAction::Export {
+        Commands::Rules { action } => match action {
+            RulesAction::Export {
                 codex_root,
                 target,
                 sources,
@@ -88,7 +88,7 @@ pub fn run(cli: Cli) -> Exit {
                 include_unmatched,
                 project_dir,
             } => dispatch(format, || {
-                codex::export::run(
+                rules::export::run(
                     format,
                     codex_root.as_deref(),
                     &target,
@@ -109,8 +109,8 @@ pub fn run(cli: Cli) -> Exit {
                 run_tool_with(format, &name, vec!["schema".to_string(), schema])
             }
         },
-        Commands::Review { action } => match action {
-            ReviewAction::Run {
+        Commands::Lint { action } => match action {
+            LintAction::Run {
                 codex_root,
                 target,
                 sources,
@@ -122,7 +122,7 @@ pub fn run(cli: Cli) -> Exit {
                 output_format,
                 project_dir,
             } => scoped_at(format, &project_dir, |ctx| {
-                review::run::run(
+                lint::run::run(
                     ctx,
                     codex_root.as_deref(),
                     &target,
@@ -183,7 +183,7 @@ where
 
 /// Variant of [`scoped`] that loads `Ctx` against an explicit
 /// project directory instead of the process CWD. Used by handlers
-/// that take a `--project-dir` flag (e.g. `specrun review`).
+/// that take a `--project-dir` flag (e.g. `specrun lint`).
 fn scoped_at<F>(format: Format, project_dir: &Path, f: F) -> Exit
 where
     F: FnOnce(&Ctx) -> Result<()>,

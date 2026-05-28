@@ -61,10 +61,10 @@ fn assert_journal_golden(name: &str, events: Vec<Value>) {
     assert_golden_at(&fixtures_dir(), name, actual);
 }
 
-// -- plan.transition.reviewed ----------------------------------------
+// -- plan.transition.approved ----------------------------------------
 
 #[test]
-fn plan_transition_reviewed_emits_journal_event() {
+fn plan_transition_approved_emits_journal_event() {
     let project = Project::init();
     project.seed_plan(
         "name: platform-v2
@@ -77,20 +77,20 @@ slices:
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "transition", "platform-v2", "reviewed"])
+        .args(["plan", "transition", "platform-v2", "approved"])
         .assert()
         .success();
 
     let events = read_journal(project.root());
     assert_eq!(events.len(), 1, "expected one journal event, got {}", events.len());
-    assert_eq!(events[0]["event"], "plan.transition.reviewed");
+    assert_eq!(events[0]["event"], "plan.transition.approved");
     assert_eq!(events[0]["payload"]["plan-name"], "platform-v2");
     assert!(
         events[0]["timestamp"].as_str().is_some(),
         "timestamp must be present, got:\n{}",
         events[0]
     );
-    assert_journal_golden("plan-transition-reviewed.json", events);
+    assert_journal_golden("plan-transition-approved.json", events);
 }
 
 // -- plan.amend.divergence -------------------------------------------

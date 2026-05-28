@@ -16,7 +16,7 @@ use super::args::{build_source_map, parse_authority_override_assigns};
 use crate::runtime::cli::SourceArg;
 use crate::runtime::context::Ctx;
 
-/// `specrun plan create <name> [--source ...] [--divergence-likely <slice>]... [--auto-review]`.
+/// `specrun plan create <name> [--source ...] [--divergence-likely <slice>]... [--auto-approve]`.
 ///
 /// Scaffolds `plan.yaml` (workflow §The Plan), then stages every
 /// `--divergence-likely <slice>` value onto the named slice's
@@ -27,10 +27,10 @@ use crate::runtime::context::Ctx;
 /// applied slice, matching the post-`propose` happy path the
 /// `/spec:plan` skill drives.
 ///
-/// When `--auto-review` is set (workflow §D7), the plan is constructed
-/// with `lifecycle: reviewed` *before* the single atomic
+/// When `--auto-approve` is set (workflow §D7), the plan is constructed
+/// with `lifecycle: approved` *before* the single atomic
 /// `plan.save` — there is never a transient `lifecycle: pending`
-/// file on disk. The matching `plan.transition.reviewed` journal
+/// file on disk. The matching `plan.transition.approved` journal
 /// event is appended in the same batched write as any
 /// `plan.propose.divergence` events the same invocation produced;
 /// validation failures (kebab-case name, orphan source key,
@@ -38,7 +38,7 @@ use crate::runtime::context::Ctx;
 /// without the flag and leave the journal untouched.
 pub(super) fn create(
     ctx: &Ctx, name: String, sources: Vec<SourceArg>, divergence_likely: &[String],
-    auto_review: bool, authority_override: &[String],
+    auto_approve: bool, authority_override: &[String],
 ) -> Result<()> {
     if !is_kebab(&name) {
         return Err(Error::Diag {
@@ -77,15 +77,15 @@ pub(super) fn create(
     // checks JSON Schema. The orphan check is the only workflow §D3
     // gate that fires on this code path.
     refuse_orphan_authority_overrides(&plan)?;
-    if auto_review {
-        plan.transition_lifecycle(Lifecycle::Reviewed)?;
+    if auto_approve {
+        plan.transition_lifecycle(Lifecycle::Approved)?;
     }
     plan.save(&plan_path)?;
 
     // Collect every journal event the invocation produced, then
     // hand the slice to `append_batch` so the post-save log write is
     // a single fsynced append. Either every event lands or none
-    // does — `--auto-review`, `--divergence-likely`, and
+    // does — `--auto-approve`, `--divergence-likely`, and
     // `--authority-override` compose without a partial-state window
     // in the journal.
     let mut events: Vec<journal::Event> = divergence_likely
@@ -100,10 +100,10 @@ pub(super) fn create(
             )
         })
         .collect();
-    if auto_review {
+    if auto_approve {
         events.push(journal::Event::new(
             now,
-            journal::EventKind::PlanTransitionReviewed {
+            journal::EventKind::PlanTransitionApproved {
                 plan_name: plan_name.clone(),
             },
         ));
@@ -151,7 +151,7 @@ struct CreateBody {
     name: String,
     plan: String,
     /// Final plan-level lifecycle persisted to disk — `pending` for
-    /// the default create, `reviewed` when `--auto-review` was set.
+    /// the default create, `approved` when `--auto-approve` was set.
     /// Exposed in the JSON envelope so skill bodies and tests can
     /// branch on the on-disk state without re-reading `plan.yaml`.
     lifecycle: Lifecycle,
@@ -160,9 +160,9 @@ struct CreateBody {
 fn write_create_text(w: &mut dyn Write, body: &CreateBody) -> std::io::Result<()> {
     match body.lifecycle {
         Lifecycle::Pending => writeln!(w, "Initialised plan '{}' at {}.", body.name, body.plan),
-        Lifecycle::Reviewed => writeln!(
+        Lifecycle::Approved => writeln!(
             w,
-            "Initialised plan '{}' at {} and stamped lifecycle: reviewed.",
+            "Initialised plan '{}' at {} and stamped lifecycle: approved.",
             body.name, body.plan
         ),
     }

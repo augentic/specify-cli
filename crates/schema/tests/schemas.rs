@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use specify_error::ValidationStatus;
 use specify_schema::{
     CODEX_RULE_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FUSION_JSON_SCHEMA,
-    PLAN_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA, REVIEW_FINDING_JSON_SCHEMA,
-    REVIEW_RESULT_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
+    LINT_FINDING_JSON_SCHEMA, LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA,
+    RESOLVED_CODEX_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
 };
 
 #[test]
@@ -43,8 +43,8 @@ fn codex_rule_schema_compiles() {
 }
 
 #[test]
-fn review_finding_schema_compiles() {
-    compile_schema(REVIEW_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
+fn lint_finding_schema_compiles() {
+    compile_schema(LINT_FINDING_JSON_SCHEMA).expect("lint finding schema compiles");
 }
 
 #[test]
@@ -84,18 +84,18 @@ fn workspace_model_schema_accepts_minimal_envelope() {
 }
 
 #[test]
-fn review_result_schema_compiles() {
+fn lint_result_schema_compiles() {
     // The envelope $ref's `finding.schema.json` by relative URI; the
     // standalone `compile_schema` helper has no resource registry, so
     // compile through a registry that pins the finding schema under
     // the same directory the relative ref resolves to.
     let envelope: Value =
-        serde_json::from_str(REVIEW_RESULT_JSON_SCHEMA).expect("review-result schema parses");
+        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
-        serde_json::from_str(REVIEW_FINDING_JSON_SCHEMA).expect("finding schema parses");
+        serde_json::from_str(LINT_FINDING_JSON_SCHEMA).expect("finding schema parses");
     let registry = Registry::new()
         .add(
-            "https://github.com/augentic/specify-cli/schemas/review/finding.schema.json",
+            "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json",
             Resource::from_contents(finding),
         )
         .and_then(jsonschema::RegistryBuilder::prepare)
@@ -103,18 +103,18 @@ fn review_result_schema_compiles() {
     let _validator = jsonschema::options()
         .with_registry(&registry)
         .build(&envelope)
-        .expect("review-result schema compiles with finding $ref resolved");
+        .expect("lint-result schema compiles with finding $ref resolved");
 }
 
 #[test]
-fn review_result_schema_accepts_envelope_with_one_finding() {
+fn lint_result_schema_accepts_envelope_with_one_finding() {
     let envelope: Value =
-        serde_json::from_str(REVIEW_RESULT_JSON_SCHEMA).expect("review-result schema parses");
+        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
-        serde_json::from_str(REVIEW_FINDING_JSON_SCHEMA).expect("finding schema parses");
+        serde_json::from_str(LINT_FINDING_JSON_SCHEMA).expect("finding schema parses");
     let registry = Registry::new()
         .add(
-            "https://github.com/augentic/specify-cli/schemas/review/finding.schema.json",
+            "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json",
             Resource::from_contents(finding),
         )
         .and_then(jsonschema::RegistryBuilder::prepare)
@@ -122,7 +122,7 @@ fn review_result_schema_accepts_envelope_with_one_finding() {
     let validator = jsonschema::options()
         .with_registry(&registry)
         .build(&envelope)
-        .expect("review-result schema compiles with finding $ref resolved");
+        .expect("lint-result schema compiles with finding $ref resolved");
     let instance = json!({
         "version": 1,
         "summary": { "critical": 0, "important": 1, "suggestion": 0, "optional": 0 },
@@ -157,9 +157,9 @@ fn review_result_schema_accepts_envelope_with_one_finding() {
 /// `finding.schema.json` resolving against the envelope schema's
 /// directory rather than an absolute URL.
 #[test]
-fn review_result_schema_uses_relative_finding_ref() {
+fn lint_result_schema_uses_relative_finding_ref() {
     let envelope: Value =
-        serde_json::from_str(REVIEW_RESULT_JSON_SCHEMA).expect("review-result schema parses");
+        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
     let items_ref = envelope
         .pointer("/properties/findings/items/$ref")
         .and_then(Value::as_str)

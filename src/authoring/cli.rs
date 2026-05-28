@@ -18,7 +18,7 @@ pub struct Cli {
     /// Output format. `text` (the default) emits the human-oriented
     /// stdout / stderr summary unchanged. `json` emits an RFC-28
     /// §"Review result envelope" body
-    /// (`{version: 1, summary, findings: [ReviewFinding]}`) to stdout
+    /// (`{version: 1, summary, findings: [LintFinding]}`) to stdout
     /// on both success and failure; the exit code is `2` when any
     /// findings are present (existing validation semantics) and `1`
     /// when an infrastructure error prevents the checks from running,

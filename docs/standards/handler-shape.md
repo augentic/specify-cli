@@ -94,7 +94,7 @@ names"](../../DECISIONS.md#journal-event-names).
 
 `plan transition <name> <target>` is one verb that dispatches on
 the operands: `<plan-name> reviewed` is the Gate 1 stamp and emits
-a `plan.transition.reviewed` journal event; `<entry-name> done` is
+a `plan.transition.approved` journal event; `<entry-name> done` is
 the per-entry close (`/spec:merge` is the canonical caller).
 Anything else is an `Error::Argument` (exit 2). The journal append
 runs *after* `with_state` returns so the plan write and the journal
