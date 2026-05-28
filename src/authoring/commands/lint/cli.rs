@@ -25,8 +25,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
-use specify_lints::lint::diagnostics::Format as DiagnosticsFormat;
+use clap::Parser;
 
 /// Flat argument set for `specdev lint`. Modelled as a `Parser`
 /// derive so it can be embedded under the top-level `Command::Lint`
@@ -95,30 +94,11 @@ pub struct LintAction {
     pub output_format: Option<LintFormat>,
 }
 
-/// Clap-derivable mirror of [`DiagnosticsFormat`].
-///
-/// Kept distinct from the `specify-lints` enum so the standards
-/// crate stays runtime-agnostic; the [`From`] impl below is the
-/// single adapter.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-pub enum LintFormat {
-    /// Tab-separated one-line-per-finding shape.
-    Compact,
-    /// GitHub Actions workflow-annotation lines.
-    Github,
-    /// `LintResult` wire envelope; schema-validated before emit.
-    Json,
-    /// Terminal output with severity colour and source location.
-    Pretty,
-}
-
-impl From<LintFormat> for DiagnosticsFormat {
-    fn from(value: LintFormat) -> Self {
-        match value {
-            LintFormat::Compact => Self::Compact,
-            LintFormat::Github => Self::Github,
-            LintFormat::Json => Self::Json,
-            LintFormat::Pretty => Self::Pretty,
-        }
-    }
-}
+/// Clap presentation enum shared with `specrun lint`. Re-exported
+/// from the runtime tree rather than redefined: it is a clap-facing
+/// presentation type (kept out of the runtime-agnostic
+/// `specify-lints` crate), and both copies compile into the same
+/// `specify` binary, so the canonical definition — together with its
+/// `From<LintFormat> for DiagnosticsFormat` adapter — lives once in
+/// `crate::runtime::commands::lint::cli`.
+pub use crate::runtime::commands::lint::cli::LintFormat;

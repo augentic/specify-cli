@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 
+use specify_lints::lint::diagnostics::{RenderError, map_hint_error};
+use specify_lints::lint::eval::HintError;
+use specify_lints::lint::index::IndexError;
 use specify_lints::{
     Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, FindingStatus, HintKind,
-    Severity,
+    ResolvedRule, Severity,
 };
 
 use super::*;

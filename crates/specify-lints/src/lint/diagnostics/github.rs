@@ -35,7 +35,7 @@ fn write_finding(out: &mut String, finding: &LintFinding) {
     let level = github_level(finding.severity);
     let mut args: Vec<String> = Vec::new();
     if let Some(loc) = finding.location.as_ref() {
-        args.push(format!("file={}", escape_arg(&loc.path)));
+        args.push(format!("file={}", escape(&loc.path, true)));
         if let Some(line) = loc.line {
             args.push(format!("line={line}"));
         }
@@ -43,7 +43,7 @@ fn write_finding(out: &mut String, finding: &LintFinding) {
             args.push(format!("col={col}"));
         }
     }
-    args.push(format!("title={}", escape_arg(&finding.title)));
+    args.push(format!("title={}", escape(&finding.title, true)));
     let arg_list = args.join(",");
     let rule_tag = finding.rule_id.as_deref().map_or(String::new(), |id| format!(" [{id}]"));
     let body = format!(
@@ -52,7 +52,7 @@ fn write_finding(out: &mut String, finding: &LintFinding) {
         impact = finding.impact,
         remediation = finding.remediation
     );
-    let _ = writeln!(out, "::{level} {arg_list}::{}", escape_body(&body));
+    let _ = writeln!(out, "::{level} {arg_list}::{}", escape(&body, false));
 }
 
 const fn github_level(severity: Severity) -> &'static str {
@@ -63,28 +63,15 @@ const fn github_level(severity: Severity) -> &'static str {
     }
 }
 
-fn escape_arg(s: &str) -> String {
+fn escape(s: &str, in_arg: bool) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {
             '%' => out.push_str("%25"),
             '\r' => out.push_str("%0D"),
             '\n' => out.push_str("%0A"),
-            ',' => out.push_str("%2C"),
-            ':' => out.push_str("%3A"),
-            other => out.push(other),
-        }
-    }
-    out
-}
-
-fn escape_body(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '%' => out.push_str("%25"),
-            '\r' => out.push_str("%0D"),
-            '\n' => out.push_str("%0A"),
+            ',' if in_arg => out.push_str("%2C"),
+            ':' if in_arg => out.push_str("%3A"),
             other => out.push(other),
         }
     }

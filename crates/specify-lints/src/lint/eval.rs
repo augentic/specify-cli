@@ -71,14 +71,16 @@ pub mod unique;
 
 use std::path::{Path, PathBuf};
 
+use specify_error::Error as CliError;
 use thiserror::Error;
 pub use tool::{ToolOutput, ToolRunError, ToolRunner};
 
 use crate::lint::WorkspaceModel;
+use crate::lint::diagnostics::map_hint_error;
 use crate::rules::fingerprint::fingerprint as compute_fingerprint;
 use crate::rules::{
     Artifact, Confidence, DeterministicHint, FindingEvidence, FindingLocation, FindingSource,
-    HintKind, LintFinding, ResolvedRule, Severity, validate_evidence_size,
+    HintKind, LintFinding, LintMode, ResolvedRule, Severity, validate_evidence_size,
 };
 
 /// Closed failure mode for the hint interpreter.
@@ -315,6 +317,56 @@ pub fn evaluate(
         reserved_skipped,
         next_id_counter: next_id,
     })
+}
+
+/// Fold [`evaluate`] over every rule, accumulating findings, reserved
+/// skips, and the `FIND-NNNN` id counter.
+///
+/// Shared by both lint surfaces (`specrun lint run` and `specdev lint`)
+/// so the per-rule gating stays identical: rules in `lint-mode:
+/// model-assisted` and rules with no (or empty) `deterministic_hints`
+/// are skipped; `start_id` is threaded forward so ids stay monotonic.
+///
+/// `rule_filter` is the operator's allow-list: EMPTY means no filtering
+/// (runtime), non-empty keeps only rules whose `rule_id` matches
+/// verbatim (the `specdev lint --rules` surface — exact, case-sensitive).
+///
+/// Per-rule [`HintError`]s are mapped through [`map_hint_error`] here so
+/// both call sites collapse to one fallible call.
+///
+/// # Errors
+///
+/// The [`map_hint_error`] mapping of the first rule whose [`evaluate`]
+/// call fails.
+pub fn evaluate_rules(
+    rules: &[ResolvedRule], model: &WorkspaceModel, project_dir: &Path, runner: &dyn ToolRunner,
+    start_id: u64, rule_filter: &[&str],
+) -> Result<(Vec<LintFinding>, Vec<ReservedSkipped>, u64), CliError> {
+    let mut findings: Vec<LintFinding> = Vec::new();
+    let mut reserved: Vec<ReservedSkipped> = Vec::new();
+    let mut next_id = start_id;
+
+    for rule in rules {
+        if !rule_filter.is_empty() && !rule_filter.contains(&rule.rule_id.as_str()) {
+            continue;
+        }
+        if matches!(rule.lint_mode, Some(LintMode::ModelAssisted)) {
+            continue;
+        }
+        let Some(hints) = rule.deterministic_hints.as_deref() else {
+            continue;
+        };
+        if hints.is_empty() {
+            continue;
+        }
+        let outcome = evaluate(rule, hints, model, project_dir, runner, next_id)
+            .map_err(|err| map_hint_error(rule, err))?;
+        findings.extend(outcome.findings);
+        reserved.extend(outcome.reserved_skipped);
+        next_id = outcome.next_id_counter;
+    }
+
+    Ok((findings, reserved, next_id))
 }
 
 /// Mint the reserved-hint diagnostics reserved-hint summary finding from accumulated

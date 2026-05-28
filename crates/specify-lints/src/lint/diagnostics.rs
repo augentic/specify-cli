@@ -18,9 +18,14 @@ pub mod json;
 pub mod pretty;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use specify_error::{Error, Result};
+use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_serialisable};
 use thiserror::Error;
 
-use crate::rules::{LintFinding, Severity};
+use crate::lint::WorkspaceModel;
+use crate::lint::eval::HintError;
+use crate::lint::index::IndexError;
+use crate::rules::{FindingStatus, LintFinding, ResolvedRule, Severity};
 
 /// Type-level pin of the [`LintResult`] envelope version.
 ///
@@ -150,6 +155,182 @@ pub fn render(format: Format, result: &LintResult) -> Result<String, RenderError
         Format::Pretty => pretty::render(result),
         Format::Github => github::render(result),
         Format::Compact => compact::render(result),
+    }
+}
+
+/// Serialise the model, validate it against the v1 schema, and print
+/// it to stdout. Validation failure is an internal bug — wrapped as
+/// `Error::Diag` (exit 1) per lint exit mapping.
+///
+/// # Errors
+///
+/// - `Error::Validation` when the serialised model fails the
+///   [`WORKSPACE_MODEL_JSON_SCHEMA`] v1 schema.
+/// - `Error::Diag { review-dump-model-serialise }` when JSON
+///   serialisation itself fails.
+pub fn emit_dump_model(model: &WorkspaceModel) -> Result<()> {
+    validate_serialisable(
+        model,
+        WORKSPACE_MODEL_JSON_SCHEMA,
+        "review-dump-model-schema",
+        "WorkspaceModel matches workspace-model.schema.json",
+        "review-dump-model-serialise",
+        "WorkspaceModel",
+    )?;
+    let rendered = serde_json::to_string_pretty(model).map_err(|err| Error::Diag {
+        code: "review-dump-model-serialise",
+        detail: format!("failed to serialise WorkspaceModel: {err}"),
+    })?;
+    println!("{rendered}");
+    Ok(())
+}
+
+/// Count findings whose `status` matches `target`.
+///
+/// Passing `None` counts the `open` bucket per RFC-33a — an unset
+/// `status` is treated as `Open`, matching the status-aware exit
+/// predicate in [`crate::lint::ignore::blocking_findings_present`].
+#[must_use]
+pub fn count_status(findings: &[LintFinding], target: Option<FindingStatus>) -> u32 {
+    let count = findings
+        .iter()
+        .filter(|f| {
+            target.map_or_else(
+                || matches!(f.status, None | Some(FindingStatus::Open)),
+                |want| f.status == Some(want),
+            )
+        })
+        .count();
+    u32::try_from(count).unwrap_or(u32::MAX)
+}
+
+/// Map a `lint::index::IndexError` onto the lint exit mapping exit-code table.
+///
+/// | `IndexError`                | `Error` variant                            | Exit |
+/// |-----------------------------|--------------------------------------------|------|
+/// | `UnsupportedScanProfile`    | `Validation { review-unsupported-scan-profile }` | 2 |
+/// | `ProjectDirMissing`         | `Validation { review-project-dir-missing }`      | 2 |
+/// | `OverrideCompile`           | `Validation { review-index-override-compile }`   | 2 |
+/// | `Filesystem`                | `Validation { review-index-filesystem }`         | 2 |
+#[must_use]
+pub fn map_index_error(err: IndexError) -> Error {
+    match err {
+        IndexError::UnsupportedScanProfile(profile) => Error::validation_failed(
+            "review-unsupported-scan-profile",
+            "scan profile is not supported",
+            format!("requested scan profile: {profile:?}"),
+        ),
+        IndexError::ProjectDirMissing(path) => Error::validation_failed(
+            "review-project-dir-missing",
+            "project directory does not exist",
+            path.display().to_string(),
+        ),
+        IndexError::Filesystem(detail) => Error::validation_failed(
+            "review-index-filesystem",
+            "filesystem error during indexer walk",
+            detail,
+        ),
+        IndexError::OverrideCompile(detail) => Error::validation_failed(
+            "review-index-override-compile",
+            "always-ignore override pattern failed to compile",
+            detail,
+        ),
+    }
+}
+
+/// Map a `lint::eval::HintError` onto the lint exit mapping exit-code table.
+///
+/// | `HintError`        | `Error` variant                                  | Exit |
+/// |--------------------|--------------------------------------------------|------|
+/// | `Unsupported`      | `Validation { review-unsupported-hint-kind }`    | 2    |
+/// | `SchemaCompile`    | `Validation { review-schema-compile-failed }`    | 2    |
+/// | `SchemaResolve`    | `Validation { review-schema-resolve-failed }`    | 2    |
+/// | `RegexCompile`     | `Validation { review-regex-compile-failed }`     | 2    |
+/// | `ToolInvocation`   | `Validation { review-tool-invocation-failed }`   | 2    |
+/// | `ToolUndeclared`   | `Validation { review-tool-undeclared }`          | 2    |
+/// | `Filesystem`       | `Filesystem { op: "review-eval" }`               | 1    |
+#[must_use]
+pub fn map_hint_error(rule: &ResolvedRule, err: HintError) -> Error {
+    match err {
+        HintError::Unsupported {
+            rule_id,
+            kind,
+            reason,
+        } => Error::validation_failed(
+            "review-unsupported-hint-kind",
+            format!("rule {rule_id}: hint kind {kind:?} is not supported in v1"),
+            reason.to_string(),
+        ),
+        HintError::SchemaCompile {
+            rule_id,
+            schema_ref,
+            detail,
+        } => Error::validation_failed(
+            "review-schema-compile-failed",
+            format!("rule {rule_id}: schema {schema_ref} failed to compile"),
+            detail,
+        ),
+        HintError::SchemaResolve {
+            rule_id,
+            schema_ref,
+            reason,
+        } => Error::validation_failed(
+            "review-schema-resolve-failed",
+            format!("rule {rule_id}: schema {schema_ref} could not be resolved"),
+            reason,
+        ),
+        HintError::RegexCompile {
+            rule_id,
+            pattern,
+            source,
+        } => Error::validation_failed(
+            "review-regex-compile-failed",
+            format!("rule {rule_id}: regex {pattern} failed to compile"),
+            source.to_string(),
+        ),
+        HintError::ToolInvocation {
+            rule_id,
+            tool,
+            detail,
+        } => Error::validation_failed(
+            "review-tool-invocation-failed",
+            format!("rule {rule_id}: tool {tool} invocation failed"),
+            detail,
+        ),
+        HintError::ToolUndeclared { rule_id, tool } => Error::validation_failed(
+            "review-tool-undeclared",
+            format!("rule {rule_id}: tool {tool} not declared by the project"),
+            format!("declare {tool} in tools.yaml or remove the hint (rule path: {})", rule.path),
+        ),
+        HintError::Filesystem { path, source, .. } => Error::Filesystem {
+            op: "review-eval",
+            path,
+            source,
+        },
+    }
+}
+
+/// Map a `lint::diagnostics::RenderError` onto the lint exit mapping exit-code table.
+///
+/// Both variants are internal bugs (the typed envelope cannot
+/// legally fail v1 schema validation or JSON serialisation); the
+/// mapping exists so the failure surface is uniform.
+///
+/// | `RenderError`              | `Error` variant                             | Exit |
+/// |----------------------------|---------------------------------------------|------|
+/// | `JsonSchemaValidation`     | `Diag { review-envelope-schema }`           | 1    |
+/// | `JsonSerialise`            | `Diag { review-envelope-serialise }`        | 1    |
+#[must_use]
+pub fn map_render_error(err: RenderError) -> Error {
+    match err {
+        RenderError::JsonSchemaValidation { detail } => Error::Diag {
+            code: "review-envelope-schema",
+            detail,
+        },
+        RenderError::JsonSerialise(source) => Error::Diag {
+            code: "review-envelope-serialise",
+            detail: source.to_string(),
+        },
     }
 }
 

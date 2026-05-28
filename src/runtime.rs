@@ -2,7 +2,7 @@
 //! See `DECISIONS.md` for the exit-code contract.
 
 mod cli;
-mod commands;
+pub(crate) mod commands;
 mod context;
 pub(crate) mod output;
 

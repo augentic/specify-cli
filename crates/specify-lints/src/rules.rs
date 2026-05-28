@@ -43,8 +43,8 @@ pub use finding::{
 };
 pub use parse::{ParseError, parse_rule, parse_rule_file};
 pub use resolve::{
-    ResolveError, ResolveInputs, ResolvedRuleEntry, build_resolved_rules, filter, resolve,
-    sort_resolved,
+    ResolveError, ResolveInputs, ResolvedRuleEntry, build_resolved_rules, filter,
+    map_resolve_error, resolve, sort_resolved,
 };
 use serde::{Deserialize, Serialize};
 

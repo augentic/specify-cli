@@ -19,8 +19,8 @@
 
 use std::path::{Path, PathBuf};
 
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
-use specify_lints::{ResolveError, ResolveInputs, build_resolved_rules};
+use specify_error::{Error, Result};
+use specify_lints::{ResolveInputs, build_resolved_rules, map_resolve_error};
 
 use crate::runtime::cli::Format;
 use crate::runtime::output;
@@ -68,49 +68,6 @@ fn require_json(format: Format) -> Result<()> {
     }
 }
 
-/// Translate the CH-12/CH-14 resolver's typed error into the CLI's
-/// closed [`Error`] enum so `Exit::from(&Error)` picks the right
-/// exit code per `docs/standards/handler-shape.md`.
-pub fn map_resolve_error(err: ResolveError) -> Error {
-    match err {
-        ResolveError::RulesRootRequired => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-root-required".to_string(),
-                rule: "shared UNI-* rules require --rules-root or a project-local \
-                       adapters/shared/rules/universal/ tree"
-                    .to_string(),
-                detail: Some(
-                    "pass --rules-root pointing at a tree containing \
-                     adapters/shared/rules/universal/"
-                        .to_string(),
-                ),
-            }],
-        },
-        ResolveError::DuplicateRuleId { id, paths } => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-duplicate-rule-id".to_string(),
-                rule: format!("rule id '{id}' appears in multiple files"),
-                detail: Some(paths),
-            }],
-        },
-        ResolveError::Parse { path, error } => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-parse-error".to_string(),
-                rule: format!("failed to parse rule {}", path.display()),
-                detail: Some(error.to_string()),
-            }],
-        },
-        ResolveError::Filesystem { path, source } => Error::Filesystem {
-            op: "readdir",
-            path,
-            source,
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -140,57 +97,6 @@ mod tests {
                 assert!(detail.contains("--format json"), "detail missing hint: {detail}");
             }
             other => panic!("expected Error::Argument, got {other:?}"),
-        }
-    }
-
-    /// `rules-root-required` from CH-12 maps to a single-finding
-    /// `Error::Validation` so the wire envelope carries the closed
-    /// kebab discriminant in `results[].rule-id`.
-    #[test]
-    fn maps_rules_root_required_to_validation() {
-        let err = map_resolve_error(ResolveError::RulesRootRequired);
-        match err {
-            Error::Validation { results } => {
-                assert_eq!(results.len(), 1);
-                assert_eq!(results[0].rule_id, "rules-root-required");
-            }
-            other => panic!("expected Error::Validation, got {other:?}"),
-        }
-    }
-
-    /// `DuplicateRuleId` lands on `Error::Validation` with the
-    /// colliding id in the `rule` field and the comma-joined paths
-    /// in `detail`.
-    #[test]
-    fn maps_duplicate_rule_id_to_validation() {
-        let err = map_resolve_error(ResolveError::DuplicateRuleId {
-            id: "UNI-001".into(),
-            paths: "a.md, b.md".into(),
-        });
-        match err {
-            Error::Validation { results } => {
-                assert_eq!(results[0].rule_id, "rules-duplicate-rule-id");
-                assert!(results[0].rule.contains("UNI-001"));
-                assert_eq!(results[0].detail.as_deref(), Some("a.md, b.md"));
-            }
-            other => panic!("expected Error::Validation, got {other:?}"),
-        }
-    }
-
-    /// Filesystem failures map to `Error::Filesystem { op: "readdir" }`
-    /// so the JSON discriminant becomes `filesystem-readdir` (exit 1).
-    #[test]
-    fn maps_filesystem_to_filesystem_error() {
-        let err = map_resolve_error(ResolveError::Filesystem {
-            path: PathBuf::from("/missing"),
-            source: std::io::Error::from(std::io::ErrorKind::NotFound),
-        });
-        match err {
-            Error::Filesystem { op, path, .. } => {
-                assert_eq!(op, "readdir");
-                assert_eq!(path, PathBuf::from("/missing"));
-            }
-            other => panic!("expected Error::Filesystem, got {other:?}"),
         }
     }
 }

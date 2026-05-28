@@ -40,21 +40,21 @@ use specify_domain::config::Layout;
 use specify_domain::journal::{
     self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
 };
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_error::{Error, Result};
 use specify_lints::fingerprint::fingerprint as compute_fingerprint;
+use specify_lints::lint::ScanProfile;
 use specify_lints::lint::diagnostics::{
-    Format as DiagnosticsFormat, LintResult, LintResultVersion, LintSummary, RenderError, render,
+    Format as DiagnosticsFormat, LintResult, LintResultVersion, LintSummary, count_status,
+    emit_dump_model, map_index_error, map_render_error, render,
 };
 use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_lints::lint::eval::{HintError, evaluate, reserved_hint_summary};
+use specify_lints::lint::eval::{evaluate_rules, reserved_hint_summary};
 use specify_lints::lint::ignore::{apply as apply_directives, blocking_findings_present};
-use specify_lints::lint::index::{IndexError, build as build_model};
-use specify_lints::lint::{ScanProfile, WorkspaceModel};
-use specify_lints::rules::{ResolveError, ResolvedRules};
+use specify_lints::lint::index::build as build_model;
+use specify_lints::rules::ResolvedRules;
 use specify_lints::{
-    FindingStatus, LintFinding, LintMode, ResolveInputs, ResolvedRule, build_resolved_rules,
+    FindingStatus, LintFinding, ResolveInputs, build_resolved_rules, map_resolve_error,
 };
-use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_serialisable};
 
 use crate::authoring::commands::lint::cli::{LintAction, LintFormat};
 use crate::authoring::map_finding::map_findings;
@@ -173,30 +173,15 @@ fn build_envelope(action: &LintAction) -> Result<BuildOutcome> {
     }
 
     let runner = NoopToolRunner;
-    let mut declarative: Vec<LintFinding> = Vec::new();
-    let mut reserved: Vec<specify_lints::lint::eval::ReservedSkipped> = Vec::new();
-    let mut next_id = next_imperative_id(&combined);
-    let rule_filter_set: HashSet<&str> = rule_filter.iter().map(String::as_str).collect();
-
-    for rule in &resolved.rules {
-        if !rule_filter_set.is_empty() && !rule_filter_set.contains(rule.rule_id.as_str()) {
-            continue;
-        }
-        if matches!(rule.lint_mode, Some(LintMode::ModelAssisted)) {
-            continue;
-        }
-        let Some(hints) = rule.deterministic_hints.as_deref() else {
-            continue;
-        };
-        if hints.is_empty() {
-            continue;
-        }
-        let outcome = evaluate(rule, hints, &model, &project_dir, &runner, next_id)
-            .map_err(|err| map_hint_error(rule, err))?;
-        declarative.extend(outcome.findings);
-        reserved.extend(outcome.reserved_skipped);
-        next_id = outcome.next_id_counter;
-    }
+    let rule_filter_slice: Vec<&str> = rule_filter.iter().map(String::as_str).collect();
+    let (declarative, reserved, mut next_id) = evaluate_rules(
+        &resolved.rules,
+        &model,
+        &project_dir,
+        &runner,
+        next_imperative_id(&combined),
+        &rule_filter_slice,
+    )?;
 
     combined.extend(declarative);
     deduplicate_by_fingerprint(&mut combined);
@@ -310,23 +295,6 @@ fn deduplicate_by_fingerprint(findings: &mut Vec<LintFinding>) {
     findings.retain(|f| seen.insert(f.fingerprint.clone()));
 }
 
-fn emit_dump_model(model: &WorkspaceModel) -> Result<()> {
-    validate_serialisable(
-        model,
-        WORKSPACE_MODEL_JSON_SCHEMA,
-        "review-dump-model-schema",
-        "WorkspaceModel matches workspace-model.schema.json",
-        "review-dump-model-serialise",
-        "WorkspaceModel",
-    )?;
-    let rendered = serde_json::to_string_pretty(model).map_err(|err| Error::Diag {
-        code: "review-dump-model-serialise",
-        detail: format!("failed to serialise WorkspaceModel: {err}"),
-    })?;
-    println!("{rendered}");
-    Ok(())
-}
-
 /// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`
 /// per RFC-34 §F7. Best-effort: telemetry I/O failures log to stderr
 /// and never override the scan's exit code.
@@ -358,108 +326,6 @@ fn emit_lint_completed(
     }
 }
 
-fn count_status(findings: &[LintFinding], target: Option<FindingStatus>) -> u32 {
-    let count = findings
-        .iter()
-        .filter(|f| {
-            target.map_or_else(
-                || matches!(f.status, None | Some(FindingStatus::Open)),
-                |want| f.status == Some(want),
-            )
-        })
-        .count();
-    u32::try_from(count).unwrap_or(u32::MAX)
-}
-
-fn map_index_error(err: IndexError) -> Error {
-    match err {
-        IndexError::UnsupportedScanProfile(profile) => Error::validation_failed(
-            "review-unsupported-scan-profile",
-            "scan profile is not supported",
-            format!("requested scan profile: {profile:?}"),
-        ),
-        IndexError::ProjectDirMissing(path) => Error::validation_failed(
-            "review-project-dir-missing",
-            "project directory does not exist",
-            path.display().to_string(),
-        ),
-        IndexError::Filesystem(detail) => Error::validation_failed(
-            "review-index-filesystem",
-            "filesystem error during indexer walk",
-            detail,
-        ),
-        IndexError::OverrideCompile(detail) => Error::validation_failed(
-            "review-index-override-compile",
-            "always-ignore override pattern failed to compile",
-            detail,
-        ),
-        other => Error::Diag {
-            code: "review-index",
-            detail: other.to_string(),
-        },
-    }
-}
-
-fn map_hint_error(rule: &ResolvedRule, err: HintError) -> Error {
-    match err {
-        HintError::Unsupported {
-            rule_id,
-            kind,
-            reason,
-        } => Error::validation_failed(
-            "review-unsupported-hint-kind",
-            format!("rule {rule_id}: hint kind {kind:?} is not supported in v1"),
-            reason.to_string(),
-        ),
-        HintError::SchemaCompile {
-            rule_id,
-            schema_ref,
-            detail,
-        } => Error::validation_failed(
-            "review-schema-compile-failed",
-            format!("rule {rule_id}: schema {schema_ref} failed to compile"),
-            detail,
-        ),
-        HintError::SchemaResolve {
-            rule_id,
-            schema_ref,
-            reason,
-        } => Error::validation_failed(
-            "review-schema-resolve-failed",
-            format!("rule {rule_id}: schema {schema_ref} could not be resolved"),
-            reason,
-        ),
-        HintError::RegexCompile {
-            rule_id,
-            pattern,
-            source,
-        } => Error::validation_failed(
-            "review-regex-compile-failed",
-            format!("rule {rule_id}: regex {pattern} failed to compile"),
-            source.to_string(),
-        ),
-        HintError::ToolInvocation {
-            rule_id,
-            tool,
-            detail,
-        } => Error::validation_failed(
-            "review-tool-invocation-failed",
-            format!("rule {rule_id}: tool {tool} invocation failed"),
-            detail,
-        ),
-        HintError::ToolUndeclared { rule_id, tool } => Error::validation_failed(
-            "review-tool-undeclared",
-            format!("rule {rule_id}: tool {tool} not declared by the project"),
-            format!("declare {tool} in tools.yaml or remove the hint (rule path: {})", rule.path),
-        ),
-        HintError::Filesystem { path, source, .. } => Error::Filesystem {
-            op: "review-eval",
-            path,
-            source,
-        },
-    }
-}
-
 /// Empty resolved-codex stub used when the declarative pass is
 /// skipped because the codex tree itself failed to resolve. Keeps
 /// the eval loop's input type uniform.
@@ -469,66 +335,6 @@ const fn empty_resolved(target_adapter: String, source_adapters: Vec<String>) ->
         target_adapter,
         source_adapters,
         rules: Vec::new(),
-    }
-}
-
-/// Mirror of `src/runtime/commands/rules/export.rs::map_resolve_error`
-/// kept local so the authoring tree does not depend on the runtime
-/// dispatch module. Closed mapping for the resolver's failure modes.
-fn map_resolve_error(err: ResolveError) -> Error {
-    match err {
-        ResolveError::RulesRootRequired => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-root-required".to_string(),
-                rule: "shared UNI-* rules require --rules-root or a project-local \
-                       adapters/shared/rules/universal/ tree"
-                    .to_string(),
-                detail: Some(
-                    "pass --rules-root pointing at a tree containing \
-                     adapters/shared/rules/universal/"
-                        .to_string(),
-                ),
-            }],
-        },
-        ResolveError::DuplicateRuleId { id, paths } => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-duplicate-rule-id".to_string(),
-                rule: format!("rule id '{id}' appears in multiple files"),
-                detail: Some(paths),
-            }],
-        },
-        ResolveError::Parse { path, error } => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-parse-error".to_string(),
-                rule: format!("failed to parse rule {}", path.display()),
-                detail: Some(error.to_string()),
-            }],
-        },
-        ResolveError::Filesystem { path, source } => Error::Filesystem {
-            op: "readdir",
-            path,
-            source,
-        },
-    }
-}
-
-fn map_render_error(err: RenderError) -> Error {
-    match err {
-        RenderError::JsonSchemaValidation { detail } => Error::Diag {
-            code: "review-envelope-schema",
-            detail,
-        },
-        RenderError::JsonSerialise(source) => Error::Diag {
-            code: "review-envelope-serialise",
-            detail: source.to_string(),
-        },
-        other => Error::Diag {
-            code: "review-envelope",
-            detail: other.to_string(),
-        },
     }
 }
 
