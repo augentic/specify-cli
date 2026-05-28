@@ -14,7 +14,7 @@
 //! - `adapters/targets/<name>/rules/…` → [`Origin::Target`]
 //! - `adapters/sources/<name>/rules/…` → [`Origin::Source`]
 //! - `adapters/shared/rules/universal/…` → [`Origin::Shared`]
-//! - anything else under the cache → [`Origin::Organization`]
+//! - anything else under the cache → [`Origin::Unknown`]
 //!
 //! `frontmatter_ref` is the project-relative path with a stable
 //! `#frontmatter` anchor appended. For rules the canonical
@@ -98,7 +98,7 @@ fn infer_origin(cache_relative: &str) -> Origin {
             return Origin::Shared;
         }
     }
-    Origin::Organization
+    Origin::Unknown
 }
 
 #[cfg(test)]
@@ -110,6 +110,6 @@ mod tests {
         assert_eq!(infer_origin("adapters/shared/rules/universal/UNI-014.md"), Origin::Shared);
         assert_eq!(infer_origin("adapters/targets/omnia/rules/OMNIA-001.md"), Origin::Target,);
         assert_eq!(infer_origin("adapters/sources/documentation/rules/SRC-001.md"), Origin::Source,);
-        assert_eq!(infer_origin("organization/local-policy.md"), Origin::Organization);
+        assert_eq!(infer_origin("organization/local-policy.md"), Origin::Unknown);
     }
 }

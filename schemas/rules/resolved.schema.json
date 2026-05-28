@@ -78,9 +78,9 @@
         "shared",
         "source",
         "target",
-        "organization"
+        "unknown"
       ],
-      "description": "Resolver origin tier. `shared` rules come from `adapters/shared/rules/`; `source` from a source-adapter overlay; `target` from a target-adapter overlay; `organization` is reserved for project-local overlays."
+      "description": "Resolver origin tier. `shared` rules come from `adapters/shared/rules/`; `source` from a source-adapter overlay; `target` from a target-adapter overlay; `unknown` is the consumer indexer's fallback for rule files whose path does not match a recognized adapter shape."
     },
     "pathRoot": {
       "type": "string",

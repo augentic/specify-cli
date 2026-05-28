@@ -47,6 +47,14 @@ shape; `Error::Validation` carries a `ValidationSummary` payload). The
 two never need separate exit codes — anything actionable by the
 operator is in the JSON envelope's `code` discriminant.
 
+`specrun lint run` is the one finding-driven exit slot in the table.
+Its decision is **status-aware severity**: it returns `2` only when a
+finding has `status: open` AND `severity ∈ {critical, important}`.
+Findings with `status: ignored` or `status: false-positive` remain in
+every formatter and in the JSON envelope, but they do not contribute
+to the blocking decision. The full lint status / disposition contract
+is captured in [§"Lint finding status, disposition, and exit"](#lint-finding-status-disposition-and-exit).
+
 ## Atomic writes
 
 Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a
@@ -781,3 +789,65 @@ match the on-disk location as part of the same change); the `specify`
 binary embeds it through `specify-schema` like every other workflow and
 standards schema. Cross-repo prose that named `codex.schema-drift`
 (CH-09) or the sync script is removed in the same change. This topic is the durable record for removing the vendored codex-rule schema.
+
+## Lint finding status, disposition, and exit
+
+`LintFinding.status` is a closed kebab-case enum on the wire. The
+RFC-28 fingerprint algorithm excludes both `status` and `disposition`,
+so demoting a finding from `open` to `ignored` (or `false-positive`)
+never changes its identity.
+
+| Value            | Set by                | Meaning                                                                                                                                |
+|------------------|-----------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `open`           | scanner (default)     | Freshly emitted finding before post-passes run. The only value that contributes to the `specrun lint` exit-code decision by default.   |
+| `ignored`        | directive pass        | An in-source `specify-ignore` directive matched the finding's `(path, line, rule-id)`. Carries `disposition.directive`.                |
+| `false-positive` | directive pass        | A directive matched and the rationale was prefixed `false-positive:`. Reported separately in dashboards.                                |
+| `fixed`          | reserved              | Reserved for the cross-run baseline diff verb. No producer in v1.                                                                      |
+| `accepted`       | reserved              | Reserved for explicit operator acceptance via the baseline file. No producer in v1.                                                    |
+
+`disposition` is an optional sibling object on `LintFinding`, populated
+only when `status != open`:
+
+```text
+disposition: { source, directive?, since? }
+```
+
+`disposition.source` is itself a closed enum. Today the only value is
+`directive` (set by the directive-validation pass in
+[`crates/specify-lints/src/lint/ignore.rs`](./crates/specify-lints/src/lint/ignore.rs)).
+A future cross-run baseline producer can add `baseline` additively
+without churning callers — every consumer that exhausts the enum is
+already required to tolerate unknown values under the additive
+schema-evolution policy.
+
+`specrun lint run` resolves the process exit using **status-aware
+severity** rather than severity alone:
+
+> Exit `2` only when there is a finding with `status: open` AND
+> `severity ∈ {critical, important}`. Findings with
+> `status: ignored` or `status: false-positive` remain in every
+> formatter and in the JSON envelope, but they do not contribute to
+> the blocking decision.
+
+The synthetic findings the directive pass emits for malformed
+(`UNI-022`) and orphan (`UNI-023`) directives default to `status:
+open`, so they block when their severities are critical or important
+and stay non-blocking otherwise. The shared codex tree ships both
+rules at `important`.
+
+**Graceful degradation.** When the codex resolver does not produce
+`UNI-022` or `UNI-023` — typically a consumer project that has not
+yet picked up the shared codex tree — the directive pass silently
+skips synthetic emission. Status stamping on matched directives
+continues to run; only the policing of malformed and orphan
+directives degrades. The fix is to pass `--rules-root` or to vendor
+the shared tree under `.specify/cache/rules/`.
+
+**Operator-facing reference.** The directive grammar (comment-style
+table, em-dash / `--` separator tolerance, target-line semantics,
+inline-trailing form, and the 16-character rationale floor) lives in
+the operator-facing reference at
+[`docs/reference/ignore-directives.md`](https://github.com/augentic/specify/blob/main/docs/reference/ignore-directives.md)
+in the parent plugin repo; it is not re-stated here. The journal
+`lint-completed` event payload lives in
+[§"Journal event names"](#journal-event-names).

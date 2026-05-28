@@ -32,8 +32,12 @@
 //! 4. omit when no rung exists.
 //!
 //! The **first existing** rung wins; locations never merge. Roots 2
-//! (shared language/artifact packs) and 5 (organization overlays) are
-//! reserved by the rules contract and not implemented here.
+//! (shared language/artifact packs) and 5 (project-local overlays) are
+//! reserved by the rules contract and not implemented here. The closed
+//! [`Origin`] enum's `Unknown` variant is **not** root 5 — it is the
+//! consumer indexer's fallback bucket for cache rule files whose path
+//! does not match a recognized adapter shape (see the `infer_origin`
+//! function in [`crate::lint::index`]).
 //!
 //! # Duplicate ids
 //!

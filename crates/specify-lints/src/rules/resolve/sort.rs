@@ -13,7 +13,7 @@
 //!    maps to `false < true`, putting active rules ahead of historical
 //!    citations.
 //! 2. **severity** — `critical < important < suggestion < optional`.
-//! 3. **origin** — `target < source < shared < organization`.
+//! 3. **origin** — `target < source < shared < unknown`.
 //! 4. **`rule-id`** lexical.
 //!
 //! Both [`super::super::Severity`] and [`super::super::Origin`] are

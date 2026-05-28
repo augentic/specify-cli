@@ -23,7 +23,7 @@
 //!
 //! Severity comparator order is `Critical < Important < Suggestion <
 //! Optional` and origin order is `Target < Source < Shared <
-//! Organization`, matching `ResolvedRules` export contract
+//! Unknown`, matching `ResolvedRules` export contract
 //! §"Ordering". The closed enums are declared in the comparator order
 //! so the derived [`Ord`] picks up the contract-defined sort sequence.
 
@@ -67,7 +67,7 @@ pub enum Severity {
 /// Resolver origin tier per `ResolvedRules` export contract.
 ///
 /// Variants are declared in the documented sort order (`target`,
-/// `source`, `shared`, `organization`) so the derived [`Ord`] yields
+/// `source`, `shared`, `unknown`) so the derived [`Ord`] yields
 /// the contract-defined comparator. Wire spelling uses kebab-case
 /// rendered from the variant identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -79,8 +79,12 @@ pub enum Origin {
     Source,
     /// Shared rules (`adapters/shared/rules/...`).
     Shared,
-    /// Reserved for project-local organization overlays.
-    Organization,
+    /// Indexer fallback: cache rule files whose path does not match
+    /// the closed adapter-shape probe in `infer_origin` under
+    /// [`crate::lint::index`]. Resolver root 5 is reserved by the
+    /// rules contract but not implemented; if/when it lands, a future
+    /// RFC introduces a fresh variant for it.
+    Unknown,
 }
 
 /// Anchor for the rule `path` field in a [`ResolvedRule`].
@@ -628,19 +632,15 @@ mod tests {
     }
 
     /// `ResolvedRules` export contract §"Ordering": origin comparator
-    /// order is `target, source, shared, organization`.
+    /// order is `target, source, shared, unknown`.
     #[test]
     fn origin_ordering_matches_contract() {
         assert!(Origin::Target < Origin::Source);
         assert!(Origin::Source < Origin::Shared);
-        assert!(Origin::Shared < Origin::Organization);
-        let mut shuffled =
-            vec![Origin::Organization, Origin::Shared, Origin::Target, Origin::Source];
+        assert!(Origin::Shared < Origin::Unknown);
+        let mut shuffled = vec![Origin::Unknown, Origin::Shared, Origin::Target, Origin::Source];
         shuffled.sort();
-        assert_eq!(
-            shuffled,
-            vec![Origin::Target, Origin::Source, Origin::Shared, Origin::Organization]
-        );
+        assert_eq!(shuffled, vec![Origin::Target, Origin::Source, Origin::Shared, Origin::Unknown]);
     }
 
     /// `Rule` round-trips its own JSON shape, exercising the
