@@ -434,6 +434,33 @@ deterministic_hints:
         assert_eq!(hints[1].kind, HintKind::NamespaceOwner);
     }
 
+    /// RFC-34 §F4 framework-side `applicability.artifacts` tokens
+    /// (`skill`, `adapter`, `brief`, `reference`, `codex`, `rfc`,
+    /// `doc`) compose with the consumer-side tokens in the closed
+    /// schema enum. A rule whose applicability mixes both sides
+    /// must shape-validate cleanly.
+    #[test]
+    fn applicability_artifacts_accepts_framework_tokens() {
+        let content = r"---
+id: UNI-014
+title: Framework artifact tokens
+severity: optional
+trigger: RFC-34 framework-side artifact tokens must compose with consumer-side tokens.
+applicability:
+  artifacts:
+    - skill
+    - adapter
+---
+## Rule
+";
+        let rule = parse_rule(content).expect("parses with framework artifact tokens");
+        let applicability = rule.applicability.expect("applicability present");
+        assert_eq!(
+            applicability.artifacts.as_deref(),
+            Some(&["skill".to_string(), "adapter".to_string()][..]),
+        );
+    }
+
     /// Helper: snake-to-kebab lift only rewrites keys, never
     /// values. Adapter names like `code-typescript` must survive
     /// untouched.

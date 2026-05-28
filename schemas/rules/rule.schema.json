@@ -67,9 +67,24 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": {
-            "$ref": "#/$defs/kebabToken"
+            "type": "string",
+            "enum": [
+              "code",
+              "tests",
+              "contracts",
+              "specs",
+              "design",
+              "tasks",
+              "skill",
+              "adapter",
+              "brief",
+              "reference",
+              "codex",
+              "rfc",
+              "doc"
+            ]
           },
-          "description": "Lowercase artifact category tokens such as `code`, `tests`, `contracts`, or `specs`."
+          "description": "Closed artifact category tokens. Consumer-side tokens (`code`, `tests`, `contracts`, `specs`, `design`, `tasks`) compose with framework-side tokens (`skill`, `adapter`, `brief`, `reference`, `codex`, `rfc`, `doc`) added by RFC-34 §F4."
         },
         "paths": {
           "type": "array",
