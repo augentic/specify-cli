@@ -315,6 +315,30 @@ mod tests {
     }
 
     #[test]
+    fn placeholder_rule_id_is_not_recognised_as_directive() {
+        // The rationale-table example in `docs/reference/ignore-directives.md`
+        // (and similar prose) uses the Unicode ellipsis as a stand-in for a
+        // real rule id; the extractor must skip such lines so documentation
+        // does not self-trigger UNI-022 / UNI-023.
+        let f = file(
+            "docs/reference/ignore-directives.md",
+            "markdown",
+            "<!-- specify-ignore: … -->\n# Heading\n",
+        );
+        assert!(extract(&f).is_empty(), "placeholder rule-id must not parse");
+    }
+
+    #[test]
+    fn angle_placeholder_rule_id_is_not_recognised_as_directive() {
+        let f = file(
+            "docs/reference/ignore-directives.md",
+            "markdown",
+            "<!-- specify-ignore: <RULE-ID> — rationale prose at length -->\n# Heading\n",
+        );
+        assert!(extract(&f).is_empty(), "<RULE-ID> placeholder must not parse");
+    }
+
+    #[test]
     fn languages_outside_closed_list_are_skipped() {
         let f =
             file("data.json", "json", "{\"//\": \"specify-ignore: UNI-014 — no comments here\"}\n");

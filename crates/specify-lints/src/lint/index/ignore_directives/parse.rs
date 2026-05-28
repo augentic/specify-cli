@@ -124,7 +124,12 @@ fn comment_body<'a>(raw: &'a str, delim: &'static str) -> &'a str {
 
 /// Parse a trimmed directive body into `(rule_id, rationale?)`.
 /// Returns `None` when the body does not start with the
-/// `specify-ignore:` marker or the rule-id token is missing.
+/// `specify-ignore:` marker, the rule-id token is missing, or the
+/// rule-id token does not match the wire grammar
+/// (`[A-Z][A-Z0-9]*-[0-9]+`). The grammar check keeps documentation
+/// of the directive syntax — `<!-- specify-ignore: … -->` placeholders
+/// in markdown tables, fenced code blocks, etc. — from being mistaken
+/// for live directives.
 ///
 /// Separator handling per D3: both the em-dash `—` and the two-char
 /// `--` sequence are accepted. When no separator follows the rule-id
@@ -136,11 +141,11 @@ fn parse_directive(body: &str) -> Option<(String, Option<String>)> {
     if rest.is_empty() {
         return None;
     }
-    let (rule_id, after) = match rest.find(char::is_whitespace) {
-        Some(idx) => (rest[..idx].to_owned(), rest[idx..].trim_start()),
-        None => return Some((rest.to_owned(), None)),
-    };
-    if rule_id.is_empty() {
+    let (rule_id, after) = rest.find(char::is_whitespace).map_or_else(
+        || (rest.to_owned(), ""),
+        |idx| (rest[..idx].to_owned(), rest[idx..].trim_start()),
+    );
+    if !is_well_formed_rule_id(&rule_id) {
         return None;
     }
     if after.is_empty() {
@@ -159,4 +164,26 @@ fn parse_directive(body: &str) -> Option<(String, Option<String>)> {
     } else {
         Some((rule_id, Some(rationale.to_owned())))
     }
+}
+
+/// Returns `true` when `token` matches the wire grammar
+/// `^[A-Z][A-Z0-9]*-[0-9]+$`. Used to reject directive bodies whose
+/// rule-id slot is documentation filler (`…`, `<RULE-ID>`, etc.)
+/// rather than a real codex id.
+fn is_well_formed_rule_id(token: &str) -> bool {
+    let Some((prefix, suffix)) = token.split_once('-') else {
+        return false;
+    };
+    if prefix.is_empty() || suffix.is_empty() {
+        return false;
+    }
+    let mut chars = prefix.chars();
+    let first = chars.next().expect("checked non-empty");
+    if !first.is_ascii_uppercase() {
+        return false;
+    }
+    if !chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
+        return false;
+    }
+    suffix.chars().all(|c| c.is_ascii_digit())
 }
