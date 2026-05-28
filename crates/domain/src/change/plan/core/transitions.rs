@@ -130,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn undo_walks_status_backwards_one_rung_at_a_time() {
+    fn undo_walks_status_one_rung() {
         let mut plan = plan_with_changes(vec![change("slice", Status::Done)]);
         let (from, to) = plan.transition_undo("slice").expect("done -> in-progress ok");
         assert_eq!((from, to), (Status::Done, Status::InProgress));
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn init_then_approved_models_auto_approve_at_create() {
+    fn init_then_approved_auto_approve() {
         // auto-approve Gate-1 contract: `--auto-review` composes `Plan::init` with
         // `Plan::transition_lifecycle(Reviewed)` before the single
         // atomic save. The resulting in-memory plan must carry

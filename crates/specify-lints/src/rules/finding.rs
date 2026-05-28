@@ -272,7 +272,7 @@ mod tests {
     /// (2) Missing required field — `title: ""` violates
     /// `minLength: 1` per the embedded schema.
     #[test]
-    fn validate_finding_rejects_empty_title() {
+    fn rejects_empty_title() {
         let mut finding = sample_finding();
         finding.title = String::new();
         finding.fingerprint = fingerprint(&finding);
@@ -287,7 +287,7 @@ mod tests {
     /// (3) Invalid severity (`"high"` instead of `important`) fails
     /// the closed-enum schema check.
     #[test]
-    fn validate_finding_json_rejects_invalid_severity() {
+    fn rejects_invalid_severity() {
         let mut value = sample_finding_json();
         value["severity"] = json!("high");
         match validate_finding_json(&value) {
@@ -302,7 +302,7 @@ mod tests {
     /// 20 `KiB` payload so the serialized object comfortably exceeds
     /// the ceiling.
     #[test]
-    fn validate_evidence_size_rejects_oversize_snippet() {
+    fn evidence_size_rejects_oversize_snippet() {
         let mut finding = sample_finding();
         let big = "a".repeat(20 * 1024);
         finding.evidence = FindingEvidence::Snippet { value: big };
@@ -337,7 +337,7 @@ mod tests {
     /// rejects pre-`sha256:` strings before the schema sees them
     /// because callers may invoke `validate_fingerprint` directly.
     #[test]
-    fn validate_fingerprint_rejects_malformed_value() {
+    fn fp_rejects_malformed_value() {
         let mut finding = sample_finding();
         finding.fingerprint = "not-a-sha256".into();
         match validate_fingerprint(&finding) {
@@ -351,7 +351,7 @@ mod tests {
     /// (5b) Malformed fingerprint also fails the typed
     /// `validate_finding` via the schema's pattern check.
     #[test]
-    fn validate_finding_rejects_bad_fp_schema() {
+    fn rejects_bad_fp_schema() {
         let mut finding = sample_finding();
         finding.fingerprint = "not-a-sha256".into();
         match validate_finding(&finding) {
@@ -365,7 +365,7 @@ mod tests {
     /// (6) Well-formed fingerprint that does not match the recompute
     /// surfaces as `FingerprintMismatch`.
     #[test]
-    fn validate_fingerprint_rejects_mismatch() {
+    fn fp_rejects_mismatch() {
         let finding = sample_finding();
         let mut tampered = finding.clone();
         tampered.fingerprint =
@@ -383,7 +383,7 @@ mod tests {
     /// as `FingerprintMalformed` even though it passes the loose
     /// `is_ascii_hexdigit` check.
     #[test]
-    fn validate_fingerprint_rejects_uppercase_hex() {
+    fn fp_rejects_uppercase_hex() {
         let mut finding = sample_finding();
         let stored_hex =
             finding.fingerprint.strip_prefix("sha256:").expect("baseline has prefix").to_owned();
@@ -397,7 +397,7 @@ mod tests {
     /// (7) Invalid rule-id (`OMNIA-1` instead of `OMNIA-001`) fails
     /// the closed `ruleId` pattern.
     #[test]
-    fn validate_finding_json_rejects_invalid_rule_id() {
+    fn rejects_invalid_rule_id() {
         let mut value = sample_finding_json();
         value["rule-id"] = json!("OMNIA-1");
         match validate_finding_json(&value) {
@@ -412,7 +412,7 @@ mod tests {
     /// field violates `additionalProperties: false` on the snippet
     /// branch.
     #[test]
-    fn validate_finding_json_rejects_snippet_with_extra_sha256() {
+    fn rejects_snippet_with_extra_sha256() {
         let mut value = sample_finding_json();
         value["evidence"] = json!({
             "kind": "snippet",
@@ -430,7 +430,7 @@ mod tests {
     /// (8b) Strict evidence `oneOf` — digest variant missing required
     /// `sha256`.
     #[test]
-    fn validate_finding_json_rejects_digest_missing_sha256() {
+    fn rejects_digest_missing_sha256() {
         let mut value = sample_finding_json();
         value["evidence"] = json!({
             "kind": "digest",
@@ -447,7 +447,7 @@ mod tests {
     /// (8c) Strict evidence `oneOf` — structured variant missing
     /// required `data`.
     #[test]
-    fn validate_finding_json_rejects_structured_missing_data() {
+    fn rejects_structured_missing_data() {
         let mut value = sample_finding_json();
         value["evidence"] = json!({
             "kind": "structured",
@@ -465,7 +465,7 @@ mod tests {
     /// `value` field (snippet leakage) violates the structured
     /// branch's `additionalProperties: false`.
     #[test]
-    fn validate_finding_rejects_structured_extra() {
+    fn rejects_structured_extra() {
         let mut value = sample_finding_json();
         value["evidence"] = json!({
             "kind": "structured",

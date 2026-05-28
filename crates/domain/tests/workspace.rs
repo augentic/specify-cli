@@ -250,7 +250,7 @@ projects:
 }
 
 #[test]
-fn c01_selector_resolver_preserves_registry_order() {
+fn c01_selector_preserves_order() {
     let registry = registry_with_projects(&["billing", "orders", "inventory"]);
     let selected =
         registry.select(&["orders".to_string(), "billing".to_string()]).expect("selectors resolve");
@@ -357,7 +357,7 @@ fn c02_local_slot_refuses_existing_non_symlink() {
 }
 
 #[test]
-fn c02_local_slot_refuses_symlink_to_wrong_target() {
+fn c02_local_slot_wrong_symlink() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let peer = project_dir.join("peer");
@@ -677,7 +677,7 @@ fn c04_prepare_unresolved_origin_head() {
 // ---------- workspace_status -----------------------------------------
 
 #[test]
-fn workspace_status_returns_none_without_registry() {
+fn status_none_without_registry() {
     let tmp = TempDir::new().unwrap();
     let result = workspace_status(tmp.path()).expect("ok");
     assert!(result.is_none(), "absent registry must yield None");
@@ -723,7 +723,7 @@ projects:
 }
 
 #[test]
-fn workspace_status_reports_symlink_kind_after_sync() {
+fn status_symlink_kind_after_sync() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
@@ -908,7 +908,7 @@ fn c07_push_up_to_date() {
 }
 
 #[test]
-fn c07_push_dirty_checkout_is_failed_without_push() {
+fn c07_push_dirty_without_push() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();

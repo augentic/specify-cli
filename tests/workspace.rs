@@ -234,7 +234,7 @@ fn c04_prepare_origin_head_diagnostic() {
 
 // ---- planning-path workspace smoke — planning-path workspace smoke ----
 #[test]
-fn planning_path_workspace_sync_absent_registry_exits_zero() {
+fn planning_sync_no_registry_exits_zero() {
     let project = Project::init();
     let assert = specrun()
         .current_dir(project.root())
@@ -247,7 +247,7 @@ fn planning_path_workspace_sync_absent_registry_exits_zero() {
 }
 
 #[test]
-fn planning_path_workspace_sync_two_local_symlink_peers() {
+fn planning_sync_two_symlink_peers() {
     let tmp = tempdir().expect("tempdir");
     let peer = tmp.path().join("peer-proj");
     fs::create_dir_all(peer.join(".specify")).expect("peer .specify");
