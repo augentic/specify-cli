@@ -118,8 +118,8 @@ pub enum LintMode {
 ///
 /// Includes the executable v1 kinds (`path-pattern`, `regex`,
 /// `schema`, `tool`, `reference-resolves`, `unique`,
-/// `set-coverage`, `cardinality`) and the Reserved hint kind kinds
-/// (`constant-eq`, `set-eq`, `content-digest-eq`, `namespace-owner`).
+/// `set-coverage`, `cardinality`, `constant-eq`) and the Reserved
+/// hint kind kinds (`set-eq`, `content-digest-eq`, `namespace-owner`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HintKind {
@@ -144,7 +144,9 @@ pub enum HintKind {
     /// configured bounds (v1 source discriminator:
     /// `skill-body-line-count-max-200`).
     Cardinality,
-    /// Reserved hint kind: assert a value equals a constant.
+    /// Assert that an extracted field on a candidate fact equals a
+    /// configured constant (v1 source discriminator:
+    /// `adapter-manifest-version-equals-v1`).
     ConstantEq,
     /// Reserved hint kind: assert two sets are equal.
     SetEq,
