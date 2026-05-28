@@ -1,4 +1,4 @@
-//! Integration tests for `specrun source preview` (RFC-31 D4).
+//! Integration tests for `specrun source preview` (`specrun source preview` contract).
 
 use std::fs;
 use std::path::PathBuf;

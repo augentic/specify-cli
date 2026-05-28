@@ -1,7 +1,7 @@
 //! Integration tests for `specify_domain::registry::workspace` and
 //! `specify_domain::registry::forge`.
 //!
-//! Pins the public surface lifted from the binary by RFC-13 chunk 2.2:
+//! Pins the public surface lifted from the binary by the workspace split 2.2:
 //! `github_slug`, `sync_projects` (registry-absent short-circuit at the
 //! caller, `.gitignore` upkeep), `workspace_status` (returns `None`
 //! when no registry), `is_specify_branch`, and `branches_match`.
@@ -208,7 +208,7 @@ projects:
 }
 
 #[test]
-fn rfc14_c00_sync_without_selector_materialises_all_registry_projects() {
+fn workspace_c00_sync_without_selector_materialises_all_registry_projects() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("alpha")).unwrap();
@@ -245,12 +245,12 @@ projects:
     assert_eq!(
         names,
         ["alpha", "beta"],
-        "pre-RFC-14 sync/status without selectors cover every registry project"
+        "pre-workspace orchestration contract sync/status without selectors cover every registry project"
     );
 }
 
 #[test]
-fn rfc14_c01_selector_resolver_preserves_registry_order() {
+fn workspace_c01_selector_resolver_preserves_registry_order() {
     let registry = registry_with_projects(&["billing", "orders", "inventory"]);
     let selected =
         registry.select(&["orders".to_string(), "billing".to_string()]).expect("selectors resolve");
@@ -259,7 +259,7 @@ fn rfc14_c01_selector_resolver_preserves_registry_order() {
 }
 
 #[test]
-fn rfc14_c01_selector_resolver_rejects_unknown_project() {
+fn workspace_c01_selector_resolver_rejects_unknown_project() {
     let registry = registry_with_projects(&["billing", "orders"]);
     let err = registry.select(&["ghost".to_string()]).expect_err("unknown selector must fail");
     let msg = err.to_string();
@@ -270,7 +270,7 @@ fn rfc14_c01_selector_resolver_rejects_unknown_project() {
 }
 
 #[test]
-fn rfc14_c01_sync_projects_materialises_selected_slots_only() {
+fn workspace_c01_sync_projects_materialises_selected_slots_only() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     for name in ["billing", "orders", "inventory"] {
@@ -291,7 +291,7 @@ fn rfc14_c01_sync_projects_materialises_selected_slots_only() {
 }
 
 #[test]
-fn rfc14_c01_status_projects_reports_selected_slots_in_registry_order() {
+fn workspace_c01_status_projects_reports_selected_slots_in_registry_order() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let registry = registry_with_projects(&["billing", "orders", "inventory"]);
@@ -306,7 +306,7 @@ fn rfc14_c01_status_projects_reports_selected_slots_in_registry_order() {
 }
 
 #[test]
-fn rfc14_c02_selected_sync_recreates_deleted_slot_without_touching_unselected() {
+fn workspace_c02_selected_sync_recreates_deleted_slot_without_touching_unselected() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     for name in ["billing", "orders"] {
@@ -335,7 +335,7 @@ fn rfc14_c02_selected_sync_recreates_deleted_slot_without_touching_unselected() 
 }
 
 #[test]
-fn rfc14_c02_local_slot_refuses_existing_non_symlink() {
+fn workspace_c02_local_slot_refuses_existing_non_symlink() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
@@ -357,7 +357,7 @@ fn rfc14_c02_local_slot_refuses_existing_non_symlink() {
 }
 
 #[test]
-fn rfc14_c02_local_slot_refuses_symlink_to_wrong_target() {
+fn workspace_c02_local_slot_refuses_symlink_to_wrong_target() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let peer = project_dir.join("peer");
@@ -383,7 +383,7 @@ fn rfc14_c02_local_slot_refuses_symlink_to_wrong_target() {
 }
 
 #[test]
-fn rfc14_c02_remote_slot_refuses_existing_symlink() {
+fn workspace_c02_remote_slot_refuses_existing_symlink() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let target = project_dir.join("not-remote");
@@ -412,7 +412,7 @@ fn rfc14_c02_remote_slot_refuses_existing_symlink() {
 }
 
 #[test]
-fn rfc14_c10_slot_problem_matches_sync_for_wrong_symlink_target() {
+fn workspace_c10_slot_problem_matches_sync_for_wrong_symlink_target() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let peer = project_dir.join("peer");
@@ -436,7 +436,7 @@ fn rfc14_c10_slot_problem_matches_sync_for_wrong_symlink_target() {
 }
 
 #[test]
-fn rfc14_c10_slot_problem_matches_sync_for_wrong_remote_origin() {
+fn workspace_c10_slot_problem_matches_sync_for_wrong_remote_origin() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let slot = project_dir.join(".specify/workspace/remote");
@@ -462,7 +462,7 @@ fn rfc14_c10_slot_problem_matches_sync_for_wrong_remote_origin() {
 }
 
 #[test]
-fn rfc14_c02_sync_refuses_project_name_that_escapes_workspace_slot() {
+fn workspace_c02_sync_refuses_project_name_that_escapes_workspace_slot() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
@@ -486,7 +486,7 @@ fn rfc14_c02_sync_refuses_project_name_that_escapes_workspace_slot() {
 }
 
 #[test]
-fn rfc14_c02_sync_refuses_symlinked_workspace_base() {
+fn workspace_c02_sync_refuses_symlinked_workspace_base() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
@@ -509,7 +509,7 @@ fn rfc14_c02_sync_refuses_symlinked_workspace_base() {
 }
 
 #[test]
-fn rfc14_c02_sync_preserves_required_gitignore_entries_once() {
+fn workspace_c02_sync_preserves_required_gitignore_entries_once() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
@@ -525,10 +525,10 @@ fn rfc14_c02_sync_preserves_required_gitignore_entries_once() {
     assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/.cache/").count(), 1);
 }
 
-// ---------- branch preparation (RFC-14 C04) ----------------------------
+// ---------- branch preparation (workspace orchestration contract C04) ----------------------------
 
 #[test]
-fn rfc14_c04_prepare_branch_creates_change_branch_from_origin_head() {
+fn workspace_c04_prepare_branch_creates_change_branch_from_origin_head() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -549,7 +549,7 @@ fn rfc14_c04_prepare_branch_creates_change_branch_from_origin_head() {
 }
 
 #[test]
-fn rfc14_c04_prepare_branch_reuses_resume_branch_with_allowed_dirty_work() {
+fn workspace_c04_prepare_branch_reuses_resume_branch_with_allowed_dirty_work() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -580,7 +580,7 @@ fn rfc14_c04_prepare_branch_reuses_resume_branch_with_allowed_dirty_work() {
 }
 
 #[test]
-fn rfc14_c04_prepare_branch_fast_forwards_when_remote_change_branch_is_ahead() {
+fn workspace_c04_prepare_branch_fast_forwards_when_remote_change_branch_is_ahead() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -607,7 +607,7 @@ fn rfc14_c04_prepare_branch_fast_forwards_when_remote_change_branch_is_ahead() {
 }
 
 #[test]
-fn rfc14_c04_prepare_branch_blocks_unrelated_tracked_work_before_checkout() {
+fn workspace_c04_prepare_branch_blocks_unrelated_tracked_work_before_checkout() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -625,7 +625,7 @@ fn rfc14_c04_prepare_branch_blocks_unrelated_tracked_work_before_checkout() {
 }
 
 #[test]
-fn rfc14_c04_prepare_branch_reports_missing_origin() {
+fn workspace_c04_prepare_branch_reports_missing_origin() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -645,7 +645,7 @@ fn rfc14_c04_prepare_branch_reports_missing_origin() {
 }
 
 #[test]
-fn rfc14_c04_prepare_branch_reports_unresolved_origin_head_without_guessing() {
+fn workspace_c04_prepare_branch_reports_unresolved_origin_head_without_guessing() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -750,7 +750,7 @@ projects:
 }
 
 #[test]
-fn rfc14_c03_workspace_status_enriches_symlink_project_state() {
+fn workspace_c03_workspace_status_enriches_symlink_project_state() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let peer = project_dir.join("peer");
@@ -797,7 +797,7 @@ projects:
 }
 
 #[test]
-fn rfc14_c03_workspace_status_enriches_git_clone_mismatch_dirty_and_origin() {
+fn workspace_c03_workspace_status_enriches_git_clone_mismatch_dirty_and_origin() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let slot_path = project_dir.join(".specify/workspace/remote");
@@ -839,7 +839,7 @@ fn rfc14_c03_workspace_status_enriches_git_clone_mismatch_dirty_and_origin() {
 }
 
 #[test]
-fn rfc14_c03_workspace_status_reports_other_materialisation_with_project_metadata() {
+fn workspace_c03_workspace_status_reports_other_materialisation_with_project_metadata() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let slot_path = project_dir.join(".specify/workspace/odd");
@@ -861,10 +861,10 @@ fn rfc14_c03_workspace_status_reports_other_materialisation_with_project_metadat
     assert_eq!(slots[0].dirty, None);
 }
 
-// ---------- workspace push (RFC-14 C07) -------------------------------
+// ---------- workspace push (workspace orchestration contract C07) -------------------------------
 
 #[test]
-fn rfc14_c07_workspace_push_pushes_clean_change_branch_only() {
+fn workspace_c07_workspace_push_pushes_clean_change_branch_only() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -887,7 +887,7 @@ fn rfc14_c07_workspace_push_pushes_clean_change_branch_only() {
 }
 
 #[test]
-fn rfc14_c07_workspace_push_reports_up_to_date_when_remote_tip_matches() {
+fn workspace_c07_workspace_push_reports_up_to_date_when_remote_tip_matches() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -908,7 +908,7 @@ fn rfc14_c07_workspace_push_reports_up_to_date_when_remote_tip_matches() {
 }
 
 #[test]
-fn rfc14_c07_workspace_push_dirty_checkout_is_failed_without_push() {
+fn workspace_c07_workspace_push_dirty_checkout_is_failed_without_push() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -934,7 +934,7 @@ fn rfc14_c07_workspace_push_dirty_checkout_is_failed_without_push() {
 }
 
 #[test]
-fn rfc14_c07_workspace_push_wrong_branch_is_no_branch_without_checkout() {
+fn workspace_c07_workspace_push_wrong_branch_is_no_branch_without_checkout() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -952,7 +952,7 @@ fn rfc14_c07_workspace_push_wrong_branch_is_no_branch_without_checkout() {
 }
 
 #[test]
-fn rfc14_c07_workspace_push_missing_origin_is_local_only() {
+fn workspace_c07_workspace_push_missing_origin_is_local_only() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     let slot = project_dir.join(".specify/workspace/alpha");
@@ -971,7 +971,7 @@ fn rfc14_c07_workspace_push_missing_origin_is_local_only() {
 }
 
 #[test]
-fn rfc14_c07_workspace_push_dry_run_classifies_without_pushing() {
+fn workspace_c07_workspace_push_dry_run_classifies_without_pushing() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("hub");
     fs::create_dir_all(&project_dir).unwrap();
@@ -991,7 +991,7 @@ fn rfc14_c07_workspace_push_dry_run_classifies_without_pushing() {
 }
 
 #[test]
-fn rfc14_c07_workspace_push_selector_preflight_rejects_unknown_before_slots() {
+fn workspace_c07_workspace_push_selector_preflight_rejects_unknown_before_slots() {
     let tmp = TempDir::new().unwrap();
     let registry = registry_with_projects(&["alpha"]);
 

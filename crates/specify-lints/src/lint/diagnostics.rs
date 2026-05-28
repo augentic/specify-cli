@@ -1,11 +1,11 @@
-//! Diagnostic formatter umbrella per RFC-32 §"Diagnostic formatters"
-//! and §D6.
+//! Diagnostic formatter umbrella per the diagnostic formatter contract
+//! and the diagnostics formatter set.
 //!
-//! v1 (Phase 2) ships the four formatters RFC-32 §D6 names as the
+//! v1 (Phase 2) ships the four formatters the diagnostics formatter set names as the
 //! closed Phase 2 set ([`Format::Json`], [`Format::Pretty`],
 //! [`Format::Github`], [`Format::Compact`]). Rendering lives in this
 //! module so `specrun lint` (Phase 2) and `specdev check --format
-//! json` (RFC-28 Phase 3) cannot drift.
+//! json` cannot drift.
 //!
 //! Only the [`Format::Json`] formatter validates against
 //! [`specify_schema::LINT_RESULT_JSON_SCHEMA`] before emit; the
@@ -25,7 +25,7 @@ use crate::rules::{LintFinding, Severity};
 /// Type-level pin of the [`LintResult`] envelope version.
 ///
 /// Serialises to the integer `1` and refuses to deserialise any
-/// other value per RFC-32 §D9. Mirrors the
+/// other value for the `LintResult` envelope. Mirrors the
 /// [`crate::lint::WorkspaceModelVersion`] shape so the [`Default`]
 /// derive propagates through [`LintResult`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -50,7 +50,7 @@ impl<'de> Deserialize<'de> for LintResultVersion {
     }
 }
 
-/// Finding tally by severity per RFC-32 §D9.
+/// Finding tally by severity for the `LintResult` envelope.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LintSummary {
@@ -81,7 +81,7 @@ impl LintSummary {
     }
 }
 
-/// RFC-32 §D9 review-result envelope.
+/// `LintResult` envelope review-result envelope.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LintResult {
@@ -95,14 +95,14 @@ pub struct LintResult {
     pub findings: Vec<LintFinding>,
 }
 
-/// Closed RFC-32 §D6 Phase 2 formatter discriminant.
+/// Closed the diagnostics formatter set Phase 2 formatter discriminant.
 ///
 /// Kept clap-free at the standards-layer boundary; the
 /// `specrun lint` CLI in S9 adapts this enum to its own
 /// `clap::ValueEnum` so the standards crate stays runtime-agnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Format {
-    /// RFC-28 wire envelope; schema-validated before emit.
+    /// `LintResult` wire envelope; schema-validated before emit.
     Json,
     /// Terminal output with severity colour and source location.
     Pretty,
@@ -112,7 +112,7 @@ pub enum Format {
     Compact,
 }
 
-/// Closed render error per RFC-32 §"Diagnostic formatters".
+/// Closed render error per the diagnostic formatter contract.
 ///
 /// Only the [`Format::Json`] formatter validates against
 /// [`specify_schema::LINT_RESULT_JSON_SCHEMA`] before emit, so it

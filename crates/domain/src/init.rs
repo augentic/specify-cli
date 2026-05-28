@@ -115,7 +115,7 @@ pub(crate) fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
 /// Scaffold the project-local wasm-pkg config when absent, preserving
 /// any operator-edited file byte-for-byte on re-init.
 ///
-/// The contents are the canonical RFC-17 mapping
+/// The contents are the canonical wasm-pkg namespace mapping
 /// (`specify -> augentic.io`); see
 /// [`specify_tool::DEFAULT_WASM_PKG_CONFIG`]. Operators are expected
 /// to edit this file to add private mirrors or other namespace

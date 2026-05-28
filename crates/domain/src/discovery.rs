@@ -3,7 +3,7 @@
 //! `enumerate` time. Validated against
 //! `schemas/discovery/candidate.schema.json`.
 //!
-//! The whole-document model lives in [`document`] (workflow §D6); it
+//! The whole-document model lives in [`document`] (discovery alias contract); it
 //! parses `discovery.md`, exposes [`Discovery::resolve_candidate`]
 //! for the `--sources <key>=<id-or-alias>` rewrite path, and gates
 //! the cross-candidate `id` ↔ `aliases[]` collision check shared

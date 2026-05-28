@@ -230,7 +230,7 @@ claims:
   - kind: requirement
     claim-id: users.register.email-validation
     path: src/users/register.ts#L12-L87
-    statement: The system accepts registrations with RFC-5322 emails.
+    statement: The system accepts registrations with RFC 5322 emails.
 ";
 
 const EVIDENCE_VALID_SPATIAL: &str = r"
@@ -325,7 +325,7 @@ fn evidence_rejects_missing_or_invalid_authority_and_kinds() {
 const CANDIDATE_VALID: &str = r"
 id: user-registration
 sources: [legacy-monolith]
-summary: Registration endpoint accepting email + password with RFC-5322 validation.
+summary: Registration endpoint accepting email + password with RFC 5322 validation.
 ";
 
 const CANDIDATE_VALID_TENTATIVE: &str = r"
@@ -373,7 +373,7 @@ fn candidate_rejects_empty_sources_bad_id_and_wrong_tentative_type() {
     );
 }
 
-// --- plan/plan.schema.json (RFC-25 deltas) -------------------------
+// --- plan/plan.schema.json (source/target adapter split deltas) -------------------------
 
 fn plan_v2_fixture_path(name: &str) -> PathBuf {
     // `crates/domain/tests/` -> `crates/domain/` -> `crates/` -> repo
@@ -385,21 +385,21 @@ fn plan_v2_fixture_path(name: &str) -> PathBuf {
 }
 
 #[test]
-fn plan_schema_accepts_rfc25_intent_n1() {
+fn plan_schema_accepts_workflow_intent_n1() {
     let v = load("plan/plan.schema.json");
     let raw = std::fs::read_to_string(plan_v2_fixture_path("intent-n1.yaml")).expect("read");
     assert_valid(&v, &yaml(&raw), "plan/v2/intent-n1");
 }
 
 #[test]
-fn plan_schema_accepts_rfc25_multi_source() {
+fn plan_schema_accepts_workflow_multi_source() {
     let v = load("plan/plan.schema.json");
     let raw = std::fs::read_to_string(plan_v2_fixture_path("multi-source.yaml")).expect("read");
     assert_valid(&v, &yaml(&raw), "plan/v2/multi-source");
 }
 
 #[test]
-fn plan_schema_accepts_rfc25_divergence_likely() {
+fn plan_schema_accepts_workflow_divergence_likely() {
     let v = load("plan/plan.schema.json");
     let raw =
         std::fs::read_to_string(plan_v2_fixture_path("divergence-likely.yaml")).expect("read");

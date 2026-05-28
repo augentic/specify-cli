@@ -1,11 +1,11 @@
 //! Integration tests for `specify_domain::registry::registry` and
 //! `specify_domain::registry::validate`.
 //!
-//! Lifted from `crates/adapter/src/tests.rs` as part of RFC-13 chunk
+//! Lifted from `crates/adapter/src/tests.rs` as part of the workspace split
 //! 2.1 (extract platform-component artefacts out of the adapter
 //! crate). The tests cover `Registry::load`, `validate_shape`,
 //! `validate_shape_hub`, URL classification, and the contract-roles
-//! invariants (RFC-8 Layer 2 / RFC-12).
+//! invariants (registry-layer invariants).
 
 use std::path::{Path, PathBuf};
 
@@ -54,7 +54,7 @@ fn registry_absent_returns_none() {
 }
 
 #[test]
-fn registry_parses_canonical_rfc_example() {
+fn registry_parses_canonical_example() {
     let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
     let registry = Registry::load(tmp.path()).expect("parses").expect("present");
     assert_eq!(registry.version, 1);
@@ -428,7 +428,7 @@ fn registry_path_helper_points_at_repo_root() {
     assert_eq!(Registry::path(dir), PathBuf::from("/tmp/some/project/registry.yaml"));
 }
 
-// ---------- Registry URL validation (RFC-3a C28) ----------
+// ---------- Registry URL validation (registry URL validation) ----------
 
 fn registry_with_one_url(url: &str) -> Registry {
     Registry {
@@ -552,7 +552,7 @@ fn registry_rejects_url_with_leading_whitespace() {
     }
 }
 
-// ---------- Registry hub-mode validation (RFC-9 §1D) ----------
+// ---------- Registry hub-mode validation (registry hub-mode validation) ----------
 
 #[test]
 fn registry_validate_shape_hub_accepts_empty_projects() {
@@ -669,7 +669,7 @@ fn registry_validate_shape_hub_inherits_base_shape_errors() {
 fn registry_validate_shape_unchanged_for_dot_url() {
     // The base `validate_shape` continues to accept `url: .` — only
     // the new hub-only mode rejects it. This pins the additive-API
-    // contract from the RFC.
+    // contract from the registry design.
     let reg = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -683,7 +683,7 @@ fn registry_validate_shape_unchanged_for_dot_url() {
     reg.validate_shape().expect("base shape must still accept `url: .`");
 }
 
-// ---------- Registry contract roles (RFC-8 Layer 2) ----------
+// ---------- Registry contract roles (registry-layer invariants) ----------
 
 const REGISTRY_WITH_CONTRACT_ROLES_YAML: &str = "\
 version: 1
@@ -802,10 +802,10 @@ projects:
     }
 }
 
-/// RFC-12 dropped `contracts.imports`. Any registry that still
+/// registry contract cleanup dropped `contracts.imports`. Any registry that still
 /// declares the field after the upgrade fails fast at parse time
 /// (`#[serde(deny_unknown_fields)]`) — that diagnostic is the
-/// documented migration trigger from RFC-12 §Migration.
+/// documented migration trigger from registry contract cleanup §Migration.
 #[test]
 fn registry_rejects_unknown_imports_field() {
     let yaml = "\

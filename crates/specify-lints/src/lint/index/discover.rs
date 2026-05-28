@@ -1,10 +1,10 @@
-//! Rules tree discovery per RFC-32 §"Core entity families (v1)" and
-//! §D7.
+//! Rules tree discovery per the `WorkspaceModel` entity families and
+//! rules-root resolution.
 //!
 //! For the consumer scan, the rules tree lives at
 //! `<project_dir>/.specify/cache/rules/` (populated by `specrun init`
 //! and refreshed by `specrun workspace sync`). This module walks that
-//! tree, reuses the RFC-28 frontmatter parser
+//! tree, reuses the rule frontmatter parser
 //! ([`crate::rules::parse::parse_rule_file`]), and emits one
 //! [`RuleIndexEntry`] per `*.md` rule found.
 //!
@@ -22,8 +22,8 @@
 //! `frontmatter` extractor only fires on markdown files outside the
 //! cache so the two surfaces do not double-count the same file.
 //!
-//! Parse failures collapse to per-file skips silently in v1 — RFC-32
-//! §D5 reserves the `index.warning` finding for S7's hint runner.
+//! Parse failures collapse to per-file skips silently in v1; the reserved-hint diagnostic surface
+//! reserved-hint diagnostics reserves the `index.warning` finding for S7's hint runner.
 //! Missing or absent rules trees return an empty vector rather than
 //! erroring.
 

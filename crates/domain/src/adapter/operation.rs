@@ -85,7 +85,7 @@ impl SourceOperation {
 /// (`<slice_dir>/.metadata.yaml.outcome.phase`).
 ///
 /// Replaces the pre-2.0 `Phase { Define, Build, Merge }` — the
-/// 1.x define phase has no RFC-25 counterpart (refine-time artifacts
+/// 1.x define phase has no source/target adapter split counterpart (refine-time artifacts
 /// are synthesised by core, not produced by an operation), so the
 /// enum collapses to the three target operations.
 ///

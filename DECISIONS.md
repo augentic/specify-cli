@@ -25,7 +25,7 @@ run` WASI passthrough.
 |------|--------------------------|-----------------------------------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the workflow §D3/D4/D6 kebab discriminants `slice-authority-override-orphan-source-key`, `slice-fusion-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
+| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, fusion, and discovery kebab discriminants `slice-authority-override-orphan-source-key`, `slice-fusion-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
 The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
@@ -232,7 +232,7 @@ crate project-scope and adapter-scope tool declarations.
   override, (4) an embedded `specify -> augentic.io` namespace
   fallback applied only when no earlier layer mapped the `specify`
   namespace. `specrun init` (regular and hub modes) scaffolds
-  `.specify/wasm-pkg.toml` with the canonical RFC-17 mapping; the
+  `.specify/wasm-pkg.toml` with the canonical wasm-pkg namespace mapping; the
   file is checked in and operators edit it to register internal
   mirrors. Re-init never overwrites an operator-edited file. The
   scaffold is the only first-party constant the binary still ships;
@@ -250,7 +250,7 @@ crate project-scope and adapter-scope tool declarations.
   `merge-mtime-out-of-range` whose `detail` carries the underlying
   `jiff` error.
 
-## RFC-25 type rename: `Target*` is the output role, `Adapter` is the shared shape
+## Source and target adapter role names
 
 The output-role domain types are spelled `Target*`
 (`Target`, `Slice.target`, the `slice-create-target-missing` /
@@ -272,7 +272,7 @@ and `augentic/specify` in the same PR.
 The Wave 0.2 / 0.3 / F9 collapse history that produced this layout —
 including the names of the retired axis-generic types and the prior
 `init-requires-target-or-workspace` discriminant — is recorded in
-[`docs/explanation/decision-log.md` §"RFC-25 type rename — Wave 0 / F9 collapse history"](./docs/explanation/decision-log.md#rfc-25-type-rename--wave-0--f9-collapse-history).
+[`docs/explanation/decision-log.md` §"Source and target adapter role names — Wave 0 / F9 collapse history"](./docs/explanation/decision-log.md#source-and-target-adapter-role-names--wave-0--f9-collapse-history).
 
 ## Adapter loader axis routing
 
@@ -291,7 +291,7 @@ The axis segment (`sources` for `Axis::Source`, `targets` for
 disambiguated by axis. Cache placement matches the probe layout —
 `cache_dir(axis, name)` returns
 `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`.
-The sibling workflow §D8 extraction cache lives in a disjoint tree under
+The sibling extraction cache lives in a disjoint tree under
 `<project_dir>/.specify/.cache/extractions/<adapter>/`; see §"Cache
 layout". Refer to workflow §"Resolver and cache" before changing the
 probe order or manifest-cache layout.
@@ -299,8 +299,8 @@ probe order or manifest-cache layout.
 ## Plan lifecycle: two stored states
 
 `plan.yaml.lifecycle` is `pending | approved`. No other plan-level
-states ship in v1; `in-progress` and `drained` were dropped from RFC-23
-in Wave 1.2 (`cli/W1.2`). Per-entry status remains a closed enum of
+states ship in v1; `in-progress` and `drained` were dropped during
+the plan lifecycle simplification in Wave 1.2 (`cli/W1.2`). Per-entry status remains a closed enum of
 `pending | in-progress | done` and the writer ownership is split:
 `plan add` / `plan amend` write `pending`, `plan next` is the sole
 writer of `in-progress`, and `slice merge` (via `plan transition <entry>
@@ -377,7 +377,7 @@ a direct YAML edit (per the W3.2 hand-off). Operators flipping the
 field after Gate 1 review use `accepted | rejected` exclusively.
 Refer to workflow §"Plan-time fusion".
 
-## workflow §D2 — per-kind authority on Evidence
+## Evidence per-kind authority overrides
 
 `evidence.schema.json` gains an
 optional `authority-overrides` map keyed by claim kind, valued by
@@ -388,7 +388,7 @@ deferred. Synthesis consults the per-kind override first, then the
 document-level `authority:`, then the workflow default ordering — a
 byte-stable three-step fallback chain.
 
-## workflow §D3 — per-slice authority on `plan.yaml`
+## Plan per-slice authority overrides
 
 `plan.yaml.slices[]` gains an
 optional `authority-override` map keyed by claim kind, valued by
@@ -399,7 +399,7 @@ keys are rejected by `specrun slice validate` with the
 map is scoped to one slice — plan-wide and project-wide overrides
 are out of scope.
 
-## workflow §D4 — `fusion.yaml` is audit-only
+## `fusion.yaml` audit index
 
 `schemas/slice/fusion.schema.json`
 fixes the closed top-level shape (`version`, `slice`,
@@ -411,7 +411,7 @@ surface. `specrun slice validate` enforces id-set parity between
 catches contributing-claim → Evidence-claim drift, both via the
 `slice-fusion-drift` discriminant.
 
-## workflow §D8 — cache fingerprint inputs
+## Extraction cache fingerprint inputs
 
 The closed list of fingerprint
 inputs (`source path canonicalised | adapter name@version | brief
@@ -426,8 +426,8 @@ adapter-opt-out`.
 
 ## Journal event names
 
-`crates/domain/src/journal.rs` emits a closed taxonomy of RFC-19
-events. The wire ids are dotted kebab-case; the Rust `EventKind`
+`crates/domain/src/journal.rs` emits the closed journal event
+taxonomy. The wire ids are dotted kebab-case; the Rust `EventKind`
 variants are `snake_case` and bridge to the wire via
 `#[serde(rename = "…")]`. The taxonomy added in Wave 1.4
 (`cli/W1.4`) is:
@@ -441,10 +441,10 @@ variants are `snake_case` and bridge to the wire via
 | `slice.transition.refined` | `specrun slice transition <slice> refined`. |
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |
-| `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). workflow §D8. |
-| `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). workflow §D4. |
-| `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. workflow §D1. |
-| `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. workflow §D3. |
+| `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
+| `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). `fusion.yaml` audit semantics. |
+| `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
+| `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
 
 Events persist as newline-delimited JSON at
 `<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`
@@ -481,7 +481,7 @@ each transition:
 | `pending` (plan-level) | `specrun plan create` | `/spec:plan` scaffolds the plan in `pending`. |
 | `reviewed` (plan-level) | `specrun plan transition <plan> approved` | Operator-only (Gate 1). The CLI is ungated; `/spec:plan` MUST NOT call this verb — `--help` text documents the rule and the skill body is the actual gate. |
 
-The plan-level `reviewed` row is the lightest-touch shape the RFC
+The plan-level `reviewed` row is the lightest-touch shape the workflow
 allows: a wholly operator-driven stamp with no CLI-side authentication.
 Skills that drift from this contract get caught at review time. Refer
 to workflow §"CLI surface" and §"Writer ownership".
@@ -529,7 +529,7 @@ tool. The accepted shape is semver only: `x.y.z` with an optional
 `-prerelease` suffix, locked by the schema pattern
 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`. No `v` prefix, no `sha256:` digest,
 no free-form strings. Tools without a release must cut one before being
-declared. The reproducibility argument is the workflow §D8 cache
+declared. The reproducibility argument is the extraction cache
 fingerprint: it folds `sorted declared-tool versions` into the
 extraction cache key, so an absent or non-semver pin would silently
 drop tool-version from the fingerprint and let two adapter revisions
@@ -569,8 +569,7 @@ without grepping the manifest tree.
   (`adapter.yaml` plus the brief markdown files it references). Per-axis
   because adapter names are unique per axis. Resolved by
   `crates/domain/src/adapter/core.rs::cache_dir`.
-- `extractions/<adapter>/<fingerprint>/` — workflow §D8 per-source
-  extraction result cache, with the append-only `index.jsonl` at the
+- `extractions/<adapter>/<fingerprint>/` — per-source extraction result cache, with the append-only `index.jsonl` at the
   adapter root (`extractions/<adapter>/index.jsonl`). Per-adapter only —
   not per-axis — because extraction is a source-axis operation; the
   adapter name carries enough identity. Resolved by
@@ -580,8 +579,7 @@ Each cache owns its own root, so the loader no longer probes for an
 `adapter.yaml` inside the cache directory to disambiguate manifest vs.
 extraction co-tenancy — a manifest-cache directory is always a manifest
 mirror, and the extraction tree never carries `adapter.yaml` at any
-level. Refer to workflow §D8 for the extraction-cache fingerprint
-contract.
+level. Refer to §"Extraction cache fingerprint inputs" for the extraction-cache fingerprint contract.
 
 ## Target adapter suffix policy
 
@@ -632,7 +630,7 @@ finishes; string operation names never survive past the manifest loader.
   `{Source,Target}Operation` is intentional because enum variants are
   declared in kebab-alphabetical wire order.
 
-## RFC-31 D1 — Tool-owned schemas
+## Tool-owned schemas
 
 Every JSON Schema is owned by the repo of the WASI tool (or the CLI)
 that runs it. Plugin briefs reference schemas exclusively by their
@@ -645,7 +643,7 @@ quickstart. The three Vectis runtime schemas (`tokens`, `assets`,
 previous "byte-identity discipline" duplication and manual mirroring
 obligation are retired.
 
-## RFC-31 D2 — `specrun tool schema` verb
+## `specrun tool schema` verb
 
 `specrun tool schema <tool> <name>` is a convenience wrapper that
 delegates to the tool's `schema <name>` subcommand via the existing
@@ -657,7 +655,7 @@ host side, [`wasi-tools/vectis/src/schema.rs`](./wasi-tools/vectis/src/schema.rs
 on the guest side. The contract tool returns exit `2` for any schema
 name (no schemas declared).
 
-## RFC-31 D3 — Schema `$id` convention
+## Schema `$id` convention
 
 Tool-owned schemas use a stable `$id` of the form
 `https://schemas.specify.dev/<tool>/<name>.schema.json`. The URL is a
@@ -671,7 +669,7 @@ framework schemas (e.g. the component catalog) use
 enforces that every `schemas.specify.dev` URL cited in adapter briefs
 resolves to a known schema in the hardcoded registry.
 
-## RFC-31 D4 — `specrun source preview`
+## `specrun source preview`
 
 `specrun source preview <adapter> --source <path> [--candidate <id>...]
 [--out <path>]` is a workflow-free verb: it resolves the source adapter,
@@ -682,10 +680,10 @@ directory is required. Implementation:
 [`src/runtime/commands/source/preview.rs`](./src/runtime/commands/source/preview.rs).
 The v1 ships against the agent-run fallback (the agent reads the brief
 and executes it into the scaffolded output directory); full runner
-integration depends on RFC-29 wave A (`specrun source enumerate` /
-`specrun source extract` as first-class CLI verbs).
+integration depends on first-class `specrun source enumerate` /
+`specrun source extract` runner support.
 
-## RFC-31 D5 — Component catalog
+## Component catalog
 
 An operator-curated file at `.specify/design-system/components.yaml`
 declares shared UI components (`status: confirmed | rejected`). The
@@ -704,7 +702,7 @@ informational-only and do not trigger drift. Validation gates at
 position 4 in `validate_pre_adapter_gates` (after fusion drift,
 authority override, and discovery alias).
 
-## RFC-31 D6 — Vectis catalog consumer
+## Vectis catalog consumer
 
 The Vectis target's `build` brief reads `.specify/design-system/components.yaml`
 and factors shared component code per confirmed entry per in-scope shell
@@ -720,10 +718,10 @@ least one reference (unreferenced = warning). Catalog discovery uses
 to locate the file from the project root. When the catalog is absent,
 the check is silently skipped.
 
-## RFC-32 — Standards layer split into `specify-lints` and `specify-schema`
+## Standards layer split into `specify-lints` and `specify-schema`
 
-The standards surface (RFC-28 codex parser / resolver / finding
-validator and RFC-32 `WorkspaceModel`, indexer, deterministic hint
+The standards surface (rules parser / resolver / finding
+validator, `WorkspaceModel`, indexer, deterministic hint
 interpreter, diagnostic formatters, and `specrun lint` runner) lives
 in `specify-lints`, a sibling of `specify-domain` rather than a module
 inside it. `specify-schema` is the shared leaf: it owns every embedded
@@ -755,11 +753,10 @@ re-vendoring the schema. The root `specify` binary wires both halves
 together at the dispatcher boundary — `specrun lint` consumes the
 standards layer for indexing and evaluation and the workflow layer for
 project / slice context resolution; the two halves never call each
-other directly. Refer to RFC-32 §"Library layout" for the long-form
-rationale (including the diagram and the per-crate dependency
-breakdown).
+other directly. The dependency-direction rationale is captured in this topic and
+[`docs/standards/architecture.md`](./docs/standards/architecture.md).
 
-## RFC-32 — Vendored codex-rule schema removed
+## Vendored codex-rule schema removed
 
 The standalone vendored copy of the codex-rule JSON Schema and its
 drift-detection predicate are retired. Specifically, the following
@@ -782,5 +779,4 @@ failures to catch. The canonical schema lives at
 match the on-disk location as part of the same change); the `specify`
 binary embeds it through `specify-schema` like every other workflow and
 standards schema. Cross-repo prose that named `codex.schema-drift`
-(CH-09) or the sync script is removed in the same change. Refer to
-RFC-32 §"Eliminates the vendored codex-rule schema".
+(CH-09) or the sync script is removed in the same change. This topic is the durable record for removing the vendored codex-rule schema.

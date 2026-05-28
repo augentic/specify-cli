@@ -127,10 +127,10 @@ fn frame_rule_under_target_adapter_rejected_by_integration_check() {
         findings.iter().any(|finding| {
             finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
                 && finding.message.contains("FRAME-*")
-                && finding.message.contains("RFC-32")
+                && finding.message.contains("framework-repo declarative rules")
                 && finding.message.contains("FRAME-001")
         }),
-        "expected FRAME-* ownership violation citing the RFC-32 reservation, got: {findings:?}",
+        "expected FRAME-* ownership violation citing the framework rule-namespace reservation, got: {findings:?}",
     );
 }
 
@@ -145,7 +145,7 @@ fn reserved_hint_kind_shape_validates_without_schema_finding() {
 id: UNI-999
 title: Reserved Hint Shape Test
 severity: important
-trigger: When validating that RFC-32 reserved hint kinds shape-check only.
+trigger: When validating that Reserved hint kind hint kinds shape-check only.
 deterministic_hints:
   - kind: namespace-owner
     value: adapters/shared/rules/universal
@@ -155,7 +155,7 @@ deterministic_hints:
 
 ## Rule
 
-Body for a rule that exercises RFC-32 reserved deterministic hint kinds. The
+Body for a rule that exercises Reserved hint kind deterministic hint kinds. The
 authoring schema accepts the kinds; `check::rules` performs shape validation
 only and does not execute the hints.
 "#,

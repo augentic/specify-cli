@@ -1,5 +1,5 @@
 //! Integration tests for `specrun plan *` — the top-level verb that
-//! orchestrates the executable plan at `plan.yaml` (RFC-9 §1B).
+//! orchestrates the executable plan at `plan.yaml` (the executable plan contract).
 //!
 //! These CLI tests stand up a fresh `.specify/` project via `specify
 //! init` (mirroring `tests/slice.rs` / `tests/e2e.rs`), seed
@@ -670,7 +670,7 @@ fn plan_transition_rejects_per_entry_in_progress() {
 
 #[test]
 fn plan_transition_rejects_retired_states() {
-    // `blocked`, `failed`, and `skipped` were retired in RFC-25.
+    // `blocked`, `failed`, and `skipped` were retired in source/target adapter split.
     // Each must be rejected with the same argument-shape error.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
@@ -695,7 +695,7 @@ fn plan_transition_rejects_retired_states() {
 
 #[test]
 fn plan_transition_rejects_unknown_reason_flag() {
-    // `--reason` was retired in RFC-25 (no v1 per-entry state accepts a
+    // `--reason` was retired in source/target adapter split (no v1 per-entry state accepts a
     // reason). Clap surfaces unknown flags as exit 2 with `--reason`
     // named in stderr.
     let project = Project::init();
@@ -714,7 +714,7 @@ fn plan_transition_rejects_unknown_reason_flag() {
 // Re-entry to `pending` retired with the per-entry status purge
 // (the 2.0 collapse removed the per-entry enum to `pending | in-progress | done`).
 
-// -- human-driven replay (RFC-2 §"The Loop (Human-Driven)") -----------
+// -- human-driven replay (the human-driven plan loop) -----------
 
 #[test]
 fn plan_human_replay_matches_fixture() {
@@ -813,7 +813,7 @@ fn plan_create_scaffolds_plan_only_json_matches_golden() {
 
 #[test]
 fn plan_create_divergence_likely_unknown_slice_refused() {
-    // workflow §D5: `--divergence-likely` on `plan create` must
+    // divergence and writer-ownership contract: `--divergence-likely` on `plan create` must
     // reference a slice already present in the plan. A fresh
     // `plan create` scaffolds an empty plan, so any slice name is
     // unknown and must short-circuit before plan.yaml is written.
@@ -864,11 +864,11 @@ fn plan_create_then_validate_passes_clean() {
     );
 }
 
-// -- plan create --auto-approve (workflow §D7) ---------------------------
+// -- plan create --auto-approve (auto-approve Gate-1 contract) ---------------------------
 
 #[test]
 fn plan_create_auto_approve_stamps_approved_and_emits_journal_event() {
-    // workflow §D7: `--auto-approve` is the operator's Gate-1 consent at
+    // auto-approve Gate-1 contract: `--auto-approve` is the operator's Gate-1 consent at
     // create time. The on-disk plan carries `lifecycle: approved`
     // directly (single atomic write — no transient `pending`
     // observable to readers) and the journal carries exactly one
@@ -916,7 +916,7 @@ fn plan_create_auto_approve_stamps_approved_and_emits_journal_event() {
 
 #[test]
 fn plan_create_auto_approve_then_explicit_transition_is_idempotent_noop() {
-    // workflow §D7: running `specrun plan transition <name> approved`
+    // auto-approve Gate-1 contract: running `specrun plan transition <name> approved`
     // after a successful `--auto-approve` create must be a no-op —
     // exit 0, no second `plan.transition.approved` event, plan.yaml
     // unchanged.
@@ -960,7 +960,7 @@ fn plan_create_auto_approve_then_explicit_transition_is_idempotent_noop() {
 
 #[test]
 fn plan_create_auto_approve_invalid_name_refuses_same_as_without_flag() {
-    // workflow §D7: `--auto-approve` does NOT bypass validation. An
+    // auto-approve Gate-1 contract: `--auto-approve` does NOT bypass validation. An
     // invalid (non-kebab) name refuses the create with the same
     // exit code and envelope as the post-create path; no `plan.yaml`
     // lands on disk and the journal stays untouched.
@@ -990,7 +990,7 @@ fn plan_create_auto_approve_invalid_name_refuses_same_as_without_flag() {
 
 #[test]
 fn plan_create_auto_approve_validation_failure_emits_no_partial_events() {
-    // workflow §D7: validation failure under --auto-approve must not
+    // auto-approve Gate-1 contract: validation failure under --auto-approve must not
     // surface a partial-state event sequence — no orphan
     // `plan.propose.divergence` without the matching
     // `plan.transition.approved`, no half-written plan.yaml. An
@@ -1383,25 +1383,25 @@ fn plan_validate_surfaces_registry_errors() {
     assert_eq!(value["passed"], false);
 }
 
-// ---- RFC-3a C35 — planning-path smoke (Stage A/B, manifest, Layer 2) ----
+// ---- planning-path workspace smoke — planning-path smoke (Stage A/B, manifest, Layer 2) ----
 
 #[test]
-fn rfc3a_c35_stage_ab_change_brief_and_plan_validate() {
+fn planning_path_stage_ab_change_brief_and_plan_validate() {
     let project = Project::init();
     specrun()
         .current_dir(project.root())
-        .args(["plan", "create", "rfc3a-planning", "--source", "app=code-typescript:."])
+        .args(["plan", "create", "planning-path", "--source", "app=code-typescript:."])
         .assert()
         .success();
     specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
 }
 
-// ---- specrun plan validate health diagnostics (RFC-9 §4B) ----
+// ---- specrun plan validate health diagnostics (plan validate health diagnostics) ----
 //
 // `plan validate` carries the three surviving health diagnostics
 // (`cycle-in-depends-on`, `orphan-source-key`,
 // `stale-workspace-clone`) alongside its base shape rules. The
-// `unreachable-entry` diagnostic retired in RFC-25 alongside the
+// `unreachable-entry` diagnostic retired in source/target adapter split alongside the
 // per-entry `failed`/`skipped` states it relied on.
 
 fn init_omnia_project(tmp: &TempDir) {
@@ -1893,7 +1893,7 @@ fn plan_amend_divergence_rejected_writes_field() {
 
 #[test]
 fn plan_amend_divergence_likely_writes_field() {
-    // workflow §D5: `--divergence likely` is operator-settable from
+    // divergence and writer-ownership contract: `--divergence likely` is operator-settable from
     // the CLI; the field is byte-identical to the legacy
     // skill-written `divergence: likely` line.
     let project = Project::init();
@@ -1940,7 +1940,7 @@ fn plan_amend_divergence_none_refused() {
     assert_eq!(stderr["error"], "argument");
 }
 
-// -- plan {create,add,amend} --authority-override (workflow §D3) --------
+// -- plan {create,add,amend} --authority-override (per-slice authority override) --------
 
 const AUTHORITY_OVERRIDE_PLAN: &str = "\
 name: identity-revamp
@@ -1978,7 +1978,7 @@ fn read_journal_lines(project: &Project) -> Vec<String> {
 
 #[test]
 fn plan_amend_authority_override_round_trips_and_validates() {
-    // workflow §D3 happy path: set an override via `amend`, re-read
+    // per-slice authority override happy path: set an override via `amend`, re-read
     // `plan.yaml` and confirm the field landed under the named
     // slice; `slice validate` accepts it because `runtime` is in
     // the slice's `sources[]`.
@@ -2024,7 +2024,7 @@ fn plan_amend_authority_override_round_trips_and_validates() {
 
 #[test]
 fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
-    // workflow §D3 gate: refuse the `specrun plan amend` write when
+    // per-slice authority override gate: refuse the `specrun plan amend` write when
     // the authority-override value names a source key not present
     // in the slice's `sources[]` list (`phantom`). The orphan
     // check runs in `Plan::validate` (folded in by Change 2.3),
@@ -2068,7 +2068,7 @@ fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
 
 #[test]
 fn slice_validate_surfaces_authority_override_orphan() {
-    // workflow §D3 — `specrun slice validate` is the per-slice gate
+    // per-slice authority override — `specrun slice validate` is the per-slice gate
     // that mirrors the plan-level check; it runs before refine
     // synthesises any artifacts so a bad override is caught
     // before downstream writes. Hand-edit `plan.yaml` to seed an
@@ -2111,7 +2111,7 @@ fn slice_validate_surfaces_authority_override_orphan() {
 
 #[test]
 fn plan_amend_clear_authority_override_removes_only_one_entry() {
-    // workflow §D3: `--clear-authority-override <slice> <kind>` peels
+    // per-slice authority override: `--clear-authority-override <slice> <kind>` peels
     // off a single entry; the rest of the map survives. Journal
     // records the Clear without any spurious Set events for the
     // surviving entries.
@@ -2169,7 +2169,7 @@ fn plan_amend_clear_authority_override_removes_only_one_entry() {
 
 #[test]
 fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
-    // workflow §D3: `--clear-authority-overrides <slice>` wipes the
+    // per-slice authority override: `--clear-authority-overrides <slice>` wipes the
     // entire `authority-override` map for that slice and emits one
     // Clear event per kind that was present before the wipe.
     let project = Project::init();
@@ -2223,7 +2223,7 @@ fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
 
 #[test]
 fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
-    // workflow §D3 deterministic-order rule: a same-invocation set +
+    // per-slice authority override deterministic-order rule: a same-invocation set +
     // clear pair on the same `(slice, kind)` resolves to the
     // cleared state; the journal records the Clear (not the Set).
     let project = Project::init();
@@ -2261,7 +2261,7 @@ fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
 
 #[test]
 fn plan_add_authority_override_seeds_map_on_new_slice() {
-    // workflow §D3 add path: `plan add --authority-override
+    // per-slice authority override add path: `plan add --authority-override
     // <kind>=<key>` pre-seeds the override map at create time. Each
     // entry fires one PlanAmendAuthorityOverride / `set` event.
     let project = Project::init();
@@ -2312,7 +2312,7 @@ fn plan_add_authority_override_seeds_map_on_new_slice() {
 
 #[test]
 fn plan_amend_authority_override_unknown_slice_refused() {
-    // workflow §D3: unknown `--authority-override <slice>` must
+    // per-slice authority override: unknown `--authority-override <slice>` must
     // refuse at exit 2 before any plan.yaml write happens. Mirror
     // the existing `--divergence-likely` guard.
     let project = Project::init();
@@ -2343,7 +2343,7 @@ fn plan_amend_authority_override_unknown_slice_refused() {
 
 #[test]
 fn plan_amend_authority_override_bad_claim_kind_refused_at_parse_time() {
-    // workflow §D3: `<kind>` is validated against the closed
+    // per-slice authority override: `<kind>` is validated against the closed
     // ClaimKind enum at the CLI boundary — clap surfaces a usage
     // diagnostic (exit 2) before any plan mutation runs.
     let project = Project::init();

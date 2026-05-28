@@ -1,5 +1,5 @@
 //! `specrun source preview` handler — workflow-free source adapter
-//! execution scaffolding (RFC-31 D4).
+//! execution scaffolding (`specrun source preview` contract).
 //!
 //! Resolves the adapter, validates `--source`, scaffolds the output
 //! directory with an `evidence/` subtree, and emits a summary of

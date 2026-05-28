@@ -12,12 +12,12 @@ use std::path::PathBuf;
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
 
-/// RFC-2 §"The Plan" `platform-v2` example, inline.
+/// `platform-v2` plan example, inline.
 ///
 /// Kept inline (rather than loaded from a fixture) so the test is pinned to
-/// the exact shape the RFC ships; subsequent Changes that touch the RFC must
+/// the exact shape the schema ships; subsequent changes that touch the schema must
 /// also touch this constant.
-const RFC_EXAMPLE: &str = r"
+const PLAN_EXAMPLE: &str = r"
 name: platform-v2
 
 sources:
@@ -108,18 +108,18 @@ fn yaml_to_json(yaml: &str) -> JsonValue {
 }
 
 #[test]
-fn schema_validates_rfc_example() {
+fn schema_validates_plan_example() {
     let validator = load_validator();
-    let instance = yaml_to_json(RFC_EXAMPLE);
+    let instance = yaml_to_json(PLAN_EXAMPLE);
     let errors: Vec<String> =
         validator.iter_errors(&instance).map(|e| format!("{}: {}", e.instance_path(), e)).collect();
-    assert!(errors.is_empty(), "RFC-2 example should validate cleanly; errors: {errors:#?}");
+    assert!(errors.is_empty(), "plan example should validate cleanly; errors: {errors:#?}");
 }
 
 #[test]
 fn schema_rejects_unknown_status() {
     let validator = load_validator();
-    let mutated = RFC_EXAMPLE.replacen("status: in-progress", "status: maybe", 1);
+    let mutated = PLAN_EXAMPLE.replacen("status: in-progress", "status: maybe", 1);
     let instance = yaml_to_json(&mutated);
 
     let offending_paths: Vec<String> = validator
@@ -137,7 +137,7 @@ fn schema_rejects_unknown_status() {
 #[test]
 fn schema_rejects_non_kebab_name() {
     let validator = load_validator();
-    let mutated = RFC_EXAMPLE.replacen("name: platform-v2", "name: Platform V2", 1);
+    let mutated = PLAN_EXAMPLE.replacen("name: platform-v2", "name: Platform V2", 1);
     let instance = yaml_to_json(&mutated);
 
     let name_errors: Vec<String> = validator
@@ -153,7 +153,7 @@ fn schema_rejects_non_kebab_name() {
 }
 
 /// The JSON Schema regex and `validate_name` must agree on every name,
-/// in both directions. The cases below are the ones RFC-2 §1.5 calls
+/// in both directions. The cases below are the plan schema alias cases
 /// out; keep them in sync with the doc-comment on
 /// `specify_domain::slice::actions::validate_name`.
 #[test]

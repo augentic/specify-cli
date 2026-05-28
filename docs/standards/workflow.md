@@ -1,6 +1,6 @@
 # Workflow contract
 
-The in-force contract this binary implements. Stable anchors that source code and skill briefs cite by `§`-name. The full historical motivation lives in the archived RFCs ([`rfc-25-workflow.md`](https://github.com/augentic/specify/blob/main/rfcs/archive/rfc-25-workflow.md), [`rfc-26-workflow.md`](https://github.com/augentic/specify/blob/main/rfcs/archive/rfc-26-workflow.md), [`rfc-27-synthesis.md`](https://github.com/augentic/specify/blob/main/rfcs/archive/rfc-27-synthesis.md)); this document is the live anchor surface and supersedes them as the contract.
+The in-force contract this binary implements. Stable anchors that source code and skill briefs cite by `§`-name. This document is the live anchor surface for workflow behavior.
 
 ## Adapter vocabulary
 
@@ -67,7 +67,7 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Extraction
 
-Per-source `extract` is keyed on a closed five-input fingerprint; results cached at `.specify/.cache/extractions/<adapter>/<fingerprint>/`. See §D8 below.
+Per-source `extract` is keyed on a closed five-input fingerprint; results cached at `.specify/.cache/extractions/<adapter>/<fingerprint>/`. See lint exit mapping below.
 
 ## Requirement block contract
 
@@ -111,15 +111,15 @@ Touching `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/domain/src/
 
 ## D2 — Per-kind authority on Evidence
 
-`evidence.schema.json` carries an optional `authority-overrides` map keyed by claim kind. Synthesis consults this map before the document-level `authority:`. See [`DECISIONS.md` §"RFC-27 §D2 — per-kind authority on Evidence"](../../DECISIONS.md#rfc-27-d2--per-kind-authority-on-evidence) and [`crates/domain/src/evidence/authority.rs`](../../crates/domain/src/evidence/authority.rs).
+`evidence.schema.json` carries an optional `authority-overrides` map keyed by claim kind. Synthesis consults this map before the document-level `authority:`. See [`DECISIONS.md` §"Evidence per-kind authority overrides"](../../DECISIONS.md#evidence-per-kind-authority-overrides) and [`crates/domain/src/evidence/authority.rs`](../../crates/domain/src/evidence/authority.rs).
 
 ## D3 — Per-slice authority on `plan.yaml`
 
-`plan.yaml.slices[].authority-override` maps claim kind to a source key bound on the slice. Orphan keys surface as `slice-authority-override-orphan-source-key`. See [`DECISIONS.md` §"RFC-27 §D3 — per-slice authority on `plan.yaml`"](../../DECISIONS.md#rfc-27-d3--per-slice-authority-on-planyaml).
+`plan.yaml.slices[].authority-override` maps claim kind to a source key bound on the slice. Orphan keys surface as `slice-authority-override-orphan-source-key`. See [`DECISIONS.md` §"Plan per-slice authority overrides"](../../DECISIONS.md#plan-per-slice-authority-overrides).
 
 ## D4 — `fusion.yaml` is audit-only
 
-Reconciliation index at `.specify/slices/<slice>/fusion.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/fusion.schema.json`](../../schemas/slice/fusion.schema.json); validator at [`crates/domain/src/slice/fusion.rs`](../../crates/domain/src/slice/fusion.rs). See [`DECISIONS.md` §"RFC-27 §D4 — `fusion.yaml` is audit-only"](../../DECISIONS.md#rfc-27-d4--fusionyaml-is-audit-only).
+Reconciliation index at `.specify/slices/<slice>/fusion.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/fusion.schema.json`](../../schemas/slice/fusion.schema.json); validator at [`crates/domain/src/slice/fusion.rs`](../../crates/domain/src/slice/fusion.rs). See [`DECISIONS.md` §"`fusion.yaml` audit index"](../../DECISIONS.md#fusionyaml-audit-index).
 
 ## D5 — Operator-driven `divergence`
 
@@ -135,8 +135,8 @@ Candidates carry an optional `aliases[]` bullet. `slices[].sources[].candidate` 
 
 ## D8 — Cache fingerprint inputs
 
-Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, candidate id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/domain/src/adapter/cache.rs`](../../crates/domain/src/adapter/cache.rs); see [`DECISIONS.md` §"RFC-27 §D8 — cache fingerprint inputs"](../../DECISIONS.md#rfc-27-d8--cache-fingerprint-inputs).
+Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, candidate id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/domain/src/adapter/cache.rs`](../../crates/domain/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
 
 ## Reconciliation index
 
-Closed top-level shape on `fusion.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/domain/src/slice/fusion.rs`](../../crates/domain/src/slice/fusion.rs) and §D4 above.
+Closed top-level shape on `fusion.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/domain/src/slice/fusion.rs`](../../crates/domain/src/slice/fusion.rs) and `kind: tool` evaluator contract above.

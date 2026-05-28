@@ -1,4 +1,4 @@
-//! RFC-28 wire envelope formatter per RFC-32 §D9.
+//! `LintResult` wire envelope formatter for the `LintResult` envelope.
 //!
 //! This is the only [`super::Format`] that validates against
 //! [`specify_schema::LINT_RESULT_JSON_SCHEMA`] before emit; the
@@ -16,7 +16,7 @@ use super::{LintResult, RenderError};
 const FINDING_SCHEMA_URL: &str =
     "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json";
 
-/// Render `result` as the RFC-28 wire envelope.
+/// Render `result` as the `LintResult` wire envelope.
 ///
 /// # Errors
 ///

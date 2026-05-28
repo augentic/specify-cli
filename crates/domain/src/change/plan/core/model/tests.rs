@@ -4,7 +4,7 @@ use super::*;
 /// All entries use the simplified per-entry `Status` enum
 /// (`pending | in-progress | done`); v1 has no per-entry
 /// `blocked`, `failed`, or `skipped` state.
-const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
+const PLAN_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
   monolith:
     adapter: code-typescript
@@ -37,8 +37,8 @@ slices:
 ";
 
 #[test]
-fn round_trips_rfc_fixture() {
-    let original: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+fn round_trips_plan_fixture() {
+    let original: Plan = serde_saphyr::from_str(PLAN_EXAMPLE_YAML).expect("parse plan fixture");
     let yaml = serde_saphyr::to_string(&original).expect("serialize plan");
     let reparsed: Plan = serde_saphyr::from_str(&yaml).expect("reparse plan");
     assert_eq!(original, reparsed, "plan should survive a serialize/parse round-trip");
@@ -329,7 +329,7 @@ fn is_executing_when_any_in_progress() {
 
 #[test]
 fn authority_override_round_trips() {
-    let yaml = r"name: rfc-27
+    let yaml = r"name: synthesis-plan
 slices:
   - name: identity-user-registration
     target: omnia@v1
@@ -381,7 +381,7 @@ slices:
 
 #[test]
 fn divergence_likely_round_trips_to_byte_identical_yaml() {
-    // workflow §D5: the CLI is the single writer of every variant
+    // divergence and writer-ownership contract: the CLI is the single writer of every variant
     // of `slices[].divergence`. The on-disk shape for `Likely`
     // is one kebab-case line on the slice entry, byte-identical
     // to the legacy skill-written output we are retiring.

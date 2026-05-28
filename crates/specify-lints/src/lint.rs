@@ -1,14 +1,14 @@
-//! Review surface per RFC-32 §"Library layout" and §"`WorkspaceModel`".
+//! Review surface per [DECISIONS.md §"Standards layer split into `specify-lints` and `specify-schema"](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema) and §"`WorkspaceModel`".
 //!
 //! Sibling umbrella to [`crate::rules`]: this module owns the
-//! RFC-32 deterministic review pipeline — `WorkspaceModel` DTOs,
+//! `specrun lint` deterministic review pipeline — `WorkspaceModel` DTOs,
 //! the consumer / framework indexer, the hint interpreter, and the
 //! diagnostic formatters that `specrun lint` and (later)
 //! `specdev check --format json` share.
 //!
-//! The submodule shape mirrors the RFC-32 §"Library layout" sketch.
+//! The submodule shape mirrors the the standards-layer dependency invariant sketch.
 //! v1 ships the [`model`] DTO layer; [`index`], [`eval`], and
-//! [`diagnostics`] are placeholders filled in by later RFC-32
+//! [`diagnostics`] are placeholders filled in by later standards-layer
 //! implementation slices.
 //!
 //! Only the [`model`] surface is re-exported at the umbrella root.

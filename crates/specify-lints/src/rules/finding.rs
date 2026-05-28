@@ -4,14 +4,14 @@
 //! mapper, CH-22's `specdev check --format json` envelope, target
 //! adapter review briefs, and future `specrun lint` producers.
 //!
-//! Three orthogonal checks per RFC-28 §"Structured review finding
+//! Three orthogonal checks per the rules contract §"Structured review finding
 //! schema":
 //!
 //! 1. **JSON Schema validation** — every wire field conforms to
 //!    `schemas/lint/finding.schema.json` (kebab-case keys, closed
 //!    enums, evidence `oneOf`, fingerprint pattern, etc.).
 //! 2. **Evidence cap** — the serialized `evidence` object is bounded
-//!    at 16 `KiB` per RFC-28 §"Evidence union" §"Size constraints".
+//!    at 16 `KiB` per the structured evidence union §"Size constraints".
 //!    The cap covers the full evidence object (`kind` + payload),
 //!    not individual fields.
 //! 3. **Fingerprint** — the stored `fingerprint` matches the CH-15
@@ -30,7 +30,7 @@ use specify_schema::{LINT_FINDING_JSON_SCHEMA, compile_schema};
 use super::LintFinding;
 use super::fingerprint::fingerprint;
 
-/// 16 `KiB` cap on the serialized evidence object per RFC-28
+/// 16 `KiB` cap on the serialized evidence object per the rules contract
 /// §"Evidence union".
 const EVIDENCE_MAX_BYTES: usize = 16 * 1024;
 
@@ -122,7 +122,7 @@ pub fn validate_finding_json(value: &JsonValue) -> Result<(), FindingError> {
     if errors.is_empty() { Ok(()) } else { Err(FindingError::Schema(errors.join("; "))) }
 }
 
-/// Enforce the RFC-28 16 `KiB` evidence cap.
+/// Enforce the 16 `KiB` structured evidence cap.
 ///
 /// The cap applies to the **full serialized `evidence` object** — the
 /// `kind` discriminator plus every variant-specific field, encoded as
@@ -232,7 +232,7 @@ mod tests {
         finding
     }
 
-    /// Hand-built JSON matching the RFC FIND-0001 example; mutated by
+    /// Hand-built JSON matching the FIND-0001 example; mutated by
     /// the negative schema tests below to assert strict `oneOf` and
     /// pattern enforcement.
     fn sample_finding_json() -> serde_json::Value {

@@ -51,7 +51,7 @@ pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, Sour
 /// shorthand when the candidate id equals the slice's name
 /// (workflow §`Slice.sources`).
 ///
-/// workflow §D6 — when `discovery` is `Some(_)`, the operator-supplied
+/// discovery alias contract — when `discovery` is `Some(_)`, the operator-supplied
 /// candidate value is resolved against the loaded `discovery.md` so
 /// aliases rewrite to the canonical `id` before persisting. Unknown
 /// tokens or alias collisions surface as `Error::validation_failed`
@@ -84,7 +84,7 @@ fn binding_from_arg(
 ///
 /// When `discovery` is `None` (no `discovery.md` on disk), the
 /// token round-trips unchanged — the legacy path predates
-/// workflow §D6 and many tests operate without a discovery file.
+/// discovery alias contract and many tests operate without a discovery file.
 fn resolve_candidate_token(token: &str, discovery: Option<&Discovery>) -> Result<String> {
     let Some(discovery) = discovery else {
         return Ok(token.to_string());
@@ -144,7 +144,7 @@ pub fn parse_target_flag(raw: &str) -> Result<TargetRef> {
 }
 
 /// Parse the `--divergence` flag value. `likely` / `accepted` /
-/// `rejected` are wire-legal — workflow §D5 widens the operator
+/// `rejected` are wire-legal — divergence and writer-ownership contract widens the operator
 /// surface so the CLI is the single writer of every variant
 /// reachable on disk. The implicit default (absent on disk) has
 /// no flag spelling; any other token — including `none` — falls

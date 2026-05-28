@@ -15,7 +15,7 @@ pub mod tools;
 pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, RULE_SCHEMA_VIOLATION, run_adapter_check};
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
-pub use docs_quality::{MissingDiagramAsset, RfcCitationInDocs, TextPipelineDiagram};
+pub use docs_quality::{MissingDiagramAsset, SpecifyHistoryCitationInDocs, TextPipelineDiagram};
 pub use links::LinksCheck;
 pub use plugins::{BrokenSymlinkCheck, MarketplaceDriftCheck};
 pub use prose::{InvocationPositional, OperationalVocabulary, SkillNumericCaps};
@@ -55,7 +55,7 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
         &AgentTeamsCheck,
         &BriefCheck,
         &RulesCheck,
-        &RfcCitationInDocs,
+        &SpecifyHistoryCitationInDocs,
         &MissingDiagramAsset,
         &TextPipelineDiagram,
         &LinksCheck,

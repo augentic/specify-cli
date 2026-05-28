@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/lint/workspace-model.schema.json",
   "title": "Specify WorkspaceModel (v1)",
-  "description": "Deterministic, versioned snapshot of project facts produced by `specrun lint` per RFC-32 §WorkspaceModel. Per RFC-32 §Persistence and query (v1 decision): `.specify/cache/workspace-model.v1.json` is reserved as the future v2 persistence location; `specrun model query <selector>` is reserved as a future read-only CLI verb. v1 ships `--dump-model` only.",
+  "description": "Deterministic, versioned snapshot of project facts produced by `specrun lint` for the `WorkspaceModel` schema. Persistence and query reserve: `.specify/cache/workspace-model.v1.json` is reserved as the future v2 persistence location; `specrun model query <selector>` is reserved as a future read-only CLI verb. v1 ships `--dump-model` only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -25,22 +25,22 @@
   "properties": {
     "version": {
       "const": 1,
-      "description": "Per RFC-32 §WorkspaceModel — version discriminant. Breaking indexer output bumps the version; v1 pins the shape defined by this schema."
+      "description": "`WorkspaceModel`: version discriminant. Breaking indexer output bumps the version; v1 pins the shape defined by this schema."
     },
     "project_dir": {
       "type": "string",
       "minLength": 1,
-      "description": "Per RFC-32 §WorkspaceModel extraction inputs — scan root (consumer project or framework repo). Typically the project root absolute path; relative `.` is accepted for tests and ephemeral scans."
+      "description": "`WorkspaceModel` extraction inputs: scan root (consumer project or framework repo). Typically the project root absolute path; relative `.` is accepted for tests and ephemeral scans."
     },
     "scan_profile": {
       "type": "string",
       "enum": ["consumer", "framework"],
-      "description": "Per RFC-32 §WorkspaceModel extraction inputs — controls which extractors run. `consumer` is the only Phase 2 profile; `framework` is reserved for RFC-34."
+      "description": "`WorkspaceModel` extraction inputs: controls which extractors run. `consumer` is the only Phase 2 profile; `framework` is reserved for a future framework scan."
     },
     "artifact_paths": {
       "type": "array",
       "items": { "$ref": "#/$defs/relativePath" },
-      "description": "Per RFC-32 §WorkspaceModel extraction inputs — optional narrow list. Empty array means the indexer performs a full profile-specific scan per §D1."
+      "description": "`WorkspaceModel` extraction inputs: optional narrow list. Empty array means the indexer performs a full profile-specific scan by the file scan contract."
     },
     "languages": {
       "type": "array",
@@ -48,64 +48,64 @@
         "type": "string",
         "minLength": 1
       },
-      "description": "Per RFC-32 §WorkspaceModel extraction inputs — optional language tokens supplied by caller or inferred from paths."
+      "description": "`WorkspaceModel` extraction inputs: optional language tokens supplied by caller or inferred from paths."
     },
     "files": {
       "type": "array",
       "items": { "$ref": "#/$defs/file" },
-      "description": "Per RFC-32 §Core entity families (v1) — `file` facts produced by the filesystem walk."
+      "description": "`WorkspaceModel` entity: `file` facts produced by the filesystem walk."
     },
     "frontmatter": {
       "type": "array",
       "items": { "$ref": "#/$defs/frontmatter" },
-      "description": "Per RFC-32 §Core entity families (v1) — `frontmatter` facts from markdown `---` block extraction plus YAML parse."
+      "description": "`WorkspaceModel` entity: `frontmatter` facts from markdown `---` block extraction plus YAML parse."
     },
     "markdown_sections": {
       "type": "array",
       "items": { "$ref": "#/$defs/markdownSection" },
-      "description": "Per RFC-32 §Core entity families (v1) — `markdown_section` facts from the markdown structure pass."
+      "description": "`WorkspaceModel` entity: `markdown_section` facts from the markdown structure pass."
     },
     "markdown_links": {
       "type": "array",
       "items": { "$ref": "#/$defs/markdownLink" },
-      "description": "Per RFC-32 §Core entity families (v1) — `markdown_link` facts from the fence-aware link scan."
+      "description": "`WorkspaceModel` entity: `markdown_link` facts from the fence-aware link scan."
     },
     "symlinks": {
       "type": "array",
       "items": { "$ref": "#/$defs/symlink" },
-      "description": "Per RFC-32 §Core entity families (v1) — `symlink` facts; recorded but not traversed per §D1."
+      "description": "`WorkspaceModel` entity: `symlink` facts; recorded but not traversed by the file scan contract."
     },
     "skills": {
       "type": "array",
       "items": { "$ref": "#/$defs/skill" },
-      "description": "Per RFC-32 §Core entity families (v1) — `skill` facts from `plugins/**/SKILL.md`."
+      "description": "`WorkspaceModel` entity: `skill` facts from `plugins/**/SKILL.md`."
     },
     "adapter_manifests": {
       "type": "array",
       "items": { "$ref": "#/$defs/adapterManifest" },
-      "description": "Per RFC-32 §Core entity families (v1) — `adapter_manifest` facts from `adapters/{sources,targets}/**/adapter.yaml`."
+      "description": "`WorkspaceModel` entity: `adapter_manifest` facts from `adapters/{sources,targets}/**/adapter.yaml`."
     },
     "marketplace_entries": {
       "type": "array",
       "items": { "$ref": "#/$defs/marketplaceEntry" },
-      "description": "Per RFC-32 §Core entity families (v1) — `marketplace_entry` facts from `.cursor-plugin/marketplace.json`."
+      "description": "`WorkspaceModel` entity: `marketplace_entry` facts from `.cursor-plugin/marketplace.json`."
     },
     "rule_index": {
       "type": "array",
       "items": { "$ref": "#/$defs/ruleIndexEntry" },
-      "description": "Per RFC-32 §Core entity families (v1) — `rule_index` facts from rules tree discovery (reuses the RFC-28 parser)."
+      "description": "`WorkspaceModel` entity: `rule_index` facts from rules tree discovery (reuses the rule frontmatter parser)."
     },
     "text_matches": {
       "type": "array",
       "items": { "$ref": "#/$defs/textMatch" },
-      "description": "Per RFC-32 §Core entity families (v1) — `text_match` facts from the optional precomputed regex index."
+      "description": "`WorkspaceModel` entity: `text_match` facts from the optional precomputed regex index."
     }
   },
   "$defs": {
     "relativePath": {
       "type": "string",
       "minLength": 1,
-      "description": "Per RFC-32 §Stability — paths are project-relative with forward slashes."
+      "description": "`WorkspaceModel` stability: paths are project-relative with forward slashes."
     },
     "sha256Hex": {
       "type": "string",
@@ -121,7 +121,7 @@
         "kind": {
           "type": "string",
           "enum": ["text", "binary"],
-          "description": "Per RFC-32 §D1 — `binary` when the first 8 KiB contains a NUL byte; otherwise `text`."
+          "description": "`WorkspaceModel` file scan: `binary` when the first 8 KiB contains a NUL byte; otherwise `text`."
         },
         "language": {
           "type": "string",
@@ -143,11 +143,11 @@
         "schema-id": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — optional schema id the frontmatter declares (matches the registered-schema token shape from §D3)."
+          "description": "`WorkspaceModel` entity: optional schema id the frontmatter declares (matches the registered-schema token shape from the registered-schema token shape)."
         },
         "fields": {
           "type": "object",
-          "description": "Per RFC-32 §Core entity families (v1) — parsed YAML field map. Per-key shape is rule-specific; the model holds the raw value tree.",
+          "description": "`WorkspaceModel` entity: parsed YAML field map. Per-key shape is rule-specific; the model holds the raw value tree.",
           "additionalProperties": true
         }
       }
@@ -162,7 +162,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 6,
-          "description": "Per RFC-32 §Core entity families (v1) — markdown heading level (1–6)."
+          "description": "`WorkspaceModel` entity: markdown heading level (1–6)."
         },
         "title": {
           "type": "string",
@@ -182,7 +182,7 @@
         "body-line-count": {
           "type": "integer",
           "minimum": 0,
-          "description": "Per RFC-32 §Core entity families (v1) — number of non-heading body lines under the section."
+          "description": "`WorkspaceModel` entity: number of non-heading body lines under the section."
         }
       }
     },
@@ -193,12 +193,12 @@
       "properties": {
         "from-path": {
           "$ref": "#/$defs/relativePath",
-          "description": "Per RFC-32 §Core entity families (v1) — path of the markdown file containing the link."
+          "description": "`WorkspaceModel` entity: path of the markdown file containing the link."
         },
         "to-raw": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — verbatim link target as authored (relative path, URL, or anchor)."
+          "description": "`WorkspaceModel` entity: verbatim link target as authored (relative path, URL, or anchor)."
         },
         "line": {
           "type": "integer",
@@ -207,7 +207,7 @@
         },
         "resolves": {
           "type": "boolean",
-          "description": "Per RFC-32 §Core entity families (v1) — optional; `true` when the target resolves on disk, `false` for broken/dangling references. Absent for off-tree URLs the indexer did not attempt to resolve."
+          "description": "`WorkspaceModel` entity: optional; `true` when the target resolves on disk, `false` for broken/dangling references. Absent for off-tree URLs the indexer did not attempt to resolve."
         }
       }
     },
@@ -220,11 +220,11 @@
         "target": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — symlink target as recorded by the filesystem (may be relative or absolute)."
+          "description": "`WorkspaceModel` entity: symlink target as recorded by the filesystem (may be relative or absolute)."
         },
         "broken": {
           "type": "boolean",
-          "description": "Per RFC-32 §Core entity families (v1) — `true` when the link target does not exist on disk."
+          "description": "`WorkspaceModel` entity: `true` when the link target does not exist on disk."
         }
       }
     },
@@ -236,17 +236,17 @@
         "name": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — skill name (matches the `name:` frontmatter field)."
+          "description": "`WorkspaceModel` entity: skill name (matches the `name:` frontmatter field)."
         },
         "path": { "$ref": "#/$defs/relativePath" },
         "plugin": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — owning plugin slug (the directory under `plugins/`)."
+          "description": "`WorkspaceModel` entity: owning plugin slug (the directory under `plugins/`)."
         },
         "frontmatter-ref": {
           "$ref": "#/$defs/relativePath",
-          "description": "Per RFC-32 §Core entity families (v1) — path back to the originating `frontmatter` fact so consumers can join through the frontmatter table."
+          "description": "`WorkspaceModel` entity: path back to the originating `frontmatter` fact so consumers can join through the frontmatter table."
         }
       }
     },
@@ -258,7 +258,7 @@
         "axis": {
           "type": "string",
           "enum": ["sources", "targets"],
-          "description": "Per RFC-32 §Core entity families (v1) — `sources` xor `targets` (the on-disk parent directory under `adapters/`)."
+          "description": "`WorkspaceModel` entity: `sources` xor `targets` (the on-disk parent directory under `adapters/`)."
         },
         "name": {
           "type": "string",
@@ -281,12 +281,12 @@
         "plugin": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — plugin slug declared by `.cursor-plugin/marketplace.json`."
+          "description": "`WorkspaceModel` entity: plugin slug declared by `.cursor-plugin/marketplace.json`."
         },
         "path-in-manifest": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — JSON-pointer-style location inside `marketplace.json` where the entry was discovered."
+          "description": "`WorkspaceModel` entity: JSON-pointer-style location inside `marketplace.json` where the entry was discovered."
         }
       }
     },
@@ -298,17 +298,17 @@
         "rule-id": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — rule id (matches the RFC-28 rule schema's `id` regex)."
+          "description": "`WorkspaceModel` entity: rule id (matches the rule schema's `id` regex)."
         },
         "path": { "$ref": "#/$defs/relativePath" },
         "origin": {
           "type": "string",
           "enum": ["target", "source", "shared", "organization"],
-          "description": "Per RFC-32 §Core entity families (v1) — which rules tree contributed the rule (target adapter, source adapter, shared universal tree, or organization-local overlay)."
+          "description": "`WorkspaceModel` entity: which rules tree contributed the rule (target adapter, source adapter, shared universal tree, or organization-local overlay)."
         },
         "frontmatter-ref": {
           "$ref": "#/$defs/relativePath",
-          "description": "Per RFC-32 §Core entity families (v1) — path back to the originating `frontmatter` fact so consumers can join through the frontmatter table."
+          "description": "`WorkspaceModel` entity: path back to the originating `frontmatter` fact so consumers can join through the frontmatter table."
         }
       }
     },
@@ -331,7 +331,7 @@
         "pattern-id": {
           "type": "string",
           "minLength": 1,
-          "description": "Per RFC-32 §Core entity families (v1) — stable identifier for the precomputed regex pattern that produced this match."
+          "description": "`WorkspaceModel` entity: stable identifier for the precomputed regex pattern that produced this match."
         }
       }
     }

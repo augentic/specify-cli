@@ -1,8 +1,8 @@
-//! Integration tests for `specrun registry` (RFC-9 §2A).
+//! Integration tests for `specrun registry` (registry add/remove).
 //!
 //! Covers `registry add`, `registry remove`, the hub-mode `registry
 //! validate` invariants surfaced after a fresh `init --hub`, and the
-//! schema-level `registry {show,validate}` matrix (RFC-3a C12/C13) on
+//! schema-level `registry {show,validate}` matrix (registry show/validate) on
 //! single- and multi-project layouts.
 
 use std::fs;
@@ -70,7 +70,7 @@ fn init_hub_validate_rejects_dot_url() {
     assert!(msg.contains("registry.yaml"), "message must scope the file: {msg}");
 }
 
-// ---- specrun registry {add, remove} (RFC-9 §2A) ----
+// ---- specrun registry {add, remove} (registry add/remove) ----
 
 #[test]
 fn registry_add_round_trips_through_show() {
@@ -310,7 +310,7 @@ fn registry_remove_refuses_when_absent() {
     assert!(msg.contains("no registry declared"), "msg: {msg}");
 }
 
-// ---- Registry (RFC-3a C12) ----
+// ---- Registry (registry validation) ----
 
 #[test]
 fn registry_load_from_tempdir() {
@@ -338,7 +338,7 @@ fn registry_load_from_tempdir() {
     assert!(loaded.is_single_repo());
 }
 
-// ---- Registry CLI verbs (RFC-3a C13) ----
+// ---- Registry CLI verbs (registry CLI verbs) ----
 //
 // `specrun registry validate` isolates the same shape check the C12 hook drives through
 // `specrun plan validate`. The tests below cover the full

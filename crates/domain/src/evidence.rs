@@ -4,7 +4,7 @@
 //! `.specify/slices/<slice>/evidence/<source-key>.yaml` and validated
 //! against `schemas/evidence.schema.json`. The module collects the
 //! claim-kind newtypes (one per closed enum value) and the optional
-//! workflow §D2 per-kind authority override map.
+//! Evidence authority override per-kind authority override map.
 
 pub mod authority;
 pub mod claim;

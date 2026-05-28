@@ -1,6 +1,6 @@
 //! Codex resolver (CH-12): roots + overlay discovery.
 //!
-//! Implements RFC-28 §"Resolution roots" / §"Codex root resolution (v1)"
+//! Implements rules root resolution and codex root discovery
 //! / §"Resolution inputs" / §"Overlay precedence". This chunk discovers
 //! and parses every rule the export envelope eventually carries.
 //!
@@ -11,7 +11,7 @@
 //! # Closed precedence order
 //!
 //! Shared root (root 1) resolves from a **rules root**, picked by the
-//! closed probe in RFC-28 §"Codex root resolution (v1)":
+//! closed probe in codex root resolution:
 //!
 //! 1. `inputs.rules_root` when supplied — use for root 1 and the
 //!    rules-root fallback overlay (overlay step 3 below).
@@ -23,7 +23,7 @@
 //! 3. Else → [`ResolveError::RulesRootRequired`].
 //!
 //! Source-adapter (root 3) and target-adapter (root 4) overlays follow
-//! the closed location order in RFC-28 §"Resolution roots":
+//! the closed location order in rules root resolution:
 //!
 //! 1. project-local `{project_dir}/adapters/{sources,targets}/<name>/rules/`;
 //! 2. manifest cache `{project_dir}/.specify/.cache/manifests/{sources,targets}/<name>/rules/`;
@@ -33,11 +33,11 @@
 //!
 //! The **first existing** rung wins; locations never merge. Roots 2
 //! (shared language/artifact packs) and 5 (organization overlays) are
-//! reserved by RFC-28 and not implemented here.
+//! reserved by the rules contract and not implemented here.
 //!
 //! # Duplicate ids
 //!
-//! Per RFC-28 §"Overlay precedence": rules never override each other
+//! Per overlay precedence: rules never override each other
 //! by sharing ids — duplicates always error, regardless of
 //! `include_deprecated`. The check runs after every rung is loaded so
 //! collisions across overlays surface as
@@ -66,7 +66,7 @@ pub use sort::{build_resolved_rules, sort_resolved};
 use super::parse::{ParseError, parse_rule_file};
 use super::{Origin, PathRoot, Rule};
 
-/// Closed input contract for [`resolve`] and [`filter`] per RFC-28
+/// Closed input contract for [`resolve`] and [`filter`] per the rules contract
 /// §"Resolution inputs".
 ///
 /// CH-12's [`resolve`] consumes `project_dir`, `rules_root`,
@@ -124,13 +124,13 @@ pub struct ResolvedRuleEntry {
 pub enum ResolveError {
     /// Shared probe failed: no `--rules-root` and no monorepo
     /// fallback under `project_dir`. Wire-id `rules-root-required`
-    /// per RFC-28 §"Codex root resolution (v1)" and the §490 golden.
+    /// per codex root resolution and the §490 golden.
     #[error(
         "rules-root-required: shared UNI-* rules require --rules-root pointing at a tree containing adapters/shared/rules/universal/"
     )]
     RulesRootRequired,
     /// A rule id appeared in more than one discovered file. Per
-    /// RFC-28 §"Overlay precedence" this is always invalid.
+    /// overlay precedence this is always invalid.
     #[error("duplicate rule id '{id}' across files: {paths}")]
     DuplicateRuleId {
         /// The colliding rule id.
@@ -231,7 +231,7 @@ fn probe_rules_root(inputs: &ResolveInputs<'_>) -> Result<PathBuf, ResolveError>
 /// Walk overlay rungs for one adapter and append discovered rules.
 ///
 /// `axis_segment` is the literal directory name (`"sources"` or
-/// `"targets"`). The first existing rung wins per RFC-28 §"Resolution
+/// `"targets"`). The first existing rung wins per the rules contract §"Resolution
 /// roots".
 fn load_overlay(
     project_dir: &Path, rules_root: &Path, explicit_rules_root: bool, axis_segment: &str,
@@ -336,7 +336,7 @@ fn relative_path(root: &Path, path: &Path) -> String {
     if cfg!(windows) { display.replace('\\', "/") } else { display }
 }
 
-/// Per RFC-28 §"Overlay precedence": duplicates always error.
+/// Per overlay precedence: duplicates always error.
 fn detect_duplicates(entries: &[ResolvedRuleEntry]) -> Result<(), ResolveError> {
     use std::collections::BTreeMap;
 

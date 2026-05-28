@@ -23,7 +23,7 @@ pub enum PlanAction {
         #[arg(long = "source")]
         sources: Vec<SourceArg>,
         /// Pre-stage `slices[].divergence: likely` on the named slice
-        /// (repeatable; workflow §D5). Each occurrence fires one
+        /// (repeatable; divergence and writer-ownership contract). Each occurrence fires one
         /// `plan.propose.divergence` journal event. Refuses with
         /// `plan-divergence-likely-unknown-slice` when the slice is
         /// not present in the plan; the CLI is the single writer of
@@ -31,7 +31,7 @@ pub enum PlanAction {
         #[arg(long = "divergence-likely", value_name = "SLICE", action = ArgAction::Append)]
         divergence_likely: Vec<String>,
         /// Stamp `lifecycle: approved` atomically with create
-        /// (workflow §D7). Typing this flag *is* the operator's
+        /// (auto-approve Gate-1 contract). Typing this flag *is* the operator's
         /// Gate-1 consent — the CLI runs the same validation it
         /// runs on the post-create path, refuses the create on
         /// failure regardless of the flag, and on success writes a
@@ -42,7 +42,7 @@ pub enum PlanAction {
         #[arg(long = "auto-approve", action = ArgAction::SetTrue)]
         auto_approve: bool,
         /// Pre-seed a per-slice `authority-override` entry on a
-        /// named slice (workflow §D3). Each occurrence takes two
+        /// named slice (per-slice authority override). Each occurrence takes two
         /// positional values: the slice name and a
         /// `<claim-kind>=<source-key>` assignment. Repeatable; later
         /// occurrences override earlier ones on the same
@@ -100,7 +100,7 @@ pub enum PlanAction {
         #[arg(long)]
         context: Vec<String>,
         /// Set a per-slice `authority-override` entry on the slice
-        /// being added (workflow §D3). Wire form is
+        /// being added (per-slice authority override). Wire form is
         /// `<claim-kind>=<source-key>`; both sides are kebab-case
         /// and the kind is checked against the closed [`ClaimKind`]
         /// enum at parse time. Repeatable; later occurrences win on
@@ -150,7 +150,7 @@ pub enum PlanAction {
         #[arg(long = "remove-source", action = ArgAction::Append)]
         remove_source: Vec<String>,
         /// Set the slice's `divergence` field (workflow §Plan-time
-        /// fusion; workflow §D5). Accepts `likely`, `accepted`, or
+        /// fusion; divergence and writer-ownership contract). Accepts `likely`, `accepted`, or
         /// `rejected` — the CLI is the single writer of this field
         /// across every value of the closed enum, so use
         /// `specrun plan amend <plan> <slice> --divergence likely`
@@ -174,7 +174,7 @@ pub enum PlanAction {
         /// flag to leave it unchanged.
         #[arg(long, num_args = 0.., value_delimiter = ',')]
         context: Option<Vec<String>>,
-        /// Set a per-slice `authority-override` entry (workflow §D3).
+        /// Set a per-slice `authority-override` entry (per-slice authority override).
         /// Two positional values per occurrence: the slice name and
         /// a `<claim-kind>=<source-key>` assignment. Repeatable;
         /// later occurrences override earlier ones on the same
@@ -191,7 +191,7 @@ pub enum PlanAction {
         )]
         authority_override: Vec<String>,
         /// Remove a single `(slice, kind)` entry from the
-        /// per-slice `authority-override` map (workflow §D3). Two
+        /// per-slice `authority-override` map (per-slice authority override). Two
         /// positional values per occurrence: the slice name and
         /// the claim kind (closed enum, kebab-case). Repeatable;
         /// no-op when the entry was already absent. Applied after
@@ -205,7 +205,7 @@ pub enum PlanAction {
         )]
         clear_authority_override: Vec<String>,
         /// Wipe the entire per-slice `authority-override` map on
-        /// the named slice (workflow §D3). Repeatable for multiple
+        /// the named slice (per-slice authority override). Repeatable for multiple
         /// slices. Applied last, after `--authority-override` sets
         /// and `--clear-authority-override` clears. One
         /// `plan.amend.authority-override` event with `action: clear`
@@ -220,18 +220,18 @@ pub enum PlanAction {
         )]
         clear_authority_overrides: Vec<String>,
         /// Append an alias to a candidate in `<project_dir>/discovery.md`
-        /// (workflow §D6). Wire form is `<candidate-id>=<alias>`; both
+        /// (discovery alias contract). Wire form is `<candidate-id>=<alias>`; both
         /// sides are kebab-case. Repeatable. Mutates `discovery.md`
         /// (NOT `plan.yaml`); the whole amend is refused at exit 2
         /// (`discovery-alias-collision`) when the new alias would
         /// collide with any other candidate's `id` or `aliases[]` in
         /// the same `discovery.md`. Operator additions through this
         /// flag survive re-enumeration so long as the source adapter
-        /// keeps emitting the bearing candidate's `id` (workflow §D6).
+        /// keeps emitting the bearing candidate's `id` (discovery alias contract).
         #[arg(long = "add-alias", action = ArgAction::Append)]
         add_alias: Vec<AliasAssign>,
         /// Remove an alias from a candidate in
-        /// `<project_dir>/discovery.md` (workflow §D6). Wire form is
+        /// `<project_dir>/discovery.md` (discovery alias contract). Wire form is
         /// `<candidate-id>=<alias>`; idempotent (no-op when the
         /// alias is already absent). Repeatable. The whole amend
         /// fails at exit 2 (`discovery-candidate-unknown`) when no

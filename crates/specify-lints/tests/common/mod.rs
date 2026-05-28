@@ -1,4 +1,4 @@
-//! Shared fixture for the RFC-32 S8 diagnostic formatter tests.
+//! Shared fixture for the diagnostic formatter tests.
 //!
 //! Builds a [`LintResult`] exercising every shape that varies the
 //! per-formatter rendering: three different severities, all three

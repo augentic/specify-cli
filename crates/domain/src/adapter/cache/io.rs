@@ -1,6 +1,6 @@
-//! workflow §D8 cache lookup / write / index helpers.
+//! extraction cache fingerprint contract cache lookup / write / index helpers.
 //!
-//! Cache directory layout (workflow §D8):
+//! Cache directory layout (extraction cache fingerprint contract):
 //!
 //! ```text
 //! .specify/.cache/extractions/<adapter>/
@@ -39,7 +39,7 @@ use crate::slice::atomic::bytes_write;
 const INDEX_FILE_NAME: &str = "index.jsonl";
 const FINGERPRINT_RECORD_NAME: &str = "fingerprint.json";
 
-/// Filesystem coordinates for the workflow §D8 cache scoped to one
+/// Filesystem coordinates for the extraction cache fingerprint contract cache scoped to one
 /// source adapter.
 ///
 /// Construct with [`CacheLayout::new`]; the type is path-only and
@@ -99,7 +99,7 @@ impl<'a> CacheLayout<'a> {
 pub struct FingerprintRecord {
     /// sha256 hex digest computed over [`Self::inputs`] at write time.
     pub digest: String,
-    /// Closed input record per workflow §D8.
+    /// Closed input record per the extraction cache fingerprint contract.
     pub inputs: CacheFingerprint,
 }
 
@@ -225,7 +225,7 @@ fn miss_reason(
         return Ok(CacheMissReason::NoPriorEntry);
     };
     let Ok(record) = serde_json::from_str::<FingerprintRecord>(&raw) else {
-        // Cache-corruption — workflow §D8 leans on "warn and treat as
+        // Cache-corruption — extraction cache fingerprint contract leans on "warn and treat as
         // miss" rather than failing the whole operation.
         return Ok(CacheMissReason::NoPriorEntry);
     };

@@ -1,4 +1,4 @@
-//! `specrun rules export` handler — RFC-28 §"Resolved rules export".
+//! `specrun rules export` handler — `ResolvedRules` export contract.
 //!
 //! Read-only. Builds the `ResolveInputs` struct from CLI args,
 //! delegates to [`specify_lints::build_resolved_rules`], and
@@ -29,7 +29,7 @@ use crate::runtime::output;
 /// signature off the clap-struct keeps the dispatcher arm flat.
 #[expect(
     clippy::too_many_arguments,
-    reason = "Arguments mirror the closed RFC-28 §Resolution inputs set; the handler threads the clap-derived surface through verbatim into ResolveInputs."
+    reason = "Arguments mirror the closed rules resolution input set; the handler threads the clap-derived surface through verbatim into ResolveInputs."
 )]
 pub fn run(
     format: Format, rules_root: Option<&Path>, target: &str, sources: &[String],

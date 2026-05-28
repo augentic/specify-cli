@@ -1,13 +1,12 @@
 # Validate crate — design decisions
 
-Provenance for behaviour mandated by RFCs that lives in
+Provenance for validate-crate behavior that lives in
 `crates/validate/`. Code comments paraphrase these decisions as
 decisionless statements; this file is the single citation point.
 
 ## Change A — Hardcoded rule registry, classification at definition site
 
-Source: `rfcs/done/rfc-1a-validation.md` (registry of representative
-rules, declared `Classification` per rule).
+Source: validation rule registry decision; declared `Classification` per rule.
 
 The registry in `crates/validate/src/registry/` enumerates rules per
 brief id. Each `Rule` and `CrossRule` declares its classification
@@ -18,8 +17,7 @@ them and emits `Deferred`. A test enforces non-invocation.
 
 ## Change B — Top-level contract format detection by root key
 
-Source: `rfcs/done/rfc-12-baseline-contracts.md`
-§"Top-level contracts" and §Non-goals.
+Source: baseline-contract import decision: top-level contracts and non-goals.
 
 `crates/validate/src/contracts/parse.rs` walks the supplied
 `contracts/` directory, parses every `*.yaml` file, and keeps only
@@ -32,7 +30,7 @@ diagnostic.
 
 ## Change C — Baseline-contract validation rules
 
-Source: `rfcs/done/rfc-12-baseline-contracts.md` §Validation.
+Source: baseline-contract validation decision.
 
 The runner in `crates/validate/src/contracts/mod.rs` enforces three
 rules:
@@ -47,7 +45,7 @@ rules:
 
 ## Change D — Validate JSON body shape
 
-Source: `rfcs/done/rfc-13-contract-validate-binary.md` §4.2a.
+Source: contract validation binary JSON envelope decision.
 
 The standalone `specify-contract` binary (in
 `wasi-tools/contract/src/main.rs`) renders a flat pretty-printed JSON

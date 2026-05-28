@@ -6,7 +6,7 @@ license.workspace = true
 repository.workspace = true
 description = "Specify CLI — deterministic operations for spec-driven development"
 categories = ["command-line-utilities", "development-tools"]
-keywords = ["specify", "cli", "spec", "workflow", "rfc"]
+keywords = ["specify", "cli", "spec", "workflow", "automation"]
 readme = "README.md"
 
 [[bin]]

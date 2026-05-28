@@ -1,8 +1,8 @@
-//! End-to-end binary tests for `specrun lint run` (RFC-32 §"`specrun
+//! End-to-end binary tests for `specrun lint run` (`specrun
 //! review` (Phase 2 CLI)").
 //!
-//! Exercises the wired clap surface, `--rules-root` resolution per §D7,
-//! the `--dump-model` debug branch, and the §D8 exit-code map for the
+//! Exercises the wired clap surface, `--rules-root` resolution per rules-root resolution,
+//! the `--dump-model` debug branch, and the lint exit mapping exit-code map for the
 //! `rules-root-required` negative scenario. The deterministic happy
 //! path uses a single shared `kind: regex` UNI-100 rule that matches a
 //! literal `TODO` token in the project — chosen because the regex
@@ -59,7 +59,7 @@ fn assert_validates(validator: &Validator, stdout: &str, schema_label: &str) {
 ///
 /// - `project_dir/` — a minimal initialised project (`.specify/project.yaml`
 ///   declaring the `contract` tool so the `kind: tool` hint family at
-///   least passes the §D4 `is_declared` half) plus a `notes.md` file
+///   least passes the `kind: tool` evaluator contract `is_declared` half) plus a `notes.md` file
 ///   carrying the literal `TODO` token the UNI-100 regex hint matches.
 /// - `codex_dir/` — a fresh rules tree with one shared rule under
 ///   `adapters/shared/rules/universal/uni-100.md`. The rule's
@@ -122,7 +122,7 @@ fn build_fixture() -> Fixture {
 fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::process::Output {
     let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
     // The global `--format` toggles the error-envelope shape; the
-    // per-subcommand `--output-format` selects the §D6 closed set.
+    // per-subcommand `--output-format` selects the the diagnostics formatter set closed set.
     cmd.arg("--format").arg("json");
     cmd.arg("lint").arg("run");
     cmd.arg("--target").arg("omnia");
@@ -140,7 +140,7 @@ fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::proc
 
 /// Happy path: a single `important` finding from the UNI-100 regex
 /// hint lands stdout on a schema-valid review envelope and exits 2 per
-/// §D8.
+/// lint exit mapping.
 #[test]
 fn review_emits_important_finding_and_exits_2() {
     let fx = build_fixture();
@@ -173,7 +173,7 @@ fn review_emits_important_finding_and_exits_2() {
     assert_eq!(rule_id, "UNI-100", "envelope:\n{envelope:#}");
 }
 
-/// §D9 byte-stability: two back-to-back runs against the same fixture
+/// `LintResult` envelope byte-stability: two back-to-back runs against the same fixture
 /// must emit byte-identical stdout. Pins the deterministic ordering
 /// contract through the CLI boundary.
 #[test]
@@ -206,7 +206,7 @@ fn review_dump_model_emits_workspace_model_and_exits_0() {
     assert_validates(&validator, stdout, "workspace-model");
 }
 
-/// §D7 / §D8 negative: with no `--rules-root`, no project-local
+/// rules-root resolution / lint exit mapping negative: with no `--rules-root`, no project-local
 /// `adapters/shared/rules/universal/` rung, and no
 /// `.specify/cache/rules/` cache, the resolver returns
 /// `rules-root-required`. The CLI surfaces it on stderr and exits 2.

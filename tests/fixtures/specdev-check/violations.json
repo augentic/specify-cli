@@ -18,9 +18,9 @@
       "artifact": "unknown",
       "evidence": {
         "kind": "snippet",
-        "value": "Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved by RFC-32 for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' under rules owner 'omnia')"
+        "value": "Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' under rules owner 'omnia')"
       },
-      "fingerprint": "sha256:1844b62526c66d8de352c143e5f606f62e85760c65361f2fe7b178b7a20199d8",
+      "fingerprint": "sha256:4f7265e1a520600d2d8e47ae56b82cc87d4451f10693ff444500f8e126e4ae8e",
       "id": "FIND-0002",
       "impact": "Authoring check 'rules.namespace-ownership-violation' failed.",
       "location": {
@@ -30,7 +30,7 @@
       "remediation": "Resolve the violation reported by 'rules.namespace-ownership-violation'. See the finding message for details.",
       "severity": "important",
       "source": "deterministic",
-      "title": "[rules.namespace-ownership-violation] Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved by RFC-32 for framework-repo declarative rules and may not …"
+      "title": "[rules.namespace-ownership-violation] Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed …"
     },
     {
       "artifact": "unknown",

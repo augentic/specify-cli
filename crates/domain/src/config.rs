@@ -205,7 +205,7 @@ impl<'a> Layout<'a> {
     /// Absolute path to `<project_dir>/discovery.md` — the candidate
     /// inventory written at `/spec:plan`'s `propose` sub-step and
     /// mutated by `specrun plan amend --add-alias` /
-    /// `--remove-alias` (workflow §D6).
+    /// `--remove-alias` (discovery alias contract).
     #[must_use]
     pub fn discovery_path(&self) -> PathBuf {
         self.project_dir.join("discovery.md")

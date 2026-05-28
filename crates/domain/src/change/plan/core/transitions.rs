@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn init_then_approved_models_auto_approve_at_create() {
-        // workflow §D7: `--auto-review` composes `Plan::init` with
+        // auto-approve Gate-1 contract: `--auto-review` composes `Plan::init` with
         // `Plan::transition_lifecycle(Reviewed)` before the single
         // atomic save. The resulting in-memory plan must carry
         // `lifecycle: approved` so the post-init `Plan::save` writes

@@ -150,7 +150,7 @@ fn lint_result_schema_accepts_envelope_with_one_finding() {
         }]
     });
     let errors: Vec<String> = validator.iter_errors(&instance).map(|err| err.to_string()).collect();
-    assert!(errors.is_empty(), "RFC-28 FIND-0001 envelope must validate; errors: {errors:?}");
+    assert!(errors.is_empty(), "FIND-0001 envelope must validate; errors: {errors:?}");
 }
 
 /// Pins the relative-ref form: integrations downstream rely on
@@ -167,10 +167,10 @@ fn lint_result_schema_uses_relative_finding_ref() {
     assert_eq!(items_ref, "finding.schema.json");
 }
 
-/// Per RFC-32 §"Hint kinds — reserved", reserved kinds are
+/// Per the standards-layer contract §"Hint kinds — reserved", reserved kinds are
 /// shape-validated by this schema with no execution semantics. A
 /// minimal codex-rule frontmatter that declares each reserved kind
-/// must round-trip cleanly so RFC-28 exporters accept files awaiting
+/// must round-trip cleanly so rules exporters accept files awaiting
 /// implementation.
 #[test]
 fn codex_rule_schema_accepts_each_reserved_hint_kind() {
@@ -189,18 +189,14 @@ fn codex_rule_schema_accepts_each_reserved_hint_kind() {
             "id": "UNI-014",
             "title": "Reserved-kind smoke fixture",
             "severity": "important",
-            "trigger": "Reserved hint kind smoke fixture for RFC-32 §Hint kinds — reserved.",
+            "trigger": "Reserved hint kind smoke fixture.",
             "deterministic_hints": [{
                 "kind": kind,
                 "value": "placeholder"
             }]
         });
-        let summaries = validate_value(
-            &instance,
-            RULE_JSON_SCHEMA,
-            "rule",
-            "rule fixture per reserved kind",
-        );
+        let summaries =
+            validate_value(&instance, RULE_JSON_SCHEMA, "rule", "rule fixture per reserved kind");
         assert!(
             summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
             "kind {kind} must validate; got {summaries:?}"

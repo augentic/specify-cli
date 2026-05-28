@@ -15,7 +15,7 @@ pub enum SourceAction {
     /// (in-repo). Emits the resolved directory path plus the
     /// manifest's declared operations.
     ///
-    /// `--explain` switches the output to the workflow §D8 fingerprint
+    /// `--explain` switches the output to the extraction cache fingerprint contract fingerprint
     /// chain read from `.specify/.cache/extractions/<name>/index.jsonl`
     /// instead of the manifest summary.
     Resolve {
@@ -34,7 +34,7 @@ pub enum SourceAction {
     },
 
     /// Run a source adapter's enumerate + extract in isolation
-    /// (RFC-31 D4).
+    /// (`specrun source preview` contract).
     ///
     /// Resolves the adapter manifest, validates the `--source` path,
     /// scaffolds the output directory with an `evidence/` subtree, and

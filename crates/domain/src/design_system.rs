@@ -1,4 +1,4 @@
-//! Operator-curated component catalog (RFC-31 D5).
+//! Operator-curated component catalog (component catalog contract).
 //!
 //! The catalog lives at `.specify/design-system/components.yaml` and
 //! declares shared UI components that the Vectis target factors into

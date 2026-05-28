@@ -1,14 +1,13 @@
-//! workflow §D4 reconciliation index — `fusion.yaml`.
+//! `fusion.yaml` reconciliation index — `fusion.yaml`.
 //!
 //! One file per slice at `.specify/slices/<slice>/fusion.yaml`. Lists
 //! every `REQ-*` id in `spec.md` and the contributing
 //! `(source-key, claim-id)` pairs plus the authority outcome.
 //! Validated against `schemas/slice/fusion.schema.json`. The file is
-//! audit-only; see [`DECISIONS.md` §"workflow §D4 — `fusion.yaml` is
-//! audit-only"][rfc27-d4] for the rationale (`spec.md` is the
+//! audit-only; see [`DECISIONS.md` §"`fusion.yaml` audit index"][fusion-audit] for the rationale (`spec.md` is the
 //! authoritative artifact).
 //!
-//! [rfc27-d4]: ../../../../DECISIONS.md#rfc-27-d4--fusionyaml-is-audit-only
+//! [fusion-audit]: ../../../../DECISIONS.md#fusionyaml-audit-index
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -206,7 +205,7 @@ impl FusionIndex {
     /// and the per-source evidence claim ids, returning every
     /// drift finding sorted for byte-stable error output.
     ///
-    /// Drift kinds (workflow §D4 §Acceptance scenario #26-4):
+    /// Drift kinds (`fusion.yaml` audit index §Acceptance scenario #26-4):
     ///
     /// 1. **Requirement-id drift** — `spec.md` `REQ-*` set ≠
     ///    `fusion.yaml.requirements[].id` set, in either direction.

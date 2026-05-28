@@ -1,5 +1,5 @@
 //! `plan.yaml.slices[].authority-override` mutation engine (workflow
-//! §D3). The CLI handlers ([`crate::change::Plan::amend`] siblings in
+//! `kind: schema` evaluator contract). The CLI handlers ([`crate::change::Plan::amend`] siblings in
 //! the `specrun` runtime binary) parse `--authority-override` /
 //! `--clear-authority-override` / `--clear-authority-overrides`
 //! flags into the typed `(slice, kind, source-key)` tuples this
@@ -84,7 +84,7 @@ fn emit_override_events(
 /// Apply the full authority-override mutation set on `plan` and
 /// return the matching journal events.
 ///
-/// Workflow §D3 — applies `--authority-override` /
+/// Workflow `kind: schema` evaluator contract — applies `--authority-override` /
 /// `--clear-authority-override` / `--clear-authority-overrides` in a
 /// deterministic order:
 ///

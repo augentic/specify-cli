@@ -1,6 +1,6 @@
-//! RFC-28 CH-18 golden tests for `specrun rules export`.
+//! Golden tests for `specrun rules export`.
 //!
-//! Exercises the runtime rules export contract — RFC-28 §"Resolved
+//! Exercises the runtime rules export contract — `ResolvedRules` export
 //! rules export" and §"Codex root resolution (v1)" — via the
 //! [`specify_lints::build_resolved_rules`] library entrypoint
 //! for the positive scenarios and `assert_cmd` for the negative
@@ -13,7 +13,7 @@
 //! [`augentic/specify`](https://github.com/augentic/specify) plugin
 //! checkout — the canonical source of `UNI-*`, target overlays, and
 //! the CH-05 `SRC-001` fixture. The checkout location is configurable
-//! via the `RFC28_PLUGIN_REPO` env var and defaults to `../specify`
+//! via the `SPECIFY_PLUGIN_REPO` env var and defaults to `../specify`
 //! relative to the CLI repo (the standard layout per `AGENTS.md`).
 //!
 //! When the checkout is absent (e.g. CI without the sibling clone),
@@ -48,7 +48,7 @@ use tempfile::tempdir;
 fn plugin_repo_path() -> Option<PathBuf> {
     // CARGO_MANIFEST_DIR is the CLI repo root; `../specify` resolves
     // to the sibling clone per AGENTS.md.
-    let path = env::var("RFC28_PLUGIN_REPO").map_or_else(
+    let path = env::var("SPECIFY_PLUGIN_REPO").map_or_else(
         |_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("specify"),
         PathBuf::from,
     );
@@ -115,7 +115,7 @@ fn assert_golden(actual: &Value, name: &str) {
     );
 }
 
-/// RFC-28 §"Resolved rules export": exporting against the `omnia`
+/// `ResolvedRules` export contract: exporting against the `omnia`
 /// target carries shared `UNI-*` rules plus the omnia overlay.
 #[test]
 fn omnia_golden() {
@@ -210,7 +210,7 @@ fn stable_ordering_byte_identical() {
 /// Agent-consumable invariants on the `omnia` envelope.
 ///
 /// - At least one rule body contains the `## Rule` heading verbatim
-///   (RFC-28 §"Codex file shape" requires reviewing agents to see the
+///   (the codex file shape requires reviewing agents to see the
 ///   policy text intact).
 /// - At least one rule carries a non-empty `references` list when a
 ///   source overlay that ships references is bound (CH-05's
@@ -265,7 +265,7 @@ fn omnia_agent_consumable_assertions() {
 
     // Wire-key check: serialise the envelope and verify the
     // kebab-case `replaced-by` form is the only spelling present, per
-    // RFC-28 §"Resolved rules export". This holds whether or not any
+    // `ResolvedRules` export contract. This holds whether or not any
     // deprecated rule actually appears today (no `replaced_by` token
     // can exist either way).
     let body = serde_json::to_string(&resolved).expect("serialise");

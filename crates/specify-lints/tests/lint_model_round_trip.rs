@@ -1,4 +1,4 @@
-//! Round-trip + schema validation for the RFC-32 `WorkspaceModel`
+//! Round-trip + schema validation for `WorkspaceModel`
 //! DTOs.
 //!
 //! Validates two invariants the indexer (S6) relies on:

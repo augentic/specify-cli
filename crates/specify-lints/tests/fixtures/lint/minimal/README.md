@@ -2,7 +2,7 @@
 
 A minimal consumer-project tree exercised by
 `tests/review_indexer_consumer.rs`. Files exercise every per-file
-extractor that ships in RFC-32 Phase 2 (S6):
+extractor that ships in `specrun lint` v1 (S6):
 
 - `doc.md` — markdown with YAML frontmatter, multiple ATX headings,
   a fenced code block that hides a fake heading and a fake link, and

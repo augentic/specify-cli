@@ -1,7 +1,7 @@
-//! Integration test for the RFC-32 §"Hint kinds — Phase 2"
+//! Integration test for the the executable hint-kind contract
 //! `regex` evaluator.
 //!
-//! Verifies the §D1 binary-skip rule (a NUL-byte file is ignored
+//! Verifies the the file scan contract binary-skip rule (a NUL-byte file is ignored
 //! even when its path passes the path-pattern filter) and the
 //! per-finding location / snippet shape.
 

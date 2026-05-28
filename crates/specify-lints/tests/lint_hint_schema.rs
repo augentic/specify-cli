@@ -1,4 +1,4 @@
-//! Integration test for the RFC-32 §D3 `schema` evaluator.
+//! Integration test for the `kind: schema` evaluator contract `schema` evaluator.
 //!
 //! Uses the bundled `rule` schema id token. A markdown file
 //! whose frontmatter violates the schema (`severity: bogus` is not

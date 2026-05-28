@@ -18,7 +18,7 @@ use specify_domain::journal::{self, Event, EventKind};
 mod common;
 use common::{Project, assert_golden_at, repo_root, specrun};
 
-/// Pinned RFC-3339 timestamp used by every golden snapshot. CLI-driven
+/// Pinned RFC 3339 timestamp used by every golden snapshot. CLI-driven
 /// emits use `Timestamp::now()`; tests normalise the value to this
 /// placeholder before diffing so goldens stay deterministic.
 const FIXED_TIMESTAMP: &str = "2026-05-21T20:00:00Z";
@@ -108,7 +108,7 @@ slices:
 
 #[test]
 fn plan_amend_divergence_from_none_to_accepted() {
-    // RFC-25 subagent note: the implicit-default first transition
+    // source/target split note: the implicit-default first transition
     // serialises `from: none` because the on-disk slice has no
     // `divergence:` key.
     let project = Project::init();
@@ -133,7 +133,7 @@ fn plan_amend_divergence_from_none_to_accepted() {
 
 #[test]
 fn plan_amend_divergence_none_to_likely_emits_event() {
-    // workflow §D5: the CLI is the single writer of every variant of
+    // divergence and writer-ownership contract: the CLI is the single writer of every variant of
     // `slices[].divergence`, including `likely`. A `plan amend
     // --divergence likely` against a slice with no prior divergence
     // emits one `plan.amend.divergence` event with `from: none, to:
@@ -156,7 +156,7 @@ fn plan_amend_divergence_none_to_likely_emits_event() {
 
 #[test]
 fn plan_amend_divergence_likely_round_trips_to_yaml() {
-    // workflow §D5: `specrun plan amend --divergence likely` is the
+    // divergence and writer-ownership contract: `specrun plan amend --divergence likely` is the
     // bare-skill fallback writer of `slices[].divergence: likely`.
     // The CLI must persist the field byte-identically to the legacy
     // skill-written form so existing fixtures keep round-tripping.
@@ -190,7 +190,7 @@ slices:
 
 #[test]
 fn plan_amend_divergence_from_likely_to_rejected() {
-    // RFC-25 subagent note: `propose` writes `divergence: likely` and
+    // source/target split note: `propose` writes `divergence: likely` and
     // the operator may transition it to `rejected` at Gate 1.
     let project = Project::init();
     project.seed_plan(
@@ -340,7 +340,7 @@ fn slice_transition_to_built_appends_no_refined_event() {
 // -- slice.synthesis.* (specrun slice validate) ----------------------
 
 const PLAN_WITH_LEGACY_MONOLITH: &str = "\
-name: rfc25-prov
+name: workflow-prov
 lifecycle: pending
 sources:
   legacy-monolith:

@@ -152,12 +152,12 @@ mod tests {
         }
     }
 
-    /// (5) The serialized envelope matches the RFC-28 §"Review result
+    /// (5) The serialized envelope matches the `LintResult`
     /// envelope" example shape: exactly the `version`, `summary`, and
     /// `findings` keys, with the documented per-severity summary
     /// fields and counts derived from the input.
     #[test]
-    fn envelope_matches_rfc_example_shape() {
+    fn envelope_matches_contract_example_shape() {
         let inputs = vec![
             fixture("skill.duplicate-name", "dup one"),
             fixture("skill.duplicate-name", "dup two"),

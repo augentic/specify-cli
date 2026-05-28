@@ -5,7 +5,7 @@ registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.android`); `wasi
 
 Source filenames are flat under `templates/vectis/android/`. Nested target paths (especially `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/...`) are declared in `manifest.yaml`. The `__APP_NAME__` and `__ANDROID_PACKAGE_PATH__` segments in target paths are substituted when writing each file. `__ANDROID_PACKAGE_PATH__` is derived by replacing `.` with `/` in `__ANDROID_PACKAGE__` at file-write time; it does not appear in file contents.
 
-Total: 19 files (matches RFC § File Manifests § Android Assembly).
+Total: 19 files (matches the Android assembly file manifest).
 
 The Gradle wrapper files (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`, `gradle/wrapper/gradle-wrapper.properties`) are intentionally **not** templates. They are produced by the host verify pipeline invoking `gradle wrapper --gradle-version <pin>` after the Gradle config files exist. The same applies to `local.properties` (per-developer; carries `sdk.dir` from `$ANDROID_HOME`).
 
@@ -41,19 +41,19 @@ kept (see "Cap-marker reference" below):
 Notes for chunk 4 / 8 / 11:
 
 - **`__AGP_VERSION__` / `__KOTLIN_VERSION__` / `__COMPOSE_BOM_VERSION__` /
-  `__KTOR_VERSION__` / `__KOIN_VERSION__` are not in the RFC's placeholder
+  `__KTOR_VERSION__` / `__KOIN_VERSION__` are not in the scaffold placeholder
   table.** They mirror the chunk-3a additions for `__CRUX_*_VERSION__` and
   cover the same need: chunk 4's `Versions::android` struct already carries
   `compose_bom`, `koin`, `ktor`, `kotlin`, `agp`, so chunk 8 substitutes them
-  from there. Update the placeholder table in any future RFC revision.
-- **The "Initial Version Pins" block in `rfcs/rfc-6-tasks.md` is stale
+  from there. Update the placeholder table in any future task-plan revision.
+- **The "Initial Version Pins" block in `the initial Vectis task plan` is stale
   versus the values that actually compile today.** The block lists
   `agp = "8.8.2"`, `kotlin = "2.1.10"`, `compose_bom = "2025.01.01"` -- the
   reference doc and the verified-working values used by chunk 3c are
   `8.13.2` / `2.3.0` / `2026.01.01`. Chunk 4 should either bump those defaults
   (preferred) or chunk 11 must do it before any project actually scaffolds.
   Documented further under "Verification deviations" below.
-- **`__ANDROID_NDK_VERSION__` is also not in the RFC placeholder table or in
+- **`__ANDROID_NDK_VERSION__` is also not in the placeholder table or in
   the chunk-4 `Versions::android` substruct.** The chunk-8 engine should
   detect the installed NDK from `$ANDROID_HOME/ndk/<version>/` and substitute
   it (or fall back to a default pin and require the developer to install that
@@ -126,7 +126,7 @@ deterministic baseline.
 
 Theme and token code is emitted as shell-local files under
 `Android/app/src/main/java/com/vectis/<appname>/ui/theme/` by the
-`android-writer` skill during Update Mode (RFC-11 §L "Generated layout").
+`android-writer` skill during Update Mode (the generated layout contract).
 The CLI scaffold includes only the base Material 3 theme files (`Color.kt`,
 `Theme.kt`, `Type.kt`); the writer enriches them from `tokens.yaml` on first
 generation.
@@ -150,7 +150,7 @@ landed during verification:
   `/usr/libexec/java_home -v 21` (macOS) or equivalent, and writing the line
   into `gradle.properties` at scaffold time so the project remains
   hermetic.
-- The "Initial Version Pins" block in `rfcs/rfc-6-tasks.md` is stale for
+- The "Initial Version Pins" block in `the initial Vectis task plan` is stale for
   Android. The verification staging substituted the working values from the
   reference doc (`agp = "8.13.2"`, `kotlin = "2.3.0"`,
   `compose_bom = "2026.01.01"`, `ktor = "3.4.0"`, `koin = "4.1.1"`,

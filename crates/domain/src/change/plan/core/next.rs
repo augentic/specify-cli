@@ -64,7 +64,7 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{RFC_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
+    use super::super::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
     use super::*;
 
     #[test]
@@ -125,8 +125,8 @@ mod tests {
     /// marking each returned entry `done`, and assert the exact
     /// traversal sequence.
     #[test]
-    fn next_eligible_rfc_forward() {
-        let mut plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+    fn next_eligible_plan_forward() {
+        let mut plan: Plan = serde_saphyr::from_str(PLAN_EXAMPLE_YAML).expect("parse plan fixture");
         for entry in &mut plan.entries {
             entry.status = Status::Pending;
         }

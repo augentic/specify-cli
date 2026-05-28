@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/rules/resolved.schema.json",
   "title": "Specify resolved rules export",
-  "description": "Wire shape emitted by `specrun rules export --format json` per RFC-28 §Resolved rules export. The export is the read-only resolved view of shared, source-adapter, and target-adapter rules for a project, target adapter, slice, or artifact path. Frontmatter `snake_case` keys (`lint_mode`, `deterministic_hints`, `deprecated.replaced_by`) are emitted as kebab-case at every nesting level (`lint-mode`, `deterministic-hints`, `deprecated.replaced-by`). The schema is the authoritative source for exported field names; producers MUST validate output against it.",
+  "description": "Wire shape emitted by `specrun rules export --format json` for the `ResolvedRules` export contract. The export is the read-only resolved view of shared, source-adapter, and target-adapter rules for a project, target adapter, slice, or artifact path. Frontmatter `snake_case` keys (`lint_mode`, `deterministic_hints`, `deprecated.replaced_by`) are emitted as kebab-case at every nesting level (`lint-mode`, `deterministic-hints`, `deprecated.replaced-by`). The schema is the authoritative source for exported field names; producers MUST validate output against it.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -34,7 +34,7 @@
       "items": {
         "$ref": "#/$defs/rule"
       },
-      "description": "Ordered rule list. Producer ordering is `(non-deprecated, severity, origin, rule-id)` per RFC-28 §Resolved rules export."
+      "description": "Ordered rule list. Producer ordering is `(non-deprecated, severity, origin, rule-id)` for the `ResolvedRules` export contract."
     }
   },
   "$defs": {
@@ -115,7 +115,7 @@
         "content-digest-eq",
         "namespace-owner"
       ],
-      "description": "Closed v1 deterministic-hint kind enum. Reserved kinds (`unique`, `reference-resolves`, `set-coverage`, `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`, `namespace-owner`) are shape-validated only; RFC-32 owns execution semantics."
+      "description": "Closed v1 deterministic-hint kind enum. Reserved kinds (`unique`, `reference-resolves`, `set-coverage`, `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`, `namespace-owner`) are shape-validated only; `specrun lint` owns execution semantics."
     },
     "deterministicHint": {
       "type": "object",

@@ -45,10 +45,7 @@ fn check_markdown_links(root: &Path) -> Vec<Finding> {
     let mut findings = Vec::new();
     for path in walk_markdown_files(root, root).unwrap_or_default() {
         let path_str = path_for_match(&path);
-        if path_matches_any(&path_str, skip)
-            || skip_rfc_markdown_path(&path_str)
-            || skip_test_fixtures(&path_str)
-        {
+        if path_matches_any(&path_str, skip) || skip_test_fixtures(&path_str) {
             continue;
         }
 
@@ -214,28 +211,11 @@ fn build_skill_registry(root: &Path) -> HashMap<String, HashSet<String>> {
 fn markdown_link_skip_patterns() -> &'static [Regex] {
     static PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
     PATTERNS.get_or_init(|| {
-        [
-            r"node_modules",
-            r"\.git",
-            r"temp",
-            r"specify-cli",
-            r"rfcs/done",
-            r"rfcs/future",
-            r"rfcs/next",
-        ]
-        .iter()
-        .map(|pat| Regex::new(pat).expect("valid skip pattern"))
-        .collect()
+        [r"node_modules", r"\.git", r"temp", r"specify-cli", r"docs/proposals", r"/rfcs/"]
+            .iter()
+            .map(|pat| Regex::new(pat).expect("valid skip pattern"))
+            .collect()
     })
-}
-
-/// Skip archived/speculative RFC paths while keeping in-force `rfcs/rfc-25*` prose.
-fn skip_rfc_markdown_path(path: &str) -> bool {
-    let Some(idx) = path.find("rfcs/rfc-") else {
-        return false;
-    };
-    let after = &path[idx + "rfcs/rfc-".len()..];
-    !after.starts_with("25")
 }
 
 fn skip_test_fixtures(path: &str) -> bool {
@@ -245,7 +225,7 @@ fn skip_test_fixtures(path: &str) -> bool {
 fn directive_skip_patterns() -> &'static [Regex] {
     static PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
     PATTERNS.get_or_init(|| {
-        ["node_modules", r"\.git", "temp", "rfcs"]
+        ["node_modules", r"\.git", "temp"]
             .iter()
             .map(|pat| Regex::new(pat).expect("valid skip pattern"))
             .collect()

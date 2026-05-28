@@ -16,7 +16,7 @@ pub struct Cli {
     pub command: Command,
 
     /// Output format. `text` (the default) emits the human-oriented
-    /// stdout / stderr summary unchanged. `json` emits an RFC-28
+    /// stdout / stderr summary unchanged. `json` emits a structured lint
     /// §"Review result envelope" body
     /// (`{version: 1, summary, findings: [LintFinding]}`) to stdout
     /// on both success and failure; the exit code is `2` when any

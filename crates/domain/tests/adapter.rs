@@ -8,7 +8,7 @@
 //!   wins.
 //! - cache placement — a load of `(source, …)` populates
 //!   `.specify/.cache/manifests/sources/<name>/`; `(target, …)`
-//!   mirrors under `manifests/targets/`. The workflow §D8 extraction
+//!   mirrors under `manifests/targets/`. The extraction cache fingerprint contract extraction
 //!   cache lives in a sibling tree under
 //!   `.specify/.cache/extractions/<adapter>/` and is exercised by the
 //!   `adapter::cache` unit tests.
@@ -242,7 +242,7 @@ fn resolves_captures_source_adapter_with_tools_array() {
     // a `tools: [{ name: replay-index }]` declaration and a free-
     // form `description:` field; both must round-trip through the
     // axis-aware loader without forcing the operator to bind the
-    // declared WASI tool (the tool itself is a follow-up per RFC-27
+    // declared WASI tool (the tool itself is a follow-up per authority and fusion contract
     // §Implementation plan).
     //
     // This test is the cli-side complement to the deno harness

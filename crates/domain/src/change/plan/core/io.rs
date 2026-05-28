@@ -97,14 +97,14 @@ mod tests {
     use tempfile::tempdir;
 
     use super::super::model::Status;
-    use super::super::{RFC_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
+    use super::super::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
     use super::*;
 
     #[test]
     fn save_load_round_trips() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("plan.yaml");
-        let original: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+        let original: Plan = serde_saphyr::from_str(PLAN_EXAMPLE_YAML).expect("parse plan fixture");
         original.save(&path).expect("save ok");
         let loaded = Plan::load(&path).expect("load ok");
         assert_eq!(loaded, original, "full plan should round-trip through save -> load");

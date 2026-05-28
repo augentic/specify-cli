@@ -81,7 +81,7 @@ pub enum Commands {
         action: TargetAction,
     },
 
-    /// Rules resolution operations (RFC-28). Read-only: no
+    /// Rules resolution operations. Read-only: no
     /// `.specify/` writes, no journal events. Today the only verb is
     /// `export`, which streams a `ResolvedRules` JSON envelope built
     /// from the shared / source / target codex overlay tree.
@@ -96,9 +96,9 @@ pub enum Commands {
         action: ToolAction,
     },
 
-    /// Deterministic lint (RFC-32 Phase 2). Resolves applicable codex
+    /// Deterministic lint (`specrun lint` v1). Resolves applicable codex
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
-    /// and emits the §D9 lint-result envelope. Read-only.
+    /// and emits the `LintResult` envelope lint-result envelope. Read-only.
     Lint {
         #[command(subcommand)]
         action: LintAction,
@@ -267,7 +267,7 @@ pub struct AuthorityOverrideKindAssign {
 }
 
 /// Typed value for `specrun plan amend --add-alias` /
-/// `--remove-alias` (workflow §D6). Wire form is
+/// `--remove-alias` (discovery alias contract). Wire form is
 /// `<candidate-id>=<alias>`; both sides must be non-empty
 /// kebab-case strings. The closed [`specify_error::is_kebab`]
 /// check runs at the handler boundary so the parser stays focused

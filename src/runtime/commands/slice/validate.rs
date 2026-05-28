@@ -42,14 +42,14 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         });
     }
 
-    // workflow §D4 — when `fusion.yaml` exists, cross-check it against
+    // `fusion.yaml` audit index — when `fusion.yaml` exists, cross-check it against
     // `spec.md` REQ ids and per-source evidence claim ids. Absence
     // of `fusion.yaml` is *not* drift: older slices and pre-refine
     // slices skip the check silently. The slice-fusion-drift error
     // body bundles every finding so the operator sees the full
     // re-refine surface in one pass.
     //
-    // workflow §D3 — refuse a per-slice `authority-override` map that
+    // per-slice authority override — refuse a per-slice `authority-override` map that
     // names a source key absent from the slice's own `sources[]`
     // list. Runs before `validate_slice` so the operator sees the
     // structural issue before adapter rules surface downstream
@@ -186,16 +186,16 @@ fn scan_slice_specs(
 
 /// Bundle the four pre-adapter gates that fire on a single slice:
 ///
-/// 1. workflow §D4 — fusion-drift detection between `spec.md`, the
+/// 1. `fusion.yaml` audit index — fusion-drift detection between `spec.md`, the
 ///    per-slice `fusion.yaml`, and per-source `evidence/<key>.yaml`.
-/// 2. workflow §D3 — orphan source keys on the slice's
+/// 2. per-slice authority override — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
-/// 3. workflow §D6 — candidate `id` ↔ `aliases[]` collisions in
+/// 3. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
 ///    `<project_dir>/discovery.md`. A discovery-level check (not
 ///    per-slice) but evaluated here because `specrun slice validate`
 ///    is the single CLI surface skills shell out to between
 ///    `/spec:refine` and `/spec:build`.
-/// 4. RFC-31 D5 — catalog drift between Evidence `component:`
+/// 4. component catalog contract — catalog drift between Evidence `component:`
 ///    directives and `.specify/design-system/components.yaml`.
 ///
 /// All four checks can fail independently; we collect every finding
@@ -212,7 +212,7 @@ fn validate_pre_adapter_gates(
     if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
 }
 
-/// workflow §D6 alias-collision gate. Loads
+/// discovery alias contract alias-collision gate. Loads
 /// `<project_dir>/discovery.md` when present and emits one
 /// `discovery-alias-collision` finding per name that resolves to
 /// more than one candidate. Absent `discovery.md` skips the check
@@ -232,7 +232,7 @@ fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<Validatio
         .collect())
 }
 
-/// workflow §D4 drift gate. Loads `<slice>/fusion.yaml` when present,
+/// `fusion.yaml` audit index drift gate. Loads `<slice>/fusion.yaml` when present,
 /// gathers `REQ-*` ids from every `<slice>/specs/**/*.md` file and
 /// claim ids from every `<slice>/evidence/<source>.yaml` file, and
 /// emits one `slice-fusion-drift` finding per drift entry. The
@@ -256,7 +256,7 @@ fn collect_fusion_drift_findings(
     Ok(drift.into_iter().map(fusion::FusionDrift::into_summary).collect())
 }
 
-/// workflow §D3 orphan-source-key gate. Loads `plan.yaml` (when
+/// per-slice authority override orphan-source-key gate. Loads `plan.yaml` (when
 /// present) and reports one finding per `(slice, kind)` pair
 /// whose source-key value is not in the slice's own `sources[]`
 /// list. Absent `plan.yaml` (e.g. ad-hoc slice without a plan)
@@ -288,7 +288,7 @@ fn collect_authority_override_orphan_findings(
         .collect())
 }
 
-/// RFC-31 D5 catalog-drift gate. Loads the project-level component
+/// component catalog contract catalog-drift gate. Loads the project-level component
 /// catalog (`.specify/design-system/components.yaml`) when present
 /// and cross-references every `component: <slug>` directive on
 /// Evidence claims in `<slice>/evidence/*.yaml` against it:

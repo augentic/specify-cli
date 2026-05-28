@@ -35,14 +35,14 @@ fn step(...) { ... }
 
 ## Comments
 
-Comments answer "why does this look like this *today*?" — non-obvious intent, trade-offs, or constraints the code itself can't convey. RFC numbers, migration trails, and "this used to be X" rationale belong in `rfcs/`, [DECISIONS.md](../../DECISIONS.md), or commit messages — not in code or doc comments. Doc comments on items that surface in `--help` (clap `#[derive]` fields) must be operator-facing one-liners; rationale moves below the derive block where it doesn't leak into help output.
+Comments answer "why does this look like this *today*?" — non-obvious intent, trade-offs, or constraints the code itself can't convey. Migration trails, old labels, and "this used to be X" rationale belong in [DECISIONS.md](../../DECISIONS.md) or commit messages — not in code or doc comments. Doc comments on items that surface in `--help` (clap `#[derive]` fields) must be operator-facing one-liners; rationale moves below the derive block where it doesn't leak into help output.
 
 ```rust
 // BAD
-//! Per RFC-13 chunk 2.9 ("Init wires components, not adapters"),
+//! Per the workspace split 2.9 ("Init wires components, not adapters"),
 //! `init` writes only the per-project skeleton — `project.yaml` plus
 //! the `.specify/` tree. The pre-Phase-3.7 filename was `initiative.md`;
-//! RFC-13 chunk 3.7 renamed it to `change.md` …
+//! Historical rename detail belongs in DECISIONS.md, not module docs.
 
 // GOOD
 //! Scaffolds `.specify/` plus `project.yaml`. Operator-facing artifacts
@@ -50,7 +50,7 @@ Comments answer "why does this look like this *today*?" — non-obvious intent, 
 //! owning verbs, not by `init`.
 ```
 
-Doc comments describe what this is today. Version-history tables, dated bumps, commit hashes, and migration notes belong in git log or [DECISIONS.md](../../DECISIONS.md) — not in `///` blocks. Keep `///` paragraphs on `pub` items under ~8 lines; longer prose belongs in `rfcs/` or `DECISIONS.md`.
+Doc comments describe what this is today. Version-history tables, dated bumps, commit hashes, and migration notes belong in git log or [DECISIONS.md](../../DECISIONS.md) — not in `///` blocks. Keep `///` paragraphs on `pub` items under ~8 lines; longer prose belongs in `DECISIONS.md`.
 
 `cargo doc` is part of `cargo make ci`, so doc comments must compile. Reference paths inside backticks (`` `Self::config_path` ``) are fine; bare links (`[Foo]`) need a corresponding intra-doc target or rustdoc fails the build.
 

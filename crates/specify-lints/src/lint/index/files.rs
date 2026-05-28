@@ -1,4 +1,4 @@
-//! `.gitignore`-aware filesystem walk per RFC-32 §D1.
+//! `.gitignore`-aware filesystem walk per `WorkspaceModel` file scan.
 //!
 //! Owns the consumer-profile traversal: applies the always-ignore
 //! globs, post-filters against the default include globs, detects
@@ -27,9 +27,9 @@ use crate::lint::{FileKind, Symlink};
 /// parallel without re-reading the disk per extractor.
 #[derive(Debug, Clone)]
 pub struct DiscoveredFile {
-    /// Project-relative path with forward slashes per RFC-32 §"Stability".
+    /// Project-relative path with forward slashes per `WorkspaceModel` stability.
     pub relative: String,
-    /// Closed file-kind discriminant per RFC-32 §D1.
+    /// Closed file-kind discriminant per `WorkspaceModel` file scan.
     pub kind: FileKind,
     /// Language token inferred from the file extension. `None` for
     /// binaries or unknown extensions.
@@ -40,7 +40,7 @@ pub struct DiscoveredFile {
 
 impl DiscoveredFile {
     /// Decode the carried bytes as UTF-8 with U+FFFD replacement per
-    /// RFC-32 §D1. Returns an empty string for binary files.
+    /// `WorkspaceModel` file scan. Returns an empty string for binary files.
     pub fn text(&self) -> String {
         self.bytes.as_ref().map_or_else(String::new, |b| String::from_utf8_lossy(b).into_owned())
     }
@@ -55,15 +55,15 @@ pub struct DiscoveryOutput {
     pub symlinks: Vec<Symlink>,
 }
 
-/// First 8 `KiB` window scanned for NUL bytes per RFC-32 §D1.
+/// First 8 `KiB` window scanned for NUL bytes per `WorkspaceModel` file scan.
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 
 /// Walk the consumer project tree rooted at `project_dir`.
 ///
 /// When `roots` is empty the walk starts at `project_dir`; otherwise
 /// every entry is treated as a project-relative path under
-/// `project_dir` per RFC-32 §D2. Walk-level failures (entry iteration
-/// errors) are swallowed silently in v1 — RFC-32 §D5 reserves the
+/// `project_dir` per lint scope resolution. Walk-level failures (entry iteration
+/// errors) are swallowed silently in v1 — reserved-hint diagnostics reserves the
 /// `index.warning` finding for S7's hint runner; the walk only emits
 /// an `Err` when the project root itself is missing.
 ///
@@ -100,7 +100,7 @@ pub fn discover(
         .follow_links(false)
         .standard_filters(true)
         // `.specify/` is hidden by default; the consumer profile
-        // walks it explicitly per RFC-32 §D1.
+        // walks it explicitly per `WorkspaceModel` file scan.
         .hidden(false)
         // `.gitignore` must be honoured even when the consumer project
         // is not itself a git repo (e.g. inside a tempdir).
@@ -183,7 +183,7 @@ fn project_relative(project_dir: &Path, path: &Path) -> Option<String> {
     if MAIN_SEPARATOR == '/' { Some(s.to_owned()) } else { Some(s.replace(MAIN_SEPARATOR, "/")) }
 }
 
-/// RFC-32 §D1 binary-file detection: NUL byte anywhere in the first
+/// `WorkspaceModel` file scan binary-file detection: NUL byte anywhere in the first
 /// `BINARY_SNIFF_BYTES` window.
 fn classify(bytes: &[u8]) -> (FileKind, Option<Vec<u8>>) {
     let window = &bytes[..bytes.len().min(BINARY_SNIFF_BYTES)];
@@ -194,7 +194,7 @@ fn classify(bytes: &[u8]) -> (FileKind, Option<Vec<u8>>) {
     }
 }
 
-/// RFC-32 §D1 default include globs. A file passes the include filter
+/// `WorkspaceModel` file scan default include globs. A file passes the include filter
 /// when its extension is in the language table OR it lives under
 /// `.specify/`. Manual matching avoids pulling in a glob engine for a
 /// single brace-expansion.
@@ -208,7 +208,7 @@ fn is_included(relative: &str) -> bool {
     INCLUDE_EXTENSIONS.contains(&ext)
 }
 
-/// Language inference per RFC-32 §D1. `None` is returned for
+/// Language inference per `WorkspaceModel` file scan. `None` is returned for
 /// extensions outside the documented set (the caller treats unknown
 /// files as language-agnostic).
 fn infer_language(relative: &str) -> Option<String> {

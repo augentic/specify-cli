@@ -1,4 +1,4 @@
-//! workflow §D2 — per-Evidence, per-claim-kind authority overrides.
+//! Evidence authority override — per-Evidence, per-claim-kind authority overrides.
 //!
 //! The default `intent > documentation > behaviour` ordering stays
 //! per-Evidence via the existing `authority:` field; this module adds
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 /// `schemas/evidence.schema.json#/$defs/authorityClass`.
 ///
 /// workflow §Authority hierarchy fixes the default ordering as
-/// `intent > documentation > behaviour`; workflow §D2 lifts authority
+/// `intent > documentation > behaviour`; Evidence authority override lifts authority
 /// from per-Evidence to per-(Evidence, claim-kind) without widening
 /// the class set. New classes still require a workflow contract update.
 #[derive(
@@ -38,7 +38,7 @@ pub enum AuthorityClass {
 /// Kept byte-identical with the schema enum so that
 /// [`AuthorityOverrides`] and the per-slice authority override map
 /// in `plan.yaml.slices[]` validate against the same closed set.
-/// `example` (workflow §D1) is the runtime capture kind emitted by the
+/// `example` (runtime capture claim) is the runtime capture kind emitted by the
 /// `captures` source adapter.
 #[derive(
     Debug,
@@ -77,7 +77,7 @@ pub enum ClaimKind {
     Diagram,
     /// `kind: contract` — interface contract excerpt.
     Contract,
-    /// `kind: example` — runtime capture (workflow §D1, `captures`).
+    /// `kind: example` — runtime capture (runtime capture claim, `captures`).
     Example,
     /// `kind: excerpt` — code excerpt.
     Excerpt,
@@ -225,7 +225,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------
-    // workflow §D3 resolution-order pin.
+    // per-slice authority override resolution-order pin.
     //
     // The CLI does not yet ship a synthesis resolver — `/spec:refine`
     // is still skill-driven and the in-Rust resolution helper lives
@@ -245,11 +245,11 @@ mod tests {
     //    above the others.
     // 4. Same-effective-class tie → `Status: conflict` with no winner.
     //
-    // Documented gap: when the resolver ships in this crate (RFC-27
+    // Documented gap: when the resolver ships in this crate (authority and fusion contract
     // Phase 3 follow-up), replace this micro-resolver with the
     // production code path and keep the four scenarios as black-box
     // assertions against it. The vocabulary (`PerSlice`, `PerEvidence`,
-    // `Document`, `Conflict`) matches RFC-27's resolution-order step
+    // `Document`, `Conflict`) matches authority and fusion contract's resolution-order step
     // names verbatim.
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum Resolved {

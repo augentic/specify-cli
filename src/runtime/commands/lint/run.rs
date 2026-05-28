@@ -1,21 +1,21 @@
-//! `specrun lint run` handler — RFC-32 §"`specrun lint` (Phase 2 CLI)".
+//! `specrun lint run` handler.
 //!
 //! Composes the standards-layer pipeline:
 //!
-//! 1. Resolve `--slice` / `--artifact` scope per RFC-32 §D2.
+//! 1. Resolve `--slice` / `--artifact` scope per lint scope resolution.
 //! 2. Build the resolved codex (`specify_lints::build_resolved_rules`)
 //!    using the same artifact / language filters as the indexer so
 //!    the resolved rule set and the scan set agree.
 //! 3. Build the consumer `WorkspaceModel` (`lint::index::build`).
 //! 4. Evaluate executable deterministic hints per rule, skipping
 //!    `lint-mode: model-assisted` rules.
-//! 5. Mint the §D5 reserved-hint summary finding.
-//! 6. Render the RFC-28 envelope via `lint::diagnostics::render`.
+//! 5. Mint the reserved-hint diagnostics reserved-hint summary finding.
+//! 6. Render the `LintResult` envelope via `lint::diagnostics::render`.
 //! 7. Decide exit: any `critical | important` finding lands the
-//!    process on `Exit::ValidationFailed` (code 2) per §D8.
+//!    process on `Exit::ValidationFailed` (code 2) per lint exit mapping.
 //!
 //! Every failure path routes through a closed `Error` variant so
-//! `Exit::from(&Error)` lands on the §D8 exit-code map. The mapping
+//! `Exit::from(&Error)` lands on the lint exit mapping exit-code map. The mapping
 //! tables live next to the helpers (`map_index_error`,
 //! `map_hint_error`, `map_render_error`) and are pinned by table-driven
 //! tests in `run_tests.rs`.
@@ -46,11 +46,11 @@ use crate::runtime::context::Ctx;
 ///
 /// # Errors
 ///
-/// Closed mapping per RFC-32 §D8 — see [`map_index_error`],
+/// Closed mapping per lint exit mapping — see [`map_index_error`],
 /// [`map_hint_error`], [`map_render_error`], and `map_resolve_error`.
 #[expect(
     clippy::too_many_arguments,
-    reason = "Arguments mirror the closed RFC-32 §`specrun lint` (Phase 2 CLI) set; the handler threads the clap-derived surface verbatim through to ResolveInputs and lint::index::build."
+    reason = "Arguments mirror the closed `specrun lint run` argument set; the handler threads the clap-derived surface verbatim through to ResolveInputs and lint::index::build."
 )]
 pub fn run(
     ctx: &Ctx, rules_root: Option<&Path>, target: &str, sources: &[String], slice: Option<&str>,
@@ -117,14 +117,14 @@ pub fn run(
     decide_exit(&result)
 }
 
-/// Resolve the rules root per RFC-32 §D7.
+/// Resolve the rules root per rules-root resolution.
 ///
 /// Order: explicit `--rules-root` (clap-bound to `RULES_ROOT` env)
 /// → `<project_dir>/.specify/cache/rules/` when present → defer to
 /// `build_resolved_rules`, which performs the monorepo probe and
 /// surfaces `rules-root-required` when every step misses.
 ///
-/// The §D7 step that walks a bundled tree alongside the binary
+/// The rules-root resolution step that walks a bundled tree alongside the binary
 /// install is intentionally not implemented in v1; consumer projects
 /// pin a codex via `--rules-root` or the project cache rung.
 fn resolve_rules_root(ctx: &Ctx, flag: Option<&Path>) -> Option<PathBuf> {
@@ -136,7 +136,7 @@ fn resolve_rules_root(ctx: &Ctx, flag: Option<&Path>) -> Option<PathBuf> {
 }
 
 /// Compose the `artifact_paths` vector handed to both the resolver
-/// and the indexer per RFC-32 §D2.
+/// and the indexer per lint scope resolution.
 ///
 /// - `--slice <name>` contributes every path listed under the slice's
 ///   `tasks.md` `Touches:` / `Produces:` headings plus the slice
@@ -208,7 +208,7 @@ fn parse_slice_tasks_paths(text: &str) -> Vec<PathBuf> {
 
 /// Serialise the model, validate it against the v1 schema, and print
 /// it to stdout. Validation failure is an internal bug — wrapped as
-/// `Error::Diag` (exit 1) per §D8.
+/// `Error::Diag` (exit 1) per lint exit mapping.
 fn emit_dump_model(model: &WorkspaceModel) -> Result<()> {
     validate_serialisable(
         model,
@@ -226,7 +226,7 @@ fn emit_dump_model(model: &WorkspaceModel) -> Result<()> {
     Ok(())
 }
 
-/// Decide exit per RFC-32 §D8 last row: any `critical | important`
+/// Decide exit per lint exit mapping last row: any `critical | important`
 /// finding lands `Exit::ValidationFailed` (code 2); everything else
 /// returns `Ok(())` (code 0).
 fn decide_exit(result: &LintResult) -> Result<()> {
@@ -254,7 +254,7 @@ fn decide_exit(result: &LintResult) -> Result<()> {
     })
 }
 
-/// Map a `lint::index::IndexError` onto the §D8 exit-code table.
+/// Map a `lint::index::IndexError` onto the lint exit mapping exit-code table.
 ///
 /// | `IndexError`                | `Error` variant                            | Exit |
 /// |-----------------------------|--------------------------------------------|------|
@@ -285,7 +285,7 @@ fn map_index_error(err: IndexError) -> Error {
     }
 }
 
-/// Map a `lint::eval::HintError` onto the §D8 exit-code table.
+/// Map a `lint::eval::HintError` onto the lint exit mapping exit-code table.
 ///
 /// | `HintError`        | `Error` variant                                  | Exit |
 /// |--------------------|--------------------------------------------------|------|
@@ -359,7 +359,7 @@ fn map_hint_error(rule: &ResolvedRule, err: HintError) -> Error {
     }
 }
 
-/// Map a `lint::diagnostics::RenderError` onto the §D8 exit-code
+/// Map a `lint::diagnostics::RenderError` onto the lint exit mapping exit-code
 /// table. Both variants are internal bugs (the typed envelope cannot
 /// legally fail v1 schema validation or JSON serialisation); the
 /// mapping exists so the failure surface is uniform.
@@ -389,7 +389,7 @@ fn map_render_error(err: RenderError) -> Error {
 /// trait to the runtime's declared WASI tool inventory.
 ///
 /// Owns the inventory built from `project.yaml` + the active target
-/// adapter's sidecar manifest so the §D4 `is_declared` / `run`
+/// adapter's sidecar manifest so the `kind: tool` evaluator contract `is_declared` / `run`
 /// contract resolves without re-walking on every hint. `run`
 /// delegates to [`WasiRunner::run_captured`] which mirrors
 /// [`WasiRunner::run`] but redirects stdout / stderr into capped

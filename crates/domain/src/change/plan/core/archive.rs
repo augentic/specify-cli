@@ -1,5 +1,5 @@
 //! Archival move of `plan.yaml` (plus optional working directory and
-//! operator brief) into the archive tree. See `rfcs/rfc-2-execution.md`
+//! operator brief) into the archive tree.
 //! §"`specrun plan archive`" for the preflight + execute flow.
 
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ impl Plan {
     /// working directory `.specify/plans/<plan.name>/` and the
     /// operator brief (`change.md`) — into the archive directory.
     ///
-    /// Semantics (see `rfc-2-execution.md` §L1.G, §L3.B, and §"`specify
+    /// Archive semantics
     /// change plan archive`"):
     ///
     /// 1. Load the plan at `path`.

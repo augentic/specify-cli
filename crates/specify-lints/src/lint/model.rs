@@ -1,9 +1,9 @@
-//! `WorkspaceModel` DTOs per RFC-32 §"`WorkspaceModel`" and
+//! `WorkspaceModel` DTOs per the standards-layer contract §"`WorkspaceModel`" and
 //! §"Core entity families (v1)".
 //!
 //! The model is the deterministic, versioned snapshot of project
-//! facts the RFC-32 indexer produces once per `specrun lint`
-//! invocation. Per RFC-32 §"Persistence and query (v1 decision)" it
+//! facts the `specrun lint` indexer produces once per run
+//! invocation. Per the standards-layer contract §"Persistence and query (v1 decision)" it
 //! is an internal execution artifact: **not** persisted under
 //! `.specify/` and **not** an operator-facing Specify artifact in
 //! v1. `.specify/cache/workspace-model.v1.json` and
@@ -11,8 +11,8 @@
 //! implementation behind them.
 //!
 //! The DTOs round-trip through `specify_schema::WORKSPACE_MODEL_JSON_SCHEMA`
-//! per RFC-32 §"Schema location". The envelope's `version: 1`
-//! discriminant pins the wire shape; per RFC-32 §"`WorkspaceModel`"
+//! per the standards-layer contract §"Schema location". The envelope's `version: 1`
+//! discriminant pins the wire shape; per the standards-layer contract §"`WorkspaceModel`"
 //! breaking indexer output bumps the version.
 //!
 //! Wire shape notes:
@@ -29,7 +29,7 @@
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "RFC-32 mandates the `WorkspaceModel` envelope name; the surrounding `model` module is the navigational home for the DTO layer per the §\"Library layout\" sketch."
+    reason = "The public schema uses the `WorkspaceModel` envelope name; the surrounding `model` module is the navigational home for the DTO layer."
 )]
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -40,7 +40,7 @@ use crate::rules::Origin;
 /// Type-level pin of the `WorkspaceModel` envelope version.
 ///
 /// Serialises to the integer `1` and refuses to deserialise any
-/// other value per RFC-32 §"`WorkspaceModel`". Modelled as a unit
+/// other value per the standards-layer contract §"`WorkspaceModel`". Modelled as a unit
 /// struct so the [`Default`] / [`Eq`] / [`Hash`] / [`Ord`]
 /// derivations propagate to [`WorkspaceModel`] without further
 /// plumbing.
@@ -66,19 +66,19 @@ impl<'de> Deserialize<'de> for WorkspaceModelVersion {
     }
 }
 
-/// Closed file-kind discriminant per RFC-32 §D1. `binary` when the
+/// Closed file-kind discriminant per `WorkspaceModel` file scan. `binary` when the
 /// first 8 `KiB` of the file contains a `NUL` byte; otherwise `text`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FileKind {
     /// Decoded as UTF-8 text by the indexer (replacement bytes
-    /// allowed per RFC-32 §D1).
+    /// allowed per `WorkspaceModel` file scan).
     Text,
     /// Treated as opaque bytes; regex hints skip files of this kind.
     Binary,
 }
 
-/// Closed adapter-axis discriminant per RFC-32 §"Core entity
+/// Closed adapter-axis discriminant per the standards-layer contract §"Core entity
 /// families (v1)". Matches the on-disk parent directory under
 /// `adapters/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -90,11 +90,11 @@ pub enum AdapterAxis {
     Targets,
 }
 
-/// Closed scan-profile discriminant per RFC-32 §"`WorkspaceModel`"
+/// Closed scan-profile discriminant per the standards-layer contract §"`WorkspaceModel`"
 /// extraction inputs.
 ///
 /// `consumer` is the only Phase 2 profile. `framework` is reserved
-/// for RFC-34; the indexer in S6 will refuse it. The variant exists
+/// for a future framework scan; the v1 indexer refuses it. The variant exists
 /// here so the v1 schema covers both names without execution.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
@@ -105,16 +105,16 @@ pub enum ScanProfile {
     /// Phase 2.
     #[default]
     Consumer,
-    /// Framework repo scan; reserved for RFC-34.
+    /// Framework repo scan; reserved for a future framework scan.
     Framework,
 }
 
-/// `file` fact per RFC-32 §"Core entity families (v1)" — produced
+/// `file` fact per the `WorkspaceModel` entity families — produced
 /// by the filesystem walk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct File {
-    /// Project-relative path with forward slashes per RFC-32
+    /// Project-relative path with forward slashes per the standards-layer contract
     /// §"Stability".
     pub path: String,
     /// Closed file-kind discriminant.
@@ -129,7 +129,7 @@ pub struct File {
     pub sha256: Option<String>,
 }
 
-/// `frontmatter` fact per RFC-32 §"Core entity families (v1)" —
+/// `frontmatter` fact per the `WorkspaceModel` entity families —
 /// markdown `---` block extracted then YAML-parsed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -138,7 +138,7 @@ pub struct Frontmatter {
     /// came from.
     pub path: String,
     /// Optional schema id the frontmatter declares (matches the
-    /// registered-schema token shape from §D3).
+    /// registered-schema token shape from the registered-schema token shape).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema_id: Option<String>,
     /// Parsed YAML field map. Modelled as a [`serde_json::Map`] so
@@ -147,7 +147,7 @@ pub struct Frontmatter {
     pub fields: JsonMap<String, JsonValue>,
 }
 
-/// `markdown_section` fact per RFC-32 §"Core entity families (v1)"
+/// `markdown_section` fact per the `WorkspaceModel` entity families
 /// — markdown structure pass.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -169,7 +169,7 @@ pub struct MarkdownSection {
     pub body_line_count: u32,
 }
 
-/// `markdown_link` fact per RFC-32 §"Core entity families (v1)" —
+/// `markdown_link` fact per the `WorkspaceModel` entity families —
 /// link scan with fence/comment stripping.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -189,8 +189,8 @@ pub struct MarkdownLink {
     pub resolves: Option<bool>,
 }
 
-/// `symlink` fact per RFC-32 §"Core entity families (v1)".
-/// Symlinks are recorded but not traversed per §D1.
+/// `symlink` fact per the `WorkspaceModel` entity families.
+/// Symlinks are recorded but not traversed by the file scan contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Symlink {
@@ -203,7 +203,7 @@ pub struct Symlink {
     pub broken: bool,
 }
 
-/// `skill` fact per RFC-32 §"Core entity families (v1)" —
+/// `skill` fact per the `WorkspaceModel` entity families —
 /// extracted from `plugins/**/SKILL.md`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -219,7 +219,7 @@ pub struct Skill {
     pub frontmatter_ref: String,
 }
 
-/// `adapter_manifest` fact per RFC-32 §"Core entity families (v1)"
+/// `adapter_manifest` fact per the `WorkspaceModel` entity families
 /// — extracted from `adapters/{sources,targets}/**/adapter.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -236,7 +236,7 @@ pub struct AdapterManifest {
     pub version: Option<String>,
 }
 
-/// `marketplace_entry` fact per RFC-32 §"Core entity families (v1)"
+/// `marketplace_entry` fact per the `WorkspaceModel` entity families
 /// — extracted from `.cursor-plugin/marketplace.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -248,8 +248,8 @@ pub struct MarketplaceEntry {
     pub path_in_manifest: String,
 }
 
-/// `rule_index` fact per RFC-32 §"Core entity families (v1)" —
-/// rules tree discovery (reuses the RFC-28 parser).
+/// `rule_index` fact per the `WorkspaceModel` entity families —
+/// rules tree discovery (reuses the rule frontmatter parser).
 ///
 /// Named `RuleIndexEntry` rather than `Rule` so the entity-fact
 /// shape does not collide with the parsed-frontmatter
@@ -257,12 +257,12 @@ pub struct MarketplaceEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct RuleIndexEntry {
-    /// Rule id (matches the RFC-28 codex-rule schema's `id`
+    /// Rule id (matches the rule schema's `id`
     /// regex).
     pub rule_id: String,
     /// Project-relative path of the rule markdown file.
     pub path: String,
-    /// Which rules tree contributed the rule. Reuses the RFC-28
+    /// Which rules tree contributed the rule. Reuses the rules contract
     /// [`crate::rules::Origin`] enum so resolver and review surfaces
     /// share one type.
     pub origin: Origin,
@@ -271,7 +271,7 @@ pub struct RuleIndexEntry {
     pub frontmatter_ref: String,
 }
 
-/// `text_match` fact per RFC-32 §"Core entity families (v1)" —
+/// `text_match` fact per the `WorkspaceModel` entity families —
 /// optional precomputed regex index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -287,10 +287,10 @@ pub struct TextMatch {
     pub pattern_id: String,
 }
 
-/// v1 `WorkspaceModel` envelope per RFC-32 §"`WorkspaceModel`" and
+/// v1 `WorkspaceModel` envelope per the standards-layer contract §"`WorkspaceModel`" and
 /// §"Schema location".
 ///
-/// Important: per RFC-32 §"Persistence and query (v1 decision)" the
+/// Important: per the standards-layer contract §"Persistence and query (v1 decision)" the
 /// model is **not** persisted under `.specify/` and is **not** an
 /// operator-facing Specify artifact in v1. v1 ships
 /// `specrun lint --dump-model` only;
@@ -303,7 +303,7 @@ pub struct TextMatch {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceModel {
-    /// Version discriminant pinned to `1` per RFC-32
+    /// Version discriminant pinned to `1` per the standards-layer contract
     /// §"`WorkspaceModel`".
     pub version: WorkspaceModelVersion,
     /// Scan root; project root for `consumer`, framework checkout
@@ -312,7 +312,7 @@ pub struct WorkspaceModel {
     /// Profile selector that controls which extractors run.
     pub scan_profile: ScanProfile,
     /// Optional narrow path list; empty means the indexer performs
-    /// a full profile-specific scan per §D1.
+    /// a full profile-specific scan by the file scan contract.
     pub artifact_paths: Vec<String>,
     /// Optional language tokens supplied by the caller or inferred
     /// from paths.
@@ -326,7 +326,7 @@ pub struct WorkspaceModel {
     pub markdown_sections: Vec<MarkdownSection>,
     /// `markdown_link` facts from the fence-aware link scan.
     pub markdown_links: Vec<MarkdownLink>,
-    /// `symlink` facts; recorded but not traversed per §D1.
+    /// `symlink` facts; recorded but not traversed by the file scan contract.
     pub symlinks: Vec<Symlink>,
     /// `skill` facts from `plugins/**/SKILL.md`.
     pub skills: Vec<Skill>,

@@ -38,7 +38,7 @@ use crate::validate::error::VectisError;
 ///    against the discovered manifests' id sets. Unresolved
 ///    references become composition-mode errors with
 ///    JSON-Pointer-shaped paths.
-/// 5. **Catalog cross-reference** (RFC-31 D5/D6) — when
+/// 5. **Catalog cross-reference** (component catalog contract) — when
 ///    `.specify/design-system/components.yaml` is discoverable,
 ///    every `component: <slug>` in the composition must resolve to
 ///    a `confirmed` catalog entry (rejected or missing entries are
@@ -131,7 +131,7 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
                 resolve_asset_references(&instance, &assets_value, &mut errors);
             }
 
-            // Catalog cross-reference (RFC-31 D5/D6). When the
+            // Catalog cross-reference (component catalog contract). When the
             // project-level component catalog exists, every
             // `component: <slug>` in the composition must resolve to
             // a confirmed entry and every confirmed entry should be
@@ -463,7 +463,7 @@ fn build_node_skeleton(node: &Value) -> Skeleton {
     if key == "group" { build_group_skeleton(val) } else { Skeleton::Item(key.clone()) }
 }
 
-// ── Catalog parsing (RFC-31 D5/D6) ────────────────────────────────
+// ── Catalog parsing (component catalog contract) ────────────────────────────────
 
 /// Read and parse the component catalog with explicit error reporting.
 /// Unlike `parse_yaml_file` (which returns `None` silently because its
@@ -485,7 +485,7 @@ fn parse_catalog_file(path: &Path) -> std::result::Result<Value, String> {
     })
 }
 
-// ── Catalog cross-reference (RFC-31 D5/D6) ────────────────────────
+// ── Catalog cross-reference (component catalog contract) ────────────────────────
 
 /// Cross-reference every `component: <slug>` in the composition
 /// against the operator-curated component catalog.

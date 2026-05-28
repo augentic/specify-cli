@@ -33,11 +33,11 @@ pub(super) fn add(
         check_project(&ctx.project_dir, proj)?;
     }
 
-    // workflow §D6 — resolve `--sources <key>=<alias>` to the
+    // discovery alias contract — resolve `--sources <key>=<alias>` to the
     // canonical candidate `id` before persisting; the on-disk
     // `plan.yaml.slices[].sources[].candidate` always carries the
     // canonical id. Absence of `discovery.md` short-circuits to the
-    // legacy (verbatim) path so existing tests and pre-RFC-27
+    // legacy (verbatim) path so existing tests and pre-authority and fusion contract
     // projects continue to work.
     let discovery = load_discovery(ctx.layout())?;
     let sources = bindings_from_args(sources, name, discovery.as_ref())?;

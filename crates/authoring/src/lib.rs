@@ -15,9 +15,9 @@
 //!   plumbing (`compile_schema`, `validate_value`,
 //!   `validate_serialisable`, `read_yaml_as_json`). The codex
 //!   predicates consume the canonical schema through this crate
-//!   directly — see [DECISIONS.md] for the long-form RFC-32 rationale.
+//!   directly — see [DECISIONS.md] for the long-form standards-layer rationale.
 //! - [`specify_lints`] — the standards-layer crate providing the typed
-//!   `Rule` DTO and the RFC-28 codex parser / resolver / finding
+//!   `Rule` DTO and the rules parser / resolver / finding
 //!   validator that the codex-shape predicates depend on.
 //!
 //! [DECISIONS.md]: https://github.com/augentic/specify-cli/blob/main/DECISIONS.md

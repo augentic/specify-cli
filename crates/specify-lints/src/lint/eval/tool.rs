@@ -1,4 +1,4 @@
-//! `kind: tool` evaluator per RFC-32 §D4.
+//! `kind: tool` evaluator per `kind: tool` evaluator contract.
 //!
 //! Hint `value` is the declared tool name. The runner trait the
 //! evaluator is plumbed with — [`ToolRunner`] — defers WASI host
@@ -10,16 +10,16 @@
 //! v1 runs the tool once per candidate file and passes the
 //! candidate's project-relative path as the sole positional argument.
 //! The closed `{artifact}` / `{project_dir}` / `{rule_id}` placeholder
-//! set named in the RFC body cannot be expanded in v1 because the
+//! set named in the contract cannot be expanded in v1 because the
 //! closed [`crate::rules::DeterministicHint`] shape carries no
-//! `args:` field; extending the hint shape is RFC-28's responsibility,
+//! `args:` field; extending the hint shape is the rules schema's responsibility,
 //! not this evaluator's.
 //!
-//! Per §D4:
+//! Per `kind: tool` evaluator contract:
 //!
 //! - Tools the project did not declare emit a single
 //!   `tool.undeclared` finding (severity `important`).
-//! - Successful runs whose stdout is the RFC-28 `LintResult`
+//! - Successful runs whose stdout is the `LintResult`
 //!   envelope OR a single `LintFinding` body fold the tool's
 //!   findings straight into the scan result; the umbrella
 //!   re-stamps `id` and `fingerprint` after applying the §"Evidence
@@ -30,7 +30,7 @@
 //! - Runner-level invocation failures (e.g. WASI host could not
 //!   start the tool) propagate as
 //!   [`super::HintError::ToolInvocation`] for the caller to map to
-//!   the §D8 exit-code table.
+//!   the lint exit mapping exit-code table.
 
 use std::path::{Path, PathBuf};
 

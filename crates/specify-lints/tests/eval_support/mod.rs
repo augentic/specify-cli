@@ -1,4 +1,4 @@
-//! Shared scaffolding for the RFC-32 S7 hint-evaluator integration
+//! Shared scaffolding for the hint-evaluator integration
 //! tests.
 //!
 //! Each `tests/review_hint_*.rs` integration crate `mod`s this file

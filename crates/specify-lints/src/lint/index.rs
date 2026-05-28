@@ -1,18 +1,18 @@
-//! Consumer indexer per RFC-32 §"`WorkspaceModel`" and
-//! §D1 — Consumer scan scope.
+//! Consumer indexer per the standards-layer contract §"`WorkspaceModel`" and
+//! the file scan contract — Consumer scan scope.
 //!
 //! v1 (Phase 2) ships the consumer scan: a `.gitignore`-aware file
 //! walk, per-file extractors that run in parallel via `rayon`, and a
 //! sequential second pass that records symlinks, discovers codex
 //! rules, and resolves cross-file edges. The byte-stable assembly
-//! follows RFC-32 §"Stability": every output collection is sorted by
+//! follows `WorkspaceModel` stability: every output collection is sorted by
 //! its documented sort key before envelope emission so the JSON
 //! serialisation is reproducible irrespective of thread scheduling.
 //!
 //! The umbrella owns the [`build`] entry point and the closed
 //! [`IndexError`] enum the runtime maps to exit codes via
 //! `Exit::from(&Error)`. `scan_profile: framework` is reserved for
-//! RFC-34 and surfaces here as [`IndexError::UnsupportedScanProfile`].
+//! future framework scanning and surfaces here as [`IndexError::UnsupportedScanProfile`].
 
 pub mod discover;
 pub mod files;
@@ -33,13 +33,13 @@ use crate::lint::{
 ///
 /// Per-file extractor failures (malformed YAML frontmatter,
 /// unreadable bytes, etc.) collapse to silent per-file skips in v1;
-/// RFC-32 §D5 reserves the `index.warning` finding for S7's hint
+/// reserved-hint diagnostics reserves the `index.warning` finding for S7's hint
 /// runner. Only conditions the indexer cannot meaningfully recover
 /// from surface as `Err`.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum IndexError {
-    /// `scan_profile: framework` is reserved for RFC-34; v1 supports
+    /// `scan_profile: framework` is reserved for a future framework scan; v1 supports
     /// only [`ScanProfile::Consumer`].
     #[error("unsupported scan profile: {0:?} (v1 supports only `consumer`)")]
     UnsupportedScanProfile(ScanProfile),
@@ -57,7 +57,7 @@ pub enum IndexError {
 ///
 /// When `artifact_paths` is empty the walk roots at `project_dir`;
 /// otherwise each entry becomes a project-relative walk root per
-/// RFC-32 §D2. `languages`, when non-empty, narrows the discovered
+/// lint scope resolution. `languages`, when non-empty, narrows the discovered
 /// file set to extensions whose inferred language token matches one
 /// of the supplied tokens — unknown / binary files are kept so that
 /// symlinks and asset-adjacent files still appear in the model.
@@ -190,7 +190,7 @@ fn is_url_scheme(target: &str) -> bool {
 
 /// Collapse `./` segments and resolve `..` against earlier segments
 /// without touching the filesystem; project-relative paths use
-/// forward slashes per RFC-32 §"Stability".
+/// forward slashes per `WorkspaceModel` stability.
 fn normalise_relative(path: &Path) -> PathBuf {
     let mut out: Vec<std::ffi::OsString> = Vec::new();
     for component in path.components() {

@@ -1,4 +1,4 @@
-//! RFC-28 CH-23 golden tests for `specdev check --format json`.
+//! Golden tests for `specdev check --format json`.
 //!
 //! These tests pin the byte-stable wire envelope emitted by the
 //! `specdev` binary's `--format json` mode (CH-22 plumbing, CH-21
@@ -17,7 +17,7 @@
 //! `tempfile::TempDir`. That path is machine-specific (e.g.
 //! `/private/var/folders/.tmpXXXXXX/...` on macOS,
 //! `/tmp/.tmpXXXXXX/...` on Linux) and would make any golden file
-//! non-portable. Worse, RFC-28's fingerprint algorithm hashes the
+//! non-portable. Worse, the structured lint fingerprint algorithm hashes the
 //! raw path, so a naive prefix-swap on the wire JSON would carry
 //! stale fingerprints that no consumer could re-verify.
 //!

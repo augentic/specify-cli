@@ -48,7 +48,7 @@ pub(super) fn amend(
         parse_slice_pair_args::<ClaimKind>(clear_authority_override, "--clear-authority-override")?;
     let override_clear_all: Vec<String> = clear_authority_overrides.to_vec();
     let plan_path = ctx.layout().plan_path();
-    // workflow §D6 — `--add-alias` / `--remove-alias` mutate
+    // discovery alias contract — `--add-alias` / `--remove-alias` mutate
     // `discovery.md`, NOT `plan.yaml`. We apply them up-front so the
     // updated discovery feeds the subsequent `--sources` rewrite
     // path on the same invocation; the in-memory Discovery is also
@@ -114,7 +114,7 @@ pub(super) fn amend(
             }
 
             // Apply per-slice authority-override mutations. Order is
-            // deterministic per workflow §D3: sets first (later
+            // deterministic per per-slice authority override: sets first (later
             // occurrences win on the same `(slice, kind)`), then
             // single-kind clears, then whole-map clears. The
             // mutations are gathered into journal events as we go so
@@ -133,7 +133,7 @@ pub(super) fn amend(
             // Re-run the orphan-source-key gate after the override
             // mutations: `Plan::amend` validated the pre-mutation
             // state, and `validate_plan` only checks JSON Schema. The
-            // orphan check is the only workflow §D3 gate that fires
+            // orphan check is the only per-slice authority override gate that fires
             // on this code path.
             refuse_orphan_authority_overrides(plan)?;
 

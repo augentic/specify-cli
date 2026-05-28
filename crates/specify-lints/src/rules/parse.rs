@@ -1,4 +1,4 @@
-//! Rule frontmatter parser per RFC-28 §"Codex file shape".
+//! Rule frontmatter parser per the rules contract §"Codex file shape".
 //!
 //! Splits a rule markdown file into YAML frontmatter +
 //! verbatim body, validates the frontmatter against the embedded
@@ -22,7 +22,7 @@
 //!
 //! The canonical schema at `schemas/rules/rule.schema.json` is
 //! the single source of truth for both the runtime resolver and
-//! `specdev check`'s codex-frontmatter predicate (RFC-32 §"Eliminates
+//! `specdev check`'s codex-frontmatter predicate (the vendored codex-rule schema removal
 //! the vendored codex-rule schema"). It carries `snake_case` keys.
 //! Validation runs against the original raw frontmatter, *before* the
 //! `snake_case -> kebab-case` lift, which keeps schema semantics
@@ -32,9 +32,9 @@
 //!
 //! # Out of scope
 //!
-//! No regex compilation. RFC-28 §"Deterministic hints
+//! No regex compilation. The deterministic-hints contract
 //! extensibility" requires the runtime resolver to never compile a
-//! regex it never executes — hint execution is RFC-32 territory
+//! regex it never executes — hint execution belongs to `specrun lint`
 //! (CH-13 +). Applicability filtering, deprecation filtering, and
 //! stable ordering are CH-13 / CH-14.
 
@@ -48,7 +48,7 @@ use specify_schema::validate_value;
 use super::Rule;
 
 /// Canonical codex-rule frontmatter schema, also exposed at
-/// [`specify_schema::RULE_JSON_SCHEMA`]. Per RFC-32
+/// [`specify_schema::RULE_JSON_SCHEMA`]. Per the standards-layer contract
 /// §"Eliminates the vendored codex-rule schema", this is the single
 /// source of truth — `specdev check`'s codex predicate compiles the
 /// same constant via `specify-authoring`.
@@ -208,13 +208,13 @@ mod tests {
     const DOCUMENTATION_VERBATIM_PRESERVATION: &str =
         include_str!("../../tests/fixtures/rules/documentation-verbatim-preservation.md");
 
-    /// Real shared `UNI-014` rule (RFC-28 §Codex file shape worked
+    /// Real shared `UNI-014` rule (rule file shape worked
     /// example). Frontmatter fields land in the typed shape and the
     /// body carries the policy headings verbatim. The fixture has a
     /// blank line between the closing `---` and `## Rule`, so the
     /// body opens with that preserved blank — only the single
     /// newline immediately after the delimiter is stripped, per
-    /// RFC body-fidelity rules.
+    /// contract-fidelity rules.
     #[test]
     fn parses_hardcoded_configuration_fixture() {
         let rule = parse_rule(HARDCODED_CONFIGURATION).expect("parses");
@@ -226,7 +226,7 @@ mod tests {
             "body must preserve the blank line before '## Rule', got: {:?}",
             &rule.body[..rule.body.len().min(40)]
         );
-        // RFC-28 §Codex file shape: body carries the documented
+        // Rule file shape: body carries the documented
         // section headings verbatim.
         assert!(rule.body.contains("\n## Look For\n"));
         assert!(rule.body.contains("\n## Spec Guidance\n"));
@@ -298,9 +298,9 @@ Body.
     }
 
     /// Body bytes are preserved verbatim, including code fences
-    /// containing `---` separators and inner blank lines. RFC-28
-    /// §Codex file shape: reviewers consume the body as policy
-    /// text, so any byte-level edit here is a correctness break.
+    /// containing `---` separators and inner blank lines. Reviewers
+    /// consume the body as policy text, so any byte-level edit here
+    /// is a correctness break.
     #[test]
     fn body_is_preserved_verbatim_with_code_fences() {
         let content = "---\n\
@@ -385,10 +385,10 @@ Trailing line.\n";
         }
     }
 
-    /// RFC-28 §Deterministic hints extensibility: "the runtime
+    /// Deterministic-hints extensibility: "the runtime
     /// resolver MUST NOT compile a regex it never executes". A hint
     /// with an unparseable regex pattern MUST still parse — regex
-    /// compilation is RFC-32 / CH-13 territory.
+    /// compilation belongs to the hint evaluator.
     #[test]
     fn invalid_regex_hint_value_still_parses() {
         let content = r"---
@@ -409,7 +409,7 @@ deterministic_hints:
         assert_eq!(hints[0].value, "[invalid regex)(");
     }
 
-    /// RFC-32 reserved hint kinds (`set-coverage`, etc.) round-trip
+    /// Reserved hint kind hint kinds (`set-coverage`, etc.) round-trip
     /// successfully even though no execution semantics exist for
     /// them yet.
     #[test]
@@ -418,7 +418,7 @@ deterministic_hints:
 id: UNI-014
 title: Reserved hint kinds
 severity: optional
-trigger: RFC-32 reserved hint kinds must shape-validate without execution semantics.
+trigger: Reserved hint kind hint kinds must shape-validate without execution semantics.
 deterministic_hints:
   - kind: set-coverage
     value: 'rule.id'

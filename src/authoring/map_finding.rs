@@ -1,9 +1,9 @@
-//! CH-21: map a `specify_authoring::Finding` to a structured RFC-28
+//! Map a `specify_authoring::Finding` to a structured lint finding
 //! [`LintFinding`].
 //!
 //! This module deliberately lives at the binary boundary
 //! (`src/authoring/map_finding.rs`) alongside CH-20's
-//! [`crate::authoring::severity`]. Per RFC-28 §"Relationship to
+//! [`crate::authoring::severity`]. Per the rules contract §"Relationship to
 //! framework authoring", the `specify-authoring` library MUST NOT
 //! depend on `specify-domain`; the structured-finding mapper therefore
 //! has to live in the binary crate so the `specdev` JSON export can
@@ -47,9 +47,9 @@
 //! tooling can recover the imperative id without re-running the
 //! check.
 //!
-//! TODO(RFC-32): once authoring rule families migrate to codex
+//! TODO(standards-layer): once authoring rule families migrate to codex
 //! `FRAME-NNN` ids (the declarative framework-rule namespace
-//! introduced by RFC-32), this mapper should set
+//! introduced by the standards-layer split), this mapper should set
 //! `rule_id: Some("FRAME-NNN")` and drop the `[...]` title prefix.
 
 use specify_authoring::finding::{Finding, Location};
@@ -59,7 +59,7 @@ use specify_tool::sha256_hex;
 
 use crate::authoring::severity::severity_for;
 
-/// 16 `KiB` cap on the serialised evidence object per RFC-28 (mirror
+/// 16 `KiB` cap on the serialised evidence object per the rules contract (mirror
 /// of `specify_lints::finding::EVIDENCE_MAX_BYTES`, kept
 /// local so the mapper does not import the validator).
 const EVIDENCE_MAX_BYTES: usize = 16 * 1024;

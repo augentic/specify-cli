@@ -1,4 +1,4 @@
-//! Integration tests for workflow §D6 — candidate aliases on
+//! Integration tests for discovery alias contract — candidate aliases on
 //! `<project_dir>/discovery.md`.
 //!
 //! Covers the three operator-facing surfaces:
@@ -59,7 +59,7 @@ fn seed_discovery(project: &Project, body: &str) {
 
 #[test]
 fn plan_add_resolves_alias_to_canonical_id() {
-    // workflow §D6 — `--sources legacy=password-reset` (an alias)
+    // discovery alias contract — `--sources legacy=password-reset` (an alias)
     // must persist as `--sources legacy=password-reset-request` (the
     // canonical id) on disk.
     let project = Project::init();
@@ -128,7 +128,7 @@ fn plan_add_structured_form_persists_canonical_id_when_slice_differs() {
 
 #[test]
 fn plan_add_unknown_candidate_in_discovery_refused() {
-    // workflow §D6 — when `discovery.md` exists, an unresolvable
+    // discovery alias contract — when `discovery.md` exists, an unresolvable
     // candidate token refuses at exit 2 with
     // `discovery-candidate-unknown`.
     let project = Project::init();
@@ -162,7 +162,7 @@ fn plan_add_unknown_candidate_in_discovery_refused() {
 #[test]
 fn plan_add_without_discovery_md_skips_alias_resolution() {
     // Legacy backwards-compat: without `discovery.md`, the supplied
-    // candidate value round-trips verbatim. Pre-RFC-27 projects
+    // candidate value round-trips verbatim. Pre-authority and fusion contract projects
     // continue to work unchanged.
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);
@@ -190,7 +190,7 @@ fn plan_add_without_discovery_md_skips_alias_resolution() {
 
 #[test]
 fn plan_amend_add_alias_mutates_discovery_md() {
-    // workflow §D6 — `--add-alias` appends to `discovery.md` (NOT to
+    // discovery alias contract — `--add-alias` appends to `discovery.md` (NOT to
     // `plan.yaml`). The mutation round-trips through the parser
     // unchanged.
     let project = Project::init();
@@ -292,7 +292,7 @@ fn plan_amend_remove_alias_is_idempotent() {
         ])
         .assert()
         .success();
-    // Second remove: no-op (idempotent per workflow §D6).
+    // Second remove: no-op (idempotent per discovery alias contract).
     specrun()
         .current_dir(project.root())
         .args([
@@ -314,7 +314,7 @@ fn plan_amend_remove_alias_is_idempotent() {
 
 #[test]
 fn plan_amend_add_alias_then_resolves_in_same_invocation() {
-    // workflow §D6 — operator can author an alias and consume it on
+    // discovery alias contract — operator can author an alias and consume it on
     // a downstream `--sources` rewrite in the same invocation. The
     // amend writes discovery.md before threading the updated
     // document into the binding resolution path.
@@ -352,7 +352,7 @@ fn plan_amend_add_alias_then_resolves_in_same_invocation() {
 
 #[test]
 fn slice_validate_surfaces_discovery_alias_collision() {
-    // workflow §D6 — slice validate is the read-only gate that
+    // discovery alias contract — slice validate is the read-only gate that
     // surfaces every alias collision on the project's discovery.md.
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);
@@ -400,7 +400,7 @@ fn slice_validate_surfaces_discovery_alias_collision() {
 
 #[test]
 fn plan_amend_alias_survives_reapplied_discovery() {
-    // workflow §D6 §Acceptance #26-6 — re-enumeration survival.
+    // discovery alias contract §Acceptance #26-6 — re-enumeration survival.
     //
     // The chosen design (see file footer): operator-added aliases
     // live in `discovery.md` itself; re-enumeration is an explicit

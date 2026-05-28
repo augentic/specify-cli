@@ -1,14 +1,12 @@
-//! Markdown frontmatter extractor per RFC-32 §"Core entity families
-//! (v1)".
+//! Markdown frontmatter extractor per the `WorkspaceModel` entity families.
 //!
 //! Splits a markdown file at its leading `---\n…\n---\n` block and
 //! parses the YAML body via `serde_saphyr`. Non-markdown files and
 //! markdown files without a frontmatter block return `None`; YAML
-//! parse failures also collapse to `None` — RFC-32 §D5 reserves the
+//! parse failures also collapse to `None` — reserved-hint diagnostics reserves the
 //! `index.warning` finding for S7's hint runner.
 //!
-//! `schema_id` is left unset in v1: RFC-32 §"Core entity families
-//! (v1)" types it as `Option<String>` but v1 has no shape-inference
+//! `schema_id` is left unset in v1: the `WorkspaceModel` entity families types it as `Option<String>` but v1 has no shape-inference
 //! pass to populate it. Consumers that need to consult the declared
 //! `schema_id` should read the fields map.
 

@@ -1,11 +1,11 @@
 //! Applicability and deprecation filters (CH-13).
 //!
-//! Implements RFC-28 §"Applicability" / §"Path glob semantics" /
+//! Implements rule applicability, path-glob semantics, and
 //! §"Overlay precedence" / §"Resolved Decisions". The CH-12 resolver
 //! discovers every rule visible to the export envelope; this module
 //! narrows that pool down to the rules that actually apply to the
 //! caller's slice context, using the inclusive AND-across-dimensions
-//! semantics the RFC mandates.
+//! semantics the rules contract defines.
 //!
 //! # Precedence
 //!
@@ -14,8 +14,7 @@
 //! 1. **Deprecation** — entries whose [`Rule::deprecated`] is
 //!    populated are dropped unless [`ResolveInputs::include_deprecated`]
 //!    is set. Deprecation runs **first** so an `--include-deprecated`
-//!    rule still walks through applicability normally (RFC-28
-//!    §"Overlay precedence": "Export includes every rule that passes
+//!    rule still walks through applicability normally (§"Overlay precedence": "Export includes every rule that passes
 //!    applicability filtering" — `include_deprecated` does not bypass
 //!    applicability).
 //! 2. **Applicability** — a rule with no `applicability` block always
@@ -25,7 +24,7 @@
 //!
 //! # Populated dimension + missing caller input
 //!
-//! RFC-28 §"Applicability" closes the awkward edge case: if the rule
+//! Rule applicability closes the awkward edge case: if the rule
 //! populates a dimension but the caller supplied no matching input, the
 //! rule is **excluded** unless [`ResolveInputs::include_unmatched`] is
 //! set. This module applies that rule per dimension.
@@ -43,15 +42,15 @@
 //!   [`ResolveInputs::languages`]. Missing caller input (empty slice)
 //!   excludes the rule unless `include_unmatched`.
 //! - **`artifacts`** — v1 has no `--artifact-kind` input on
-//!   [`ResolveInputs`]. Per the RFC's closed
+//!   [`ResolveInputs`]. Per the closed
 //!   populated-dimension-without-caller-input rule, any rule that
 //!   populates `applicability.artifacts` is **excluded unless
 //!   `include_unmatched` is set**. This is an honest reflection of v1
-//!   capability; a future RFC may add an explicit `--artifact-kind`
+//!   capability; a future contract may add an explicit `--artifact-kind`
 //!   input, after which `artifact_dimension_matches` would consult it
 //!   the same way `language_dimension_matches` consults `languages`.
 //! - **`paths`** — patterns interpreted by the `glob` crate
-//!   (`glob = "0.3"`). Per RFC-28 §"Path glob semantics
+//!   (`glob = "0.3"`). Per the rules contract §"Path glob semantics
 //!   (`applicability.paths`)": `*` matches a single path segment
 //!   without crossing `/`, `**` matches across segments, and `/` is the
 //!   only separator. Matching is case-sensitive. Caller paths are
@@ -60,7 +59,7 @@
 //!   excludes the rule unless `include_unmatched`.
 //!
 //! Malformed glob patterns are treated as **non-matching** rather than
-//! aborting the resolver. RFC-28 expects `specdev check` to catch
+//! aborting the resolver. `specdev check` catches
 //! authoring bugs in patterns; surfacing a hard error here over a
 //! single first-party typo would be more disruptive than dropping the
 //! rule from the export. A future authoring-check could elevate this to
@@ -80,7 +79,7 @@ use glob::{MatchOptions, Pattern};
 use super::{ResolveInputs, ResolvedRuleEntry};
 use crate::rules::Rule;
 
-/// RFC-28 §"Path glob semantics (`applicability.paths`)": case-sensitive,
+/// Rule path-glob semantics (`applicability.paths`): case-sensitive,
 /// `/` is the only separator, leading dots match literally.
 const PATH_MATCH_OPTIONS: MatchOptions = MatchOptions {
     case_sensitive: true,
@@ -111,7 +110,7 @@ const fn keeps_deprecated(rule: &Rule, include_deprecated: bool) -> bool {
 
 /// `true` when every populated applicability dimension matches.
 ///
-/// A rule with no [`Applicability`] block always passes per RFC-28.
+/// A rule with no [`Applicability`] block always passes per the rules contract.
 fn applicability_matches(rule: &Rule, inputs: &ResolveInputs<'_>) -> bool {
     let Some(applicability) = rule.applicability.as_ref() else {
         return true;
@@ -173,7 +172,7 @@ fn language_dimension_matches(
 ///
 /// v1 [`ResolveInputs`] has no `--artifact-kind` input, so any rule
 /// that populates `applicability.artifacts` lacks caller input by
-/// definition. Per RFC-28 §"Applicability" the populated-without-input
+/// definition. Per the rules contract §"Applicability" the populated-without-input
 /// case excludes the rule unless `include_unmatched` is set. See the
 /// module docs.
 const fn artifact_dimension_matches(
@@ -221,7 +220,7 @@ fn strip_version_suffix(adapter_ref: &str) -> &str {
 }
 
 /// Normalise a caller path to a forward-slash string, dropping any
-/// leading `./`. Matches RFC-28 §"Path glob semantics" which fixes
+/// leading `./`. Matches the rule path-glob semantics, which fix
 /// `/` as the only separator regardless of host OS.
 fn normalise_path(path: &Path) -> String {
     let displayed = path.to_string_lossy();

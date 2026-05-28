@@ -1,6 +1,6 @@
-//! RFC-28 fingerprint and canonical JSON helpers.
+//! structured lint finding fingerprint and canonical JSON helpers.
 //!
-//! The fingerprint algorithm pins the wire format at `v1` per RFC-28
+//! The fingerprint algorithm pins the wire format at `v1` per the rules contract
 //! §"Structured review finding schema" §"Fingerprint algorithm". The
 //! algorithm, exclusion table, and inner / outer SHA-256 framing are
 //! normative — any drift in canonicalization breaks dedup across CI
@@ -68,7 +68,7 @@ use crate::rules::{FindingEvidence, FindingLocation, LintFinding};
 /// Wire-format version embedded into every fingerprint preimage.
 const FINGERPRINT_VERSION: &str = "v1";
 
-/// Compute the RFC-28 fingerprint for `finding`.
+/// Compute the structured lint finding fingerprint for `finding`.
 ///
 /// Returns `sha256:` followed by 64 lowercase hex chars. The
 /// `finding.fingerprint` field is **not** consulted — callers
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(a.len(), "sha256:".len() + 64);
     }
 
-    /// (2) Mutating any RFC-listed producer-only field
+    /// (2) Mutating any producer-only field
     /// (`id`, `title`, `severity`, `confidence`, `status`, `change`,
     /// `slice`, `target-adapter`, `source-adapter`) MUST leave the
     /// fingerprint unchanged.
@@ -328,7 +328,7 @@ mod tests {
         assert_ne!(fingerprint(&mutated), baseline);
     }
 
-    /// Per RFC, `end-line` and `end-column` are NOT part of the
+    /// Per the fingerprint contract, `end-line` and `end-column` are NOT part of the
     /// canonical location. Mutating either MUST NOT change the
     /// fingerprint.
     #[test]
@@ -355,7 +355,7 @@ mod tests {
 
     /// (6) For the `digest` variant: changing `evidence.summary`
     /// MUST change the fingerprint; changing `evidence.sha256` MUST
-    /// NOT (the RFC explicitly hashes `summary`, not `sha256`).
+    /// NOT (the fingerprint hashes `summary`, not `sha256`).
     #[test]
     fn digest_summary_and_sha256_have_distinct_effects() {
         let mut original = sample_finding();

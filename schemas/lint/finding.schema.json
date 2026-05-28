@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json",
   "title": "Specify LintFinding",
-  "description": "Wire shape for a single structured lint finding per RFC-28 §Structured lint finding schema. Shared by deterministic scanners (`specrun lint`), framework JSON export (`specdev check --format json`), target-adapter review briefs, model-assisted scorers, CI annotations, and dashboards. Field names are kebab-case at every nesting level. Producer-local `id` is distinct from the codex `rule-id` — `id` is a stable per-run handle (e.g. `FIND-0001`) and `rule-id` is the durable codex citation (e.g. `UNI-014`). Conditional requirements that JSON Schema cannot express (e.g. `confidence` required for `source: model-assisted`) are enforced producer-side.",
+  "description": "Wire shape for a single structured lint finding for the structured lint finding schema. Shared by deterministic scanners (`specrun lint`), framework JSON export (`specdev check --format json`), target-adapter review briefs, model-assisted scorers, CI annotations, and dashboards. Field names are kebab-case at every nesting level. Producer-local `id` is distinct from the codex `rule-id` — `id` is a stable per-run handle (e.g. `FIND-0001`) and `rule-id` is the durable codex citation (e.g. `UNI-014`). Conditional requirements that JSON Schema cannot express (e.g. `confidence` required for `source: model-assisted`) are enforced producer-side.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -98,7 +98,7 @@
     "fingerprint": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$",
-      "description": "Stable hash of `(rule-id, location, evidence-payload)` per RFC-28 §Structured lint finding schema fingerprint algorithm. Excludes producer-controlled fields (`id`, `title`, `severity`, `confidence`, `status`, `change`, `slice`, `target-adapter`, `source-adapter`)."
+      "description": "Stable hash of `(rule-id, location, evidence-payload)` for the structured lint finding schema fingerprint algorithm. Excludes producer-controlled fields (`id`, `title`, `severity`, `confidence`, `status`, `change`, `slice`, `target-adapter`, `source-adapter`)."
     },
     "status": {
       "type": "string",
@@ -129,7 +129,7 @@
     "kebabName": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*$",
-      "description": "Kebab-case identifier matching slice and plan naming. The RFC does not pin a regex for `slice` / `change`; this kebab shape is consistent with existing Specify naming."
+      "description": "Kebab-case identifier matching slice and plan naming. No cross-artifact regex is pinned for `slice` / `change`; this kebab shape is consistent with existing Specify naming."
     },
     "relativePathPattern": {
       "type": "string",
@@ -145,7 +145,7 @@
         "suggestion",
         "optional"
       ],
-      "description": "Closed RFC-28 severity enum, ordered for sort stability (`critical < important < suggestion < optional`)."
+      "description": "Closed review severity enum, ordered for sort stability (`critical < important < suggestion < optional`)."
     },
     "artifact": {
       "type": "string",
@@ -199,7 +199,7 @@
     },
     "evidence": {
       "type": "object",
-      "description": "Evidence union per RFC-28 §Evidence union. Closed `kind` discriminator with one legal field set per branch. Evidence payloads have a 16 KiB cap after UTF-8 serialization (enforced producer-side, not by this schema). Findings MUST NOT include secrets, full prompts, model transcripts, or full source files.",
+      "description": "Evidence union for structured lint findings. Closed `kind` discriminator with one legal field set per branch. Evidence payloads have a 16 KiB cap after UTF-8 serialization (enforced producer-side, not by this schema). Findings MUST NOT include secrets, full prompts, model transcripts, or full source files.",
       "oneOf": [
         {
           "type": "object",

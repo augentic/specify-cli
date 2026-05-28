@@ -20,14 +20,14 @@ use crate::runtime::context::Ctx;
 ///
 /// Scaffolds `plan.yaml` (workflow §The Plan), then stages every
 /// `--divergence-likely <slice>` value onto the named slice's
-/// `slices[].divergence` field (workflow §D5). The slice MUST already
+/// `slices[].divergence` field (divergence and writer-ownership contract). The slice MUST already
 /// exist in the plan being created — an unknown name short-circuits
 /// with `plan-divergence-likely-unknown-slice` (`Error::Validation`,
 /// exit 2). One `plan.propose.divergence` journal event fires per
 /// applied slice, matching the post-`propose` happy path the
 /// `/spec:plan` skill drives.
 ///
-/// When `--auto-approve` is set (workflow §D7), the plan is constructed
+/// When `--auto-approve` is set (auto-approve Gate-1 contract), the plan is constructed
 /// with `lifecycle: approved` *before* the single atomic
 /// `plan.save` — there is never a transient `lifecycle: pending`
 /// file on disk. The matching `plan.transition.approved` journal
@@ -74,7 +74,7 @@ pub(super) fn create(
     // Re-run the orphan-source-key gate after the override
     // pre-seeding: `Plan::init` ran no validation against the
     // override map (it didn't exist yet) and `validate_plan` only
-    // checks JSON Schema. The orphan check is the only workflow §D3
+    // checks JSON Schema. The orphan check is the only per-slice authority override
     // gate that fires on this code path.
     refuse_orphan_authority_overrides(&plan)?;
     if auto_approve {

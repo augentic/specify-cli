@@ -1,8 +1,8 @@
-//! Integration tests for the RFC-32 §D4 `tool` evaluator plus the
-//! §D5 reserved-kind summary policy and the §"Acceptance" evidence
+//! Integration tests for the `kind: tool` evaluator contract `tool` evaluator plus the
+//! reserved-hint diagnostics reserved-kind summary policy and the §"Acceptance" evidence
 //! cap.
 //!
-//! The §D4 `tool` evaluator is exercised through a fake
+//! The `kind: tool` evaluator contract `tool` evaluator is exercised through a fake
 //! [`specify_lints::lint::eval::ToolRunner`] that simulates the
 //! contract WASI tool's stdout. Wiring the real `specify-tool`
 //! runtime would drag `wasmtime` into the standards crate's dep

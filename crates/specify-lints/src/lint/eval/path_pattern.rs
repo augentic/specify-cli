@@ -1,4 +1,4 @@
-//! `kind: path-pattern` evaluator per RFC-32 §"Hint kinds — Phase 2".
+//! `kind: path-pattern` evaluator per the executable hint-kind contract.
 //!
 //! Path-pattern hints are filters, not finders. They narrow the
 //! candidate file set the later hint kinds (`schema`, `regex`,
@@ -7,7 +7,7 @@
 //! dependency for the codex resolver). The pattern matches a file's
 //! project-relative path verbatim — no separator translation, no
 //! per-OS munging, since [`crate::lint::File::path`] is already
-//! forward-slash relative per RFC-32 §"Stability".
+//! forward-slash relative per `WorkspaceModel` stability.
 //!
 //! Negation prefixes (`!pattern`) are reserved: v1 has no defined
 //! semantics for "exclude these files from the candidate set" and

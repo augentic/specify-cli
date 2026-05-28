@@ -1,7 +1,7 @@
 //! Maps a `specify_authoring::Finding`'s rule-id-driven imperative
-//! finding to the closed RFC-28 [`Severity`] enum.
+//! finding to the closed [`Severity`] enum.
 //!
-//! RFC-28 §"Framework convergence (Phase 3)" requires every authoring
+//! The framework-convergence contract requires every authoring
 //! finding emitted by `specdev check --format json` to carry a closed
 //! severity from `{critical, important, suggestion, optional}`. The
 //! authoring `Finding` type does not currently carry a severity field
@@ -10,10 +10,10 @@
 //! rule-id family, with a [`Severity::Important`] default for any
 //! unclassified rule id.
 //!
-//! ## Authoring rule-id → RFC-28 severity table
+//! ## Authoring rule-id → review severity table
 //!
 //! ```text
-//! | Authoring rule-id                                | RFC-28 severity |
+//! | Authoring rule-id                                | review severity |
 //! | ------------------------------------------------ | --------------- |
 //! | rules.schema-violation                           | critical        |
 //! | adapter.*                                        | important       |
@@ -48,7 +48,7 @@
 //!
 //! This module deliberately lives at the binary boundary
 //! (`src/authoring/severity.rs`) and not in the `specify-authoring`
-//! library crate. Per RFC-28 §"Relationship to framework authoring",
+//! library crate. Per the framework-authoring mapping contract,
 //! the CH-21 `Finding` → `LintFinding` mapper sits at the
 //! `specdev` binary boundary so `specify-authoring` does not take a
 //! dependency on `specify-domain`. CH-20 is a building block for that
@@ -56,12 +56,12 @@
 
 use specify_lints::Severity;
 
-/// Map an authoring `Finding::rule_id` to the closed RFC-28
+/// Map an authoring `Finding::rule_id` to the closed review
 /// [`Severity`] enum.
 ///
 /// Unknown rule ids fall through to [`Severity::Important`] — the
 /// default escalation level documented for adapter overlays in
-/// RFC-28 §"Resolved rules export".
+/// `ResolvedRules` export contract.
 #[must_use]
 pub fn severity_for(rule_id: &str) -> Severity {
     match rule_id {
@@ -86,7 +86,7 @@ mod tests {
     use super::severity_for;
 
     /// `rules.schema-violation` is the one rule the table elevates to
-    /// `Critical` (RFC-28 §"Resolved rules export" — schema breakage
+    /// `Critical` (`ResolvedRules` export contract — schema breakage
     /// blocks every downstream consumer of the resolved codex).
     #[test]
     fn codex_schema_violation_maps_to_critical() {

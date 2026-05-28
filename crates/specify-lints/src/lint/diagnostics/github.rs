@@ -1,4 +1,4 @@
-//! GitHub Actions workflow-annotation formatter per RFC-32 §D6.
+//! GitHub Actions workflow-annotation formatter per the diagnostics formatter set.
 //!
 //! One `::<level> file=…,line=…,col=…,title=…::<message>` line per
 //! finding. Escaping follows the GitHub workflow-command rules

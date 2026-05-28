@@ -1,4 +1,4 @@
-//! workflow §D1 — `kind: example` claim shape (`captures` adapter).
+//! runtime capture claim — `kind: example` claim shape (`captures` adapter).
 //!
 //! Runtime captures join the closed `claimKind` enum as
 //! `example`. The body carries `claim-id`, optional `path`, a
@@ -33,7 +33,7 @@ pub struct ExampleClaim {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     /// `sha256:<hex>` digest of the capture bytes. The cache layer
-    /// (workflow §D8) keys against this value.
+    /// (extraction cache fingerprint contract) keys against this value.
     pub replay_digest: String,
     /// Optional inline input payload — typically the captured request.
     /// Shape is open per the schema's per-kind body posture.

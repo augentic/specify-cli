@@ -36,7 +36,7 @@ static STATIC_RULE_PROFILE_NAMESPACES: LazyLock<HashMap<&'static str, HashSet<&'
         ])
     });
 
-/// Rule shape validation and RFC-28 namespace ownership.
+/// Rule shape validation and rule namespace ownership.
 pub struct RulesCheck;
 
 impl Check for RulesCheck {
@@ -133,7 +133,7 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Finding> {
             findings.push(finding_at(
                 RULE_NAMESPACE_OWNERSHIP_VIOLATION,
                 format!(
-                    "Rules namespace ownership: {rel} — FRAME-* ids are reserved by RFC-32 for framework-repo declarative rules and may not be placed under adapter trees (got '{id}' under rules owner '{owner}')"
+                    "Rules namespace ownership: {rel} — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got '{id}' under rules owner '{owner}')"
                 ),
                 &path,
             ));
@@ -182,7 +182,7 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Finding> {
 ///
 /// Target adapters and the shared `universal` owner come from the static base
 /// map. Source adapters are discovered dynamically: every directory under
-/// `adapters/sources/<name>/rules/` registers `<name>` → `{"SRC"}`. RFC-28
+/// `adapters/sources/<name>/rules/` registers `<name>` → `{"SRC"}`. The rules contract
 /// §Namespaces forbids hardcoding source-adapter names here — `SRC-*` is the
 /// single shared source-axis namespace in v1.
 fn rules_profile_namespaces(ctx: &Context) -> HashMap<String, HashSet<&'static str>> {
@@ -466,7 +466,7 @@ mod tests {
     }
 
     #[test]
-    fn frame_rule_under_target_adapter_rejected_with_rfc32_message() {
+    fn frame_rule_under_target_adapter_rejected_with_framework_message() {
         let temp = TempDir::new().expect("tempdir");
         scaffold_framework(temp.path());
         write_rule(temp.path(), "adapters/targets/omnia/rules/frame-misplaced.md", "FRAME-001");
@@ -476,16 +476,16 @@ mod tests {
             findings.iter().any(|finding| {
                 finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
                     && finding.message.contains("FRAME-*")
-                    && finding.message.contains("RFC-32")
+                    && finding.message.contains("framework-repo declarative rules")
                     && finding.message.contains("FRAME-001")
                     && finding.message.contains("omnia")
             }),
-            "expected FRAME placement violation with RFC-32 reservation message, got: {findings:?}",
+            "expected FRAME placement violation with framework rule-namespace reservation message, got: {findings:?}",
         );
     }
 
     #[test]
-    fn frame_rule_under_source_adapter_rejected_with_rfc32_message() {
+    fn frame_rule_under_source_adapter_rejected_with_framework_message() {
         let temp = TempDir::new().expect("tempdir");
         scaffold_framework(temp.path());
         write_rule(
@@ -499,7 +499,7 @@ mod tests {
             findings.iter().any(|finding| {
                 finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
                     && finding.message.contains("FRAME-*")
-                    && finding.message.contains("RFC-32")
+                    && finding.message.contains("framework-repo declarative rules")
                     && finding.message.contains("FRAME-007")
                     && finding.message.contains("documentation")
             }),

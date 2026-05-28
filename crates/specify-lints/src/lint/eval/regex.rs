@@ -1,4 +1,4 @@
-//! `kind: regex` evaluator per RFC-32 §"Hint kinds — Phase 2".
+//! `kind: regex` evaluator per the executable hint-kind contract.
 //!
 //! Compiles the hint's `value` once and walks each text candidate
 //! line by line, emitting one [`crate::rules::LintFinding`] per
@@ -6,7 +6,7 @@
 //! line clipped to a bounded char count in the `Snippet` evidence
 //! payload.
 //!
-//! Binary files are skipped (RFC-32 §D1 says regex hints "skip
+//! Binary files are skipped (`WorkspaceModel` file scan says regex hints "skip
 //! binary files unless `applicability.binary: true`" — the
 //! reserved-binary flag is rejected as `unsupported` until
 //! reserved-kinds policy lands, so v1 always skips). Each candidate

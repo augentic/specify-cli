@@ -15,7 +15,7 @@
 //! `<project_dir>/adapters/{sources,targets}/<name>/` (in-repo). The
 //! manifest cache mirrors the in-repo adapter tree so source and
 //! target adapters with colliding names disambiguate by axis. The
-//! workflow §D8 per-source extraction result cache lives in a sibling
+//! extraction cache fingerprint contract per-source extraction result cache lives in a sibling
 //! tree under `<project_dir>/.specify/.cache/extractions/<adapter>/`
 //! (with `index.jsonl` at the adapter root) — see
 //! [DECISIONS.md §"Cache layout"].

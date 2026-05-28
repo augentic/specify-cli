@@ -178,7 +178,7 @@ fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
     out
 }
 
-/// workflow §D3 — refuse orphan per-slice `authority-override` values.
+/// per-slice authority override — refuse orphan per-slice `authority-override` values.
 ///
 /// For every slice's override map, every value MUST appear in that
 /// slice's `sources[].key` list; otherwise the operator has named a

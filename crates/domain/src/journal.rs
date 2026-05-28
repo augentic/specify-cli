@@ -83,7 +83,7 @@ pub enum EventKind {
     },
     /// `/spec:plan`'s `propose` sub-step flagged a materially-
     /// disagreeing slice (`slices[].divergence: likely`).
-    /// workflow §D5 — emitted from the CLI when the operator (or the
+    /// divergence and writer-ownership contract — emitted from the CLI when the operator (or the
     /// `plan` skill body) runs `specrun plan create
     /// --divergence-likely <slice>` or `specrun plan amend
     /// --divergence likely`; the skill is no longer the writer.
@@ -96,7 +96,7 @@ pub enum EventKind {
     },
     /// Operator stamped `slices[].divergence` via
     /// `specrun plan amend --divergence <likely|accepted|rejected>`.
-    /// workflow §D5 — the CLI is the single writer; `likely` reaches
+    /// divergence and writer-ownership contract — the CLI is the single writer; `likely` reaches
     /// this event from skill-body fallbacks against existing
     /// `plan.yaml` entries (the post-`propose` happy path stages
     /// `likely` via `specrun plan create --divergence-likely`, which
@@ -162,7 +162,7 @@ pub enum EventKind {
         /// `ID:` value on the tagged requirement block.
         requirement_id: String,
     },
-    /// workflow §D8 — cache lookup matched and `extract` was *not*
+    /// extraction cache fingerprint contract — cache lookup matched and `extract` was *not*
     /// re-run. CI pinning the five fingerprint inputs at a known set
     /// can re-run any prior `/spec:execute` and expect byte-stable
     /// cache hits.
@@ -178,7 +178,7 @@ pub enum EventKind {
         /// inputs the cache layer keyed against.
         fingerprint: String,
     },
-    /// workflow §D8 — cache lookup missed and `extract` ran. `reason`
+    /// extraction cache fingerprint contract — cache lookup missed and `extract` ran. `reason`
     /// is one of the closed [`CacheMissReason`] values; CI observing
     /// any of them knows exactly which input drifted.
     #[serde(rename = "slice.extract.cache-miss", rename_all = "kebab-case")]
@@ -197,7 +197,7 @@ pub enum EventKind {
         /// `cache: opt-out`).
         reason: CacheMissReason,
     },
-    /// workflow §D4 — `/spec:refine` wrote `fusion.yaml` for a slice.
+    /// `fusion.yaml` audit index — `/spec:refine` wrote `fusion.yaml` for a slice.
     /// Agent-driven from `/spec:refine` step 5.
     #[serde(rename = "slice.fusion.written", rename_all = "kebab-case")]
     SliceFusionWritten {
@@ -208,7 +208,7 @@ pub enum EventKind {
         /// Count of `requirements[]` rows written.
         requirement_count: usize,
     },
-    /// workflow §D1 — target's `build` finished replay.
+    /// runtime capture claim — target's `build` finished replay.
     /// Payload mirrors the `replay:` block written into the
     /// slice's `.metadata.yaml`. Optional in v1 (targets that have
     /// not implemented the hook do not emit this event).
@@ -225,7 +225,7 @@ pub enum EventKind {
         /// Number of replay scenarios the runner skipped.
         skipped: usize,
     },
-    /// workflow §D3 — operator set or cleared a per-slice
+    /// per-slice authority override — operator set or cleared a per-slice
     /// `authority-override` map at Gate 1. CLI-driven via
     /// `specrun plan create --authority-override`,
     /// `specrun plan amend --authority-override`, or the matching
@@ -251,8 +251,8 @@ pub enum EventKind {
 
 /// Closed `reason` enum on [`EventKind::SliceExtractCacheMiss`].
 ///
-/// Each value names one of the five fingerprint inputs from RFC-27
-/// §D8 (plus `no-prior-entry` for first runs and `adapter-opt-out`
+/// Each value names one of the five fingerprint inputs from authority and fusion contract
+/// lint exit mapping (plus `no-prior-entry` for first runs and `adapter-opt-out`
 /// for `cache: opt-out` adapters). Operators reading `index.jsonl`
 /// see exactly which input drifted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn append_batch_writes_every_event_in_order_in_one_call() {
-        // workflow §D7: `specrun plan create --auto-review` may emit
+        // auto-approve Gate-1 contract: `specrun plan create --auto-review` may emit
         // both `plan.propose.divergence` and
         // `plan.transition.approved` in a single fsynced append.
         // Exercise the batched helper to lock that contract.

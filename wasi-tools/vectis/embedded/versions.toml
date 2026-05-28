@@ -1,8 +1,8 @@
 # Embedded defaults for vectis-scaffold -- overridden only by an explicit
-# complete --version-file input. See RFC-16 § WASI scaffold surface.
+# complete --version-file input. See the Vectis WASI scaffold surface.
 #
 # Sourced from the "Initial Version Pins" block in
-# rfcs/rfc-6-tasks.md, with Android pins bumped per the chunk-3c
+# the initial Vectis task plan, with Android pins bumped per the chunk-3c
 # verification (older pins do not produce a buildable APK against
 # Xcode 16 / Java 21 toolchains).
 
@@ -46,7 +46,7 @@ uniffi      = "=0.29.4"
 cargo_swift = "0.9"        # version range that ships uniffi_bindgen 0.29.x
 
 [android]
-# Bumped from the RFC's original block per chunk-3c verification (the older
+# Bumped from the original Vectis pin block per chunk-3c verification (the older
 # pins -- agp 8.8.2 / kotlin 2.1.10 / compose_bom 2025.01.01 -- do not
 # produce a buildable APK against Xcode 16 / Java 21 toolchains). Chunk 11
 # (`update-versions`) will replace these with proven-coherent values pulled
@@ -69,4 +69,4 @@ gradle      = "8.13"
 [tooling]
 cargo_deny = "0.19.4"      # latest
 cargo_vet  = "0.10.2"      # latest
-xcodegen   = "2.42.0"      # per RFC; not currently queried automatically
+xcodegen   = "2.42.0"      # pinned; not currently queried automatically

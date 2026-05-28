@@ -5,18 +5,18 @@ use tempfile::tempdir;
 use super::super::model::{
     Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
 };
-use super::super::{RFC_EXAMPLE_YAML, change, plan_with_changes};
+use super::super::{PLAN_EXAMPLE_YAML, change, plan_with_changes};
 use crate::change::{CYCLE, detect};
 use crate::evidence::ClaimKind;
 use crate::registry::{Registry, RegistryProject};
 
 #[test]
 fn clean_plan_validates() {
-    let plan: Plan = serde_saphyr::from_str(RFC_EXAMPLE_YAML).expect("parse rfc fixture");
+    let plan: Plan = serde_saphyr::from_str(PLAN_EXAMPLE_YAML).expect("parse plan fixture");
     let results = plan.validate(None, None);
     assert!(
         results.is_empty(),
-        "expected a clean RFC fixture to validate with no findings, got: {results:#?}"
+        "expected a clean fixture to validate with no findings, got: {results:#?}"
     );
 }
 

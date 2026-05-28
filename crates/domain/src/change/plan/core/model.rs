@@ -177,7 +177,7 @@ pub struct Entry {
     /// `specrun plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub divergence: Option<Divergence>,
-    /// workflow §D3 — optional per-slice authority override map keyed
+    /// per-slice authority override — optional per-slice authority override map keyed
     /// by claim kind, valued by source key. Keys are the closed
     /// [`ClaimKind`] enum; values MUST be source keys present in
     /// this slice's own [`Entry::sources`] list — orphan keys are
@@ -199,7 +199,7 @@ pub struct Entry {
 /// four values literally — `Divergence::None` serialises as the
 /// kebab-case `"none"` for that channel.
 ///
-/// workflow §D5 — the CLI is the single writer of every variant of
+/// divergence and writer-ownership contract — the CLI is the single writer of every variant of
 /// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
 /// disk via `specrun plan create --divergence-likely <slice>` (the
 /// post-`propose` staging site) and `specrun plan amend --divergence
@@ -227,11 +227,11 @@ pub enum Divergence {
     Rejected,
 }
 
-/// workflow §D3 — per-slice authority override map keyed by claim
+/// per-slice authority override — per-slice authority override map keyed by claim
 /// kind, valued by source key.
 ///
 /// The map is scoped to one [`Entry`]; plan-wide and project-wide
-/// overrides are out of scope per RFC-27. Keys reuse the closed
+/// overrides are out of scope per authority and fusion contract. Keys reuse the closed
 /// [`ClaimKind`] enum; values are bare source-key strings that MUST
 /// be present in the owning slice's [`Entry::sources`] list —
 /// validation refuses orphan keys with
@@ -647,7 +647,7 @@ pub struct EntryPatch {
     pub context: Option<Vec<String>>,
     /// Set `divergence` when `Some`. `None` leaves the field
     /// untouched. The CLI is the only caller that materialises this
-    /// patch (`specrun plan amend --divergence`) — workflow §D5
+    /// patch (`specrun plan amend --divergence`) — divergence and writer-ownership contract
     /// widens the accepted operator surface to include `Likely`
     /// alongside `Accepted` / `Rejected`; the implicit `None` value
     /// is still rejected at the flag-parser level (omit

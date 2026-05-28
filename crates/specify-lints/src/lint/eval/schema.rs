@@ -1,4 +1,4 @@
-//! `kind: schema` evaluator per RFC-32 §D3.
+//! `kind: schema` evaluator per `kind: schema` evaluator contract.
 //!
 //! `hint.value` selects one of two shapes:
 //!
@@ -15,7 +15,7 @@
 //! the parsed body of the candidate file. JSON / YAML / TOML files
 //! are parsed; markdown files fall back to their extracted
 //! frontmatter via [`crate::lint::WorkspaceModel::frontmatter`].
-//! The `target: frontmatter` extension from the RFC body is reserved
+//! The `target: frontmatter` extension from the contract is reserved
 //! — the closed [`crate::rules::DeterministicHint`] shape carries no
 //! `target` field, so v1 cannot opt into it.
 //!

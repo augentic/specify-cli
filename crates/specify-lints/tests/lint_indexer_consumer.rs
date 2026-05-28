@@ -1,4 +1,4 @@
-//! Integration test for the RFC-32 §D1 consumer indexer.
+//! Integration test for the `WorkspaceModel` file scan consumer indexer.
 //!
 //! Drives `lint::index::build` against the checked-in
 //! `fixtures/lint/minimal/` tree, augmenting it at runtime with the
@@ -13,7 +13,7 @@
 //!    [`WORKSPACE_MODEL_JSON_SCHEMA`] and matches the checked-in
 //!    golden once the tempdir prefix is normalised to `<TEMPDIR>`.
 //! 2. Two consecutive invocations produce byte-identical pretty-printed
-//!    JSON envelopes — the §"Stability" guarantee from RFC-32.
+//!    JSON envelopes — the §"Stability" guarantee from `WorkspaceModel` stability.
 //!
 //! Regenerate the golden with `REGENERATE_GOLDENS=1` after a
 //! deliberate model change; see [`docs/standards/testing.md`].

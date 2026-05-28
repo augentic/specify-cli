@@ -1,5 +1,5 @@
 //! Handler for the `source resolve --explain` fingerprint-chain reader
-//! (workflow §D8).
+//! (extraction cache fingerprint contract).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

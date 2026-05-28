@@ -1,10 +1,10 @@
-//! Integration test for the RFC-32 §"Hint kinds — Phase 2"
+//! Integration test for the the executable hint-kind contract
 //! `path-pattern` evaluator.
 //!
-//! `path-pattern` is a candidate-set filter, not a finder. The RFC
+//! `path-pattern` is a candidate-set filter, not a finder. The lint contract
 //! contract is verified indirectly: a rule with `path-pattern: *.rs`
 //! plus `regex: fn` MUST emit findings only for the `*.rs` files
-//! reachable from the workspace model, and the §D5 reserved-skipped
+//! reachable from the workspace model, and the reserved-hint diagnostics reserved-skipped
 //! list MUST stay empty.
 
 mod eval_support;

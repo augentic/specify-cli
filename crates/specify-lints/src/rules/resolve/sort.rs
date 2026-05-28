@@ -1,13 +1,13 @@
 //! Stable export ordering and `ResolvedRules` assembly (CH-14).
 //!
-//! Implements RFC-28 §"Resolved rules export" §"Ordering". CH-12 owns
+//! Implements `ResolvedRules` export contract §"Ordering". CH-12 owns
 //! discovery, CH-13 owns filtering; this module sorts the survivors
 //! by the closed four-tuple and lifts each [`ResolvedRuleEntry`] into
 //! a wire-shaped [`ResolvedRule`] inside a [`ResolvedRules`] envelope.
 //!
 //! # Sort tuple
 //!
-//! Per RFC-28 §"Ordering" the closed sort key is:
+//! Per the rules contract §"Ordering" the closed sort key is:
 //!
 //! 1. **non-deprecated before deprecated** — `rule.deprecated.is_some()`
 //!    maps to `false < true`, putting active rules ahead of historical
@@ -17,11 +17,11 @@
 //! 4. **`rule-id`** lexical.
 //!
 //! Both [`super::super::Severity`] and [`super::super::Origin`] are
-//! declared with variants in the RFC sort order in
+//! declared with variants in the contract sort order in
 //! [`crate::rules`], so the derived [`Ord`] picks up the
-//! RFC-mandated comparator directly — no bespoke `_sort_key` helpers
-//! needed. The `severity_ordering_matches_rfc` and
-//! `origin_ordering_matches_rfc` tests in `crates/specify-lints/src/rules.rs`
+//! contract-defined comparator directly — no bespoke `_sort_key` helpers
+//! needed. The `severity_ordering_matches_contract` and
+//! `origin_ordering_matches_contract` tests in `crates/specify-lints/src/rules.rs`
 //! pin that declaration order so a future refactor cannot silently
 //! shift the sort.
 //!
@@ -41,7 +41,7 @@
 use super::{ResolveError, ResolveInputs, ResolvedRuleEntry, filter};
 use crate::rules::{ResolvedRule, ResolvedRules, Rule};
 
-/// Sort `entries` in place by the closed RFC-28 four-tuple.
+/// Sort `entries` in place by the closed rules-export four-tuple.
 ///
 /// See the module docs for the ordering rationale. [`slice::sort_by`]
 /// is stable, so ties on the four-tuple preserve CH-12's lexical

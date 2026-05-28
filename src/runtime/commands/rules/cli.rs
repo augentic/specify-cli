@@ -7,14 +7,14 @@ use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub enum RulesAction {
-    /// Resolve and export the codex envelope as JSON (RFC-28
+    /// Resolve and export the codex envelope as JSON (rules
     /// §"Resolved rules export").
     ///
     /// Read-only: no `.specify/` writes, no lifecycle transitions,
     /// no journal events. The handler probes for shared `UNI-*`
     /// rules (via `--rules-root` or a project-local
     /// `adapters/shared/rules/universal/` tree), discovers the
-    /// `--target` and `--source` overlays per RFC-28 §"Resolution
+    /// `--target` and `--source` overlays per the rules contract §"Resolution
     /// roots", and streams the sorted `ResolvedRules` envelope to
     /// stdout.
     ///
@@ -24,7 +24,7 @@ pub enum RulesAction {
     /// the closed JSON-only contract stays visible.
     Export {
         /// Codex root supplying shared `UNI-*` rules and rules-root
-        /// fallback overlays (RFC-28 §"Codex root resolution
+        /// fallback overlays (codex root resolution
         /// (v1)"). When omitted the resolver probes the
         /// project-local `adapters/shared/rules/universal/` tree;
         /// failing that, exits with `rules-root-required`.

@@ -1,4 +1,4 @@
-//! Codex DTOs and runtime wire types per RFC-28.
+//! Codex DTOs and runtime wire types per the rules contract.
 //!
 //! Provides the typed Rust shapes that round-trip cleanly through the
 //! schemas embedded under `schemas/rules/` and `schemas/lint/`:
@@ -22,13 +22,13 @@
 //!
 //! Severity comparator order is `Critical < Important < Suggestion <
 //! Optional` and origin order is `Target < Source < Shared <
-//! Organization`, matching RFC-28 §"Resolved rules export"
+//! Organization`, matching `ResolvedRules` export contract
 //! §"Ordering". The closed enums are declared in the comparator order
-//! so the derived [`Ord`] picks up the RFC-mandated sort sequence.
+//! so the derived [`Ord`] picks up the contract-defined sort sequence.
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "RFC-28 mandates wire type names Rule and ResolvedRules; renaming to avoid the codex prefix would obscure the spec mapping."
+    reason = "The public wire contract uses the names Rule and ResolvedRules; renaming to avoid the codex prefix would obscure the schema mapping."
 )]
 
 pub mod finding;
@@ -47,7 +47,7 @@ pub use resolve::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Closed severity enum per RFC-28 §"Resolved rules export". Variants
+/// Closed severity enum per `ResolvedRules` export contract. Variants
 /// are declared in the documented sort order — the derived [`Ord`]
 /// therefore yields `Critical < Important < Suggestion < Optional`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -63,11 +63,11 @@ pub enum Severity {
     Optional,
 }
 
-/// Resolver origin tier per RFC-28 §"Resolved rules export".
+/// Resolver origin tier per `ResolvedRules` export contract.
 ///
 /// Variants are declared in the documented sort order (`target`,
 /// `source`, `shared`, `organization`) so the derived [`Ord`] yields
-/// the RFC-mandated comparator. Wire spelling uses kebab-case
+/// the contract-defined comparator. Wire spelling uses kebab-case
 /// rendered from the variant identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -110,7 +110,7 @@ pub enum LintMode {
 /// Closed v1 deterministic-hint kind enum.
 ///
 /// Includes the executable v1 kinds (`path-pattern`, `regex`,
-/// `schema`, `tool`) and the RFC-32 reserved kinds (`unique`,
+/// `schema`, `tool`) and the Reserved hint kind kinds (`unique`,
 /// `reference-resolves`, `set-coverage`, `cardinality`,
 /// `constant-eq`, `set-eq`, `content-digest-eq`, `namespace-owner`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -124,21 +124,21 @@ pub enum HintKind {
     Schema,
     /// Invoke a declared WASI tool.
     Tool,
-    /// RFC-32 reserved: assert a set is unique.
+    /// Reserved hint kind: assert a set is unique.
     Unique,
-    /// RFC-32 reserved: every reference resolves.
+    /// Reserved hint kind: every reference resolves.
     ReferenceResolves,
-    /// RFC-32 reserved: a value set covers a required domain.
+    /// Reserved hint kind: a value set covers a required domain.
     SetCoverage,
-    /// RFC-32 reserved: assert a set's cardinality.
+    /// Reserved hint kind: assert a set's cardinality.
     Cardinality,
-    /// RFC-32 reserved: assert a value equals a constant.
+    /// Reserved hint kind: assert a value equals a constant.
     ConstantEq,
-    /// RFC-32 reserved: assert two sets are equal.
+    /// Reserved hint kind: assert two sets are equal.
     SetEq,
-    /// RFC-32 reserved: assert two content digests are equal.
+    /// Reserved hint kind: assert two content digests are equal.
     ContentDigestEq,
-    /// RFC-32 reserved: assert a namespace owner.
+    /// Reserved hint kind: assert a namespace owner.
     NamespaceOwner,
 }
 
@@ -266,7 +266,7 @@ pub struct Reference {
 ///
 /// Marks a rule as deprecated while preserving the stable id for
 /// historical citations. Wire key for `replaced_by` is the
-/// kebab-case `replaced-by` per RFC-28 §"Resolved rules export".
+/// kebab-case `replaced-by` per `ResolvedRules` export contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Deprecated {
@@ -319,7 +319,7 @@ pub struct Rule {
 
 /// Read-only resolved view of shared, source-adapter, and
 /// target-adapter rules. Wire envelope emitted by
-/// `specrun rules export --format json` per RFC-28
+/// `specrun rules export --format json` per the rules contract
 /// §"Resolved rules export".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -331,7 +331,7 @@ pub struct ResolvedRules {
     /// Source-adapter names bound to the export context.
     pub source_adapters: Vec<String>,
     /// Ordered rule list, `(non-deprecated, severity, origin,
-    /// rule-id)` per RFC-28 §"Resolved rules export" §"Ordering".
+    /// rule-id)` per `ResolvedRules` export contract §"Ordering".
     pub rules: Vec<ResolvedRule>,
 }
 
@@ -340,7 +340,7 @@ pub struct ResolvedRules {
 /// `path-root`, `path`, `body`).
 ///
 /// The `rule_id` field is named distinctly from [`Rule::id`] so
-/// the wire shape stabilises on `rule-id` per the RFC; semantically
+/// the wire shape stabilises on `rule-id` per the wire contract; semantically
 /// the value is the same identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -412,7 +412,7 @@ pub struct FindingLocation {
 /// payloads too large or sensitive to inline use
 /// [`FindingEvidence::Digest`]; domain-structured payloads (e.g.
 /// contract compatibility metadata) use
-/// [`FindingEvidence::Structured`]. RFC-28 caps the serialized
+/// [`FindingEvidence::Structured`]. The lint finding contract caps the serialized
 /// evidence payload at 16 `KiB`; that ceiling is enforced by the
 /// CH-16 finding validator, not here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -447,7 +447,7 @@ pub enum FindingEvidence {
     },
 }
 
-/// Structured review finding per RFC-28.
+/// Structured review finding per the rules contract.
 ///
 /// Shared by deterministic scanners (`specrun lint`), framework
 /// JSON export (`specdev check --format json`), target adapter
@@ -492,7 +492,7 @@ pub struct LintFinding {
     /// Optional anchor location for the finding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<FindingLocation>,
-    /// Evidence union per RFC-28 §"Evidence union".
+    /// Evidence union per the structured evidence union.
     pub evidence: FindingEvidence,
     /// Operator-facing risk.
     pub impact: String,
@@ -504,7 +504,7 @@ pub struct LintFinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<Confidence>,
     /// Stable hash over `(rule-id, location, evidence-payload)` per
-    /// RFC-28 §"Structured review finding schema" §"Fingerprint
+    /// the structured lint finding schema §"Fingerprint
     /// algorithm". Format `sha256:<64 hex chars>`.
     pub fingerprint: String,
     /// Triage status. Omitted by raw scanners; populated by review
@@ -536,10 +536,10 @@ mod tests {
         assert!(errors.is_empty(), "instance must validate; errors: {errors:?}");
     }
 
-    /// RFC-28 §"Resolved rules export": severity comparator order is
+    /// `ResolvedRules` export contract: severity comparator order is
     /// `critical < important < suggestion < optional`.
     #[test]
-    fn severity_ordering_matches_rfc() {
+    fn severity_ordering_matches_contract() {
         assert!(Severity::Critical < Severity::Important);
         assert!(Severity::Important < Severity::Suggestion);
         assert!(Severity::Suggestion < Severity::Optional);
@@ -552,10 +552,10 @@ mod tests {
         );
     }
 
-    /// RFC-28 §"Resolved rules export" §"Ordering": origin comparator
+    /// `ResolvedRules` export contract §"Ordering": origin comparator
     /// order is `target, source, shared, organization`.
     #[test]
-    fn origin_ordering_matches_rfc() {
+    fn origin_ordering_matches_contract() {
         assert!(Origin::Target < Origin::Source);
         assert!(Origin::Source < Origin::Shared);
         assert!(Origin::Shared < Origin::Organization);
@@ -605,7 +605,7 @@ mod tests {
         assert_eq!(rule, parsed);
     }
 
-    /// RFC-28 UNI-014 example builds from typed structs, validates
+    /// UNI-014 example builds from typed structs, validates
     /// against `resolved.schema.json`, and round-trips back to the
     /// same struct.
     #[test]
@@ -650,7 +650,7 @@ mod tests {
     }
 
     /// `Deprecated.replaced_by` MUST serialise to the kebab-case wire
-    /// key `replaced-by` per RFC-28 §"Resolved rules export". Test
+    /// key `replaced-by` per `ResolvedRules` export contract. Test
     /// covers the explicitly-called-out rename.
     #[test]
     fn deprecated_replaced_by_uses_kebab_wire_key() {
@@ -676,7 +676,7 @@ mod tests {
         validator(RULE_JSON_SCHEMA);
     }
 
-    /// RFC-28 FIND-0001 example builds from typed structs, validates
+    /// FIND-0001 example builds from typed structs, validates
     /// against `finding.schema.json`, and round-trips back to the
     /// same struct.
     #[test]

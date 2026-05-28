@@ -38,7 +38,7 @@ pub const ADAPTERS_DIR: &str = "adapters";
 ///
 /// `.specify/.cache/manifests/{sources,targets}/<name>/` mirrors the
 /// in-repo `adapters/{sources,targets}/<name>/` tree. Paired with
-/// [`EXTRACTIONS_CACHE_DIR`] so the manifest and workflow §D8 extraction
+/// [`EXTRACTIONS_CACHE_DIR`] so the manifest and extraction cache fingerprint contract extraction
 /// caches own disjoint roots (see [DECISIONS.md §"Cache layout"]).
 ///
 /// [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
@@ -47,7 +47,7 @@ pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 /// Extraction-cache root segment under `.specify/.cache/`.
 ///
 /// `.specify/.cache/extractions/<adapter>/<fingerprint>/` holds the
-/// workflow §D8 per-source extraction result cache (with `index.jsonl`
+/// extraction cache fingerprint contract per-source extraction result cache (with `index.jsonl`
 /// at the adapter root). Per-adapter only — extraction is a source-axis
 /// operation — and partitioned from [`MANIFESTS_CACHE_DIR`] so each
 /// cache owns its own tree (no co-tenancy heuristic; see
@@ -131,7 +131,7 @@ pub struct AdapterToolDeclaration {
 }
 
 /// Closed enum for the optional `cache:` field on an adapter manifest
-/// (workflow §D8). Single variant in v1; widened only behind an RFC.
+/// (extraction cache fingerprint contract). Single variant in v1; widened only behind an accepted design change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -150,7 +150,7 @@ pub enum AdapterLocation {
     /// Resolved from the manifest cache at
     /// `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`.
     /// The manifest cache mirrors the in-repo adapter tree
-    /// (`adapter.yaml` plus brief markdown); the workflow §D8 extraction
+    /// (`adapter.yaml` plus brief markdown); the extraction cache fingerprint contract extraction
     /// result cache lives in a sibling tree under
     /// `.specify/.cache/extractions/<adapter>/` — see
     /// [DECISIONS.md §"Cache layout"].
@@ -183,7 +183,7 @@ impl AdapterLocation {
 ///
 /// This is the agent-populated mirror of `adapters/{sources,targets}/<name>/`
 /// — `adapter.yaml` plus the brief markdown files it references. The
-/// workflow §D8 per-source extraction result cache lives in a separate
+/// extraction cache fingerprint contract per-source extraction result cache lives in a separate
 /// sibling tree under `.specify/.cache/extractions/<adapter>/` (with
 /// `index.jsonl` at the adapter root) so the two caches no longer share
 /// a root; see [DECISIONS.md §"Cache layout"].
@@ -227,13 +227,13 @@ pub struct SourceAdapter {
     /// canonical operation iterator — exposed via
     /// [`SourceAdapter::operations`].
     pub briefs: BTreeMap<SourceOperation, String>,
-    /// Optional declared WASI tools per RFC-15.
+    /// Optional declared WASI tools for declared WASI tools.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<AdapterToolDeclaration>,
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Optional cache opt-out switch (workflow §D8).
+    /// Optional cache opt-out switch (extraction cache fingerprint contract).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<CacheMode>,
 }
@@ -264,13 +264,13 @@ pub struct TargetAdapter {
     /// canonical operation iterator — exposed via
     /// [`TargetAdapter::operations`].
     pub briefs: BTreeMap<TargetOperation, String>,
-    /// Optional declared WASI tools per RFC-15.
+    /// Optional declared WASI tools for declared WASI tools.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<AdapterToolDeclaration>,
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Optional cache opt-out switch (workflow §D8).
+    /// Optional cache opt-out switch (extraction cache fingerprint contract).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<CacheMode>,
 }
@@ -437,7 +437,7 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
     let local = adapter_axis_dir(project_dir, axis).join(name);
     // The manifest cache owns its own root
     // (`.specify/.cache/manifests/{sources,targets}/<name>/`), disjoint
-    // from the workflow §D8 extraction cache under
+    // from the extraction cache under
     // `.specify/.cache/extractions/<adapter>/`. A bare cache directory
     // is therefore always a manifest mirror — see
     // [DECISIONS.md §"Cache layout"].

@@ -34,7 +34,7 @@
       "type": "array",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/toolDeclaration" },
-      "description": "Optional WASI tool declarations per RFC-15. Tools resolve into `.specify/.cache/{sources,targets}/<name>/`."
+      "description": "Optional WASI tool declarations for declared WASI tools. Tools resolve into `.specify/.cache/{sources,targets}/<name>/`."
     },
     "description": {
       "type": "string",

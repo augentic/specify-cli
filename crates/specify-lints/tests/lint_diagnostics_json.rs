@@ -1,4 +1,4 @@
-//! `Format::Json` formatter — RFC-32 §D9 wire envelope.
+//! `Format::Json` formatter — `LintResult` envelope wire envelope.
 //!
 //! Locks two invariants S9 (`specrun lint --format json`) and any
 //! future Option-A consumer (`specdev check --format json`) depend on:

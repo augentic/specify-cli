@@ -14,11 +14,11 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 | [`discovery/candidate.schema.json`](discovery/candidate.schema.json) | Validates a single candidate block under `## Candidate inventory` in `discovery.md` per workflow §Discovery handshake. |
 | [`plan/plan.schema.json`](plan/plan.schema.json) | Validates `plan.yaml` structure, including the structured `sources[<key>]` binding shape and the `name@vN` target suffix reconciled against the resolved adapter's `version`. |
 | [`plan-validate-output/schema.json`](plan-validate-output/schema.json) | Validates `specrun plan validate --format json` output. |
-| [`slice/fusion.schema.json`](slice/fusion.schema.json) | Validates a slice's `fusion.yaml` reconciliation index per workflow §D4 — the audit surface listing every `REQ-*` id with its contributing `(source, claim-id)` pairs and authority outcome. |
+| [`slice/fusion.schema.json`](slice/fusion.schema.json) | Validates a slice's `fusion.yaml` reconciliation index as the audit surface listing every `REQ-*` id with its contributing `(source, claim-id)` pairs and authority outcome. |
 | [`vectis/template-manifest.schema.json`](vectis/template-manifest.schema.json) | Validates `templates/vectis/manifest.yaml`, the source-to-target assembly map consumed by `wasi-tools/vectis/build.rs`. |
 | [`cache-meta.schema.json`](cache-meta.schema.json) | Validates schema cache metadata written under `.specify/.cache`. |
 | [`context-lock.schema.json`](context-lock.schema.json) | Validates `.specify/context.lock`, the sidecar used by init-time AGENTS.md generation. |
-| [`design-system/components.schema.json`](design-system/components.schema.json) | Validates `.specify/design-system/components.yaml`, the operator-curated component catalog (RFC-31 D5). Declares shared UI components that the Vectis target factors into shared code at build time. |
+| [`design-system/components.schema.json`](design-system/components.schema.json) | Validates `.specify/design-system/components.yaml`, the operator-curated component catalog. Declares shared UI components that the Vectis target factors into shared code at build time. |
 
 ## Bundled workflow schema
 

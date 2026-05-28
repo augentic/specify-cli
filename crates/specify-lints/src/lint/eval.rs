@@ -1,9 +1,9 @@
-//! Hint interpreter umbrella per RFC-32 §"Hint kinds — Phase 2"
+//! Hint interpreter umbrella per the executable hint-kind contract
 //! and §"Evaluation algorithm".
 //!
-//! v1 (Phase 2) ships the four executable hint kinds the RFC lists
+//! v1 (Phase 2) ships the four executable hint kinds the contract lists
 //! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
-//! [`HintKind::Tool`]) plus the §D5 reserved-kind summary policy
+//! [`HintKind::Tool`]) plus the reserved-hint diagnostics reserved-kind summary policy
 //! (`review.reserved-hint-skipped`). Each rule's hints are partitioned
 //! by kind and evaluated in the fixed order
 //! `path-pattern → schema → regex → tool` so the cheap filters narrow
@@ -18,7 +18,7 @@
 //! their own [`crate::lint::FileKind`] filter (e.g. regex skips
 //! binaries).
 //!
-//! # Reserved-kind policy (§D5)
+//! # Reserved-kind policy (reserved-hint diagnostics)
 //!
 //! Reserved hint kinds (`unique`, `reference-resolves`, `set-coverage`,
 //! `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`,
@@ -31,7 +31,7 @@
 //! summary to severity `important`; the `rule_id` is the same in both
 //! modes so dashboards aggregate across strict / non-strict runs.
 //!
-//! # Evidence cap (RFC-28 §"Evidence union")
+//! # Evidence cap (the structured evidence union)
 //!
 //! Every finding minted here passes through
 //! [`crate::rules::validate_evidence_size`] before [`compute_fingerprint`]
@@ -64,12 +64,12 @@ use crate::rules::{
 
 /// Closed failure mode for the hint interpreter.
 ///
-/// Variants map to the §D8 exit-code table at the handler boundary —
+/// Variants map to the lint exit mapping exit-code table at the handler boundary —
 /// `Unsupported`, `SchemaCompile`, `SchemaResolve`, `RegexCompile`,
 /// `Filesystem`, and `ToolInvocation` are infrastructure failures
 /// the caller maps to `Error::Validation` (exit 2) or
-/// `Error::Filesystem` (exit 1) per §D8. Recoverable per-finding
-/// states (`tool.invocation-failed`, `tool.undeclared`, the §D5
+/// `Error::Filesystem` (exit 1) per lint exit mapping. Recoverable per-finding
+/// states (`tool.invocation-failed`, `tool.undeclared`, the reserved-hint diagnostics
 /// summary) flow back as [`LintFinding`] entries on the Ok path.
 #[derive(Debug, Error)]
 pub enum HintError {
@@ -121,7 +121,7 @@ pub enum HintError {
     /// Tool invocation failed at the runtime boundary (the WASI host
     /// could not invoke the declared tool). Recoverable
     /// non-zero-exit outcomes flow as `tool.invocation-failed`
-    /// findings on the Ok path per §D4.
+    /// findings on the Ok path per `kind: tool` evaluator contract.
     #[error("rule {rule_id}: tool {tool} invocation failed: {detail}")]
     ToolInvocation {
         /// Originating rule id.
@@ -132,8 +132,8 @@ pub enum HintError {
         detail: String,
     },
     /// Reserved variant — `tool.undeclared` is emitted as a finding
-    /// on the Ok path per §D4. The variant is preserved on the
-    /// closed enum so callers exhaustively match every §D4-mandated
+    /// on the Ok path per `kind: tool` evaluator contract. The variant is preserved on the
+    /// closed enum so callers exhaustively match every `kind: tool` evaluator contract-mandated
     /// surface.
     #[error("rule {rule_id}: tool {tool} not declared by the project")]
     ToolUndeclared {
@@ -161,7 +161,7 @@ pub enum HintError {
 ///
 /// Caller accumulates [`ReservedSkipped`] entries across every rule
 /// in the scan and feeds the aggregate to [`reserved_hint_summary`]
-/// to mint the single §D5 summary finding.
+/// to mint the single reserved-hint diagnostics summary finding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReservedSkipped {
     /// Rule that carried the reserved hint.
@@ -251,13 +251,13 @@ pub fn evaluate(
     })
 }
 
-/// Mint the §D5 reserved-hint summary finding from accumulated
+/// Mint the reserved-hint diagnostics reserved-hint summary finding from accumulated
 /// [`ReservedSkipped`] entries, or return `None` when the input is
 /// empty.
 ///
 /// `strict_hints` upgrades the finding's severity from `optional` to
 /// `important`; the `rule_id` is `review.reserved-hint-skipped` in
-/// both modes per §D5.
+/// both modes per reserved-hint diagnostics.
 #[must_use]
 pub fn reserved_hint_summary(
     skipped: &[ReservedSkipped], strict_hints: bool,
@@ -318,7 +318,7 @@ fn build_candidate_set(
 
 /// Build a finding from rule-derived defaults (severity, target
 /// adapter, impact, remediation), apply the §"Evidence cap"
-/// truncation, and stamp the RFC-28 fingerprint.
+/// truncation, and stamp the structured lint finding fingerprint.
 pub(crate) fn make_finding(
     rule: &ResolvedRule, id_num: u64, title: String, location: Option<FindingLocation>,
     evidence: FindingEvidence,

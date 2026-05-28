@@ -21,7 +21,7 @@ Twelve historical one-site variants collapsed to `Error::Diag` under the diag-fi
 
 The current rule lives in [`DECISIONS.md` §"Diag-first error policy"](../../DECISIONS.md#diag-first-error-policy); this list documents the one-time migration that produced the steady state.
 
-## RFC-25 type rename — Wave 0 / F9 collapse history
+## Source and target adapter role names — Wave 0 / F9 collapse history
 
 Wave 0.2 (`cli/W0.2`) renamed `Adapter*` → `Target*` for the output-role domain types (`Target`, the `Slice.target` field, the `slice-create-target-missing` / `plan.entry-needs-project-or-target` error discriminants, plus every fixture, JSON envelope, and call site). Specify 2.0 then settled the regular/hub init guard on its documented spelling `init-requires-adapter-or-hub` (the Wave 0.2-era `init-requires-target-or-workspace` is gone).
 
@@ -31,7 +31,7 @@ The 1.x brief-frontmatter parser (`Brief` / `BriefFrontmatter` with `id` / `desc
 
 `CacheMeta` was rehomed inside [`crates/domain/src/init/cache.rs`](../../crates/domain/src/init/cache.rs). The `Phase` enum was replaced by `Operation { Shape, Build, Merge }` on the slice-metadata wire (`phase: shape | build | merge`).
 
-The current rule lives in [`DECISIONS.md` §"RFC-25 type rename: `Target*` is the output role, `Adapter` is the shared shape"](../../DECISIONS.md#rfc-25-type-rename-target-is-the-output-role-adapter-is-the-shared-shape).
+The current rule lives in [`DECISIONS.md` §"Source and target adapter role names"](../../DECISIONS.md#source-and-target-adapter-role-names).
 
 ## Crate layout — Phase 1B / `specify-validate` carve-out history
 

@@ -125,7 +125,7 @@ const RENDER_CASES: &[DiagCase] = &[
 fn assert_validation_rule_id(got: Error, rule_id: &str) {
     match got {
         Error::Validation { results } => assert_eq!(results[0].rule_id, rule_id),
-        other => panic!("§D8: expected Validation({rule_id}), got {other:?}"),
+        other => panic!("lint exit mapping: expected Validation({rule_id}), got {other:?}"),
     }
 }
 
@@ -150,12 +150,12 @@ fn error_mapping_matches_d8_table() {
             assert_eq!(op, "review-eval");
             assert_eq!(path, PathBuf::from("/missing"));
         }
-        other => panic!("§D8: expected Filesystem, got {other:?}"),
+        other => panic!("lint exit mapping: expected Filesystem, got {other:?}"),
     }
     for case in RENDER_CASES {
         match map_render_error((case.err)()) {
             Error::Diag { code, .. } => assert_eq!(code, case.code),
-            other => panic!("§D8: expected Diag({}), got {other:?}", case.code),
+            other => panic!("lint exit mapping: expected Diag({}), got {other:?}", case.code),
         }
     }
 }

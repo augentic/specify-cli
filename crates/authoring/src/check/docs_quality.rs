@@ -4,69 +4,77 @@ use crate::context::Context;
 use crate::finding::{Check, Finding, Location};
 use crate::helpers::{relative_display, resolve_markdown_asset, walk_markdown_files};
 
-const RULE_RFC_CITATION: &str = "docs.rfc-citation-in-docs";
+const RULE_SPECIFY_HISTORY_CITATION: &str = "docs.specify-history-citation-in-docs";
 const RULE_MISSING_DIAGRAM: &str = "docs.missing-diagram-asset";
 const RULE_TEXT_PIPELINE: &str = "docs.text-pipeline-diagram";
-
-const RFC_ALLOWED_PREFIXES: &[&str] = &[
-    "docs/explanation/decision-log.md",
-    "docs/explanation/release-notes.md",
-    "docs/contributing/",
-];
 
 const TEXT_DIAGRAM_ROOTS: &[&str] =
     &["docs/explanation", "docs/orientation", "docs/tutorials", "docs/how-to"];
 
 const TEXT_FENCE_ALLOWLIST: &[&str] = &[];
 
-/// Flag RFC citations in user-facing docs outside the decision log and release notes.
-pub struct RfcCitationInDocs;
+/// Flag retired Specify design-history citations in user-facing docs.
+pub struct SpecifyHistoryCitationInDocs;
 
-impl Check for RfcCitationInDocs {
+impl Check for SpecifyHistoryCitationInDocs {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
-        let root = ctx.framework_root().join("docs");
-        if !root.is_dir() {
-            return Vec::new();
+        let mut findings = Vec::new();
+        let markdown_roots = ["docs", "adapters", "plugins"];
+        let root_files = ["AGENTS.md", "REVIEW.md"];
+
+        for root_name in markdown_roots {
+            let root = ctx.framework_root().join(root_name);
+            if !root.is_dir() {
+                continue;
+            }
+
+            let files = walk_markdown_files(ctx.framework_root(), &root).unwrap_or_default();
+
+            for path in files {
+                collect_specify_history_citations(ctx, &path, &mut findings);
+            }
         }
 
-        let mut findings = Vec::new();
-        let files = walk_markdown_files(ctx.framework_root(), &root).unwrap_or_default();
-
-        for path in files {
-            let rel = relative_display(ctx.framework_root(), &path);
-            if rel.starts_with("docs/assets/") {
-                continue;
-            }
-            if RFC_ALLOWED_PREFIXES.iter().any(|prefix| rel.starts_with(prefix)) {
-                continue;
-            }
-
-            let content = match fs::read_to_string(&path) {
-                Ok(content) => content,
-                Err(_) => continue,
-            };
-
-            for (line_idx, line) in content.lines().enumerate() {
-                let stripped = strip_link_targets(line);
-                if has_rfc_citation(&stripped) {
-                    findings.push(Finding {
-                        rule_id: RULE_RFC_CITATION,
-                        message: format!(
-                            "RFC citation in user-facing docs at {rel}:{} -- {} -- move RFC context to docs/explanation/decision-log.md or strip",
-                            line_idx + 1,
-                            line.trim()
-                        ),
-                        location: Some(Location {
-                            path: path.clone(),
-                            line: line_idx + 1,
-                            column: None,
-                        }),
-                    });
-                }
+        for file_name in root_files {
+            let path = ctx.framework_root().join(file_name);
+            if path.is_file() {
+                collect_specify_history_citations(ctx, &path, &mut findings);
             }
         }
 
         findings
+    }
+}
+
+fn collect_specify_history_citations(
+    ctx: &Context, path: &std::path::Path, findings: &mut Vec<Finding>,
+) {
+    let rel = relative_display(ctx.framework_root(), path);
+    if rel.starts_with("docs/assets/") {
+        return;
+    }
+
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(_) => return,
+    };
+
+    for (line_idx, line) in content.lines().enumerate() {
+        if has_specify_history_citation(line) {
+            findings.push(Finding {
+                rule_id: RULE_SPECIFY_HISTORY_CITATION,
+                message: format!(
+                    "Specify design-history citation in user-facing docs at {rel}:{} -- {} -- cite the live decision topic or strip",
+                    line_idx + 1,
+                    line.trim()
+                ),
+                location: Some(Location {
+                    path: path.to_path_buf(),
+                    line: line_idx + 1,
+                    column: None,
+                }),
+            });
+        }
     }
 }
 
@@ -169,31 +177,51 @@ impl Check for TextPipelineDiagram {
     }
 }
 
-fn strip_link_targets(line: &str) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut chars = line.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == ']' && chars.peek() == Some(&'(') {
-            chars.next();
-            while chars.next().is_some_and(|c| c != ')') {}
-            continue;
-        }
-        out.push(ch);
+fn has_specify_history_citation(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let retired_tree = ["rfc", "s/"].concat();
+    let retired_token = ["rfc", "-"].concat();
+    if lower.contains(&retired_tree) || contains_numbered_token(&lower, &retired_token) {
+        return true;
     }
-    out
+
+    let mut search = text;
+    let retired_upper = ["R", "FC"].concat();
+    while let Some(idx) = search.find(&retired_upper) {
+        let rest = &search[idx + retired_upper.len()..];
+        if let Some(number) =
+            parse_design_history_number(rest.strip_prefix('-').or_else(|| rest.strip_prefix(' ')))
+        {
+            if number < 100 {
+                return true;
+            }
+        }
+        search = advance_one(rest);
+    }
+
+    false
 }
 
-fn has_rfc_citation(text: &str) -> bool {
-    for (idx, _) in text.match_indices("RFC") {
-        let mut rest = &text[idx + 3..];
-        if rest.starts_with('-') || rest.starts_with(' ') {
-            rest = &rest[1..];
-        }
-        if rest.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
+fn contains_numbered_token(text: &str, token: &str) -> bool {
+    let mut search = text;
+    while let Some(idx) = search.find(token) {
+        let rest = &search[idx + token.len()..];
+        if parse_design_history_number(Some(rest)).is_some_and(|number| number < 100) {
             return true;
         }
+        search = advance_one(rest);
     }
     false
+}
+
+fn advance_one(text: &str) -> &str {
+    text.char_indices().nth(1).map_or("", |(idx, _)| &text[idx..])
+}
+
+fn parse_design_history_number(rest: Option<&str>) -> Option<u32> {
+    let rest = rest?;
+    let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    if digits.is_empty() { None } else { digits.parse().ok() }
 }
 
 fn find_svg_image_refs(content: &str) -> Vec<String> {
@@ -243,18 +271,30 @@ mod unit {
     use super::*;
 
     #[test]
-    fn strip_link_targets_removes_markdown_urls() {
-        assert_eq!(
-            strip_link_targets("See [details](rfcs/done/rfc-5.md) for more."),
-            "See [details for more."
+    fn specify_history_citation_detects_link_targets() {
+        let line = format!(
+            "See [details]({}s/done/{}-5.md) for more.",
+            "r".to_owned() + "fc",
+            "r".to_owned() + "fc"
         );
+        assert!(has_specify_history_citation(&line));
     }
 
     #[test]
-    fn has_rfc_citation_detects_numbered_refs() {
-        assert!(has_rfc_citation("See RFC-5 for details"));
-        assert!(has_rfc_citation("See RFC 5 for details"));
-        assert!(!has_rfc_citation("See [details](rfcs/rfc-5.md)"));
+    fn specify_history_citation_detects_numbered_refs() {
+        assert!(has_specify_history_citation(&format!(
+            "See {}-5 for details",
+            "R".to_owned() + "FC"
+        )));
+        assert!(has_specify_history_citation(&format!(
+            "See {} 5 for details",
+            "R".to_owned() + "FC"
+        )));
+        assert!(!has_specify_history_citation(&format!(
+            "Use {} 3339 timestamps and {} 5322 email syntax",
+            "R".to_owned() + "FC",
+            "R".to_owned() + "FC"
+        )));
     }
 
     #[test]

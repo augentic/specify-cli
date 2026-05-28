@@ -68,7 +68,7 @@ pub fn write_check_text(
     }
 }
 
-/// RFC-28 §"Review result envelope" body emitted by
+/// `LintResult` envelope" body emitted by
 /// `specdev check --format json`.
 ///
 /// The envelope is intentionally closed: only `version`, `summary`,

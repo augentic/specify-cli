@@ -1,5 +1,5 @@
-//! Symlink fact recorder per RFC-32 §"Core entity families (v1)" and
-//! §D1.
+//! Symlink fact recorder per the `WorkspaceModel` entity families and
+//! the file scan contract.
 //!
 //! Called by [`super::files`] for each entry whose `file_type()` is a
 //! symlink. The walker carries `follow_links(false)`, so the link is

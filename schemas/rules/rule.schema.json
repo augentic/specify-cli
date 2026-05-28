@@ -14,7 +14,7 @@
   "properties": {
     "id": {
       "$ref": "#/$defs/ruleId",
-      "description": "Stable rule identifier. V1 reserves UNI, SRC, FRAME, RUST, IFACE, SEC, OMNIA, VECTIS, and ORG namespaces with three-digit numeric suffixes. SRC namespaces shared source-adapter overlays; FRAME is reserved for RFC-32 framework declarative checks and is not used in consumer adapter codex."
+      "description": "Stable rule identifier. V1 reserves UNI, SRC, FRAME, RUST, IFACE, SEC, OMNIA, VECTIS, and ORG namespaces with three-digit numeric suffixes. SRC namespaces shared source-adapter overlays; FRAME is reserved for framework declarative checks and is not used in consumer adapter codex."
     },
     "title": {
       "type": "string",
@@ -107,20 +107,20 @@
         "properties": {
           "kind": {
             "type": "string",
-            "description": "Kind of deterministic signal the hint describes. Phase 2 kinds (`path-pattern`, `regex`, `schema`, `tool`) are executed by the `specrun lint` hint interpreter; reserved kinds carry `x-rfc32-status: reserved` and are accepted by RFC-28 exporters and tooling validators per RFC-32 §Hint kinds — reserved, but are shape-validated only at this layer with no execution semantics implied.",
+            "description": "Kind of deterministic signal the hint describes. Phase 2 kinds (`path-pattern`, `regex`, `schema`, `tool`) are executed by the `specrun lint` hint interpreter; reserved kinds are accepted by rules exporters and tooling validators, but are shape-validated only at this layer with no execution semantics implied.",
             "oneOf": [
               { "const": "path-pattern" },
               { "const": "regex" },
               { "const": "schema" },
               { "const": "tool" },
-              { "const": "unique", "x-rfc32-status": "reserved" },
-              { "const": "reference-resolves", "x-rfc32-status": "reserved" },
-              { "const": "set-coverage", "x-rfc32-status": "reserved" },
-              { "const": "cardinality", "x-rfc32-status": "reserved" },
-              { "const": "constant-eq", "x-rfc32-status": "reserved" },
-              { "const": "set-eq", "x-rfc32-status": "reserved" },
-              { "const": "content-digest-eq", "x-rfc32-status": "reserved" },
-              { "const": "namespace-owner", "x-rfc32-status": "reserved" }
+              { "const": "unique", "x-hint-status": "reserved" },
+              { "const": "reference-resolves", "x-hint-status": "reserved" },
+              { "const": "set-coverage", "x-hint-status": "reserved" },
+              { "const": "cardinality", "x-hint-status": "reserved" },
+              { "const": "constant-eq", "x-hint-status": "reserved" },
+              { "const": "set-eq", "x-hint-status": "reserved" },
+              { "const": "content-digest-eq", "x-hint-status": "reserved" },
+              { "const": "namespace-owner", "x-hint-status": "reserved" }
             ]
           },
           "value": {

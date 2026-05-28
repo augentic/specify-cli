@@ -49,7 +49,7 @@ impl Project {
 
 /// Build the omnia-shaped artefact-class slice the engine consumes for
 /// these tests. Tests are allowed to use literal class names per
-/// RFC-13 Phase 2.8 (and `make checks` ignores `#[cfg(test)]` blocks).
+/// the metadata summary contract (and `make checks` ignores `#[cfg(test)]` blocks).
 fn omnia_classes(slice_dir: &Path, project_root: &Path) -> Vec<ArtifactClass> {
     vec![
         ArtifactClass {
@@ -155,7 +155,7 @@ fn happy_path_writes_baselines_flips_status_and_archives() {
     assert!(new_meta.completed_at.is_some(), "expected completed_at to be set after merge");
 
     // slice::commit stamps the phase outcome before archiving. Per
-    // RFC-13 Phase 2.8 the summary is generic — it lists each
+    // the metadata summary contract the summary is generic — it lists each
     // contributing class name and entry count.
     let outcome = new_meta.outcome.expect("expected outcome to be stamped by slice::commit");
     assert_eq!(outcome.phase, TargetOperation::Merge);

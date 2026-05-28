@@ -30,7 +30,7 @@ pub const WASM_PKG_CONFIG_PATH: &str = ".specify/wasm-pkg.toml";
 
 /// Canonical contents `specrun init` writes for a fresh project.
 ///
-/// Mirrors RFC-17 §"Distribution Model" so
+/// Mirrors the wasm-pkg distribution model so
 /// `wkg --config .specify/wasm-pkg.toml` and `specrun tool fetch`
 /// agree on namespace routing.
 pub const DEFAULT_WASM_PKG_CONFIG: &str = "default_registry = \"augentic.io\"\n\

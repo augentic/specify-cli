@@ -1,4 +1,4 @@
-//! Terminal formatter per RFC-32 §D6 — severity tag, rule id, title,
+//! Terminal formatter per the diagnostics formatter set — severity tag, rule id, title,
 //! source location, and an indented impact/remediation block per
 //! finding plus a tally footer mirroring [`super::LintSummary`].
 //!

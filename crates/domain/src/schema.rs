@@ -1,8 +1,8 @@
-//! Domain-shaped JSON Schema validation hooks for RFC-25 on-disk
+//! Domain-shaped JSON Schema validation hooks for source/target adapter split on-disk
 //! artifacts.
 //!
 //! The raw JSON-Schema plumbing and embedded constants live in
-//! [`specify_schema`] per RFC-32 §"Library layout"; this module holds
+//! [`specify_schema`] per [DECISIONS.md §"Standards layer split into `specify-lints` and `specify-schema"](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema); this module holds
 //! the workflow-aware wrappers — they import [`crate::change::Plan`],
 //! aggregate per-file findings into a single
 //! [`specify_error::Error::Validation`] payload, and pin the wire
@@ -232,10 +232,10 @@ fn err_from_failures(results: Vec<ValidationSummary>) -> Result<()> {
 mod tests {
     use super::*;
 
-    /// The `UNI-014` example from RFC-28 §Resolved rules export
+    /// The `UNI-014` example for the `ResolvedRules` export
     /// validates cleanly against the resolved-codex schema.
     #[test]
-    fn resolved_codex_schema_accepts_rfc_example() {
+    fn resolved_codex_schema_accepts_contract_example() {
         let instance = serde_json::json!({
             "version": 1,
             "target-adapter": "omnia",
@@ -276,16 +276,16 @@ mod tests {
         let validator =
             compile_schema(RESOLVED_RULES_JSON_SCHEMA).expect("resolved codex schema compiles");
         let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
-        assert!(errors.is_empty(), "RFC-28 UNI-014 example must validate; errors: {errors:?}");
+        assert!(errors.is_empty(), "UNI-014 example must validate; errors: {errors:?}");
     }
 
-    /// The `FIND-0001` example from RFC-28 §Structured review finding
+    /// The `FIND-0001` example for structured lint findings
     /// schema validates cleanly against the finding schema. The
-    /// fingerprint placeholder `sha256:...` from the RFC body is
+    /// fingerprint placeholder `sha256:...` from the contract is
     /// replaced with a deterministic 64-hex-char digest so the
     /// fingerprint pattern check passes.
     #[test]
-    fn review_finding_schema_accepts_rfc_example() {
+    fn review_finding_schema_accepts_contract_example() {
         let instance = serde_json::json!({
             "id": "FIND-0001",
             "rule-id": "UNI-014",
@@ -311,13 +311,13 @@ mod tests {
         let validator =
             compile_schema(LINT_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
         let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
-        assert!(errors.is_empty(), "RFC-28 FIND-0001 example must validate; errors: {errors:?}");
+        assert!(errors.is_empty(), "FIND-0001 example must validate; errors: {errors:?}");
     }
 
-    /// The codex-rule frontmatter example in RFC-28 §Codex file shape
+    /// The rule frontmatter example for codex file shape
     /// validates cleanly against the vendored codex-rule schema.
     #[test]
-    fn codex_rule_schema_accepts_rfc_example() {
+    fn codex_rule_schema_accepts_contract_example() {
         let instance = serde_json::json!({
             "id": "UNI-014",
             "title": "Hardcoded Configuration",
@@ -339,7 +339,7 @@ mod tests {
         });
         let validator = compile_schema(RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
         let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
-        assert!(errors.is_empty(), "RFC-28 UNI-014 frontmatter must validate; errors: {errors:?}");
+        assert!(errors.is_empty(), "UNI-014 frontmatter must validate; errors: {errors:?}");
     }
 
     /// An empty evidence directory (or missing one) passes — empty

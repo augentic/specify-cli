@@ -1,5 +1,4 @@
-//! Markdown structure + link scan per RFC-32 §"Core entity families
-//! (v1)".
+//! Markdown structure + link scan per the `WorkspaceModel` entity families.
 //!
 //! Two byte-stable passes over each markdown file's text:
 //!

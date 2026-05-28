@@ -621,7 +621,7 @@ fn composition_missing_file_returns_invalid_project_error() {
     }
 }
 
-// ── Catalog cross-reference tests (RFC-31 D5/D6) ──────────────────
+// ── Catalog cross-reference tests (component catalog contract) ──────────────────
 
 /// Materialise a composition project with an optional component
 /// catalog at `.specify/design-system/components.yaml`.

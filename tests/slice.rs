@@ -362,28 +362,28 @@ fn phase_outcome_round_trips_serde() {
     }
 }
 
-// ---- RFC-25 top-level help surfaces source/target axis verbs ----
+// ---- Top-level help surfaces source/target axis verbs ----
 
 #[test]
 fn top_level_help_lists_source_and_target_axis_verbs() {
     let assert = specrun().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(stdout.contains("slice"), "RFC-25 --help must still list `slice`, got:\n{stdout}");
+    assert!(stdout.contains("slice"), "Top-level --help must still list `slice`, got:\n{stdout}");
     assert!(
         stdout.lines().any(|line| line.trim_start().starts_with("source ")),
-        "RFC-25 --help must list the `source` axis verb, got:\n{stdout}"
+        "Top-level --help must list the `source` axis verb, got:\n{stdout}"
     );
     assert!(
         stdout.lines().any(|line| line.trim_start().starts_with("target ")),
-        "RFC-25 --help must list the `target` axis verb, got:\n{stdout}"
+        "Top-level --help must list the `target` axis verb, got:\n{stdout}"
     );
     assert!(
         !stdout.lines().any(|line| line.trim_start().starts_with("change ")),
-        "RFC-25 --help must NOT list the retired `change` verb, got:\n{stdout}"
+        "Top-level --help must NOT list the retired `change` verb, got:\n{stdout}"
     );
     assert!(
         !stdout.lines().any(|line| line.trim_start().starts_with("adapter ")),
-        "RFC-25 --help must NOT list the retired `adapter` verb, got:\n{stdout}"
+        "Top-level --help must NOT list the retired `adapter` verb, got:\n{stdout}"
     );
 }
 
@@ -423,7 +423,7 @@ fn assert_provenance_fail_rule(stderr: &[u8], rule_id: &str) {
 }
 
 const PLAN_WITH_LEGACY_MONOLITH: &str = "\
-name: rfc25-prov
+name: workflow-prov
 lifecycle: pending
 sources:
   legacy-monolith:
@@ -557,7 +557,7 @@ fn validate_rejects_tag_status_mismatch_with_exit_two() {
 }
 
 // ---------------------------------------------------------------------------
-// workflow §D4 — `slice validate` fusion drift gate
+// `fusion.yaml` audit index — `slice validate` fusion drift gate
 // ---------------------------------------------------------------------------
 
 /// Minimal fusion.yaml for a slice named `my-slice` with one
@@ -777,7 +777,7 @@ body without metadata lines yet
 }
 
 // ---------------------------------------------------------------------------
-// RFC-31 D5 — `slice validate` catalog drift gate
+// component catalog contract — `slice validate` catalog drift gate
 // ---------------------------------------------------------------------------
 
 /// Evidence with a `component:` directive on a claim.
@@ -819,7 +819,7 @@ components:
 
 /// Plan that declares a `ui-screens` source for the `my-slice` entry.
 const PLAN_WITH_UI_SCREENS: &str = "\
-name: rfc31-catalog
+name: component-catalog
 lifecycle: pending
 sources:
   ui-screens:

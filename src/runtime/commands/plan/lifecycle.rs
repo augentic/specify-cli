@@ -165,7 +165,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 /// lifecycle has no undo path in v1.
 ///
 /// `<plan-name> approved` against an already-approved plan is an
-/// idempotent no-op (exit 0, no journal event) per workflow §D7 —
+/// idempotent no-op (exit 0, no journal event) per auto-approve Gate-1 contract —
 /// running the explicit transition after `specrun plan create
 /// --auto-approve` must not double-stamp the lifecycle nor double-
 /// fire `plan.transition.approved`.
@@ -260,7 +260,7 @@ fn dispatch_transition(
             "approved" => {
                 let previous = plan.lifecycle;
                 if matches!(previous, Lifecycle::Approved) {
-                    // workflow §D7: `--auto-approve` already stamped
+                    // auto-approve Gate-1 contract: `--auto-approve` already stamped
                     // this plan; the explicit transition is the
                     // operator's belt-and-braces follow-up. No
                     // disk or journal write — `body.changed` is
@@ -447,7 +447,7 @@ struct TransitionBody {
     previous: String,
     current: String,
     /// `false` when the transition was an idempotent no-op (workflow
-    /// §D7 — explicit `approved` after `--auto-approve`); `true`
+    /// rules-root resolution — explicit `approved` after `--auto-approve`); `true`
     /// when the lifecycle / status actually moved. The outer
     /// handler reads this to decide whether to fire the
     /// `plan.transition.approved` journal event.

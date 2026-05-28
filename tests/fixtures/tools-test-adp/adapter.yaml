@@ -6,4 +6,4 @@ briefs:
   shape: briefs/shape.md
   build: briefs/build.md
   merge: briefs/merge.md
-description: Fixture adapter for RFC-15 sidecar tool acceptance tests
+description: Fixture adapter for declared-tool sidecar acceptance tests

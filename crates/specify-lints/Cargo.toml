@@ -5,9 +5,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Specify standards layer (rules + lint): RFC-28 rule parser, resolver, and review-finding validators (RFC-32 standards-layer split)"
+description = "Specify standards layer (rules + lint): rule parser, resolver, review-finding validators, and lint indexer"
 categories = ["development-tools"]
-keywords = ["specify", "lint", "rfc"]
+keywords = ["specify", "lint", "rules"]
 readme = "../../README.md"
 
 [lints]

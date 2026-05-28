@@ -1,4 +1,4 @@
-//! Integration tests for `specrun workspace *` (RFC-14).
+//! Integration tests for `specrun workspace *` (workspace orchestration contract).
 //!
 //! Covers `workspace sync`, `workspace push`, and the hidden
 //! `workspace prepare` executor helper. Selector
@@ -25,7 +25,7 @@ fn workspace_help_lists_active_subcommands() {
 }
 
 #[test]
-fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
+fn workspace_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     fs::write(
@@ -62,7 +62,7 @@ fn rfc14_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
 }
 
 #[test]
-fn rfc14_c01_workspace_sync_selects_projects_without_materialising_unselected_slots() {
+fn workspace_c01_workspace_sync_selects_projects_without_materialising_unselected_slots() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     for name in ["billing", "orders", "inventory"] {
@@ -101,7 +101,7 @@ fn rfc14_c01_workspace_sync_selects_projects_without_materialising_unselected_sl
 }
 
 #[test]
-fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
+fn workspace_c01_workspace_push_unknown_selector_fails_before_side_effects() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
@@ -133,7 +133,7 @@ fn rfc14_c01_workspace_push_unknown_selector_fails_before_side_effects() {
 }
 
 #[test]
-fn rfc14_c04_workspace_prepare_hidden_helper_returns_structured_json() {
+fn workspace_c04_workspace_prepare_hidden_helper_returns_structured_json() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -187,7 +187,7 @@ fn rfc14_c04_workspace_prepare_hidden_helper_returns_structured_json() {
 }
 
 #[test]
-fn rfc14_c04_workspace_prepare_surfaces_origin_head_diagnostic_key() {
+fn workspace_c04_workspace_prepare_surfaces_origin_head_diagnostic_key() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -232,9 +232,9 @@ fn rfc14_c04_workspace_prepare_surfaces_origin_head_diagnostic_key() {
     assert_eq!(run_git(&alpha, &["branch", "--show-current"]).trim(), "main");
 }
 
-// ---- RFC-3a C35 — planning-path workspace smoke ----
+// ---- planning-path workspace smoke — planning-path workspace smoke ----
 #[test]
-fn rfc3a_c35_workspace_sync_absent_registry_exits_zero() {
+fn planning_path_workspace_sync_absent_registry_exits_zero() {
     let project = Project::init();
     let assert = specrun()
         .current_dir(project.root())
@@ -247,7 +247,7 @@ fn rfc3a_c35_workspace_sync_absent_registry_exits_zero() {
 }
 
 #[test]
-fn rfc3a_c35_workspace_sync_two_local_symlink_peers() {
+fn planning_path_workspace_sync_two_local_symlink_peers() {
     let tmp = tempdir().expect("tempdir");
     let peer = tmp.path().join("peer-proj");
     fs::create_dir_all(peer.join(".specify")).expect("peer .specify");
@@ -257,7 +257,7 @@ fn rfc3a_c35_workspace_sync_two_local_symlink_peers() {
         .current_dir(&root)
         .args(["init"])
         .arg(omnia_schema_dir())
-        .args(["--name", "rfc3a-ws"])
+        .args(["--name", "planning-ws"])
         .assert()
         .success();
 

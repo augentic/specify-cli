@@ -4,7 +4,7 @@
 //! The per-subcommand `--format` flag is intentionally distinct from
 //! the global `Cli::format` flag: global `--format` toggles JSON vs
 //! text for envelope-emitting handlers and the failure path, while
-//! `specrun lint --format` selects the closed RFC-32 §D6 set
+//! `specrun lint --format` selects the closed the diagnostics formatter set set
 //! (`{ json, pretty, github, compact }`). The handler reads its own
 //! per-subcommand flag and ignores the global one for the success
 //! body.
@@ -17,11 +17,11 @@ use specify_lints::lint::diagnostics::Format as DiagnosticsFormat;
 #[derive(Subcommand)]
 pub enum LintAction {
     /// Resolve applicable rules, build a `WorkspaceModel`,
-    /// evaluate deterministic hints, and emit the RFC-28 review
-    /// envelope (RFC-32 §"`specrun lint` (Phase 2 CLI)").
+    /// evaluate deterministic hints, and emit the structured review
+    /// envelope.
     Run {
         /// Codex root supplying shared `UNI-*` rules. Resolution
-        /// order (RFC-32 §D7): this flag → `$RULES_ROOT` env →
+        /// order (rules-root resolution): this flag → `$RULES_ROOT` env →
         /// project's `.specify/cache/rules/` → bundled tree.
         /// Validation failure exits 2 with `rules-root-required`.
         #[arg(long, env = "RULES_ROOT")]
@@ -36,14 +36,14 @@ pub enum LintAction {
         #[arg(long = "source", value_name = "NAME")]
         sources: Vec<String>,
 
-        /// Restrict the scan to one slice's tasks (RFC-32 §D2).
+        /// Restrict the scan to one slice's tasks (lint scope resolution).
         /// Reads the slice's `tasks.md` for `Touches:` / `Produces:`
         /// paths plus `.specify/slices/<name>/**`.
         #[arg(long)]
         slice: Option<String>,
 
         /// Restrict the scan to specific artifact paths
-        /// (RFC-32 §D2). Repeatable; composes with `--slice` (union).
+        /// (lint scope resolution). Repeatable; composes with `--slice` (union).
         #[arg(long = "artifact", value_name = "PATH")]
         artifacts: Vec<PathBuf>,
 
@@ -58,13 +58,13 @@ pub enum LintAction {
         #[arg(long)]
         dump_model: bool,
 
-        /// Upgrade the RFC-32 §D5 reserved-hint summary finding's
+        /// Upgrade the reserved-hint diagnostics reserved-hint summary finding's
         /// severity from `optional` to `important`, which
-        /// contributes to a non-zero exit code per §D8.
+        /// contributes to a non-zero exit code per lint exit mapping.
         #[arg(long)]
         strict_hints: bool,
 
-        /// Output format. Closed Phase 2 set per RFC-32 §D6:
+        /// Output format. Closed Phase 2 set per the diagnostics formatter set:
         /// `{ json, pretty, github, compact }`; default `pretty`.
         ///
         /// Spelled `--output-format` rather than `--format` to
@@ -85,11 +85,11 @@ pub enum LintAction {
     },
 }
 
-/// Clap-derivable mirror of [`DiagnosticsFormat`] per RFC-32 §D6.
+/// Clap-derivable mirror of [`DiagnosticsFormat`] per the diagnostics formatter set.
 ///
 /// Kept distinct from the `specify-lints` enum so the standards crate
 /// stays runtime-agnostic; the [`From`] impl below is the single
-/// adapter. The wire spelling matches the RFC §D6 closed set
+/// adapter. The wire spelling matches the closed diagnostics formatter set
 /// (`compact`, `github`, `json`, `pretty`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum LintFormat {
@@ -97,7 +97,7 @@ pub enum LintFormat {
     Compact,
     /// GitHub Actions workflow-annotation lines.
     Github,
-    /// RFC-28 wire envelope; schema-validated before emit.
+    /// `LintResult` wire envelope; schema-validated before emit.
     Json,
     /// Terminal output with severity colour and source location.
     Pretty,

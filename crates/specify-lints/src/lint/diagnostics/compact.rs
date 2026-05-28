@@ -1,4 +1,4 @@
-//! Tab-separated one-finding-per-line formatter per RFC-32 §D6 —
+//! Tab-separated one-finding-per-line formatter per the diagnostics formatter set —
 //! grep- and PR-bot-friendly.
 //!
 //! Line shape:

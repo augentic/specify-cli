@@ -1,6 +1,6 @@
 //! On-disk representation of `plan.yaml` and the in-memory [`Plan`]
 //! state machine that wraps it. [`Plan::transition`] is the only path
-//! that mutates `Entry::status`; see `rfcs/rfc-2-execution.md`.
+//! that mutates `Entry::status`.
 
 pub mod amend;
 pub mod archive;
@@ -22,7 +22,7 @@ pub use model::{
     TargetRefParseError,
 };
 #[cfg(test)]
-pub use test_fixtures::{RFC_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
+pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
 pub use validate::authority_override_orphan_source_keys;
 
 #[cfg(test)]
@@ -31,12 +31,12 @@ mod test_fixtures {
 
     use super::model::{Entry, Lifecycle, Plan, SliceAuthorityOverride, Status};
 
-    /// Reduced-state reproduction of the `rfcs/done/rfc-2-execution.md`
+    /// Reduced-state reproduction of the plan execution
     /// §"The Plan" fixture. v1 has no per-entry `failed`, `blocked`, or
     /// `skipped` state — entries either move forward or stay where they
     /// are. The fixture has been mechanically rewritten to use the
     /// surviving three-state enum.
-    pub const RFC_EXAMPLE_YAML: &str = r"name: platform-v2
+    pub const PLAN_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
   monolith:
     adapter: code-typescript
