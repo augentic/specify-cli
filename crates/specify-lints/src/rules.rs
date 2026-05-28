@@ -117,8 +117,8 @@ pub enum LintMode {
 /// Closed v1 deterministic-hint kind enum.
 ///
 /// Includes the executable v1 kinds (`path-pattern`, `regex`,
-/// `schema`, `tool`, `reference-resolves`, `unique`) and the
-/// Reserved hint kind kinds (`set-coverage`, `cardinality`,
+/// `schema`, `tool`, `reference-resolves`, `unique`,
+/// `set-coverage`) and the Reserved hint kind kinds (`cardinality`,
 /// `constant-eq`, `set-eq`, `content-digest-eq`, `namespace-owner`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -136,7 +136,9 @@ pub enum HintKind {
     Unique,
     /// Every reference resolves (v1 source discriminator: `markdown-link`).
     ReferenceResolves,
-    /// Reserved hint kind: a value set covers a required domain.
+    /// Assert that the values some candidate file declares cover a
+    /// closed expected set (v1 source discriminator:
+    /// `adapter-briefs-cover-operations`).
     SetCoverage,
     /// Reserved hint kind: assert a set's cardinality.
     Cardinality,

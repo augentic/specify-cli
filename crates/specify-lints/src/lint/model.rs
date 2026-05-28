@@ -299,6 +299,14 @@ pub struct AdapterManifest {
     /// pin one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// Operation slugs declared as the `briefs:` map keys in the
+    /// manifest body. Empty when the manifest omits the field or
+    /// declares an empty map. Consumed by the `kind: set-coverage`
+    /// interpreter via the `adapter-briefs-cover-operations`
+    /// discriminator to detect manifests whose `briefs.keys()` do
+    /// not cover the closed axis-appropriate operation set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub brief_keys: Vec<String>,
 }
 
 /// `marketplace_entry` fact per the `WorkspaceModel` entity families

@@ -19,8 +19,12 @@ const ADAPTER_FILENAME: &str = "adapter.yaml";
 /// declarative pipeline cites the same `iter_errors` instance pointers
 /// as the deleted imperative row, with the documented rule-id mapping
 /// `adapter.schema-violation` ↔ `CORE-001`. The missing-manifest check
-/// below stays imperative until a future card maps it onto a
-/// reserved-kind hint (`set-coverage` candidate).
+/// below stays imperative because the `set-coverage` reserved-kind
+/// hint (C12) iterates `WorkspaceModel.adapter_manifests` and only
+/// fires on present-but-incomplete manifests; an axis directory
+/// missing its `adapter.yaml` produces no manifest fact and is
+/// therefore invisible to the declarative pass. The closer fit for
+/// directory existence is a future `cardinality` / `set-eq` rule.
 pub struct AdapterCheck;
 
 impl Check for AdapterCheck {

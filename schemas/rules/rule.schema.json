@@ -130,7 +130,7 @@
               { "const": "tool" },
               { "const": "unique" },
               { "const": "reference-resolves" },
-              { "const": "set-coverage", "x-hint-status": "reserved" },
+              { "const": "set-coverage" },
               { "const": "cardinality", "x-hint-status": "reserved" },
               { "const": "constant-eq", "x-hint-status": "reserved" },
               { "const": "set-eq", "x-hint-status": "reserved" },

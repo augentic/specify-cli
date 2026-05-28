@@ -138,7 +138,7 @@ fn reserved_kind_collected_and_summary_minted() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("a.rs"), "fn x(){}\n").expect("write");
     let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
-    let rule = make_rule("UNI-906", vec![hint(HintKind::SetCoverage, "skills")]);
+    let rule = make_rule("UNI-906", vec![hint(HintKind::Cardinality, "skills")]);
     let runner: &dyn ToolRunner = &NoToolRunner;
 
     let outcome = evaluate(
@@ -157,7 +157,7 @@ fn reserved_kind_collected_and_summary_minted() {
         vec![ReservedSkipped {
             rule_id: "UNI-906".to_string(),
             hint_index: 0,
-            kind: HintKind::SetCoverage,
+            kind: HintKind::Cardinality,
         }]
     );
 

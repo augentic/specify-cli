@@ -116,7 +116,7 @@
         "content-digest-eq",
         "namespace-owner"
       ],
-      "description": "Closed v1 deterministic-hint kind enum. Reserved kinds (`set-coverage`, `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`, `namespace-owner`) are shape-validated only; `specrun lint` owns execution semantics."
+      "description": "Closed v1 deterministic-hint kind enum. Reserved kinds (`cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`, `namespace-owner`) are shape-validated only; `specrun lint` owns execution semantics."
     },
     "deterministicHint": {
       "type": "object",

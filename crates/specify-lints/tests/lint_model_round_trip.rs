@@ -148,6 +148,7 @@ fn populated_workspace_model_round_trips_through_schema() {
             name: "omnia".into(),
             path: "adapters/targets/omnia/adapter.yaml".into(),
             version: Some("1".into()),
+            brief_keys: vec!["build".into(), "merge".into(), "shape".into()],
         }],
         marketplace_entries: vec![MarketplaceEntry {
             plugin: "spec".into(),

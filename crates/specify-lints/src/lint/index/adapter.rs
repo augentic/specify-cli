@@ -12,6 +12,8 @@
 //! per-file skip — the file scan contract reserves the `index.warning`
 //! finding for the hint runner.
 
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
 use super::files::DiscoveredFile;
@@ -21,6 +23,7 @@ use crate::lint::{AdapterAxis, AdapterManifest};
 struct ManifestBody {
     name: Option<String>,
     version: Option<serde_json::Value>,
+    briefs: Option<BTreeMap<String, serde_json::Value>>,
 }
 
 /// Extract an [`AdapterManifest`] fact from a discovered file.
@@ -43,11 +46,13 @@ pub fn extract(file: &DiscoveredFile) -> Option<AdapterManifest> {
         return None;
     }
     let version = body.version.and_then(stringify_version);
+    let brief_keys = body.briefs.map(|map| map.into_keys().collect::<Vec<_>>()).unwrap_or_default();
     Some(AdapterManifest {
         axis,
         name: name.to_owned(),
         path: file.relative.clone(),
         version,
+        brief_keys,
     })
 }
 
@@ -108,6 +113,7 @@ mod tests {
         assert_eq!(manifest.axis, AdapterAxis::Sources);
         assert_eq!(manifest.name, "intent");
         assert_eq!(manifest.version.as_deref(), Some("1"));
+        assert!(manifest.brief_keys.is_empty());
     }
 
     #[test]
@@ -117,6 +123,23 @@ mod tests {
         let manifest = extract(&file).expect("manifest extracted");
         assert_eq!(manifest.axis, AdapterAxis::Targets);
         assert_eq!(manifest.version.as_deref(), Some("2.1"));
+    }
+
+    #[test]
+    fn extracts_briefs_keys_when_declared() {
+        let file = manifest(
+            "adapters/sources/intent/adapter.yaml",
+            "name: intent\nversion: 1\nbriefs:\n  enumerate: briefs/enumerate.md\n  extract: briefs/extract.md\n",
+        );
+        let manifest = extract(&file).expect("manifest extracted");
+        assert_eq!(manifest.brief_keys, vec!["enumerate".to_string(), "extract".to_string()]);
+    }
+
+    #[test]
+    fn missing_briefs_map_leaves_brief_keys_empty() {
+        let file = manifest("adapters/targets/omnia/adapter.yaml", "name: omnia\nversion: 1\n");
+        let manifest = extract(&file).expect("manifest extracted");
+        assert!(manifest.brief_keys.is_empty());
     }
 
     #[test]
