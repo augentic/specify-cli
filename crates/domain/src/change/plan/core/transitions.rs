@@ -103,7 +103,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transition_in_progress_to_done_and_rejects_pending_skip() {
+    fn transition_in_progress_to_done() {
         let mut plan =
             plan_with_changes(vec![change("a", Status::Pending), change("b", Status::InProgress)]);
         plan.transition("b", Status::Done).expect("in-progress -> done ok");

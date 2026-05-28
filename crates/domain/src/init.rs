@@ -109,7 +109,7 @@ pub(crate) fn resolve_version() -> String {
 }
 
 pub(crate) fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
-    crate::registry::ensure_specify_gitignore_entries(project_dir)
+    crate::registry::ensure_gitignore_entries(project_dir)
 }
 
 /// Scaffold the project-local wasm-pkg config when absent, preserving

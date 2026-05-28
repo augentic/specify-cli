@@ -271,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn regular_project_renders_fixed_section_order_and_placeholders() {
+    fn regular_project_section_order() {
         let rendered = render_body(&regular_input());
 
         let headings: Vec<&str> = rendered.lines().filter(|line| line.starts_with("## ")).collect();

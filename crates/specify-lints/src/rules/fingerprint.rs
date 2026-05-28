@@ -260,7 +260,7 @@ mod tests {
     /// `disposition`, `change`, `slice`, `target-adapter`,
     /// `source-adapter`) MUST leave the fingerprint unchanged.
     #[test]
-    fn excluded_producer_fields_do_not_change_fingerprint() {
+    fn excluded_producer_fields_stable_fp() {
         type Mutation = fn(&mut LintFinding);
         let baseline = fingerprint(&sample_finding());
 
@@ -485,7 +485,7 @@ mod tests {
     /// (9) Findings with absent `rule-id` and absent `location`
     /// still produce a well-formed `sha256:<64 hex>` fingerprint.
     #[test]
-    fn empty_rule_id_and_absent_location_produce_well_formed_fingerprint() {
+    fn empty_rule_id_well_formed_fp() {
         let mut finding = sample_finding();
         finding.rule_id = None;
         finding.location = None;

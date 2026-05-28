@@ -321,7 +321,7 @@ mod tests {
     /// (4b) Evidence sitting just under the cap passes — boundary
     /// guard so future drift on the serialized framing surfaces here.
     #[test]
-    fn validate_evidence_size_accepts_payload_just_under_cap() {
+    fn validate_evidence_size_under_cap() {
         let mut finding = sample_finding();
         // Snippet payload framing: {"kind":"snippet","value":"..."}.
         // 28 bytes of framing plus the JSON-escaped value bytes.
@@ -351,7 +351,7 @@ mod tests {
     /// (5b) Malformed fingerprint also fails the typed
     /// `validate_finding` via the schema's pattern check.
     #[test]
-    fn validate_finding_rejects_malformed_fingerprint_via_schema() {
+    fn validate_finding_rejects_bad_fp_schema() {
         let mut finding = sample_finding();
         finding.fingerprint = "not-a-sha256".into();
         match validate_finding(&finding) {
@@ -465,7 +465,7 @@ mod tests {
     /// `value` field (snippet leakage) violates the structured
     /// branch's `additionalProperties: false`.
     #[test]
-    fn validate_finding_json_rejects_structured_with_extra_value() {
+    fn validate_finding_rejects_structured_extra() {
         let mut value = sample_finding_json();
         value["evidence"] = json!({
             "kind": "structured",

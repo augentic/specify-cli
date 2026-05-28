@@ -241,7 +241,7 @@ slices:
 }
 
 #[test]
-fn slice_source_binding_helpers_normalise_bare_shorthand() {
+fn slice_source_binding_normalises_shorthand() {
     let bare = SliceSourceBinding::bare("intent");
     assert_eq!(bare.key(), "intent");
     assert_eq!(bare.candidate("add-search-filter"), "add-search-filter");
@@ -380,7 +380,7 @@ slices:
 }
 
 #[test]
-fn divergence_likely_round_trips_to_byte_identical_yaml() {
+fn divergence_likely_round_trips_yaml() {
     // divergence and writer-ownership contract: the CLI is the single writer of every variant
     // of `slices[].divergence`. The on-disk shape for `Likely`
     // is one kebab-case line on the slice entry, byte-identical

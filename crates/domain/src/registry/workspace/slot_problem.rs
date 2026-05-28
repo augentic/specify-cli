@@ -50,7 +50,7 @@ pub enum Reason {
     /// A local/relative registry entry points at a non-symlink slot.
     LocalSlotIsNotSymlink,
     /// A local/relative registry entry points at a symlink with the wrong target.
-    LocalSymlinkTargetMismatch,
+    SymlinkTargetMismatch,
     /// A local/relative registry entry points at a broken symlink.
     LocalSymlinkBroken,
     /// A remote registry entry points at a symlink slot.
@@ -159,7 +159,7 @@ fn inspect_local_slot(
     match std::fs::canonicalize(dest) {
         Ok(resolved) if resolved == target => None,
         Ok(resolved) => Some(Problem {
-            reason: Reason::LocalSymlinkTargetMismatch,
+            reason: Reason::SymlinkTargetMismatch,
             expected_kind: SlotKind::Symlink,
             observed_kind: Some(SlotKind::Symlink),
             expected_url: project.url.clone(),

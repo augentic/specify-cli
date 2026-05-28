@@ -65,7 +65,7 @@ mod tests {
     }
 
     #[test]
-    fn digest_mismatch_fails_before_install_and_preserves_previous_cache() {
+    fn digest_mismatch_preserves_cache() {
         let cache_dir = scratch_dir("resolver-digest-cache");
         let project_dir = scratch_dir("resolver-digest-project");
         let source_dir = scratch_dir("resolver-digest-source");

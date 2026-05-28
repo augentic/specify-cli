@@ -648,7 +648,7 @@ fn validate_passes_on_clean_fusion_inputs() {
 }
 
 #[test]
-fn validate_detects_req_id_drift_when_spec_md_has_extra_requirement() {
+fn validate_req_id_drift() {
     let project = stage_slice_with_fusion();
     // Append a second REQ block to spec.md so spec.md has REQ-001 +
     // REQ-002 while fusion.yaml only knows REQ-001.
@@ -685,7 +685,7 @@ fn validate_detects_req_id_drift_when_spec_md_has_extra_requirement() {
 }
 
 #[test]
-fn validate_detects_contributing_claim_drift_when_evidence_claim_renamed() {
+fn validate_claim_drift_on_rename() {
     let project = stage_slice_with_fusion();
     // Rename the evidence claim id; fusion.yaml still cites the old one.
     let evidence_path = project.slices_dir().join("my-slice/evidence/legacy-monolith.yaml");
@@ -738,7 +738,7 @@ fn validate_skips_drift_gate_when_fusion_yaml_absent() {
 }
 
 #[test]
-fn validate_skipped_drift_gate_does_not_fire_on_pre_synthesis_spec() {
+fn validate_no_drift_pre_synthesis() {
     // When fusion.yaml is present but spec.md is still pre-synthesis
     // (no Sources/Status lines), the drift gate must still gather
     // REQ ids from the bare `ID:` lines so a partially-refined slice
@@ -1019,7 +1019,7 @@ claims:
 }
 
 #[test]
-fn validate_skips_provenance_when_no_metadata_lines_present() {
+fn validate_skips_provenance_without_metadata() {
     // pre-2.0 (or pre-synthesis) state. The provenance gate must
     // not fire and the slice progresses to the existing adapter rule
     // run. The adapter rules will still surface deferred /

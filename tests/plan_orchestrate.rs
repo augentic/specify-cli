@@ -604,7 +604,7 @@ fn plan_transition_undo_walks_done_to_in_progress() {
 }
 
 #[test]
-fn plan_transition_undo_walks_in_progress_to_pending_then_refuses() {
+fn plan_undo_in_progress_to_pending_refuses() {
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
 
@@ -867,7 +867,7 @@ fn plan_create_then_validate_passes_clean() {
 // -- plan create --auto-approve (auto-approve Gate-1 contract) ---------------------------
 
 #[test]
-fn plan_create_auto_approve_stamps_approved_and_emits_journal_event() {
+fn plan_create_auto_approve_stamps_approved() {
     // auto-approve Gate-1 contract: `--auto-approve` is the operator's Gate-1 consent at
     // create time. The on-disk plan carries `lifecycle: approved`
     // directly (single atomic write — no transient `pending`
@@ -915,7 +915,7 @@ fn plan_create_auto_approve_stamps_approved_and_emits_journal_event() {
 }
 
 #[test]
-fn plan_create_auto_approve_then_explicit_transition_is_idempotent_noop() {
+fn plan_create_auto_approve_idempotent() {
     // auto-approve Gate-1 contract: running `specrun plan transition <name> approved`
     // after a successful `--auto-approve` create must be a no-op —
     // exit 0, no second `plan.transition.approved` event, plan.yaml
@@ -959,7 +959,7 @@ fn plan_create_auto_approve_then_explicit_transition_is_idempotent_noop() {
 }
 
 #[test]
-fn plan_create_auto_approve_invalid_name_refuses_same_as_without_flag() {
+fn plan_create_auto_approve_invalid_name() {
     // auto-approve Gate-1 contract: `--auto-approve` does NOT bypass validation. An
     // invalid (non-kebab) name refuses the create with the same
     // exit code and envelope as the post-create path; no `plan.yaml`
@@ -989,7 +989,7 @@ fn plan_create_auto_approve_invalid_name_refuses_same_as_without_flag() {
 }
 
 #[test]
-fn plan_create_auto_approve_validation_failure_emits_no_partial_events() {
+fn plan_create_auto_approve_no_partial_events() {
     // auto-approve Gate-1 contract: validation failure under --auto-approve must not
     // surface a partial-state event sequence — no orphan
     // `plan.propose.divergence` without the matching
@@ -1680,7 +1680,7 @@ fn plan_add_structured_sources_round_trips() {
 }
 
 #[test]
-fn plan_add_bare_source_round_trips_when_slice_name_matches_implied_candidate() {
+fn plan_add_bare_source_round_trips() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
@@ -1716,7 +1716,7 @@ fn plan_add_bare_source_round_trips_when_slice_name_matches_implied_candidate() 
 }
 
 #[test]
-fn plan_add_structured_form_preserved_when_candidate_differs_from_slice_name() {
+fn plan_add_structured_candidate_differs() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
@@ -2023,7 +2023,7 @@ fn plan_amend_authority_override_round_trips_and_validates() {
 }
 
 #[test]
-fn plan_amend_authority_override_orphan_source_key_refused_by_amend() {
+fn plan_amend_override_orphan_refused() {
     // per-slice authority override gate: refuse the `specrun plan amend` write when
     // the authority-override value names a source key not present
     // in the slice's `sources[]` list (`phantom`). The orphan
@@ -2168,7 +2168,7 @@ fn plan_amend_clear_authority_override_removes_only_one_entry() {
 }
 
 #[test]
-fn plan_amend_clear_authority_overrides_wipes_whole_map_per_kind_events() {
+fn plan_amend_clear_overrides_wipes_map() {
     // per-slice authority override: `--clear-authority-overrides <slice>` wipes the
     // entire `authority-override` map for that slice and emits one
     // Clear event per kind that was present before the wipe.
@@ -2342,7 +2342,7 @@ fn plan_amend_authority_override_unknown_slice_refused() {
 }
 
 #[test]
-fn plan_amend_authority_override_bad_claim_kind_refused_at_parse_time() {
+fn plan_amend_override_bad_kind_refused() {
     // per-slice authority override: `<kind>` is validated against the closed
     // ClaimKind enum at the CLI boundary — clap surfaces a usage
     // diagnostic (exit 2) before any plan mutation runs.

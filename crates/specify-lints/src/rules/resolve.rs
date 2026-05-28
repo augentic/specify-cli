@@ -676,7 +676,7 @@ mod tests {
     /// target/source overlays anchor on `ProjectDir`, because they were
     /// found via the project-local rung — not the rules-root fallback.
     #[test]
-    fn monorepo_anchors_split_between_rules_root_and_project_dir() {
+    fn monorepo_split_anchors() {
         let project = TempDir::new().expect("project");
         write_rule(
             &project.path().join("adapters/shared/rules/universal/uni-001.md"),
@@ -713,7 +713,7 @@ mod tests {
     /// duplicate-id error. Regression guard for the explicit-vs-derived
     /// rules-root distinction.
     #[test]
-    fn monorepo_does_not_double_walk_rules_root_fallback() {
+    fn monorepo_no_double_fallback_walk() {
         let project = TempDir::new().expect("project");
         write_rule(
             &project.path().join("adapters/shared/rules/universal/uni-001.md"),

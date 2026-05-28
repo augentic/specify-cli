@@ -5,7 +5,7 @@
 
 use specify_domain::change::{
     Divergence, EntryPatch, Patch, Plan, entry_mut, mutate_authority_overrides,
-    refuse_orphan_authority_overrides,
+    reject_orphan_overrides,
 };
 use specify_domain::config::with_state;
 use specify_domain::discovery::Discovery;
@@ -15,7 +15,7 @@ use specify_domain::schema::validate_plan;
 use specify_error::{Error, Result};
 
 use super::args::{
-    bindings_from_args, load_discovery, parse_authority_override_assigns, parse_divergence,
+    bindings_from_args, load_discovery, parse_divergence, parse_override_assigns,
     parse_slice_pair_args, parse_target_flag,
 };
 use super::entry::{Action, EntryBody, write_entry_text};
@@ -43,7 +43,7 @@ pub(super) fn amend(
     }
 
     let divergence = divergence.map(parse_divergence).transpose()?;
-    let override_sets = parse_authority_override_assigns(authority_override)?;
+    let override_sets = parse_override_assigns(authority_override)?;
     let override_clears: Vec<(String, ClaimKind)> =
         parse_slice_pair_args::<ClaimKind>(clear_authority_override, "--clear-authority-override")?;
     let override_clear_all: Vec<String> = clear_authority_overrides.to_vec();
@@ -135,7 +135,7 @@ pub(super) fn amend(
             // state, and `validate_plan` only checks JSON Schema. The
             // orphan check is the only per-slice authority override gate that fires
             // on this code path.
-            refuse_orphan_authority_overrides(plan)?;
+            reject_orphan_overrides(plan)?;
 
             validate_plan(plan)?;
             let amended = plan

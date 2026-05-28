@@ -9,4 +9,4 @@ pub mod validate;
 pub mod workspace;
 
 pub use catalog::{ContractRoles, Registry, RegistryProject};
-pub use gitignore::ensure_specify_gitignore_entries;
+pub use gitignore::ensure_gitignore_entries;

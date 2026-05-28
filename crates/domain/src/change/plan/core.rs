@@ -14,7 +14,7 @@ pub mod validate;
 
 pub use authority_override::{
     emit_seed_events as emit_authority_override_seed_events, entry_mut, mutate_authority_overrides,
-    refuse_orphan_authority_overrides, unknown_slice_err,
+    reject_orphan_overrides, unknown_slice_err,
 };
 pub use model::{
     Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, Severity,
@@ -23,7 +23,7 @@ pub use model::{
 };
 #[cfg(test)]
 pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
-pub use validate::authority_override_orphan_source_keys;
+pub use validate::orphan_authority_override_keys;
 
 #[cfg(test)]
 mod test_fixtures {

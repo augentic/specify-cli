@@ -296,7 +296,7 @@ fn context_rejects_absolute() {
 }
 
 #[test]
-fn authority_override_orphan_source_key_rejected() {
+fn override_orphan_key_rejected() {
     let mut entry = change("identity-user-registration", Status::Pending);
     entry.sources = vec![SliceSourceBinding::bare("legacy")];
     entry.authority_override = SliceAuthorityOverride {

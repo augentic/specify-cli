@@ -7,12 +7,12 @@ use std::io::Write;
 
 use serde::Serialize;
 use specify_domain::change::{
-    Divergence, Lifecycle, Plan, mutate_authority_overrides, refuse_orphan_authority_overrides,
+    Divergence, Lifecycle, Plan, mutate_authority_overrides, reject_orphan_overrides,
 };
 use specify_domain::journal;
 use specify_error::{Error, Result, is_kebab};
 
-use super::args::{build_source_map, parse_authority_override_assigns};
+use super::args::{build_source_map, parse_override_assigns};
 use crate::runtime::cli::SourceArg;
 use crate::runtime::context::Ctx;
 
@@ -58,7 +58,7 @@ pub(super) fn create(
         });
     }
 
-    let override_assigns = parse_authority_override_assigns(authority_override)?;
+    let override_assigns = parse_override_assigns(authority_override)?;
 
     let mut plan = Plan::init(&name, source_map)?;
     apply_divergence_likely(&mut plan, divergence_likely)?;
@@ -76,7 +76,7 @@ pub(super) fn create(
     // override map (it didn't exist yet) and `validate_plan` only
     // checks JSON Schema. The orphan check is the only per-slice authority override
     // gate that fires on this code path.
-    refuse_orphan_authority_overrides(&plan)?;
+    reject_orphan_overrides(&plan)?;
     if auto_approve {
         plan.transition_lifecycle(Lifecycle::Approved)?;
     }

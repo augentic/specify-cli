@@ -100,7 +100,7 @@ fn parse_delta_case_03_new_baseline() {
 }
 
 #[test]
-fn parse_baseline_case_09_validation_fails_preserves_structural_oddities() {
+fn parse_baseline_09_preserves_oddities() {
     let text = fixture!("case-09-validation-fails/baseline.md");
     let parsed = parse_baseline(text);
 

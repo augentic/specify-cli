@@ -401,7 +401,7 @@ fn slice_validate_appends_synthesis_journal_on_success() {
 }
 
 #[test]
-fn slice_validate_provenance_failure_writes_no_synthesis_journal() {
+fn slice_validate_provenance_no_journal() {
     let project = stage_slice_for_synthesis_journal();
     let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
     let bad = TAGGED_SPEC_UNKNOWN.replace("Status: unknown", "Status: agreed");

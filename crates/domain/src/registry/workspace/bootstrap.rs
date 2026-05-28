@@ -6,7 +6,7 @@ use std::path::Path;
 use specify_error::Error;
 
 use super::git::{self, git_output_ok, git_porcelain_non_empty};
-use crate::registry::gitignore::ensure_specify_gitignore_entries;
+use crate::registry::gitignore::ensure_gitignore_entries;
 
 pub(super) fn bootstrap(
     url: &str, dest: &Path, adapter: &str, initiating_project_dir: &Path,
@@ -67,7 +67,7 @@ fn scaffold_greenfield_specify_tree(dest: &Path, adapter: &str) -> Result<(), Er
         env!("CARGO_PKG_VERSION")
     );
     std::fs::write(specify_dir.join("project.yaml"), project_yaml).map_err(Error::Io)?;
-    ensure_specify_gitignore_entries(dest)?;
+    ensure_gitignore_entries(dest)?;
 
     Ok(())
 }

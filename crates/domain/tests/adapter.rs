@@ -117,7 +117,7 @@ fn axis_collision_rejected_at_resolve_time() {
 }
 
 #[test]
-fn check_axis_unique_for_name_passes_for_distinct_adapters() {
+fn axis_unique_passes_distinct() {
     // The fixture declares `code-typescript` only on the source axis
     // and `omnia` only on the target axis. Installing each on its
     // declared axis (or any brand-new name on either axis) must not
@@ -134,7 +134,7 @@ fn check_axis_unique_for_name_passes_for_distinct_adapters() {
 }
 
 #[test]
-fn check_axis_unique_for_name_rejects_opposite_axis_declaration() {
+fn axis_unique_rejects_opposite_axis() {
     // The init-time helper for the cross-axis uniqueness invariant.
     // Asking to install `foo` on either axis must fail because the
     // fixture already declares `foo` on both.

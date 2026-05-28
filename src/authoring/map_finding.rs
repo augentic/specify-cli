@@ -215,7 +215,7 @@ mod tests {
     /// recomputable fingerprint — the strongest correctness signal
     /// for the binary-boundary mapper.
     #[test]
-    fn mapper_output_validates_against_review_finding_schema() {
+    fn mapper_output_validates_schema() {
         let input = fixture(
             "rules.schema-violation",
             "Rule frontmatter failed schema validation.",

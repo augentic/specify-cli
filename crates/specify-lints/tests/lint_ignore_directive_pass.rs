@@ -312,7 +312,7 @@ fn with_no_color<R>(f: impl FnOnce() -> R) -> R {
 /// compatibility" promises additivity, and this assertion is the
 /// end-to-end witness.
 #[test]
-fn scenario_1_no_directives_keep_status_open_and_fingerprint_stable() {
+fn scenario_1_no_directives_stable_fp() {
     let scenario = Scenario {
         fixture_body: URL_FIXTURE_BODY,
         primary_rule_id: "UNI-014",
@@ -397,7 +397,7 @@ fn scenario_2_directive_match_flips_finding_to_ignored() {
 /// instead of `ignored`. The full rationale (prefix and all) is
 /// captured on the wire in `disposition.directive.rationale`.
 #[test]
-fn scenario_3_false_positive_prefix_flips_finding_to_false_positive() {
+fn scenario_3_false_positive_prefix() {
     let scenario = Scenario {
         fixture_body: URL_FALSE_POSITIVE_FIXTURE_BODY,
         primary_rule_id: "UNI-014",
@@ -554,7 +554,7 @@ fn scenario_6_orphan_directive_mints_uni_023_synthetic() {
 /// single matched finding with an empty rationale verbatim — and no
 /// synthetic noise.
 #[test]
-fn scenario_7_graceful_degradation_without_uni_022_or_uni_023() {
+fn scenario_7_graceful_degradation() {
     let scenario = Scenario {
         fixture_body: URL_WITH_UNRATIONED_DIRECTIVE_FIXTURE_BODY,
         primary_rule_id: "UNI-014",

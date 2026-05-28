@@ -15,10 +15,10 @@ pub mod tools;
 pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, RULE_SCHEMA_VIOLATION, run_adapter_check};
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
-pub use docs_quality::{MissingDiagramAsset, SpecifyHistoryCitationInDocs, TextPipelineDiagram};
+pub use docs_quality::{HistoryCitation, MissingDiagramAsset, TextPipelineDiagram};
 pub use links::LinksCheck;
 pub use plugins::{BrokenSymlinkCheck, MarketplaceDriftCheck};
-pub use prose::{InvocationPositional, OperationalVocabulary, SkillNumericCaps};
+pub use prose::{InvocationPositional, NumericCaps, OperationalVocabulary};
 pub use rules::{
     RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, RulesCheck, run_rules_check,
 };
@@ -32,18 +32,18 @@ pub use scenarios::{
 };
 pub use schema_links::SchemaLinksCheck;
 pub use skill_body::{
-    SkillBodyLineCount, SkillEnvelopeJsonInBody, SkillFrontmatterRestatement,
-    SkillInlineJsonTooLong, SkillInvalidCriticalPath, SkillMissingCriticalPath,
-    SkillSectionLineCount, SkillStepBodyDuplicatesCriticalPath, SkillVariableCoverage,
+    BodyLineCount, EnvelopeJsonInBody, FrontmatterRestatement, InlineJsonTooLong,
+    InvalidCriticalPath, MissingCriticalPath, SectionLineCount, StepBodyDuplicatesCriticalPath,
+    VariableCoverage,
 };
 pub use skill_frontmatter::{
     RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_DUPLICATE_NAME,
     RULE_MISSING_FRONTMATTER, RULE_NAME_DIRECTORY_MISMATCH,
     RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION, RULE_UNKNOWN_TOOL,
-    SkillArgumentHintGrammarCheck, SkillDescriptionGrammarCheck, SkillDuplicateNameCheck,
-    SkillFrontmatterSchemaCheck, SkillNameDirectoryMismatchCheck, SkillUnknownToolCheck,
+    ArgumentHintGrammar, DescriptionGrammar, DuplicateName, FrontmatterSchema, NameDirMismatch,
+    UnknownTool,
 };
-pub use tools::{DeclaredToolEquivalentInvocations, FirstPartyToolDeclarations};
+pub use tools::{DeclaredToolInvocations, FirstPartyTools};
 
 use crate::context::Context;
 use crate::finding::{Check, Finding};
@@ -55,33 +55,33 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
         &AgentTeamsCheck,
         &BriefCheck,
         &RulesCheck,
-        &SpecifyHistoryCitationInDocs,
+        &HistoryCitation,
         &MissingDiagramAsset,
         &TextPipelineDiagram,
         &LinksCheck,
         &BrokenSymlinkCheck,
         &MarketplaceDriftCheck,
-        &FirstPartyToolDeclarations,
-        &DeclaredToolEquivalentInvocations,
+        &FirstPartyTools,
+        &DeclaredToolInvocations,
         &OperationalVocabulary,
-        &SkillNumericCaps,
+        &NumericCaps,
         &InvocationPositional,
         &ScenariosCheck,
-        &SkillFrontmatterSchemaCheck,
-        &SkillNameDirectoryMismatchCheck,
-        &SkillDuplicateNameCheck,
-        &SkillUnknownToolCheck,
-        &SkillDescriptionGrammarCheck,
-        &SkillArgumentHintGrammarCheck,
-        &SkillBodyLineCount,
-        &SkillSectionLineCount,
-        &SkillMissingCriticalPath,
-        &SkillInvalidCriticalPath,
-        &SkillInlineJsonTooLong,
-        &SkillEnvelopeJsonInBody,
-        &SkillStepBodyDuplicatesCriticalPath,
-        &SkillFrontmatterRestatement,
-        &SkillVariableCoverage,
+        &FrontmatterSchema,
+        &NameDirMismatch,
+        &DuplicateName,
+        &UnknownTool,
+        &DescriptionGrammar,
+        &ArgumentHintGrammar,
+        &BodyLineCount,
+        &SectionLineCount,
+        &MissingCriticalPath,
+        &InvalidCriticalPath,
+        &InlineJsonTooLong,
+        &EnvelopeJsonInBody,
+        &StepBodyDuplicatesCriticalPath,
+        &FrontmatterRestatement,
+        &VariableCoverage,
         &SchemaLinksCheck,
     ];
     let mut findings = Vec::new();

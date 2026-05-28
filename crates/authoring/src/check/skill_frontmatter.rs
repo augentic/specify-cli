@@ -25,31 +25,31 @@ pub const MAX_DESCRIPTION_CHARS: usize = 512;
 const PREFIX_OVERRIDES: &[(&str, &str)] = &[("spec", "specify")];
 
 /// Validate SKILL.md frontmatter against `crates/authoring/schemas/skill.schema.json`.
-pub struct SkillFrontmatterSchemaCheck;
+pub struct FrontmatterSchema;
 
 /// Require `name:` to carry the containing plugin's discovery prefix.
-pub struct SkillNameDirectoryMismatchCheck;
+pub struct NameDirMismatch;
 
 /// Require globally unique skill `name:` values.
-pub struct SkillDuplicateNameCheck;
+pub struct DuplicateName;
 
 /// Whitelist `allowed-tools` entries against the known Cursor tool set.
-pub struct SkillUnknownToolCheck;
+pub struct UnknownTool;
 
 /// Require `description:` to start with a curated imperative verb.
-pub struct SkillDescriptionGrammarCheck;
+pub struct DescriptionGrammar;
 
 /// Enforce the canonical `argument-hint:` token grammar with rich diagnostics.
-pub struct SkillArgumentHintGrammarCheck;
+pub struct ArgumentHintGrammar;
 
-impl Check for SkillFrontmatterSchemaCheck {
+impl Check for FrontmatterSchema {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         check_schema(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_SCHEMA_VIOLATION, error)])
     }
 }
 
-impl Check for SkillNameDirectoryMismatchCheck {
+impl Check for NameDirMismatch {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         check_name_directory_mismatch(ctx).unwrap_or_else(|error| {
             vec![infrastructure_finding(RULE_NAME_DIRECTORY_MISMATCH, error)]
@@ -57,28 +57,28 @@ impl Check for SkillNameDirectoryMismatchCheck {
     }
 }
 
-impl Check for SkillDuplicateNameCheck {
+impl Check for DuplicateName {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         check_duplicate_names(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_DUPLICATE_NAME, error)])
     }
 }
 
-impl Check for SkillUnknownToolCheck {
+impl Check for UnknownTool {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         check_unknown_tools(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_UNKNOWN_TOOL, error)])
     }
 }
 
-impl Check for SkillDescriptionGrammarCheck {
+impl Check for DescriptionGrammar {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         check_description_grammar(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_DESCRIPTION_GRAMMAR, error)])
     }
 }
 
-impl Check for SkillArgumentHintGrammarCheck {
+impl Check for ArgumentHintGrammar {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         check_argument_hint_grammar(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_ARGUMENT_HINT_GRAMMAR, error)])

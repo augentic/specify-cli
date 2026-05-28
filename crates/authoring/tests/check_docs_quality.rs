@@ -3,7 +3,7 @@ use std::path::Path;
 
 use specify_authoring::Context;
 use specify_authoring::check::{
-    MissingDiagramAsset, SpecifyHistoryCitationInDocs, TextPipelineDiagram,
+    HistoryCitation, MissingDiagramAsset, TextPipelineDiagram,
 };
 use specify_authoring::finding::Check;
 
@@ -27,7 +27,7 @@ fn specify_history_citation_flags_user_facing_docs() {
     )
     .expect("write md");
 
-    let findings = SpecifyHistoryCitationInDocs.run(&ctx_at(dir.path()));
+    let findings = HistoryCitation.run(&ctx_at(dir.path()));
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].rule_id, "docs.specify-history-citation-in-docs");
     assert!(findings[0].message.contains("docs/tutorials/guide.md:1"));

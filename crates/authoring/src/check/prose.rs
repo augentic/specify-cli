@@ -28,7 +28,7 @@ pub struct InvocationPositional;
 pub struct OperationalVocabulary;
 
 /// Skill description/body numeric caps must stay in sync across schema, standards, and checks.
-pub struct SkillNumericCaps;
+pub struct NumericCaps;
 
 impl Check for InvocationPositional {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
@@ -45,7 +45,7 @@ impl Check for OperationalVocabulary {
     }
 }
 
-impl Check for SkillNumericCaps {
+impl Check for NumericCaps {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         check_skill_numeric_caps(ctx.framework_root())
     }

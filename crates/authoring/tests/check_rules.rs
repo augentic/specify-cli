@@ -94,7 +94,7 @@ fn namespace_ownership_violation_on_wrong_prefix() {
 }
 
 #[test]
-fn src_rule_under_source_adapter_passes_full_codex_check() {
+fn src_rule_on_source_passes_codex_check() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
     write_rule_file(
@@ -113,7 +113,7 @@ fn src_rule_under_source_adapter_passes_full_codex_check() {
 }
 
 #[test]
-fn frame_rule_under_target_adapter_rejected_by_integration_check() {
+fn frame_rule_on_target_rejected() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
     write_rule_file(
@@ -135,7 +135,7 @@ fn frame_rule_under_target_adapter_rejected_by_integration_check() {
 }
 
 #[test]
-fn reserved_hint_kind_shape_validates_without_schema_finding() {
+fn reserved_hint_kind_no_schema_finding() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
     write_rule_file(

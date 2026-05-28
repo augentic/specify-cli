@@ -14,9 +14,9 @@ const TEXT_DIAGRAM_ROOTS: &[&str] =
 const TEXT_FENCE_ALLOWLIST: &[&str] = &[];
 
 /// Flag retired Specify design-history citations in user-facing docs.
-pub struct SpecifyHistoryCitationInDocs;
+pub struct HistoryCitation;
 
-impl Check for SpecifyHistoryCitationInDocs {
+impl Check for HistoryCitation {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         let mut findings = Vec::new();
         let markdown_roots = ["docs", "adapters", "plugins"];

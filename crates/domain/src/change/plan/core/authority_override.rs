@@ -5,7 +5,7 @@
 //! flags into the typed `(slice, kind, source-key)` tuples this
 //! module consumes, then drive the in-memory plan through
 //! [`mutate_authority_overrides`] and the post-mutation orphan gate
-//! [`refuse_orphan_authority_overrides`].
+//! [`reject_orphan_overrides`].
 //!
 //! Set-then-clear on the same `(slice, kind)` resolves to the cleared
 //! state, and the journal records the clear (not the set) to match
@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use specify_error::{Error, Result};
 
 use super::model::{Entry, Plan, Severity};
-use super::validate::authority_override_orphan_source_keys;
+use super::validate::orphan_authority_override_keys;
 use crate::evidence::ClaimKind;
 use crate::journal::{self, AuthorityOverrideAction};
 
@@ -173,7 +173,7 @@ pub fn emit_seed_events(
 
 /// Post-mutation orphan-source-key gate.
 ///
-/// Runs [`authority_override_orphan_source_keys`] on `plan` and
+/// Runs [`orphan_authority_override_keys`] on `plan` and
 /// short-circuits the CLI write with a single `Error::Validation`
 /// envelope when any finding fires. Findings are emitted in the
 /// deterministic order the domain helper produces (slice
@@ -190,8 +190,8 @@ pub fn emit_seed_events(
 ///
 /// Returns `Error::Validation` when at least one orphan-source-key
 /// finding has `Severity::Error`.
-pub fn refuse_orphan_authority_overrides(plan: &Plan) -> Result<()> {
-    let findings: Vec<_> = authority_override_orphan_source_keys(&plan.entries)
+pub fn reject_orphan_overrides(plan: &Plan) -> Result<()> {
+    let findings: Vec<_> = orphan_authority_override_keys(&plan.entries)
         .into_iter()
         .filter(|f| f.level == Severity::Error)
         .collect();

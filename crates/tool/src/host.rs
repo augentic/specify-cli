@@ -402,7 +402,7 @@ mod tests {
     }
 
     #[test]
-    fn run_rejects_capability_dir_in_project_scope_before_loading_component() {
+    fn run_rejects_cap_dir_in_project_scope() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project");
@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn run_rejects_lifecycle_write_before_loading_component() {
+    fn run_rejects_lifecycle_write() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(project.join(".specify")).expect("specify");

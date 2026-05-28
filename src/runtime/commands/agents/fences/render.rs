@@ -82,7 +82,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_refuses_existing_unfenced_document_without_force() {
+    fn writer_refuses_unfenced_without_force() {
         let err = plan_agents_write(Some(b"# hand-authored\n"), GENERATED, false)
             .expect_err("unfenced must refuse");
 
@@ -90,7 +90,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_rewrites_existing_unfenced_document_with_force() {
+    fn writer_rewrites_unfenced_with_force() {
         let planned = plan_agents_write(Some(b"# hand-authored\n"), GENERATED, true)
             .expect("force rewrite ok");
 

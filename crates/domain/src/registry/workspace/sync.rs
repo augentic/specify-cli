@@ -11,7 +11,7 @@ use super::git::{self, git_output_ok};
 use super::slot_problem::inspect_at;
 use super::{contracts_base, registry_symlink_target, workspace_base, workspace_slot_path};
 use crate::registry::catalog::RegistryProject;
-use crate::registry::gitignore::ensure_specify_gitignore_entries;
+use crate::registry::gitignore::ensure_gitignore_entries;
 
 /// Materialise `.specify/workspace/<name>/` for selected registry entries.
 ///
@@ -25,7 +25,7 @@ use crate::registry::gitignore::ensure_specify_gitignore_entries;
 /// diagnostic; refuses materialisation when `.specify/workspace/` is itself
 /// a symlink or otherwise invalid.
 pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Result<(), Error> {
-    ensure_specify_gitignore_entries(project_dir)?;
+    ensure_gitignore_entries(project_dir)?;
 
     let base = prepare_workspace_base(project_dir)?;
 

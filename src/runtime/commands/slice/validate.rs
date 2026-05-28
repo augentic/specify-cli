@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde_json::Value as JsonValue;
-use specify_domain::change::{Plan, authority_override_orphan_source_keys};
+use specify_domain::change::{Plan, orphan_authority_override_keys};
 use specify_domain::design_system::{ComponentStatus, ComponentsCatalog};
 use specify_domain::discovery::Discovery;
 use specify_domain::journal::{Event, EventKind, append_batch};
@@ -206,8 +206,8 @@ fn validate_pre_adapter_gates(
 ) -> Result<()> {
     let mut findings: Vec<ValidationSummary> = Vec::new();
     findings.extend(collect_fusion_drift_findings(slice_dir, spec_req_ids)?);
-    findings.extend(collect_authority_override_orphan_findings(ctx, name)?);
-    findings.extend(collect_discovery_alias_collision_findings(ctx)?);
+    findings.extend(collect_override_orphan_findings(ctx, name)?);
+    findings.extend(collect_alias_collision_findings(ctx)?);
     findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
     if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
 }
@@ -219,7 +219,7 @@ fn validate_pre_adapter_gates(
 /// silently — older slices and projects without an authored
 /// inventory remain valid (this is the read-only counterpart to
 /// the per-amend gate in `specrun plan amend --add-alias`).
-fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
+fn collect_alias_collision_findings(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
     let path = ctx.layout().discovery_path();
     if !path.exists() {
         return Ok(Vec::new());
@@ -262,9 +262,7 @@ fn collect_fusion_drift_findings(
 /// list. Absent `plan.yaml` (e.g. ad-hoc slice without a plan)
 /// skips the check silently; the structural issue would already
 /// have surfaced earlier in workflow.
-fn collect_authority_override_orphan_findings(
-    ctx: &Ctx, name: &str,
-) -> Result<Vec<ValidationSummary>> {
+fn collect_override_orphan_findings(ctx: &Ctx, name: &str) -> Result<Vec<ValidationSummary>> {
     let plan_path = ctx.layout().plan_path();
     if !plan_path.exists() {
         return Ok(Vec::new());
@@ -274,7 +272,7 @@ fn collect_authority_override_orphan_findings(
     // per-slice by definition, and surfacing findings from other
     // slices would confuse the operator.
     let slice_entries: Vec<_> = plan.entries.iter().filter(|e| e.name == name).cloned().collect();
-    let findings = authority_override_orphan_source_keys(&slice_entries);
+    let findings = orphan_authority_override_keys(&slice_entries);
     Ok(findings
         .into_iter()
         .map(|f| ValidationSummary {

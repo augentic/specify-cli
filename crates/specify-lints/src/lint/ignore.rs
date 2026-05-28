@@ -539,7 +539,7 @@ mod tests {
     /// Determinism: identical inputs in shuffled order produce
     /// identical synthetic output (ordering + content).
     #[test]
-    fn apply_output_is_deterministic_across_input_permutations() {
+    fn apply_output_order_independent() {
         let dirs_a = vec![
             directive("a.rs", 5, "UNI-099", 6, Some("rationale long enough to clear")),
             directive("b.rs", 7, "UNI-100", 8, None),

@@ -36,7 +36,7 @@ impl Plan {
         results.extend(check_single_in_progress(&self.entries));
         results.extend(missing_project_or_target(&self.entries));
         results.extend(check_context_paths(&self.entries));
-        results.extend(authority_override_orphan_source_keys(&self.entries));
+        results.extend(orphan_authority_override_keys(&self.entries));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.entries, reg));
         }
@@ -191,7 +191,7 @@ fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
 /// Public for the per-slice helper at `specrun slice validate` to
 /// surface only the findings relevant to one slice.
 #[must_use]
-pub fn authority_override_orphan_source_keys(changes: &[Entry]) -> Vec<Finding> {
+pub fn orphan_authority_override_keys(changes: &[Entry]) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in changes {
         if entry.authority_override.by_kind.is_empty() {

@@ -152,7 +152,7 @@ mod tests {
     /// arm is covered by `codex_schema_violation_maps_to_critical`
     /// above.
     #[test]
-    fn every_exported_rule_constant_maps_to_a_known_severity() {
+    fn exported_rules_map_to_severity() {
         let important = [
             // adapter
             RULE_SCHEMA_VIOLATION,

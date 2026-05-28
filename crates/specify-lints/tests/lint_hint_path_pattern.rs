@@ -18,7 +18,7 @@ use specify_lints::lint::index::build;
 use specify_lints::rules::{HintKind, Severity};
 
 #[test]
-fn path_pattern_narrows_candidate_set_for_subsequent_kinds() {
+fn path_pattern_narrows_candidates() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("a.rs"), "fn main() {}\n").expect("write a.rs");
     fs::write(tmp.path().join("b.rs"), "fn other() {}\n").expect("write b.rs");
@@ -58,7 +58,7 @@ fn path_pattern_narrows_candidate_set_for_subsequent_kinds() {
 }
 
 #[test]
-fn path_pattern_with_no_matches_drops_subsequent_findings() {
+fn path_pattern_empty_drops_findings() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("readme.md"), "fn-shaped content\n").expect("write readme");
     let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");

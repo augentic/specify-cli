@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn advance_next_writes_in_progress_then_returns_existing_active() {
+    fn advance_next_reuses_in_progress() {
         let mut plan = plan_with_changes(vec![
             change("a", Status::Pending),
             change_with_deps("b", Status::Pending, &["a"]),

@@ -1,6 +1,6 @@
 //! `.gitignore` upkeep for `.specify/`-internal directories. `init`
 //! and `specrun workspace sync` both call
-//! [`ensure_specify_gitignore_entries`] to keep the entries current.
+//! [`ensure_gitignore_entries`] to keep the entries current.
 
 use std::fs;
 use std::path::Path;
@@ -21,7 +21,7 @@ const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/works
 /// # Errors
 ///
 /// Returns an error if the operation fails.
-pub fn ensure_specify_gitignore_entries(project_dir: &Path) -> Result<(), Error> {
+pub fn ensure_gitignore_entries(project_dir: &Path) -> Result<(), Error> {
     let path = project_dir.join(".gitignore");
     let existing = match fs::read_to_string(&path) {
         Ok(text) => text,

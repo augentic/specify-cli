@@ -25,7 +25,7 @@ fn workspace_help_lists_active_subcommands() {
 }
 
 #[test]
-fn workspace_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
+fn c01_sync_unknown_selector_preflight() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     fs::write(
@@ -62,7 +62,7 @@ fn workspace_c01_workspace_sync_unknown_selector_fails_before_side_effects() {
 }
 
 #[test]
-fn workspace_c01_workspace_sync_selects_projects_without_materialising_unselected_slots() {
+fn c01_sync_skips_unselected_slots() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     for name in ["billing", "orders", "inventory"] {
@@ -101,7 +101,7 @@ fn workspace_c01_workspace_sync_selects_projects_without_materialising_unselecte
 }
 
 #[test]
-fn workspace_c01_workspace_push_unknown_selector_fails_before_side_effects() {
+fn c01_push_unknown_selector_preflight() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
     fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
@@ -133,7 +133,7 @@ fn workspace_c01_workspace_push_unknown_selector_fails_before_side_effects() {
 }
 
 #[test]
-fn workspace_c04_workspace_prepare_hidden_helper_returns_structured_json() {
+fn c04_prepare_returns_json() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -187,7 +187,7 @@ fn workspace_c04_workspace_prepare_hidden_helper_returns_structured_json() {
 }
 
 #[test]
-fn workspace_c04_workspace_prepare_surfaces_origin_head_diagnostic_key() {
+fn c04_prepare_origin_head_diagnostic() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 

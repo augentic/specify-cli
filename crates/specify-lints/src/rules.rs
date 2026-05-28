@@ -909,7 +909,7 @@ mod tests {
     /// canonical JSON shape, validates against the embedded schema,
     /// and deserialises back to an identical struct.
     #[test]
-    fn ignored_finding_with_directive_disposition_round_trips() {
+    fn ignored_directive_round_trips() {
         let finding = disposition_fixture(
             FindingStatus::Ignored,
             Some(FindingDisposition {
@@ -966,7 +966,7 @@ mod tests {
     /// disposition. Locks the wire spelling and the verbatim
     /// rationale.
     #[test]
-    fn false_positive_finding_with_directive_disposition_round_trips() {
+    fn false_positive_directive_round_trips() {
         let finding = disposition_fixture(
             FindingStatus::FalsePositive,
             Some(FindingDisposition {

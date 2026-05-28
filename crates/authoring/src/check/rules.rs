@@ -22,11 +22,12 @@ static RULE_HEADING_RE: LazyLock<Regex> =
 static RULE_ID_NAMESPACE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^([A-Z]+)-[0-9]{3}$").expect("rule id regex"));
 
-/// Static (target + shared) namespace map. Source-axis owners are discovered
-/// per-run because every adapter under `adapters/sources/<name>/rules/` owns
-/// the shared `SRC-*` namespace, and we refuse to hardcode source-adapter
-/// names. See [`rules_profile_namespaces`].
-static STATIC_RULE_PROFILE_NAMESPACES: LazyLock<HashMap<&'static str, HashSet<&'static str>>> =
+/// Built-in (target + shared) namespace map. Source-axis owners are
+/// discovered per-run because every adapter under
+/// `adapters/sources/<name>/rules/` owns the shared `SRC-*` namespace, and we
+/// refuse to hardcode source-adapter names. See [`namespace_owners`] for the
+/// merged per-run view.
+static BUILTIN_NAMESPACES: LazyLock<HashMap<&'static str, HashSet<&'static str>>> =
     LazyLock::new(|| {
         HashMap::from([
             (SHARED_RULES_OWNER, HashSet::from(["UNI"])),
@@ -57,7 +58,7 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Finding> {
         }
     };
 
-    let profile_namespaces = rules_profile_namespaces(ctx);
+    let namespaces = namespace_owners(ctx);
     let mut findings = Vec::new();
     let mut ids_by_value: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
@@ -140,7 +141,7 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Finding> {
             continue;
         }
 
-        let Some(allowed_namespaces) = profile_namespaces.get(owner.as_str()) else {
+        let Some(allowed_namespaces) = namespaces.get(owner.as_str()) else {
             findings.push(finding_at(
                 RULE_NAMESPACE_OWNERSHIP_VIOLATION,
                 format!(
@@ -180,22 +181,23 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Finding> {
 
 /// Build the rules-owner → allowed-namespaces map for this run.
 ///
-/// Target adapters and the shared `universal` owner come from the static base
-/// map. Source adapters are discovered dynamically: every directory under
-/// `adapters/sources/<name>/rules/` registers `<name>` → `{"SRC"}`. The rules contract
-/// §Namespaces forbids hardcoding source-adapter names here — `SRC-*` is the
-/// single shared source-axis namespace in v1.
-fn rules_profile_namespaces(ctx: &Context) -> HashMap<String, HashSet<&'static str>> {
-    let mut profile: HashMap<String, HashSet<&'static str>> = STATIC_RULE_PROFILE_NAMESPACES
+/// Target adapters and the shared `universal` owner come from
+/// [`BUILTIN_NAMESPACES`]. Source adapters are discovered dynamically: every
+/// directory under `adapters/sources/<name>/rules/` registers
+/// `<name>` → `{"SRC"}`. The rules contract §Namespaces forbids hardcoding
+/// source-adapter names here — `SRC-*` is the single shared source-axis
+/// namespace in v1.
+fn namespace_owners(ctx: &Context) -> HashMap<String, HashSet<&'static str>> {
+    let mut owners: HashMap<String, HashSet<&'static str>> = BUILTIN_NAMESPACES
         .iter()
         .map(|(owner, namespaces)| ((*owner).to_string(), namespaces.clone()))
         .collect();
 
     for owner in source_rules_owners(ctx) {
-        profile.entry(owner).or_insert_with(|| HashSet::from(["SRC"]));
+        owners.entry(owner).or_insert_with(|| HashSet::from(["SRC"]));
     }
 
-    profile
+    owners
 }
 
 /// Discover source-adapter owners that contribute a rules overlay.
@@ -398,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn rules_profile_namespaces_registers_source_owners_dynamically() {
+    fn namespace_owners_merge_builtins_and_discovered() {
         let temp = TempDir::new().expect("tempdir");
         scaffold_framework(temp.path());
         fs::create_dir_all(temp.path().join("adapters/sources/documentation/rules"))
@@ -408,22 +410,22 @@ mod tests {
         fs::create_dir_all(temp.path().join("adapters/sources/intent")).expect("intent no rules");
 
         let ctx = ctx_for(temp.path());
-        let profile = rules_profile_namespaces(&ctx);
+        let owners = namespace_owners(&ctx);
 
-        assert_eq!(profile.get("documentation"), Some(&HashSet::from(["SRC"])));
-        assert_eq!(profile.get("captures"), Some(&HashSet::from(["SRC"])));
+        assert_eq!(owners.get("documentation"), Some(&HashSet::from(["SRC"])));
+        assert_eq!(owners.get("captures"), Some(&HashSet::from(["SRC"])));
         assert!(
-            !profile.contains_key("intent"),
+            !owners.contains_key("intent"),
             "intent has no rules/ subtree so it must not be registered",
         );
-        assert_eq!(profile.get(SHARED_RULES_OWNER), Some(&HashSet::from(["UNI"])));
-        assert_eq!(profile.get("omnia"), Some(&HashSet::from(["OMNIA", "RUST", "SEC"])));
-        assert_eq!(profile.get("vectis"), Some(&HashSet::from(["VECTIS"])));
-        assert_eq!(profile.get("contracts"), Some(&HashSet::from(["IFACE"])));
+        assert_eq!(owners.get(SHARED_RULES_OWNER), Some(&HashSet::from(["UNI"])));
+        assert_eq!(owners.get("omnia"), Some(&HashSet::from(["OMNIA", "RUST", "SEC"])));
+        assert_eq!(owners.get("vectis"), Some(&HashSet::from(["VECTIS"])));
+        assert_eq!(owners.get("contracts"), Some(&HashSet::from(["IFACE"])));
     }
 
     #[test]
-    fn src_rule_under_source_adapter_passes_namespace_check() {
+    fn src_rule_on_source_passes() {
         let temp = TempDir::new().expect("tempdir");
         scaffold_framework(temp.path());
         write_rule(
@@ -466,7 +468,7 @@ mod tests {
     }
 
     #[test]
-    fn frame_rule_under_target_adapter_rejected_with_framework_message() {
+    fn frame_rule_on_target_rejected() {
         let temp = TempDir::new().expect("tempdir");
         scaffold_framework(temp.path());
         write_rule(temp.path(), "adapters/targets/omnia/rules/frame-misplaced.md", "FRAME-001");
@@ -485,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn frame_rule_under_source_adapter_rejected_with_framework_message() {
+    fn frame_rule_on_source_rejected() {
         let temp = TempDir::new().expect("tempdir");
         scaffold_framework(temp.path());
         write_rule(
@@ -508,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    fn target_overlay_rust_id_under_vectis_still_rejected() {
+    fn vectis_overlay_rust_id_rejected() {
         let temp = TempDir::new().expect("tempdir");
         scaffold_framework(temp.path());
         write_rule(temp.path(), "adapters/targets/vectis/rules/rust-misplaced.md", "RUST-001");

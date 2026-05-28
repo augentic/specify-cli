@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn assemble_render_input_reads_existing_metadata_in_sorted_order() {
+    fn assemble_render_input_sorted_metadata() {
         let tmp = tempdir().expect("tempdir");
         write_minimal_adapter(tmp.path());
         let slices_dir = Layout::new(tmp.path()).slices_dir();

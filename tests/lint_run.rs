@@ -190,7 +190,7 @@ fn review_run_is_byte_stable_across_invocations() {
 /// `--dump-model` skips evaluation, emits a `WorkspaceModel` envelope
 /// that validates against the workspace-model schema, and exits 0.
 #[test]
-fn review_dump_model_emits_workspace_model_and_exits_0() {
+fn review_dump_model_exits_0() {
     let fx = build_fixture();
     let output = run_review(&fx.project, Some(&fx.codex), &["--dump-model"]);
 
@@ -320,7 +320,7 @@ fn lint_run_emits_lint_completed_journal_event() {
 /// `.specify/cache/rules/` cache, the resolver returns
 /// `rules-root-required`. The CLI surfaces it on stderr and exits 2.
 #[test]
-fn review_missing_rules_root_exits_2_with_rules_root_required() {
+fn review_missing_rules_root_exits_2() {
     let project_root = TempDir::new().expect("project tempdir");
     let project = project_root.path().join("project");
     fs::create_dir_all(project.join(".specify")).expect("mkdir project/.specify");

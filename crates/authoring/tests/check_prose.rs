@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_authoring::Context;
-use specify_authoring::check::{InvocationPositional, OperationalVocabulary, SkillNumericCaps};
+use specify_authoring::check::{InvocationPositional, NumericCaps, OperationalVocabulary};
 use specify_authoring::finding::Check;
 
 fn fixture_root(name: &str) -> PathBuf {
@@ -42,7 +42,7 @@ fn invocation_positionals_flags_continued_invocation() {
 #[test]
 fn skill_numeric_caps_detects_drift() {
     let ctx = context_for_fixture("cap-drift");
-    let findings = SkillNumericCaps.run(&ctx);
+    let findings = NumericCaps.run(&ctx);
     assert_eq!(findings.len(), 3);
     assert!(findings.iter().all(|f| f.rule_id == "prose.numeric-cap-exceeded"));
     assert!(findings.iter().any(|f| f.message.contains("description cap drift")));
