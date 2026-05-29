@@ -26,11 +26,11 @@
 //!   whose `version:` does not equal the literal `"1"`.
 //! - Declarative behaviour: the framework-profile indexer extracts
 //!   one [`specify_lints::lint::AdapterManifest`] fact per well-formed
-//!   manifest (`crates/specify-lints/src/lint/index/adapter.rs::extract`),
+//!   manifest (`crates/lints/src/lint/index/adapter.rs::extract`),
 //!   whose `version` field stringifies both integer (`1`) and string
 //!   (`"2.1"`) YAML forms; the `kind: constant-eq` interpreter
-//!   (`crates/specify-lints/src/lint/eval/constant_eq.rs::evaluate`)
-//!   consumes the fact set and emits one [`LintFinding`] per
+//!   (`crates/lints/src/lint/eval/constant_eq.rs::evaluate`)
+//!   consumes the fact set and emits one [`Diagnostic`] per
 //!   manifest whose `version` is not the string `"1"`, carrying the
 //!   `(adapter, path, field, actual, expected)` shape as structured
 //!   evidence.
@@ -81,7 +81,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -188,7 +188,7 @@ fn parse_manifest(body: &str) -> (Option<String>, Option<String>) {
     (name, version)
 }
 
-fn declarative_mismatch_set(findings: &[LintFinding]) -> BTreeSet<(String, String, String)> {
+fn declarative_mismatch_set(findings: &[Diagnostic]) -> BTreeSet<(String, String, String)> {
     let mut out = BTreeSet::new();
     for finding in findings {
         let FindingEvidence::Structured { data, .. } = &finding.evidence else { continue };

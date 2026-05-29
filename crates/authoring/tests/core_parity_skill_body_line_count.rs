@@ -14,12 +14,12 @@
 //!   [`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md)).
 //! - Declarative behaviour: the framework-profile indexer extracts
 //!   one [`specify_lints::lint::Skill`] fact per well-formed SKILL.md
-//!   (`crates/specify-lints/src/lint/index/skill.rs::extract`), whose
+//!   (`crates/lints/src/lint/index/skill.rs::extract`), whose
 //!   `body_line_count` field is the same count of non-frontmatter
 //!   body lines the imperative row used; the `kind: cardinality`
 //!   interpreter
-//!   (`crates/specify-lints/src/lint/eval/cardinality.rs::evaluate`)
-//!   consumes the fact set and emits one [`LintFinding`] per skill
+//!   (`crates/lints/src/lint/eval/cardinality.rs::evaluate`)
+//!   consumes the fact set and emits one [`Diagnostic`] per skill
 //!   whose `body_line_count` exceeds 200, carrying the
 //!   `(skill, path, actual, max)` shape as structured evidence.
 //!
@@ -77,7 +77,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -154,7 +154,7 @@ fn imperative_body_lines(content: &str) -> Option<Vec<String>> {
     Some(lines)
 }
 
-fn declarative_over_cap_set(findings: &[LintFinding]) -> BTreeMap<String, u32> {
+fn declarative_over_cap_set(findings: &[Diagnostic]) -> BTreeMap<String, u32> {
     let mut out = BTreeMap::new();
     for finding in findings {
         let FindingEvidence::Structured { data, .. } = &finding.evidence else { continue };

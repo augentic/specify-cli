@@ -1,19 +1,18 @@
 //! Lint-surface diagnostic glue.
 //!
-//! The neutral diagnostic substrate — the [`LintResult`]
-//! ([`specify_diagnostics::DiagnosticReport`]) envelope, the
-//! [`Format`] discriminant, the four renderers, and the
-//! [`RenderError`] type — now lives in the [`specify_diagnostics`]
+//! The neutral diagnostic substrate — the [`DiagnosticReport`]
+//! envelope, the [`Format`] discriminant, the four renderers, and the
+//! [`RenderError`] type — lives in the [`specify_diagnostics`]
 //! leaf so both the advisory `lint` surface and the workflow-gating
 //! `validate` surface share one currency. This module re-exports that
-//! surface under the historical `Lint*` names and keeps the
+//! surface under its neutral names and keeps the
 //! lint-specific glue the leaf must not carry: the `WorkspaceModel`
 //! dump path and the `IndexError` / `HintError` / `RenderError` →
 //! [`Error`] mappers that pin the lint exit-code table.
 
 pub use specify_diagnostics::{
-    DiagnosticReport as LintResult, DiagnosticReportVersion as LintResultVersion,
-    DiagnosticSummary as LintSummary, Format, RenderError, count_status, render,
+    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format, RenderError,
+    count_status, render,
 };
 use specify_error::{Error, Result};
 use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_serialisable};

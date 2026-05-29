@@ -328,7 +328,7 @@ fn include_core_flag_toggles_core_rules() {
 
 /// Write a minimal rule fixture that satisfies the CH-11 parser and
 /// the codex-rule schema. Mirrors the helper used by the resolver's
-/// unit tests in `crates/specify-lints/src/rules/resolve.rs`.
+/// unit tests in `crates/lints/src/rules/resolve.rs`.
 fn write_rule_fixture(path: &Path, id: &str, title: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("create parent dir");

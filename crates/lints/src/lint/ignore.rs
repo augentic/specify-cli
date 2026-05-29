@@ -41,8 +41,8 @@ use std::collections::HashMap;
 use crate::lint::IgnoreDirective;
 use crate::lint::eval::{SyntheticFinding, make_synthetic_finding};
 use crate::rules::{
-    DirectiveDisposition, DispositionSource, FindingDisposition, FindingEvidence, FindingLocation,
-    FindingStatus, LintFinding, ResolvedRule,
+    Diagnostic, DirectiveDisposition, DispositionSource, FindingDisposition, FindingEvidence,
+    FindingLocation, FindingStatus, ResolvedRule,
 };
 
 /// Rationale prefix that demotes a matched finding to
@@ -77,7 +77,7 @@ pub struct IgnoreOutcome {
     /// envelope. Ordered by `(directive_path, directive_line,
     /// directive_rule_id, UNI-022 before UNI-023)` so envelope output
     /// stays byte-stable irrespective of indexer emission order.
-    pub synthetics: Vec<LintFinding>,
+    pub synthetics: Vec<Diagnostic>,
     /// Next monotonic `FIND-NNNN` slot after minting the synthetics.
     pub next_id_counter: u64,
 }
@@ -102,7 +102,7 @@ pub struct IgnoreOutcome {
 /// synthetic ids stay monotonic with the hint-evaluator output;
 /// [`IgnoreOutcome::next_id_counter`] returns the post-mint counter.
 pub fn apply(
-    findings: &mut [LintFinding], directives: &[IgnoreDirective], resolved_rules: &[ResolvedRule],
+    findings: &mut [Diagnostic], directives: &[IgnoreDirective], resolved_rules: &[ResolvedRule],
     next_id: u64,
 ) -> IgnoreOutcome {
     let mut sorted: Vec<&IgnoreDirective> = directives.iter().collect();
@@ -154,7 +154,7 @@ pub fn apply(
     }
 
     let mut next = next_id;
-    let mut synthetics: Vec<LintFinding> = Vec::new();
+    let mut synthetics: Vec<Diagnostic> = Vec::new();
     for (idx, directive) in sorted.iter().enumerate() {
         let missing_rationale =
             directive.rationale.as_deref().is_none_or(|r| r.len() < MIN_RATIONALE_LEN);
@@ -202,11 +202,11 @@ pub fn apply(
 /// {critical, important}` AND `status` of `open` (an unset `status`
 /// is treated as `open` per the same section).
 #[must_use]
-pub fn blocking_findings_present(findings: &[LintFinding]) -> bool {
+pub fn blocking_findings_present(findings: &[Diagnostic]) -> bool {
     specify_diagnostics::blocking_present(findings)
 }
 
-fn finding_matches_directive(finding: &LintFinding, directive: &IgnoreDirective) -> bool {
+fn finding_matches_directive(finding: &Diagnostic, directive: &IgnoreDirective) -> bool {
     let Some(rule_id) = finding.rule_id.as_deref() else {
         return false;
     };
@@ -225,7 +225,7 @@ fn finding_matches_directive(finding: &LintFinding, directive: &IgnoreDirective)
 fn mint_synthetic(
     rule: &ResolvedRule, directive: &IgnoreDirective, next_id: &mut u64, title: String,
     impact: String, remediation: String,
-) -> LintFinding {
+) -> Diagnostic {
     let id = *next_id;
     *next_id = next_id.saturating_add(1);
     let location = FindingLocation {
@@ -262,7 +262,7 @@ mod tests {
     use super::*;
     use crate::rules::fingerprint::fingerprint as compute_fingerprint;
     use crate::rules::{
-        Artifact, Confidence, DiagnosticKind, FindingEvidence, FindingLocation, FindingSource,
+        Artifact, Confidence, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
         Origin, PathRoot, Severity,
     };
 
@@ -283,14 +283,14 @@ mod tests {
         }
     }
 
-    fn finding(rule_id: &str, path: &str, line: u32) -> LintFinding {
-        let mut f = LintFinding {
+    fn finding(rule_id: &str, path: &str, line: u32) -> Diagnostic {
+        let mut f = Diagnostic {
             id: "FIND-0001".into(),
             rule_id: Some(rule_id.into()),
             related_rule_ids: None,
             title: "demo".into(),
             severity: Severity::Important,
-            source: FindingSource::Deterministic,
+            source: DiagnosticSource::Deterministic,
             kind: DiagnosticKind::Violation,
             target_adapter: None,
             source_adapter: None,
@@ -541,8 +541,8 @@ mod tests {
         ];
         let dirs_b = vec![dirs_a[1].clone(), dirs_a[0].clone()];
 
-        let mut findings_a: Vec<LintFinding> = Vec::new();
-        let mut findings_b: Vec<LintFinding> = Vec::new();
+        let mut findings_a: Vec<Diagnostic> = Vec::new();
+        let mut findings_b: Vec<Diagnostic> = Vec::new();
         let resolved = validation_rules();
         let out_a = apply(&mut findings_a, &dirs_a, &resolved, 1);
         let out_b = apply(&mut findings_b, &dirs_b, &resolved, 1);

@@ -1,29 +1,31 @@
 //! Shared fixture for the diagnostic formatter tests.
 //!
-//! Builds a [`LintResult`] exercising every shape that varies the
+//! Builds a [`DiagnosticReport`] exercising every shape that varies the
 //! per-formatter rendering: three different severities, all three
 //! [`FindingEvidence`] variants, the `Option<rule_id>` arm via one
 //! anonymous finding, and varied [`FindingLocation`] coverage
 //! (`line + column`, `line only`, and `no location at all`).
 
 use serde_json::json;
-use specify_lints::lint::diagnostics::{LintResult, LintResultVersion, LintSummary};
+use specify_lints::lint::diagnostics::{
+    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary,
+};
 use specify_lints::rules::{
-    Artifact, Confidence, DiagnosticKind, FindingEvidence, FindingLocation, FindingSource,
-    LintFinding, Severity,
+    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence,
+    FindingLocation, Severity,
 };
 
 /// Three-finding fixture covering the rendering matrix S8 needs to
 /// exercise.
-pub fn make_fixture() -> LintResult {
+pub fn make_fixture() -> DiagnosticReport {
     let findings = vec![
-        LintFinding {
+        Diagnostic {
             id: "FIND-0001".into(),
             rule_id: Some("UNI-014".into()),
             related_rule_ids: None,
             title: "Literal deployment URL in generated handler".into(),
             severity: Severity::Critical,
-            source: FindingSource::Deterministic,
+            source: DiagnosticSource::Deterministic,
             kind: DiagnosticKind::Violation,
             target_adapter: Some("omnia".into()),
             source_adapter: None,
@@ -47,13 +49,13 @@ pub fn make_fixture() -> LintResult {
             status: None,
             disposition: None,
         },
-        LintFinding {
+        Diagnostic {
             id: "FIND-0002".into(),
             rule_id: None,
             related_rule_ids: None,
             title: "Bundle digest, with comma, exceeds policy".into(),
             severity: Severity::Important,
-            source: FindingSource::Deterministic,
+            source: DiagnosticSource::Deterministic,
             kind: DiagnosticKind::Violation,
             target_adapter: Some("omnia".into()),
             source_adapter: None,
@@ -79,13 +81,13 @@ pub fn make_fixture() -> LintResult {
             status: None,
             disposition: None,
         },
-        LintFinding {
+        Diagnostic {
             id: "FIND-0003".into(),
             rule_id: Some("ORG-001".into()),
             related_rule_ids: None,
             title: "Optional housekeeping note".into(),
             severity: Severity::Optional,
-            source: FindingSource::Deterministic,
+            source: DiagnosticSource::Deterministic,
             kind: DiagnosticKind::Violation,
             target_adapter: None,
             source_adapter: None,
@@ -107,9 +109,9 @@ pub fn make_fixture() -> LintResult {
         },
     ];
 
-    LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::from_diagnostics(&findings),
+    DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
         findings,
     }
 }

@@ -40,12 +40,12 @@
 //!
 //! Declarative behaviour: the framework-profile indexer extracts one
 //! [`specify_lints::lint::Frontmatter`] fact per rule markdown file
-//! (`crates/specify-lints/src/lint/index/frontmatter.rs::extract`); the
+//! (`crates/lints/src/lint/index/frontmatter.rs::extract`); the
 //! `kind: namespace-owner` interpreter
-//! (`crates/specify-lints/src/lint/eval/namespace_owner.rs::evaluate`)
+//! (`crates/lints/src/lint/eval/namespace_owner.rs::evaluate`)
 //! narrows the candidate set with the `path-pattern` hint, reads each
 //! candidate's `id`, derives the same owned-prefix set from the path,
-//! and emits one [`LintFinding`] per misplaced rule carrying the
+//! and emits one [`Diagnostic`] per misplaced rule carrying the
 //! `(rule, rule-id, namespace, owner, allowed)` shape as structured
 //! evidence.
 //!
@@ -69,7 +69,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -149,7 +149,7 @@ fn namespace_prefix(id: &str) -> Option<&str> {
     well_formed.then_some(prefix)
 }
 
-fn declarative_misplaced_set(findings: &[LintFinding]) -> BTreeSet<String> {
+fn declarative_misplaced_set(findings: &[Diagnostic]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for finding in findings {
         let FindingEvidence::Structured { data, .. } = &finding.evidence else { continue };

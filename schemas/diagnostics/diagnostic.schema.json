@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json",
-  "title": "Specify LintFinding",
-  "description": "Wire shape for a single structured lint finding for the structured lint finding schema. Shared by deterministic scanners (`specrun lint`), framework JSON export (`specdev lint --format json`), target-adapter review briefs, model-assisted scorers, CI annotations, and dashboards. Field names are kebab-case at every nesting level. Producer-local `id` is distinct from the codex `rule-id` — `id` is a stable per-run handle (e.g. `FIND-0001`) and `rule-id` is the durable codex citation (e.g. `UNI-014`). Conditional requirements that JSON Schema cannot express (e.g. `confidence` required for `source: model-assisted`) are enforced producer-side.",
+  "$id": "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json",
+  "title": "Specify Diagnostic",
+  "description": "Wire shape for a single structured diagnostic — the neutral currency shared by both Specify check surfaces. Shared by deterministic scanners (`specrun lint`), the workflow-gating validate surface (`specrun slice validate`), framework JSON export (`specdev lint --format json`), target-adapter review briefs, model-assisted scorers, CI annotations, and dashboards. Field names are kebab-case at every nesting level. Producer-local `id` is distinct from the codex `rule-id` — `id` is a stable per-run handle (e.g. `FIND-0001`) and `rule-id` is the durable codex citation (e.g. `UNI-014`). Conditional requirements that JSON Schema cannot express (e.g. `confidence` required for `source: model-assisted`) are enforced producer-side.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -103,7 +103,7 @@
     "fingerprint": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$",
-      "description": "Stable hash of `(rule-id, location, evidence-payload)` for the structured lint finding schema fingerprint algorithm. Excludes producer-controlled fields (`id`, `title`, `severity`, `confidence`, `status`, `disposition`, `change`, `slice`, `target-adapter`, `source-adapter`)."
+      "description": "Stable hash of `(rule-id, location, evidence-payload)` for the diagnostic fingerprint algorithm. Excludes producer-controlled fields (`id`, `title`, `severity`, `confidence`, `status`, `disposition`, `change`, `slice`, `target-adapter`, `source-adapter`)."
     },
     "status": {
       "type": "string",
@@ -265,7 +265,7 @@
     },
     "evidence": {
       "type": "object",
-      "description": "Evidence union for structured lint findings. Closed `kind` discriminator with one legal field set per branch. Evidence payloads have a 16 KiB cap after UTF-8 serialization (enforced producer-side, not by this schema). Findings MUST NOT include secrets, full prompts, model transcripts, or full source files.",
+      "description": "Evidence union for structured diagnostics. Closed `kind` discriminator with one legal field set per branch. Evidence payloads have a 16 KiB cap after UTF-8 serialization (enforced producer-side, not by this schema). Diagnostics MUST NOT include secrets, full prompts, model transcripts, or full source files.",
       "oneOf": [
         {
           "type": "object",

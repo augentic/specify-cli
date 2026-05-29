@@ -22,7 +22,7 @@
 //! them — the regular-file digest branch (`agent-teams.md` committed
 //! as a file, not a symlink), the missing-canonical branch, and the
 //! unsupported-entry branch. The C5 framework extractor
-//! (`crates/specify-lints/src/lint/index/agent_teams.rs::record`)
+//! (`crates/lints/src/lint/index/agent_teams.rs::record`)
 //! emits an `AgentTeam` fact only for symlinks, so a fact-iterating
 //! evaluator is structurally blind to those cases. Per the §F5
 //! migration cadence the kind interpreter plus seed rule land against
@@ -44,12 +44,12 @@
 //! Declarative behaviour: the framework-profile indexer extracts one
 //! [`specify_lints::lint::AgentTeam`] fact per followed
 //! `agent-teams.md` symlink
-//! (`crates/specify-lints/src/lint/index/agent_teams.rs::record`,
+//! (`crates/lints/src/lint/index/agent_teams.rs::record`,
 //! whose `target-sha256` field is the SHA-256 of the resolved target's
 //! bytes); the `kind: content-digest-eq` interpreter
-//! (`crates/specify-lints/src/lint/eval/content_digest_eq.rs::evaluate`)
+//! (`crates/lints/src/lint/eval/content_digest_eq.rs::evaluate`)
 //! consumes the fact set, derives the same canonical digest, and emits
-//! one [`LintFinding`] per divergent symlink carrying the
+//! one [`Diagnostic`] per divergent symlink carrying the
 //! `(agent-team, resolved-target, expected-digest, actual-digest)`
 //! shape as structured evidence.
 //!
@@ -95,7 +95,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -200,7 +200,7 @@ fn sha256(bytes: Vec<u8>) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn declarative_divergence_set(findings: &[LintFinding]) -> BTreeSet<String> {
+fn declarative_divergence_set(findings: &[Diagnostic]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for finding in findings {
         let FindingEvidence::Structured { data, .. } = &finding.evidence else { continue };

@@ -1,7 +1,7 @@
 //! `kind: regex` evaluator per the executable hint-kind contract.
 //!
 //! Compiles the hint's `value` once and walks each text candidate
-//! line by line, emitting one [`crate::rules::LintFinding`] per
+//! line by line, emitting one [`crate::rules::Diagnostic`] per
 //! match with a 1-indexed `line` / `column` location and the matched
 //! line clipped to a bounded char count in the `Snippet` evidence
 //! payload.
@@ -21,23 +21,21 @@ use ::regex::Regex;
 
 use super::{HintError, make_finding};
 use crate::lint::{FileKind, WorkspaceModel};
-use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, LintFinding, ResolvedRule,
-};
+use crate::rules::{DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, ResolvedRule};
 
 const SNIPPET_MAX_CHARS: usize = 240;
 
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], project_dir: &Path,
     model: &WorkspaceModel, next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let pattern = Regex::new(&hint.value).map_err(|err| HintError::RegexCompile {
         rule_id: rule.rule_id.clone(),
         pattern: hint.value.clone(),
         source: err,
     })?;
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for candidate in candidates {
         let candidate_str = candidate.to_string_lossy();
         if !is_text_file(model, &candidate_str) {

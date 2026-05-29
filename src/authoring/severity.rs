@@ -49,7 +49,7 @@
 //! This module deliberately lives at the binary boundary
 //! (`src/authoring/severity.rs`) and not in the `specify-authoring`
 //! library crate. Per the framework-authoring mapping contract,
-//! the CH-21 `Finding` → `LintFinding` mapper sits at the
+//! the CH-21 `Finding` → `Diagnostic` mapper sits at the
 //! `specdev` binary boundary so `specify-authoring` does not take a
 //! dependency on `specify-workflow`. CH-20 is a building block for that
 //! mapper, so the severity table must live in the binary layer too.

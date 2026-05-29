@@ -65,7 +65,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -189,7 +189,7 @@ fn parse_manifest(body: &str) -> (Option<String>, BTreeSet<String>) {
     (name, keys)
 }
 
-fn declarative_missing_set(findings: &[LintFinding]) -> BTreeSet<(String, String, String)> {
+fn declarative_missing_set(findings: &[Diagnostic]) -> BTreeSet<(String, String, String)> {
     let mut out = BTreeSet::new();
     for finding in findings {
         let FindingEvidence::Structured { data, .. } = &finding.evidence else { continue };

@@ -11,7 +11,7 @@
 //! axis-appropriate closed enum
 //! (`SourceOperation::{Extract, Survey}` xor
 //! `TargetOperation::{Shape, Build, Merge}`). The interpreter emits
-//! one [`crate::rules::LintFinding`] per `(adapter, missing-operation)`
+//! one [`crate::rules::Diagnostic`] per `(adapter, missing-operation)`
 //! pair, with the manifest path as the finding's location and the
 //! per-adapter `(missing, expected, actual)` triple surfaced via
 //! [`crate::rules::FindingEvidence::Structured`] for downstream
@@ -40,7 +40,7 @@ use std::path::PathBuf;
 use super::{HintError, make_finding};
 use crate::lint::{AdapterAxis, WorkspaceModel};
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, HintKind, LintFinding, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
 };
 
 const SOURCE_ADAPTER_BRIEFS_COVER_OPERATIONS: &str = "adapter-briefs-cover-operations";
@@ -58,7 +58,7 @@ const TARGET_OPERATIONS: &[&str] = &["build", "merge", "shape"];
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
     if source != SOURCE_ADAPTER_BRIEFS_COVER_OPERATIONS {
         return Err(HintError::Unsupported {
@@ -71,7 +71,7 @@ pub(crate) fn evaluate(
     let candidate_set: BTreeSet<String> =
         candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for manifest in &model.adapter_manifests {
         if !candidate_set.contains(&manifest.path) {
             continue;

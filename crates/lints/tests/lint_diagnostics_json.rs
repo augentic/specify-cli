@@ -1,11 +1,11 @@
-//! `Format::Json` formatter — `LintResult` envelope wire envelope.
+//! `Format::Json` formatter — `DiagnosticReport` envelope wire envelope.
 //!
 //! Locks two invariants S9 (`specrun lint --format json`) and any
 //! future Option-A consumer (`specdev lint --format json`) depend on:
 //!
 //! 1. The valid envelope round-trips: `render` schema-validates and
 //!    the pretty-printed body deserialises back to an equal
-//!    [`LintResult`].
+//!    [`DiagnosticReport`].
 //! 2. A handcrafted bad envelope (`version: 2`) is rejected with
 //!    [`RenderError::JsonSchemaValidation`] before any bytes leave
 //!    the formatter.
@@ -15,19 +15,19 @@ mod common;
 use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_diagnostics::render::json as json_formatter;
-use specify_lints::lint::diagnostics::{Format, LintResult, RenderError, render};
-use specify_schema::{LINT_FINDING_JSON_SCHEMA, LINT_RESULT_JSON_SCHEMA};
+use specify_lints::lint::diagnostics::{DiagnosticReport, Format, RenderError, render};
+use specify_schema::{DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA};
 
 use crate::common::make_fixture;
 
 const FINDING_SCHEMA_URL: &str =
-    "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json";
+    "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json";
 
 fn envelope_validator() -> jsonschema::Validator {
     let envelope: Value =
-        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
+        serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
-        serde_json::from_str(LINT_FINDING_JSON_SCHEMA).expect("finding schema parses");
+        serde_json::from_str(DIAGNOSTIC_JSON_SCHEMA).expect("finding schema parses");
     let registry = Registry::new()
         .add(FINDING_SCHEMA_URL, Resource::from_contents(finding))
         .and_then(jsonschema::RegistryBuilder::prepare)
@@ -49,7 +49,8 @@ fn round_trips_through_schema() {
     let errors: Vec<String> = validator.iter_errors(&value).map(|err| err.to_string()).collect();
     assert!(errors.is_empty(), "rendered envelope must schema-validate; errors: {errors:?}");
 
-    let parsed: LintResult = serde_json::from_value(value).expect("rendered envelope deserialises");
+    let parsed: DiagnosticReport =
+        serde_json::from_value(value).expect("rendered envelope deserialises");
     assert_eq!(parsed, fixture);
 }
 

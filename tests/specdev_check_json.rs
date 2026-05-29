@@ -25,7 +25,7 @@
 //!
 //! 1. Capture the binary's pretty-printed JSON envelope from stdout.
 //! 2. For each finding, deserialise into the typed
-//!    [`LintFinding`], swap any `location.path` prefix that
+//!    [`Diagnostic`], swap any `location.path` prefix that
 //!    matches the canonicalised tempdir root with the literal
 //!    `<FRAMEWORK_ROOT>` placeholder.
 //! 3. Recompute the fingerprint via
@@ -59,8 +59,8 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::{Value, json};
-use specify_lints::finding::validate_finding_json;
-use specify_lints::{LintFinding, fingerprint};
+use specify_lints::finding::validate_diagnostic_json;
+use specify_lints::{Diagnostic, fingerprint};
 use tempfile::TempDir;
 
 /// Replacement token for the canonicalised framework-root prefix in
@@ -298,8 +298,8 @@ fn normalize_envelope(envelope: Value, framework_root: &Path) -> Value {
     };
 
     for finding_json in findings.iter_mut() {
-        let mut finding: LintFinding = serde_json::from_value(finding_json.clone())
-            .expect("finding must deserialise into LintFinding");
+        let mut finding: Diagnostic = serde_json::from_value(finding_json.clone())
+            .expect("finding must deserialise into Diagnostic");
         if let Some(location) = finding.location.as_mut() {
             let raw = location.path.replace('\\', "/");
             if let Some(rest) = raw.strip_prefix(&prefix) {
@@ -392,7 +392,7 @@ fn clean_tree_emits_empty_envelope() {
 /// emits the populated envelope captured by
 /// `tests/fixtures/specdev-lint/violations.json`. Every finding in
 /// the envelope is additionally schema-validated via
-/// [`validate_finding_json`] (CH-16) — covering scenario (3) from
+/// [`validate_diagnostic_json`] (CH-16) — covering scenario (3) from
 /// CH-23 in the same test pass.
 #[test]
 fn violations_tree_emits_expected_envelope() {
@@ -456,7 +456,7 @@ Body without trigger and severity.
         findings.len(),
     );
     for finding_json in findings {
-        validate_finding_json(finding_json)
+        validate_diagnostic_json(finding_json)
             .expect("every finding must validate against the review/finding.schema.json");
     }
 

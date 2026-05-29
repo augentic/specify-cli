@@ -36,11 +36,11 @@
 //!   `TargetOperation` ≡ `{shape, build, merge}`).
 //! - Declarative behaviour: the framework-profile indexer extracts one
 //!   [`specify_lints::lint::AdapterManifest`] fact per well-formed
-//!   manifest (`crates/specify-lints/src/lint/index/adapter.rs::extract`,
+//!   manifest (`crates/lints/src/lint/index/adapter.rs::extract`,
 //!   whose `brief_keys` field mirrors the `briefs:` map keys verbatim);
 //!   the `kind: set-eq` interpreter
-//!   (`crates/specify-lints/src/lint/eval/set_eq.rs::evaluate`) consumes
-//!   the fact set and emits one [`LintFinding`] per `(adapter, divergence)`
+//!   (`crates/lints/src/lint/eval/set_eq.rs::evaluate`) consumes
+//!   the fact set and emits one [`Diagnostic`] per `(adapter, divergence)`
 //!   pair, carrying the `(adapter, axis, divergence, operation, expected,
 //!   actual)` shape as structured evidence.
 //!
@@ -95,7 +95,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -252,7 +252,7 @@ fn parse_manifest(body: &str) -> (Option<String>, BTreeSet<String>) {
 }
 
 fn declarative_divergence_set(
-    findings: &[LintFinding],
+    findings: &[Diagnostic],
 ) -> BTreeSet<(String, String, String, String)> {
     let mut out = BTreeSet::new();
     for finding in findings {

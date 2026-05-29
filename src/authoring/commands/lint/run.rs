@@ -1,6 +1,6 @@
 //! `specdev lint` handler — composes the framework's imperative
 //! `Check` predicates with the declarative deterministic-hint
-//! interpreter into a single [`LintResult`] envelope.
+//! interpreter into a single [`DiagnosticReport`] envelope.
 //!
 //! The shared pipeline lives in [`specify_lints::lint::runner`]; this
 //! handler is thin:
@@ -27,8 +27,8 @@ use specify_authoring::exit::Exit;
 use specify_error::{Error, Result};
 use specify_lints::fingerprint::fingerprint as compute_fingerprint;
 use specify_lints::lint::diagnostics::{
-    Format as DiagnosticsFormat, LintResult, LintResultVersion, LintSummary, count_status,
-    map_render_error, render,
+    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format as DiagnosticsFormat,
+    count_status, map_render_error, render,
 };
 use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
 use specify_lints::lint::ignore::blocking_findings_present;
@@ -37,7 +37,7 @@ use specify_lints::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
 use specify_lints::lint::{ScanProfile, WorkspaceModel};
-use specify_lints::{FindingStatus, LintFinding, ResolveInputs};
+use specify_lints::{Diagnostic, FindingStatus, ResolveInputs};
 use specify_workflow::config::Layout;
 use specify_workflow::journal::{
     self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
@@ -93,10 +93,10 @@ pub fn run(format: Format, action: &LintAction) -> Exit {
 }
 
 /// Outcome of [`build_envelope`]: either a fully composed
-/// [`LintResult`] ready to render, or the `--dump-model` shortcut
+/// [`DiagnosticReport`] ready to render, or the `--dump-model` shortcut
 /// which has already emitted its own stdout body.
 enum BuildOutcome {
-    Envelope { result: LintResult, project_dir: PathBuf },
+    Envelope { result: DiagnosticReport, project_dir: PathBuf },
     DumpedModel,
 }
 
@@ -185,9 +185,9 @@ fn emit_fallback_envelope(format: DiagnosticsFormat) {
     if !matches!(format, DiagnosticsFormat::Json) {
         return;
     }
-    let result = LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::default(),
+    let result = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::default(),
         findings: Vec::new(),
     };
     match render(format, &result) {
@@ -201,14 +201,14 @@ fn emit_fallback_envelope(format: DiagnosticsFormat) {
 /// Holds the loaded [`AuthoringContext`]; ignores the `WorkspaceModel`
 /// the runner threads in (the imperative predicates index their own
 /// inputs from the context). Maps each [`specify_authoring::finding::Finding`]
-/// to a [`LintFinding`] and rebases locations to project-relative form
+/// to a [`Diagnostic`] and rebases locations to project-relative form
 /// so the schema-validating JSON formatter accepts the envelope.
 struct AuthoringProducer<'a> {
     ctx: &'a AuthoringContext,
 }
 
 impl DiagnosticProducer for AuthoringProducer<'_> {
-    fn produce(&self, _model: &WorkspaceModel, project_dir: &Path) -> Vec<LintFinding> {
+    fn produce(&self, _model: &WorkspaceModel, project_dir: &Path) -> Vec<Diagnostic> {
         let imperative = check::run(self.ctx);
         let mut findings = map_findings(&imperative);
         rebase_locations_to_project(&mut findings, project_dir);
@@ -225,7 +225,7 @@ impl DiagnosticProducer for AuthoringProducer<'_> {
 ///
 /// Re-fingerprints each finding after the rewrite so the stored hash
 /// reflects the canonical (rebased) preimage.
-fn rebase_locations_to_project(findings: &mut [LintFinding], project_dir: &Path) {
+fn rebase_locations_to_project(findings: &mut [Diagnostic], project_dir: &Path) {
     let prefix = project_dir.to_string_lossy().replace('\\', "/");
     for finding in findings {
         let Some(location) = finding.location.as_mut() else {
@@ -245,8 +245,8 @@ fn rebase_locations_to_project(findings: &mut [LintFinding], project_dir: &Path)
 /// Best-effort: telemetry I/O failures log to stderr and never
 /// override the scan's exit code.
 fn emit_lint_completed(
-    project_dir: &Path, single_artifact: Option<&Path>, findings: &[LintFinding],
-    duration_ms: u128, exit_code: i32,
+    project_dir: &Path, single_artifact: Option<&Path>, findings: &[Diagnostic], duration_ms: u128,
+    exit_code: i32,
 ) {
     let scope = LintScope {
         target: None,

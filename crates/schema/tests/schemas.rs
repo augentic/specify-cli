@@ -6,10 +6,10 @@
 use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_schema::{
-    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
-    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA,
-    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA,
-    compile_schema, validate_value,
+    COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA,
+    EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
+    RULE_JSON_SCHEMA, ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
+    validate_value,
 };
 
 #[test]
@@ -44,7 +44,7 @@ fn codex_rule_schema_compiles() {
 
 #[test]
 fn lint_finding_schema_compiles() {
-    compile_schema(LINT_FINDING_JSON_SCHEMA).expect("lint finding schema compiles");
+    compile_schema(DIAGNOSTIC_JSON_SCHEMA).expect("lint finding schema compiles");
 }
 
 #[test]
@@ -90,12 +90,12 @@ fn lint_result_schema_compiles() {
     // compile through a registry that pins the finding schema under
     // the same directory the relative ref resolves to.
     let envelope: Value =
-        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
+        serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
-        serde_json::from_str(LINT_FINDING_JSON_SCHEMA).expect("finding schema parses");
+        serde_json::from_str(DIAGNOSTIC_JSON_SCHEMA).expect("finding schema parses");
     let registry = Registry::new()
         .add(
-            "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json",
+            "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json",
             Resource::from_contents(finding),
         )
         .and_then(jsonschema::RegistryBuilder::prepare)
@@ -109,12 +109,12 @@ fn lint_result_schema_compiles() {
 #[test]
 fn lint_result_schema_accepts_envelope_with_one_finding() {
     let envelope: Value =
-        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
+        serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
-        serde_json::from_str(LINT_FINDING_JSON_SCHEMA).expect("finding schema parses");
+        serde_json::from_str(DIAGNOSTIC_JSON_SCHEMA).expect("finding schema parses");
     let registry = Registry::new()
         .add(
-            "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json",
+            "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json",
             Resource::from_contents(finding),
         )
         .and_then(jsonschema::RegistryBuilder::prepare)
@@ -154,17 +154,17 @@ fn lint_result_schema_accepts_envelope_with_one_finding() {
 }
 
 /// Pins the relative-ref form: integrations downstream rely on
-/// `finding.schema.json` resolving against the envelope schema's
+/// `diagnostic.schema.json` resolving against the envelope schema's
 /// directory rather than an absolute URL.
 #[test]
-fn lint_result_schema_uses_relative_finding_ref() {
-    let envelope: Value =
-        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
+fn diagnostic_report_schema_uses_relative_diagnostic_ref() {
+    let envelope: Value = serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA)
+        .expect("diagnostic-report schema parses");
     let items_ref = envelope
         .pointer("/properties/findings/items/$ref")
         .and_then(Value::as_str)
         .expect("findings.items.$ref is a string");
-    assert_eq!(items_ref, "finding.schema.json");
+    assert_eq!(items_ref, "diagnostic.schema.json");
 }
 
 /// Per the standards-layer contract §"Hint kinds — reserved", reserved kinds are

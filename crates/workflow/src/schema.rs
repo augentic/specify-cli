@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
 pub use specify_schema::{
-    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA, PLAN_JSON_SCHEMA,
+    COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA,
     RECONCILIATION_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, compile_schema,
     read_yaml_as_json, validate_serialisable, validate_value,
 };
@@ -330,7 +330,7 @@ mod tests {
             "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
         });
         let validator =
-            compile_schema(LINT_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
+            compile_schema(DIAGNOSTIC_JSON_SCHEMA).expect("review finding schema compiles");
         let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
         assert!(errors.is_empty(), "FIND-0001 example must validate; errors: {errors:?}");
     }

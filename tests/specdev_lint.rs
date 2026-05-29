@@ -3,9 +3,9 @@
 //! Exercises the binary surface added by RFC-34 chassis change C6:
 //!
 //! - `specdev lint --output-format json` against a small
-//!   framework-shaped scaffold emits a `LintResult` envelope on
+//!   framework-shaped scaffold emits a `DiagnosticReport` envelope on
 //!   stdout that validates against
-//!   `schemas/lint/lint-result.schema.json`.
+//!   `schemas/diagnostics/diagnostic-report.schema.json`.
 //! - The same run lands exactly one `lint-completed` journal event
 //!   in `<framework-root>/.specify/journal.jsonl` per RFC-34 §F7,
 //!   with the §F7-mandated `scope.target = null`,
@@ -134,7 +134,7 @@ fn run_specdev_lint(root: &Path, args: &[&str]) -> (Option<i32>, Vec<u8>, Vec<u8
 /// `specdev lint --output-format json` emits a wire envelope that
 /// passes the binary's own pre-emit schema validation (the
 /// diagnostics JSON formatter validates against
-/// `LINT_RESULT_JSON_SCHEMA` before it returns; a validation
+/// `DIAGNOSTIC_REPORT_JSON_SCHEMA` before it returns; a validation
 /// failure would have exited 1 with `review-envelope-schema` on
 /// stderr instead of producing parseable stdout). The test reads
 /// stdout, asserts it parses, and pins the closed top-level shape.

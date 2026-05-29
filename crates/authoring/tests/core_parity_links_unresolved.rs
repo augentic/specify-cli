@@ -13,9 +13,9 @@
 //!   `[label](target)` link after fence / inline-code / HTML-comment
 //!   stripping. The declarative `reference-resolves` evaluator consumes
 //!   the same fence-aware link facts the indexer already extracted
-//!   (`crates/specify-lints/src/lint/index/markdown.rs::extract_links`)
+//!   (`crates/lints/src/lint/index/markdown.rs::extract_links`)
 //!   and folds the resolver result (`resolves: Some(false)`) from the
-//!   sequential indexer pass (`crates/specify-lints/src/lint/index.rs::resolve_link`).
+//!   sequential indexer pass (`crates/lints/src/lint/index.rs::resolve_link`).
 //!
 //! The two implementations share the same link grammar (`[label](target)`),
 //! the same fence-skipping behaviour, and the same path-resolution rule
@@ -59,7 +59,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -134,7 +134,7 @@ fn imperative_broken_set(project_dir: &Path) -> BTreeSet<(String, String)> {
     out
 }
 
-fn declarative_broken_set(findings: &[LintFinding]) -> BTreeSet<(String, String)> {
+fn declarative_broken_set(findings: &[Diagnostic]) -> BTreeSet<(String, String)> {
     findings
         .iter()
         .filter_map(|f| {

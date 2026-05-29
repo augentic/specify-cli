@@ -19,8 +19,8 @@
 //!
 //! - Tools the project did not declare emit a single
 //!   `tool.undeclared` finding (severity `important`).
-//! - Successful runs whose stdout is the `LintResult`
-//!   envelope OR a single `LintFinding` body fold the tool's
+//! - Successful runs whose stdout is the `DiagnosticReport`
+//!   envelope OR a single `Diagnostic` body fold the tool's
 //!   findings straight into the scan result; the umbrella
 //!   re-stamps `id` and `fingerprint` after applying the §"Evidence
 //!   cap" truncation.
@@ -37,9 +37,9 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use super::{HintError, SyntheticFinding, make_synthetic_finding, restamp_finding};
-use crate::lint::diagnostics::LintResult;
+use crate::lint::diagnostics::DiagnosticReport;
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, LintFinding, ResolvedRule, Severity,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, ResolvedRule, Severity,
 };
 
 const STDERR_MAX_BYTES: usize = 8 * 1024;
@@ -91,13 +91,13 @@ pub enum ToolRunError {
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], project_dir: &Path,
     runner: &dyn ToolRunner, next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     if !runner.is_declared(&hint.value) {
         let finding = build_undeclared(rule, hint, *next_id);
         *next_id += 1;
         return Ok(vec![finding]);
     }
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for candidate in candidates {
         let args = vec![candidate.to_string_lossy().into_owned()];
         let output = runner.run(&hint.value, &args, project_dir).map_err(|err| {
@@ -123,20 +123,20 @@ pub(crate) fn evaluate(
     Ok(out)
 }
 
-fn parse_tool_findings(output: &ToolOutput) -> Vec<LintFinding> {
+fn parse_tool_findings(output: &ToolOutput) -> Vec<Diagnostic> {
     if output.stdout.is_empty() {
         return Vec::new();
     }
-    if let Ok(envelope) = serde_json::from_slice::<LintResult>(&output.stdout) {
+    if let Ok(envelope) = serde_json::from_slice::<DiagnosticReport>(&output.stdout) {
         return envelope.findings;
     }
-    if let Ok(single) = serde_json::from_slice::<LintFinding>(&output.stdout) {
+    if let Ok(single) = serde_json::from_slice::<Diagnostic>(&output.stdout) {
         return vec![single];
     }
     Vec::new()
 }
 
-fn build_undeclared(rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64) -> LintFinding {
+fn build_undeclared(rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64) -> Diagnostic {
     let evidence = FindingEvidence::Snippet {
         value: format!("tool {tool} not declared by the project's tools.yaml", tool = hint.value),
     };
@@ -158,7 +158,7 @@ fn build_undeclared(rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64) 
 
 fn build_invocation_failed(
     rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64, candidate: &Path, stderr: &[u8],
-) -> LintFinding {
+) -> Diagnostic {
     let snippet = clip_stderr(stderr);
     let evidence = FindingEvidence::Snippet { value: snippet };
     let location = FindingLocation {

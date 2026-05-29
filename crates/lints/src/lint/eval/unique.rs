@@ -6,7 +6,7 @@
 //! indexer already produced (see [`crate::lint::index::skill`]) and
 //! flags each `name:` frontmatter value that appears on two or more
 //! `plugins/**/SKILL.md` files. The interpreter emits one
-//! [`crate::rules::LintFinding`] per duplicated name, with the lowest
+//! [`crate::rules::Diagnostic`] per duplicated name, with the lowest
 //! offending path used as the finding's location and the full sorted
 //! path list surfaced via [`crate::rules::FindingEvidence::Structured`].
 //!
@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, HintKind, LintFinding, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
 };
 
 const SOURCE_SKILL_NAME: &str = "skill-name";
@@ -35,7 +35,7 @@ const SOURCE_SKILL_NAME: &str = "skill-name";
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
     if source != SOURCE_SKILL_NAME {
         return Err(HintError::Unsupported {
@@ -56,7 +56,7 @@ pub(crate) fn evaluate(
         groups.entry(skill.name.clone()).or_default().insert(skill.path.clone());
     }
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for (name, paths) in groups {
         if paths.len() < 2 {
             continue;

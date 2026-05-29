@@ -21,7 +21,7 @@
 //! [`crate::rules`], so the derived [`Ord`] picks up the
 //! contract-defined comparator directly — no bespoke `_sort_key` helpers
 //! needed. The `severity_ordering_matches_contract` and
-//! `origin_ordering_matches_contract` tests in `crates/specify-lints/src/rules.rs`
+//! `origin_ordering_matches_contract` tests in `crates/lints/src/rules.rs`
 //! pin that declaration order so a future refactor cannot silently
 //! shift the sort.
 //!

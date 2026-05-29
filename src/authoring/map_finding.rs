@@ -1,5 +1,5 @@
 //! Map a `specify_authoring::Finding` to a structured lint finding
-//! [`LintFinding`].
+//! [`Diagnostic`].
 //!
 //! This module deliberately lives at the binary boundary
 //! (`src/authoring/map_finding.rs`) alongside CH-20's
@@ -12,14 +12,14 @@
 //!
 //! ## Mapping table
 //!
-//! | `Finding` source                       | `LintFinding` field                  |
+//! | `Finding` source                       | `Diagnostic` field                  |
 //! | -------------------------------------- | -------------------------------------- |
 //! | sequence index (1-based, 4-digit)      | `id` = `"FIND-{NNNN}"`                 |
 //! | `rule_id` (authoring imperative)       | `title` prefix `"[{rule_id}] ..."`     |
 //! | first non-empty line of `message`      | `title` body                           |
 //! | (see decision below)                   | `rule_id` = `None`                     |
 //! | `severity::severity_for(rule_id)`      | `severity`                             |
-//! | (deterministic producer)               | `source` = `FindingSource::Deterministic` |
+//! | (deterministic producer)               | `source` = `DiagnosticSource::Deterministic` |
 //! | (framework-internal)                   | `target_adapter` / `source_adapter` / `slice` / `change` = `None` |
 //! | (framework-internal)                   | `artifact` = `Artifact::Unknown`       |
 //! | `location` (path normalised, line/column widened) | `location`                  |
@@ -35,7 +35,7 @@
 //! `crates/authoring/src/finding.rs` returns a static authoring
 //! identifier such as `rules.schema-violation`, `skill.unknown-tool`,
 //! or `links.broken-reference`. The wire schema at
-//! `schemas/lint/finding.schema.json` constrains `rule-id` to the
+//! `schemas/diagnostics/diagnostic.schema.json` constrains `rule-id` to the
 //! closed codex regex
 //! `^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
 //!
@@ -61,7 +61,7 @@
 use specify_authoring::finding::{Finding, Location};
 use specify_lints::fingerprint::fingerprint;
 use specify_lints::{
-    Artifact, DiagnosticKind, FindingEvidence, FindingLocation, FindingSource, LintFinding,
+    Artifact, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
 };
 use specify_tool::sha256_hex;
 
@@ -145,43 +145,43 @@ const EVIDENCE_MARGIN_BYTES: usize = 1024;
 /// comment / dashboard rendering predictable.
 const TITLE_MAX_CHARS: usize = 200;
 
-/// Map a single authoring [`Finding`] to a [`LintFinding`] with id
+/// Map a single authoring [`Finding`] to a [`Diagnostic`] with id
 /// `FIND-0001`.
 ///
 /// Equivalent to `map_findings(&[input.clone()]).into_iter().next()`
 /// but avoids the allocation. The fingerprint is computed last so
 /// every other field is hashed exactly as serialised.
 #[must_use]
-pub fn map_finding(input: &Finding) -> LintFinding {
+pub fn map_finding(input: &Finding) -> Diagnostic {
     map_one(input, 1)
 }
 
-/// Map a batch of authoring [`Finding`]s to [`LintFinding`]s,
+/// Map a batch of authoring [`Finding`]s to [`Diagnostic`]s,
 /// assigning sequential `FIND-{NNNN}` ids in input order (1-based,
 /// 4-digit zero-padded).
 ///
 /// The sequence is producer-local: it MUST NOT be assumed stable
 /// across runs because reordering in upstream `Check::run`
 /// implementations will shuffle the ids. Callers that need a stable
-/// dedup key SHOULD use [`LintFinding::fingerprint`] instead.
+/// dedup key SHOULD use [`Diagnostic::fingerprint`] instead.
 #[must_use]
-pub fn map_findings(inputs: &[Finding]) -> Vec<LintFinding> {
+pub fn map_findings(inputs: &[Finding]) -> Vec<Diagnostic> {
     inputs.iter().enumerate().map(|(idx, finding)| map_one(finding, idx + 1)).collect()
 }
 
-fn map_one(input: &Finding, index: usize) -> LintFinding {
+fn map_one(input: &Finding, index: usize) -> Diagnostic {
     let rule_id = core_id_for(input.rule_id);
     let title = build_title(input.rule_id, &input.message, rule_id.is_some());
     let evidence = build_evidence(&input.message);
     let location = input.location.as_ref().map(map_location);
 
-    let mut review = LintFinding {
+    let mut review = Diagnostic {
         id: format!("FIND-{index:04}"),
         rule_id: rule_id.map(str::to_string),
         related_rule_ids: None,
         title,
         severity: severity_for(input.rule_id),
-        source: FindingSource::Deterministic,
+        source: DiagnosticSource::Deterministic,
         kind: DiagnosticKind::Violation,
         target_adapter: None,
         source_adapter: None,
@@ -265,7 +265,9 @@ mod tests {
 
     use specify_authoring::finding::{Finding, Location};
     use specify_lints::fingerprint::verify_fingerprint;
-    use specify_lints::{Artifact, FindingEvidence, FindingSource, Severity, validate_finding};
+    use specify_lints::{
+        Artifact, DiagnosticSource, FindingEvidence, Severity, validate_diagnostic,
+    };
 
     use super::{map_finding, map_findings};
 
@@ -297,7 +299,7 @@ mod tests {
             Some(4),
         );
         let mapped = map_finding(&input);
-        validate_finding(&mapped).expect("mapped finding must validate against the schema");
+        validate_diagnostic(&mapped).expect("mapped finding must validate against the schema");
     }
 
     /// (2) Severity wire-up: critical rule maps to Critical, ordinary
@@ -364,7 +366,7 @@ mod tests {
     #[test]
     fn source_is_deterministic() {
         let mapped = map_finding(&fixture("skill.unknown-tool", "msg", None, 1, None));
-        assert_eq!(mapped.source, FindingSource::Deterministic);
+        assert_eq!(mapped.source, DiagnosticSource::Deterministic);
     }
 
     /// (6) Authoring findings are framework-internal — no slice,
@@ -465,7 +467,7 @@ mod tests {
             }
             other => panic!("expected Digest evidence for oversize message, got {other:?}"),
         }
-        validate_finding(&mapped).expect("digest fallback must validate against the schema");
+        validate_diagnostic(&mapped).expect("digest fallback must validate against the schema");
     }
 
     /// (12) Best-effort path-separator normalisation: forward slashes

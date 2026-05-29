@@ -10,7 +10,7 @@
 //! 4. Evaluate executable deterministic hints per rule, skipping
 //!    `lint-mode: model-assisted` rules.
 //! 5. Mint the reserved-hint diagnostics reserved-hint summary finding.
-//! 6. Render the `LintResult` envelope via `lint::diagnostics::render`.
+//! 6. Render the `DiagnosticReport` envelope via `lint::diagnostics::render`.
 //! 7. Decide exit: any `critical | important` finding lands the
 //!    process on `Exit::ValidationFailed` (code 2) per lint exit mapping.
 //!
@@ -28,14 +28,14 @@ use jiff::Timestamp;
 use specify_error::{Error, Result};
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::diagnostics::{
-    Format as DiagnosticsFormat, LintResult, count_status, map_render_error, render,
+    DiagnosticReport, Format as DiagnosticsFormat, count_status, map_render_error, render,
 };
 use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
 use specify_lints::lint::ignore::blocking_findings_present;
 use specify_lints::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
-use specify_lints::{FindingStatus, LintFinding, ResolveInputs};
+use specify_lints::{Diagnostic, FindingStatus, ResolveInputs};
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
 use specify_workflow::journal::{
@@ -208,7 +208,7 @@ fn parse_slice_tasks_paths(text: &str) -> Vec<PathBuf> {
 /// `baseline_present` is hard-coded `false`; RFC-33b makes it
 /// scan-derived when it lands.
 fn emit_lint_completed(
-    ctx: &Ctx, target: &str, slice: Option<&str>, artifacts: &[PathBuf], findings: &[LintFinding],
+    ctx: &Ctx, target: &str, slice: Option<&str>, artifacts: &[PathBuf], findings: &[Diagnostic],
     duration_ms: u128, exit_code: i32,
 ) {
     let scope = LintScope {
@@ -242,7 +242,7 @@ fn emit_lint_completed(
 /// `severity ∈ {critical, important}`. Findings demoted to `ignored`
 /// or `false-positive` by the directive pass remain in the envelope
 /// but do not block.
-fn decide_exit(result: &LintResult) -> Result<()> {
+fn decide_exit(result: &DiagnosticReport) -> Result<()> {
     if !blocking_findings_present(&result.findings) {
         return Ok(());
     }
@@ -268,7 +268,7 @@ fn decide_exit(result: &LintResult) -> Result<()> {
 /// contract resolves without re-walking on every hint. `run`
 /// delegates to [`WasiRunner::run_captured`] which mirrors
 /// [`WasiRunner::run`] but redirects stdout / stderr into capped
-/// memory pipes so the host can fold a tool's `LintResult`
+/// memory pipes so the host can fold a tool's `DiagnosticReport`
 /// envelope into the scan output.
 struct WasiToolRunner {
     project_dir: PathBuf,

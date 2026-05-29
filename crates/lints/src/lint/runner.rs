@@ -4,7 +4,7 @@
 //! identical sequence: resolve the codex, index the workspace, run any
 //! imperative producers, evaluate the declarative deterministic hints,
 //! dedupe by fingerprint, apply the ignore-directive pass, fold in the
-//! reserved-hint summary, and assemble the [`LintResult`] envelope.
+//! reserved-hint summary, and assemble the [`DiagnosticReport`] envelope.
 //! This module owns that sequence so the two handlers stay thin and
 //! cannot drift.
 //!
@@ -21,7 +21,7 @@ use specify_error::Result;
 
 use crate::lint::ScanProfile;
 use crate::lint::diagnostics::{
-    LintResult, LintResultVersion, LintSummary, emit_dump_model, map_index_error,
+    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, emit_dump_model, map_index_error,
 };
 use crate::lint::eval::tool::ToolRunner;
 use crate::lint::eval::{evaluate_rules, reserved_hint_summary};
@@ -29,7 +29,7 @@ use crate::lint::ignore::apply as apply_directives;
 use crate::lint::index::build as build_model;
 use crate::lint::producer::DiagnosticProducer;
 use crate::rules::{
-    LintFinding, ResolveInputs, ResolvedRules, build_resolved_rules, map_resolve_error,
+    Diagnostic, ResolveInputs, ResolvedRules, build_resolved_rules, map_resolve_error,
 };
 
 /// How the runner treats a codex-resolution failure.
@@ -89,7 +89,7 @@ impl fmt::Debug for PipelineConfig<'_> {
 #[derive(Debug)]
 pub enum RunOutcome {
     /// A fully composed envelope ready to render.
-    Report(LintResult),
+    Report(DiagnosticReport),
     /// `--dump-model` short-circuit; the model has already been
     /// emitted to stdout.
     DumpedModel,
@@ -125,7 +125,7 @@ pub fn run(inputs: &ResolveInputs<'_>, config: &PipelineConfig<'_>) -> Result<Ru
         return Ok(RunOutcome::DumpedModel);
     }
 
-    let mut combined: Vec<LintFinding> = Vec::new();
+    let mut combined: Vec<Diagnostic> = Vec::new();
     for producer in config.producers {
         combined.extend(producer.produce(&model, inputs.project_dir));
     }
@@ -160,9 +160,9 @@ pub fn run(inputs: &ResolveInputs<'_>, config: &PipelineConfig<'_>) -> Result<Ru
     // thread it.
     let _ = next_id;
 
-    let result = LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::from_diagnostics(&combined),
+    let result = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&combined),
         findings: combined,
     };
     Ok(RunOutcome::Report(result))
@@ -174,7 +174,7 @@ pub fn run(inputs: &ResolveInputs<'_>, config: &PipelineConfig<'_>) -> Result<Ru
 /// fingerprints for the same `(rule-id, location)` pair; this collapse
 /// keeps a single envelope row. Distinct findings never share a
 /// fingerprint, so the pass is a no-op for the producer-free surface.
-fn deduplicate_by_fingerprint(findings: &mut Vec<LintFinding>) {
+fn deduplicate_by_fingerprint(findings: &mut Vec<Diagnostic>) {
     let mut seen: HashSet<String> = HashSet::with_capacity(findings.len());
     findings.retain(|f| seen.insert(f.fingerprint.clone()));
 }

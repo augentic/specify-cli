@@ -7,7 +7,7 @@
 //! and whose `resolves` flag the umbrella sequential pass populates by
 //! joining each link target against `from_path`'s parent and looking
 //! it up in the discovered file set (see [`crate::lint::index::build`]
-//! `resolve_link`). The interpreter emits one [`crate::rules::LintFinding`]
+//! `resolve_link`). The interpreter emits one [`crate::rules::Diagnostic`]
 //! per `resolves == Some(false)` link, with a 1-indexed `line`
 //! location and the raw target captured in [`crate::rules::FindingEvidence::Snippet`].
 //!
@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, HintKind, LintFinding, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
 };
 
 const SOURCE_MARKDOWN_LINK: &str = "markdown-link";
@@ -35,7 +35,7 @@ const SOURCE_MARKDOWN_LINK: &str = "markdown-link";
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
     if source != SOURCE_MARKDOWN_LINK {
         return Err(HintError::Unsupported {
@@ -48,7 +48,7 @@ pub(crate) fn evaluate(
     let candidate_set: BTreeSet<String> =
         candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for link in &model.markdown_links {
         if !candidate_set.contains(&link.from_path) {
             continue;

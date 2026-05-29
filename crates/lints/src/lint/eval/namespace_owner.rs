@@ -7,7 +7,7 @@
 //! the [`crate::lint::Frontmatter`] facts the indexer already produced
 //! (see [`crate::lint::index::frontmatter::extract`]) and flags each
 //! rule whose id prefix is not owned by its containing rules
-//! directory. The interpreter emits one [`crate::rules::LintFinding`]
+//! directory. The interpreter emits one [`crate::rules::Diagnostic`]
 //! per misplaced rule, with the rule file path as the finding's
 //! location and the `(rule-id, namespace, owner, allowed)` shape
 //! surfaced via [`crate::rules::FindingEvidence::Structured`] for
@@ -45,7 +45,7 @@ use std::path::PathBuf;
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, HintKind, LintFinding, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
 };
 
 const SOURCE_RULE_NAMESPACE_MATCHES_OWNER: &str = "rule-namespace-matches-owner";
@@ -64,7 +64,7 @@ const ABSENT_ID_TOKEN: &str = "(absent)";
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
     if source != SOURCE_RULE_NAMESPACE_MATCHES_OWNER {
         return Err(HintError::Unsupported {
@@ -77,7 +77,7 @@ pub(crate) fn evaluate(
     let candidate_set: BTreeSet<String> =
         candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for frontmatter in &model.frontmatter {
         if !candidate_set.contains(&frontmatter.path) {
             continue;

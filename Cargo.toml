@@ -51,7 +51,7 @@ workspace = true
 members = [
     "crates/authoring",
     "crates/diagnostics",
-    "crates/specify-lints",
+    "crates/lints",
     "crates/error",
     "crates/model",
     "crates/schema",
@@ -177,7 +177,7 @@ serde_json = "1"
 sha2 = "0.11"
 specify-authoring = { path = "crates/authoring" }
 specify-diagnostics = { path = "crates/diagnostics" }
-specify-lints = { path = "crates/specify-lints" }
+specify-lints = { path = "crates/lints" }
 specify-model = { path = "crates/model" }
 specify-validate = { path = "crates/validate" }
 specify-workflow = { path = "crates/workflow" }

@@ -45,7 +45,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -105,7 +105,7 @@ fn imperative_pointer_set(project_dir: &Path, manifest_rel: &str) -> BTreeSet<St
     validator.iter_errors(&instance).map(|err| err.instance_path().to_string()).collect()
 }
 
-fn declarative_pointer_set(findings: &[LintFinding], manifest_rel: &str) -> BTreeSet<String> {
+fn declarative_pointer_set(findings: &[Diagnostic], manifest_rel: &str) -> BTreeSet<String> {
     findings
         .iter()
         .filter(|f| f.location.as_ref().is_some_and(|loc| loc.path == manifest_rel))

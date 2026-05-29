@@ -11,7 +11,7 @@
 //! `briefs.keys()` set is not exactly the axis-appropriate closed
 //! operation enum (`SourceOperation::{Extract, Survey}` xor
 //! `TargetOperation::{Shape, Build, Merge}`). The interpreter emits
-//! one [`crate::rules::LintFinding`] per `(adapter, divergence)`
+//! one [`crate::rules::Diagnostic`] per `(adapter, divergence)`
 //! pair, where the divergence is either a `missing` operation (in the
 //! expected enum, absent from `briefs.keys()`) or an `unexpected` key
 //! (present in `briefs.keys()`, absent from the expected enum). The
@@ -46,7 +46,7 @@ use std::path::PathBuf;
 use super::{HintError, make_finding};
 use crate::lint::{AdapterAxis, WorkspaceModel};
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, HintKind, LintFinding, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
 };
 
 const SOURCE_ADAPTER_BRIEFS_EQUAL_OPERATIONS: &str = "adapter-briefs-equal-operations";
@@ -68,7 +68,7 @@ const TARGET_OPERATIONS: &[&str] = &["build", "merge", "shape"];
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
     if source != SOURCE_ADAPTER_BRIEFS_EQUAL_OPERATIONS {
         return Err(HintError::Unsupported {
@@ -81,7 +81,7 @@ pub(crate) fn evaluate(
     let candidate_set: BTreeSet<String> =
         candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for manifest in &model.adapter_manifests {
         if !candidate_set.contains(&manifest.path) {
             continue;

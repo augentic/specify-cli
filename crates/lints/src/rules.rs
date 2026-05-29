@@ -1,7 +1,7 @@
 //! Codex DTOs and runtime wire types per the rules contract.
 //!
 //! Provides the typed Rust shapes that round-trip cleanly through the
-//! schemas embedded under `schemas/rules/` and `schemas/lint/`:
+//! schemas embedded under `schemas/rules/` and `schemas/diagnostics/`:
 //!
 //! - [`Rule`] / [`Deprecated`] / [`Applicability`] /
 //!   [`DeterministicHint`] / [`Reference`] are the parsed-frontmatter
@@ -14,12 +14,13 @@
 //!   emitted by `specrun rules export --format json` (CH-17). They
 //!   add resolver-only fields ([`Origin`], [`PathRoot`], `path`,
 //!   `body`) on top of the codex-rule shape.
-//! - [`LintFinding`] / [`FindingEvidence`] / [`FindingLocation`] /
-//!   [`FindingSource`] / [`Artifact`] / [`Confidence`] /
+//! - [`Diagnostic`] / [`FindingEvidence`] / [`FindingLocation`] /
+//!   [`DiagnosticSource`] / [`Artifact`] / [`Confidence`] /
 //!   [`FindingStatus`] / [`FindingDisposition`] /
 //!   [`DirectiveDisposition`] / [`DispositionSource`] are the
-//!   structured review-finding shape shared by `specrun lint`, target
-//!   adapter review briefs, and CI annotations (CH-16/CH-21).
+//!   structured diagnostic shape shared by `specrun lint`, the
+//!   workflow-gating validate surface, target adapter review briefs,
+//!   and CI annotations (CH-16/CH-21).
 //!
 //! Severity comparator order is `Critical < Important < Suggestion <
 //! Optional` and origin order is `Target < Source < Shared <
@@ -38,8 +39,8 @@ pub mod parse;
 pub mod resolve;
 
 pub use finding::{
-    FindingError, validate, validate_evidence_size, validate_finding, validate_finding_json,
-    validate_fingerprint,
+    DiagnosticError, validate, validate_diagnostic, validate_diagnostic_json,
+    validate_evidence_size, validate_fingerprint,
 };
 pub use parse::{ParseError, parse_rule, parse_rule_file};
 pub use resolve::{
@@ -47,18 +48,16 @@ pub use resolve::{
     map_resolve_error, resolve, sort_resolved,
 };
 use serde::{Deserialize, Serialize};
-// The structured-finding currency lives in the neutral
+// The structured-diagnostic currency lives in the neutral
 // `specify_diagnostics` leaf so the `validate` surface can produce it
 // without depending on anything named `lint`. The rules layer
-// re-exports it here — both under the neutral names and the legacy
-// `Lint*` / `Finding*` aliases — so the codex parser/resolver and the
-// existing lint call sites keep resolving while the tree migrates.
+// re-exports it here under its neutral names so the codex
+// parser/resolver and every diagnostic consumer reach one shared shape
+// through a single import path.
 pub use specify_diagnostics::{
-    Artifact, Confidence, DirectiveDisposition, DispositionSource, FindingDisposition,
-    FindingEvidence, FindingLocation, FindingStatus, Severity,
-};
-pub use specify_diagnostics::{
-    Diagnostic as LintFinding, DiagnosticKind, DiagnosticSource as FindingSource,
+    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticSource, DirectiveDisposition,
+    DispositionSource, FindingDisposition, FindingEvidence, FindingLocation, FindingStatus,
+    Severity,
 };
 
 /// Resolver origin tier per `ResolvedRules` export contract.

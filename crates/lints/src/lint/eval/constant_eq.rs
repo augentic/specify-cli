@@ -9,7 +9,7 @@
 //! field stringifies both integer and string YAML forms) and flags
 //! each `adapters/{sources,targets}/<name>/adapter.yaml` whose
 //! `version:` does not equal the literal string `"1"`. The
-//! interpreter emits one [`crate::rules::LintFinding`] per
+//! interpreter emits one [`crate::rules::Diagnostic`] per
 //! non-conforming manifest with the manifest path as the finding's
 //! location and the `(actual, expected)` pair surfaced via
 //! [`crate::rules::FindingEvidence::Structured`] for downstream
@@ -41,7 +41,7 @@ use std::path::PathBuf;
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, HintKind, LintFinding, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
 };
 
 const SOURCE_ADAPTER_MANIFEST_VERSION_EQUALS_V1: &str = "adapter-manifest-version-equals-v1";
@@ -51,7 +51,7 @@ const ABSENT_VERSION_TOKEN: &str = "(absent)";
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
     if source != SOURCE_ADAPTER_MANIFEST_VERSION_EQUALS_V1 {
         return Err(HintError::Unsupported {
@@ -64,7 +64,7 @@ pub(crate) fn evaluate(
     let candidate_set: BTreeSet<String> =
         candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for manifest in &model.adapter_manifests {
         if !candidate_set.contains(&manifest.path) {
             continue;

@@ -110,7 +110,7 @@ pub enum LintFormat {
     Compact,
     /// GitHub Actions workflow-annotation lines.
     Github,
-    /// `LintResult` wire envelope; schema-validated before emit.
+    /// `DiagnosticReport` wire envelope; schema-validated before emit.
     Json,
     /// Terminal output with severity colour and source location.
     Pretty,

@@ -19,7 +19,7 @@
 //! — the closed [`crate::rules::DeterministicHint`] shape carries no
 //! `target` field, so v1 cannot opt into it.
 //!
-//! Each `iter_errors` entry maps to one [`crate::rules::LintFinding`]
+//! Each `iter_errors` entry maps to one [`crate::rules::Diagnostic`]
 //! with `Structured` evidence carrying the failing JSON-pointer.
 
 use std::collections::HashMap;
@@ -29,23 +29,21 @@ use std::sync::LazyLock;
 use jsonschema::Validator;
 use serde_json::Value;
 use specify_schema::{
-    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
-    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA,
-    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
+    COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA,
+    EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
+    RULE_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
 };
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, LintFinding, ResolvedRule,
-};
+use crate::rules::{DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, ResolvedRule};
 
 static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     HashMap::from([
         ("rule", RULE_JSON_SCHEMA),
         ("resolved-rules", RESOLVED_RULES_JSON_SCHEMA),
-        ("review-finding", LINT_FINDING_JSON_SCHEMA),
-        ("review-result", LINT_RESULT_JSON_SCHEMA),
+        ("review-finding", DIAGNOSTIC_JSON_SCHEMA),
+        ("review-result", DIAGNOSTIC_REPORT_JSON_SCHEMA),
         ("workspace-model", WORKSPACE_MODEL_JSON_SCHEMA),
         ("plan", PLAN_JSON_SCHEMA),
         ("evidence", EVIDENCE_JSON_SCHEMA),
@@ -57,10 +55,10 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], project_dir: &Path,
     model: &WorkspaceModel, next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let validator = compile_schema_for_hint(rule, hint, project_dir)?;
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for candidate in candidates {
         let candidate_str = candidate.to_string_lossy().into_owned();
         let Some(instance) =

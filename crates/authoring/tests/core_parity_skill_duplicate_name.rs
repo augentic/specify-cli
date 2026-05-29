@@ -12,10 +12,10 @@
 //!   lexically) carried in the location.
 //! - Declarative behaviour: the framework-profile indexer extracts one
 //!   [`specify_lints::lint::Skill`] fact per well-formed SKILL.md
-//!   (`crates/specify-lints/src/lint/index/skill.rs::extract`); the
+//!   (`crates/lints/src/lint/index/skill.rs::extract`); the
 //!   `kind: unique` interpreter
-//!   (`crates/specify-lints/src/lint/eval/unique.rs::evaluate`) consumes
-//!   the same fact set and emits one [`LintFinding`] per duplicated
+//!   (`crates/lints/src/lint/eval/unique.rs::evaluate`) consumes
+//!   the same fact set and emits one [`Diagnostic`] per duplicated
 //!   `name:` value, carrying the sorted offender path list as structured
 //!   evidence.
 //!
@@ -59,7 +59,7 @@ use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
 use specify_lints::rules::{
-    DeterministicHint, FindingEvidence, HintKind, LintFinding, Origin, PathRoot, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
     Severity,
 };
 
@@ -139,7 +139,7 @@ fn parse_frontmatter_name(content: &str) -> Option<String> {
     None
 }
 
-fn declarative_duplicate_set(findings: &[LintFinding]) -> BTreeMap<String, Vec<String>> {
+fn declarative_duplicate_set(findings: &[Diagnostic]) -> BTreeMap<String, Vec<String>> {
     let mut out = BTreeMap::new();
     for finding in findings {
         let FindingEvidence::Structured { data, .. } = &finding.evidence else { continue };

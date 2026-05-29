@@ -755,8 +755,8 @@ of `specify-workflow` rather than a module inside it. `specify-schema`
 is the shared leaf: it owns every embedded JSON Schema constant
 (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
 `RECONCILIATION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
-`RESOLVED_RULES_JSON_SCHEMA`, `LINT_FINDING_JSON_SCHEMA`,
-`LINT_RESULT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
+`RESOLVED_RULES_JSON_SCHEMA`, `DIAGNOSTIC_JSON_SCHEMA`,
+`DIAGNOSTIC_REPORT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
 `jsonschema` plumbing (`compile_schema`, `validate_value`,
 `validate_serialisable`, `read_yaml_as_json`). `specify-schema` shares
 the leaf layer with `specify-error` and depends on no workspace crate
@@ -912,7 +912,7 @@ disposition: { source, directive?, since? }
 
 `disposition.source` is itself a closed enum. Today the only value is
 `directive` (set by the directive-validation pass in
-[`crates/specify-lints/src/lint/ignore.rs`](./crates/specify-lints/src/lint/ignore.rs)).
+[`crates/lints/src/lint/ignore.rs`](./crates/lints/src/lint/ignore.rs)).
 A future cross-run baseline producer can add `baseline` additively
 without churning callers — every consumer that exhausts the enum is
 already required to tolerate unknown values under the additive

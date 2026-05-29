@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
 use specify_lints::lint::diagnostics::{
-    LintResultVersion, LintSummary, RenderError, map_hint_error, map_index_error,
+    DiagnosticReportVersion, DiagnosticSummary, RenderError, map_hint_error, map_index_error,
 };
 use specify_lints::lint::eval::HintError;
 use specify_lints::lint::index::IndexError;
 use specify_lints::{
-    Artifact, Confidence, DiagnosticKind, FindingEvidence, FindingLocation, FindingSource,
-    FindingStatus, HintKind, LintFinding, ResolvedRule, Severity,
+    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence,
+    FindingLocation, FindingStatus, HintKind, ResolvedRule, Severity,
 };
 
 use super::*;
@@ -189,14 +189,14 @@ fn tasks_parser_handles_touches_and_produces() {
     assert_eq!(paths, vec![PathBuf::from("a.md"), PathBuf::from("b.md")]);
 }
 
-fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> LintFinding {
-    LintFinding {
+fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> Diagnostic {
+    Diagnostic {
         id: "FIND-0001".into(),
         rule_id: Some("UNI-014".into()),
         related_rule_ids: None,
         title: "exit-test finding".into(),
         severity,
-        source: FindingSource::Deterministic,
+        source: DiagnosticSource::Deterministic,
         kind: DiagnosticKind::Violation,
         target_adapter: None,
         source_adapter: None,
@@ -220,10 +220,10 @@ fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> Li
     }
 }
 
-fn exit_result(findings: Vec<LintFinding>) -> LintResult {
-    LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::from_diagnostics(&findings),
+fn exit_result(findings: Vec<Diagnostic>) -> DiagnosticReport {
+    DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
         findings,
     }
 }

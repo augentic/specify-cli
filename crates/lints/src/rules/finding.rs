@@ -1,14 +1,12 @@
 //! Diagnostic validation re-exports.
 //!
-//! The structured-finding validators now live in the neutral
+//! The structured-diagnostic validators live in the neutral
 //! [`specify_diagnostics`] leaf. This module re-exports them at the
-//! historical `crate::rules::finding` path under the legacy
-//! `*_finding` names so existing call sites keep resolving while the
-//! codebase migrates to the neutral [`specify_diagnostics::validate()`]
-//! surface.
+//! `crate::rules::finding` path under their neutral names so the rules
+//! layer and its consumers reach the shared
+//! [`specify_diagnostics::validate()`] surface through one import path.
 
 pub use specify_diagnostics::{
-    DiagnosticError as FindingError, validate, validate_diagnostic as validate_finding,
-    validate_diagnostic_json as validate_finding_json, validate_evidence_size,
-    validate_fingerprint,
+    DiagnosticError, validate, validate_diagnostic, validate_diagnostic_json,
+    validate_evidence_size, validate_fingerprint,
 };

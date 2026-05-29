@@ -42,7 +42,7 @@
 //! byte-for-byte so future evidence-cap drift surfaces as a tiny
 //! diff rather than every golden going red). The fingerprint
 //! algorithm itself is pinned by
-//! `crates/specify-lints/src/rules/fingerprint.rs` (the
+//! `crates/lints/src/rules/fingerprint.rs` (the
 //! `golden_fingerprint_pins_algorithm` and
 //! `excluded_producer_fields_do_not_change_fingerprint` tests
 //! together cover RFC-33a §"Implementation plan" step 1 from the
@@ -58,13 +58,13 @@ use eval_support::{NoToolRunner, hint, make_rule};
 use serde_json::Value;
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::diagnostics::{
-    Format, LintResult, LintResultVersion, LintSummary, render,
+    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format, render,
 };
 use specify_lints::lint::eval::{ToolRunner, evaluate};
 use specify_lints::lint::ignore::apply as apply_directives;
 use specify_lints::lint::index::build;
 use specify_lints::rules::fingerprint::fingerprint as compute_fingerprint;
-use specify_lints::rules::{HintKind, LintFinding, Origin, PathRoot, ResolvedRule, Severity};
+use specify_lints::rules::{Diagnostic, HintKind, Origin, PathRoot, ResolvedRule, Severity};
 
 /// Pre-RFC-33a fingerprint snapshot for the URL fixture below.
 ///
@@ -76,7 +76,7 @@ use specify_lints::rules::{HintKind, LintFinding, Origin, PathRoot, ResolvedRule
 /// directive pass or not. If this constant ever needs updating the
 /// algorithm has drifted; bump the version, do not edit the
 /// constant. Aligned with the algorithm canary at
-/// `crates/specify-lints/src/rules/fingerprint.rs::golden_fingerprint_pins_algorithm`.
+/// `crates/lints/src/rules/fingerprint.rs::golden_fingerprint_pins_algorithm`.
 const PRE_RFC_33A_URL_FINGERPRINT: &str =
     "sha256:28b4fbaa698f563815a938785e7bf618e512dd6e09bc2bfb9e55881f80c7c76d";
 
@@ -165,7 +165,7 @@ struct Scenario {
 /// Drive the full pipeline and return the rendered envelope plus
 /// the in-memory finding set so individual scenarios can layer
 /// extra structural assertions on top of the golden comparison.
-fn run_scenario(scenario: &Scenario) -> (LintResult, Vec<LintFinding>) {
+fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("app.rs"), scenario.fixture_body).expect("write fixture");
 
@@ -183,7 +183,7 @@ fn run_scenario(scenario: &Scenario) -> (LintResult, Vec<LintFinding>) {
     )
     .expect("evaluate ok");
 
-    let mut findings: Vec<LintFinding> = outcome.findings;
+    let mut findings: Vec<Diagnostic> = outcome.findings;
 
     let mut resolved_rules = vec![url_rule];
     if scenario.resolve_uni_022 {
@@ -200,9 +200,9 @@ fn run_scenario(scenario: &Scenario) -> (LintResult, Vec<LintFinding>) {
     );
     findings.extend(ignore_outcome.synthetics);
 
-    let result = LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::from_diagnostics(&findings),
+    let result = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
         findings: findings.clone(),
     };
     (result, findings)
@@ -212,7 +212,7 @@ fn run_scenario(scenario: &Scenario) -> (LintResult, Vec<LintFinding>) {
 /// `FIND-NNNN` reshuffles. The fingerprint is also stripped because
 /// the snippet evidence is verbatim-equal across runs but
 /// fingerprint determinism is pinned separately by
-/// `crates/specify-lints/src/rules/fingerprint.rs`.
+/// `crates/lints/src/rules/fingerprint.rs`.
 fn normalise(value: Value) -> Value {
     let mut value = value;
     if let Value::Object(map) = &mut value
@@ -229,7 +229,7 @@ fn normalise(value: Value) -> Value {
 }
 
 #[track_caller]
-fn assert_json_golden(result: &LintResult, golden_name: &str) {
+fn assert_json_golden(result: &DiagnosticReport, golden_name: &str) {
     let rendered = render(Format::Json, result).expect("render json");
     let value: Value = serde_json::from_str(&rendered).expect("parse rendered");
     let normalised = normalise(value);
@@ -257,7 +257,7 @@ fn assert_json_golden(result: &LintResult, golden_name: &str) {
 }
 
 #[track_caller]
-fn assert_pretty_golden(result: &LintResult, golden_name: &str) {
+fn assert_pretty_golden(result: &DiagnosticReport, golden_name: &str) {
     let rendered = render(Format::Pretty, result).expect("render pretty");
 
     let golden = pretty_goldens_dir().join(golden_name);

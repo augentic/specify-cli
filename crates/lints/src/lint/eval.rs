@@ -79,8 +79,9 @@ use crate::lint::WorkspaceModel;
 use crate::lint::diagnostics::map_hint_error;
 use crate::rules::fingerprint::fingerprint as compute_fingerprint;
 use crate::rules::{
-    Artifact, Confidence, DeterministicHint, DiagnosticKind, FindingEvidence, FindingLocation,
-    FindingSource, HintKind, LintFinding, LintMode, ResolvedRule, Severity, validate_evidence_size,
+    Artifact, Confidence, DeterministicHint, Diagnostic, DiagnosticKind, DiagnosticSource,
+    FindingEvidence, FindingLocation, HintKind, LintMode, ResolvedRule, Severity,
+    validate_evidence_size,
 };
 
 /// Closed failure mode for the hint interpreter.
@@ -91,7 +92,7 @@ use crate::rules::{
 /// the caller maps to `Error::Validation` (exit 2) or
 /// `Error::Filesystem` (exit 1) per lint exit mapping. Recoverable per-finding
 /// states (`tool.invocation-failed`, `tool.undeclared`, the reserved-hint diagnostics
-/// summary) flow back as [`LintFinding`] entries on the Ok path.
+/// summary) flow back as [`Diagnostic`] entries on the Ok path.
 #[derive(Debug, Error)]
 pub enum HintError {
     /// Hint shape outside the v1 contract (reserved kinds called
@@ -198,7 +199,7 @@ pub struct ReservedSkipped {
 #[derive(Debug, Clone)]
 pub struct HintEvalOutcome {
     /// Findings minted for this rule's executable hints.
-    pub findings: Vec<LintFinding>,
+    pub findings: Vec<Diagnostic>,
     /// Reserved-kind hint occurrences encountered while iterating
     /// the rule's hints.
     pub reserved_skipped: Vec<ReservedSkipped>,
@@ -228,7 +229,7 @@ pub fn evaluate(
     rule: &ResolvedRule, hints: &[DeterministicHint], model: &WorkspaceModel, project_dir: &Path,
     tool_runner: &dyn ToolRunner, start_id_counter: u64,
 ) -> Result<HintEvalOutcome, HintError> {
-    let mut findings: Vec<LintFinding> = Vec::new();
+    let mut findings: Vec<Diagnostic> = Vec::new();
     // No hint kind is reserved after C17; the machinery stays as
     // forward-compat scaffolding for any future kind landed reserved.
     let reserved_skipped: Vec<ReservedSkipped> = Vec::new();
@@ -341,8 +342,8 @@ pub fn evaluate(
 pub fn evaluate_rules(
     rules: &[ResolvedRule], model: &WorkspaceModel, project_dir: &Path, runner: &dyn ToolRunner,
     start_id: u64, rule_filter: &[&str],
-) -> Result<(Vec<LintFinding>, Vec<ReservedSkipped>, u64), CliError> {
-    let mut findings: Vec<LintFinding> = Vec::new();
+) -> Result<(Vec<Diagnostic>, Vec<ReservedSkipped>, u64), CliError> {
+    let mut findings: Vec<Diagnostic> = Vec::new();
     let mut reserved: Vec<ReservedSkipped> = Vec::new();
     let mut next_id = start_id;
 
@@ -386,7 +387,7 @@ pub fn evaluate_rules(
 #[must_use]
 pub fn reserved_hint_summary(
     skipped: &[ReservedSkipped], strict_hints: bool,
-) -> Option<LintFinding> {
+) -> Option<Diagnostic> {
     if skipped.is_empty() {
         return None;
     }
@@ -398,13 +399,13 @@ pub fn reserved_hint_summary(
         locations: None,
     };
     let severity = if strict_hints { Severity::Important } else { Severity::Optional };
-    let mut finding = LintFinding {
+    let mut finding = Diagnostic {
         id: "FIND-RESERVED".to_string(),
         rule_id: Some("review.reserved-hint-skipped".to_string()),
         related_rule_ids: None,
         title: "Reserved hint kinds awaiting implementation".to_string(),
         severity,
-        source: FindingSource::Deterministic,
+        source: DiagnosticSource::Deterministic,
         kind: DiagnosticKind::Violation,
         target_adapter: None,
         source_adapter: None,
@@ -449,14 +450,14 @@ fn build_candidate_set(
 pub(crate) fn make_finding(
     rule: &ResolvedRule, id_num: u64, title: String, location: Option<FindingLocation>,
     evidence: FindingEvidence,
-) -> LintFinding {
-    let mut finding = LintFinding {
+) -> Diagnostic {
+    let mut finding = Diagnostic {
         id: format!("FIND-{id_num:04}"),
         rule_id: Some(rule.rule_id.clone()),
         related_rule_ids: None,
         title,
         severity: rule.severity,
-        source: FindingSource::Deterministic,
+        source: DiagnosticSource::Deterministic,
         kind: DiagnosticKind::Violation,
         target_adapter: single_adapter(rule),
         source_adapter: None,
@@ -483,14 +484,14 @@ pub(crate) fn make_finding(
 /// snippet evidence) and its `path` the remediation pointer. Source is
 /// `model-assisted` — the question is destined for a scorer, not a
 /// deterministic verdict.
-fn make_review_finding(rule: &ResolvedRule, id_num: u64) -> LintFinding {
-    let mut finding = LintFinding {
+fn make_review_finding(rule: &ResolvedRule, id_num: u64) -> Diagnostic {
+    let mut finding = Diagnostic {
         id: format!("FIND-{id_num:04}"),
         rule_id: Some(rule.rule_id.clone()),
         related_rule_ids: None,
         title: rule.title.clone(),
         severity: rule.severity,
-        source: FindingSource::ModelAssisted,
+        source: DiagnosticSource::ModelAssisted,
         kind: DiagnosticKind::Review,
         target_adapter: single_adapter(rule),
         source_adapter: None,
@@ -542,7 +543,7 @@ pub(crate) struct SyntheticFinding<'a> {
 
 /// Build a finding with an explicit `rule_id` / `severity` (for the
 /// synthetic `tool.undeclared` and `tool.invocation-failed` shapes).
-pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> LintFinding {
+pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> Diagnostic {
     let SyntheticFinding {
         id_num,
         rule_id,
@@ -554,13 +555,13 @@ pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> LintFinding 
         remediation,
         target_adapter,
     } = spec;
-    let mut finding = LintFinding {
+    let mut finding = Diagnostic {
         id: format!("FIND-{id_num:04}"),
         rule_id: Some(rule_id.to_string()),
         related_rule_ids: None,
         title,
         severity,
-        source: FindingSource::Deterministic,
+        source: DiagnosticSource::Deterministic,
         kind: DiagnosticKind::Violation,
         target_adapter,
         source_adapter: None,
@@ -584,7 +585,7 @@ pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> LintFinding 
 /// Stamp `id` and recompute the fingerprint on a finding produced
 /// outside the rule-derived defaults (e.g. forwarded from a tool's
 /// stdout). Applies the evidence-cap truncation before signing.
-pub(crate) fn restamp_finding(finding: &mut LintFinding, id_num: u64) {
+pub(crate) fn restamp_finding(finding: &mut Diagnostic, id_num: u64) {
     finding.id = format!("FIND-{id_num:04}");
     clamp_evidence(finding);
     finding.fingerprint = compute_fingerprint(finding);
@@ -602,7 +603,7 @@ fn single_adapter(rule: &ResolvedRule) -> Option<String> {
 const TRUNCATION_MARKER: &str = "…[truncated]";
 const CLAMP_ITERATION_LIMIT: usize = 32;
 
-fn clamp_evidence(finding: &mut LintFinding) {
+fn clamp_evidence(finding: &mut Diagnostic) {
     let mut iter = 0;
     while validate_evidence_size(finding).is_err() && iter < CLAMP_ITERATION_LIMIT {
         iter += 1;
@@ -690,13 +691,13 @@ mod tests {
 
     #[test]
     fn clamp_truncates_oversize_snippet() {
-        let mut finding = LintFinding {
+        let mut finding = Diagnostic {
             id: "FIND-0001".into(),
             rule_id: Some("UNI-001".into()),
             related_rule_ids: None,
             title: "t".into(),
             severity: Severity::Important,
-            source: FindingSource::Deterministic,
+            source: DiagnosticSource::Deterministic,
             kind: DiagnosticKind::Violation,
             target_adapter: None,
             source_adapter: None,

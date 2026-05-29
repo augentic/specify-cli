@@ -98,7 +98,7 @@ pub enum Commands {
 
     /// Deterministic lint (`specrun lint` v1). Resolves applicable codex
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
-    /// and emits the `LintResult` envelope lint-result envelope. Read-only.
+    /// and emits the `DiagnosticReport` envelope. Read-only.
     Lint {
         #[command(subcommand)]
         action: LintAction,

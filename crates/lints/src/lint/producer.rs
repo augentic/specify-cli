@@ -4,7 +4,7 @@
 //! hint-evaluator pass with zero or more imperative producers. A
 //! producer is any source that, given the indexed [`WorkspaceModel`]
 //! and the scan root, yields a batch of ready-to-render
-//! [`LintFinding`]s (project-relative locations, fingerprints already
+//! [`Diagnostic`]s (project-relative locations, fingerprints already
 //! stamped).
 //!
 //! The trait deliberately takes plain DTOs — never the runtime `Ctx`
@@ -21,9 +21,9 @@
 use std::path::Path;
 
 use crate::lint::WorkspaceModel;
-use crate::rules::LintFinding;
+use crate::rules::Diagnostic;
 
-/// An imperative source of [`LintFinding`]s composed by the shared
+/// An imperative source of [`Diagnostic`]s composed by the shared
 /// lint runner alongside the declarative hint pass.
 pub trait DiagnosticProducer {
     /// Produce this source's findings against the indexed workspace.
@@ -31,5 +31,5 @@ pub trait DiagnosticProducer {
     /// Implementations own location normalisation (project-relative
     /// paths) and fingerprint stamping so the runner can dedupe the
     /// combined set by fingerprint without re-canonicalising.
-    fn produce(&self, model: &WorkspaceModel, project_dir: &Path) -> Vec<LintFinding>;
+    fn produce(&self, model: &WorkspaceModel, project_dir: &Path) -> Vec<Diagnostic>;
 }

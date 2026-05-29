@@ -8,8 +8,8 @@
 //!    [`specify_lints::lint`] driven by `CORE-*` / `UNI-*` rules
 //!    under the framework's own codex tree.
 //!
-//! Both passes emit [`specify_lints::LintFinding`]; the dispatcher
-//! folds them into a single [`specify_lints::lint::diagnostics::LintResult`]
+//! Both passes emit [`specify_lints::Diagnostic`]; the dispatcher
+//! folds them into a single [`specify_lints::lint::diagnostics::DiagnosticReport`]
 //! envelope, deduplicates by fingerprint per RFC-34 §F5, mints the
 //! reserved-hint diagnostics summary, and renders through the four
 //! formatters in [`specify_lints::lint::diagnostics`]. One

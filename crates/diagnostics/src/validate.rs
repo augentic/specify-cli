@@ -3,7 +3,7 @@
 //! Three orthogonal checks:
 //!
 //! 1. **JSON Schema validation** — every wire field conforms to
-//!    `schemas/lint/finding.schema.json` (kebab-case keys, closed
+//!    `schemas/diagnostics/diagnostic.schema.json` (kebab-case keys, closed
 //!    enums, evidence `oneOf`, fingerprint pattern, etc.).
 //! 2. **Evidence cap** — the serialized `evidence` object is bounded
 //!    at 16 `KiB`. The cap covers the full evidence object (`kind` +
@@ -17,7 +17,7 @@
 //! validators.
 
 use serde_json::Value as JsonValue;
-use specify_schema::{LINT_FINDING_JSON_SCHEMA, compile_schema};
+use specify_schema::{DIAGNOSTIC_JSON_SCHEMA, compile_schema};
 
 use crate::diagnostic::Diagnostic;
 use crate::fingerprint::fingerprint;
@@ -68,7 +68,7 @@ pub fn validate(diagnostic: &Diagnostic) -> Result<(), DiagnosticError> {
 }
 
 /// Validate a typed [`Diagnostic`] against the embedded
-/// `schemas/lint/finding.schema.json`.
+/// `schemas/diagnostics/diagnostic.schema.json`.
 ///
 /// # Errors
 ///
@@ -83,14 +83,14 @@ pub fn validate_diagnostic(diagnostic: &Diagnostic) -> Result<(), DiagnosticErro
 }
 
 /// Validate a raw [`serde_json::Value`] against the embedded
-/// `schemas/lint/finding.schema.json`.
+/// `schemas/diagnostics/diagnostic.schema.json`.
 ///
 /// # Errors
 ///
 /// Returns [`DiagnosticError::Schema`] with a `; `-joined error list
 /// when the instance fails validation.
 pub fn validate_diagnostic_json(value: &JsonValue) -> Result<(), DiagnosticError> {
-    let validator = compile_schema(LINT_FINDING_JSON_SCHEMA)
+    let validator = compile_schema(DIAGNOSTIC_JSON_SCHEMA)
         .map_err(|err| DiagnosticError::Schema(err.to_string()))?;
     let errors: Vec<String> =
         validator.iter_errors(value).map(|err| format!("{}: {err}", err.instance_path())).collect();

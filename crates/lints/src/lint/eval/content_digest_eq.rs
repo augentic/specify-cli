@@ -8,7 +8,7 @@
 //! and asserts that every `**/agent-teams.md` symlink resolves to
 //! content whose digest equals the canonical
 //! `docs/reference/review-team-protocol.md` review-team-protocol
-//! document. The interpreter emits one [`crate::rules::LintFinding`]
+//! document. The interpreter emits one [`crate::rules::Diagnostic`]
 //! per symlink whose resolved-target digest diverges from the
 //! canonical digest, with the symlink path as the finding's location
 //! and the `(resolved-target, expected, actual)` shape surfaced via
@@ -48,7 +48,7 @@ use std::path::PathBuf;
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, HintKind, LintFinding, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
 };
 
 const SOURCE_AGENT_TEAMS_MATCH_CANONICAL: &str = "agent-teams-match-canonical";
@@ -67,7 +67,7 @@ const ABSENT_DIGEST_TOKEN: &str = "(unavailable)";
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, _candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
     if source != SOURCE_AGENT_TEAMS_MATCH_CANONICAL {
         return Err(HintError::Unsupported {
@@ -89,7 +89,7 @@ pub(crate) fn evaluate(
         return Ok(Vec::new());
     };
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for team in &model.agent_teams {
         let actual = team.target_sha256.as_deref();
         if actual == Some(expected) {

@@ -9,7 +9,7 @@
 //! body lines) and flags each `plugins/<plugin>/skills/<skill>/SKILL.md`
 //! whose body exceeds the 200-line cap pinned by
 //! [`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md).
-//! The interpreter emits one [`crate::rules::LintFinding`] per
+//! The interpreter emits one [`crate::rules::Diagnostic`] per
 //! over-budget skill with the SKILL.md path as the finding's location
 //! and the `(actual, max)` pair surfaced via
 //! [`crate::rules::FindingEvidence::Structured`] for downstream
@@ -38,7 +38,7 @@ use std::path::PathBuf;
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
 use crate::rules::{
-    DeterministicHint, FindingEvidence, FindingLocation, HintKind, LintFinding, ResolvedRule,
+    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
 };
 
 const SOURCE_SKILL_BODY_LINE_COUNT_MAX_200: &str = "skill-body-line-count-max-200";
@@ -47,7 +47,7 @@ const SKILL_BODY_LINE_MAX: u32 = 200;
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
-) -> Result<Vec<LintFinding>, HintError> {
+) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
     if source != SOURCE_SKILL_BODY_LINE_COUNT_MAX_200 {
         return Err(HintError::Unsupported {
@@ -60,7 +60,7 @@ pub(crate) fn evaluate(
     let candidate_set: BTreeSet<String> =
         candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
-    let mut out: Vec<LintFinding> = Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
     for skill in &model.skills {
         if !candidate_set.contains(&skill.path) {
             continue;
