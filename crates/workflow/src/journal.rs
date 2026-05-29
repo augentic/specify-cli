@@ -247,25 +247,25 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source_key: Option<String>,
     },
-    /// `specrun lint` finished a scan. RFC-33a §"Journal event" (D8):
-    /// payload carries the scan scope, wall-clock duration, per-status
-    /// counts, a `baseline_present` flag (hard-coded `false` until
-    /// RFC-33b lands), and the CLI exit code the scan resolved to.
-    /// Emission is wired in the scanner; this variant exists so the
-    /// taxonomy is closed even before the emitter ships.
+    /// `specrun lint` finished a scan. The payload carries the scan
+    /// scope, wall-clock duration, per-status counts, a
+    /// `baseline_present` flag (hard-coded `false` until RFC-33b
+    /// lands), and the CLI exit code the scan resolved to. Emission is
+    /// wired in the scanner; this variant exists so the taxonomy is
+    /// closed even before the emitter ships.
     ///
-    /// Field names on the wire are `snake_case` to match the RFC payload
-    /// example verbatim (`duration_ms`, `baseline_present`,
+    /// Field names on the wire are `snake_case` to match the journal
+    /// payload example verbatim (`duration_ms`, `baseline_present`,
     /// `false_positive`, `exit_code`); this is the one variant in the
     /// taxonomy that does not project through `rename_all =
-    /// "kebab-case"`, because the RFC's payload sketch is the wire
-    /// contract consumers will read.
+    /// "kebab-case"`, because that payload shape is the wire contract
+    /// consumers will read.
     #[serde(rename = "lint-completed")]
     LintCompleted(LintCompletedPayload),
 }
 
-/// Payload for [`EventKind::LintCompleted`]. RFC-33a §"Journal event"
-/// (D8) pins the field set and the `snake_case` wire names.
+/// Payload for [`EventKind::LintCompleted`]. The journal event
+/// contract pins the field set and the `snake_case` wire names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LintCompletedPayload {
     /// Scope of the scan — which target, slice, or artifact the run
@@ -279,11 +279,10 @@ pub struct LintCompletedPayload {
     /// `new` / `baselined` buckets land additively with RFC-33b.
     pub counts: LintCounts,
     /// Whether the scan observed a baseline file. Hard-coded `false`
-    /// in RFC-33a emitters per D8; becomes scan-derived when RFC-33b
-    /// lands.
+    /// in current emitters; becomes scan-derived when RFC-33b lands.
     pub baseline_present: bool,
     /// CLI exit code the scan resolved to (status-aware severity per
-    /// RFC-33a §"Exit and presentation semantics"). `0` on clean
+    /// the exit and presentation semantics). `0` on clean
     /// scans, `2` when an `open` finding of `important` or `critical`
     /// severity remains.
     pub exit_code: i32,
@@ -291,7 +290,7 @@ pub struct LintCompletedPayload {
 
 /// Scan-scope sub-object on [`LintCompletedPayload`]. Each field is
 /// optional and serialised as `null` when absent so the wire shape
-/// matches the RFC example verbatim.
+/// matches the payload example verbatim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LintScope {
     /// Target name (`omnia`, `vectis`, …) when the scan was narrowed
@@ -305,7 +304,7 @@ pub struct LintScope {
     pub artifact: Option<String>,
 }
 
-/// Per-status finding counts on [`LintCompletedPayload`]. RFC-33a
+/// Per-status finding counts on [`LintCompletedPayload`]. Current
 /// emitters fill the three buckets named here; RFC-33b adds `new` and
 /// `baselined` additively when it lands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -640,10 +639,10 @@ mod tests {
 
     #[test]
     fn lint_completed_round_trips() {
-        // RFC-33a §"Journal event" (D8): the lint-completed payload
-        // uses snake_case wire fields (`duration_ms`, `baseline_present`,
-        // `false_positive`, `exit_code`) so the JSON matches the RFC
-        // example verbatim. The wire id itself stays dotted-kebab.
+        // The lint-completed payload uses snake_case wire fields
+        // (`duration_ms`, `baseline_present`, `false_positive`,
+        // `exit_code`) so the JSON matches the payload example
+        // verbatim. The wire id itself stays dotted-kebab.
         let event = Event::new(
             test_timestamp("2026-05-22T13:15:00Z"),
             EventKind::LintCompleted(LintCompletedPayload {

@@ -12,7 +12,7 @@
 //!   the same `serde_saphyr`-parsed body, so the cardinality and
 //!   `instance_path` set are byte-identical for any given fixture.
 //!
-//! Because the rule-id field differs, RFC-34 §F5's fingerprint-based
+//! Because the rule-id field differs, the fingerprint-based
 //! deduplication CANNOT silently merge a declarative finding with the
 //! retired imperative one during any future overlap window — every parity
 //! claim has to be characterised by the (location, JSON-pointer) pair.

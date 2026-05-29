@@ -23,8 +23,8 @@
 //!   whose `body_line_count` exceeds 200, carrying the
 //!   `(skill, path, actual, max)` shape as structured evidence.
 //!
-//! Because the rule-id field differs between the two passes, RFC-34
-//! §F5's fingerprint-based deduplication CANNOT silently merge a
+//! Because the rule-id field differs between the two passes, the
+//! fingerprint-based deduplication CANNOT silently merge a
 //! declarative finding with the retired imperative one during any
 //! future overlap window — every parity claim is characterised by the
 //! `path → body_line_count` map.

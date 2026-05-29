@@ -4,8 +4,8 @@
 //! Phase 2 ships the consumer scan: a `.gitignore`-aware file walk,
 //! per-file extractors that run in parallel via `rayon`, and a
 //! sequential second pass that records symlinks, discovers codex
-//! rules, and resolves cross-file edges. RFC-34 adds the framework
-//! profile per §F1: a wider include set, follow-the-link symlink
+//! rules, and resolves cross-file edges. The framework profile adds
+//! a wider include set, follow-the-link symlink
 //! traversal with cycle detection, and dedicated extractors for
 //! `plugins/**/SKILL.md`, `adapters/**/adapter.yaml`,
 //! `.cursor-plugin/marketplace.json`, `**/agent-teams.md` symlinks,

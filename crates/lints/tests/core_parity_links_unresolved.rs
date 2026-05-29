@@ -21,7 +21,7 @@
 //! the same fence-skipping behaviour, and the same path-resolution rule
 //! (join `target` against the markdown file's parent directory and check
 //! the joined path against the discovered file set). Because the rule-id
-//! field differs, RFC-34 §F5's fingerprint-based deduplication CANNOT
+//! field differs, the fingerprint-based deduplication CANNOT
 //! silently merge a declarative finding with the retired imperative one
 //! during any future overlap window — every parity claim is characterised
 //! by the `(from_path, target)` pair.

@@ -1,4 +1,4 @@
-//! `kind: namespace-owner` evaluator per RFC-34 §F6 (C17).
+//! `kind: namespace-owner` evaluator.
 //!
 //! Asserts that each rule file's id-namespace prefix is authored only
 //! under the directory that OWNS that namespace. v1 supports one

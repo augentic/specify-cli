@@ -228,7 +228,7 @@ fn exit_result(findings: Vec<Diagnostic>) -> DiagnosticReport {
     }
 }
 
-/// RFC-33a §"Exit and presentation semantics": exit 2 fires only
+/// Exit and presentation semantics: exit 2 fires only
 /// when at least one finding carries `status: open` AND severity is
 /// critical or important. Ignored / false-positive findings stay in
 /// the envelope but do not block.

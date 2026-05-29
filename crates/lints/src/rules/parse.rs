@@ -433,7 +433,7 @@ deterministic_hints:
         assert_eq!(hints[1].kind, HintKind::NamespaceOwner);
     }
 
-    /// RFC-34 §F4 framework-side `applicability.artifacts` tokens
+    /// Framework-side `applicability.artifacts` tokens
     /// (`skill`, `adapter`, `brief`, `reference`, `codex`, `rfc`,
     /// `doc`) compose with the consumer-side tokens in the closed
     /// schema enum. A rule whose applicability mixes both sides
@@ -444,7 +444,7 @@ deterministic_hints:
 id: UNI-014
 title: Framework artifact tokens
 severity: optional
-trigger: RFC-34 framework-side artifact tokens must compose with consumer-side tokens.
+trigger: Framework-side artifact tokens must compose with consumer-side tokens.
 applicability:
   artifacts:
     - skill

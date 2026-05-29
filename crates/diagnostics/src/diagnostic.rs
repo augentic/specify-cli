@@ -121,7 +121,7 @@ pub enum Confidence {
 }
 
 /// Triage status for a [`Diagnostic`]. Omitted by raw scanners and
-/// populated by review reports, the RFC-33a directive post-pass, or
+/// populated by review reports, the directive post-pass, or
 /// CI state.
 ///
 /// `Ignored` is set by the directive pass when a `specify-ignore`
@@ -133,7 +133,7 @@ pub enum FindingStatus {
     /// Untriaged; default for fresh diagnostics and the only
     /// default-blocking value at exit time.
     Open,
-    /// Demoted by a matching `specify-ignore` directive (RFC-33a).
+    /// Demoted by a matching `specify-ignore` directive.
     Ignored,
     /// Resolved by a code change.
     Fixed,
@@ -307,7 +307,7 @@ pub struct Diagnostic {
     /// Format `sha256:<64 hex chars>`.
     pub fingerprint: String,
     /// Triage status. Omitted by raw scanners; populated by review
-    /// reports, the RFC-33a directive post-pass, or CI state.
+    /// reports, the directive post-pass, or CI state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<FindingStatus>,
     /// Origin of a non-`open` `status`. Unset when `status` is `open`

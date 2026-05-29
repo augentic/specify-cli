@@ -7,7 +7,7 @@
 //! - Declarative rule id `CORE-006` ≅ `adapter.manifest-version`
 //!   (notional; no imperative `Check` row currently enforces the
 //!   `version: 1` invariant). No imperative deletion is in flight:
-//!   RFC-34 §F5 and the C14 plan card's fallback explicitly permit
+//!   the fingerprint dedup contract's fallback explicitly permits
 //!   landing the kind interpreter + seed rule against a synthetic
 //!   fixture when no `Check` row maps cleanly to the reserved kind
 //!   ("the imperative deletion is gated on parity, not required for
@@ -36,7 +36,7 @@
 //!   evidence.
 //!
 //! Because no imperative deletion is in flight, the fingerprint-based
-//! deduplication in RFC-34 §F5 has nothing to merge in any overlap
+//! deduplication has nothing to merge in any overlap
 //! window.
 //!
 //! # Option

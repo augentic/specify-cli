@@ -15,7 +15,7 @@ fn scaffold_framework(root: &Path) {
 // Schema-violation coverage moved to the declarative pipeline; see
 // `core_parity_adapter_schema::core_001_matches_imperative_schema_row`
 // for the equivalence proof against the retired
-// `adapter.schema-violation` predicate row (RFC-34 C8 / §F5).
+// `adapter.schema-violation` predicate row.
 
 #[test]
 fn missing_manifest_without_yaml() {

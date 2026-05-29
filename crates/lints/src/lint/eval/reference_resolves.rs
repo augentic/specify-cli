@@ -1,4 +1,4 @@
-//! `kind: reference-resolves` evaluator per RFC-34 §F6 PR 2.
+//! `kind: reference-resolves` evaluator.
 //!
 //! Asserts that every reference of the requested kind that originates
 //! from a candidate file resolves to a real path on disk. v1 supports

@@ -19,7 +19,7 @@
 //!   `name:` value, carrying the sorted offender path list as structured
 //!   evidence.
 //!
-//! Because the rule-id field differs between the two passes, RFC-34 §F5's
+//! Because the rule-id field differs between the two passes, the
 //! fingerprint-based deduplication CANNOT silently merge a declarative
 //! finding with the retired imperative one during any future overlap
 //! window — every parity claim is characterised by the

@@ -1,14 +1,14 @@
-//! End-to-end test for the RFC-34 §F2 `specdev lint` extension.
+//! End-to-end test for the `specdev lint` extension.
 //!
-//! Exercises the binary surface added by RFC-34 chassis change C6:
+//! Exercises the binary surface added for framework convergence:
 //!
 //! - `specdev lint --output-format json` against a small
 //!   framework-shaped scaffold emits a `DiagnosticReport` envelope on
 //!   stdout that validates against
 //!   `schemas/diagnostics/diagnostic-report.schema.json`.
 //! - The same run lands exactly one `lint-completed` journal event
-//!   in `<framework-root>/.specify/journal.jsonl` per RFC-34 §F7,
-//!   with the §F7-mandated `scope.target = null`,
+//!   in `<framework-root>/.specify/journal.jsonl`,
+//!   with the mandated `scope.target = null`,
 //!   `scope.slice = null`, `baseline_present = false` shape.
 //! - The pretty formatter (`--output-format pretty`) produces a
 //!   non-empty human summary, confirming the four-formatter set
@@ -176,7 +176,7 @@ fn json_envelope_validates_against_schema() {
 }
 
 /// One `lint-completed` event lands in
-/// `<framework_root>/.specify/journal.jsonl` per run per RFC-34 §F7.
+/// `<framework_root>/.specify/journal.jsonl` per run.
 /// The payload shape (`scope.target: None`, `scope.slice: None`,
 /// `baseline_present: false`) is pinned alongside the existence
 /// check.

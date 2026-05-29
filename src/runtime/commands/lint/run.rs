@@ -199,11 +199,10 @@ fn parse_slice_tasks_paths(text: &str) -> Vec<PathBuf> {
 }
 
 /// Build a [`LintCompletedPayload`] from the final finding set and
-/// append it to the project journal per RFC-33a §"Journal event"
-/// (D8). Best-effort: serialise/IO failures are logged to stderr and
-/// swallowed so a telemetry hiccup never overrides the scan's exit
-/// code (mirrors the safety stance documented on the variant
-/// itself).
+/// append it to the project journal. Best-effort: serialise/IO
+/// failures are logged to stderr and swallowed so a telemetry hiccup
+/// never overrides the scan's exit code (mirrors the safety stance
+/// documented on the variant itself).
 ///
 /// `baseline_present` is hard-coded `false`; RFC-33b makes it
 /// scan-derived when it lands.
@@ -237,7 +236,7 @@ fn emit_lint_completed(
     }
 }
 
-/// Decide exit per RFC-33a §"Exit and presentation semantics": exit 2
+/// Decide exit per the exit and presentation semantics: exit 2
 /// only when at least one finding carries `status: open` AND
 /// `severity ∈ {critical, important}`. Findings demoted to `ignored`
 /// or `false-positive` by the directive pass remain in the envelope

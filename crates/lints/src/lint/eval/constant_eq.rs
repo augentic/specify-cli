@@ -1,4 +1,4 @@
-//! `kind: constant-eq` evaluator per RFC-34 §F6 (C14).
+//! `kind: constant-eq` evaluator.
 //!
 //! Asserts that some extracted field on a candidate fact equals a
 //! configured constant. v1 supports one source discriminator —
@@ -27,7 +27,7 @@
 //!
 //! The single source discriminator hardcodes both the field
 //! (`AdapterManifest.version`) and the expected constant (`"1"`) —
-//! RFC-34 §F5 pins this as the smoke-test landing path for the
+//! this is the smoke-test landing path for the
 //! reserved kind, so a richer config shape
 //! (`{field: …, expected: …}`) is deferred until a second consumer
 //! arrives. Future hint values may extend the closed source set;

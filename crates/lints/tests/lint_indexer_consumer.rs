@@ -147,7 +147,7 @@ fn byte_stable_across_runs() {
 
 #[test]
 fn framework_scan_profile_now_accepted() {
-    // RFC-34 C5 activated `scan_profile: framework`; the consumer
+    // `scan_profile: framework` is active; the consumer
     // fixture has no framework-shaped files so the framework walk
     // yields an essentially empty model, but it must no longer
     // surface `IndexError::UnsupportedScanProfile`.

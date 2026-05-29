@@ -1,15 +1,13 @@
-//! End-to-end acceptance goldens for the RFC-33a directive pass.
+//! End-to-end acceptance goldens for the directive pass.
 //!
 //! Drives the full pipeline — `lint::index::build` → `lint::eval::evaluate`
 //! → `lint::ignore::apply` → JSON envelope render — against tiny Rust
-//! fixtures and pins each scenario from RFC-33a §"Implementation
-//! plan" step 7 and the RFC-33a plan §"C8 Acceptance golden tests"
-//! eight-scenario list:
+//! fixtures and pins each acceptance golden-test scenario:
 //!
 //! 1. No directives present → all findings `status: open` with no
 //!    `disposition` on the wire, and the fingerprint matches a value
-//!    that would be computed by the pre-RFC-33a algorithm (the
-//!    fingerprint excludes `status` / `disposition` per RFC-28).
+//!    that would be computed by the pre-directive-pass algorithm (the
+//!    fingerprint excludes `status` / `disposition`).
 //! 2. Directive matches a finding → finding flips to `status:
 //!    ignored`, `disposition.directive` populated.
 //! 3. `false-positive:` rationale → finding flips to `status:
@@ -45,7 +43,7 @@
 //! `crates/lints/src/rules/fingerprint.rs` (the
 //! `golden_fingerprint_pins_algorithm` and
 //! `excluded_producer_fields_do_not_change_fingerprint` tests
-//! together cover RFC-33a §"Implementation plan" step 1 from the
+//! together cover the fingerprint-algorithm guarantees from the
 //! algorithm side); the pretty goldens leave fingerprints implicit
 //! because the pretty formatter does not render them.
 
@@ -66,18 +64,17 @@ use specify_lints::lint::index::build;
 use specify_lints::rules::fingerprint::fingerprint as compute_fingerprint;
 use specify_lints::rules::{Diagnostic, HintKind, Origin, PathRoot, ResolvedRule, Severity};
 
-/// Pre-RFC-33a fingerprint snapshot for the URL fixture below.
+/// Pre-directive-pass fingerprint snapshot for the URL fixture below.
 ///
 /// Algorithmically equivalent to the value `compute_fingerprint`
 /// returns on the URL finding the scanner mints from
 /// [`URL_FIXTURE_BODY`] — `status` and `disposition` are excluded
-/// from the fingerprint per RFC-28 §"Fingerprint algorithm", so the
-/// snapshot holds whether the finding has been stamped by the
-/// directive pass or not. If this constant ever needs updating the
-/// algorithm has drifted; bump the version, do not edit the
-/// constant. Aligned with the algorithm canary at
+/// from the fingerprint, so the snapshot holds whether the finding
+/// has been stamped by the directive pass or not. If this constant
+/// ever needs updating the algorithm has drifted; bump the version,
+/// do not edit the constant. Aligned with the algorithm canary at
 /// `crates/lints/src/rules/fingerprint.rs::golden_fingerprint_pins_algorithm`.
-const PRE_RFC_33A_URL_FINGERPRINT: &str =
+const PRE_DIRECTIVE_URL_FINGERPRINT: &str =
     "sha256:28b4fbaa698f563815a938785e7bf618e512dd6e09bc2bfb9e55881f80c7c76d";
 
 /// Rust file with one `https://` literal — the scanner's only
@@ -93,8 +90,7 @@ const URL_WITH_DIRECTIVE_FIXTURE_BODY: &str = "// specify-ignore: UNI-014 — in
 
 /// Same shape as [`URL_WITH_DIRECTIVE_FIXTURE_BODY`] but the
 /// rationale opens with the `false-positive:` prefix that demotes
-/// the finding to `status: false-positive` per RFC-33a §"Finding
-/// status taxonomy".
+/// the finding to `status: false-positive`.
 const URL_FALSE_POSITIVE_FIXTURE_BODY: &str = "// specify-ignore: UNI-014 — false-positive: scanner pattern misfires on the demo stub URL\nconst BASE_URL: &str = \"https://api.example.com\";\n";
 
 /// Same line of code as [`URL_FIXTURE_BODY`] with an unrationaled
@@ -107,7 +103,7 @@ const URL_WITH_UNRATIONED_DIRECTIVE_FIXTURE_BODY: &str =
 /// rationale is below the 16-character floor; the directive pass
 /// still matches the finding and stamps `status: ignored` (the
 /// rationale is captured verbatim), and additionally mints a
-/// synthetic `UNI-022` per RFC-33a §"Implementation plan" step 4.
+/// synthetic `UNI-022`.
 const URL_WITH_SHORT_DIRECTIVE_FIXTURE_BODY: &str =
     "// specify-ignore: UNI-014 — too short\nconst BASE_URL: &str = \"https://api.example.com\";\n";
 
@@ -304,12 +300,11 @@ fn with_no_color<R>(f: impl FnOnce() -> R) -> R {
 ///
 /// Drives the URL fixture without any `specify-ignore` directive in
 /// source. The matched finding stays `status: open` (omitted on
-/// the wire by `skip_serializing_if` per RFC-28 §"Schema"); no
-/// `disposition` field appears, and the fingerprint matches the
-/// pre-RFC-33a snapshot. Plus an inline guard that mutating
-/// `status` / `disposition` post-emission does not change the
-/// fingerprint — RFC-33a §"Schema changes" §"Backwards
-/// compatibility" promises additivity, and this assertion is the
+/// the wire by `skip_serializing_if`); no `disposition` field
+/// appears, and the fingerprint matches the pre-directive-pass
+/// snapshot. Plus an inline guard that mutating `status` /
+/// `disposition` post-emission does not change the fingerprint —
+/// the schema changes promise additivity, and this assertion is the
 /// end-to-end witness.
 #[test]
 fn scenario_1_no_directives_stable_fp() {
@@ -327,11 +322,11 @@ fn scenario_1_no_directives_stable_fp() {
     assert!(finding.disposition.is_none(), "no directive ⇒ no disposition");
 
     assert_eq!(
-        finding.fingerprint, PRE_RFC_33A_URL_FINGERPRINT,
-        "fingerprint must match the pre-RFC-33a snapshot — RFC-28 excludes status/disposition",
+        finding.fingerprint, PRE_DIRECTIVE_URL_FINGERPRINT,
+        "fingerprint must match the pre-directive-pass snapshot — the fingerprint excludes status/disposition",
     );
 
-    // End-to-end witness that the additive RFC-33a fields are
+    // End-to-end witness that the additive directive fields are
     // outside the fingerprint preimage: stamp them on a clone and
     // assert the recomputed fingerprint is byte-equal.
     let mut stamped = finding.clone();
@@ -341,14 +336,14 @@ fn scenario_1_no_directives_stable_fp() {
         directive: Some(specify_lints::rules::DirectiveDisposition {
             path: "app.rs".into(),
             line: 1,
-            rationale: "fingerprint must survive disposition stamping per RFC-28".into(),
+            rationale: "fingerprint must survive disposition stamping".into(),
         }),
         since: None,
     });
     assert_eq!(
         compute_fingerprint(&stamped),
-        PRE_RFC_33A_URL_FINGERPRINT,
-        "RFC-33a status/disposition must not enter the fingerprint preimage",
+        PRE_DIRECTIVE_URL_FINGERPRINT,
+        "status/disposition must not enter the fingerprint preimage",
     );
 
     assert_json_golden(&result, "ignore_directive_scenario_1_no_directives.json");
@@ -430,9 +425,8 @@ fn scenario_3_false_positive_prefix() {
 /// `// specify-ignore: UNI-014` with no rationale at all. The
 /// directive still matches the URL finding (stamping `status:
 /// ignored` with an empty rationale verbatim) and synthesises a
-/// `UNI-022` per RFC-33a §"Directive-without-rationale is a
-/// finding" (D4). The synthetic carries the rule's authored
-/// severity (`important`) per C2.
+/// `UNI-022`. The synthetic carries the rule's authored
+/// severity (`important`).
 #[test]
 fn scenario_4_missing_rationale_mints_uni_022_synthetic() {
     let scenario = Scenario {
@@ -462,8 +456,7 @@ fn scenario_4_missing_rationale_mints_uni_022_synthetic() {
 ///
 /// Same shape as scenario 4 but the rationale is present and
 /// captured verbatim; the validation pass still mints `UNI-022`
-/// because the rationale is below the 16-character floor pinned by
-/// RFC-33a D12.
+/// because the rationale is below the 16-character floor.
 #[test]
 fn scenario_5_short_rationale_mints_uni_022_synthetic() {
     let scenario = Scenario {
@@ -511,7 +504,7 @@ fn scenario_5_short_rationale_mints_uni_022_synthetic() {
 /// The directive references `UNI-999`, a rule id no finding on the
 /// target line ever fires for. The URL finding stays `status: open`
 /// (no match) and the directive pass mints a `UNI-023` synthetic
-/// per RFC-33a §"Ignore directives" scope rules.
+/// per the ignore-directive scope rules.
 #[test]
 fn scenario_6_orphan_directive_mints_uni_023_synthetic() {
     let scenario = Scenario {
@@ -545,10 +538,10 @@ fn scenario_6_orphan_directive_mints_uni_023_synthetic() {
 /// Scenario 7 — graceful degradation.
 ///
 /// Run the unrationaled-directive fixture from scenario 4 with the
-/// resolved-codex slice missing both `UNI-022` and `UNI-023`. Per
-/// RFC-33a §"Graceful degradation when the universal codex tree is
-/// absent": match-and-stamp logic still runs (the URL finding flips
-/// to `status: ignored`), but no synthetic findings are emitted and
+/// resolved-codex slice missing both `UNI-022` and `UNI-023`. With
+/// the universal codex tree absent, match-and-stamp logic still runs
+/// (the URL finding flips to `status: ignored`), but no synthetic
+/// findings are emitted and
 /// the scanner does not error out. The on-wire envelope is exactly
 /// what scenario 2 would produce if its rationale were missing — a
 /// single matched finding with an empty rationale verbatim — and no

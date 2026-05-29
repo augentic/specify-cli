@@ -29,7 +29,7 @@
 //! `missing_copy_implementations` warnings. This relocation preserves
 //! that posture verbatim with a module-scoped allow rather than churning
 //! ~100 unit-struct derives and internal-doc comments onto code the
-//! RFC-34 declarative burn-down will delete as each predicate migrates to
+//! declarative burn-down will delete as each predicate migrates to
 //! a `CORE-NNN` rule file.
 #![allow(
     missing_docs,
@@ -42,7 +42,7 @@
     clippy::iter_over_hash_type,
     clippy::map_err_ignore,
     clippy::unseparated_literal_suffix,
-    reason = "relocated specify-authoring predicates retain their pre-merge lint posture: the dissolved authoring crate carried no `[lints] workspace = true` stanza, so the opt-in pedantic/nursery groups and these restriction cherry-picks never applied. RFC-34 deletes this code as each predicate migrates to a CORE-NNN rule file."
+    reason = "relocated specify-authoring predicates retain their pre-merge lint posture: the dissolved authoring crate carried no `[lints] workspace = true` stanza, so the opt-in pedantic/nursery groups and these restriction cherry-picks never applied. The declarative burn-down deletes this code as each predicate migrates to a CORE-NNN rule file."
 )]
 
 pub mod builder;

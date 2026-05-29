@@ -1,5 +1,4 @@
-//! `specify-ignore` directive extractor per RFC-33a §"Ignore
-//! directives" (D3).
+//! `specify-ignore` directive extractor.
 //!
 //! Recognises one grammar — `specify-ignore: <RULE-ID> — <rationale>`
 //! — inside the closed comment-style list:
@@ -15,12 +14,12 @@
 //!
 //! Malformed directives (missing rationale, no separator, or empty
 //! rationale) are still emitted with `rationale = None` so the
-//! directive-validation pass per RFC-33a §"Implementation plan" step
-//! 4 can synthesise `UNI-022`. The length-check for rationales
+//! directive-validation pass can synthesise `UNI-022`. The
+//! length-check for rationales
 //! shorter than 16 characters is also the validation pass's job; this
 //! extractor captures whatever rationale text is present.
 //!
-//! `target_line` follows the §"Ignore directives" scope rules:
+//! `target_line` follows the ignore-directive scope rules:
 //!
 //! - Block-leading directives (the comment is the first non-whitespace
 //!   on the line) target the next non-blank, non-comment line.
@@ -37,8 +36,7 @@ mod parse;
 use super::files::DiscoveredFile;
 use crate::lint::{FileKind, IgnoreDirective};
 
-/// Closed set of comment families the extractor recognises per
-/// RFC-33a §"Ignore directives".
+/// Closed set of comment families the extractor recognises.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Family {
     /// `// …` and `/* … */`.
@@ -52,7 +50,7 @@ pub(super) enum Family {
 }
 
 /// Pick a comment family from the indexer-inferred language token,
-/// or `None` for languages outside the closed RFC-33a list.
+/// or `None` for languages outside the closed list.
 fn family_for(language: &str) -> Option<Family> {
     match language {
         "rust" | "swift" | "kotlin" | "typescript" | "javascript" => Some(Family::C),

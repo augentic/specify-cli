@@ -18,7 +18,7 @@ const RULE_UNRESOLVED_DIRECTIVE: &str = "links.unresolved-directive";
 /// Skill reference checks and skill directive validation.
 ///
 /// Broken markdown link detection (formerly `links.unresolved`) was
-/// retired in RFC-34 C10 — `CORE-002` ≅ `links.unresolved` now owns
+/// retired — `CORE-002` ≅ `links.unresolved` now owns
 /// that surface via a `path-pattern` + `reference-resolves`
 /// deterministic hint pair (`adapters/shared/rules/core/CORE-002-links-unresolved.md`
 /// in the framework repo). The parity test

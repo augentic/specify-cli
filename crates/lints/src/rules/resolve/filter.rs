@@ -12,8 +12,8 @@
 //! Three filters run in a fixed order:
 //!
 //! 1. **Origin (`core`)** — entries with [`super::super::Origin::Core`]
-//!    are dropped unless [`ResolveInputs::include_core`] is set, per
-//!    RFC-34 §A3 / §F3 ("Consumer-export filtering"). The check runs
+//!    are dropped unless [`ResolveInputs::include_core`] is set
+//!    (consumer-export filtering). The check runs
 //!    **first** so `CORE-*` rules never reach the deprecation or
 //!    applicability passes on a default consumer export — even if the
 //!    rule's `applicability` block would have accepted them.
@@ -114,7 +114,7 @@ pub fn filter(
 
 /// `true` when the entry survives the consumer-export `core` filter.
 ///
-/// RFC-34 §A3 / §F3: rules resolved from `adapters/shared/rules/core/`
+/// Rules resolved from `adapters/shared/rules/core/`
 /// (i.e. [`Origin::Core`]) are excluded from the export by default; the
 /// caller opts in via `--include-core`.
 const fn keeps_core(origin: Origin, include_core: bool) -> bool {
@@ -620,8 +620,8 @@ mod tests {
         assert!(out.is_empty());
     }
 
-    /// RFC-34 §A3 / §F3: a [`Origin::Core`] entry is dropped on a
-    /// default consumer export — `--include-core` is off.
+    /// A [`Origin::Core`] entry is dropped on a default consumer
+    /// export — `--include-core` is off.
     #[test]
     fn core_origin_excluded_by_default() {
         let entry = core_entry("CORE-001");
@@ -630,7 +630,7 @@ mod tests {
         assert!(out.is_empty(), "core rules must not appear without --include-core");
     }
 
-    /// RFC-34 §A3: with `--include-core` set, the core entry passes
+    /// With `--include-core` set, the core entry passes
     /// the origin filter and rides through the remaining filters
     /// unchanged. Origin metadata is preserved on the surviving entry.
     #[test]

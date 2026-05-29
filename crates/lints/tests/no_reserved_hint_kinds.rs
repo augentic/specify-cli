@@ -2,8 +2,8 @@
 //! authoring schema accepts is executable, and the schema carries no
 //! `x-hint-status: reserved` annotations.
 //!
-//! RFC-34 §F6 lands the reserved hint kinds one interpreter at a time
-//! (C10–C17). Once the last kind ships, no `const` in the
+//! The reserved hint kinds land one interpreter at a time.
+//! Once the last kind ships, no `const` in the
 //! `hints[].kind` `oneOf` may carry `"x-hint-status": "reserved"`, and
 //! every kind must have a matching `src/lint/eval/<kind>.rs`
 //! interpreter module. This test is cheap insurance against the schema
@@ -31,7 +31,7 @@ fn assert_no_reserved(node: &Value) {
                     status.as_str(),
                     Some("reserved"),
                     "rule.schema.json still carries an `x-hint-status: reserved` annotation; \
-                     every reserved hint kind must ship an interpreter (RFC-34 §F6 / C18)",
+                     every reserved hint kind must ship an interpreter",
                 );
             }
             for value in map.values() {

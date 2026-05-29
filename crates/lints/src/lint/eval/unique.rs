@@ -1,4 +1,4 @@
-//! `kind: unique` evaluator per RFC-34 §F6 PR 3.
+//! `kind: unique` evaluator.
 //!
 //! Asserts that some field across a set of candidate files is unique.
 //! v1 supports one source discriminator — `skill-name` — which

@@ -1,4 +1,4 @@
-//! RFC-33a directive-validation pass.
+//! Directive-validation pass.
 //!
 //! Runs after hint evaluation and before envelope assembly. The pass
 //! consumes [`crate::lint::WorkspaceModel::ignore_directives`] and the
@@ -6,13 +6,12 @@
 //! [`FindingStatus::Ignored`] (or [`FindingStatus::FalsePositive`]
 //! when the directive's rationale carries the `false-positive:`
 //! prefix), and mints synthetic `UNI-022` / `UNI-023` findings for
-//! malformed or orphan directives per RFC-33a §"Directive-without-
-//! rationale is a finding" (D4) and §"Implementation plan" step 4.
+//! malformed or orphan directives.
 //!
 //! # Graceful degradation
 //!
-//! Per RFC-33a §"Graceful degradation when the universal codex tree
-//! is absent" the match-and-demote logic runs unconditionally;
+//! When the universal codex tree is absent the match-and-demote logic
+//! runs unconditionally;
 //! synthetic `UNI-022` / `UNI-023` emission is suppressed when the
 //! corresponding rule did not resolve in the current scan. Consumer
 //! projects without the shared codex tree see directives applied
@@ -29,8 +28,8 @@
 //!
 //! # Status-aware exit decision
 //!
-//! [`blocking_findings_present`] implements the RFC-33a §"Exit and
-//! presentation semantics" rule: exit 2 fires only when at least one
+//! [`blocking_findings_present`] implements the exit and
+//! presentation semantics rule: exit 2 fires only when at least one
 //! finding has `severity ∈ {critical, important}` AND `status` is
 //! `open` (treating an unset status as `open`). The helper is kept
 //! standalone so the lint runner and unit tests share one source of
@@ -47,19 +46,17 @@ use crate::rules::{
 
 /// Rationale prefix that demotes a matched finding to
 /// [`FindingStatus::FalsePositive`] instead of
-/// [`FindingStatus::Ignored`]. Case-sensitive per RFC-33a §"Finding
-/// status taxonomy".
+/// [`FindingStatus::Ignored`]. Case-sensitive.
 const FALSE_POSITIVE_PREFIX: &str = "false-positive:";
 
-/// Minimum rationale length per RFC-33a §"Directive rationale stays
-/// free-form" (D12). Shorter rationales parse cleanly but emit
+/// Minimum rationale length. Shorter rationales parse cleanly but emit
 /// [`UNI_022`].
 const MIN_RATIONALE_LEN: usize = 16;
 
-/// `UNI-022` — `ignore-directive-missing-rationale` per RFC-33a D13.
+/// `UNI-022` — `ignore-directive-missing-rationale`.
 const UNI_022: &str = "UNI-022";
 
-/// `UNI-023` — `ignore-directive-orphan` per RFC-33a D13.
+/// `UNI-023` — `ignore-directive-orphan`.
 const UNI_023: &str = "UNI-023";
 
 /// Output of [`apply`].
@@ -82,19 +79,18 @@ pub struct IgnoreOutcome {
     pub next_id_counter: u64,
 }
 
-/// Apply the RFC-33a directive-validation pass to `findings`.
+/// Apply the directive-validation pass to `findings`.
 ///
 /// Walks `directives` in `(path, line, rule_id)` order, stamps every
 /// finding whose `(path, line, rule_id)` matches with
 /// [`FindingStatus::Ignored`] (or [`FindingStatus::FalsePositive`]
 /// when the rationale begins with `false-positive:`) plus a
 /// populated [`FindingDisposition::directive`], then mints synthetic
-/// `UNI-022` / `UNI-023` findings per RFC-33a §"Implementation plan"
-/// step 4.
+/// `UNI-022` / `UNI-023` findings.
 ///
 /// `resolved_rules` carries severity metadata for the synthesised
-/// findings; it also gates emission per RFC-33a §"Graceful
-/// degradation when the universal codex tree is absent" — when
+/// findings; it also gates emission when the universal codex tree is
+/// absent — when
 /// `UNI-022` / `UNI-023` are absent from the resolved set the
 /// matching synthetic is suppressed silently.
 ///
@@ -195,12 +191,11 @@ pub fn apply(
     }
 }
 
-/// Status-aware exit predicate per RFC-33a §"Exit and presentation
-/// semantics".
+/// Status-aware exit predicate.
 ///
 /// Returns `true` when at least one finding has `severity ∈
 /// {critical, important}` AND `status` of `open` (an unset `status`
-/// is treated as `open` per the same section).
+/// is treated as `open`).
 #[must_use]
 pub fn blocking_findings_present(findings: &[Diagnostic]) -> bool {
     specify_diagnostics::blocking_present(findings)
@@ -249,10 +244,10 @@ fn mint_synthetic(
         remediation,
         target_adapter: None,
     });
-    // RFC-33a §"Finding status taxonomy": synthetic directive
-    // findings default to `open`; the runner's status-aware exit
-    // decision treats `None` and `Some(Open)` equivalently but
-    // stamping the explicit token keeps wire output unambiguous.
+    // Synthetic directive findings default to `open`; the runner's
+    // status-aware exit decision treats `None` and `Some(Open)`
+    // equivalently but stamping the explicit token keeps wire output
+    // unambiguous.
     finding.status = Some(FindingStatus::Open);
     finding
 }
@@ -417,9 +412,9 @@ mod tests {
     }
 
     /// Test 3b: missing rationale is silent when UNI-022 is not in
-    /// the resolved set (graceful degradation per RFC-33a §"Graceful
-    /// degradation when the universal codex tree is absent"). The
-    /// match-and-demote step still runs against the matched finding.
+    /// the resolved set (graceful degradation when the universal codex
+    /// tree is absent). The match-and-demote step still runs against
+    /// the matched finding.
     #[test]
     fn missing_rationale_silent_when_uni_022_absent() {
         let mut findings = vec![finding("UNI-014", "src/lib.rs", 18)];

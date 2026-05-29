@@ -1,4 +1,4 @@
-//! Integration test for the RFC-34 `scan_profile: framework` indexer.
+//! Integration test for the `scan_profile: framework` indexer.
 //!
 //! Drives `lint::index::build` against the checked-in
 //! `fixtures/lint/framework_minimal/` tree, minting one relative

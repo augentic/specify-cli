@@ -509,7 +509,7 @@ fn missing_framework_root_emits_envelope() {
 }
 
 /// (5) Default text output on a clean tree now prints the
-/// diagnostics-formatter set's pretty summary line per RFC-34's
+/// diagnostics-formatter set's pretty summary line from the
 /// `specdev lint` extension. Specifically: a `0 finding(s)`
 /// header and a `Summary: 0 critical, 0 important, ...` tally,
 /// driven by `specify_lints::lint::diagnostics::pretty::render`.

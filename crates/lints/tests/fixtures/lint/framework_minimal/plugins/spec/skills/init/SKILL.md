@@ -1,6 +1,6 @@
 ---
 name: specify-init
-description: Minimal skill fixture for the RFC-34 framework indexer test.
+description: Minimal skill fixture for the framework indexer test.
 ---
 
 # Specify Init

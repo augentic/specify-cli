@@ -8,4 +8,4 @@ Minimal shape brief for the framework indexer.
 
 ## Output contract
 
-A reconciled `spec.md` per RFC-32 fixture.
+A reconciled `spec.md` fixture.

@@ -8,9 +8,9 @@
 //!   No imperative `Check` row is retired by this card: the JSON schema in
 //!   `source.schema.json` / `target.schema.json` already requires the full
 //!   `briefs.{survey,extract}` / `briefs.{shape,build,merge}` key set via
-//!   `required: […]`, and that surface is owned end-to-end by C8's
-//!   `CORE-001` ≅ `adapter.schema-violation` migration. RFC-34 §F5 and
-//!   the C12 plan card explicitly permit landing the kind interpreter +
+//!   `required: […]`, and that surface is owned end-to-end by the
+//!   `CORE-001` ≅ `adapter.schema-violation` migration. The
+//!   fingerprint dedup contract explicitly permits landing the kind interpreter +
 //!   seed rule against a synthetic fixture when no `Check` row maps
 //!   cleanly to the reserved kind (the deletion is gated on parity, not
 //!   required for the kind landing).
@@ -23,7 +23,7 @@
 //!   rule.
 //!
 //! Because no imperative deletion is in flight, the fingerprint-based
-//! deduplication in RFC-34 §F5 has nothing to merge in any overlap
+//! deduplication has nothing to merge in any overlap
 //! window; CORE-001's schema-violation finding and CORE-004's
 //! per-operation finding land side-by-side when both fire and dedupe
 //! cleanly through the existing fingerprint algorithm on identical

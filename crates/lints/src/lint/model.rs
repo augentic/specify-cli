@@ -362,7 +362,7 @@ pub struct TextMatch {
 
 /// `ignore_directive` fact per the `WorkspaceModel` entity families.
 ///
-/// Produced by the RFC-33a indexer pass that recognises
+/// Produced by the indexer pass that recognises
 /// `specify-ignore: <RULE-ID> — <rationale>` comments across the
 /// closed comment-style list (C-family, hash, HTML, SQL/Lua).
 /// Malformed directives (missing or empty rationale) are still
@@ -451,7 +451,7 @@ pub struct WorkspaceModel {
     /// `text_match` facts from the optional precomputed regex
     /// index.
     pub text_matches: Vec<TextMatch>,
-    /// `ignore_directive` facts from the RFC-33a directive indexer.
+    /// `ignore_directive` facts from the directive indexer.
     /// Optional in v1 envelopes per the schema; the producer always
     /// serialises the array so consumers see one consistent wire
     /// shape.

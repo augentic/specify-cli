@@ -105,9 +105,8 @@ pub struct ResolveInputs<'a> {
     /// caller did not satisfy are included. Toggled by CH-13.
     pub include_unmatched: bool,
     /// Whether rules with [`super::Origin::Core`] appear in the
-    /// export. Default off per RFC-34 §A3 / §F3 ("Consumer-export
-    /// filtering"): consumer-project review runs never evaluate
-    /// `CORE-*` hints by accident.
+    /// export. Default off (consumer-export filtering): consumer-project
+    /// review runs never evaluate `CORE-*` hints by accident.
     pub include_core: bool,
 }
 
@@ -486,7 +485,7 @@ mod tests {
         assert_eq!(entry.path, "adapters/shared/rules/universal/uni-001.md");
     }
 
-    /// Core pack root (RFC-34 §F3): rules under
+    /// Core pack root: rules under
     /// `adapters/shared/rules/core/` resolve with `Origin::Core` and
     /// `PathRoot::RulesRoot`, alongside any shared-pack rules.
     #[test]

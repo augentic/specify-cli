@@ -1,4 +1,4 @@
-//! `kind: set-coverage` evaluator per RFC-34 §F6 PR 4 (C12).
+//! `kind: set-coverage` evaluator.
 //!
 //! Asserts that the set of values some candidate file declares
 //! covers a closed expected set. v1 supports one source
@@ -19,7 +19,7 @@
 //!
 //! `set-coverage` is one-sided by design: extras (`briefs.keys()`
 //! values not in the expected operation set) are silent at this
-//! layer. A future `kind: set-eq` evaluator (RFC-34 §F6 C15)
+//! layer. A future `kind: set-eq` evaluator
 //! tightens the contract to require strict set equality.
 //!
 //! Adapter manifests whose `path` is not in the caller-supplied

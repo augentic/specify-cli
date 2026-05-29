@@ -196,9 +196,9 @@ the predicates need `&Context` (framework root + schema cache), which the
 `DiagnosticProducer::produce(&WorkspaceModel, project_dir)` signature does
 not carry. The dissolution does not change crates.io exposure: the root
 `specify` crate (which builds both `specrun` and `specdev`) already pulled
-the predicates into the published binary's dependency graph. RFC-34 deletes
-this imperative code incrementally as each predicate migrates to a
-`CORE-NNN` rule file.
+the predicates into the published binary's dependency graph. The declarative
+burn-down deletes this imperative code incrementally as each predicate
+migrates to a `CORE-NNN` rule file.
 
 ## Tool architecture
 
@@ -485,7 +485,7 @@ variants are `snake_case` and bridge to the wire via
 | `slice.provenance.written` | `/spec:refine`'s atomic `provenance.yaml` writer (Change 2.6). `provenance.yaml` audit semantics. |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
-| `lint-completed` | `specrun lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the RFC-33a §"Journal event" (D8) payload verbatim. |
+| `lint-completed` | `specrun lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the journal payload verbatim. |
 
 Events persist as newline-delimited JSON at
 `<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`
@@ -902,7 +902,7 @@ standards schema. Cross-repo prose that named `codex.schema-drift`
 
 `Diagnostic.status` (the finding type formerly named `LintFinding`,
 relocated to `specify-diagnostics`) is a closed kebab-case enum on the
-wire. The RFC-28 fingerprint algorithm excludes both `status` and
+wire. The fingerprint algorithm excludes both `status` and
 `disposition`, so demoting a finding from `open` to `ignored` (or
 `false-positive`) never changes its identity.
 

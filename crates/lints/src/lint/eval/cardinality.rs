@@ -1,4 +1,4 @@
-//! `kind: cardinality` evaluator per RFC-34 §F6 PR 5 (C13).
+//! `kind: cardinality` evaluator.
 //!
 //! Asserts that some countable property of a candidate file is within
 //! configured bounds. v1 supports one source discriminator —
@@ -24,7 +24,7 @@
 //! silently.
 //!
 //! The single source discriminator hardcodes both the metric
-//! (`Skill.body_line_count`) and the upper bound (200) — RFC-32's
+//! (`Skill.body_line_count`) and the upper bound (200) — the
 //! predicate-migration map pins exactly this cap, so a richer config
 //! shape (`metric: …, max: …`) is deferred until a second consumer
 //! arrives. Future hint values may extend the closed source set;

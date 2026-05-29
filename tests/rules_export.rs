@@ -276,7 +276,7 @@ fn omnia_agent_consumable_assertions() {
     );
 }
 
-/// RFC-34 §A3 / §F3 CLI smoke test: a hand-built rules-root tree with
+/// CLI smoke test: a hand-built rules-root tree with
 /// a `CORE-*` rule under `adapters/shared/rules/core/` excludes that
 /// rule from `specrun rules export` by default and includes it under
 /// `--include-core`. Uses `assert_cmd` so the closed CLI plumbing
@@ -334,14 +334,14 @@ fn write_rule_fixture(path: &Path, id: &str, title: &str) {
         fs::create_dir_all(parent).expect("create parent dir");
     }
     let body = format!(
-        "---\nid: {id}\ntitle: {title}\nseverity: important\ntrigger: Synthetic RFC-34 C4 fixture trigger sentence long enough for schema.\n---\n\n## Rule\n\nBody for {id}.\n",
+        "---\nid: {id}\ntitle: {title}\nseverity: important\ntrigger: Synthetic fixture trigger sentence long enough for schema.\n---\n\n## Rule\n\nBody for {id}.\n",
     );
     fs::write(path, body).expect("write rule fixture");
 }
 
 /// Invoke `specrun rules export` against an explicit rules root and
 /// parse the JSON envelope on stdout. `include_core` toggles the
-/// closed RFC-34 flag.
+/// closed `--include-core` flag.
 fn export_via_cli(rules_root: &Path, project: &Path, include_core: bool) -> Value {
     let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
     cmd.args(["--format", "json", "rules", "export", "--target", "omnia"])

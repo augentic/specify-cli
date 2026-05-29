@@ -1,4 +1,4 @@
-//! `specdev lint` — framework convergence verb per RFC-34 §F2.
+//! `specdev lint` — framework convergence verb.
 //!
 //! Composes two enforcement passes against the framework repo:
 //!
@@ -10,10 +10,10 @@
 //!
 //! Both passes emit [`specify_lints::Diagnostic`]; the dispatcher
 //! folds them into a single [`specify_lints::lint::diagnostics::DiagnosticReport`]
-//! envelope, deduplicates by fingerprint per RFC-34 §F5, mints the
+//! envelope, deduplicates by fingerprint, mints the
 //! reserved-hint diagnostics summary, and renders through the four
 //! formatters in [`specify_lints::lint::diagnostics`]. One
-//! `lint-completed` journal event lands per run (RFC-34 §F7).
+//! `lint-completed` journal event lands per run.
 
 mod cli;
 mod run;

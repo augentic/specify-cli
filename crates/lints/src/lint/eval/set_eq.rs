@@ -1,4 +1,4 @@
-//! `kind: set-eq` evaluator per RFC-34 §F6 (C15).
+//! `kind: set-eq` evaluator.
 //!
 //! Asserts that the set of values some candidate file declares
 //! EXACTLY EQUALS a closed expected set — the two-sided tightening of

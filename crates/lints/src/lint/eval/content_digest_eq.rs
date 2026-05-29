@@ -1,4 +1,4 @@
-//! `kind: content-digest-eq` evaluator per RFC-34 §F6 (C16).
+//! `kind: content-digest-eq` evaluator.
 //!
 //! Asserts that the content digest (SHA-256) of one file equals an
 //! expected digest. v1 supports one source discriminator —

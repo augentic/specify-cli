@@ -1,6 +1,6 @@
 # framework_minimal
 
-Tiny framework-repo fixture for the RFC-34 `scan_profile: framework`
+Tiny framework-repo fixture for the `scan_profile: framework`
 indexer test. Each extractor (`skill`, `adapter`, `marketplace`,
 `agent_teams`, `brief`) is exercised by at least one file in this
 tree. The `agent-teams.md` symlink is **minted at test time** rather

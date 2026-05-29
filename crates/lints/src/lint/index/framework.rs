@@ -285,7 +285,7 @@ mod tests {
         assert!(is_included("docs/standards/style.md"));
         assert!(is_included(".cursor/rules/project.mdc"));
         assert!(is_included(".cursor-plugin/marketplace.json"));
-        assert!(is_included("rfcs/rfc-34-core-rules.md"));
+        assert!(is_included("rfcs/roadmap.md"));
         assert!(is_included("scripts/foo.sh"));
         assert!(is_included("schemas/lint/workspace-model.schema.json"));
     }

@@ -69,7 +69,7 @@ pub struct ExportArgs {
     pub include_unmatched: bool,
 
     /// Include `CORE-*` rules resolved from
-    /// `adapters/shared/rules/core/` (RFC-34 §A3 / §F3).
+    /// `adapters/shared/rules/core/`.
     /// Default off — consumer-project exports never carry
     /// framework-only `CORE-*` rules unless the caller opts in.
     #[arg(long)]

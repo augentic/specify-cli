@@ -13,7 +13,7 @@ const ADAPTER_FILENAME: &str = "adapter.yaml";
 /// Adapter directory health predicate.
 ///
 /// Schema validation against `source.schema.json` / `target.schema.json`
-/// was retired in RFC-34 C8 — `CORE-001` ≅ `adapter.schema` now owns
+/// was retired — `CORE-001` ≅ `adapter.schema` now owns
 /// that surface via a `path-pattern` + `schema` deterministic hint
 /// pair (`adapters/shared/rules/core/CORE-001-adapter-schema.md` in the
 /// framework repo). The parity test

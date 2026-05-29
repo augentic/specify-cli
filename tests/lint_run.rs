@@ -208,14 +208,14 @@ fn review_dump_model_exits_0() {
     assert_validates(&validator, stdout, "workspace-model");
 }
 
-/// RFC-33a §"Journal event" (D8): every completed scan appends one
+/// Journal event: every completed scan appends one
 /// `lint-completed` line to `.specify/journal.jsonl` with the closed
 /// `snake_case` payload shape. The fixture wires a Markdown directive
 /// that demotes the UNI-100 TODO finding so the asserted counts
 /// straddle both buckets (`ignored: 1`, `open: 0`) and the scan exits
 /// clean (`exit_code: 0`) — proving the journal `exit_code` mirrors
-/// the status-aware exit decision RFC-33a §"Exit and presentation
-/// semantics" defines.
+/// the status-aware exit decision the exit and presentation
+/// semantics define.
 #[test]
 fn emits_lint_completed_event() {
     use std::path::PathBuf;

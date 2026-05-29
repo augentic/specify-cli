@@ -4,13 +4,12 @@
 //! v1 (Phase 2) ships the four executable hint kinds the contract lists
 //! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
 //! [`HintKind::Tool`]) plus the reserved-hint diagnostics reserved-kind summary policy
-//! (`review.reserved-hint-skipped`). RFC-34 §F6 PR 2 adds
-//! [`HintKind::ReferenceResolves`], PR 3 adds [`HintKind::Unique`],
-//! C12 adds [`HintKind::SetCoverage`], C13 adds
-//! [`HintKind::Cardinality`], C14 adds [`HintKind::ConstantEq`],
-//! C15 adds [`HintKind::SetEq`], C16 adds
-//! [`HintKind::ContentDigestEq`], and C17 adds
-//! [`HintKind::NamespaceOwner`] in the same family. Each rule's
+//! (`review.reserved-hint-skipped`). The framework-convergence
+//! family adds [`HintKind::ReferenceResolves`], [`HintKind::Unique`],
+//! [`HintKind::SetCoverage`], [`HintKind::Cardinality`],
+//! [`HintKind::ConstantEq`], [`HintKind::SetEq`],
+//! [`HintKind::ContentDigestEq`], and [`HintKind::NamespaceOwner`] in
+//! the same family. Each rule's
 //! hints are partitioned by kind and evaluated in the fixed order
 //! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → namespace-owner → regex → tool`
 //! so the cheap filters narrow the candidate file set before the

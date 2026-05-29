@@ -1,9 +1,9 @@
 //! Comment-aware grammar parser for the `specify-ignore` extractor.
 //!
 //! Owns the string-aware comment scan, the body slice, and the
-//! `specify-ignore: <RULE-ID> <SEPARATOR> <rationale>` grammar (per
-//! RFC-33a §"Ignore directives"). The parent extractor consumes
-//! [`parse_line`] and lays target-line semantics on top.
+//! `specify-ignore: <RULE-ID> <SEPARATOR> <rationale>` grammar. The
+//! parent extractor consumes [`parse_line`] and lays target-line
+//! semantics on top.
 
 use super::Family;
 
