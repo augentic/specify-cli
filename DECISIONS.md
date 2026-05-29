@@ -796,10 +796,10 @@ ever depending on anything named `lint` — the litmus test that keeps
 the lint-vs-validate concept split from re-appearing at the crate
 graph.
 
-The `specdev` predicate library (`crates/authoring/`) picks up
-`specify-lints` and `specify-schema` directly so codex predicates
-consume `RULE_JSON_SCHEMA` and the typed `Rule` DTO without
-re-vendoring the schema. The root `specify` binary wires both halves
+The `specdev` predicate library (`specify_lints::framework`) sits inside
+`specify-lints` itself, so codex predicates consume `RULE_JSON_SCHEMA`
+and the typed `Rule` DTO without re-vendoring the schema. The root
+`specify` binary wires both halves
 together at the dispatcher boundary — `specrun lint` consumes the
 standards layer for indexing and evaluation and the workflow layer for
 project / slice context resolution; the two halves never call each
