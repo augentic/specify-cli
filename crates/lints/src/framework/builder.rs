@@ -17,7 +17,7 @@
 //! `links.broken-reference`. The diagnostic schema constrains `rule-id`
 //! to the closed codex regex
 //! `^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`, so
-//! [`CORE_ID_TABLE`] assigns every still-active predicate a `CORE-NNN`
+//! `CORE_ID_TABLE` assigns every still-active predicate a `CORE-NNN`
 //! id. A mapped finding sets `rule_id: Some("CORE-NNN")` and emits a
 //! clean `title`; an unmapped id falls back to `rule_id: None` with the
 //! legacy `[rule_id]` title prefix so a newly-added predicate is never
