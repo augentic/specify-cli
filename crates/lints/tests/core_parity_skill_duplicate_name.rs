@@ -91,7 +91,7 @@ fn stage_project(project_dir: &Path) {
 fn imperative_duplicate_set(project_dir: &Path) -> BTreeMap<String, Vec<String>> {
     let mut by_name: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let plugins = project_dir.join("plugins");
-    let mut stack: Vec<PathBuf> = vec![plugins.clone()];
+    let mut stack: Vec<PathBuf> = vec![plugins];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
@@ -206,15 +206,14 @@ fn core_003_matches_imperative_skill_duplicate_name_row() {
         "imperative row must flag the duplicate pair (parity fixture invariant)",
     );
 
-    let expected: BTreeMap<String, Vec<String>> = [(
+    let mut expected: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    expected.insert(
         "duplicate-skill".to_string(),
         vec![
             "plugins/alpha/skills/build/SKILL.md".to_string(),
             "plugins/beta/skills/build/SKILL.md".to_string(),
         ],
-    )]
-    .into_iter()
-    .collect();
+    );
     assert_eq!(
         imperative, expected,
         "imperative fixture must match the documented duplicate-name set",

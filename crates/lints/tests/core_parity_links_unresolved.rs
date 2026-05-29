@@ -109,7 +109,7 @@ fn imperative_broken_set(project_dir: &Path) -> BTreeSet<(String, String)> {
                 inline_re.replace_all(&no_comments, "").into_owned()
             };
             for cap in link_re.captures_iter(&stripped) {
-                let target = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+                let target = cap.get(1).map_or("", |m| m.as_str());
                 if target.starts_with("http://")
                     || target.starts_with("https://")
                     || target.starts_with("mailto:")
@@ -122,10 +122,10 @@ fn imperative_broken_set(project_dir: &Path) -> BTreeSet<(String, String)> {
                     continue;
                 }
                 if !parent.join(path_part).exists() {
-                    let rel = path
-                        .strip_prefix(project_dir)
-                        .map(|p| p.to_string_lossy().replace('\\', "/"))
-                        .unwrap_or_else(|_| path.display().to_string());
+                    let rel = path.strip_prefix(project_dir).map_or_else(
+                        |_| path.display().to_string(),
+                        |p| p.to_string_lossy().replace('\\', "/"),
+                    );
                     out.insert((rel, target.to_string()));
                 }
             }

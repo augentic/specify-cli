@@ -70,7 +70,7 @@ fn broken_symlink_reports_unresolved() {
         use std::os::unix::fs::symlink;
         symlink("../missing-target", temp.path().join("plugins/broken-link"))
             .expect("broken symlink");
-    }
+    };
     #[cfg(not(unix))]
     {
         return;

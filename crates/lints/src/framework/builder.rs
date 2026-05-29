@@ -229,15 +229,15 @@ fn build_evidence(message: &str) -> FindingEvidence {
 #[cfg(test)]
 mod tests {
     use super::{core_id_for, severity_for};
+    use crate::framework::check::skill_frontmatter::{
+        RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_MISSING_FRONTMATTER,
+        RULE_NAME_DIRECTORY_MISMATCH, RULE_UNKNOWN_TOOL,
+    };
     use crate::framework::check::{
         RULE_DUPLICATE_RULE_ID, RULE_MISSING_MANIFEST, RULE_NAMESPACE_OWNERSHIP_VIOLATION,
         RULE_RECORDED_TRACE_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS, RULE_STALE_RECORDED_TRACE,
         SCENARIO_RULE_ARTIFACT_PATH_UNSAFE, SCENARIO_RULE_BODY_ID_MISMATCH,
         SCENARIO_RULE_DUPLICATE_ID, SCENARIO_RULE_SCHEMA_VIOLATION, SKILL_RULE_SCHEMA_VIOLATION,
-    };
-    use crate::framework::check::skill_frontmatter::{
-        RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_MISSING_FRONTMATTER,
-        RULE_NAME_DIRECTORY_MISMATCH, RULE_UNKNOWN_TOOL,
     };
     use crate::rules::Severity;
 

@@ -24,13 +24,16 @@ fn history_citation_flags_docs() {
     fs::create_dir_all(dir.path().join("docs/tutorials")).expect("docs dir");
     fs::write(
         dir.path().join("docs/tutorials/guide.md"),
-        format!("See {}-5 for the background.\n", "R".to_owned() + "FC"),
+        format!("See {}{}-5 for the background.\n", "R", "FC"),
     )
     .expect("write md");
 
     let findings = HistoryCitation.run(&ctx_at(dir.path()));
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("docs.specify-history-citation-in-docs"));
+    assert_eq!(
+        findings[0].rule_id.as_deref(),
+        core_id_for("docs.specify-history-citation-in-docs")
+    );
     assert!(snippet(&findings[0]).contains("docs/tutorials/guide.md:1"));
 }
 

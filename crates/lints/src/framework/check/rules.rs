@@ -240,7 +240,9 @@ fn source_rules_owners(ctx: &Context) -> Vec<String> {
     owners
 }
 
-fn discover_rule_files(ctx: &Context) -> Result<Vec<PathBuf>, crate::framework::error::ToolingError> {
+fn discover_rule_files(
+    ctx: &Context,
+) -> Result<Vec<PathBuf>, crate::framework::error::ToolingError> {
     let framework_root = ctx.framework_root();
     let mut paths = Vec::new();
 

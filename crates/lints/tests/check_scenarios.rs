@@ -30,7 +30,7 @@ fn context_for(root: &Path) -> Context {
     Context::from_framework_root(root).expect("framework root resolves")
 }
 
-const VALID_FRONTMATTER: &str = r#"---
+const VALID_FRONTMATTER: &str = r"---
 id: demo-scenario
 owner: demo
 kind: suite
@@ -39,7 +39,7 @@ entrypoint: /spec:plan
 stages: [plan]
 isolation: fresh-project
 ---
-"#;
+";
 
 #[test]
 fn schema_violation_on_missing_required_field() {
@@ -71,7 +71,7 @@ fn stages_not_contiguous_emits_finding() {
     write_scenario(
         &root,
         "tests/demo/scenario.md",
-        &format!("{VALID_FRONTMATTER}\n# Demo\n",)
+        &format!("{VALID_FRONTMATTER}\n# Demo\n")
             .replace("stages: [plan]", "stages: [plan, build]"),
     );
 
@@ -91,7 +91,7 @@ fn artifact_path_unsafe_rejects_parent_escape() {
     write_scenario(
         &root,
         "tests/demo/scenario.md",
-        &format!("{VALID_FRONTMATTER}\n# Demo\n",).replace(
+        &format!("{VALID_FRONTMATTER}\n# Demo\n").replace(
             "isolation: fresh-project",
             "isolation: fresh-project\nexpected-artifacts:\n  - ../escape.yaml",
         ),

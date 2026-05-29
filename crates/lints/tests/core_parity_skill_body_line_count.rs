@@ -110,7 +110,7 @@ fn stage_project(project_dir: &Path) {
 fn imperative_over_cap_set(project_dir: &Path) -> BTreeMap<String, usize> {
     let mut out = BTreeMap::new();
     let plugins = project_dir.join("plugins");
-    let mut stack: Vec<PathBuf> = vec![plugins.clone()];
+    let mut stack: Vec<PathBuf> = vec![plugins];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {

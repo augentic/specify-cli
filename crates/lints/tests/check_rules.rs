@@ -26,7 +26,7 @@ fn write_rule_file(root: &Path, rel_path: &str, body: &str) {
 
 fn valid_rule(id: &str) -> String {
     format!(
-        r#"---
+        r"---
 id: {id}
 title: Test Rule
 severity: important
@@ -36,7 +36,7 @@ trigger: When testing codex validation in specdev lint.
 ## Rule
 
 Keep the rule body present for validation.
-"#
+"
     )
 }
 
@@ -51,7 +51,7 @@ fn schema_violation_on_invalid_frontmatter() {
     write_rule_file(
         temp.path(),
         "adapters/shared/rules/universal/bad-frontmatter.md",
-        r#"---
+        r"---
 id: UNI-001
 title: Missing required fields
 ---
@@ -59,7 +59,7 @@ title: Missing required fields
 ## Rule
 
 Body without trigger and severity.
-"#,
+",
     );
 
     let findings = run_rules_check(&ctx_for(temp.path()));
@@ -141,7 +141,7 @@ fn reserved_hint_kind_no_schema_finding() {
     write_rule_file(
         temp.path(),
         "adapters/shared/rules/universal/reserved-hint.md",
-        r#"---
+        r"---
 id: UNI-999
 title: Reserved Hint Shape Test
 severity: important
@@ -158,7 +158,7 @@ deterministic_hints:
 Body for a rule that exercises Reserved hint kind deterministic hint kinds. The
 authoring schema accepts the kinds; `check::rules` performs shape validation
 only and does not execute the hints.
-"#,
+",
     );
 
     let findings = run_rules_check(&ctx_for(temp.path()));

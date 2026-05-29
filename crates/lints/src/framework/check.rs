@@ -12,6 +12,8 @@ mod skill_body;
 pub mod skill_frontmatter;
 pub mod tools;
 
+use std::path::Path;
+
 pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, run_adapter_check};
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
@@ -42,8 +44,6 @@ pub use skill_frontmatter::{
     RULE_UNKNOWN_TOOL, UnknownTool,
 };
 pub use tools::{DeclaredToolInvocations, FirstPartyTools};
-
-use std::path::Path;
 
 use crate::framework::context::Context;
 use crate::rules::Diagnostic;

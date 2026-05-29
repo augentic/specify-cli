@@ -138,7 +138,9 @@ fn check_skill_numeric_caps(framework_root: &Path) -> Vec<Diagnostic> {
         if checks_description && !content.contains(&EXPECTED_DESCRIPTION_CAP.to_string()) {
             findings.push(framework_finding(
                 RULE_NUMERIC_CAP_EXCEEDED,
-                format!("Skill description cap drift in {rel}; expected {EXPECTED_DESCRIPTION_CAP}"),
+                format!(
+                    "Skill description cap drift in {rel}; expected {EXPECTED_DESCRIPTION_CAP}"
+                ),
                 Some(loc(path.clone(), 1, None)),
             ));
         }

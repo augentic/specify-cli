@@ -645,9 +645,7 @@ fn truncate(text: &str, max: usize) -> String {
     if text.len() <= max { text.to_string() } else { text[..max].to_string() }
 }
 
-fn finding(
-    rule_id: &'static str, message: String, path: Option<std::path::PathBuf>,
-) -> Diagnostic {
+fn finding(rule_id: &'static str, message: String, path: Option<std::path::PathBuf>) -> Diagnostic {
     framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }
 

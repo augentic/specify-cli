@@ -103,7 +103,7 @@ fn stage_project(project_dir: &Path) {
 fn imperative_misplaced_set(project_dir: &Path) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for (rel, id) in RULES {
-        let _ = fs::read_to_string(project_dir.join(rel)).expect("rule readable");
+        drop(fs::read_to_string(project_dir.join(rel)).expect("rule readable"));
         let Some(allowed) = owned_namespaces(rel) else { continue };
         let Some(prefix) = namespace_prefix(id) else { continue };
         if !allowed.contains(prefix) {
@@ -245,7 +245,7 @@ fn core_009_matches_namespace_owner_reference_against_rule_files() {
         );
         let loc = finding.location.as_ref().expect("location set");
         assert!(
-            loc.path.ends_with(".md"),
+            Path::new(&loc.path).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")),
             "declarative location must point at a rule markdown file: got {}",
             loc.path,
         );

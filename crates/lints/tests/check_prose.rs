@@ -48,9 +48,7 @@ fn skill_numeric_caps_detects_drift() {
     let findings = NumericCaps.run(&ctx);
     assert_eq!(findings.len(), 3);
     assert!(
-        findings
-            .iter()
-            .all(|f| f.rule_id.as_deref() == core_id_for("prose.numeric-cap-exceeded"))
+        findings.iter().all(|f| f.rule_id.as_deref() == core_id_for("prose.numeric-cap-exceeded"))
     );
     assert!(findings.iter().any(|f| snippet(f).contains("description cap drift")));
     assert!(findings.iter().any(|f| snippet(f).contains("body cap drift")));

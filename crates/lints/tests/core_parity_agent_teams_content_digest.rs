@@ -163,10 +163,7 @@ fn collect_agent_teams(
     let Ok(entries) = fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
-        let meta = match fs::symlink_metadata(&path) {
-            Ok(meta) => meta,
-            Err(_) => continue,
-        };
+        let Ok(meta) = fs::symlink_metadata(&path) else { continue };
         if meta.file_type().is_symlink() {
             if path.file_name().and_then(|n| n.to_str()) != Some("agent-teams.md") {
                 continue;
@@ -174,7 +171,10 @@ fn collect_agent_teams(
             let rel = render_rel(project_dir, &path);
             let resolved =
                 fs::canonicalize(&path).ok().and_then(|c| canonical_project_rel(project_dir, &c));
-            let digest = fs::canonicalize(&path).ok().and_then(|c| fs::read(c).ok()).map(sha256);
+            let digest = fs::canonicalize(&path)
+                .ok()
+                .and_then(|c| fs::read(c).ok())
+                .map(|bytes| sha256(&bytes));
             out.push((rel, resolved, digest));
         } else if meta.is_dir() {
             collect_agent_teams(project_dir, &path, out);
@@ -190,14 +190,18 @@ fn canonical_project_rel(project_dir: &Path, resolved: &Path) -> Option<String> 
 
 fn render_rel(project_dir: &Path, path: &Path) -> String {
     path.strip_prefix(project_dir)
-        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| path.display().to_string())
+        .map_or_else(|_| path.display().to_string(), |rel| rel.to_string_lossy().replace('\\', "/"))
 }
 
-fn sha256(bytes: Vec<u8>) -> String {
+fn sha256(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+
     use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(&bytes);
-    digest.iter().map(|b| format!("{b:02x}")).collect()
+    let digest = Sha256::digest(bytes);
+    digest.iter().fold(String::new(), |mut acc, b| {
+        let _ = write!(acc, "{b:02x}");
+        acc
+    })
 }
 
 fn declarative_divergence_set(findings: &[Diagnostic]) -> BTreeSet<String> {
@@ -259,7 +263,7 @@ fn core_008_matches_content_digest_eq_reference_against_agent_teams() {
 
     let imperative = imperative_divergence_set(project_dir);
     let expected: BTreeSet<String> =
-        ["adapters/targets/drifted/references/agent-teams.md".to_string()].into_iter().collect();
+        std::iter::once("adapters/targets/drifted/references/agent-teams.md".to_string()).collect();
     assert_eq!(
         imperative, expected,
         "imperative reference must flag exactly the drifted agent-teams.md symlink",

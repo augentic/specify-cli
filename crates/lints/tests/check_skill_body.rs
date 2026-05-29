@@ -39,7 +39,8 @@ fn invalid_critical_path_wrong_count() {
     let ctx = context_for_fixture("invalid-critical-path");
     let mut body = String::from("## Critical Path\n\n");
     for i in 1..=4 {
-        body.push_str(&format!("{i}. Step {i}\n"));
+        use std::fmt::Write as _;
+        let _ = writeln!(body, "{i}. Step {i}");
     }
     body.push('\n');
     body.push_str(&repeated_lines("padding", 150));
@@ -54,7 +55,7 @@ fn invalid_critical_path_wrong_count() {
 #[test]
 fn envelope_json_flags_shape() {
     let ctx = context_for_fixture("envelope-json");
-    let body = r##"## Output
+    let body = r#"## Output
 
 ```json
 {
@@ -63,7 +64,7 @@ fn envelope_json_flags_shape() {
   "data": {}
 }
 ```
-"##;
+"#;
     write_skill(&fixture_root("envelope-json"), body);
 
     let findings = EnvelopeJsonInBody.run(&ctx);
@@ -75,7 +76,7 @@ fn envelope_json_flags_shape() {
 #[test]
 fn variable_coverage_flags_undefined_use() {
     let ctx = context_for_fixture("undefined-variable");
-    let body = r#"## Arguments
+    let body = r"## Arguments
 
 ```text
 $SLICE=<name>
@@ -84,7 +85,7 @@ $SLICE=<name>
 ## Steps
 
 Validate $PROJECT for $SLICE before continuing.
-"#;
+";
     write_skill(&fixture_root("undefined-variable"), body);
 
     let findings = VariableCoverage.run(&ctx);
