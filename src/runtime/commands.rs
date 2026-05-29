@@ -235,6 +235,7 @@ struct ResolveBody {
     name: String,
     resolved_path: String,
     location: &'static str,
+    briefs_dir: String,
     operations: Vec<String>,
     description: Option<String>,
 }
@@ -244,6 +245,7 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
     writeln!(w, "  axis: {}", body.axis)?;
     writeln!(w, "  name: {}", body.name)?;
     writeln!(w, "  location: {}", body.location)?;
+    writeln!(w, "  briefs-dir: {}", body.briefs_dir)?;
     writeln!(w, "  operations: {}", body.operations.join(", "))?;
     if let Some(desc) = &body.description {
         writeln!(w, "  description: {desc}")?;
@@ -265,11 +267,13 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
     let body = match axis {
         Axis::Source => {
             let resolved = SourceAdapter::resolve(value, project_dir)?;
+            let briefs_dir = resolved.location.path().join("briefs");
             ResolveBody {
                 axis: axis.dir_segment(),
                 name: resolved.manifest.name.clone(),
                 resolved_path: resolved.location.path().display().to_string(),
                 location: resolved.location.label(),
+                briefs_dir: briefs_dir.display().to_string(),
                 operations: resolved.manifest.operations().map(ToString::to_string).collect(),
                 description: resolved.manifest.description.clone(),
             }
@@ -277,11 +281,13 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
         Axis::Target => {
             let name = value.split_once('@').map_or(value, |(n, _)| n);
             let resolved = TargetAdapter::resolve(name, project_dir)?;
+            let briefs_dir = resolved.location.path().join("briefs");
             ResolveBody {
                 axis: axis.dir_segment(),
                 name: resolved.manifest.name.clone(),
                 resolved_path: resolved.location.path().display().to_string(),
                 location: resolved.location.label(),
+                briefs_dir: briefs_dir.display().to_string(),
                 operations: resolved.manifest.operations().map(ToString::to_string).collect(),
                 description: resolved.manifest.description.clone(),
             }

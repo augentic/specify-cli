@@ -60,6 +60,20 @@ fn source_resolve_local_returns_resolved_manifest() {
         resolved.ends_with("adapters/sources/code-typescript"),
         "resolved-path {resolved} must end with sources/code-typescript"
     );
+    let briefs_dir = actual["briefs-dir"].as_str().expect("briefs-dir str");
+    assert!(briefs_dir.ends_with("/briefs"), "briefs-dir {briefs_dir} must end with /briefs");
+    assert!(
+        briefs_dir.contains("adapters/sources/code-typescript/briefs"),
+        "briefs-dir {briefs_dir} must reference the adapter's briefs directory"
+    );
+
+    // Absoluteness: the raw output used the tempdir absolute path which
+    // parse_stdout substitutes to <TEMPDIR>; verify the substitution
+    // happened (proving the original was absolute).
+    let raw_stdout = std::str::from_utf8(&assert.get_output().stdout).unwrap();
+    let raw: serde_json::Value = serde_json::from_str(raw_stdout).unwrap();
+    let raw_briefs = raw["briefs-dir"].as_str().unwrap();
+    assert!(Path::new(raw_briefs).is_absolute(), "briefs-dir must be absolute, got {raw_briefs}");
 }
 
 #[test]
