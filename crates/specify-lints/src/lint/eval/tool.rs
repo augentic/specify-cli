@@ -151,10 +151,7 @@ fn build_undeclared(rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64) 
             "Rule {rule} cannot run; declared-tool gating refused the invocation.",
             rule = rule.rule_id
         ),
-        remediation: format!(
-            "Declare {tool} in tools.yaml or remove the hint.",
-            tool = hint.value
-        ),
+        remediation: format!("Declare {tool} in tools.yaml or remove the hint.", tool = hint.value),
         target_adapter: None,
     })
 }

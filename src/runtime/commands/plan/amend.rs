@@ -4,7 +4,7 @@
 //! through the shared domain engine.
 
 use specify_domain::change::{
-    Divergence, EntryPatch, Patch, Plan, entry_mut, mutate_authority_overrides,
+    Divergence, EntryPatch, Patch, Plan, SliceSourceBinding, entry_mut, mutate_authority_overrides,
     reject_orphan_overrides,
 };
 use specify_domain::config::with_state;
@@ -26,9 +26,21 @@ use crate::runtime::context::Ctx;
 
 pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
     let AmendArgs {
-        name, depends_on, sources, add_source, remove_source, divergence, description, project,
-        target, context, authority_override, clear_authority_override, clear_authority_overrides,
-        add_alias, remove_alias,
+        name,
+        depends_on,
+        sources,
+        add_source,
+        remove_source,
+        divergence,
+        description,
+        project,
+        target,
+        context,
+        authority_override,
+        clear_authority_override,
+        clear_authority_overrides,
+        add_alias,
+        remove_alias,
     } = args;
 
     if let Some(proj) = &project
@@ -39,8 +51,10 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
 
     let divergence = divergence.as_deref().map(parse_divergence).transpose()?;
     let override_sets = parse_override_assigns(&authority_override)?;
-    let override_clears: Vec<(String, ClaimKind)> =
-        parse_slice_pair_args::<ClaimKind>(&clear_authority_override, "--clear-authority-override")?;
+    let override_clears: Vec<(String, ClaimKind)> = parse_slice_pair_args::<ClaimKind>(
+        &clear_authority_override,
+        "--clear-authority-override",
+    )?;
     let override_clear_all: Vec<String> = clear_authority_overrides;
     let plan_path = ctx.layout().plan_path();
     // discovery alias contract — `--add-alias` / `--remove-alias` mutate
@@ -86,27 +100,7 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
             };
             plan.amend(&name, patch)?;
 
-            // Apply --add-source / --remove-source after the wholesale
-            // `amend` so additive edits compose cleanly with a
-            // simultaneous `--sources` replacement.
-            if !add_bindings.is_empty() || !remove_source.is_empty() {
-                let entry = entry_mut(plan, &plan_name, &name)?;
-                for key in &remove_source {
-                    let before = entry.sources.len();
-                    entry.sources.retain(|b| b.key() != key.as_str());
-                    if entry.sources.len() == before {
-                        return Err(Error::Diag {
-                            code: "plan-binding-not-found",
-                            detail: format!(
-                                "slice `{name}` has no source binding with key `{key}`"
-                            ),
-                        });
-                    }
-                }
-                for binding in add_bindings {
-                    entry.sources.push(binding);
-                }
-            }
+            apply_source_edits(plan, &plan_name, &name, add_bindings, &remove_source)?;
 
             // Apply per-slice authority-override mutations. Order is
             // deterministic per per-slice authority override: sets first (later
@@ -169,6 +163,33 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
     journal::append_batch(ctx.layout(), &journal_events)?;
 
     ctx.write(&body, write_entry_text)?;
+    Ok(())
+}
+
+/// Apply `--add-source` / `--remove-source` edits to `slice`'s entry,
+/// run after the wholesale `amend` so additive edits compose cleanly
+/// with a simultaneous `--sources` replacement.
+fn apply_source_edits(
+    plan: &mut Plan, plan_name: &str, slice: &str, add_bindings: Vec<SliceSourceBinding>,
+    remove_source: &[String],
+) -> Result<()> {
+    if add_bindings.is_empty() && remove_source.is_empty() {
+        return Ok(());
+    }
+    let entry = entry_mut(plan, plan_name, slice)?;
+    for key in remove_source {
+        let before = entry.sources.len();
+        entry.sources.retain(|b| b.key() != key.as_str());
+        if entry.sources.len() == before {
+            return Err(Error::Diag {
+                code: "plan-binding-not-found",
+                detail: format!("slice `{slice}` has no source binding with key `{key}`"),
+            });
+        }
+    }
+    for binding in add_bindings {
+        entry.sources.push(binding);
+    }
     Ok(())
 }
 
