@@ -52,7 +52,7 @@ Don't introduce a trait whose only non-test impl is `RealX`. The right test boun
 trait ProjectStore { fn load(&self) -> Result<Project>; }
 struct RealProjectStore;
 // GOOD — implement the existing shared boundary.
-impl AtomicYaml for Project { fn path(layout: Layout<'_>) -> PathBuf { /* ... */ } }
+impl AtomicYaml for Project { fn layout_path(layout: Layout<'_>) -> PathBuf { /* ... */ } }
 ```
 
 ## Reach for the standard crate first

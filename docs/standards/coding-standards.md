@@ -8,7 +8,7 @@ Workspace lints live in `Cargo.toml`. Defaults are aggressive — clippy `all`/`
 
 Visibility on internal items follows clippy's `redundant_pub_crate` (nursery) rather than rustc's `unreachable_pub`: prefer bare `pub` and let the parent module's privacy do the constraining. The two lints are mutually exclusive — enabling both would loop. `unreachable_pub` stays at its allow-by-default, and any `#[expect(unreachable_pub, …)]` carve-out is a rot signal, not a tool you reach for.
 
-When you must silence a lint, use `#[expect(<lint>, reason = "…")]` at the **smallest possible scope**. `#[expect]` is preferred over `#[allow]` everywhere except module-level waivers: a dead `#[expect]` is a build failure, so the suppression cannot rot. `#![allow(...)]` at the crate or module root is still the right tool when the lint legitimately applies to every item below. Doc idents such as `GitHub`, `OAuth`, `OpenTelemetry`, `WebAssembly`, and `YAML` live in `clippy.toml` `doc-valid-idents`.
+When you must silence a lint, use `#[expect(<lint>, reason = "…")]` at the **smallest possible scope**. `#[expect]` is preferred over `#[allow]` everywhere except module-level waivers: a dead `#[expect]` is a build failure, so the suppression cannot rot. `#![allow(...)]` at the crate or module root is still the right tool when the lint legitimately applies to every item below. Doc idents such as `GitHub`, `MiB`, `OAuth`, `OpenTelemetry`, `SemVer`, `WebAssembly`, and `YAML` live in `clippy.toml` `doc-valid-idents`.
 
 `taplo.toml` formats `Cargo.toml` files. Dependency arrays under `*-dependencies` and `dependencies` reorder alphabetically; preserve that on edit.
 
@@ -25,11 +25,11 @@ fn step(...) { ... }
 #[expect(clippy::cognitive_complexity, reason = "linear state machine")]
 fn step(...) { ... }
 
-// GOOD — repeated waiver hoisted to the module root
-// src/runtime/commands.rs
+// GOOD — module-root waiver that legitimately covers every item below
+// crates/specify-lints/src/rules.rs
 #![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to handlers in this module."
+    clippy::module_name_repetitions,
+    reason = "The public wire contract uses the names Rule and ResolvedRules; renaming to avoid the codex prefix would obscure the schema mapping."
 )]
 ```
 
