@@ -17,7 +17,7 @@ fn proposal_units_listed(ctx: &BriefContext<'_>) -> RuleOutcome {
         RuleOutcome::Pass
     } else {
         RuleOutcome::Fail {
-            detail: "`## Units` section missing or has no prose".to_string(),
+            detail: "`## Units` section missing or has no content".to_string(),
         }
     }
 }

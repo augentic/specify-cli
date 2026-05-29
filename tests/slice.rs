@@ -788,7 +788,7 @@ fn validate_emits_file_location_when_root_spec_md_exists_but_no_canonical_specs(
     specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.slices_dir().join("my-slice");
     fs::write(slice_dir.join("spec.md"), CLEAN_SPEC_MD).expect("write root spec.md");
-    drop(fs::remove_dir_all(slice_dir.join("specs")));
+    fs::remove_dir_all(slice_dir.join("specs")).expect("remove specs dir created by slice create");
 
     let assert = specrun()
         .current_dir(project.root())

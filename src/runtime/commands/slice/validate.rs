@@ -190,8 +190,9 @@ fn scan_slice_specs(
 ///    but no canonical `specs/<unit>/spec.md` files found. Fires
 ///    first so the operator sees the structural cause before
 ///    downstream drift noise.
-/// 2. `reconciliation.yaml` audit index — reconciliation-drift detection between `spec.md`, the
-///    per-slice `reconciliation.yaml`, and per-source `evidence/<key>.yaml`.
+/// 2. `reconciliation.yaml` audit index — reconciliation-drift detection between
+///    `specs/<unit>/spec.md` requirement blocks, the per-slice `reconciliation.yaml`,
+///    and per-source `evidence/<key>.yaml`.
 /// 3. per-slice authority override — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
 /// 4. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
