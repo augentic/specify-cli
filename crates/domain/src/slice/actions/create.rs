@@ -72,9 +72,9 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
     }
 }
 
-/// Create `<slices_dir>/<name>/` and seed an initial `.metadata.yaml`.
+/// Create `<parent_dir>/<name>/` and seed an initial `.metadata.yaml`.
 ///
-/// - `slices_dir` is expected to be `<project>/.specify/slices/`.
+/// - `parent_dir` is expected to be `<project>/.specify/slices/`.
 /// - `now` is plumbed in so tests can pin `created_at` deterministically.
 ///
 /// On success returns a [`Created`] with the resolved directory and
@@ -86,15 +86,11 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
 /// `Error::Diag` with `code = "invalid-name"` for a non-kebab `name`;
 /// `Error::Diag` with `slice-already-exists` / `slice-dir-missing-metadata`
 /// for the existing-dir branches; otherwise propagates I/O or save failures.
-#[expect(
-    clippy::similar_names,
-    reason = "`slices_dir` and `slice_dir` name distinct concepts (parent dir vs. this slice's dir)."
-)]
 pub fn create(
-    slices_dir: &Path, name: &str, target: &str, if_exists: CreateIfExists, now: Timestamp,
+    parent_dir: &Path, name: &str, target: &str, if_exists: CreateIfExists, now: Timestamp,
 ) -> Result<Created, Error> {
     validate_name(name)?;
-    let slice_dir = slices_dir.join(name);
+    let slice_dir = parent_dir.join(name);
     let metadata_path = SliceMetadata::path(&slice_dir);
 
     if slice_dir.exists() {

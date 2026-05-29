@@ -1,8 +1,3 @@
-#![allow(
-    clippy::too_many_arguments,
-    reason = "Plan dispatcher passes through clap-shaped argument tuples."
-)]
-
 mod add;
 mod amend;
 mod args;
@@ -40,60 +35,8 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
         ),
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
-        PlanAction::Add {
-            name,
-            depends_on,
-            sources,
-            description,
-            project,
-            target,
-            context,
-            authority_override,
-        } => add::add(
-            ctx,
-            &name,
-            depends_on,
-            sources,
-            description,
-            project,
-            target,
-            context,
-            &authority_override,
-        ),
-        PlanAction::Amend {
-            name,
-            depends_on,
-            sources,
-            add_source,
-            remove_source,
-            divergence,
-            description,
-            project,
-            target,
-            context,
-            authority_override,
-            clear_authority_override,
-            clear_authority_overrides,
-            add_alias,
-            remove_alias,
-        } => amend::amend(
-            ctx,
-            name,
-            depends_on,
-            sources,
-            add_source,
-            remove_source,
-            divergence.as_deref(),
-            description,
-            project,
-            target,
-            context,
-            &authority_override,
-            &clear_authority_override,
-            &clear_authority_overrides,
-            &add_alias,
-            &remove_alias,
-        ),
+        PlanAction::Add(args) => add::add(ctx, args),
+        PlanAction::Amend(args) => amend::amend(ctx, args),
         PlanAction::Transition { name, target, undo } => {
             lifecycle::transition(ctx, name, target, undo)
         }

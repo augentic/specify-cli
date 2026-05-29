@@ -44,6 +44,7 @@ use specify_lints::{
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
 
+use crate::runtime::commands::lint::cli::RunArgs;
 use crate::runtime::commands::tool::{Inventory, ScopedTool, build_inventory};
 use crate::runtime::context::Ctx;
 
@@ -53,15 +54,18 @@ use crate::runtime::context::Ctx;
 ///
 /// Closed mapping per lint exit mapping — see [`map_index_error`],
 /// `map_hint_error`, [`map_render_error`], and `map_resolve_error`.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Arguments mirror the closed `specrun lint run` argument set; the handler threads the clap-derived surface verbatim through to ResolveInputs and lint::index::build."
-)]
-pub fn run(
-    ctx: &Ctx, rules_root: Option<&Path>, target: &str, sources: &[String], slice: Option<&str>,
-    artifacts: &[PathBuf], languages: &[String], dump_model: bool, strict_hints: bool,
-    include_core: bool, format: DiagnosticsFormat,
-) -> Result<()> {
+pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
+    let rules_root = args.rules_root.as_deref();
+    let target = args.target.as_str();
+    let sources = args.sources.as_slice();
+    let slice = args.slice.as_deref();
+    let artifacts = args.artifacts.as_slice();
+    let languages = args.languages.as_slice();
+    let dump_model = args.dump_model;
+    let strict_hints = args.strict_hints;
+    let include_core = args.include_core;
+    let format: DiagnosticsFormat = args.output_format.into();
+
     let started_at = Instant::now();
     let artifact_set = compose_artifact_set(&ctx.project_dir, slice, artifacts)?;
     let resolved_root = resolve_rules_root(ctx, rules_root);

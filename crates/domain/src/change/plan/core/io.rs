@@ -12,35 +12,24 @@ use crate::schema::validate_plan_yaml;
 use crate::slice::atomic::yaml_write;
 
 impl AtomicYaml for Plan {
-    fn path(layout: Layout<'_>) -> PathBuf {
+    fn layout_path(layout: Layout<'_>) -> PathBuf {
         layout.plan_path()
     }
 
     /// Trait-side loader: `Ok(None)` when the file is absent, mirroring
-    /// the contract documented on [`AtomicYaml::load`]. Disambiguated
+    /// the contract documented on [`AtomicYaml::load_state`]. Disambiguated
     /// from the inherent [`Plan::load`] (which returns
     /// `Error::ArtifactNotFound` on absence) so the trait helper can
-    /// branch on `None` without inspecting the error variant. The
-    /// explicit `Plan::` prefix selects the inherent associated
-    /// function; `Self::load` would resolve to this trait method and
-    /// recurse.
-    #[expect(
-        clippy::use_self,
-        reason = "explicit type prefix disambiguates the inherent `Plan::load` from this trait method of the same name"
-    )]
-    fn load(layout: Layout<'_>) -> Result<Option<Self>, Error> {
-        let path = Self::path(layout);
+    /// branch on `None` without inspecting the error variant.
+    fn load_state(layout: Layout<'_>) -> Result<Option<Self>, Error> {
+        let path = Self::layout_path(layout);
         if !path.exists() {
             return Ok(None);
         }
-        Plan::load(&path).map(Some)
+        Self::load(&path).map(Some)
     }
 }
 
-#[expect(
-    clippy::same_name_method,
-    reason = "inherent `Plan::load` is intentionally shadowed by the `AtomicYaml::load` trait impl in `config/atomic.rs`; the trait impl delegates to this fn"
-)]
 impl Plan {
     /// Load `plan.yaml` (at the repo root) from disk.
     ///

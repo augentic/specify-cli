@@ -19,9 +19,12 @@ use crate::slice::atomic::yaml_write;
 /// wrap the load → mutate → write loop.
 pub trait AtomicYaml: Sized + Serialize + DeserializeOwned {
     /// Path under [`Layout`] where this state lives.
-    fn path(layout: Layout<'_>) -> PathBuf;
+    ///
+    /// Named distinctly from any inherent `path` so trait and inherent
+    /// methods never collide on the implementing type.
+    fn layout_path(layout: Layout<'_>) -> PathBuf;
 
-    /// Load from disk. Default implementation reads [`Self::path`],
+    /// Load from disk. Default implementation reads [`Self::layout_path`],
     /// deserialises, and returns `Ok(None)` when the file is absent.
     /// Override when the state needs validation at load time
     /// (the existing `Registry::load` runs `validate_shape` before
@@ -30,8 +33,8 @@ pub trait AtomicYaml: Sized + Serialize + DeserializeOwned {
     /// # Errors
     ///
     /// Propagates I/O failures and YAML parse errors.
-    fn load(layout: Layout<'_>) -> Result<Option<Self>, Error> {
-        let path = Self::path(layout);
+    fn load_state(layout: Layout<'_>) -> Result<Option<Self>, Error> {
+        let path = Self::layout_path(layout);
         if !path.exists() {
             return Ok(None);
         }
@@ -66,8 +69,8 @@ where
     S: AtomicYaml,
     F: FnOnce(&mut S) -> Result<B, Error>,
 {
-    let path = S::path(layout);
-    let mut state = S::load(layout)?.ok_or_else(|| Error::ArtifactNotFound {
+    let path = S::layout_path(layout);
+    let mut state = S::load_state(layout)?.ok_or_else(|| Error::ArtifactNotFound {
         kind: missing_kind,
         path: path.clone(),
     })?;
@@ -77,26 +80,19 @@ where
 }
 
 impl AtomicYaml for Registry {
-    fn path(layout: Layout<'_>) -> PathBuf {
+    fn layout_path(layout: Layout<'_>) -> PathBuf {
         layout.registry_path()
     }
 
     /// Delegate to the inherent loader so `validate_shape` runs at
-    /// load time — the trait's default impl would skip that. The
-    /// explicit `Registry::` prefix (rather than `Self::`) selects the
-    /// inherent associated function; `Self::load` would resolve to
-    /// the trait method we are currently defining and recurse.
-    #[expect(
-        clippy::use_self,
-        reason = "explicit type prefix disambiguates the inherent `Registry::load` from this trait method of the same name"
-    )]
-    fn load(layout: Layout<'_>) -> Result<Option<Self>, Error> {
-        Registry::load(layout.project_dir())
+    /// load time — the trait's default impl would skip that.
+    fn load_state(layout: Layout<'_>) -> Result<Option<Self>, Error> {
+        Self::load(layout.project_dir())
     }
 }
 
 impl AtomicYaml for ProjectConfig {
-    fn path(layout: Layout<'_>) -> PathBuf {
+    fn layout_path(layout: Layout<'_>) -> PathBuf {
         layout.config_path()
     }
 
@@ -105,12 +101,8 @@ impl AtomicYaml for ProjectConfig {
     /// ([`Error::NotInitialized`]) to `Ok(None)` so the trait's
     /// "absent → None" contract holds; callers that need the typed
     /// error should call [`ProjectConfig::load`] directly.
-    #[expect(
-        clippy::use_self,
-        reason = "explicit type prefix disambiguates the inherent `ProjectConfig::load` from this trait method of the same name"
-    )]
-    fn load(layout: Layout<'_>) -> Result<Option<Self>, Error> {
-        match ProjectConfig::load(layout.project_dir()) {
+    fn load_state(layout: Layout<'_>) -> Result<Option<Self>, Error> {
+        match Self::load(layout.project_dir()) {
             Ok(cfg) => Ok(Some(cfg)),
             Err(Error::NotInitialized) => Ok(None),
             Err(err) => Err(err),
@@ -203,7 +195,7 @@ mod tests {
     fn project_config_load_maps_not_initialized_to_none() {
         let tmp = tempdir().expect("tempdir");
         let layout = Layout::new(tmp.path());
-        let loaded = <ProjectConfig as AtomicYaml>::load(layout).expect("load ok");
+        let loaded = <ProjectConfig as AtomicYaml>::load_state(layout).expect("load ok");
         assert!(loaded.is_none(), "absent project.yaml must surface as None");
     }
 
@@ -223,7 +215,7 @@ mod tests {
         fs::create_dir_all(layout.specify_dir()).expect("create .specify");
         yaml_write(&layout.config_path(), &cfg).expect("seed project.yaml");
         let loaded =
-            <ProjectConfig as AtomicYaml>::load(layout).expect("load ok").expect("present");
+            <ProjectConfig as AtomicYaml>::load_state(layout).expect("load ok").expect("present");
         assert_eq!(loaded.name, "demo");
     }
 }

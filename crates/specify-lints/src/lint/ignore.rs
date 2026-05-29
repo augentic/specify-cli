@@ -39,7 +39,7 @@
 use std::collections::HashMap;
 
 use crate::lint::IgnoreDirective;
-use crate::lint::eval::make_synthetic_finding;
+use crate::lint::eval::{SyntheticFinding, make_synthetic_finding};
 use crate::rules::{
     DirectiveDisposition, DispositionSource, FindingDisposition, FindingEvidence, FindingLocation,
     FindingStatus, LintFinding, ResolvedRule, Severity,
@@ -244,17 +244,17 @@ fn mint_synthetic(
     let evidence = FindingEvidence::Snippet {
         value: directive.raw.clone(),
     };
-    let mut finding = make_synthetic_finding(
-        id,
-        rule.rule_id.as_str(),
+    let mut finding = make_synthetic_finding(SyntheticFinding {
+        id_num: id,
+        rule_id: rule.rule_id.as_str(),
         title,
-        rule.severity,
-        Some(location),
+        severity: rule.severity,
+        location: Some(location),
         evidence,
         impact,
         remediation,
-        None,
-    );
+        target_adapter: None,
+    });
     // RFC-33a §"Finding status taxonomy": synthetic directive
     // findings default to `open`; the runner's status-aware exit
     // decision treats `None` and `Some(Open)` equivalently but

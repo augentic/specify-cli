@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use super::{HintError, make_synthetic_finding, restamp_finding};
+use super::{HintError, SyntheticFinding, make_synthetic_finding, restamp_finding};
 use crate::lint::diagnostics::LintResult;
 use crate::rules::{
     DeterministicHint, FindingEvidence, FindingLocation, LintFinding, ResolvedRule, Severity,
@@ -140,20 +140,23 @@ fn build_undeclared(rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64) 
     let evidence = FindingEvidence::Snippet {
         value: format!("tool {tool} not declared by the project's tools.yaml", tool = hint.value),
     };
-    make_synthetic_finding(
+    make_synthetic_finding(SyntheticFinding {
         id_num,
-        "tool.undeclared",
-        format!("Tool {} is not declared by the project", hint.value),
-        Severity::Important,
-        None,
+        rule_id: "tool.undeclared",
+        title: format!("Tool {} is not declared by the project", hint.value),
+        severity: Severity::Important,
+        location: None,
         evidence,
-        format!(
+        impact: format!(
             "Rule {rule} cannot run; declared-tool gating refused the invocation.",
             rule = rule.rule_id
         ),
-        format!("Declare {tool} in tools.yaml or remove the hint.", tool = hint.value),
-        None,
-    )
+        remediation: format!(
+            "Declare {tool} in tools.yaml or remove the hint.",
+            tool = hint.value
+        ),
+        target_adapter: None,
+    })
 }
 
 fn build_invocation_failed(
@@ -168,20 +171,20 @@ fn build_invocation_failed(
         end_line: None,
         end_column: None,
     };
-    make_synthetic_finding(
+    make_synthetic_finding(SyntheticFinding {
         id_num,
-        "tool.invocation-failed",
-        format!("Tool {} exited non-zero on {}", hint.value, candidate.display()),
-        rule.severity,
-        Some(location),
+        rule_id: "tool.invocation-failed",
+        title: format!("Tool {} exited non-zero on {}", hint.value, candidate.display()),
+        severity: rule.severity,
+        location: Some(location),
         evidence,
-        format!(
+        impact: format!(
             "Rule {rule} could not be evaluated; the declared tool exited non-zero.",
             rule = rule.rule_id
         ),
-        format!("Inspect the tool stderr above and rerun {tool}.", tool = hint.value),
-        None,
-    )
+        remediation: format!("Inspect the tool stderr above and rerun {tool}.", tool = hint.value),
+        target_adapter: None,
+    })
 }
 
 fn clip_stderr(stderr: &[u8]) -> String {

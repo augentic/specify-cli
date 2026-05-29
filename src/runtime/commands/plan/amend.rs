@@ -18,35 +18,30 @@ use super::args::{
     bindings_from_args, load_discovery, parse_divergence, parse_override_assigns,
     parse_slice_pair_args, parse_target_flag,
 };
+use super::cli::AmendArgs;
 use super::entry::{Action, EntryBody, write_entry_text};
 use super::{check_project, plan_ref};
-use crate::runtime::cli::{AliasAssign, SliceSourceArg};
+use crate::runtime::cli::AliasAssign;
 use crate::runtime::context::Ctx;
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "plan amend's clap surface is the source of truth for the argument set; \
-              the handler threads it through verbatim."
-)]
-pub(super) fn amend(
-    ctx: &Ctx, name: String, depends_on: Option<Vec<String>>, sources: Option<Vec<SliceSourceArg>>,
-    add_source: Vec<SliceSourceArg>, remove_source: Vec<String>, divergence: Option<&str>,
-    description: Option<String>, project: Option<String>, target: Option<String>,
-    context: Option<Vec<String>>, authority_override: &[String],
-    clear_authority_override: &[String], clear_authority_overrides: &[String],
-    add_alias: &[AliasAssign], remove_alias: &[AliasAssign],
-) -> Result<()> {
+pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
+    let AmendArgs {
+        name, depends_on, sources, add_source, remove_source, divergence, description, project,
+        target, context, authority_override, clear_authority_override, clear_authority_overrides,
+        add_alias, remove_alias,
+    } = args;
+
     if let Some(proj) = &project
         && !proj.is_empty()
     {
         check_project(&ctx.project_dir, proj)?;
     }
 
-    let divergence = divergence.map(parse_divergence).transpose()?;
-    let override_sets = parse_override_assigns(authority_override)?;
+    let divergence = divergence.as_deref().map(parse_divergence).transpose()?;
+    let override_sets = parse_override_assigns(&authority_override)?;
     let override_clears: Vec<(String, ClaimKind)> =
-        parse_slice_pair_args::<ClaimKind>(clear_authority_override, "--clear-authority-override")?;
-    let override_clear_all: Vec<String> = clear_authority_overrides.to_vec();
+        parse_slice_pair_args::<ClaimKind>(&clear_authority_override, "--clear-authority-override")?;
+    let override_clear_all: Vec<String> = clear_authority_overrides;
     let plan_path = ctx.layout().plan_path();
     // discovery alias contract — `--add-alias` / `--remove-alias` mutate
     // `discovery.md`, NOT `plan.yaml`. We apply them up-front so the
@@ -55,7 +50,7 @@ pub(super) fn amend(
     // the source of truth for the whole-document collision gate that
     // refuses the amend (with `discovery-alias-collision`, exit 2)
     // before any write hits disk.
-    let discovery = apply_alias_edits(ctx, add_alias, remove_alias)?;
+    let discovery = apply_alias_edits(ctx, &add_alias, &remove_alias)?;
     let (body, journal_events) =
         with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
             // We materialise per-slice bindings here (rather than in

@@ -468,17 +468,47 @@ pub(crate) fn make_finding(
     finding
 }
 
+/// Inputs for [`make_synthetic_finding`].
+///
+/// Named fields keep the synthetic-finding call sites readable: the
+/// `tool.undeclared` / `tool.invocation-failed` shapes pass several
+/// optional values (`location`, `target_adapter`) that would otherwise
+/// be bare positional `None`s.
+pub(crate) struct SyntheticFinding<'a> {
+    /// Monotonic finding number rendered into the `FIND-NNNN` id.
+    pub id_num: u64,
+    /// Explicit rule id stamped on the finding.
+    pub rule_id: &'a str,
+    /// Human-readable finding title.
+    pub title: String,
+    /// Finding severity.
+    pub severity: Severity,
+    /// Optional source location.
+    pub location: Option<FindingLocation>,
+    /// Structured evidence payload.
+    pub evidence: FindingEvidence,
+    /// Impact line.
+    pub impact: String,
+    /// Remediation line.
+    pub remediation: String,
+    /// Optional owning target adapter.
+    pub target_adapter: Option<String>,
+}
+
 /// Build a finding with an explicit `rule_id` / `severity` (for the
 /// synthetic `tool.undeclared` and `tool.invocation-failed` shapes).
-#[expect(
-    clippy::too_many_arguments,
-    reason = "The synthetic-finding builder mirrors the wire shape and is not on a hot path; collapsing into a struct would only obscure call sites."
-)]
-pub(crate) fn make_synthetic_finding(
-    id_num: u64, rule_id: &str, title: String, severity: Severity,
-    location: Option<FindingLocation>, evidence: FindingEvidence, impact: String,
-    remediation: String, target_adapter: Option<String>,
-) -> LintFinding {
+pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> LintFinding {
+    let SyntheticFinding {
+        id_num,
+        rule_id,
+        title,
+        severity,
+        location,
+        evidence,
+        impact,
+        remediation,
+        target_adapter,
+    } = spec;
     let mut finding = LintFinding {
         id: format!("FIND-{id_num:04}"),
         rule_id: Some(rule_id.to_string()),

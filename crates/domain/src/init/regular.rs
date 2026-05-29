@@ -26,10 +26,6 @@ use crate::init::{
 /// [`crate::validate::registry::rules_for`].
 const SCAFFOLDED_RULE_KEYS: &[&str] = &["proposal", "specs", "design", "tasks"];
 
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
-)]
 pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
     let adapter = opts.adapter.ok_or_else(|| Error::Diag {
         code: "init-requires-adapter-or-hub",

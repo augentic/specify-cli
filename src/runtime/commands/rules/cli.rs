@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use clap::Subcommand;
+use clap::{Args, Subcommand};
 
 #[derive(Subcommand)]
 pub enum RulesAction {
@@ -22,56 +22,62 @@ pub enum RulesAction {
     /// deferred to a follow-up. The global `--format text` default
     /// at the `Cli` level surfaces as an explicit argument error so
     /// the closed JSON-only contract stays visible.
-    Export {
-        /// Codex root supplying shared `UNI-*` rules and rules-root
-        /// fallback overlays (codex root resolution
-        /// (v1)"). When omitted the resolver probes the
-        /// project-local `adapters/shared/rules/universal/` tree;
-        /// failing that, exits with `rules-root-required`.
-        #[arg(long)]
-        rules_root: Option<PathBuf>,
+    Export(ExportArgs),
+}
 
-        /// Target-adapter name (kebab, optionally `<name>@v<major>`).
-        /// Required.
-        #[arg(long)]
-        target: String,
+/// Flag surface for `specrun rules export`. Grouped into one struct so
+/// the handler threads a single reference instead of a positional
+/// argument list.
+#[derive(Args)]
+pub struct ExportArgs {
+    /// Codex root supplying shared `UNI-*` rules and rules-root
+    /// fallback overlays (codex root resolution
+    /// (v1)"). When omitted the resolver probes the
+    /// project-local `adapters/shared/rules/universal/` tree;
+    /// failing that, exits with `rules-root-required`.
+    #[arg(long)]
+    pub rules_root: Option<PathBuf>,
 
-        /// Source-adapter name bound to the export context;
-        /// repeatable. Each occurrence contributes one
-        /// `Origin::Source` overlay.
-        #[arg(long = "source", value_name = "NAME")]
-        sources: Vec<String>,
+    /// Target-adapter name (kebab, optionally `<name>@v<major>`).
+    /// Required.
+    #[arg(long)]
+    pub target: String,
 
-        /// Project-relative artifact path passed to CH-13's
-        /// `applicability.paths` glob check; repeatable.
-        #[arg(long = "artifact", value_name = "PATH")]
-        artifacts: Vec<PathBuf>,
+    /// Source-adapter name bound to the export context;
+    /// repeatable. Each occurrence contributes one
+    /// `Origin::Source` overlay.
+    #[arg(long = "source", value_name = "NAME")]
+    pub sources: Vec<String>,
 
-        /// Lowercase language token passed to CH-13's
-        /// `applicability.languages` match; repeatable.
-        #[arg(long = "language", value_name = "TOKEN")]
-        languages: Vec<String>,
+    /// Project-relative artifact path passed to CH-13's
+    /// `applicability.paths` glob check; repeatable.
+    #[arg(long = "artifact", value_name = "PATH")]
+    pub artifacts: Vec<PathBuf>,
 
-        /// Include rules marked `deprecated:` in the export.
-        #[arg(long)]
-        include_deprecated: bool,
+    /// Lowercase language token passed to CH-13's
+    /// `applicability.languages` match; repeatable.
+    #[arg(long = "language", value_name = "TOKEN")]
+    pub languages: Vec<String>,
 
-        /// Include rules whose applicability dimensions the caller
-        /// did not satisfy.
-        #[arg(long)]
-        include_unmatched: bool,
+    /// Include rules marked `deprecated:` in the export.
+    #[arg(long)]
+    pub include_deprecated: bool,
 
-        /// Include `CORE-*` rules resolved from
-        /// `adapters/shared/rules/core/` (RFC-34 §A3 / §F3).
-        /// Default off — consumer-project exports never carry
-        /// framework-only `CORE-*` rules unless the caller opts in.
-        #[arg(long)]
-        include_core: bool,
+    /// Include rules whose applicability dimensions the caller
+    /// did not satisfy.
+    #[arg(long)]
+    pub include_unmatched: bool,
 
-        /// Project directory used as the resolver's `project_dir`
-        /// (defaults to the current directory). Does not require
-        /// an initialised `.specify/`.
-        #[arg(long, default_value = ".")]
-        project_dir: PathBuf,
-    },
+    /// Include `CORE-*` rules resolved from
+    /// `adapters/shared/rules/core/` (RFC-34 §A3 / §F3).
+    /// Default off — consumer-project exports never carry
+    /// framework-only `CORE-*` rules unless the caller opts in.
+    #[arg(long)]
+    pub include_core: bool,
+
+    /// Project directory used as the resolver's `project_dir`
+    /// (defaults to the current directory). Does not require
+    /// an initialised `.specify/`.
+    #[arg(long, default_value = ".")]
+    pub project_dir: PathBuf,
 }

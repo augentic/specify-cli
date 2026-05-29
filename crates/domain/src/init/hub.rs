@@ -41,10 +41,6 @@ use crate::registry::Registry;
 /// Returns an error if [`InitOptions::adapter`] is set (mutually
 /// exclusive with `--hub`), if the project name is not kebab-case, if
 /// `.specify/` already exists, or if any filesystem write fails.
-#[expect(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands an owned `InitOptions` to `init::run`, which forwards by value."
-)]
 pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.adapter.is_some() {
         return Err(Error::Diag {

@@ -103,14 +103,16 @@ pub(crate) fn resolve_with(
             detail: format!("tool source `{}` is invalid: {reason}", tool.source.to_wire_string()),
         })?;
     let install_result = stage_and_install(
-        scope,
-        tool,
-        &source,
-        &staged,
-        &dest,
-        now,
+        &StageRequest {
+            scope,
+            tool,
+            source: &source,
+            staged: &staged,
+            dest: &dest,
+            now,
+            expanded_source: &expanded_source,
+        },
         package_fetch,
-        &expanded_source,
     );
     // The atomic install moves `staged/` into `dest/`, so its absence on
     // success is expected. On failure we tear down the staging tree.
@@ -128,18 +130,26 @@ pub(crate) fn resolve_with(
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "expanded_source is a resolution-time addition; splitting further obscures the staging pipeline"
-)]
+/// Borrowed inputs for [`stage_and_install`], grouping the staging
+/// pipeline's resolution-time facts so the function stays a two-argument
+/// (request + fetch closure) boundary.
+struct StageRequest<'a> {
+    scope: &'a ToolScope,
+    tool: &'a Tool,
+    source: &'a str,
+    staged: &'a Path,
+    dest: &'a Path,
+    now: jiff::Timestamp,
+    expanded_source: &'a ToolSource,
+}
+
 fn stage_and_install(
-    scope: &ToolScope, tool: &Tool, source: &str, staged: &Path, dest: &Path, now: jiff::Timestamp,
+    req: &StageRequest<'_>,
     package_fetch: impl Fn(&PackageRequest, &Path) -> Result<AcquiredBytes, ToolError>,
-    expanded_source: &ToolSource,
 ) -> Result<(), ToolError> {
-    let module_dest = staged.join(MODULE_FILENAME);
-    let acquired = acquire_source_bytes(expanded_source, &module_dest, package_fetch)?;
-    digest::validate(source, &acquired, tool.sha256.as_deref())?;
+    let module_dest = req.staged.join(MODULE_FILENAME);
+    let acquired = acquire_source_bytes(req.expanded_source, &module_dest, package_fetch)?;
+    digest::validate(req.source, &acquired, req.tool.sha256.as_deref())?;
     let AcquiredBytes {
         temp,
         package_metadata,
@@ -148,17 +158,17 @@ fn stage_and_install(
     persist_temp(temp, &module_dest)?;
     let sidecar = Sidecar {
         schema_version: SIDECAR_SCHEMA_VERSION,
-        scope: cache::scope_segment(scope)?,
-        tool_name: tool.name.clone(),
-        tool_version: tool.version.clone(),
-        source: source.to_string(),
-        fetched_at: now,
-        permissions_snapshot: tool.permissions.clone(),
-        sha256: tool.sha256.clone(),
+        scope: cache::scope_segment(req.scope)?,
+        tool_name: req.tool.name.clone(),
+        tool_version: req.tool.version.clone(),
+        source: req.source.to_string(),
+        fetched_at: req.now,
+        permissions_snapshot: req.tool.permissions.clone(),
+        sha256: req.tool.sha256.clone(),
         package: package_metadata,
     };
-    cache::write_sidecar(&staged.join(SIDECAR_FILENAME), &sidecar)?;
-    cache::stage_and_install(staged, dest)
+    cache::write_sidecar(&req.staged.join(SIDECAR_FILENAME), &sidecar)?;
+    cache::stage_and_install(req.staged, req.dest)
 }
 
 fn resolved(scope: &ToolScope, tool: &Tool, bytes_path: PathBuf) -> ResolvedTool {

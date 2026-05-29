@@ -45,9 +45,15 @@ impl RunContext {
 }
 
 /// Wasmtime-backed synchronous WASI Preview 2 runner.
-#[expect(missing_debug_implementations, reason = "wraps non-Debug wasmtime::Engine")]
 pub struct WasiRunner {
     engine: Engine,
+}
+
+impl std::fmt::Debug for WasiRunner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `wasmtime::Engine` is not `Debug`; expose the wrapper shape only.
+        f.debug_struct("WasiRunner").finish_non_exhaustive()
+    }
 }
 
 impl WasiRunner {

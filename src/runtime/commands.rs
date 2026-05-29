@@ -28,10 +28,6 @@ use crate::runtime::commands::workspace::cli::WorkspaceAction;
 use crate::runtime::context::Ctx;
 use crate::runtime::output::{self, Exit, report};
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "The top-level dispatcher mirrors the full subcommand surface; splitting per verb would scatter the contract and obscure parity with `Commands`."
-)]
 pub fn run(cli: Cli) -> Exit {
     let format = cli.format;
     match cli.command {
@@ -78,30 +74,7 @@ pub fn run(cli: Cli) -> Exit {
             }
         },
         Commands::Rules { action } => match action {
-            RulesAction::Export {
-                rules_root,
-                target,
-                sources,
-                artifacts,
-                languages,
-                include_deprecated,
-                include_unmatched,
-                include_core,
-                project_dir,
-            } => dispatch(format, || {
-                rules::export::run(
-                    format,
-                    rules_root.as_deref(),
-                    &target,
-                    &sources,
-                    &artifacts,
-                    &languages,
-                    include_deprecated,
-                    include_unmatched,
-                    include_core,
-                    &project_dir,
-                )
-            }),
+            RulesAction::Export(args) => dispatch(format, || rules::export::run(format, &args)),
         },
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => run_tool_with(format, &name, args),
@@ -112,33 +85,9 @@ pub fn run(cli: Cli) -> Exit {
             }
         },
         Commands::Lint { action } => match action {
-            LintAction::Run {
-                rules_root,
-                target,
-                sources,
-                slice,
-                artifacts,
-                languages,
-                dump_model,
-                strict_hints,
-                include_core,
-                output_format,
-                project_dir,
-            } => scoped_at(format, &project_dir, |ctx| {
-                lint::run::run(
-                    ctx,
-                    rules_root.as_deref(),
-                    &target,
-                    &sources,
-                    slice.as_deref(),
-                    &artifacts,
-                    &languages,
-                    dump_model,
-                    strict_hints,
-                    include_core,
-                    output_format.into(),
-                )
-            }),
+            LintAction::Run(args) => {
+                scoped_at(format, &args.project_dir, |ctx| lint::run::run(ctx, &args))
+            }
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),

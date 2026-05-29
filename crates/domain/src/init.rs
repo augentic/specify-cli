@@ -18,9 +18,13 @@ use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
 
 use crate::config::Layout;
 
-/// Inputs to [`init`]. Borrow-shaped so callers (the CLI and tests) can
-/// build the struct without cloning path buffers.
-#[derive(Debug)]
+/// Inputs to [`init`].
+///
+/// Borrow-shaped so callers (the CLI and tests) can build the struct
+/// without cloning path buffers. All fields are `Copy` references or
+/// scalars, so the struct is `Copy` and threads through the hub /
+/// regular runners by value without a clone.
+#[derive(Debug, Clone, Copy)]
 pub struct InitOptions<'a> {
     /// Root of the project being initialised.
     pub project_dir: &'a Path,

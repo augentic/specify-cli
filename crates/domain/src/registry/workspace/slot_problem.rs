@@ -10,10 +10,6 @@ use crate::registry::catalog::RegistryProject;
 
 /// A registry/workspace mismatch that would cause `workspace sync` to refuse a slot.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[expect(
-    clippy::partial_pub_fields,
-    reason = "message is intentionally read-only via Problem::message(); writes are super-only"
-)]
 pub struct Problem {
     /// Machine-readable reason for the mismatch.
     pub reason: Reason,
@@ -29,7 +25,8 @@ pub struct Problem {
     pub expected_target: Option<PathBuf>,
     /// Canonical filesystem target currently observed for symlink-backed slots.
     pub observed_target: Option<PathBuf>,
-    pub(super) message: String,
+    /// Human-readable diagnostic matching the refusal text from `workspace sync`.
+    pub message: String,
 }
 
 impl Problem {
