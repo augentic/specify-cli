@@ -56,17 +56,12 @@ impl Context {
         self.framework_root.join("adapters").join("shared")
     }
 
-    /// Authoring schemas distributed with `specdev`.
-    pub fn framework_schema_dir(&self) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas")
-    }
-
     /// Editor-facing schema aliases under `.cursor/schemas/`.
     pub fn cursor_schema_dir(&self) -> PathBuf {
         self.framework_root.join(".cursor").join("schemas")
     }
 
-    /// Runtime JSON Schemas from the local `specify-cli` checkout.
+    /// CLI-owned JSON Schemas from the local `specify-cli` checkout.
     pub fn specify_cli_schemas_dir(&self) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("schemas")
     }

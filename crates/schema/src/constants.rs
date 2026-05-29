@@ -55,3 +55,15 @@ pub const WORKSPACE_MODEL_JSON_SCHEMA: &str =
 /// `diagnostic.schema.json` `$ref`.
 pub const DIAGNOSTIC_REPORT_JSON_SCHEMA: &str =
     include_str!("../../../schemas/diagnostics/diagnostic-report.schema.json");
+
+/// Schema for `SKILL.md` YAML frontmatter (framework authoring).
+pub const SKILL_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/authoring/skill.schema.json");
+
+/// Schema for scenario-pack YAML frontmatter (framework authoring).
+pub const SCENARIO_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/authoring/scenario.schema.json");
+
+/// Schema for `.cursor-plugin/marketplace.json` (framework authoring).
+pub const MARKETPLACE_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/authoring/marketplace.schema.json");

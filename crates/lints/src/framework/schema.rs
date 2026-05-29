@@ -3,23 +3,20 @@ use std::path::{Path, PathBuf};
 
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
-use specify_schema::RULE_JSON_SCHEMA;
+use specify_schema::{
+    MARKETPLACE_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
+};
 
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
 use crate::framework::helpers::skill_frontmatter;
 
-/// Cache key for the embedded codex-rule schema. The schema is compiled from
-/// the in-memory [`RULE_JSON_SCHEMA`] constant rather than a filesystem
-/// path, so the synthetic key keeps the rest of [`Context::schema_cache`]
-/// machinery uniform.
-const EMBEDDED_CODEX_RULE_CACHE_KEY: &str = "<embedded>/rule.schema.json";
-
-/// Framework-only JSON Schema identifiers.
+/// Framework authoring JSON Schema identifiers.
 ///
-/// `Rule` resolves to the embedded constant
-/// [`specify_schema::RULE_JSON_SCHEMA`]; the rest resolve to files under
-/// `crates/lints/schemas/`.
+/// Each variant resolves to an embedded constant under
+/// `specify-cli/schemas/authoring/` (or `schemas/rules/` for
+/// [`SchemaId::Rule`]) compiled into the binary via
+/// [`specify_schema`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SchemaId {
     Skill,
@@ -29,23 +26,18 @@ pub enum SchemaId {
 }
 
 impl SchemaId {
-    /// Basename of the schema file in `crates/lints/schemas/`, when one
-    /// exists. Returns `None` for schemas served from an embedded constant.
-    pub const fn file_name(self) -> Option<&'static str> {
+    /// Synthetic cache key and embedded schema source for `schema_id`.
+    const fn embedded(self) -> (&'static str, &'static str) {
         match self {
-            Self::Skill => Some("skill.schema.json"),
-            Self::Rule => None,
-            Self::Scenario => Some("scenario.schema.json"),
-            Self::Marketplace => Some("marketplace.schema.json"),
+            Self::Skill => ("<embedded>/authoring/skill.schema.json", SKILL_JSON_SCHEMA),
+            Self::Rule => ("<embedded>/rules/rule.schema.json", RULE_JSON_SCHEMA),
+            Self::Scenario => {
+                ("<embedded>/authoring/scenario.schema.json", SCENARIO_JSON_SCHEMA)
+            }
+            Self::Marketplace => {
+                ("<embedded>/authoring/marketplace.schema.json", MARKETPLACE_JSON_SCHEMA)
+            }
         }
-    }
-}
-
-/// Embedded schema source for `schema_id`, when one is compiled in.
-fn embedded_schema(schema_id: SchemaId) -> Option<(PathBuf, &'static str)> {
-    match schema_id {
-        SchemaId::Rule => Some((PathBuf::from(EMBEDDED_CODEX_RULE_CACHE_KEY), RULE_JSON_SCHEMA)),
-        SchemaId::Skill | SchemaId::Scenario | SchemaId::Marketplace => None,
     }
 }
 
@@ -69,27 +61,12 @@ pub struct ValidationError {
     pub message: String,
 }
 
-/// Resolve the authoritative schema path for `schema_id`. Returns `None` for
-/// schemas served from an embedded constant.
-pub fn schema_path(ctx: &Context, schema_id: SchemaId) -> Option<PathBuf> {
-    schema_id.file_name().map(|name| ctx.framework_schema_dir().join(name))
-}
-
 /// Lazily compile a framework schema via the shared context cache.
-///
-/// Schemas backed by an in-memory constant (today only
-/// `SchemaId::Rule`, sourced from [`RULE_JSON_SCHEMA`]) compile
-/// from the embedded bytes and are cached under a synthetic path; the rest
-/// read from `crates/lints/schemas/`.
 pub fn validator(
     ctx: &Context, schema_id: SchemaId,
 ) -> Result<std::sync::Arc<Validator>, ToolingError> {
-    if let Some((key, source)) = embedded_schema(schema_id) {
-        return ctx.schema_from_source(key, source);
-    }
-    let path = schema_path(ctx, schema_id)
-        .ok_or_else(|| ToolingError::Infrastructure(format!("no schema path for {schema_id:?}")))?;
-    ctx.schema(path)
+    let (key, source) = schema_id.embedded();
+    ctx.schema_from_source(PathBuf::from(key), source)
 }
 
 /// Validate a parsed JSON/YAML value against a framework schema.

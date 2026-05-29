@@ -19,6 +19,13 @@ This directory contains JSON Schemas and bundled workflow fixtures used by the `
 | [`cache-meta.schema.json`](cache-meta.schema.json) | Validates schema cache metadata written under `.specify/.cache`. |
 | [`context-lock.schema.json`](context-lock.schema.json) | Validates `.specify/context.lock`, the sidecar used by init-time AGENTS.md generation. |
 | [`design-system/components.schema.json`](design-system/components.schema.json) | Validates `.specify/design-system/components.yaml`, the operator-curated component catalog. Declares shared UI components that the Vectis target factors into shared code at build time. |
+| [`authoring/skill.schema.json`](authoring/skill.schema.json) | Validates `SKILL.md` YAML frontmatter (name, description, argument-hint, allowed-tools). Cross-file invariants (plugin prefix, verb allow-list, known tools) are enforced by `specdev lint`. |
+| [`authoring/scenario.schema.json`](authoring/scenario.schema.json) | Validates optional YAML frontmatter on scenario pack files under accepted scenario roots. Ordering and path-safety rules beyond JSON Schema are enforced by `specdev lint`. |
+| [`authoring/marketplace.schema.json`](authoring/marketplace.schema.json) | Validates `.cursor-plugin/marketplace.json`. Cross-file consistency with `plugins/` is enforced by `specdev lint`. |
+| [`rules/rule.schema.json`](rules/rule.schema.json) | Validates rule markdown YAML frontmatter. Body shape (`## Rule` heading, duplicate ids) is enforced by `specdev lint`. |
+| [`lint/workspace-model.schema.json`](lint/workspace-model.schema.json) | Validates the v1 `WorkspaceModel` envelope produced once per `specrun lint` invocation. |
+| [`diagnostics/diagnostic.schema.json`](diagnostics/diagnostic.schema.json) | Validates a single structured finding emitted by lint and validate surfaces. |
+| [`diagnostics/diagnostic-report.schema.json`](diagnostics/diagnostic-report.schema.json) | Validates the `{ version, summary, findings }` diagnostic envelope. |
 
 ## Bundled workflow schema
 

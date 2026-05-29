@@ -20,12 +20,12 @@ pub const RULE_UNKNOWN_TOOL: &str = "skill.unknown-tool";
 pub const RULE_DESCRIPTION_GRAMMAR: &str = "skill.description-grammar";
 pub const RULE_ARGUMENT_HINT_GRAMMAR: &str = "skill.argument-hint-grammar";
 
-/// Kept in sync with `crates/lints/schemas/skill.schema.json` (`description.maxLength`).
+/// Kept in sync with `schemas/authoring/skill.schema.json` (`description.maxLength`).
 pub const MAX_DESCRIPTION_CHARS: usize = 512;
 
 const PREFIX_OVERRIDES: &[(&str, &str)] = &[("spec", "specify")];
 
-/// Validate SKILL.md frontmatter against `crates/lints/schemas/skill.schema.json`.
+/// Validate SKILL.md frontmatter against `schemas/authoring/skill.schema.json`.
 pub struct FrontmatterSchema;
 
 /// Require `name:` to carry the containing plugin's discovery prefix.

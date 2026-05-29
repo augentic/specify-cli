@@ -7,9 +7,9 @@ use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA,
-    EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
-    validate_value,
+    EVIDENCE_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
+    ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
 };
 
 #[test]
@@ -40,6 +40,21 @@ fn resolved_codex_schema_compiles() {
 #[test]
 fn codex_rule_schema_compiles() {
     compile_schema(RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
+}
+
+#[test]
+fn skill_schema_compiles() {
+    compile_schema(SKILL_JSON_SCHEMA).expect("skill schema compiles");
+}
+
+#[test]
+fn scenario_schema_compiles() {
+    compile_schema(SCENARIO_JSON_SCHEMA).expect("scenario schema compiles");
+}
+
+#[test]
+fn marketplace_schema_compiles() {
+    compile_schema(MARKETPLACE_JSON_SCHEMA).expect("marketplace schema compiles");
 }
 
 #[test]
