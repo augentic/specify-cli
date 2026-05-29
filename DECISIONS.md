@@ -879,16 +879,16 @@ The standalone vendored copy of the codex-rule JSON Schema and its
 drift-detection predicate are retired. Specifically, the following
 artefacts are gone:
 
-- `crates/authoring/schemas/rule.schema.json` (the vendored copy)
+- the framework crate's vendored `schemas/rule.schema.json` copy
 - `scripts/sync-codex-schema.sh` (the manual mirroring helper)
-- `crates/authoring/src/check/codex_schema_drift.rs` (the CH-09
+- the framework crate's `check/codex_schema_drift.rs` (the CH-09
   predicate implementation) and its integration test
 - The `codex.schema-drift` rule-id registration in the `specdev` check
   registry
 
-`specify-authoring` now consumes the canonical schema directly via
+The `specify_lints::framework` predicates now consume the canonical schema directly via
 `specify_schema::RULE_JSON_SCHEMA` (paired with the typed
-`Rule` DTO from `specify_lints`). One source of truth replaces the
+`Rule` DTO from `specify_lints::rules`). One source of truth replaces the
 prior vendored / canonical pair, so no drift check is required — the
 predicate the vendored copy existed to support no longer has a class of
 failures to catch. The canonical schema lives at
