@@ -777,6 +777,92 @@ body without metadata lines yet
 }
 
 // ---------------------------------------------------------------------------
+// RFC-35 D8 — `slice validate` spec file-location gate
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_emits_file_location_when_root_spec_md_exists_but_no_canonical_specs() {
+    let project = Project::init().with_schemas();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let slice_dir = project.slices_dir().join("my-slice");
+    // Write spec.md at the slice root instead of under specs/<unit>/.
+    fs::write(slice_dir.join("spec.md"), CLEAN_SPEC_MD).expect("write root spec.md");
+    // Ensure specs/ is empty (slice create makes the dir but no files).
+    drop(fs::remove_dir_all(slice_dir.join("specs")));
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "validation");
+    let results = value["results"].as_array().expect("results array");
+    let detail = results
+        .iter()
+        .find(|r| r["rule-id"] == "specs.file-location")
+        .and_then(|r| r["detail"].as_str())
+        .expect("specs.file-location row must be present");
+    assert!(
+        detail.contains("specs/<unit>/spec.md"),
+        "detail must name the canonical layout, got: {detail}"
+    );
+    assert!(detail.contains("slice root"), "detail must mention the slice root, got: {detail}");
+}
+
+#[test]
+fn validate_does_not_emit_file_location_when_canonical_specs_exist() {
+    let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
+    // stage_slice_with_spec writes specs/login/spec.md — canonical location.
+    // Also write a root spec.md to make sure the gate does NOT fire when
+    // canonical specs are present (the root file is ignored, not an error).
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("spec.md"), "stale root copy").expect("write root spec.md");
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "specs.file-location",
+                "file-location gate must not fire when canonical specs exist"
+            );
+        }
+    }
+}
+
+#[test]
+fn validate_does_not_emit_file_location_when_no_root_spec_md() {
+    let project = Project::init().with_schemas();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    // Neither root spec.md nor any spec under specs/ — no file-location
+    // diagnostic should fire (the slice is simply empty).
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "specs.file-location",
+                "file-location gate must not fire when no root spec.md exists"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // RFC-31 D5 — `slice validate` catalog drift gate
 // ---------------------------------------------------------------------------
 

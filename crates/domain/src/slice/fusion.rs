@@ -331,12 +331,12 @@ impl FusionDrift {
         let detail = match self {
             Self::MissingFusionRequirement { req_id } => {
                 format!(
-                    "{req_id} appears in spec.md but is missing from fusion.yaml; re-run `/spec:refine` to regenerate the reconciliation index"
+                    "{req_id} appears in spec files under `specs/` but is missing from fusion.yaml; re-run `/spec:refine` to regenerate the reconciliation index"
                 )
             }
             Self::ExtraFusionRequirement { req_id } => {
                 format!(
-                    "{req_id} appears in fusion.yaml but no matching `REQ-*` heading exists in spec.md; re-run `/spec:refine` to regenerate the reconciliation index"
+                    "{req_id} listed in fusion.yaml but no requirement block with `ID: {req_id}` exists in any spec file under `specs/`; re-run `/spec:refine` to regenerate the reconciliation index"
                 )
             }
             Self::ContributingClaimNotFound {
@@ -354,7 +354,7 @@ impl FusionDrift {
         ValidationSummary {
             status: ValidationStatus::Fail,
             rule_id: "slice-fusion-drift".into(),
-            rule: "fusion.yaml stays in sync with spec.md REQ ids and per-source evidence claims"
+            rule: "fusion.yaml stays in sync with specs/ REQ ids and per-source evidence claims"
                 .into(),
             detail: Some(detail),
         }
