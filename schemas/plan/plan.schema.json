@@ -169,7 +169,7 @@
             "accepted",
             "rejected"
           ],
-          "description": "workflow \u00a7Plan-time fusion \u2014 closed enum for slice-level divergence state. Absent \u2261 `none` (the default). `likely` is set by `/spec:plan`'s `propose` sub-step on materially-disagreeing lead summaries; `accepted` / `rejected` are set by the operator at Gate 1 via `specrun plan amend --divergence`. Advisory metadata in v1. workflow \u00a7D5: every value (including `likely`) is CLI-written \u2014 the plan skill invokes `specrun plan create --divergence-likely <slice>` or `specrun plan amend <plan> <slice> --divergence likely` rather than patching `plan.yaml` directly."
+          "description": "workflow \u00a7Plan-time reconciliation \u2014 closed enum for slice-level divergence state. Absent \u2261 `none` (the default). `likely` is set by `/spec:plan`'s `propose` sub-step on materially-disagreeing lead summaries; `accepted` / `rejected` are set by the operator at Gate 1 via `specrun plan amend --divergence`. Advisory metadata in v1. workflow \u00a7D5: every value (including `likely`) is CLI-written \u2014 the plan skill invokes `specrun plan create --divergence-likely <slice>` or `specrun plan amend <plan> <slice> --divergence likely` rather than patching `plan.yaml` directly."
         },
         "authority-override": {
           "type": "object",

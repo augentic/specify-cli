@@ -162,7 +162,7 @@ fn plan_add_unknown_lead_refused() {
 #[test]
 fn plan_add_without_discovery_skips_alias() {
     // Legacy backwards-compat: without `discovery.md`, the supplied
-    // lead value round-trips verbatim. Pre-authority and fusion contract projects
+    // lead value round-trips verbatim. Pre-authority and reconciliation contract projects
     // continue to work unchanged.
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);

@@ -203,7 +203,7 @@ pub struct AmendArgs {
     #[arg(long = "remove-source", action = ArgAction::Append)]
     pub remove_source: Vec<String>,
     /// Set the slice's `divergence` field (workflow §Plan-time
-    /// fusion; divergence and writer-ownership contract). Accepts `likely`, `accepted`, or
+    /// reconciliation; divergence and writer-ownership contract). Accepts `likely`, `accepted`, or
     /// `rejected` — the CLI is the single writer of this field
     /// across every value of the closed enum, so use
     /// `specrun plan amend <plan> <slice> --divergence likely`

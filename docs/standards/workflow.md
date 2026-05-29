@@ -43,9 +43,9 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 `Slice`, `Lead`, `Evidence`, `Source`, `Target`, `Plan`, `Discovery`. Definitions live in the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
 
-## Plan-time fusion
+## Plan-time reconciliation
 
-Core synthesis fuses leads across sources at plan time and writes one `slices[]` row per fusion outcome. The closed `Divergence` enum (`none | likely | accepted | rejected`) records the fusion outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/domain/src/change/plan/core/model.rs`](../../crates/domain/src/change/plan/core/model.rs).
+Core synthesis reconciles leads across sources at plan time and writes one `slices[]` row per reconciliation outcome. The closed `Divergence` enum (`none | likely | accepted | rejected`) records the reconciliation outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/domain/src/change/plan/core/model.rs`](../../crates/domain/src/change/plan/core/model.rs).
 
 ## Source
 
@@ -63,7 +63,7 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Refinement
 
-`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `fusion.yaml`, and transitions the slice to `refined`. Validators live in [`crates/domain/src/validate/`](../../crates/domain/src/validate/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
+`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `reconciliation.yaml`, and transitions the slice to `refined`. Validators live in [`crates/domain/src/validate/`](../../crates/domain/src/validate/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
 
 ## Extraction
 
@@ -117,9 +117,9 @@ Touching `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/domain/src/
 
 `plan.yaml.slices[].authority-override` maps claim kind to a source key bound on the slice. Orphan keys surface as `slice-authority-override-orphan-source-key`. See [`DECISIONS.md` §"Plan per-slice authority overrides"](../../DECISIONS.md#plan-per-slice-authority-overrides).
 
-## D4 — `fusion.yaml` is audit-only
+## D4 — `reconciliation.yaml` is audit-only
 
-Reconciliation index at `.specify/slices/<slice>/fusion.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/fusion.schema.json`](../../schemas/slice/fusion.schema.json); validator at [`crates/domain/src/slice/fusion.rs`](../../crates/domain/src/slice/fusion.rs). See [`DECISIONS.md` §"`fusion.yaml` audit index"](../../DECISIONS.md#fusionyaml-audit-index).
+Reconciliation index at `.specify/slices/<slice>/reconciliation.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/reconciliation.schema.json`](../../schemas/slice/reconciliation.schema.json); validator at [`crates/domain/src/slice/reconciliation.rs`](../../crates/domain/src/slice/reconciliation.rs). See [`DECISIONS.md` §"`reconciliation.yaml` audit index"](../../DECISIONS.md#reconciliationyaml-audit-index).
 
 ## D5 — Operator-driven `divergence`
 
@@ -139,4 +139,4 @@ Closed five-input list: source path canonicalised, adapter `name@version`, brief
 
 ## Reconciliation index
 
-Closed top-level shape on `fusion.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/domain/src/slice/fusion.rs`](../../crates/domain/src/slice/fusion.rs) and `kind: tool` evaluator contract above.
+Closed top-level shape on `reconciliation.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/domain/src/slice/reconciliation.rs`](../../crates/domain/src/slice/reconciliation.rs) and `kind: tool` evaluator contract above.

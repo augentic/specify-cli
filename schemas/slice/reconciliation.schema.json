@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/augentic/specify-cli/schemas/slice/fusion.schema.json",
-  "title": "Specify slice fusion.yaml",
-  "description": "Validates a slice's reconciliation index per workflow \u00a7D4. `/spec:refine` writes one `fusion.yaml` per slice at `.specify/slices/<slice>/fusion.yaml`, listing every `REQ-*` id in `spec.md` and the `(source-key, claim-id)` pairs that contributed plus the authority outcome. The file is byte-stable across runs given the same inputs and is the operator's audit surface for synthesis decisions; it is regenerated whole on each `/spec:refine` and is not an authoritative input to any downstream verb (see workflow \u00a7Reconciliation index). Closed top-level shape; closed per-requirement shape; closed per-contributing-claim shape \u2014 unknown fields are rejected. Drift between `spec.md` `REQ-*` ids and this file's `requirements[].id` is reported by `specrun slice validate` as `slice-fusion-drift`.",
+  "$id": "https://github.com/augentic/specify-cli/schemas/slice/reconciliation.schema.json",
+  "title": "Specify slice reconciliation.yaml",
+  "description": "Validates a slice's reconciliation index per workflow \u00a7D4. `/spec:refine` writes one `reconciliation.yaml` per slice at `.specify/slices/<slice>/reconciliation.yaml`, listing every `REQ-*` id in `spec.md` and the `(source-key, claim-id)` pairs that contributed plus the authority outcome. The file is byte-stable across runs given the same inputs and is the operator's audit surface for synthesis decisions; it is regenerated whole on each `/spec:refine` and is not an authoritative input to any downstream verb (see workflow \u00a7Reconciliation index). Closed top-level shape; closed per-requirement shape; closed per-contributing-claim shape \u2014 unknown fields are rejected. Drift between `spec.md` `REQ-*` ids and this file's `requirements[].id` is reported by `specrun slice validate` as `slice-reconciliation-drift`.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "slice", "generated-at", "generator", "requirements"],
@@ -10,7 +10,7 @@
     "version": {
       "type": "integer",
       "minimum": 1,
-      "description": "Stored schema version. Currently `1`. Bumped only on a breaking shape change to `fusion.yaml`; additive fields land without a bump."
+      "description": "Stored schema version. Currently `1`. Bumped only on a breaking shape change to `reconciliation.yaml`; additive fields land without a bump."
     },
     "slice": {
       "$ref": "#/$defs/kebabName",
@@ -29,7 +29,7 @@
     "requirements": {
       "type": "array",
       "description": "One entry per `REQ-*` id in `spec.md`. Order matches `spec.md` order; `specrun slice validate` enforces id-set parity in both directions.",
-      "items": { "$ref": "#/$defs/fusionRequirement" }
+      "items": { "$ref": "#/$defs/reconciliationRequirement" }
     }
   },
   "$defs": {
@@ -61,7 +61,7 @@
         "container",
         "leaf"
       ],
-      "description": "Closed claim-kind enum, mirrored from `evidence.schema.json#/$defs/claimKind`. Kept byte-identical so a fusion entry's `kind` value validates against the same closed set the source Evidence claim does."
+      "description": "Closed claim-kind enum, mirrored from `evidence.schema.json#/$defs/claimKind`. Kept byte-identical so a reconciliation entry's `kind` value validates against the same closed set the source Evidence claim does."
     },
     "claimPath": {
       "type": "string",
@@ -73,7 +73,7 @@
       "enum": ["agreed", "unknown", "conflict", "divergence"],
       "description": "Mirrors the closed `RequirementStatus` enum in `crates/domain/src/spec/provenance.rs`. Per the workflow contract \u00a7Authority hierarchy: `agreed` (one source or single-value cross-source agreement), `unknown` (no contributing evidence), `conflict` (tied top-authority disagreement), `divergence` (authority-resolved disagreement; loser preserved as commentary)."
     },
-    "fusionResolution": {
+    "reconciliationResolution": {
       "type": "string",
       "enum": [
         "single-source",
@@ -138,7 +138,7 @@
       },
       "description": "Optional trace describing how a non-trivial resolution selected the winning claim. Present only when `resolution` is `authority-resolved` or `per-slice-override`; absent otherwise."
     },
-    "fusionRequirement": {
+    "reconciliationRequirement": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "status", "sources", "contributing-claims", "resolution"],
@@ -163,7 +163,7 @@
           "description": "Every `(source, claim-id)` pair synthesis consulted, *not* only the winning one. Operators auditing a divergence can see what was dropped."
         },
         "resolution": {
-          "$ref": "#/$defs/fusionResolution",
+          "$ref": "#/$defs/reconciliationResolution",
           "description": "How synthesis arrived at the requirement's final value."
         },
         "resolution-trace": {

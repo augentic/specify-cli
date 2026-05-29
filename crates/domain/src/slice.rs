@@ -4,10 +4,10 @@
 
 pub mod actions;
 pub mod atomic;
-pub mod fusion;
 pub mod lifecycle;
 pub mod metadata;
 pub mod outcome;
+pub mod reconciliation;
 
 pub use actions::{CreateIfExists, Created, Overlap};
 pub use lifecycle::LifecycleStatus;

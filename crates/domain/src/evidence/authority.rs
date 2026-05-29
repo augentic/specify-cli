@@ -229,7 +229,7 @@ mod tests {
     //
     // The CLI does not yet ship a synthesis resolver — `/spec:refine`
     // is still skill-driven and the in-Rust resolution helper lives
-    // alongside `fusion.yaml` in the plugin repo (Change 3.2). This
+    // alongside `reconciliation.yaml` in the plugin repo (Change 3.2). This
     // test pins the four-step resolution walk at the data-structure
     // level so any future migration of the resolver into this crate
     // (and the parallel skill rewrite) inherits a frozen contract:
@@ -245,11 +245,11 @@ mod tests {
     //    above the others.
     // 4. Same-effective-class tie → `Status: conflict` with no winner.
     //
-    // Documented gap: when the resolver ships in this crate (authority and fusion contract
+    // Documented gap: when the resolver ships in this crate (authority and reconciliation contract
     // Phase 3 follow-up), replace this micro-resolver with the
     // production code path and keep the four scenarios as black-box
     // assertions against it. The vocabulary (`PerSlice`, `PerEvidence`,
-    // `Document`, `Conflict`) matches authority and fusion contract's resolution-order step
+    // `Document`, `Conflict`) matches authority and reconciliation contract's resolution-order step
     // names verbatim.
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum Resolved {

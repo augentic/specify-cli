@@ -29,9 +29,9 @@ use std::sync::LazyLock;
 use jsonschema::Validator;
 use serde_json::Value;
 use specify_schema::{
-    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FUSION_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
-    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
-    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
+    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
+    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
 };
 
 use super::{HintError, make_finding};
@@ -49,7 +49,7 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
         ("workspace-model", WORKSPACE_MODEL_JSON_SCHEMA),
         ("plan", PLAN_JSON_SCHEMA),
         ("evidence", EVIDENCE_JSON_SCHEMA),
-        ("fusion", FUSION_JSON_SCHEMA),
+        ("reconciliation", RECONCILIATION_JSON_SCHEMA),
         ("components", COMPONENTS_JSON_SCHEMA),
     ])
 });

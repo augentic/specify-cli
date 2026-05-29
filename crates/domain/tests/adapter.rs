@@ -242,13 +242,13 @@ fn resolves_captures_with_tools() {
     // a `tools: [{ name: replay-index }]` declaration and a free-
     // form `description:` field; both must round-trip through the
     // axis-aware loader without forcing the operator to bind the
-    // declared WASI tool (the tool itself is a follow-up per authority and fusion contract
+    // declared WASI tool (the tool itself is a follow-up per authority and reconciliation contract
     // §Implementation plan).
     //
     // This test is the cli-side complement to the deno harness
     // assertions in `augentic/specify` at
     // `tests/cross_repo/sources_test.ts` — the harness pins the
-    // golden-fixture data shape (Evidence + fusion.yaml +
+    // golden-fixture data shape (Evidence + reconciliation.yaml +
     // discovery.md) while this test pins the loader behaviour.
     let (_tmp, project) = local_project();
     let manifest_dir = project.join("adapters").join("sources").join("captures");

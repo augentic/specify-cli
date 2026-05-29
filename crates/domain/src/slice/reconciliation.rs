@@ -1,13 +1,13 @@
-//! `fusion.yaml` reconciliation index — `fusion.yaml`.
+//! Reconciliation index — `reconciliation.yaml`.
 //!
-//! One file per slice at `.specify/slices/<slice>/fusion.yaml`. Lists
+//! One file per slice at `.specify/slices/<slice>/reconciliation.yaml`. Lists
 //! every `REQ-*` id in `spec.md` and the contributing
 //! `(source-key, claim-id)` pairs plus the authority outcome.
-//! Validated against `schemas/slice/fusion.schema.json`. The file is
-//! audit-only; see [`DECISIONS.md` §"`fusion.yaml` audit index"][fusion-audit] for the rationale (`spec.md` is the
+//! Validated against `schemas/slice/reconciliation.schema.json`. The file is
+//! audit-only; see [`DECISIONS.md` §"`reconciliation.yaml` audit index"][reconciliation-audit] for the rationale (`spec.md` is the
 //! authoritative artifact).
 //!
-//! [fusion-audit]: ../../../../DECISIONS.md#fusionyaml-audit-index
+//! [reconciliation-audit]: ../../../../DECISIONS.md#reconciliationyaml-audit-index
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -18,16 +18,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 
-use crate::schema::{FUSION_JSON_SCHEMA, evidence_yaml_paths, validate_serialisable};
+use crate::schema::{RECONCILIATION_JSON_SCHEMA, evidence_yaml_paths, validate_serialisable};
 use crate::spec::provenance::RequirementStatus;
 
-/// In-memory model of `fusion.yaml` (workflow §Reconciliation index).
+/// In-memory model of `reconciliation.yaml` (workflow §Reconciliation index).
 ///
 /// Top-level shape is closed; unknown fields are rejected per the
 /// matching schema.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct FusionIndex {
+pub struct ReconciliationIndex {
     /// Stored schema version. Currently `1`; additive fields land
     /// without a bump.
     pub version: u32,
@@ -43,13 +43,13 @@ pub struct FusionIndex {
     /// One entry per `REQ-*` id in `spec.md`; order matches `spec.md`
     /// order. `specrun slice validate` enforces id-set parity in both
     /// directions.
-    pub requirements: Vec<FusionRequirement>,
+    pub requirements: Vec<ReconciliationRequirement>,
 }
 
-/// One row under [`FusionIndex::requirements`].
+/// One row under [`ReconciliationIndex::requirements`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct FusionRequirement {
+pub struct ReconciliationRequirement {
     /// Requirement id matching a `REQ-NNN` heading in `spec.md`.
     pub id: String,
     /// Mirrors the `Status:` line on the matching `spec.md` block.
@@ -63,18 +63,18 @@ pub struct FusionRequirement {
     /// what was dropped.
     pub contributing_claims: Vec<ContributingClaim>,
     /// How synthesis arrived at the requirement's final value. See
-    /// [`FusionResolution`] for the closed variant set and meanings.
-    pub resolution: FusionResolution,
+    /// [`ReconciliationResolution`] for the closed variant set and meanings.
+    pub resolution: ReconciliationResolution,
     /// Optional trace describing how a non-trivial resolution
     /// selected the winning claim. Present only when `resolution` is
-    /// [`FusionResolution::AuthorityResolved`] or
-    /// [`FusionResolution::PerSliceOverride`].
+    /// [`ReconciliationResolution::AuthorityResolved`] or
+    /// [`ReconciliationResolution::PerSliceOverride`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution_trace: Option<ResolutionTrace>,
 }
 
 /// One contributing-claim entry under
-/// [`FusionRequirement::contributing_claims`].
+/// [`ReconciliationRequirement::contributing_claims`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ContributingClaim {
@@ -110,7 +110,7 @@ pub struct ContributingClaim {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-pub enum FusionResolution {
+pub enum ReconciliationResolution {
     /// One contributing claim only.
     SingleSource,
     /// Multiple contributors, identical value.
@@ -128,7 +128,7 @@ pub enum FusionResolution {
     TiedConflict,
 }
 
-/// Optional resolution trace under [`FusionRequirement::resolution_trace`].
+/// Optional resolution trace under [`ReconciliationRequirement::resolution_trace`].
 ///
 /// `step` is the name of the resolution step that broke the tie
 /// (e.g. `per-slice-authority-override`,
@@ -152,12 +152,12 @@ pub struct ResolutionTrace {
     pub winner: Option<String>,
 }
 
-impl FusionIndex {
-    /// Validate `self` against the embedded `schemas/slice/fusion.schema.json`.
+impl ReconciliationIndex {
+    /// Validate `self` against the embedded `schemas/slice/reconciliation.schema.json`.
     ///
     /// Returns `Ok(())` on a clean validation; otherwise an
     /// [`Error::Validation`] whose single [`ValidationSummary`]
-    /// carries the rule id `"fusion-schema"`.
+    /// carries the rule id `"reconciliation-schema"`.
     ///
     /// # Errors
     ///
@@ -167,17 +167,17 @@ impl FusionIndex {
     pub fn validate(&self) -> Result<(), Error> {
         validate_serialisable(
             self,
-            FUSION_JSON_SCHEMA,
-            "fusion-schema",
-            "fusion.yaml conforms to schemas/slice/fusion.schema.json",
-            "fusion-schema-serialise",
-            "fusion.yaml",
+            RECONCILIATION_JSON_SCHEMA,
+            "reconciliation-schema",
+            "reconciliation.yaml conforms to schemas/slice/reconciliation.schema.json",
+            "reconciliation-schema-serialise",
+            "reconciliation.yaml",
         )
     }
 
-    /// Load and schema-validate a `fusion.yaml` at `path`.
+    /// Load and schema-validate a `reconciliation.yaml` at `path`.
     ///
-    /// Returns the parsed [`FusionIndex`] on success. Schema
+    /// Returns the parsed [`ReconciliationIndex`] on success. Schema
     /// validation runs *after* the YAML parse so unknown-field and
     /// shape problems surface as schema findings rather than serde
     /// deserialise errors when the schema can produce a clearer
@@ -189,7 +189,7 @@ impl FusionIndex {
     /// - [`Error::Filesystem`] when `path` cannot be read.
     /// - [`Error::YamlDe`] when the file is not valid YAML.
     /// - [`Error::Validation`] when the file fails
-    ///   `schemas/slice/fusion.schema.json`.
+    ///   `schemas/slice/reconciliation.schema.json`.
     pub fn load(path: &Path) -> Result<Self> {
         let raw = std::fs::read_to_string(path).map_err(|source| Error::Filesystem {
             op: "read",
@@ -205,10 +205,10 @@ impl FusionIndex {
     /// and the per-source evidence claim ids, returning every
     /// drift finding sorted for byte-stable error output.
     ///
-    /// Drift kinds (`fusion.yaml` audit index §Acceptance scenario #26-4):
+    /// Drift kinds (`reconciliation.yaml` audit index §Acceptance scenario #26-4):
     ///
     /// 1. **Requirement-id drift** — `spec.md` `REQ-*` set ≠
-    ///    `fusion.yaml.requirements[].id` set, in either direction.
+    ///    `reconciliation.yaml.requirements[].id` set, in either direction.
     /// 2. **Contributing-claim drift** — any
     ///    `contributing-claims[].(source, claim-id)` pair that does
     ///    not resolve to a real claim in the corresponding
@@ -221,21 +221,21 @@ impl FusionIndex {
     #[must_use]
     pub fn detect_drift(
         &self, spec_req_ids: &BTreeSet<String>, evidence: &EvidenceClaimIds,
-    ) -> Vec<FusionDrift> {
-        let mut out: Vec<FusionDrift> = Vec::new();
+    ) -> Vec<ReconciliationDrift> {
+        let mut out: Vec<ReconciliationDrift> = Vec::new();
 
-        let fusion_req_ids: BTreeSet<&str> =
+        let reconciliation_req_ids: BTreeSet<&str> =
             self.requirements.iter().map(|r| r.id.as_str()).collect();
         for spec_id in spec_req_ids {
-            if !fusion_req_ids.contains(spec_id.as_str()) {
-                out.push(FusionDrift::MissingFusionRequirement {
+            if !reconciliation_req_ids.contains(spec_id.as_str()) {
+                out.push(ReconciliationDrift::MissingReconciliationRequirement {
                     req_id: spec_id.clone(),
                 });
             }
         }
         for req in &self.requirements {
             if !spec_req_ids.contains(&req.id) {
-                out.push(FusionDrift::ExtraFusionRequirement {
+                out.push(ReconciliationDrift::ExtraReconciliationRequirement {
                     req_id: req.id.clone(),
                 });
             }
@@ -247,7 +247,7 @@ impl FusionIndex {
                     .get(claim.source.as_str())
                     .is_some_and(|ids| ids.contains(claim.claim_id.as_str()));
                 if !exists {
-                    out.push(FusionDrift::ContributingClaimNotFound {
+                    out.push(ReconciliationDrift::ContributingClaimNotFound {
                         req_id: req.id.clone(),
                         source: claim.source.clone(),
                         claim_id: claim.claim_id.clone(),
@@ -257,38 +257,38 @@ impl FusionIndex {
             }
         }
 
-        out.sort_by_key(FusionDrift::sort_key);
+        out.sort_by_key(ReconciliationDrift::sort_key);
         out
     }
 }
 
-/// One drift finding produced by [`FusionIndex::detect_drift`].
+/// One drift finding produced by [`ReconciliationIndex::detect_drift`].
 ///
-/// Each variant maps to one `slice-fusion-drift`
-/// [`ValidationSummary`] line via [`FusionDrift::into_summary`] so
+/// Each variant maps to one `slice-reconciliation-drift`
+/// [`ValidationSummary`] line via [`ReconciliationDrift::into_summary`] so
 /// the wire envelope shape stays compatible with the existing
 /// `slice validate` payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FusionDrift {
+pub enum ReconciliationDrift {
     /// A `REQ-*` heading exists in `spec.md` with no matching
-    /// `requirements[].id` row in `fusion.yaml`. Operator must
+    /// `requirements[].id` row in `reconciliation.yaml`. Operator must
     /// re-run `/spec:refine` to regenerate the index.
-    MissingFusionRequirement {
-        /// `REQ-NNN` id that is missing from `fusion.yaml`.
+    MissingReconciliationRequirement {
+        /// `REQ-NNN` id that is missing from `reconciliation.yaml`.
         req_id: String,
     },
-    /// A `requirements[].id` row exists in `fusion.yaml` with no
+    /// A `requirements[].id` row exists in `reconciliation.yaml` with no
     /// matching `REQ-*` heading in `spec.md` — typically a stale
-    /// fusion entry after the operator hand-deleted a requirement
+    /// reconciliation entry after the operator hand-deleted a requirement
     /// from `spec.md`.
-    ExtraFusionRequirement {
+    ExtraReconciliationRequirement {
         /// `REQ-NNN` id that has no matching `spec.md` heading.
         req_id: String,
     },
     /// A `contributing-claims[].(source, claim-id)` pair does not
     /// resolve to a real claim in
     /// `.specify/slices/<slice>/evidence/<source>.yaml`. Either the
-    /// evidence file was hand-edited or the fusion entry references
+    /// evidence file was hand-edited or the reconciliation entry references
     /// a claim from a stale extract.
     ContributingClaimNotFound {
         /// Owning requirement id (the `requirements[].id` the
@@ -304,13 +304,13 @@ pub enum FusionDrift {
     },
 }
 
-impl FusionDrift {
+impl ReconciliationDrift {
     fn sort_key(&self) -> (String, u8, String, String) {
         match self {
-            Self::MissingFusionRequirement { req_id } => {
+            Self::MissingReconciliationRequirement { req_id } => {
                 (req_id.clone(), 0, String::new(), String::new())
             }
-            Self::ExtraFusionRequirement { req_id } => {
+            Self::ExtraReconciliationRequirement { req_id } => {
                 (req_id.clone(), 1, String::new(), String::new())
             }
             Self::ContributingClaimNotFound {
@@ -322,20 +322,20 @@ impl FusionDrift {
         }
     }
 
-    /// Lift a drift finding into the `slice-fusion-drift`
+    /// Lift a drift finding into the `slice-reconciliation-drift`
     /// [`ValidationSummary`] line the CLI emits under the existing
     /// `slice validate` envelope.
     #[must_use]
     pub fn into_summary(self) -> ValidationSummary {
         let detail = match self {
-            Self::MissingFusionRequirement { req_id } => {
+            Self::MissingReconciliationRequirement { req_id } => {
                 format!(
-                    "{req_id} appears in spec.md but is missing from fusion.yaml; re-run `/spec:refine` to regenerate the reconciliation index"
+                    "{req_id} appears in spec.md but is missing from reconciliation.yaml; re-run `/spec:refine` to regenerate the reconciliation index"
                 )
             }
-            Self::ExtraFusionRequirement { req_id } => {
+            Self::ExtraReconciliationRequirement { req_id } => {
                 format!(
-                    "{req_id} appears in fusion.yaml but no matching `REQ-*` heading exists in spec.md; re-run `/spec:refine` to regenerate the reconciliation index"
+                    "{req_id} appears in reconciliation.yaml but no matching `REQ-*` heading exists in spec.md; re-run `/spec:refine` to regenerate the reconciliation index"
                 )
             }
             Self::ContributingClaimNotFound {
@@ -352,8 +352,8 @@ impl FusionDrift {
         };
         ValidationSummary {
             status: ValidationStatus::Fail,
-            rule_id: "slice-fusion-drift".into(),
-            rule: "fusion.yaml stays in sync with spec.md REQ ids and per-source evidence claims"
+            rule_id: "slice-reconciliation-drift".into(),
+            rule: "reconciliation.yaml stays in sync with spec.md REQ ids and per-source evidence claims"
                 .into(),
             detail: Some(detail),
         }
@@ -362,7 +362,7 @@ impl FusionDrift {
 
 /// Map of source key → set of `claim-id` strings found in that
 /// source's evidence file. Built by [`collect_evidence_claim_ids`]
-/// and consumed by [`FusionIndex::detect_drift`].
+/// and consumed by [`ReconciliationIndex::detect_drift`].
 pub type EvidenceClaimIds = BTreeMap<String, BTreeSet<String>>;
 
 /// Build the `(source-key → claim-id set)` lookup the drift gate
@@ -428,14 +428,14 @@ mod tests {
     use crate::evidence::ClaimKind;
     use crate::journal::test_timestamp;
 
-    fn sample() -> FusionIndex {
-        FusionIndex {
+    fn sample() -> ReconciliationIndex {
+        ReconciliationIndex {
             version: 1,
             slice: "identity-user-registration".to_string(),
             generated_at: test_timestamp("2026-05-22T13:15:00Z"),
             generator: "specify@2.1.0".to_string(),
             requirements: vec![
-                FusionRequirement {
+                ReconciliationRequirement {
                     id: "REQ-001".to_string(),
                     status: RequirementStatus::Agreed,
                     sources: vec!["identity-design-notes".to_string(), "runtime".to_string()],
@@ -457,10 +457,10 @@ mod tests {
                             winner: None,
                         },
                     ],
-                    resolution: FusionResolution::SingleValueAgreement,
+                    resolution: ReconciliationResolution::SingleValueAgreement,
                     resolution_trace: None,
                 },
-                FusionRequirement {
+                ReconciliationRequirement {
                     id: "REQ-007".to_string(),
                     status: RequirementStatus::Divergence,
                     sources: vec![
@@ -485,7 +485,7 @@ mod tests {
                             winner: Some(false),
                         },
                     ],
-                    resolution: FusionResolution::PerSliceOverride,
+                    resolution: ReconciliationResolution::PerSliceOverride,
                     resolution_trace: Some(ResolutionTrace {
                         step: "per-slice-authority-override".to_string(),
                         r#override: Some(serde_json::json!({
@@ -505,24 +505,26 @@ mod tests {
         assert!(yaml.contains("generated-at: 2026-05-22T13:15:00Z"));
         assert!(yaml.contains("contributing-claims:"));
         assert!(yaml.contains("resolution: per-slice-override"));
-        let reparsed: FusionIndex = serde_saphyr::from_str(&yaml).expect("reparse");
+        let reparsed: ReconciliationIndex = serde_saphyr::from_str(&yaml).expect("reparse");
         assert_eq!(original, reparsed);
     }
 
     #[test]
     fn validates_against_embedded_schema() {
-        sample().validate().expect("sample fusion index must validate against the embedded schema");
+        sample()
+            .validate()
+            .expect("sample reconciliation index must validate against the embedded schema");
     }
 
     #[test]
     fn resolution_round_trips_kebab_case() {
         for (variant, wire) in [
-            (FusionResolution::SingleSource, "single-source"),
-            (FusionResolution::SingleValueAgreement, "single-value-agreement"),
-            (FusionResolution::AuthorityResolved, "authority-resolved"),
-            (FusionResolution::PerSliceOverride, "per-slice-override"),
-            (FusionResolution::UnknownNoEvidence, "unknown-no-evidence"),
-            (FusionResolution::TiedConflict, "tied-conflict"),
+            (ReconciliationResolution::SingleSource, "single-source"),
+            (ReconciliationResolution::SingleValueAgreement, "single-value-agreement"),
+            (ReconciliationResolution::AuthorityResolved, "authority-resolved"),
+            (ReconciliationResolution::PerSliceOverride, "per-slice-override"),
+            (ReconciliationResolution::UnknownNoEvidence, "unknown-no-evidence"),
+            (ReconciliationResolution::TiedConflict, "tied-conflict"),
         ] {
             assert_eq!(serde_json::to_string(&variant).expect("serialise"), format!("\"{wire}\""));
         }
@@ -537,7 +539,7 @@ generator: specify@2.1.0
 requirements: []
 rogue: true
 ";
-        let err = serde_saphyr::from_str::<FusionIndex>(yaml)
+        let err = serde_saphyr::from_str::<ReconciliationIndex>(yaml)
             .expect_err("deny_unknown_fields must reject rogue");
         assert!(err.to_string().contains("rogue"), "expected error to name rogue, got: {err}");
     }
@@ -545,7 +547,7 @@ rogue: true
     #[test]
     fn load_reports_schema_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("fusion.yaml");
+        let path = dir.path().join("reconciliation.yaml");
         // `version: 0` parses cleanly (u32) but trips the schema's
         // `minimum: 1` so the failure surfaces as Validation rather
         // than YAML deserialise.
@@ -558,14 +560,14 @@ rogue: true
              requirements: []\n",
         )
         .expect("write");
-        let err = FusionIndex::load(&path).expect_err("schema must reject");
+        let err = ReconciliationIndex::load(&path).expect_err("schema must reject");
         assert!(matches!(err, Error::Validation { .. }), "expected Validation, got: {err}");
     }
 
     #[test]
     fn load_reports_yaml_parse_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("fusion.yaml");
+        let path = dir.path().join("reconciliation.yaml");
         // Missing required `generator` field — serde catches this
         // before the schema validator runs; the failure routes
         // through `Error::YamlDe`, not `Error::Validation`, but is
@@ -578,7 +580,7 @@ rogue: true
              requirements: []\n",
         )
         .expect("write");
-        let err = FusionIndex::load(&path).expect_err("missing field must error");
+        let err = ReconciliationIndex::load(&path).expect_err("missing field must error");
         assert!(matches!(err, Error::YamlDe(_)), "expected YamlDe, got: {err}");
     }
 

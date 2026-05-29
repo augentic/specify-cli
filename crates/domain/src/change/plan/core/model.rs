@@ -169,8 +169,8 @@ pub struct Entry {
     /// Free-form human-readable description.
     #[serde(default)]
     pub description: Option<String>,
-    /// workflow §Plan-time fusion — closed enum capturing slice-level
-    /// fusion outcome. Absent on disk (the default) is semantic `none`.
+    /// workflow §Plan-time reconciliation — closed enum capturing slice-level
+    /// reconciliation outcome. Absent on disk (the default) is semantic `none`.
     /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
     /// materially-disagreeing lead summaries; `Accepted` /
     /// `Rejected` are written by the operator at Gate 1 via
@@ -188,7 +188,7 @@ pub struct Entry {
     pub authority_override: SliceAuthorityOverride,
 }
 
-/// workflow §Plan-time fusion — slice-level fusion-outcome enum.
+/// workflow §Plan-time reconciliation — slice-level reconciliation-outcome enum.
 ///
 /// Closed `none | likely | accepted | rejected` taxonomy. On disk
 /// inside `plan.yaml.slices[].divergence` the field uses
@@ -231,7 +231,7 @@ pub enum Divergence {
 /// kind, valued by source key.
 ///
 /// The map is scoped to one [`Entry`]; plan-wide and project-wide
-/// overrides are out of scope per authority and fusion contract. Keys reuse the closed
+/// overrides are out of scope per authority and reconciliation contract. Keys reuse the closed
 /// [`ClaimKind`] enum; values are bare source-key strings that MUST
 /// be present in the owning slice's [`Entry::sources`] list —
 /// validation refuses orphan keys with

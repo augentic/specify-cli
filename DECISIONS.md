@@ -25,7 +25,7 @@ run` WASI passthrough.
 |------|--------------------------|-----------------------------------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, fusion, and discovery kebab discriminants `slice-authority-override-orphan-source-key`, `slice-fusion-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
+| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, reconciliation, and discovery kebab discriminants `slice-authority-override-orphan-source-key`, `slice-reconciliation-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
 The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
@@ -364,7 +364,7 @@ state.
   whenever the key and the lead id differ.
 
 Collapsing the two variants into one struct means every consumer
-(`validate`, `doctor`, `fusion`, CLI handlers) goes through the same
+(`validate`, `doctor`, `reconciliation`, CLI handlers) goes through the same
 `key()` / `lead()` accessors instead of `match`-ing the
 discriminator — the shorthand stays a pure parser concern. Construct in
 tests via `SliceSourceBinding::bare(key)` or
@@ -383,7 +383,7 @@ from the wire — `none` is the absent default, and `likely` is reserved
 for the `propose` sub-step of `/spec:plan`, which writes the value via
 a direct YAML edit (per the W3.2 hand-off). Operators flipping the
 field after Gate 1 review use `accepted | rejected` exclusively.
-Refer to workflow §"Plan-time fusion".
+Refer to workflow §"Plan-time reconciliation".
 
 ## Evidence per-kind authority overrides
 
@@ -407,17 +407,17 @@ keys are rejected by `specrun slice validate` with the
 map is scoped to one slice — plan-wide and project-wide overrides
 are out of scope.
 
-## `fusion.yaml` audit index
+## `reconciliation.yaml` audit index
 
-`schemas/slice/fusion.schema.json`
+`schemas/slice/reconciliation.schema.json`
 fixes the closed top-level shape (`version`, `slice`,
 `generated-at`, `generator`, `requirements[]`). `/spec:refine`
 writes the file atomically; downstream verbs read `spec.md` as the
-authoritative artifact and treat `fusion.yaml` as an inspection
+authoritative artifact and treat `reconciliation.yaml` as an inspection
 surface. `specrun slice validate` enforces id-set parity between
-`spec.md` `REQ-*` ids and `fusion.yaml.requirements[].id` and
+`spec.md` `REQ-*` ids and `reconciliation.yaml.requirements[].id` and
 catches contributing-claim → Evidence-claim drift, both via the
-`slice-fusion-drift` discriminant.
+`slice-reconciliation-drift` discriminant.
 
 ## Extraction cache fingerprint inputs
 
@@ -450,7 +450,7 @@ variants are `snake_case` and bridge to the wire via
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
-| `slice.fusion.written` | `/spec:refine`'s atomic `fusion.yaml` writer (Change 2.6). `fusion.yaml` audit semantics. |
+| `slice.reconciliation.written` | `/spec:refine`'s atomic `reconciliation.yaml` writer (Change 2.6). `reconciliation.yaml` audit semantics. |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
 | `lint-completed` | `specrun lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the RFC-33a §"Journal event" (D8) payload verbatim. |
@@ -706,7 +706,7 @@ file work exactly as before. Slugs are kebab-case
 must resolve to a confirmed catalog entry; absent or rejected entries
 are findings. `notes.candidate_component` annotations are
 informational-only and do not trigger drift. Validation gates at
-position 4 in `validate_pre_adapter_gates` (after fusion drift,
+position 4 in `validate_pre_adapter_gates` (after reconciliation drift,
 authority override, and discovery alias).
 
 ## Vectis catalog consumer
@@ -733,7 +733,7 @@ interpreter, diagnostic formatters, and `specrun lint` runner) lives
 in `specify-lints`, a sibling of `specify-domain` rather than a module
 inside it. `specify-schema` is the shared leaf: it owns every embedded
 JSON Schema constant (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
-`FUSION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
+`RECONCILIATION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
 `RESOLVED_RULES_JSON_SCHEMA`, `LINT_FINDING_JSON_SCHEMA`,
 `LINT_RESULT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
 `jsonschema` plumbing (`compile_schema`, `validate_value`,

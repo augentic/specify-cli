@@ -197,10 +197,10 @@ pub enum EventKind {
         /// `cache: opt-out`).
         reason: CacheMissReason,
     },
-    /// `fusion.yaml` audit index — `/spec:refine` wrote `fusion.yaml` for a slice.
+    /// `reconciliation.yaml` audit index — `/spec:refine` wrote `reconciliation.yaml` for a slice.
     /// Agent-driven from `/spec:refine` step 5.
-    #[serde(rename = "slice.fusion.written", rename_all = "kebab-case")]
-    SliceFusionWritten {
+    #[serde(rename = "slice.reconciliation.written", rename_all = "kebab-case")]
+    SliceReconciliationWritten {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// CLI version that authored the file (e.g. `specify@2.1.0`).
@@ -324,7 +324,7 @@ pub struct LintCounts {
 
 /// Closed `reason` enum on [`EventKind::SliceExtractCacheMiss`].
 ///
-/// Each value names one of the five fingerprint inputs from authority and fusion contract
+/// Each value names one of the five fingerprint inputs from authority and reconciliation contract
 /// lint exit mapping (plus `no-prior-entry` for first runs and `adapter-opt-out`
 /// for `cache: opt-out` adapters). Operators reading `index.jsonl`
 /// see exactly which input drifted.
@@ -566,13 +566,13 @@ mod tests {
                 ],
             ),
             (
-                EventKind::SliceFusionWritten {
+                EventKind::SliceReconciliationWritten {
                     slice_name: "identity-user-registration".to_string(),
                     generator: "specify@2.1.0".to_string(),
                     requirement_count: 7,
                 },
                 &[
-                    r#""event":"slice.fusion.written""#,
+                    r#""event":"slice.reconciliation.written""#,
                     r#""generator":"specify@2.1.0""#,
                     r#""requirement-count":7"#,
                 ],

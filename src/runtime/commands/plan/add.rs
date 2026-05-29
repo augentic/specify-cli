@@ -41,7 +41,7 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
     // canonical lead `id` before persisting; the on-disk
     // `plan.yaml.slices[].sources[].lead` always carries the
     // canonical id. Absence of `discovery.md` short-circuits to the
-    // legacy (verbatim) path so existing tests and pre-authority and fusion contract
+    // legacy (verbatim) path so existing tests and pre-authority and reconciliation contract
     // projects continue to work.
     let discovery = load_discovery(ctx.layout())?;
     let sources = bindings_from_args(sources, name, discovery.as_ref())?;

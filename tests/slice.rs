@@ -557,14 +557,14 @@ fn validate_rejects_tag_status_mismatch() {
 }
 
 // ---------------------------------------------------------------------------
-// `fusion.yaml` audit index — `slice validate` fusion drift gate
+// `reconciliation.yaml` audit index — `slice validate` reconciliation drift gate
 // ---------------------------------------------------------------------------
 
-/// Minimal fusion.yaml for a slice named `my-slice` with one
+/// Minimal reconciliation.yaml for a slice named `my-slice` with one
 /// requirement `REQ-001` whose single contributing claim cites
 /// `legacy-monolith :: REQ-001` (the same id we'll seed the evidence
 /// file with by default).
-const CLEAN_FUSION_YAML: &str = "version: 1
+const CLEAN_RECONCILIATION_YAML: &str = "version: 1
 slice: my-slice
 generated-at: 2026-05-22T13:15:00Z
 generator: specify@2.1.0
@@ -601,17 +601,18 @@ claims:
     path: src/users/reset.ts#L42
 ";
 
-/// Stage a fully-wired slice with fusion.yaml + spec.md + evidence
+/// Stage a fully-wired slice with reconciliation.yaml + spec.md + evidence
 /// so the drift gate has every input it needs and the baseline test
 /// fixture validates clean. Caller may then mutate any file before
 /// re-running `slice validate` to exercise drift.
-fn stage_slice_with_fusion() -> Project {
+fn stage_slice_with_reconciliation() -> Project {
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
     // stage_slice_with_spec writes specs/login/spec.md by default;
-    // the fusion gate gathers REQ ids across every spec.md, so we
+    // the reconciliation gate gathers REQ ids across every spec.md, so we
     // can leave that path alone.
     let slice_dir = project.slices_dir().join("my-slice");
-    fs::write(slice_dir.join("fusion.yaml"), CLEAN_FUSION_YAML).expect("write fusion.yaml");
+    fs::write(slice_dir.join("reconciliation.yaml"), CLEAN_RECONCILIATION_YAML)
+        .expect("write reconciliation.yaml");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
     fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
@@ -620,8 +621,8 @@ fn stage_slice_with_fusion() -> Project {
 }
 
 #[test]
-fn validate_passes_on_clean_fusion_inputs() {
-    let project = stage_slice_with_fusion();
+fn validate_passes_on_clean_reconciliation_inputs() {
+    let project = stage_slice_with_reconciliation();
     let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
@@ -632,14 +633,14 @@ fn validate_passes_on_clean_fusion_inputs() {
         // Adapter-level brief validation may still surface findings on
         // the synthetic slice — those would route through different
         // rule ids. Assert that whatever surfaces, *no* row carries
-        // `slice-fusion-drift` against clean inputs.
+        // `slice-reconciliation-drift` against clean inputs.
         if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
             && let Some(results) = value["results"].as_array()
         {
             for r in results {
                 let rule_id = r["rule-id"].as_str().unwrap_or("");
                 assert_ne!(
-                    rule_id, "slice-fusion-drift",
+                    rule_id, "slice-reconciliation-drift",
                     "no drift row may appear on clean inputs; got results: {results:#?}"
                 );
             }
@@ -649,9 +650,9 @@ fn validate_passes_on_clean_fusion_inputs() {
 
 #[test]
 fn validate_req_id_drift() {
-    let project = stage_slice_with_fusion();
+    let project = stage_slice_with_reconciliation();
     // Append a second REQ block to spec.md so spec.md has REQ-001 +
-    // REQ-002 while fusion.yaml only knows REQ-001.
+    // REQ-002 while reconciliation.yaml only knows REQ-001.
     let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
     let extended = format!(
         "{CLEAN_SPEC_MD}\n\
@@ -674,20 +675,20 @@ fn validate_req_id_drift() {
     let results = value["results"].as_array().expect("results array");
     let detail = results
         .iter()
-        .find(|r| r["rule-id"] == "slice-fusion-drift")
+        .find(|r| r["rule-id"] == "slice-reconciliation-drift")
         .and_then(|r| r["detail"].as_str())
-        .expect("slice-fusion-drift row must be present");
+        .expect("slice-reconciliation-drift row must be present");
     assert!(detail.contains("REQ-002"), "drift detail should name REQ-002, got: {detail}");
     assert!(
-        detail.contains("missing from fusion.yaml"),
+        detail.contains("missing from reconciliation.yaml"),
         "drift detail should mention the drift direction, got: {detail}"
     );
 }
 
 #[test]
 fn validate_claim_drift_on_rename() {
-    let project = stage_slice_with_fusion();
-    // Rename the evidence claim id; fusion.yaml still cites the old one.
+    let project = stage_slice_with_reconciliation();
+    // Rename the evidence claim id; reconciliation.yaml still cites the old one.
     let evidence_path = project.slices_dir().join("my-slice/evidence/legacy-monolith.yaml");
     let modified = CLEAN_EVIDENCE_YAML.replace("claim-id: REQ-001", "claim-id: REQ-999-renamed");
     fs::write(&evidence_path, modified).expect("rewrite evidence");
@@ -703,9 +704,9 @@ fn validate_claim_drift_on_rename() {
     let results = value["results"].as_array().expect("results array");
     let detail = results
         .iter()
-        .find(|r| r["rule-id"] == "slice-fusion-drift")
+        .find(|r| r["rule-id"] == "slice-reconciliation-drift")
         .and_then(|r| r["detail"].as_str())
-        .expect("slice-fusion-drift row must be present");
+        .expect("slice-reconciliation-drift row must be present");
     assert!(
         detail.contains("legacy-monolith") && detail.contains("REQ-001"),
         "drift detail should name the dangling (source, claim-id) pair, got: {detail}"
@@ -713,8 +714,8 @@ fn validate_claim_drift_on_rename() {
 }
 
 #[test]
-fn validate_skips_drift_gate_without_fusion() {
-    // Stage a slice with spec.md but no fusion.yaml — the drift gate
+fn validate_skips_drift_gate_without_reconciliation() {
+    // Stage a slice with spec.md but no reconciliation.yaml — the drift gate
     // must be a silent no-op so older slices and pre-refine slices
     // still validate. (Any other adapter-level rules can still
     // surface, but no drift row may appear.)
@@ -730,8 +731,8 @@ fn validate_skips_drift_gate_without_fusion() {
         for r in results {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert_ne!(
-                rule_id, "slice-fusion-drift",
-                "drift gate must skip when fusion.yaml is absent"
+                rule_id, "slice-reconciliation-drift",
+                "drift gate must skip when reconciliation.yaml is absent"
             );
         }
     }
@@ -739,7 +740,7 @@ fn validate_skips_drift_gate_without_fusion() {
 
 #[test]
 fn validate_no_drift_pre_synthesis() {
-    // When fusion.yaml is present but spec.md is still pre-synthesis
+    // When reconciliation.yaml is present but spec.md is still pre-synthesis
     // (no Sources/Status lines), the drift gate must still gather
     // REQ ids from the bare `ID:` lines so a partially-refined slice
     // does not silently drift. This protects against the case where
@@ -753,7 +754,8 @@ body without metadata lines yet
 ";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
     let slice_dir = project.slices_dir().join("my-slice");
-    fs::write(slice_dir.join("fusion.yaml"), CLEAN_FUSION_YAML).expect("write fusion");
+    fs::write(slice_dir.join("reconciliation.yaml"), CLEAN_RECONCILIATION_YAML)
+        .expect("write reconciliation");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir");
     fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
@@ -769,7 +771,7 @@ body without metadata lines yet
         for r in results {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert_ne!(
-                rule_id, "slice-fusion-drift",
+                rule_id, "slice-reconciliation-drift",
                 "drift gate must accept matching REQ ids even when Sources/Status metadata is absent"
             );
         }

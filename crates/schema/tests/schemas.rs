@@ -7,9 +7,10 @@ use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_error::ValidationStatus;
 use specify_schema::{
-    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FUSION_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
-    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
-    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
+    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
+    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
+    validate_value,
 };
 
 #[test]
@@ -23,8 +24,8 @@ fn evidence_schema_compiles() {
 }
 
 #[test]
-fn fusion_schema_compiles() {
-    compile_schema(FUSION_JSON_SCHEMA).expect("fusion schema compiles");
+fn reconciliation_schema_compiles() {
+    compile_schema(RECONCILIATION_JSON_SCHEMA).expect("reconciliation schema compiles");
 }
 
 #[test]
