@@ -180,7 +180,7 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
 /// Locate the operator-curated component catalog for a Vectis project.
 ///
 /// The catalog lives at `.specify/design-system/components.yaml`
-/// relative to the project root (RFC-31 D5). Returns `Some(path)`
+/// relative to the project root (component catalog contract). Returns `Some(path)`
 /// when the file exists; `None` otherwise (opt-in — absent catalogs
 /// are silently skipped).
 #[must_use]

@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_markers_warn_and_do_not_detect_that_marker() {
+    fn corrupt_markers_warn_not_detect() {
         let tmp = tempdir().expect("tempdir");
         fs::write(tmp.path().join("Cargo.toml"), "package = [").expect("cargo");
         fs::write(tmp.path().join("package.json"), "{").expect("package");

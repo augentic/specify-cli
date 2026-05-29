@@ -20,7 +20,7 @@ fn parse_json(stdout: &[u8]) -> Value {
 }
 
 #[test]
-fn assets_clean_run_exits_zero_with_v2_envelope() {
+fn assets_clean_run_exits_zero() {
     let tmp = tempdir().unwrap();
     let assets_path = tmp.path().join("assets.yaml");
     std::fs::write(&assets_path, "version: 1\nassets: {}\n").expect("write assets.yaml");
@@ -54,7 +54,7 @@ fn findings_exit_one_with_success_envelope() {
 }
 
 #[test]
-fn missing_input_exits_two_with_error_envelope() {
+fn missing_input_exits_two() {
     let tmp = tempdir().unwrap();
     let missing = tmp.path().join("missing-tokens.yaml");
 
@@ -73,7 +73,7 @@ fn invalid_invocation_exits_two() {
 }
 
 #[test]
-fn omitted_path_uses_project_dir_default_root() {
+fn omitted_path_uses_default_root() {
     let tmp = tempdir().unwrap();
     let slice_dir = tmp.path().join(".specify/slices/active");
     std::fs::create_dir_all(&slice_dir).expect("mkdir slice");

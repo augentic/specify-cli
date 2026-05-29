@@ -15,35 +15,50 @@ const EMBEDDED_DEFAULTS: &str = include_str!("../../embedded/versions.toml");
 
 /// Top-level pinned version document.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[expect(
-    missing_docs,
-    reason = "Field names map 1:1 to the version-file TOML keys; docs would just restate the key."
-)]
 pub struct Versions {
+    /// Crux + transitive Rust pins.
     pub crux: Crux,
+    /// Android toolchain pins.
     pub android: Android,
+    /// iOS pins.
     #[serde(default)]
     pub ios: Ios,
+    /// Tooling pins.
     pub tooling: Tooling,
 }
 
 /// Crux + transitive Rust pins.
+///
+/// The Rust field names drop the `crux_` prefix that the TOML keys carry;
+/// `#[serde(rename = ...)]` preserves version-file parity.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "Each field carries the `crux_` prefix because the TOML keys do; renaming would break version-file parity."
-)]
 pub struct Crux {
-    pub crux_core: String,
-    pub crux_http: String,
-    pub crux_kv: String,
-    pub crux_time: String,
-    pub crux_platform: String,
+    /// `crux_core` version.
+    #[serde(rename = "crux_core")]
+    pub core: String,
+    /// `crux_http` version.
+    #[serde(rename = "crux_http")]
+    pub http: String,
+    /// `crux_kv` version.
+    #[serde(rename = "crux_kv")]
+    pub kv: String,
+    /// `crux_time` version.
+    #[serde(rename = "crux_time")]
+    pub time: String,
+    /// `crux_platform` version.
+    #[serde(rename = "crux_platform")]
+    pub platform: String,
+    /// `facet` version.
     pub facet: String,
+    /// `facet_generate` version.
     pub facet_generate: String,
+    /// `serde` version.
     pub serde: String,
+    /// `serde_json` version.
     pub serde_json: String,
+    /// `uniffi` version.
     pub uniffi: String,
+    /// `cargo-swift` version.
     pub cargo_swift: String,
 }
 

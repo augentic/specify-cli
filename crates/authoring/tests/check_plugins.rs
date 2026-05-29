@@ -60,7 +60,7 @@ fn write_plugin_surface(root: &Path, source: &str) {
 }
 
 #[test]
-fn broken_symlink_check_reports_unresolved_target() {
+fn broken_symlink_reports_unresolved() {
     let temp = tempfile::tempdir().expect("temp dir");
     write_framework_scaffold(temp.path());
     fs::create_dir_all(temp.path().join("plugins")).expect("plugins dir");
@@ -83,7 +83,7 @@ fn broken_symlink_check_reports_unresolved_target() {
 }
 
 #[test]
-fn marketplace_drift_check_reports_undeclared_plugin() {
+fn marketplace_drift_reports_undeclared() {
     let temp = tempfile::tempdir().expect("temp dir");
     write_framework_scaffold(temp.path());
     write_valid_marketplace(temp.path(), &[("declared", "declared")]);
@@ -103,7 +103,7 @@ fn marketplace_drift_check_reports_undeclared_plugin() {
 }
 
 #[test]
-fn marketplace_drift_check_reports_schema_violation() {
+fn marketplace_drift_reports_schema() {
     let temp = tempfile::tempdir().expect("temp dir");
     write_framework_scaffold(temp.path());
     let manifest_dir = temp.path().join(".cursor-plugin");

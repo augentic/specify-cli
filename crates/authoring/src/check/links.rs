@@ -8,13 +8,24 @@ use walkdir::WalkDir;
 
 use crate::context::Context;
 use crate::finding::{Check, Finding, Location};
-use crate::helpers::{strip_html_comments, walk_markdown_files, walk_skill_files};
+use crate::helpers::{walk_markdown_files, walk_skill_files};
 
-const RULE_UNRESOLVED: &str = "links.unresolved";
 const RULE_BROKEN_REFERENCE: &str = "links.broken-reference";
 const RULE_UNRESOLVED_DIRECTIVE: &str = "links.unresolved-directive";
 
-/// Markdown link resolution, skill reference checks, and skill directive validation.
+/// Skill reference checks and skill directive validation.
+///
+/// Broken markdown link detection (formerly `links.unresolved`) was
+/// retired in RFC-34 C10 — `CORE-002` ≅ `links.unresolved` now owns
+/// that surface via a `path-pattern` + `reference-resolves`
+/// deterministic hint pair (`adapters/shared/rules/core/CORE-002-links-unresolved.md`
+/// in the framework repo). The parity test
+/// `crates/authoring/tests/core_parity_links_unresolved.rs` proves
+/// the declarative interpreter flags the same unresolved-reference
+/// set as the deleted imperative row, with the rule-id mapping
+/// `links.unresolved` ↔ `CORE-002`. Skill reference and skill
+/// directive checks below stay imperative until later cards map
+/// them onto reserved-kind hints.
 pub struct LinksCheck;
 
 impl Check for LinksCheck {
@@ -30,65 +41,8 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
 
 /// Run all link predicates against a framework root (used by integration tests).
 pub fn run_on_root(root: &Path) -> Vec<Finding> {
-    let mut findings = check_markdown_links(root);
-    findings.extend(check_references(root));
+    let mut findings = check_references(root);
     findings.extend(check_directives(root));
-    findings
-}
-
-fn check_markdown_links(root: &Path) -> Vec<Finding> {
-    let skip = markdown_link_skip_patterns();
-    let link_re = link_pattern();
-    let fence_re = fenced_code_pattern();
-    let inline_re = inline_code_pattern();
-
-    let mut findings = Vec::new();
-    for path in walk_markdown_files(root, root).unwrap_or_default() {
-        let path_str = path_for_match(&path);
-        if path_matches_any(&path_str, skip)
-            || skip_rfc_markdown_path(&path_str)
-            || skip_test_fixtures(&path_str)
-        {
-            continue;
-        }
-
-        let rel_file = path_relative(root, &path);
-        let parent = path.parent().unwrap_or(root);
-        let content = match fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(_) => continue,
-        };
-
-        let stripped = {
-            let no_fence = fence_re.replace_all(&content, "");
-            let no_comments = strip_html_comments(&no_fence);
-            inline_re.replace_all(&no_comments, "").into_owned()
-        };
-
-        for cap in link_re.captures_iter(&stripped) {
-            let target = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-            if target.starts_with("http://")
-                || target.starts_with("https://")
-                || target.starts_with("mailto:")
-                || target.starts_with('#')
-            {
-                continue;
-            }
-            let path_part = target.split('#').next().unwrap_or("");
-            if path_part.is_empty() || path_part.starts_with("src/") {
-                continue;
-            }
-            let resolved = parent.join(path_part);
-            if !resolved.exists() {
-                findings.push(finding(
-                    RULE_UNRESOLVED,
-                    format!("Broken link in {rel_file}: {target}"),
-                    path.clone(),
-                ));
-            }
-        }
-    }
-
     findings
 }
 
@@ -211,33 +165,6 @@ fn build_skill_registry(root: &Path) -> HashMap<String, HashSet<String>> {
     registry
 }
 
-fn markdown_link_skip_patterns() -> &'static [Regex] {
-    static PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
-    PATTERNS.get_or_init(|| {
-        [
-            r"node_modules",
-            r"\.git",
-            r"temp",
-            r"specify-cli",
-            r"rfcs/done",
-            r"rfcs/future",
-            r"rfcs/next",
-        ]
-        .iter()
-        .map(|pat| Regex::new(pat).expect("valid skip pattern"))
-        .collect()
-    })
-}
-
-/// Skip archived/speculative RFC paths while keeping in-force `rfcs/rfc-25*` prose.
-fn skip_rfc_markdown_path(path: &str) -> bool {
-    let Some(idx) = path.find("rfcs/rfc-") else {
-        return false;
-    };
-    let after = &path[idx + "rfcs/rfc-".len()..];
-    !after.starts_with("25")
-}
-
 fn skip_test_fixtures(path: &str) -> bool {
     path.contains("tooling/tests/fixtures") || path.contains("crates/authoring/tests/fixtures")
 }
@@ -245,7 +172,7 @@ fn skip_test_fixtures(path: &str) -> bool {
 fn directive_skip_patterns() -> &'static [Regex] {
     static PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
     PATTERNS.get_or_init(|| {
-        ["node_modules", r"\.git", "temp", "rfcs"]
+        ["node_modules", r"\.git", "temp"]
             .iter()
             .map(|pat| Regex::new(pat).expect("valid skip pattern"))
             .collect()
@@ -264,11 +191,6 @@ fn path_relative(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .map(|rel| rel.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| path.display().to_string())
-}
-
-fn link_pattern() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\[[^\]]*\]\(([^)]+)\)").expect("valid link pattern"))
 }
 
 fn reference_link_pattern() -> &'static Regex {

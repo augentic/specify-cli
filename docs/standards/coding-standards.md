@@ -8,7 +8,7 @@ Workspace lints live in `Cargo.toml`. Defaults are aggressive — clippy `all`/`
 
 Visibility on internal items follows clippy's `redundant_pub_crate` (nursery) rather than rustc's `unreachable_pub`: prefer bare `pub` and let the parent module's privacy do the constraining. The two lints are mutually exclusive — enabling both would loop. `unreachable_pub` stays at its allow-by-default, and any `#[expect(unreachable_pub, …)]` carve-out is a rot signal, not a tool you reach for.
 
-When you must silence a lint, use `#[expect(<lint>, reason = "…")]` at the **smallest possible scope**. `#[expect]` is preferred over `#[allow]` everywhere except module-level waivers: a dead `#[expect]` is a build failure, so the suppression cannot rot. `#![allow(...)]` at the crate or module root is still the right tool when the lint legitimately applies to every item below. Doc idents such as `GitHub`, `OAuth`, `OpenTelemetry`, `WebAssembly`, and `YAML` live in `clippy.toml` `doc-valid-idents`.
+When you must silence a lint, use `#[expect(<lint>, reason = "…")]` at the **smallest possible scope**. `#[expect]` is preferred over `#[allow]` everywhere except module-level waivers: a dead `#[expect]` is a build failure, so the suppression cannot rot. `#![allow(...)]` at the crate or module root is still the right tool when the lint legitimately applies to every item below. Doc idents such as `GitHub`, `MiB`, `OAuth`, `OpenTelemetry`, `SemVer`, `WebAssembly`, and `YAML` live in `clippy.toml` `doc-valid-idents`.
 
 `taplo.toml` formats `Cargo.toml` files. Dependency arrays under `*-dependencies` and `dependencies` reorder alphabetically; preserve that on edit.
 
@@ -25,24 +25,24 @@ fn step(...) { ... }
 #[expect(clippy::cognitive_complexity, reason = "linear state machine")]
 fn step(...) { ... }
 
-// GOOD — repeated waiver hoisted to the module root
-// src/runtime/commands.rs
+// GOOD — module-root waiver that legitimately covers every item below
+// crates/specify-lints/src/rules.rs
 #![allow(
-    clippy::needless_pass_by_value,
-    reason = "Clap dispatch hands owned subcommand values to handlers in this module."
+    clippy::module_name_repetitions,
+    reason = "The public wire contract uses the names Rule and ResolvedRules; renaming to avoid the codex prefix would obscure the schema mapping."
 )]
 ```
 
 ## Comments
 
-Comments answer "why does this look like this *today*?" — non-obvious intent, trade-offs, or constraints the code itself can't convey. RFC numbers, migration trails, and "this used to be X" rationale belong in `rfcs/`, [DECISIONS.md](../../DECISIONS.md), or commit messages — not in code or doc comments. Doc comments on items that surface in `--help` (clap `#[derive]` fields) must be operator-facing one-liners; rationale moves below the derive block where it doesn't leak into help output.
+Comments answer "why does this look like this *today*?" — non-obvious intent, trade-offs, or constraints the code itself can't convey. Migration trails, old labels, and "this used to be X" rationale belong in [DECISIONS.md](../../DECISIONS.md) or commit messages — not in code or doc comments. Doc comments on items that surface in `--help` (clap `#[derive]` fields) must be operator-facing one-liners; rationale moves below the derive block where it doesn't leak into help output.
 
 ```rust
 // BAD
-//! Per RFC-13 chunk 2.9 ("Init wires components, not adapters"),
+//! Per the workspace split 2.9 ("Init wires components, not adapters"),
 //! `init` writes only the per-project skeleton — `project.yaml` plus
 //! the `.specify/` tree. The pre-Phase-3.7 filename was `initiative.md`;
-//! RFC-13 chunk 3.7 renamed it to `change.md` …
+//! Historical rename detail belongs in DECISIONS.md, not module docs.
 
 // GOOD
 //! Scaffolds `.specify/` plus `project.yaml`. Operator-facing artifacts
@@ -50,7 +50,7 @@ Comments answer "why does this look like this *today*?" — non-obvious intent, 
 //! owning verbs, not by `init`.
 ```
 
-Doc comments describe what this is today. Version-history tables, dated bumps, commit hashes, and migration notes belong in git log or [DECISIONS.md](../../DECISIONS.md) — not in `///` blocks. Keep `///` paragraphs on `pub` items under ~8 lines; longer prose belongs in `rfcs/` or `DECISIONS.md`.
+Doc comments describe what this is today. Version-history tables, dated bumps, commit hashes, and migration notes belong in git log or [DECISIONS.md](../../DECISIONS.md) — not in `///` blocks. Keep `///` paragraphs on `pub` items under ~8 lines; longer prose belongs in `DECISIONS.md`.
 
 `cargo doc` is part of `cargo make ci`, so doc comments must compile. Reference paths inside backticks (`` `Self::config_path` ``) are fine; bare links (`[Foo]`) need a corresponding intra-doc target or rustdoc fails the build.
 
@@ -99,7 +99,7 @@ match ctx.format {
 ctx.write(&SomeBody::from(&result), write_text)?;
 ```
 
-Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run` and the unified `commands::resolve_plugin` shared by `source resolve` / `target resolve` — receive a bare `Format` and call `output::emit(Box::new(std::io::stdout().lock()), format, &body, write_text)?;` directly.
+Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run` and the unified `commands::resolve_plugin` shared by `source resolve` / `target resolve` — receive a bare `Format` and call `output::emit(&mut std::io::stdout().lock(), format, &body, write_text)?;` directly.
 
 The `write_text` closure receives `(&mut dyn Write, &Body)` and renders the text-mode body; the JSON path goes through `serde::Serialize` automatically. New code must not introduce `match … format`.
 

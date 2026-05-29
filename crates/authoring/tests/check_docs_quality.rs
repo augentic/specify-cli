@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use specify_authoring::Context;
-use specify_authoring::check::{MissingDiagramAsset, RfcCitationInDocs, TextPipelineDiagram};
+use specify_authoring::check::{HistoryCitation, MissingDiagramAsset, TextPipelineDiagram};
 use specify_authoring::finding::Check;
 
 fn scaffold_framework_root(root: &Path) {
@@ -15,21 +15,24 @@ fn ctx_at(root: &Path) -> Context {
 }
 
 #[test]
-fn rfc_citation_flags_user_facing_docs() {
+fn history_citation_flags_docs() {
     let dir = tempfile::tempdir().expect("tempdir");
     scaffold_framework_root(dir.path());
     fs::create_dir_all(dir.path().join("docs/tutorials")).expect("docs dir");
-    fs::write(dir.path().join("docs/tutorials/guide.md"), "See RFC-5 for the background.\n")
-        .expect("write md");
+    fs::write(
+        dir.path().join("docs/tutorials/guide.md"),
+        format!("See {}-5 for the background.\n", "R".to_owned() + "FC"),
+    )
+    .expect("write md");
 
-    let findings = RfcCitationInDocs.run(&ctx_at(dir.path()));
+    let findings = HistoryCitation.run(&ctx_at(dir.path()));
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "docs.rfc-citation-in-docs");
+    assert_eq!(findings[0].rule_id, "docs.specify-history-citation-in-docs");
     assert!(findings[0].message.contains("docs/tutorials/guide.md:1"));
 }
 
 #[test]
-fn missing_diagram_asset_flags_broken_svg_ref() {
+fn missing_diagram_flags_broken_svg() {
     let dir = tempfile::tempdir().expect("tempdir");
     scaffold_framework_root(dir.path());
     fs::create_dir_all(dir.path().join("docs/reference")).expect("docs dir");

@@ -7,13 +7,11 @@ use crate::error::ToolingError;
 use crate::finding::{Check, Finding, Location};
 use crate::helpers::{relative_display, skill_body_lines, walk_skill_files};
 
-const MAX_BODY_LINES: usize = 200;
 const CRITICAL_PATH_MIN_LINES: usize = 150;
 const CRITICAL_PATH_HEADING: &str = "## Critical Path";
 const MAX_INLINE_JSON_LINES: usize = 30;
 const MAX_SECTION_LINES: usize = 45;
 
-const RULE_BODY_LINE_COUNT: &str = "skill.body-line-count";
 const RULE_SECTION_LINE_COUNT: &str = "skill.section-line-count";
 const RULE_MISSING_CRITICAL_PATH: &str = "skill.missing-critical-path";
 const RULE_INVALID_CRITICAL_PATH: &str = "skill.invalid-critical-path";
@@ -23,32 +21,29 @@ const RULE_STEP_BODY_DUPLICATES: &str = "skill.step-body-duplicates-critical-pat
 const RULE_FRONTMATTER_RESTATEMENT: &str = "skill.frontmatter-restatement";
 const RULE_VARIABLE_COVERAGE: &str = "skill.variable-coverage";
 
-/// Skill body must not exceed the global line budget.
-pub struct SkillBodyLineCount;
-
 /// Each H2 section must stay within the per-section line budget.
-pub struct SkillSectionLineCount;
+pub struct SectionLineCount;
 
 /// Long skills must include a `## Critical Path` block.
-pub struct SkillMissingCriticalPath;
+pub struct MissingCriticalPath;
 
 /// Critical Path must list 5–7 steps (list or H3 form).
-pub struct SkillInvalidCriticalPath;
+pub struct InvalidCriticalPath;
 
 /// Inline `json` / `jsonc` fences must not exceed 30 body lines.
-pub struct SkillInlineJsonTooLong;
+pub struct InlineJsonTooLong;
 
 /// SKILL bodies must not embed CLI envelope JSON shapes.
-pub struct SkillEnvelopeJsonInBody;
+pub struct EnvelopeJsonInBody;
 
 /// Step bodies must not duplicate Critical Path entries verbatim.
-pub struct SkillStepBodyDuplicatesCriticalPath;
+pub struct StepBodyDuplicatesCriticalPath;
 
 /// `## Input` restates frontmatter and is forbidden.
-pub struct SkillFrontmatterRestatement;
+pub struct FrontmatterRestatement;
 
 /// `$VAR`s in Arguments must be defined and referenced consistently.
-pub struct SkillVariableCoverage;
+pub struct VariableCoverage;
 
 macro_rules! impl_skill_body_check {
     ($ty:ty, $rule:expr, $body:expr) => {
@@ -60,61 +55,30 @@ macro_rules! impl_skill_body_check {
     };
 }
 
-impl_skill_body_check!(SkillBodyLineCount, RULE_BODY_LINE_COUNT, check_body_line_count);
-impl_skill_body_check!(SkillSectionLineCount, RULE_SECTION_LINE_COUNT, check_section_line_counts);
+impl_skill_body_check!(SectionLineCount, RULE_SECTION_LINE_COUNT, check_section_line_counts);
 impl_skill_body_check!(
-    SkillMissingCriticalPath,
+    MissingCriticalPath,
     RULE_MISSING_CRITICAL_PATH,
     check_missing_critical_path
 );
 impl_skill_body_check!(
-    SkillInvalidCriticalPath,
+    InvalidCriticalPath,
     RULE_INVALID_CRITICAL_PATH,
     check_invalid_critical_path
 );
-impl_skill_body_check!(SkillInlineJsonTooLong, RULE_INLINE_JSON_TOO_LONG, check_inline_json_blocks);
+impl_skill_body_check!(InlineJsonTooLong, RULE_INLINE_JSON_TOO_LONG, check_inline_json_blocks);
+impl_skill_body_check!(EnvelopeJsonInBody, RULE_ENVELOPE_JSON_IN_BODY, check_no_envelope_examples);
 impl_skill_body_check!(
-    SkillEnvelopeJsonInBody,
-    RULE_ENVELOPE_JSON_IN_BODY,
-    check_no_envelope_examples
-);
-impl_skill_body_check!(
-    SkillStepBodyDuplicatesCriticalPath,
+    StepBodyDuplicatesCriticalPath,
     RULE_STEP_BODY_DUPLICATES,
-    check_no_step_body_duplicates_critical_path
+    check_step_body_vs_critical_path
 );
 impl_skill_body_check!(
-    SkillFrontmatterRestatement,
+    FrontmatterRestatement,
     RULE_FRONTMATTER_RESTATEMENT,
     check_no_frontmatter_restatement
 );
-impl_skill_body_check!(SkillVariableCoverage, RULE_VARIABLE_COVERAGE, check_variables);
-
-fn check_body_line_count(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
-    let root = ctx.framework_root();
-    let mut findings = Vec::new();
-
-    for path in walk_skill_files(root)? {
-        let rel = relative_display(root, &path);
-        let content = fs::read_to_string(&path)?;
-        let Some(lines) = skill_body_lines(&content) else {
-            continue;
-        };
-
-        if lines.len() > MAX_BODY_LINES {
-            findings.push(finding(
-                RULE_BODY_LINE_COUNT,
-                format!(
-                    "Skill body too long: {rel} — {} body lines (limit {MAX_BODY_LINES})",
-                    lines.len()
-                ),
-                Some(path),
-            ));
-        }
-    }
-
-    Ok(findings)
-}
+impl_skill_body_check!(VariableCoverage, RULE_VARIABLE_COVERAGE, check_variables);
 
 fn check_section_line_counts(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
     let root = ctx.framework_root();
@@ -429,9 +393,7 @@ fn is_envelope_body(body: &[String]) -> bool {
     has_ok && (has_data || has_error)
 }
 
-fn check_no_step_body_duplicates_critical_path(
-    ctx: &Context,
-) -> Result<Vec<Finding>, ToolingError> {
+fn check_step_body_vs_critical_path(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 

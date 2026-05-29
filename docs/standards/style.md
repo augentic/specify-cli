@@ -7,9 +7,9 @@ Cross-cutting code-quality rules every Rust change in this workspace honours. Th
 A type lives in `crates/<crate>/<module>/<file>.rs`; that path is four words of free context. Don't prefix the type with module-name fragments. Private and `pub(crate)` symbols rarely need disambiguation; re-exports that cross crate boundaries may.
 
 ```rust
-// crates/domain/src/registry/workspace/push/forge.rs
+// crates/workflow/src/registry/workspace/push/forge.rs
 // BAD: WorkspacePushForge       GOOD: Forge
-// crates/domain/src/change/finalize/probe.rs
+// crates/workflow/src/change/finalize/probe.rs
 // BAD: FinalizeProbe            GOOD: Probe
 ```
 
@@ -45,14 +45,14 @@ ctx.emit_with(&resolved, |w, r| write_resolved(w, r))?;
 
 ## No traits for testability alone
 
-Don't introduce a trait whose only non-test impl is `RealX`. The right test boundary is the lowest external surface — `std::process::Command` (drive via the `CmdRunner` callable alias in `specify_domain::cmd`) or the filesystem. When a stable in-tree boundary already exists — for example `AtomicYaml` in `specify_domain::config`, shared by `Plan`, `Project`, and `Registry` for `.specify/` YAML state — implement that instead of inventing a sibling trait pair.
+Don't introduce a trait whose only non-test impl is `RealX`. The right test boundary is the lowest external surface — `std::process::Command` (drive via the `CmdRunner` callable alias in `specify_workflow::cmd`) or the filesystem. When a stable in-tree boundary already exists — for example `AtomicYaml` in `specify_workflow::config`, shared by `Plan`, `Project`, and `Registry` for `.specify/` YAML state — implement that instead of inventing a sibling trait pair.
 
 ```rust
 // BAD — trait pair that exists so MockProjectStore can swap in.
 trait ProjectStore { fn load(&self) -> Result<Project>; }
 struct RealProjectStore;
 // GOOD — implement the existing shared boundary.
-impl AtomicYaml for Project { fn path(layout: Layout<'_>) -> PathBuf { /* ... */ } }
+impl AtomicYaml for Project { fn layout_path(layout: Layout<'_>) -> PathBuf { /* ... */ } }
 ```
 
 ## Reach for the standard crate first
@@ -70,11 +70,11 @@ enum Kind { /* ... */ }
 
 ## No archaeology in code
 
-Module and crate docs describe what the code *does today*, in ≤ 3 lines. "Phase 1 …", "RFC-N renamed …", "previously lived in …", "to avoid the X → Y cycle" belong in [DECISIONS.md](../../DECISIONS.md) or are deleted.
+Module and crate docs describe what the code *does today*, in ≤ 3 lines. "Phase 1 …", "old contract renamed …", "previously lived in …", "to avoid the X → Y cycle" belong in [DECISIONS.md](../../DECISIONS.md) or are deleted.
 
 ```rust
 // BAD
-//! Phase 3.7 split this off from `<old-crate>` (RFC-N §Migration);
+//! This module owns the current behavior; migration history belongs in DECISIONS.md.
 //! the pre-cutover name was `initiative`. To avoid the
 //! foo → bar → foo cycle we re-export `Layout` from here.
 // GOOD

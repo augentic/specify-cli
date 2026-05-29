@@ -3,9 +3,8 @@ use std::path::Path;
 
 use specify_authoring::Context;
 use specify_authoring::check::{
-    RULE_UNKNOWN_TOOL, SKILL_RULE_SCHEMA_VIOLATION, SkillArgumentHintGrammarCheck,
-    SkillDescriptionGrammarCheck, SkillFrontmatterSchemaCheck, SkillNameDirectoryMismatchCheck,
-    SkillUnknownToolCheck,
+    ArgumentHintGrammar, DescriptionGrammar, FrontmatterSchema, NameDirMismatch, RULE_UNKNOWN_TOOL,
+    SKILL_RULE_SCHEMA_VIOLATION, UnknownTool,
 };
 use specify_authoring::finding::Check;
 
@@ -26,7 +25,7 @@ fn write_skill(root: &Path, plugin: &str, skill: &str, frontmatter: &str) {
 }
 
 #[test]
-fn schema_check_reports_missing_use_when_clause() {
+fn schema_reports_missing_use_when() {
     let temp = tempfile::tempdir().expect("temp dir");
     write_framework_scaffold(temp.path());
     write_skill(
@@ -37,7 +36,7 @@ fn schema_check_reports_missing_use_when_clause() {
     );
 
     let ctx = fixture_context(temp.path());
-    let findings = SkillFrontmatterSchemaCheck.run(&ctx);
+    let findings = FrontmatterSchema.run(&ctx);
     assert!(
         findings.iter().any(|finding| {
             finding.rule_id == SKILL_RULE_SCHEMA_VIOLATION
@@ -49,7 +48,7 @@ fn schema_check_reports_missing_use_when_clause() {
 }
 
 #[test]
-fn unknown_tool_check_reports_disallowed_tool() {
+fn unknown_tool_reports_disallowed() {
     let temp = tempfile::tempdir().expect("temp dir");
     write_framework_scaffold(temp.path());
     write_skill(
@@ -60,7 +59,7 @@ fn unknown_tool_check_reports_disallowed_tool() {
     );
 
     let ctx = fixture_context(temp.path());
-    let findings = SkillUnknownToolCheck.run(&ctx);
+    let findings = UnknownTool.run(&ctx);
     assert!(
         findings.iter().any(|finding| {
             finding.rule_id == RULE_UNKNOWN_TOOL && finding.message.contains("NotARealTool")
@@ -81,8 +80,8 @@ fn spec_prefix_override_accepts_specify_prefix() {
     );
 
     let ctx = fixture_context(temp.path());
-    assert!(SkillFrontmatterSchemaCheck.run(&ctx).is_empty());
-    assert!(SkillNameDirectoryMismatchCheck.run(&ctx).is_empty());
-    assert!(SkillDescriptionGrammarCheck.run(&ctx).is_empty());
-    assert!(SkillArgumentHintGrammarCheck.run(&ctx).is_empty());
+    assert!(FrontmatterSchema.run(&ctx).is_empty());
+    assert!(NameDirMismatch.run(&ctx).is_empty());
+    assert!(DescriptionGrammar.run(&ctx).is_empty());
+    assert!(ArgumentHintGrammar.run(&ctx).is_empty());
 }

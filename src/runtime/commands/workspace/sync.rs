@@ -1,9 +1,9 @@
 use std::io::Write;
 
 use serde::Serialize;
-use specify_domain::registry::Registry;
-use specify_domain::registry::workspace::sync_projects;
 use specify_error::Result;
+use specify_workflow::registry::Registry;
+use specify_workflow::registry::workspace::sync_projects;
 
 use super::registry_missing;
 use crate::runtime::context::Ctx;

@@ -1,14 +1,14 @@
 //! Handler for the `source resolve --explain` fingerprint-chain reader
-//! (workflow §D8).
+//! (extraction cache fingerprint contract).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::adapter as adapter_mod;
-use specify_domain::adapter::{CacheLayout, SourceOperation};
 use specify_error::Result;
+use specify_workflow::adapter as adapter_mod;
+use specify_workflow::adapter::{CacheLayout, SourceOperation};
 
 use crate::runtime::cli::Format;
 use crate::runtime::output;
@@ -52,7 +52,7 @@ pub fn explain(format: Format, adapter: &str, project_dir: &Path) -> Result<()> 
             })
             .collect(),
     };
-    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_explain_text)?;
+    output::emit(&mut std::io::stdout().lock(), format, &body, write_explain_text)?;
     Ok(())
 }
 

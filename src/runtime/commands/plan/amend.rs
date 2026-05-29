@@ -3,59 +3,68 @@
 //! through direct entry mutation, and authority-override flags
 //! through the shared domain engine.
 
-use specify_domain::change::{
-    Divergence, EntryPatch, Patch, Plan, entry_mut, mutate_authority_overrides,
-    refuse_orphan_authority_overrides,
-};
-use specify_domain::config::with_state;
-use specify_domain::discovery::Discovery;
-use specify_domain::evidence::ClaimKind;
-use specify_domain::journal;
-use specify_domain::schema::validate_plan;
 use specify_error::{Error, Result};
+use specify_model::discovery::Discovery;
+use specify_model::evidence::ClaimKind;
+use specify_workflow::change::{
+    Divergence, EntryPatch, Patch, Plan, SliceSourceBinding, entry_mut, mutate_authority_overrides,
+    reject_orphan_overrides,
+};
+use specify_workflow::config::with_state;
+use specify_workflow::journal;
+use specify_workflow::schema::validate_plan;
 
 use super::args::{
-    bindings_from_args, load_discovery, parse_authority_override_assigns, parse_divergence,
+    bindings_from_args, load_discovery, parse_divergence, parse_override_assigns,
     parse_slice_pair_args, parse_target_flag,
 };
+use super::cli::AmendArgs;
 use super::entry::{Action, EntryBody, write_entry_text};
 use super::{check_project, plan_ref};
-use crate::runtime::cli::{AliasAssign, SliceSourceArg};
+use crate::runtime::cli::AliasAssign;
 use crate::runtime::context::Ctx;
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "plan amend's clap surface is the source of truth for the argument set; \
-              the handler threads it through verbatim."
-)]
-pub(super) fn amend(
-    ctx: &Ctx, name: String, depends_on: Option<Vec<String>>, sources: Option<Vec<SliceSourceArg>>,
-    add_source: Vec<SliceSourceArg>, remove_source: Vec<String>, divergence: Option<&str>,
-    description: Option<String>, project: Option<String>, target: Option<String>,
-    context: Option<Vec<String>>, authority_override: &[String],
-    clear_authority_override: &[String], clear_authority_overrides: &[String],
-    add_alias: &[AliasAssign], remove_alias: &[AliasAssign],
-) -> Result<()> {
+pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
+    let AmendArgs {
+        name,
+        depends_on,
+        sources,
+        add_source,
+        remove_source,
+        divergence,
+        description,
+        project,
+        target,
+        context,
+        authority_override,
+        clear_authority_override,
+        clear_authority_overrides,
+        add_alias,
+        remove_alias,
+    } = args;
+
     if let Some(proj) = &project
         && !proj.is_empty()
     {
         check_project(&ctx.project_dir, proj)?;
     }
 
-    let divergence = divergence.map(parse_divergence).transpose()?;
-    let override_sets = parse_authority_override_assigns(authority_override)?;
-    let override_clears: Vec<(String, ClaimKind)> =
-        parse_slice_pair_args::<ClaimKind>(clear_authority_override, "--clear-authority-override")?;
-    let override_clear_all: Vec<String> = clear_authority_overrides.to_vec();
+    let divergence = divergence.as_deref().map(parse_divergence).transpose()?;
+    let override_sets = parse_override_assigns(&authority_override)?;
+    let override_clears: Vec<(String, ClaimKind)> = parse_slice_pair_args::<ClaimKind>(
+        &clear_authority_override,
+        "--clear-authority-override",
+    )?;
+    let override_clear_all: Vec<String> = clear_authority_overrides;
     let plan_path = ctx.layout().plan_path();
-    // workflow §D6 — `--add-alias` / `--remove-alias` mutate
+    // discovery alias contract — `--add-alias` / `--remove-alias` mutate
     // `discovery.md`, NOT `plan.yaml`. We apply them up-front so the
     // updated discovery feeds the subsequent `--sources` rewrite
     // path on the same invocation; the in-memory Discovery is also
     // the source of truth for the whole-document collision gate that
     // refuses the amend (with `discovery-alias-collision`, exit 2)
     // before any write hits disk.
-    let discovery = apply_alias_edits(ctx, add_alias, remove_alias)?;
+    let discovery = apply_alias_edits(ctx, &add_alias, &remove_alias)?;
     let (body, journal_events) =
         with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
             // We materialise per-slice bindings here (rather than in
@@ -91,30 +100,10 @@ pub(super) fn amend(
             };
             plan.amend(&name, patch)?;
 
-            // Apply --add-source / --remove-source after the wholesale
-            // `amend` so additive edits compose cleanly with a
-            // simultaneous `--sources` replacement.
-            if !add_bindings.is_empty() || !remove_source.is_empty() {
-                let entry = entry_mut(plan, &plan_name, &name)?;
-                for key in &remove_source {
-                    let before = entry.sources.len();
-                    entry.sources.retain(|b| b.key() != key.as_str());
-                    if entry.sources.len() == before {
-                        return Err(Error::Diag {
-                            code: "plan-binding-not-found",
-                            detail: format!(
-                                "slice `{name}` has no source binding with key `{key}`"
-                            ),
-                        });
-                    }
-                }
-                for binding in add_bindings {
-                    entry.sources.push(binding);
-                }
-            }
+            apply_source_edits(plan, &plan_name, &name, add_bindings, &remove_source)?;
 
             // Apply per-slice authority-override mutations. Order is
-            // deterministic per workflow §D3: sets first (later
+            // deterministic per per-slice authority override: sets first (later
             // occurrences win on the same `(slice, kind)`), then
             // single-kind clears, then whole-map clears. The
             // mutations are gathered into journal events as we go so
@@ -133,16 +122,15 @@ pub(super) fn amend(
             // Re-run the orphan-source-key gate after the override
             // mutations: `Plan::amend` validated the pre-mutation
             // state, and `validate_plan` only checks JSON Schema. The
-            // orphan check is the only workflow §D3 gate that fires
+            // orphan check is the only per-slice authority override gate that fires
             // on this code path.
-            refuse_orphan_authority_overrides(plan)?;
+            reject_orphan_overrides(plan)?;
 
             validate_plan(plan)?;
-            let amended = plan
-                .entries
-                .iter()
-                .find(|c| c.name == name)
-                .ok_or_else(|| specify_domain::change::unknown_slice_err(&plan_name, &name))?;
+            let amended =
+                plan.entries.iter().find(|c| c.name == name).ok_or_else(|| {
+                    specify_workflow::change::unknown_slice_err(&plan_name, &name)
+                })?;
 
             // Build the journal event only when --divergence flipped
             // the slice's `divergence` (workflow §Observability —
@@ -174,6 +162,33 @@ pub(super) fn amend(
     journal::append_batch(ctx.layout(), &journal_events)?;
 
     ctx.write(&body, write_entry_text)?;
+    Ok(())
+}
+
+/// Apply `--add-source` / `--remove-source` edits to `slice`'s entry,
+/// run after the wholesale `amend` so additive edits compose cleanly
+/// with a simultaneous `--sources` replacement.
+fn apply_source_edits(
+    plan: &mut Plan, plan_name: &str, slice: &str, add_bindings: Vec<SliceSourceBinding>,
+    remove_source: &[String],
+) -> Result<()> {
+    if add_bindings.is_empty() && remove_source.is_empty() {
+        return Ok(());
+    }
+    let entry = entry_mut(plan, plan_name, slice)?;
+    for key in remove_source {
+        let before = entry.sources.len();
+        entry.sources.retain(|b| b.key() != key.as_str());
+        if entry.sources.len() == before {
+            return Err(Error::Diag {
+                code: "plan-binding-not-found",
+                detail: format!("slice `{slice}` has no source binding with key `{key}`"),
+            });
+        }
+    }
+    for binding in add_bindings {
+        entry.sources.push(binding);
+    }
     Ok(())
 }
 
@@ -210,18 +225,18 @@ fn apply_alias_edits(
             code: "discovery-not-found",
             detail: format!(
                 "--add-alias / --remove-alias require `{}` to exist; run `/spec:plan` to author \
-                 the candidate inventory first",
+                 the lead inventory first",
                 path.display()
             ),
         });
     }
 
     let mut discovery = Discovery::load(&path)?;
-    for AliasAssign { candidate, alias } in add_alias {
-        discovery.add_alias(candidate, alias)?;
+    for AliasAssign { lead, alias } in add_alias {
+        discovery.add_alias(lead, alias)?;
     }
-    for AliasAssign { candidate, alias } in remove_alias {
-        discovery.remove_alias(candidate, alias)?;
+    for AliasAssign { lead, alias } in remove_alias {
+        discovery.remove_alias(lead, alias)?;
     }
     // Catch pre-existing collisions when the operator only ran
     // --remove-alias; --add-alias already paid for itself.

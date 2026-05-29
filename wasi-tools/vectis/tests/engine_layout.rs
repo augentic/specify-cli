@@ -176,7 +176,7 @@ fn embedded_composition_schema_compiles() {
 /// instance has nothing to compare against -- so structural-identity
 /// is a no-op.
 #[test]
-fn layout_appendix_c_validates_cleanly() {
+fn appendix_c_validates() {
     let envelope = run_layout(APPENDIX_C_LAYOUT_YAML);
     assert_eq!(envelope["mode"], "layout");
     assert!(errors_array(&envelope).is_empty(), "Appendix C unexpectedly errored: {envelope}");
@@ -189,7 +189,7 @@ fn layout_appendix_c_validates_cleanly() {
 /// Acceptance bullet 2: a `bind:` key anywhere in the document
 /// produces an error pointing at the offending node.
 #[test]
-fn layout_bind_key_is_rejected_with_pathful_error() {
+fn bind_key_rejected_pathful() {
     let yaml = r"version: 1
 screens:
   s:
@@ -216,7 +216,7 @@ screens:
 /// which appears in Appendix C as `when: tasks.is_empty` -- MUST stay
 /// allowed; the matrix pinned below also asserts that.
 #[test]
-fn layout_every_forbidden_wiring_key_is_rejected_but_bare_when_passes() {
+fn forbidden_wiring_rejected_bare_when_passes() {
     let yaml = r"version: 1
 screens:
   s:
@@ -276,7 +276,7 @@ screens:
 /// would otherwise pass the schema (the schema's `oneOf` permits
 /// `delta`). The error points at `/delta`.
 #[test]
-fn layout_delta_document_is_rejected() {
+fn delta_document_rejected() {
     let yaml = r"version: 1
 delta:
   added:
@@ -308,7 +308,7 @@ delta:
 /// values across all invocations, so the tightest test we can land
 /// here exercises content + token-ref divergence with skeleton match.
 #[test]
-fn layout_same_skeleton_different_wiring_validates_cleanly() {
+fn same_skeleton_different_wiring_validates() {
     let yaml = r"version: 1
 screens:
   one:
@@ -352,7 +352,7 @@ screens:
 /// different skeletons (different ordered nested item kinds) produce a
 /// structural-identity error.
 #[test]
-fn layout_different_skeletons_same_slug_is_an_error() {
+fn different_skeletons_same_slug_errors() {
     let yaml = r"version: 1
 screens:
   one:
@@ -395,7 +395,7 @@ screens:
 /// also triggers a structural-identity error. This pins the "same
 /// nested item kinds, same nesting shape" rule concretely.
 #[test]
-fn layout_different_nested_group_depth_is_an_error() {
+fn different_nested_depth_errors() {
     let yaml = r"version: 1
 screens:
   one:
@@ -440,7 +440,7 @@ screens:
 /// `screens.<n>.platforms.ios.body` instance with a different shape
 /// does not trigger the rule.
 #[test]
-fn layout_platforms_override_instance_is_exempt_from_base_match() {
+fn platform_override_exempt_from_base_match() {
     let yaml = r"version: 1
 screens:
   one:
@@ -488,7 +488,7 @@ screens:
 /// emitted when ≥2 instances agree on a slug, but the validator does
 /// not require that -- it is only sensitive to disagreement).
 #[test]
-fn layout_single_component_instance_passes_silently() {
+fn single_component_instance_passes() {
     let yaml = r"version: 1
 screens:
   one:
@@ -513,7 +513,7 @@ screens:
 /// as the unwired-subset / structural-identity errors and the
 /// dispatcher exits non-zero.
 #[test]
-fn layout_schema_violation_reports_pathful_error() {
+fn schema_violation_pathful() {
     let yaml = r"version: 1
 screens:
   s:
@@ -538,7 +538,7 @@ screens:
 /// `composition.schema.json`'s F.2 patch (`component.not.enum`). The
 /// layout-mode validator surfaces it as a schema error.
 #[test]
-fn layout_reserved_component_slug_is_rejected() {
+fn reserved_component_slug_rejected() {
     let yaml = r"version: 1
 screens:
   s:
@@ -560,7 +560,7 @@ screens:
 }
 
 #[test]
-fn layout_invalid_yaml_surfaces_as_a_single_error_entry() {
+fn invalid_yaml_one_error() {
     let envelope = run_layout(": : not valid yaml :::\n");
     let errors = errors_array(&envelope);
     assert_eq!(errors.len(), 1, "expected one YAML-parse error: {envelope}");
@@ -572,7 +572,7 @@ fn layout_invalid_yaml_surfaces_as_a_single_error_entry() {
 }
 
 #[test]
-fn layout_missing_file_returns_invalid_project_error() {
+fn missing_file_invalid_project() {
     let args = Args {
         mode: ValidateMode::Layout,
         path: Some(PathBuf::from("/definitely/not/here/layout.yaml")),

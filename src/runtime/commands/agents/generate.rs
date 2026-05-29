@@ -1,7 +1,7 @@
 //! Init-time fenced AGENTS.md writer.
 
-use specify_domain::slice::atomic::bytes_write;
 use specify_error::{Error, Result};
+use specify_model::atomic::bytes_write;
 
 use super::{context_lock_path, error_from_fence, fences, lock, read_optional, render_document};
 use crate::runtime::context::Ctx;

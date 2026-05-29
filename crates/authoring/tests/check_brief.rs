@@ -32,7 +32,7 @@ fn line_body(prefix: &str, count: usize) -> String {
 }
 
 #[test]
-fn parent_brief_exceeding_cap_emits_size_finding() {
+fn parent_brief_over_cap_finding() {
     let tmp = TempDir::new().expect("tempdir");
     let root = scaffold_framework_root(tmp.path());
     write_brief(
@@ -51,7 +51,7 @@ fn parent_brief_exceeding_cap_emits_size_finding() {
 }
 
 #[test]
-fn phase_sub_brief_exceeding_hard_cap_emits_size_finding() {
+fn sub_brief_over_hard_cap_finding() {
     let tmp = TempDir::new().expect("tempdir");
     let root = scaffold_framework_root(tmp.path());
     write_brief(
@@ -70,7 +70,7 @@ fn phase_sub_brief_exceeding_hard_cap_emits_size_finding() {
 }
 
 #[test]
-fn brief_with_frontmatter_emits_frontmatter_finding() {
+fn brief_with_frontmatter_finding() {
     let tmp = TempDir::new().expect("tempdir");
     let root = scaffold_framework_root(tmp.path());
     write_brief(

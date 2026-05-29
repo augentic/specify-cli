@@ -4,10 +4,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify_domain::slice::SliceMetadata;
-use specify_domain::slice::atomic::bytes_write;
-use specify_domain::task::{Task, mark_complete, parse_tasks};
 use specify_error::Result;
+use specify_model::atomic::bytes_write;
+use specify_model::task::{Task, mark_complete, parse_tasks};
+use specify_workflow::slice::SliceMetadata;
 
 use crate::runtime::context::Ctx;
 

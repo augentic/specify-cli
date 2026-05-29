@@ -32,16 +32,7 @@ fn copy_dir_all(from: &Path, to: &Path) {
 }
 
 #[test]
-fn markdown_links_flag_missing_targets() {
-    let (_temp, root) = assemble_fixture("markdown_broken");
-    let findings = run_on_root(&root);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "links.unresolved");
-    assert!(findings[0].message.contains("missing.md"));
-}
-
-#[test]
-fn skill_reference_links_flag_missing_targets() {
+fn reference_links_flag_missing() {
     let (_temp, root) = assemble_fixture("reference_broken");
     let findings: Vec<_> = run_on_root(&root)
         .into_iter()
@@ -52,7 +43,7 @@ fn skill_reference_links_flag_missing_targets() {
 }
 
 #[test]
-fn skill_reference_links_ignore_fenced_blocks() {
+fn reference_links_ignore_fences() {
     let (_temp, root) = assemble_fixture("reference_ignored");
     let findings = run_on_root(&root);
     assert!(findings.is_empty(), "expected no findings, got: {findings:?}");
@@ -68,7 +59,7 @@ fn skill_directives_flag_unknown_skill() {
 }
 
 #[test]
-fn link_checks_ignore_moved_authoring_test_fixtures() {
+fn ignore_moved_fixtures() {
     let (_temp, root) = assemble_fixture("scaffold");
     let fixture_doc =
         root.join("specify-cli/crates/authoring/tests/fixtures/links/directive_bad_plugin/docs");

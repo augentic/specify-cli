@@ -4,10 +4,10 @@
 
 use std::path::Path;
 
-use specify_domain::config::Layout;
-use specify_domain::merge::{ArtifactClass, MergeStrategy};
-use specify_domain::slice::LifecycleStatus;
 use specify_error::{Error, Result};
+use specify_workflow::config::Layout;
+use specify_workflow::merge::{ArtifactClass, MergeStrategy};
+use specify_workflow::slice::LifecycleStatus;
 
 pub mod cli;
 mod lifecycle;

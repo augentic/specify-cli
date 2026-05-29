@@ -1,9 +1,9 @@
 pub mod agents;
-pub mod codex;
 mod init;
+pub mod lint;
 pub mod plan;
 pub mod registry;
-pub mod review;
+pub mod rules;
 pub mod slice;
 pub mod source;
 pub mod target;
@@ -15,12 +15,12 @@ use std::path::Path;
 
 use clap::CommandFactory;
 use serde::Serialize;
-use specify_domain::adapter::{Axis, SourceAdapter, TargetAdapter};
 use specify_error::Result;
+use specify_workflow::adapter::{Axis, SourceAdapter, TargetAdapter};
 
 use crate::runtime::cli::{Cli, Commands, Format};
-use crate::runtime::commands::codex::cli::CodexAction;
-use crate::runtime::commands::review::cli::ReviewAction;
+use crate::runtime::commands::lint::cli::LintAction;
+use crate::runtime::commands::rules::cli::RulesAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
 use crate::runtime::commands::tool::cli::ToolAction;
@@ -28,10 +28,6 @@ use crate::runtime::commands::workspace::cli::WorkspaceAction;
 use crate::runtime::context::Ctx;
 use crate::runtime::output::{self, Exit, report};
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "The top-level dispatcher mirrors the full subcommand surface; splitting per verb would scatter the contract and obscure parity with `Commands`."
-)]
 pub fn run(cli: Cli) -> Exit {
     let format = cli.format;
     match cli.command {
@@ -58,7 +54,7 @@ pub fn run(cli: Cli) -> Exit {
             SourceAction::Preview {
                 adapter,
                 source,
-                candidate,
+                lead,
                 out,
                 project_dir,
             } => dispatch(format, || {
@@ -66,7 +62,7 @@ pub fn run(cli: Cli) -> Exit {
                     format,
                     &adapter,
                     &source,
-                    &candidate,
+                    &lead,
                     out.as_deref(),
                     &project_dir,
                 )
@@ -77,29 +73,8 @@ pub fn run(cli: Cli) -> Exit {
                 dispatch(format, || resolve_adapter(format, Axis::Target, &value, &project_dir))
             }
         },
-        Commands::Codex { action } => match action {
-            CodexAction::Export {
-                codex_root,
-                target,
-                sources,
-                artifacts,
-                languages,
-                include_deprecated,
-                include_unmatched,
-                project_dir,
-            } => dispatch(format, || {
-                codex::export::run(
-                    format,
-                    codex_root.as_deref(),
-                    &target,
-                    &sources,
-                    &artifacts,
-                    &languages,
-                    include_deprecated,
-                    include_unmatched,
-                    &project_dir,
-                )
-            }),
+        Commands::Rules { action } => match action {
+            RulesAction::Export(args) => dispatch(format, || rules::export::run(format, &args)),
         },
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => run_tool_with(format, &name, args),
@@ -109,32 +84,10 @@ pub fn run(cli: Cli) -> Exit {
                 run_tool_with(format, &name, vec!["schema".to_string(), schema])
             }
         },
-        Commands::Review { action } => match action {
-            ReviewAction::Run {
-                codex_root,
-                target,
-                sources,
-                slice,
-                artifacts,
-                languages,
-                dump_model,
-                strict_hints,
-                output_format,
-                project_dir,
-            } => scoped_at(format, &project_dir, |ctx| {
-                review::run::run(
-                    ctx,
-                    codex_root.as_deref(),
-                    &target,
-                    &sources,
-                    slice.as_deref(),
-                    &artifacts,
-                    &languages,
-                    dump_model,
-                    strict_hints,
-                    output_format.into(),
-                )
-            }),
+        Commands::Lint { action } => match action {
+            LintAction::Run(args) => {
+                scoped_at(format, &args.project_dir, |ctx| lint::run::run(ctx, &args))
+            }
         },
         Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
         Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
@@ -183,7 +136,7 @@ where
 
 /// Variant of [`scoped`] that loads `Ctx` against an explicit
 /// project directory instead of the process CWD. Used by handlers
-/// that take a `--project-dir` flag (e.g. `specrun review`).
+/// that take a `--project-dir` flag (e.g. `specrun lint`).
 fn scoped_at<F>(format: Format, project_dir: &Path, f: F) -> Exit
 where
     F: FnOnce(&Ctx) -> Result<()>,
@@ -264,35 +217,50 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 /// identifier and stripped to leave the kebab name for the lookup
 /// (workflow §CLI surface).
 fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) -> Result<()> {
-    let body = match axis {
+    // Common envelope shape; only the per-axis resolver and the
+    // `@version` strip (target-only) differ.
+    let (name, resolved_path, location, briefs_dir, operations, description) = match axis {
         Axis::Source => {
             let resolved = SourceAdapter::resolve(value, project_dir)?;
-            let briefs_dir = resolved.location.path().join("briefs");
-            ResolveBody {
-                axis: axis.dir_segment(),
-                name: resolved.manifest.name.clone(),
-                resolved_path: resolved.location.path().display().to_string(),
-                location: resolved.location.label(),
-                briefs_dir: briefs_dir.display().to_string(),
-                operations: resolved.manifest.operations().map(ToString::to_string).collect(),
-                description: resolved.manifest.description.clone(),
-            }
+            let operations = resolved.manifest.operations().map(ToString::to_string).collect();
+            let resolved_path = resolved.location.path().display().to_string();
+            let briefs_dir = resolved.location.path().join("briefs").display().to_string();
+            let location = resolved.location.label();
+            (
+                resolved.manifest.name,
+                resolved_path,
+                location,
+                briefs_dir,
+                operations,
+                resolved.manifest.description,
+            )
         }
         Axis::Target => {
             let name = value.split_once('@').map_or(value, |(n, _)| n);
             let resolved = TargetAdapter::resolve(name, project_dir)?;
-            let briefs_dir = resolved.location.path().join("briefs");
-            ResolveBody {
-                axis: axis.dir_segment(),
-                name: resolved.manifest.name.clone(),
-                resolved_path: resolved.location.path().display().to_string(),
-                location: resolved.location.label(),
-                briefs_dir: briefs_dir.display().to_string(),
-                operations: resolved.manifest.operations().map(ToString::to_string).collect(),
-                description: resolved.manifest.description.clone(),
-            }
+            let operations = resolved.manifest.operations().map(ToString::to_string).collect();
+            let resolved_path = resolved.location.path().display().to_string();
+            let briefs_dir = resolved.location.path().join("briefs").display().to_string();
+            let location = resolved.location.label();
+            (
+                resolved.manifest.name,
+                resolved_path,
+                location,
+                briefs_dir,
+                operations,
+                resolved.manifest.description,
+            )
         }
     };
-    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_resolve_text)?;
+    let body = ResolveBody {
+        axis: axis.dir_segment(),
+        name,
+        resolved_path,
+        location,
+        briefs_dir,
+        operations,
+        description,
+    };
+    output::emit(&mut std::io::stdout().lock(), format, &body, write_resolve_text)?;
     Ok(())
 }

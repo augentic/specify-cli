@@ -76,7 +76,7 @@ fn init_github_directory_uri_succeeds() {
         .success();
 }
 
-// ---- RFC-13 Phase 1.3: positional <adapter> + --hub mutual exclusion ----
+// ---- `specrun init` adapter/hub invariant: positional <adapter> + --hub mutual exclusion ----
 
 #[test]
 fn init_writes_adapter_field_for_url_arg() {
@@ -162,7 +162,7 @@ fn init_with_adapter_and_hub_errors() {
     );
 }
 
-// ---- specrun init --hub (RFC-9 §1D platform-hub topology) ----
+// ---- specrun init --hub (registry hub-mode validation platform-hub topology) ----
 
 #[test]
 fn init_hub_writes_canonical_on_disk_shape() {

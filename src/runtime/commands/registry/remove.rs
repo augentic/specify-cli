@@ -2,10 +2,10 @@
 
 use std::path::Path;
 
-use specify_domain::change::Plan;
-use specify_domain::config::{Layout, with_state};
-use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
+use specify_workflow::change::Plan;
+use specify_workflow::config::{Layout, with_state};
+use specify_workflow::registry::Registry;
 
 use super::dto::{RemoveBody, write_remove_text};
 use crate::runtime::context::Ctx;

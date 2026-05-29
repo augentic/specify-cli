@@ -45,9 +45,15 @@ impl RunContext {
 }
 
 /// Wasmtime-backed synchronous WASI Preview 2 runner.
-#[expect(missing_debug_implementations, reason = "wraps non-Debug wasmtime::Engine")]
 pub struct WasiRunner {
     engine: Engine,
+}
+
+impl std::fmt::Debug for WasiRunner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `wasmtime::Engine` is not `Debug`; expose the wrapper shape only.
+        f.debug_struct("WasiRunner").finish_non_exhaustive()
+    }
 }
 
 impl WasiRunner {
@@ -81,8 +87,8 @@ impl WasiRunner {
     /// Mirrors [`Self::run`] but redirects the guest's stdout and stderr
     /// into capped [`MemoryOutputPipe`] buffers so the host can examine
     /// the output without printing to the inherited terminal. Used by
-    /// `specrun review`'s `kind: tool` evaluator to fold a tool's
-    /// `ReviewResult` envelope into the scan output (RFC-32 §D4).
+    /// `specrun lint`'s `kind: tool` evaluator to fold a tool's
+    /// `LintResult` envelope into the scan output (`kind: tool` evaluator contract).
     ///
     /// # Errors
     ///
@@ -377,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn prepare_preopens_promotes_write_over_read() {
+    fn preopens_promote_write_over_read() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         let output = project.join("output");
@@ -402,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn run_rejects_capability_dir_in_project_scope_before_loading_component() {
+    fn run_rejects_cap_dir_in_project_scope() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project");
@@ -422,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn run_rejects_lifecycle_write_before_loading_component() {
+    fn run_rejects_lifecycle_write() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(project.join(".specify")).expect("specify");
@@ -443,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_component_bytes_surface_as_runtime_error() {
+    fn invalid_component_bytes_error() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project");

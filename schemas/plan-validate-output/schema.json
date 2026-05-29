@@ -40,7 +40,7 @@
       "type": "object",
       "required": ["severity", "code", "message"],
       "additionalProperties": false,
-      "description": "One finding from `Plan::validate` or the layered health checks. See `specify_domain::change::plan_doctor` for the canonical producer.",
+      "description": "One finding from `Plan::validate` or the layered health checks. See `specify_workflow::change::plan_doctor` for the canonical producer.",
       "properties": {
         "severity": {
           "type": "string",
@@ -63,7 +63,7 @@
         },
         "data": {
           "type": "object",
-          "description": "Structured payload attached to the three health diagnostics. Absent for the base `Plan::validate` findings; readers should not require this key. Shape depends on the `kind` discriminant — see `specify_domain::change::PlanDoctorPayload` for the variants (`cycle`, `orphan-source`, `stale-clone`)."
+          "description": "Structured payload attached to the three health diagnostics. Absent for the base `Plan::validate` findings; readers should not require this key. Shape depends on the `kind` discriminant — see `specify_workflow::change::PlanDoctorPayload` for the variants (`cycle`, `orphan-source`, `stale-clone`)."
         }
       }
     }

@@ -1,18 +1,18 @@
 # Workflow contract
 
-The in-force contract this binary implements. Stable anchors that source code and skill briefs cite by `§`-name. The full historical motivation lives in the archived RFCs ([`rfc-25-workflow.md`](https://github.com/augentic/specify/blob/main/rfcs/archive/rfc-25-workflow.md), [`rfc-26-workflow.md`](https://github.com/augentic/specify/blob/main/rfcs/archive/rfc-26-workflow.md), [`rfc-27-synthesis.md`](https://github.com/augentic/specify/blob/main/rfcs/archive/rfc-27-synthesis.md)); this document is the live anchor surface and supersedes them as the contract.
+The in-force contract this binary implements. Stable anchors that source code and skill briefs cite by `§`-name. This document is the live anchor surface for workflow behavior.
 
 ## Adapter vocabulary
 
-Two adapter roles — `source` (operations: `enumerate`, `extract`) and `target` (operations: `shape`, `build`, `merge`). The shared on-disk shape is `adapter.yaml`; per-axis schemas refine it. See the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
+Two adapter roles — `source` (operations: `survey`, `extract`) and `target` (operations: `shape`, `build`, `merge`). The shared on-disk shape is `adapter.yaml`; per-axis schemas refine it. See the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
 
 ## Adapter implementation shape
 
-Per-adapter `adapter.yaml` carries `name`, `version`, `axis`, `description`, the `briefs.<operation>` map, and an optional `tools[]` array. The closed operation set is determined by the manifest's `axis`. Implementation: [`crates/domain/src/adapter/`](../../crates/domain/src/adapter); per-axis schemas at [`schemas/adapter.schema.json`](../../schemas/adapter.schema.json), [`source.schema.json`](../../schemas/source.schema.json), [`target.schema.json`](../../schemas/target.schema.json).
+Per-adapter `adapter.yaml` carries `name`, `version`, `axis`, `description`, the `briefs.<operation>` map, and an optional `tools[]` array. The closed operation set is determined by the manifest's `axis`. Implementation: [`crates/workflow/src/adapter/`](../../crates/workflow/src/adapter); per-axis schemas at [`schemas/adapter.schema.json`](../../schemas/adapter.schema.json), [`source.schema.json`](../../schemas/source.schema.json), [`target.schema.json`](../../schemas/target.schema.json).
 
 ## Source adapter contract
 
-`axis: source`; `briefs.keys() ⊆ {enumerate, extract}`. `enumerate` writes `## Candidate inventory` blocks under `discovery.md` at plan time; `extract` writes one Evidence document per `(source-key, candidate-id)` pair at slice time. See [`schemas/source.schema.json`](../../schemas/source.schema.json) and [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json).
+`axis: source`; `briefs.keys() ⊆ {extract, survey}`. `survey` writes `## Lead inventory` blocks under `discovery.md` at plan time; `extract` writes one Evidence document per `(source-key, lead-id)` pair at slice time. See [`schemas/source.schema.json`](../../schemas/source.schema.json) and [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json).
 
 ## Target adapter contract
 
@@ -33,29 +33,29 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Discovery handshake
 
-`enumerate` writes `## Candidate inventory` blocks; the operator stamps `reviewed`; `extract` resolves `slices[].sources[].candidate` against `id`-then-`aliases[]`. Schema at [`schemas/discovery/candidate.schema.json`](../../schemas/discovery/candidate.schema.json); parser at [`crates/domain/src/discovery/document.rs`](../../crates/domain/src/discovery/document.rs).
+`survey` writes `## Lead inventory` blocks; the operator stamps `reviewed`; `extract` resolves `slices[].sources[].lead` against `id`-then-`aliases[]`. Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
 
 ## The Plan
 
-`plan.yaml` shape is fixed by [`schemas/plan/plan.schema.json`](../../schemas/plan/plan.schema.json). Two stored lifecycle states (`pending | reviewed`); per-entry status is `pending | in-progress | done`. Writer ownership is split — see §"Writer ownership" below.
+`plan.yaml` shape is fixed by [`schemas/plan/plan.schema.json`](../../schemas/plan/plan.schema.json). Two stored lifecycle states (`pending | approved`); per-entry status is `pending | in-progress | done`. Writer ownership is split — see §"Writer ownership" below.
 
 ## Workflow vocabulary
 
-`Slice`, `Candidate`, `Evidence`, `Source`, `Target`, `Plan`, `Discovery`. Definitions live in the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
+`Slice`, `Lead`, `Evidence`, `Source`, `Target`, `Plan`, `Discovery`. Definitions live in the parent repo's [`AGENTS.md` §"Vocabulary"](https://github.com/augentic/specify/blob/main/AGENTS.md#vocabulary).
 
-## Plan-time fusion
+## Plan-time reconciliation
 
-Core synthesis fuses candidates across sources at plan time and writes one `slices[]` row per fusion outcome. The closed `Divergence` enum (`none | likely | accepted | rejected`) records the fusion outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/domain/src/change/plan/core/model.rs`](../../crates/domain/src/change/plan/core/model.rs).
+Core synthesis reconciles leads across sources at plan time and writes one `slices[]` row per reconciliation outcome. The closed `Divergence` enum (`none | likely | accepted | rejected`) records the reconciliation outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/workflow/src/change/plan/core/model.rs`](../../crates/workflow/src/change/plan/core/model.rs).
 
 ## Source
 
 `plan.yaml.sources.<key>` is the structured `{ adapter, path?, value? }` object with exactly one of `path` / `value`. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
 
-`Slice.sources` (a slice's per-source binding list) accepts the bare-string shorthand on parse and serialises as the structured `{ key, candidate }`. See [`DECISIONS.md` §"`SliceSourceBinding`: bare shorthand plus structured form"](../../DECISIONS.md#slicesourcebinding-bare-shorthand-plus-structured-form).
+`Slice.sources` (a slice's per-source binding list) accepts the bare-string shorthand on parse and serialises as the structured `{ key, lead }`. See [`DECISIONS.md` §"`SliceSourceBinding`: bare shorthand plus structured form"](../../DECISIONS.md#slicesourcebinding-bare-shorthand-plus-structured-form).
 
 ## Authority hierarchy
 
-Closed enum `intent > documentation > behaviour`. Resolution order: per-slice override (D3) → per-Evidence per-kind override (D2) → Evidence document-level `authority:` → conflict. Implementation: [`crates/domain/src/evidence/authority.rs`](../../crates/domain/src/evidence/authority.rs).
+Closed enum `intent > documentation > behaviour`. Resolution order: per-slice override (D3) → per-Evidence per-kind override (D2) → Evidence document-level `authority:` → conflict. Implementation: [`crates/model/src/evidence/authority.rs`](../../crates/model/src/evidence/authority.rs).
 
 ## Execution model
 
@@ -63,15 +63,15 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Refinement
 
-`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `fusion.yaml`, and transitions the slice to `refined`. Validators live in [`crates/domain/src/validate/`](../../crates/domain/src/validate/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
+`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `reconciliation.yaml`, and transitions the slice to `refined`. Validators live in [`crates/validate/src/`](../../crates/validate/src/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
 
 ## Extraction
 
-Per-source `extract` is keyed on a closed five-input fingerprint; results cached at `.specify/.cache/extractions/<adapter>/<fingerprint>/`. See §D8 below.
+Per-source `extract` is keyed on a closed five-input fingerprint; results cached at `.specify/.cache/extractions/<adapter>/<fingerprint>/`. See lint exit mapping below.
 
 ## Requirement block contract
 
-`spec.md` requirements carry `ID:` / `Sources:` / `Status:` metadata; the closed `RequirementStatus` enum is `agreed | unknown | conflict | divergence`. Parser at [`crates/domain/src/spec/provenance.rs`](../../crates/domain/src/spec/provenance.rs).
+`spec.md` requirements carry `ID:` / `Sources:` / `Status:` metadata; the closed `RequirementStatus` enum is `agreed | unknown | conflict | divergence`. Parser at [`crates/model/src/spec/provenance.rs`](../../crates/model/src/spec/provenance.rs).
 
 ## Wire format
 
@@ -91,11 +91,11 @@ Per-entry status writes route to exactly one CLI verb each — `plan add` / `pla
 
 ## Observability
 
-Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/domain/src/journal.rs`](../../crates/domain/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names).
+Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names).
 
 ## Operations typed at parse boundary
 
-`briefs.keys()` is the canonical operation iterator; the closed `SourceOperation` / `TargetOperation` enums in [`crates/domain/src/adapter/operation.rs`](../../crates/domain/src/adapter/operation.rs) are the typed key set. See [`DECISIONS.md` §"Operations typed at parse boundary"](../../DECISIONS.md#operations-typed-at-parse-boundary).
+`briefs.keys()` is the canonical operation iterator; the closed `SourceOperation` / `TargetOperation` enums in [`crates/workflow/src/adapter/operation.rs`](../../crates/workflow/src/adapter/operation.rs) are the typed key set. See [`DECISIONS.md` §"Operations typed at parse boundary"](../../DECISIONS.md#operations-typed-at-parse-boundary).
 
 ## What was cut and why
 
@@ -103,40 +103,40 @@ Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKin
 
 ## Note to the implementing agent
 
-Touching `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/domain/src/spec/provenance.rs`, `crates/domain/src/adapter/`, `crates/domain/src/journal.rs`, `crates/domain/src/schema.rs`, the `$CAPABILITY_DIR` env var, or the `plugin--<axis>--<slug>` tool cache scope requires a cross-repo `rg` sweep against both [`augentic/specify-cli`](https://github.com/augentic/specify-cli) and [`augentic/specify`](https://github.com/augentic/specify) in the same PR — the contract spans both repos.
+Touching `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/model/src/spec/provenance.rs`, `crates/workflow/src/adapter/`, `crates/workflow/src/journal.rs`, `crates/workflow/src/schema.rs`, the `$CAPABILITY_DIR` env var, or the `plugin--<axis>--<slug>` tool cache scope requires a cross-repo `rg` sweep against both [`augentic/specify-cli`](https://github.com/augentic/specify-cli) and [`augentic/specify`](https://github.com/augentic/specify) in the same PR — the contract spans both repos.
 
 ## D1 — Runtime source adapter (`captures`)
 
-`captures` emits `kind: example` Evidence claims with `replay-digest: sha256:…` anchors and default `authority: behaviour`. Schema entry in [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json); claim type at [`crates/domain/src/evidence/claim/example.rs`](../../crates/domain/src/evidence/claim/example.rs).
+`captures` emits `kind: example` Evidence claims with `replay-digest: sha256:…` anchors and default `authority: behaviour`. Schema entry in [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json); claim type at [`crates/model/src/evidence/claim/example.rs`](../../crates/model/src/evidence/claim/example.rs).
 
 ## D2 — Per-kind authority on Evidence
 
-`evidence.schema.json` carries an optional `authority-overrides` map keyed by claim kind. Synthesis consults this map before the document-level `authority:`. See [`DECISIONS.md` §"RFC-27 §D2 — per-kind authority on Evidence"](../../DECISIONS.md#rfc-27-d2--per-kind-authority-on-evidence) and [`crates/domain/src/evidence/authority.rs`](../../crates/domain/src/evidence/authority.rs).
+`evidence.schema.json` carries an optional `authority-overrides` map keyed by claim kind. Synthesis consults this map before the document-level `authority:`. See [`DECISIONS.md` §"Evidence per-kind authority overrides"](../../DECISIONS.md#evidence-per-kind-authority-overrides) and [`crates/model/src/evidence/authority.rs`](../../crates/model/src/evidence/authority.rs).
 
 ## D3 — Per-slice authority on `plan.yaml`
 
-`plan.yaml.slices[].authority-override` maps claim kind to a source key bound on the slice. Orphan keys surface as `slice-authority-override-orphan-source-key`. See [`DECISIONS.md` §"RFC-27 §D3 — per-slice authority on `plan.yaml`"](../../DECISIONS.md#rfc-27-d3--per-slice-authority-on-planyaml).
+`plan.yaml.slices[].authority-override` maps claim kind to a source key bound on the slice. Orphan keys surface as `slice-authority-override-orphan-source-key`. See [`DECISIONS.md` §"Plan per-slice authority overrides"](../../DECISIONS.md#plan-per-slice-authority-overrides).
 
-## D4 — `fusion.yaml` is audit-only
+## D4 — `reconciliation.yaml` is audit-only
 
-Reconciliation index at `.specify/slices/<slice>/fusion.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/fusion.schema.json`](../../schemas/slice/fusion.schema.json); validator at [`crates/domain/src/slice/fusion.rs`](../../crates/domain/src/slice/fusion.rs). See [`DECISIONS.md` §"RFC-27 §D4 — `fusion.yaml` is audit-only"](../../DECISIONS.md#rfc-27-d4--fusionyaml-is-audit-only).
+Reconciliation index at `.specify/slices/<slice>/reconciliation.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/reconciliation.schema.json`](../../schemas/slice/reconciliation.schema.json); validator at [`crates/workflow/src/slice/reconciliation.rs`](../../crates/workflow/src/slice/reconciliation.rs). See [`DECISIONS.md` §"`reconciliation.yaml` audit index"](../../DECISIONS.md#reconciliationyaml-audit-index).
 
 ## D5 — Operator-driven `divergence`
 
-The CLI is the single writer of every `Divergence` variant. Operators flip `accepted | rejected` via `specrun plan amend --divergence`; `likely` is staged by `specrun plan create --divergence-likely <slice>`. See [`crates/domain/src/change/plan/core/model.rs`](../../crates/domain/src/change/plan/core/model.rs).
+The CLI is the single writer of every `Divergence` variant. Operators flip `accepted | rejected` via `specrun plan amend --divergence`; `likely` is staged by `specrun plan create --divergence-likely <slice>`. See [`crates/workflow/src/change/plan/core/model.rs`](../../crates/workflow/src/change/plan/core/model.rs).
 
 ## D6 — Discovery aliases
 
-Candidates carry an optional `aliases[]` bullet. `slices[].sources[].candidate` resolves first against `id`, then against any entry in `aliases[]`. Aliases live in a single namespace per `discovery.md`. Parser at [`crates/domain/src/discovery/document.rs`](../../crates/domain/src/discovery/document.rs); collision discriminant `discovery-alias-collision`.
+Leads carry an optional `aliases[]` bullet. `slices[].sources[].lead` resolves first against `id`, then against any entry in `aliases[]`. Aliases live in a single namespace per `discovery.md`. Parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs); collision discriminant `discovery-alias-collision`.
 
-## D7 — `--auto-review`
+## D7 — `--auto-approve`
 
-`specrun plan create --auto-review` stamps Gate 1 in the same invocation when validation passes. Failure under `--auto-review` MUST NOT stamp; the operator re-runs after fixing.
+`specrun plan create --auto-approve` stamps Gate 1 in the same invocation when validation passes. Failure under `--auto-approve` MUST NOT stamp; the operator re-runs after fixing.
 
 ## D8 — Cache fingerprint inputs
 
-Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, candidate id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/domain/src/adapter/cache.rs`](../../crates/domain/src/adapter/cache.rs); see [`DECISIONS.md` §"RFC-27 §D8 — cache fingerprint inputs"](../../DECISIONS.md#rfc-27-d8--cache-fingerprint-inputs).
+Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, lead id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/workflow/src/adapter/cache.rs`](../../crates/workflow/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
 
 ## Reconciliation index
 
-Closed top-level shape on `fusion.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/domain/src/slice/fusion.rs`](../../crates/domain/src/slice/fusion.rs) and §D4 above.
+Closed top-level shape on `reconciliation.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/workflow/src/slice/reconciliation.rs`](../../crates/workflow/src/slice/reconciliation.rs) and `kind: tool` evaluator contract above.

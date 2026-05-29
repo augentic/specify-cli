@@ -325,7 +325,7 @@ fn drop_transitions_and_archives() {
 
 #[test]
 fn metadata_without_outcome_still_parses() {
-    use specify_domain::slice::SliceMetadata;
+    use specify_workflow::slice::SliceMetadata;
     // Hand-craft a `.metadata.yaml` that predates the `outcome` field
     // and assert that SliceMetadata::load accepts it and leaves
     // `outcome` as None.
@@ -345,7 +345,7 @@ created-at: "2024-08-01T10:00:00Z"
 
 #[test]
 fn phase_outcome_round_trips_serde() {
-    use specify_domain::slice::Outcome;
+    use specify_workflow::slice::Outcome;
     // Construction via struct literal would require crossing the
     // `#[non_exhaustive]` boundary on `Outcome`; round-trip through
     // YAML instead so the wire shape is what's exercised.
@@ -362,28 +362,28 @@ fn phase_outcome_round_trips_serde() {
     }
 }
 
-// ---- RFC-25 top-level help surfaces source/target axis verbs ----
+// ---- Top-level help surfaces source/target axis verbs ----
 
 #[test]
-fn top_level_help_lists_source_and_target_axis_verbs() {
+fn help_lists_axis_verbs() {
     let assert = specrun().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(stdout.contains("slice"), "RFC-25 --help must still list `slice`, got:\n{stdout}");
+    assert!(stdout.contains("slice"), "Top-level --help must still list `slice`, got:\n{stdout}");
     assert!(
         stdout.lines().any(|line| line.trim_start().starts_with("source ")),
-        "RFC-25 --help must list the `source` axis verb, got:\n{stdout}"
+        "Top-level --help must list the `source` axis verb, got:\n{stdout}"
     );
     assert!(
         stdout.lines().any(|line| line.trim_start().starts_with("target ")),
-        "RFC-25 --help must list the `target` axis verb, got:\n{stdout}"
+        "Top-level --help must list the `target` axis verb, got:\n{stdout}"
     );
     assert!(
         !stdout.lines().any(|line| line.trim_start().starts_with("change ")),
-        "RFC-25 --help must NOT list the retired `change` verb, got:\n{stdout}"
+        "Top-level --help must NOT list the retired `change` verb, got:\n{stdout}"
     );
     assert!(
         !stdout.lines().any(|line| line.trim_start().starts_with("adapter ")),
-        "RFC-25 --help must NOT list the retired `adapter` verb, got:\n{stdout}"
+        "Top-level --help must NOT list the retired `adapter` verb, got:\n{stdout}"
     );
 }
 
@@ -423,7 +423,7 @@ fn assert_provenance_fail_rule(stderr: &[u8], rule_id: &str) {
 }
 
 const PLAN_WITH_LEGACY_MONOLITH: &str = "\
-name: rfc25-prov
+name: workflow-prov
 lifecycle: pending
 sources:
   legacy-monolith:
@@ -434,11 +434,11 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { key: legacy-monolith, candidate: my-slice }
+      - { key: legacy-monolith, lead: my-slice }
 ";
 
 #[test]
-fn validate_rejects_missing_id_with_exit_two() {
+fn validate_rejects_missing_id() {
     let spec = "### Requirement: Missing id\n\n\
                 Sources: [legacy-monolith]\n\
                 Status: agreed\n\n\
@@ -454,7 +454,7 @@ fn validate_rejects_missing_id_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_malformed_id_with_exit_two() {
+fn validate_rejects_malformed_id() {
     let spec = "### Requirement: Malformed id\n\n\
                 ID: REQ-1\n\
                 Sources: [legacy-monolith]\n\
@@ -470,7 +470,7 @@ fn validate_rejects_malformed_id_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_missing_sources_with_exit_two() {
+fn validate_rejects_missing_sources() {
     let spec = "### Requirement: No sources\n\n\
                 ID: REQ-001\n\
                 Status: agreed\n";
@@ -485,7 +485,7 @@ fn validate_rejects_missing_sources_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_missing_status_with_exit_two() {
+fn validate_rejects_missing_status() {
     let spec = "### Requirement: No status\n\n\
                 ID: REQ-001\n\
                 Sources: [legacy-monolith]\n";
@@ -500,7 +500,7 @@ fn validate_rejects_missing_status_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_unknown_status_value_with_exit_two() {
+fn validate_rejects_unknown_status() {
     let spec = "### Requirement: Bogus status\n\n\
                 ID: REQ-001\n\
                 Sources: [legacy-monolith]\n\
@@ -519,7 +519,7 @@ fn validate_rejects_unknown_status_value_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_source_key_not_in_plan_with_exit_two() {
+fn validate_rejects_source_key_not_in_plan() {
     let spec = "### Requirement: Stray source key\n\n\
                 ID: REQ-001\n\
                 Sources: [phantom]\n\
@@ -538,7 +538,7 @@ fn validate_rejects_source_key_not_in_plan_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_tag_status_mismatch_with_exit_two() {
+fn validate_rejects_tag_status_mismatch() {
     let spec = "### Requirement: Lying tag [divergence]\n\n\
                 ID: REQ-001\n\
                 Sources: [legacy-monolith]\n\
@@ -557,14 +557,14 @@ fn validate_rejects_tag_status_mismatch_with_exit_two() {
 }
 
 // ---------------------------------------------------------------------------
-// workflow §D4 — `slice validate` fusion drift gate
+// `reconciliation.yaml` audit index — `slice validate` reconciliation drift gate
 // ---------------------------------------------------------------------------
 
-/// Minimal fusion.yaml for a slice named `my-slice` with one
+/// Minimal reconciliation.yaml for a slice named `my-slice` with one
 /// requirement `REQ-001` whose single contributing claim cites
 /// `legacy-monolith :: REQ-001` (the same id we'll seed the evidence
 /// file with by default).
-const CLEAN_FUSION_YAML: &str = "version: 1
+const CLEAN_RECONCILIATION_YAML: &str = "version: 1
 slice: my-slice
 generated-at: 2026-05-22T13:15:00Z
 generator: specify@2.1.0
@@ -593,7 +593,7 @@ The system lets a registered user request a password reset link by email.
 const CLEAN_EVIDENCE_YAML: &str = "source: legacy-monolith
 adapter: code-typescript
 authority: behaviour
-candidate: my-slice
+lead: my-slice
 claims:
   - kind: requirement
     claim-id: REQ-001
@@ -601,17 +601,18 @@ claims:
     path: src/users/reset.ts#L42
 ";
 
-/// Stage a fully-wired slice with fusion.yaml + spec.md + evidence
+/// Stage a fully-wired slice with reconciliation.yaml + spec.md + evidence
 /// so the drift gate has every input it needs and the baseline test
 /// fixture validates clean. Caller may then mutate any file before
 /// re-running `slice validate` to exercise drift.
-fn stage_slice_with_fusion() -> Project {
+fn stage_slice_with_reconciliation() -> Project {
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
     // stage_slice_with_spec writes specs/login/spec.md by default;
-    // the fusion gate gathers REQ ids across every spec.md, so we
+    // the reconciliation gate gathers REQ ids across every spec.md, so we
     // can leave that path alone.
     let slice_dir = project.slices_dir().join("my-slice");
-    fs::write(slice_dir.join("fusion.yaml"), CLEAN_FUSION_YAML).expect("write fusion.yaml");
+    fs::write(slice_dir.join("reconciliation.yaml"), CLEAN_RECONCILIATION_YAML)
+        .expect("write reconciliation.yaml");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
     fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
@@ -620,8 +621,8 @@ fn stage_slice_with_fusion() -> Project {
 }
 
 #[test]
-fn validate_passes_on_clean_fusion_inputs() {
-    let project = stage_slice_with_fusion();
+fn validate_passes_on_clean_reconciliation_inputs() {
+    let project = stage_slice_with_reconciliation();
     let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
@@ -632,14 +633,14 @@ fn validate_passes_on_clean_fusion_inputs() {
         // Adapter-level brief validation may still surface findings on
         // the synthetic slice — those would route through different
         // rule ids. Assert that whatever surfaces, *no* row carries
-        // `slice-fusion-drift` against clean inputs.
+        // `slice-reconciliation-drift` against clean inputs.
         if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
             && let Some(results) = value["results"].as_array()
         {
             for r in results {
                 let rule_id = r["rule-id"].as_str().unwrap_or("");
                 assert_ne!(
-                    rule_id, "slice-fusion-drift",
+                    rule_id, "slice-reconciliation-drift",
                     "no drift row may appear on clean inputs; got results: {results:#?}"
                 );
             }
@@ -648,10 +649,10 @@ fn validate_passes_on_clean_fusion_inputs() {
 }
 
 #[test]
-fn validate_detects_req_id_drift_when_spec_md_has_extra_requirement() {
-    let project = stage_slice_with_fusion();
+fn validate_req_id_drift() {
+    let project = stage_slice_with_reconciliation();
     // Append a second REQ block to spec.md so spec.md has REQ-001 +
-    // REQ-002 while fusion.yaml only knows REQ-001.
+    // REQ-002 while reconciliation.yaml only knows REQ-001.
     let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
     let extended = format!(
         "{CLEAN_SPEC_MD}\n\
@@ -674,20 +675,20 @@ fn validate_detects_req_id_drift_when_spec_md_has_extra_requirement() {
     let results = value["results"].as_array().expect("results array");
     let detail = results
         .iter()
-        .find(|r| r["rule-id"] == "slice-fusion-drift")
+        .find(|r| r["rule-id"] == "slice-reconciliation-drift")
         .and_then(|r| r["detail"].as_str())
-        .expect("slice-fusion-drift row must be present");
+        .expect("slice-reconciliation-drift row must be present");
     assert!(detail.contains("REQ-002"), "drift detail should name REQ-002, got: {detail}");
     assert!(
-        detail.contains("missing from fusion.yaml"),
+        detail.contains("missing from reconciliation.yaml"),
         "drift detail should mention the drift direction, got: {detail}"
     );
 }
 
 #[test]
-fn validate_detects_contributing_claim_drift_when_evidence_claim_renamed() {
-    let project = stage_slice_with_fusion();
-    // Rename the evidence claim id; fusion.yaml still cites the old one.
+fn validate_claim_drift_on_rename() {
+    let project = stage_slice_with_reconciliation();
+    // Rename the evidence claim id; reconciliation.yaml still cites the old one.
     let evidence_path = project.slices_dir().join("my-slice/evidence/legacy-monolith.yaml");
     let modified = CLEAN_EVIDENCE_YAML.replace("claim-id: REQ-001", "claim-id: REQ-999-renamed");
     fs::write(&evidence_path, modified).expect("rewrite evidence");
@@ -703,9 +704,9 @@ fn validate_detects_contributing_claim_drift_when_evidence_claim_renamed() {
     let results = value["results"].as_array().expect("results array");
     let detail = results
         .iter()
-        .find(|r| r["rule-id"] == "slice-fusion-drift")
+        .find(|r| r["rule-id"] == "slice-reconciliation-drift")
         .and_then(|r| r["detail"].as_str())
-        .expect("slice-fusion-drift row must be present");
+        .expect("slice-reconciliation-drift row must be present");
     assert!(
         detail.contains("legacy-monolith") && detail.contains("REQ-001"),
         "drift detail should name the dangling (source, claim-id) pair, got: {detail}"
@@ -713,8 +714,8 @@ fn validate_detects_contributing_claim_drift_when_evidence_claim_renamed() {
 }
 
 #[test]
-fn validate_skips_drift_gate_when_fusion_yaml_absent() {
-    // Stage a slice with spec.md but no fusion.yaml — the drift gate
+fn validate_skips_drift_gate_without_reconciliation() {
+    // Stage a slice with spec.md but no reconciliation.yaml — the drift gate
     // must be a silent no-op so older slices and pre-refine slices
     // still validate. (Any other adapter-level rules can still
     // surface, but no drift row may appear.)
@@ -730,16 +731,16 @@ fn validate_skips_drift_gate_when_fusion_yaml_absent() {
         for r in results {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert_ne!(
-                rule_id, "slice-fusion-drift",
-                "drift gate must skip when fusion.yaml is absent"
+                rule_id, "slice-reconciliation-drift",
+                "drift gate must skip when reconciliation.yaml is absent"
             );
         }
     }
 }
 
 #[test]
-fn validate_skipped_drift_gate_does_not_fire_on_pre_synthesis_spec() {
-    // When fusion.yaml is present but spec.md is still pre-synthesis
+fn validate_no_drift_pre_synthesis() {
+    // When reconciliation.yaml is present but spec.md is still pre-synthesis
     // (no Sources/Status lines), the drift gate must still gather
     // REQ ids from the bare `ID:` lines so a partially-refined slice
     // does not silently drift. This protects against the case where
@@ -753,7 +754,8 @@ body without metadata lines yet
 ";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
     let slice_dir = project.slices_dir().join("my-slice");
-    fs::write(slice_dir.join("fusion.yaml"), CLEAN_FUSION_YAML).expect("write fusion");
+    fs::write(slice_dir.join("reconciliation.yaml"), CLEAN_RECONCILIATION_YAML)
+        .expect("write reconciliation");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir");
     fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
@@ -769,7 +771,7 @@ body without metadata lines yet
         for r in results {
             let rule_id = r["rule-id"].as_str().unwrap_or("");
             assert_ne!(
-                rule_id, "slice-fusion-drift",
+                rule_id, "slice-reconciliation-drift",
                 "drift gate must accept matching REQ ids even when Sources/Status metadata is absent"
             );
         }
@@ -785,9 +787,7 @@ fn validate_emits_file_location_when_root_spec_md_exists_but_no_canonical_specs(
     let project = Project::init().with_schemas();
     specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.slices_dir().join("my-slice");
-    // Write spec.md at the slice root instead of under specs/<unit>/.
     fs::write(slice_dir.join("spec.md"), CLEAN_SPEC_MD).expect("write root spec.md");
-    // Ensure specs/ is empty (slice create makes the dir but no files).
     drop(fs::remove_dir_all(slice_dir.join("specs")));
 
     let assert = specrun()
@@ -814,9 +814,6 @@ fn validate_emits_file_location_when_root_spec_md_exists_but_no_canonical_specs(
 #[test]
 fn validate_does_not_emit_file_location_when_canonical_specs_exist() {
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
-    // stage_slice_with_spec writes specs/login/spec.md — canonical location.
-    // Also write a root spec.md to make sure the gate does NOT fire when
-    // canonical specs are present (the root file is ignored, not an error).
     let slice_dir = project.slices_dir().join("my-slice");
     fs::write(slice_dir.join("spec.md"), "stale root copy").expect("write root spec.md");
 
@@ -842,8 +839,6 @@ fn validate_does_not_emit_file_location_when_canonical_specs_exist() {
 fn validate_does_not_emit_file_location_when_no_root_spec_md() {
     let project = Project::init().with_schemas();
     specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-    // Neither root spec.md nor any spec under specs/ — no file-location
-    // diagnostic should fire (the slice is simply empty).
     let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
@@ -863,14 +858,14 @@ fn validate_does_not_emit_file_location_when_no_root_spec_md() {
 }
 
 // ---------------------------------------------------------------------------
-// RFC-31 D5 — `slice validate` catalog drift gate
+// component catalog contract — `slice validate` catalog drift gate
 // ---------------------------------------------------------------------------
 
 /// Evidence with a `component:` directive on a claim.
 const EVIDENCE_WITH_COMPONENT: &str = "source: ui-screens
 adapter: screenshots
 authority: behaviour
-candidate: my-slice
+lead: my-slice
 claims:
   - kind: region
     claim-id: task-list-footer
@@ -883,7 +878,7 @@ claims:
 const EVIDENCE_WITH_CANDIDATE_COMPONENT: &str = "source: ui-screens
 adapter: screenshots
 authority: behaviour
-candidate: my-slice
+lead: my-slice
 claims:
   - kind: region
     claim-id: task-list-header
@@ -905,7 +900,7 @@ components:
 
 /// Plan that declares a `ui-screens` source for the `my-slice` entry.
 const PLAN_WITH_UI_SCREENS: &str = "\
-name: rfc31-catalog
+name: component-catalog
 lifecycle: pending
 sources:
   ui-screens:
@@ -916,7 +911,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { key: ui-screens, candidate: my-slice }
+      - { key: ui-screens, lead: my-slice }
 ";
 
 /// Stage a slice with Evidence containing `component:` directives
@@ -942,7 +937,7 @@ fn stage_slice_with_catalog(evidence: &str, catalog: Option<&str>, plan: Option<
 }
 
 #[test]
-fn validate_skips_catalog_drift_when_no_catalog_exists() {
+fn validate_skips_catalog_drift_without_catalog() {
     let project =
         stage_slice_with_catalog(EVIDENCE_WITH_COMPONENT, None, Some(PLAN_WITH_UI_SCREENS));
     let assert = specrun()
@@ -964,7 +959,7 @@ fn validate_skips_catalog_drift_when_no_catalog_exists() {
 }
 
 #[test]
-fn validate_passes_when_component_slug_is_confirmed() {
+fn validate_passes_when_slug_confirmed() {
     let project = stage_slice_with_catalog(
         EVIDENCE_WITH_COMPONENT,
         Some(CATALOG_YAML),
@@ -1045,7 +1040,7 @@ fn validate_detects_rejected_catalog_entry() {
 }
 
 #[test]
-fn validate_does_not_flag_candidate_component_notes() {
+fn validate_ignores_candidate_notes() {
     let project = stage_slice_with_catalog(
         EVIDENCE_WITH_CANDIDATE_COMPONENT,
         Some(CATALOG_YAML),
@@ -1075,7 +1070,7 @@ fn validate_passes_with_empty_catalog() {
     let evidence_no_component = "source: ui-screens
 adapter: screenshots
 authority: behaviour
-candidate: my-slice
+lead: my-slice
 claims:
   - kind: region
     claim-id: task-list-body
@@ -1105,7 +1100,7 @@ claims:
 }
 
 #[test]
-fn validate_skips_provenance_when_no_metadata_lines_present() {
+fn validate_skips_provenance_without_metadata() {
     // pre-2.0 (or pre-synthesis) state. The provenance gate must
     // not fire and the slice progresses to the existing adapter rule
     // run. The adapter rules will still surface deferred /

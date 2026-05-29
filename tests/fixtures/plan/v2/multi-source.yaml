@@ -14,7 +14,7 @@ slices:
     project: identity-svc
     sources:
       - key: identity-design-notes
-        candidate: user-registration
+        lead: user-registration
       - key: legacy-monolith
-        candidate: user-registration
+        lead: user-registration
     status: pending

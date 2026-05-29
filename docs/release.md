@@ -35,7 +35,7 @@ The `.github/workflows/release.yaml` workflow fires on the tag push and runs fou
 
 4. **`publish-crates-io`.** Gated behind `if: github.repository == 'augentic/specify-cli'` so forks and non-canonical clones silently skip it. Publishes crates to crates.io in dependency order:
 
-   `specify-error` → `specify-domain` → `specify`
+   `specify-error` → `specify-workflow` → `specify`
 
    A `sleep 30` between each publish gives the crates.io index time to propagate before the next dependent crate tries to resolve it. The job reads `secrets.CARGO_REGISTRY_TOKEN`; because the job is gated at the job-level `if:`, the workflow file remains valid even in repos where the secret does not exist (GitHub only evaluates `secrets.*` inside steps that actually execute).
 
@@ -97,7 +97,7 @@ Once the formula lands in `homebrew-core`, the tap step disappears entirely — 
 
 ## Install script hosting
 
-`install.sh` lives at the repo root and is served verbatim. Whether we front it on a `specify.sh` domain or serve it as a release asset (or both) is a Phase-2 choice: the skill-fallback prose in migrated skills already tolerates both, per [RFC-1 §CLI Distribution and Fallback](https://github.com/augentic/specify/blob/main/rfcs/done/rfc-1-cli.md#cli-distribution-and-fallback).
+`install.sh` lives at the repo root and is served verbatim. Whether we front it on a `specify.sh` domain or serve it as a release asset (or both) is a Phase-2 choice: migrated skill-fallback prose already tolerates both distribution paths.
 
 Until a domain is purchased, users can still run:
 

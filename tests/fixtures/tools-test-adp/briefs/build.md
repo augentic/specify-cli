@@ -1,6 +1,6 @@
 ---
 id: build
-description: Fixture build brief for RFC-15 acceptance tests.
+description: Fixture build brief for declared-tool acceptance tests.
 ---
 
-No-op brief used only by RFC-15 acceptance tests.
+No-op brief used only by declared-tool acceptance tests.

@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_creates_full_document_when_agents_is_absent() {
+    fn writer_creates_full_document() {
         let planned = plan_agents_write(None, GENERATED, false).expect("plan ok");
 
         assert_eq!(planned.bytes, GENERATED);
@@ -82,7 +82,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_refuses_existing_unfenced_document_without_force() {
+    fn writer_refuses_unfenced_without_force() {
         let err = plan_agents_write(Some(b"# hand-authored\n"), GENERATED, false)
             .expect_err("unfenced must refuse");
 
@@ -90,7 +90,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_rewrites_existing_unfenced_document_with_force() {
+    fn writer_rewrites_unfenced_with_force() {
         let planned = plan_agents_write(Some(b"# hand-authored\n"), GENERATED, true)
             .expect("force rewrite ok");
 
@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_requires_generated_document_to_be_fenced() {
+    fn writer_requires_fenced() {
         let err = plan_agents_write(None, b"# generated but unfenced\n", false)
             .expect_err("generated document without fences must fail");
 

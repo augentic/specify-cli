@@ -61,7 +61,7 @@ fn cache_root_honours_override_precedence() {
 }
 
 #[test]
-fn cache_root_uses_xdg_before_home_fallback() {
+fn cache_root_prefers_xdg() {
     let xdg_dir = scratch_dir("xdg-only");
     let home_dir = scratch_dir("home-only");
     let _g = env_lock();
@@ -72,7 +72,7 @@ fn cache_root_uses_xdg_before_home_fallback() {
 }
 
 #[test]
-fn cache_root_uses_home_when_no_explicit_env() {
+fn cache_root_falls_back_home() {
     let home_dir = scratch_dir("home-fallback");
     let _g = env_lock();
     let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", None);
@@ -82,7 +82,7 @@ fn cache_root_uses_home_when_no_explicit_env() {
 }
 
 #[test]
-fn scope_segment_formats_and_rejects_empty_names() {
+fn scope_segment_rejects_empty() {
     assert_eq!(scope_segment(&project_scope()).expect("project segment"), "project--demo");
     assert_eq!(
         scope_segment(&plugin_target_scope()).expect("plugin segment"),
@@ -101,7 +101,7 @@ fn scope_segment_formats_and_rejects_empty_names() {
 }
 
 #[test]
-fn sidecar_round_trips_and_schema_rejects_invalid_shape() {
+fn sidecar_round_trips_rejects_invalid() {
     let root = scratch_dir("sidecar");
     let path = root.join(SIDECAR_FILENAME);
     let sidecar =
@@ -129,7 +129,7 @@ fn sidecar_round_trips_and_schema_rejects_invalid_shape() {
 }
 
 #[test]
-fn cache_status_distinguishes_hit_not_found_and_changed_digest() {
+fn cache_status_distinguishes_states() {
     let cache_dir = scratch_dir("status-cache");
     let _env = cache_env(&cache_dir);
     assert_eq!(
@@ -174,7 +174,7 @@ fn cache_status_distinguishes_hit_not_found_and_changed_digest() {
 }
 
 #[test]
-fn stage_and_install_installs_complete_tree_and_replaces_existing_version() {
+fn stage_and_install_replaces_existing() {
     let root = scratch_dir("stage");
     let staged = root.join("staged");
     let dest = root.join("cache").join("project--demo").join("contract").join("1.0.0");
@@ -201,7 +201,7 @@ fn stage_and_install_installs_complete_tree_and_replaces_existing_version() {
 }
 
 #[test]
-fn scan_for_gc_isolates_scope_and_uses_name_version_source_keep_set() {
+fn scan_for_gc_isolates_scope() {
     let cache_dir = scratch_dir("gc-cache");
     let _env = cache_env(&cache_dir);
 

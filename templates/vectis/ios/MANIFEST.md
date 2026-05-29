@@ -5,7 +5,7 @@ registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.ios`); `wasi-too
 
 Source filenames are flat under `templates/vectis/ios/`. Nested target paths (especially the `iOS/__APP_NAME__/...` segment) are declared in `manifest.yaml`. The `__APP_NAME__` segment in target paths is substituted by the engine when writing each file, the same as inside file contents (e.g. `__APP_NAME__App.swift` becomes `CounterApp.swift`).
 
-Total: 7 files (matches RFC § File Manifests § iOS Assembly).
+Total: 7 files (matches the file manifest contract for iOS assembly).
 
 ## Placeholder reference
 
@@ -67,11 +67,11 @@ connectivity for the first `xcodegen`/`xcodebuild` cycle, which violates
 the "one command, working project" promise.
 
 Theme and token code is emitted as shell-local files under `iOS/<App>/Theme/`
-by the `ios-writer` skill during Update Mode (RFC-11 §L "Generated layout").
+by the `ios-writer` skill during Update Mode (the generated layout contract).
 The CLI scaffold does not include theme files because `tokens.yaml` may not
 exist at scaffold time; the writer adds them on first generation.
 
-If a future RFC wants hot-reload back, it can be added as a cap-style toggle
+If hot-reload returns, it can be added as a cap-style toggle
 (e.g. `--hot-reload`) and gated by its own marker.
 
 ## Self-check

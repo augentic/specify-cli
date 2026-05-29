@@ -17,7 +17,7 @@ const FIRST_PARTY_NAMESPACE: &str = "specify";
 const FIRST_PARTY_REGISTRY: &str = "augentic.io";
 /// Filename of the project-local wasm-pkg config inside `.specify/`.
 ///
-/// Paired with [`Layout::specify_dir`](specify-domain) at the init
+/// Paired with [`Layout::specify_dir`](specify-workflow) at the init
 /// site so the helper does not have to re-derive the relative path.
 pub const WASM_PKG_CONFIG_FILENAME: &str = "wasm-pkg.toml";
 
@@ -30,7 +30,7 @@ pub const WASM_PKG_CONFIG_PATH: &str = ".specify/wasm-pkg.toml";
 
 /// Canonical contents `specrun init` writes for a fresh project.
 ///
-/// Mirrors RFC-17 §"Distribution Model" so
+/// Mirrors the wasm-pkg distribution model so
 /// `wkg --config .specify/wasm-pkg.toml` and `specrun tool fetch`
 /// agree on namespace routing.
 pub const DEFAULT_WASM_PKG_CONFIG: &str = "default_registry = \"augentic.io\"\n\
@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn embedded_default_injects_first_party_namespace() {
+    fn embedded_injects_first_party() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-embedded-default");
         let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn embedded_default_skipped_for_other_namespaces() {
+    fn embedded_skipped_for_others() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-embedded-other");
         let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn project_local_config_overrides_embedded_default() {
+    fn local_config_overrides_default() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-project-config-home");
         let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
@@ -351,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_project_config_is_silently_skipped() {
+    fn missing_config_skipped() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-missing-project-home");
         let _wkg = EnvGuard::scoped("WKG_CONFIG", None);

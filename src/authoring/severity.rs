@@ -1,8 +1,8 @@
 //! Maps a `specify_authoring::Finding`'s rule-id-driven imperative
-//! finding to the closed RFC-28 [`Severity`] enum.
+//! finding to the closed [`Severity`] enum.
 //!
-//! RFC-28 §"Framework convergence (Phase 3)" requires every authoring
-//! finding emitted by `specdev check --format json` to carry a closed
+//! The framework-convergence contract requires every authoring
+//! finding emitted by `specdev lint --format json` to carry a closed
 //! severity from `{critical, important, suggestion, optional}`. The
 //! authoring `Finding` type does not currently carry a severity field
 //! (`crates/authoring/src/finding.rs` exposes only `rule_id`,
@@ -10,17 +10,17 @@
 //! rule-id family, with a [`Severity::Important`] default for any
 //! unclassified rule id.
 //!
-//! ## Authoring rule-id → RFC-28 severity table
+//! ## Authoring rule-id → review severity table
 //!
 //! ```text
-//! | Authoring rule-id                                | RFC-28 severity |
+//! | Authoring rule-id                                | review severity |
 //! | ------------------------------------------------ | --------------- |
-//! | codex.schema-violation                           | critical        |
+//! | rules.schema-violation                           | critical        |
 //! | adapter.*                                        | important       |
 //! | agent-teams.*                                    | important       |
 //! | brief.*                                          | important       |
-//! | codex.duplicate-rule-id                          | important       |
-//! | codex.namespace-ownership-violation              | important       |
+//! | rules.duplicate-rule-id                          | important       |
+//! | rules.namespace-ownership-violation              | important       |
 //! | docs.*                                           | important       |
 //! | links.*                                          | important       |
 //! | plugins.*                                        | important       |
@@ -33,9 +33,9 @@
 //!
 //! ### Calibration
 //!
-//! Only `codex.schema-violation` is elevated to `Critical`: a malformed
-//! codex rule file is a fundamental schema breakage that breaks every
-//! downstream consumer of the resolved codex (`specrun codex export`,
+//! Only `rules.schema-violation` is elevated to `Critical`: a malformed
+//! rule file is a fundamental schema breakage that breaks every
+//! downstream consumer of the resolved codex (`specrun rules export`,
 //! review tooling, target adapter overlays). Every other authoring
 //! rule — duplicate rule ids, namespace-ownership violations, skill /
 //! brief / link / docs / scenarios / tools / agent-teams families —
@@ -48,24 +48,24 @@
 //!
 //! This module deliberately lives at the binary boundary
 //! (`src/authoring/severity.rs`) and not in the `specify-authoring`
-//! library crate. Per RFC-28 §"Relationship to framework authoring",
-//! the CH-21 `Finding` → `ReviewFinding` mapper sits at the
+//! library crate. Per the framework-authoring mapping contract,
+//! the CH-21 `Finding` → `LintFinding` mapper sits at the
 //! `specdev` binary boundary so `specify-authoring` does not take a
-//! dependency on `specify-domain`. CH-20 is a building block for that
+//! dependency on `specify-workflow`. CH-20 is a building block for that
 //! mapper, so the severity table must live in the binary layer too.
 
-use specify_codex::Severity;
+use specify_lints::Severity;
 
-/// Map an authoring `Finding::rule_id` to the closed RFC-28
+/// Map an authoring `Finding::rule_id` to the closed review
 /// [`Severity`] enum.
 ///
 /// Unknown rule ids fall through to [`Severity::Important`] — the
 /// default escalation level documented for adapter overlays in
-/// RFC-28 §"Resolved codex export".
+/// `ResolvedRules` export contract.
 #[must_use]
 pub fn severity_for(rule_id: &str) -> Severity {
     match rule_id {
-        "codex.schema-violation" => Severity::Critical,
+        "rules.schema-violation" => Severity::Critical,
         _ => Severity::Important,
     }
 }
@@ -73,39 +73,38 @@ pub fn severity_for(rule_id: &str) -> Severity {
 #[cfg(test)]
 mod tests {
     use specify_authoring::check::{
-        RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_DUPLICATE_NAME,
-        RULE_DUPLICATE_RULE_ID, RULE_MISSING_FRONTMATTER, RULE_MISSING_MANIFEST,
-        RULE_NAME_DIRECTORY_MISMATCH, RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-        RULE_RECORDED_TRACE_VIOLATION, RULE_SCHEMA_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS,
-        RULE_STALE_RECORDED_TRACE, RULE_UNKNOWN_TOOL, SCENARIO_RULE_ARTIFACT_PATH_UNSAFE,
-        SCENARIO_RULE_BODY_ID_MISMATCH, SCENARIO_RULE_DUPLICATE_ID, SCENARIO_RULE_SCHEMA_VIOLATION,
-        SKILL_RULE_SCHEMA_VIOLATION,
+        RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_DUPLICATE_RULE_ID,
+        RULE_MISSING_FRONTMATTER, RULE_MISSING_MANIFEST, RULE_NAME_DIRECTORY_MISMATCH,
+        RULE_NAMESPACE_OWNERSHIP_VIOLATION, RULE_RECORDED_TRACE_VIOLATION,
+        RULE_STAGES_NOT_CONTIGUOUS, RULE_STALE_RECORDED_TRACE, RULE_UNKNOWN_TOOL,
+        SCENARIO_RULE_ARTIFACT_PATH_UNSAFE, SCENARIO_RULE_BODY_ID_MISMATCH,
+        SCENARIO_RULE_DUPLICATE_ID, SCENARIO_RULE_SCHEMA_VIOLATION, SKILL_RULE_SCHEMA_VIOLATION,
     };
-    use specify_codex::Severity;
+    use specify_lints::Severity;
 
     use super::severity_for;
 
-    /// `codex.schema-violation` is the one rule the table elevates to
-    /// `Critical` (RFC-28 §"Resolved codex export" — schema breakage
+    /// `rules.schema-violation` is the one rule the table elevates to
+    /// `Critical` (`ResolvedRules` export contract — schema breakage
     /// blocks every downstream consumer of the resolved codex).
     #[test]
     fn codex_schema_violation_maps_to_critical() {
-        assert_eq!(severity_for("codex.schema-violation"), Severity::Critical);
+        assert_eq!(severity_for("rules.schema-violation"), Severity::Critical);
     }
 
     /// The `skill.*` family covers frontmatter and body checks; per the
-    /// table, every member maps to `Important`.
+    /// table, every member maps to `Important`. `skill.duplicate-name`
+    /// was retired in RFC-34 C11 (now `CORE-003`) and `skill.body-line-count`
+    /// was retired in RFC-34 C13 (now `CORE-005`); both are omitted.
     #[test]
     fn skill_family_maps_to_important() {
         for rule_id in [
             "skill.schema-violation",
             "skill.missing-frontmatter",
             "skill.name-directory-mismatch",
-            "skill.duplicate-name",
             "skill.unknown-tool",
             "skill.description-grammar",
             "skill.argument-hint-grammar",
-            "skill.body-line-count",
             "skill.section-line-count",
             "skill.missing-critical-path",
             "skill.invalid-critical-path",
@@ -120,11 +119,11 @@ mod tests {
     }
 
     /// The `links.*` family is a documentation-quality gate; per the
-    /// table, every member maps to `Important`.
+    /// table, every member maps to `Important`. `links.unresolved`
+    /// was retired in RFC-34 C10 (now `CORE-002`) and is omitted.
     #[test]
     fn links_family_maps_to_important() {
         for rule_id in [
-            "links.unresolved",
             "links.broken-reference",
             "links.unresolved-directive",
             "links.brief-schema-link-resolve",
@@ -136,7 +135,7 @@ mod tests {
     /// Unknown / unclassified rule ids fall through to the documented
     /// `Important` default.
     #[test]
-    fn unclassified_rule_id_defaults_to_important() {
+    fn unclassified_defaults_important() {
         assert_eq!(severity_for("future.unmapped-rule"), Severity::Important);
         assert_eq!(severity_for(""), Severity::Important);
         assert_eq!(severity_for("totally.made.up"), Severity::Important);
@@ -152,10 +151,9 @@ mod tests {
     /// arm is covered by `codex_schema_violation_maps_to_critical`
     /// above.
     #[test]
-    fn every_exported_rule_constant_maps_to_a_known_severity() {
+    fn exported_rules_map_to_severity() {
         let important = [
             // adapter
-            RULE_SCHEMA_VIOLATION,
             RULE_MISSING_MANIFEST,
             // codex
             RULE_DUPLICATE_RULE_ID,
@@ -163,7 +161,6 @@ mod tests {
             // skill frontmatter
             RULE_ARGUMENT_HINT_GRAMMAR,
             RULE_DESCRIPTION_GRAMMAR,
-            RULE_DUPLICATE_NAME,
             RULE_MISSING_FRONTMATTER,
             RULE_NAME_DIRECTORY_MISMATCH,
             SKILL_RULE_SCHEMA_VIOLATION,

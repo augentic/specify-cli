@@ -15,9 +15,9 @@ mod lock;
 mod render;
 
 pub use generate::for_init as generate_for_init;
-#[cfg(test)]
-use specify_domain::config::Layout;
 use specify_error::{Error, Result};
+#[cfg(test)]
+use specify_workflow::config::Layout;
 
 use crate::runtime::context::Ctx;
 
@@ -68,8 +68,8 @@ fn context_lock_path(ctx: &Ctx) -> PathBuf {
 mod tests {
     use std::collections::BTreeMap;
 
-    use specify_domain::config::ProjectConfig;
-    use specify_domain::registry::Registry;
+    use specify_workflow::config::ProjectConfig;
+    use specify_workflow::registry::Registry;
     use tempfile::tempdir;
 
     use super::*;
@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn assemble_render_input_reads_existing_metadata_in_sorted_order() {
+    fn assemble_render_input_sorted_metadata() {
         let tmp = tempdir().expect("tempdir");
         write_minimal_adapter(tmp.path());
         let slices_dir = Layout::new(tmp.path()).slices_dir();
@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn assemble_render_input_skips_pipeline_for_hubs() {
+    fn render_input_skips_for_hubs() {
         let tmp = tempdir().expect("tempdir");
         let cfg_path = Layout::new(tmp.path()).config_path();
         fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");
