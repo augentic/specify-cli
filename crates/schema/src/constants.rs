@@ -14,10 +14,10 @@ pub const PLAN_JSON_SCHEMA: &str = include_str!("../../../schemas/plan/plan.sche
 /// `.specify/slices/<name>/evidence/`.
 pub const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.schema.json");
 
-/// Schema for `reconciliation.yaml`, the audit-only reconciliation
+/// Schema for `provenance.yaml`, the audit-only provenance
 /// index emitted by slice synthesis.
 pub const RECONCILIATION_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/slice/reconciliation.schema.json");
+    include_str!("../../../schemas/slice/provenance.schema.json");
 
 /// Schema for `components.yaml`, the operator-curated design-system
 /// component catalog.

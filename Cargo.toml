@@ -26,6 +26,7 @@ semver.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
+specify-diagnostics.workspace = true
 specify-lints.workspace = true
 specify-workflow.workspace = true
 specify-model.workspace = true
@@ -49,6 +50,7 @@ workspace = true
 [workspace]
 members = [
     "crates/authoring",
+    "crates/diagnostics",
     "crates/specify-lints",
     "crates/error",
     "crates/model",
@@ -174,6 +176,7 @@ serde-saphyr = "0.0.26"
 serde_json = "1"
 sha2 = "0.11"
 specify-authoring = { path = "crates/authoring" }
+specify-diagnostics = { path = "crates/diagnostics" }
 specify-lints = { path = "crates/specify-lints" }
 specify-model = { path = "crates/model" }
 specify-validate = { path = "crates/validate" }

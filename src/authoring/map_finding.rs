@@ -30,7 +30,7 @@
 //! | (raw scanner output)                   | `status` = `None`                      |
 //! | (raw scanner output)                   | `disposition` = `None`                 |
 //!
-//! ### Decision: imperative `rule_id` vs closed codex `rule-id`
+//! ### Decision: imperative `rule_id` mapped onto the closed codex `rule-id`
 //!
 //! `crates/authoring/src/finding.rs` returns a static authoring
 //! identifier such as `rules.schema-violation`, `skill.unknown-tool`,
@@ -38,27 +38,94 @@
 //! `schemas/lint/finding.schema.json` constrains `rule-id` to the
 //! closed codex regex
 //! `^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
-//! Setting `rule_id: Some("rules.schema-violation".into())` would
-//! therefore fail schema validation.
 //!
-//! To preserve the schema's closed contract while keeping the
-//! authoring rule id human-greppable in downstream consumers, the
-//! mapper leaves `rule_id: None` and surfaces the authoring id as a
-//! `[...]` prefix on `title`. The brackets are parseable so future
-//! tooling can recover the imperative id without re-running the
-//! check.
+//! Every still-active imperative predicate is therefore assigned a
+//! `CORE-NNN` id by `CORE_ID_TABLE`. The mapper sets
+//! `rule_id: Some("CORE-NNN")` and emits a clean `title` (the first
+//! non-empty `message` line, no `[...]` prefix). Predicates whose
+//! declarative counterpart already owns a `CORE-*` id reuse that id so
+//! the migration-overlap dedupe (RFC-34 §F5) collapses the duplicate —
+//! `rules.namespace-ownership-violation` reuses `CORE-009`.
 //!
-//! TODO(standards-layer): once authoring rule families migrate to codex
-//! `FRAME-NNN` ids (the declarative framework-rule namespace
-//! introduced by the standards-layer split), this mapper should set
-//! `rule_id: Some("FRAME-NNN")` and drop the `[...]` title prefix.
+//! The numbering above the framework-allocated `CORE-001..009` block is
+//! a fresh sequential assignment minted in this crate (operator choice;
+//! see the plan). It carries a forward-collision risk against the
+//! framework repo's `adapters/shared/rules/core/` catalog as more
+//! predicates migrate to declarative rules; reconcile when those rule
+//! files land.
+//!
+//! Any rule id absent from `CORE_ID_TABLE` falls back to
+//! `rule_id: None` with the legacy `[...]` title prefix so a
+//! newly-added predicate is never silently dropped from the wire.
 
 use specify_authoring::finding::{Finding, Location};
 use specify_lints::fingerprint::fingerprint;
-use specify_lints::{Artifact, FindingEvidence, FindingLocation, FindingSource, LintFinding};
+use specify_lints::{
+    Artifact, DiagnosticKind, FindingEvidence, FindingLocation, FindingSource, LintFinding,
+};
 use specify_tool::sha256_hex;
 
 use crate::authoring::severity::severity_for;
+
+/// Mapping from each still-active imperative authoring rule id to its
+/// closed codex `CORE-NNN` id.
+///
+/// `CORE-001..009` are owned by declarative rule files in the framework
+/// repo (`adapters/shared/rules/core/`). `rules.namespace-ownership-violation`
+/// reuses `CORE-009` (its declarative counterpart); every other entry
+/// is minted at `CORE-010` and up.
+const CORE_ID_TABLE: &[(&str, &str)] = &[
+    ("rules.namespace-ownership-violation", "CORE-009"),
+    ("adapter.missing-manifest", "CORE-010"),
+    ("agent-teams.missing-canonical", "CORE-011"),
+    ("agent-teams.non-canonical-overlay", "CORE-012"),
+    ("brief.exceeds-size-limit", "CORE-013"),
+    ("brief.frontmatter-forbidden", "CORE-014"),
+    ("docs.missing-diagram-asset", "CORE-015"),
+    ("docs.specify-history-citation-in-docs", "CORE-016"),
+    ("docs.text-pipeline-diagram", "CORE-017"),
+    ("links.brief-schema-link-resolve", "CORE-018"),
+    ("links.broken-reference", "CORE-019"),
+    ("links.unresolved-directive", "CORE-020"),
+    ("plugins.broken-symlink", "CORE-021"),
+    ("plugins.marketplace-drift", "CORE-022"),
+    ("prose.invocation-positional", "CORE-023"),
+    ("prose.numeric-cap-exceeded", "CORE-024"),
+    ("prose.operational-vocabulary", "CORE-025"),
+    ("rules.duplicate-rule-id", "CORE-026"),
+    ("rules.schema-violation", "CORE-027"),
+    ("scenarios.artifact-path-unsafe", "CORE-028"),
+    ("scenarios.body-id-mismatch", "CORE-029"),
+    ("scenarios.duplicate-id", "CORE-030"),
+    ("scenarios.recorded-trace-violation", "CORE-031"),
+    ("scenarios.schema-violation", "CORE-032"),
+    ("scenarios.stages-not-contiguous-prefix", "CORE-033"),
+    ("scenarios.stale-recorded-trace", "CORE-034"),
+    ("skill.argument-hint-grammar", "CORE-035"),
+    ("skill.description-grammar", "CORE-036"),
+    ("skill.envelope-json-in-body", "CORE-037"),
+    ("skill.frontmatter-restatement", "CORE-038"),
+    ("skill.inline-json-too-long", "CORE-039"),
+    ("skill.invalid-critical-path", "CORE-040"),
+    ("skill.missing-critical-path", "CORE-041"),
+    ("skill.missing-frontmatter", "CORE-042"),
+    ("skill.name-directory-mismatch", "CORE-043"),
+    ("skill.schema-violation", "CORE-044"),
+    ("skill.section-line-count", "CORE-045"),
+    ("skill.step-body-duplicates-critical-path", "CORE-046"),
+    ("skill.unknown-tool", "CORE-047"),
+    ("skill.variable-coverage", "CORE-048"),
+    ("tools.invalid-declaration", "CORE-049"),
+    ("tools.invocation-not-equivalent", "CORE-050"),
+];
+
+/// Resolve the closed codex `CORE-NNN` id for an imperative authoring
+/// rule id, or `None` when the id has not been assigned one yet (the
+/// caller falls back to the `[...]` title-prefix form).
+#[must_use]
+pub fn core_id_for(rule_id: &str) -> Option<&'static str> {
+    CORE_ID_TABLE.iter().find(|(authoring, _)| *authoring == rule_id).map(|(_, core)| *core)
+}
 
 /// 16 `KiB` cap on the serialised evidence object per the rules contract (mirror
 /// of `specify_lints::finding::EVIDENCE_MAX_BYTES`, kept
@@ -103,17 +170,19 @@ pub fn map_findings(inputs: &[Finding]) -> Vec<LintFinding> {
 }
 
 fn map_one(input: &Finding, index: usize) -> LintFinding {
-    let title = build_title(input.rule_id, &input.message);
+    let rule_id = core_id_for(input.rule_id);
+    let title = build_title(input.rule_id, &input.message, rule_id.is_some());
     let evidence = build_evidence(&input.message);
     let location = input.location.as_ref().map(map_location);
 
     let mut review = LintFinding {
         id: format!("FIND-{index:04}"),
-        rule_id: None,
+        rule_id: rule_id.map(str::to_string),
         related_rule_ids: None,
         title,
         severity: severity_for(input.rule_id),
         source: FindingSource::Deterministic,
+        kind: DiagnosticKind::Violation,
         target_adapter: None,
         source_adapter: None,
         slice: None,
@@ -135,11 +204,15 @@ fn map_one(input: &Finding, index: usize) -> LintFinding {
     review
 }
 
-fn build_title(rule_id: &str, message: &str) -> String {
+fn build_title(rule_id: &str, message: &str, has_core_id: bool) -> String {
     let head = message.lines().find(|line| !line.trim().is_empty()).unwrap_or(message);
     let head = head.trim();
     let body = if head.is_empty() { "(no message)" } else { head };
-    let raw = format!("[{rule_id}] {body}");
+    // When the finding carries a closed codex `rule_id`, the id is
+    // already wire-visible on its own field, so the title stays clean.
+    // Unmapped predicates keep the `[rule_id]` prefix so the imperative
+    // id remains greppable while `rule_id` is `None`.
+    let raw = if has_core_id { body.to_owned() } else { format!("[{rule_id}] {body}") };
     truncate_chars(&raw, TITLE_MAX_CHARS)
 }
 
@@ -238,11 +311,11 @@ mod tests {
         assert_eq!(important.severity, Severity::Important);
     }
 
-    /// (3) The synthesised title carries the authoring rule id as a
-    /// `[...]` prefix so downstream consumers can recover the
-    /// imperative identifier even though `rule_id` is `None`.
+    /// (3) A mapped imperative id carries the closed codex `rule_id` on
+    /// its own field, so the title stays clean (no `[...]` prefix) and
+    /// collapses to the first non-empty message line.
     #[test]
-    fn title_prefixes_rule_id() {
+    fn mapped_id_keeps_title_clean() {
         let mapped = map_finding(&fixture(
             "rules.schema-violation",
             "Rule frontmatter failed schema validation.\nsecond line ignored",
@@ -250,27 +323,39 @@ mod tests {
             1,
             None,
         ));
+        assert_eq!(mapped.rule_id.as_deref(), Some("CORE-027"));
+        assert_eq!(mapped.title, "Rule frontmatter failed schema validation.");
+        assert!(!mapped.title.starts_with('['), "mapped id must not carry a title prefix");
+    }
+
+    /// (3b) An unmapped imperative id falls back to `rule_id: None` and
+    /// the legacy `[...]` title prefix so a newly-added predicate is
+    /// never silently dropped from the wire.
+    #[test]
+    fn unmapped_id_falls_back_to_title_prefix() {
+        let mapped = map_finding(&fixture("future.unmapped-rule", "boom", None, 1, None));
+        assert!(mapped.rule_id.is_none(), "unmapped id must yield rule_id: None");
         assert!(
-            mapped.title.starts_with("[rules.schema-violation] "),
-            "title must lead with the authoring rule id: {}",
-            mapped.title,
-        );
-        assert!(
-            !mapped.title.contains('\n'),
-            "title must collapse to a single line: {:?}",
+            mapped.title.starts_with("[future.unmapped-rule] "),
+            "unmapped id must lead with the authoring rule id: {}",
             mapped.title,
         );
     }
 
-    /// (4) Authoring imperative ids (`rules.schema-violation`,
-    /// `skill.unknown-tool`, ...) do not match the codex `rule-id`
-    /// regex, so the mapper leaves `rule_id: None` and keeps the
-    /// schema legal.
+    /// (4) Each still-active imperative id maps onto a closed codex
+    /// `CORE-NNN` id; `rules.namespace-ownership-violation` reuses its
+    /// declarative counterpart `CORE-009`.
     #[test]
-    fn rule_id_is_omitted_for_imperative_ids() {
-        for rule in ["rules.schema-violation", "skill.unknown-tool", "links.broken-reference"] {
+    fn rule_id_maps_to_core_namespace() {
+        let cases = [
+            ("rules.schema-violation", "CORE-027"),
+            ("skill.unknown-tool", "CORE-047"),
+            ("links.broken-reference", "CORE-019"),
+            ("rules.namespace-ownership-violation", "CORE-009"),
+        ];
+        for (rule, core) in cases {
             let mapped = map_finding(&fixture(rule, "msg", None, 1, None));
-            assert!(mapped.rule_id.is_none(), "{rule} must yield rule_id: None");
+            assert_eq!(mapped.rule_id.as_deref(), Some(core), "{rule} must map to {core}");
         }
     }
 

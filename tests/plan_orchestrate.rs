@@ -827,7 +827,7 @@ fn create_divergence_unknown_slice_refused() {
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "unknown --divergence-likely slice must exit 2 (validation_failed)");
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    assert_eq!(stderr["error"], "validation");
+    assert_eq!(stderr["error"], "plan-divergence-likely-unknown-slice");
     assert!(
         !project.plan_path().exists(),
         "plan.yaml must not be written when --divergence-likely fails validation"
@@ -2051,11 +2051,7 @@ fn plan_amend_override_orphan_refused() {
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "orphan source-key must exit 2 (validation_failed)");
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    let results = stderr["results"].as_array().expect("results array");
-    assert!(
-        results.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source-key"),
-        "expected slice-authority-override-orphan-source-key in results: {results:#?}"
-    );
+    assert_eq!(stderr["error"], "slice-authority-override-orphan-source-key");
 
     let after = fs::read_to_string(project.plan_path()).expect("read plan");
     assert_eq!(before, after, "plan.yaml must not change on the refused write");
@@ -2100,11 +2096,13 @@ fn slice_validate_authority_override_orphan() {
         .failure();
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "slice validate orphan must exit 2 (validation_failed)");
-    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    let results = stderr["results"].as_array().expect("results array");
+    // `slice validate` renders the DiagnosticReport on stdout and fails
+    // payload-free on stderr; the orphan finding lives on the report.
+    let report = parse_stdout(&assert.get_output().stdout, project.root());
+    let findings = report["findings"].as_array().expect("findings array");
     assert!(
-        results.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source-key"),
-        "expected orphan finding from slice validate: {results:#?}"
+        findings.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source-key"),
+        "expected orphan finding from slice validate: {findings:#?}"
     );
 }
 

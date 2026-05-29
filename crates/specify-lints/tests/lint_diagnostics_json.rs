@@ -14,9 +14,8 @@ mod common;
 
 use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
-use specify_lints::lint::diagnostics::{
-    Format, LintResult, RenderError, json as json_formatter, render,
-};
+use specify_diagnostics::render::json as json_formatter;
+use specify_lints::lint::diagnostics::{Format, LintResult, RenderError, render};
 use specify_schema::{LINT_FINDING_JSON_SCHEMA, LINT_RESULT_JSON_SCHEMA};
 
 use crate::common::make_fixture;

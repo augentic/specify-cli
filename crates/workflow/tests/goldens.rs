@@ -2,18 +2,22 @@
 //!
 //! Each test stages a fixture slice under a tempdir in the expected
 //! layout (`<project>/.specify/slices/<name>/`), runs `validate_slice`,
-//! serialises the report via its `Serialize` derive,
-//! and compares the pretty-printed JSON against a checked-in golden
-//! file.
+//! assembles the returned `Vec<Diagnostic>` into a `DiagnosticReport`
+//! (renumbered, summarised) exactly as the `specrun slice validate`
+//! handler does, serialises it via its `Serialize` derive, and compares
+//! the pretty-printed JSON against a checked-in golden file.
 //!
-//! The goldens pin `envelope_version: 1` and the full shape of a
-//! `ValidationReport` as observed by skill consumers. If you change the
+//! The goldens pin `version: 1` and the full shape of a
+//! `DiagnosticReport` as observed by skill consumers. If you change the
 //! registry, rule wording, or `rule_id`, regenerate both goldens with
 //! `REGENERATE_GOLDENS=1 cargo test -p specify-workflow --test goldens`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use specify_diagnostics::{
+    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, blocking_present, renumber,
+};
 use specify_validate::validate_slice;
 use specify_workflow::slice::SLICES_DIR_NAME;
 use tempfile::TempDir;
@@ -60,11 +64,19 @@ fn golden_path(fixture_name: &str) -> PathBuf {
 
 fn run_fixture_and_diff(fixture_name: &str, expected_passed: bool) {
     let (_guard, slice_dir) = stage_fixture(fixture_name);
-    let report = validate_slice(&slice_dir).expect("validate_slice ok");
+    let mut findings = validate_slice(&slice_dir).expect("validate_slice ok");
     assert_eq!(
-        report.passed, expected_passed,
-        "report.passed mismatch for `{fixture_name}`: {report:#?}"
+        !blocking_present(&findings),
+        expected_passed,
+        "blocking mismatch for `{fixture_name}`: {findings:#?}"
     );
+
+    renumber(&mut findings);
+    let report = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
+        findings,
+    };
 
     let value = serde_json::to_value(&report).expect("report serialises");
     let serialised = serde_json::to_string_pretty(&value).unwrap();

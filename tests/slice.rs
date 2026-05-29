@@ -409,17 +409,54 @@ fn stage_slice_with_spec(spec_md: &str, plan_yaml: Option<&str>) -> Project {
     project
 }
 
-/// Validate-fail goldens carry a `validation` discriminant; assert
-/// that the wire envelope holds the expected `rule_id` exactly once.
-fn assert_provenance_fail_rule(stderr: &[u8], rule_id: &str) {
-    let value = parse_json(stderr);
-    assert_eq!(value["error"], "validation", "wire envelope must be `validation`");
-    assert_eq!(value["exit-code"], 2);
-    let results = value["results"].as_array().expect("results array");
+/// The validate surface now renders a `DiagnosticReport` on stdout and
+/// fails payload-free: the per-rule discriminant lives in
+/// `findings[].rule-id` on stdout, while stderr carries only the
+/// payload-free `Error::Validation` envelope (exit 2). Assert the
+/// expected `rule_id` appears in the rendered findings exactly.
+fn assert_provenance_fail_rule(output: &std::process::Output, rule_id: &str) {
+    let err = parse_json(&output.stderr);
+    assert_eq!(err["exit-code"], 2);
+    let report = parse_json(&output.stdout);
+    let findings = report["findings"].as_array().expect("findings array");
     assert!(
-        results.iter().any(|r| r["rule-id"] == rule_id),
-        "expected rule_id `{rule_id}` in results: {results:#?}"
+        findings.iter().any(|r| r["rule-id"] == rule_id),
+        "expected rule_id `{rule_id}` in findings: {findings:#?}"
     );
+}
+
+/// Assert the rendered `DiagnosticReport` on stdout carries no finding
+/// citing `rule_id`. Tolerates an empty stdout (e.g. a `--dump-model`
+/// short-circuit) by treating it as "no findings".
+fn assert_no_finding(output: &std::process::Output, rule_id: &str) {
+    let report: serde_json::Value = match serde_json::from_slice(&output.stdout) {
+        Ok(value) => value,
+        Err(_) => return,
+    };
+    if let Some(findings) = report["findings"].as_array() {
+        for finding in findings {
+            assert_ne!(
+                finding["rule-id"], rule_id,
+                "no `{rule_id}` finding may appear; got: {findings:#?}"
+            );
+        }
+    }
+}
+
+/// Locate the rendered diagnostic on stdout for `rule_id` and return
+/// its operator-facing `impact` (the former `detail` row). Asserts exit
+/// 2 along the way so callers can focus on the impact text.
+fn find_finding_impact(output: &std::process::Output, rule_id: &str) -> String {
+    let err = parse_json(&output.stderr);
+    assert_eq!(err["exit-code"], 2);
+    let report = parse_json(&output.stdout);
+    let findings = report["findings"].as_array().expect("findings array");
+    findings
+        .iter()
+        .find(|r| r["rule-id"] == rule_id)
+        .and_then(|r| r["impact"].as_str())
+        .unwrap_or_else(|| panic!("`{rule_id}` finding must be present in {findings:#?}"))
+        .to_string()
 }
 
 const PLAN_WITH_LEGACY_MONOLITH: &str = "\
@@ -450,7 +487,7 @@ fn validate_rejects_missing_id() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-id-missing");
+    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-id-missing");
 }
 
 #[test]
@@ -466,7 +503,7 @@ fn validate_rejects_malformed_id() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-id-malformed");
+    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-id-malformed");
 }
 
 #[test]
@@ -481,7 +518,7 @@ fn validate_rejects_missing_sources() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-sources-missing");
+    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-sources-missing");
 }
 
 #[test]
@@ -496,7 +533,7 @@ fn validate_rejects_missing_status() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    assert_provenance_fail_rule(&assert.get_output().stderr, "spec.requirement-status-missing");
+    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-status-missing");
 }
 
 #[test]
@@ -512,10 +549,7 @@ fn validate_rejects_unknown_status() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    assert_provenance_fail_rule(
-        &assert.get_output().stderr,
-        "spec.requirement-status-unknown-value",
-    );
+    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-status-unknown-value");
 }
 
 #[test]
@@ -531,10 +565,7 @@ fn validate_rejects_source_key_not_in_plan() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    assert_provenance_fail_rule(
-        &assert.get_output().stderr,
-        "spec.requirement-source-key-undefined",
-    );
+    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-source-key-undefined");
 }
 
 #[test]
@@ -550,17 +581,14 @@ fn validate_rejects_tag_status_mismatch() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    assert_provenance_fail_rule(
-        &assert.get_output().stderr,
-        "spec.requirement-tag-status-mismatch",
-    );
+    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-tag-status-mismatch");
 }
 
 // ---------------------------------------------------------------------------
-// `reconciliation.yaml` audit index — `slice validate` reconciliation drift gate
+// `provenance.yaml` audit index — `slice validate` provenance drift gate
 // ---------------------------------------------------------------------------
 
-/// Minimal reconciliation.yaml for a slice named `my-slice` with one
+/// Minimal provenance.yaml for a slice named `my-slice` with one
 /// requirement `REQ-001` whose single contributing claim cites
 /// `legacy-monolith :: REQ-001` (the same id we'll seed the evidence
 /// file with by default).
@@ -601,18 +629,18 @@ claims:
     path: src/users/reset.ts#L42
 ";
 
-/// Stage a fully-wired slice with reconciliation.yaml + spec.md + evidence
+/// Stage a fully-wired slice with provenance.yaml + spec.md + evidence
 /// so the drift gate has every input it needs and the baseline test
 /// fixture validates clean. Caller may then mutate any file before
 /// re-running `slice validate` to exercise drift.
-fn stage_slice_with_reconciliation() -> Project {
+fn stage_slice_with_provenance() -> Project {
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
     // stage_slice_with_spec writes specs/login/spec.md by default;
-    // the reconciliation gate gathers REQ ids across every spec.md, so we
+    // the provenance gate gathers REQ ids across every spec.md, so we
     // can leave that path alone.
     let slice_dir = project.slices_dir().join("my-slice");
-    fs::write(slice_dir.join("reconciliation.yaml"), CLEAN_RECONCILIATION_YAML)
-        .expect("write reconciliation.yaml");
+    fs::write(slice_dir.join("provenance.yaml"), CLEAN_RECONCILIATION_YAML)
+        .expect("write provenance.yaml");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
     fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
@@ -621,38 +649,24 @@ fn stage_slice_with_reconciliation() -> Project {
 }
 
 #[test]
-fn validate_passes_on_clean_reconciliation_inputs() {
-    let project = stage_slice_with_reconciliation();
+fn validate_passes_on_clean_provenance_inputs() {
+    let project = stage_slice_with_provenance();
     let assert = specrun()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
-    let stderr = assert.get_output().stderr.clone();
-    let code = assert.get_output().status.code();
-    if code != Some(0) {
-        // Adapter-level brief validation may still surface findings on
-        // the synthetic slice — those would route through different
-        // rule ids. Assert that whatever surfaces, *no* row carries
-        // `slice-reconciliation-drift` against clean inputs.
-        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
-            && let Some(results) = value["results"].as_array()
-        {
-            for r in results {
-                let rule_id = r["rule-id"].as_str().unwrap_or("");
-                assert_ne!(
-                    rule_id, "slice-reconciliation-drift",
-                    "no drift row may appear on clean inputs; got results: {results:#?}"
-                );
-            }
-        }
-    }
+    // Adapter-level brief validation may still surface findings on the
+    // synthetic slice — those route through different rule ids. Assert
+    // that whatever surfaces on the report, *no* finding carries
+    // `slice-provenance-drift` against clean inputs.
+    assert_no_finding(assert.get_output(), "slice-provenance-drift");
 }
 
 #[test]
 fn validate_req_id_drift() {
-    let project = stage_slice_with_reconciliation();
+    let project = stage_slice_with_provenance();
     // Append a second REQ block to spec.md so spec.md has REQ-001 +
-    // REQ-002 while reconciliation.yaml only knows REQ-001.
+    // REQ-002 while provenance.yaml only knows REQ-001.
     let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
     let extended = format!(
         "{CLEAN_SPEC_MD}\n\
@@ -670,25 +684,18 @@ fn validate_req_id_drift() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    let value = parse_json(&assert.get_output().stderr);
-    assert_eq!(value["error"], "validation");
-    let results = value["results"].as_array().expect("results array");
-    let detail = results
-        .iter()
-        .find(|r| r["rule-id"] == "slice-reconciliation-drift")
-        .and_then(|r| r["detail"].as_str())
-        .expect("slice-reconciliation-drift row must be present");
+    let detail = find_finding_impact(assert.get_output(), "slice-provenance-drift");
     assert!(detail.contains("REQ-002"), "drift detail should name REQ-002, got: {detail}");
     assert!(
-        detail.contains("missing from reconciliation.yaml"),
+        detail.contains("missing from provenance.yaml"),
         "drift detail should mention the drift direction, got: {detail}"
     );
 }
 
 #[test]
 fn validate_claim_drift_on_rename() {
-    let project = stage_slice_with_reconciliation();
-    // Rename the evidence claim id; reconciliation.yaml still cites the old one.
+    let project = stage_slice_with_provenance();
+    // Rename the evidence claim id; provenance.yaml still cites the old one.
     let evidence_path = project.slices_dir().join("my-slice/evidence/legacy-monolith.yaml");
     let modified = CLEAN_EVIDENCE_YAML.replace("claim-id: REQ-001", "claim-id: REQ-999-renamed");
     fs::write(&evidence_path, modified).expect("rewrite evidence");
@@ -699,14 +706,7 @@ fn validate_claim_drift_on_rename() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    let value = parse_json(&assert.get_output().stderr);
-    assert_eq!(value["error"], "validation");
-    let results = value["results"].as_array().expect("results array");
-    let detail = results
-        .iter()
-        .find(|r| r["rule-id"] == "slice-reconciliation-drift")
-        .and_then(|r| r["detail"].as_str())
-        .expect("slice-reconciliation-drift row must be present");
+    let detail = find_finding_impact(assert.get_output(), "slice-provenance-drift");
     assert!(
         detail.contains("legacy-monolith") && detail.contains("REQ-001"),
         "drift detail should name the dangling (source, claim-id) pair, got: {detail}"
@@ -714,8 +714,8 @@ fn validate_claim_drift_on_rename() {
 }
 
 #[test]
-fn validate_skips_drift_gate_without_reconciliation() {
-    // Stage a slice with spec.md but no reconciliation.yaml — the drift gate
+fn validate_skips_drift_gate_without_provenance() {
+    // Stage a slice with spec.md but no provenance.yaml — the drift gate
     // must be a silent no-op so older slices and pre-refine slices
     // still validate. (Any other adapter-level rules can still
     // surface, but no drift row may appear.)
@@ -724,23 +724,12 @@ fn validate_skips_drift_gate_without_reconciliation() {
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
-    let stderr = assert.get_output().stderr.clone();
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
-        && let Some(results) = value["results"].as_array()
-    {
-        for r in results {
-            let rule_id = r["rule-id"].as_str().unwrap_or("");
-            assert_ne!(
-                rule_id, "slice-reconciliation-drift",
-                "drift gate must skip when reconciliation.yaml is absent"
-            );
-        }
-    }
+    assert_no_finding(assert.get_output(), "slice-provenance-drift");
 }
 
 #[test]
 fn validate_no_drift_pre_synthesis() {
-    // When reconciliation.yaml is present but spec.md is still pre-synthesis
+    // When provenance.yaml is present but spec.md is still pre-synthesis
     // (no Sources/Status lines), the drift gate must still gather
     // REQ ids from the bare `ID:` lines so a partially-refined slice
     // does not silently drift. This protects against the case where
@@ -754,8 +743,8 @@ body without metadata lines yet
 ";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
     let slice_dir = project.slices_dir().join("my-slice");
-    fs::write(slice_dir.join("reconciliation.yaml"), CLEAN_RECONCILIATION_YAML)
-        .expect("write reconciliation");
+    fs::write(slice_dir.join("provenance.yaml"), CLEAN_RECONCILIATION_YAML)
+        .expect("write provenance");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir");
     fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
@@ -764,18 +753,7 @@ body without metadata lines yet
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
-    let stderr = assert.get_output().stderr.clone();
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
-        && let Some(results) = value["results"].as_array()
-    {
-        for r in results {
-            let rule_id = r["rule-id"].as_str().unwrap_or("");
-            assert_ne!(
-                rule_id, "slice-reconciliation-drift",
-                "drift gate must accept matching REQ ids even when Sources/Status metadata is absent"
-            );
-        }
-    }
+    assert_no_finding(assert.get_output(), "slice-provenance-drift");
 }
 
 // ---------------------------------------------------------------------------
@@ -865,18 +843,7 @@ fn validate_skips_catalog_drift_without_catalog() {
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
-    let stderr = assert.get_output().stderr.clone();
-    let value: serde_json::Value =
-        serde_json::from_slice(&stderr).expect("command must emit JSON to stderr");
-    if let Some(results) = value["results"].as_array() {
-        for r in results {
-            let rule_id = r["rule-id"].as_str().unwrap_or("");
-            assert_ne!(
-                rule_id, "slice-catalog-drift",
-                "catalog drift gate must skip when no catalog exists"
-            );
-        }
-    }
+    assert_no_finding(assert.get_output(), "slice-catalog-drift");
 }
 
 #[test]
@@ -890,18 +857,7 @@ fn validate_passes_when_slug_confirmed() {
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
-    let stderr = assert.get_output().stderr.clone();
-    let value: serde_json::Value =
-        serde_json::from_slice(&stderr).expect("command must emit JSON to stderr");
-    if let Some(results) = value["results"].as_array() {
-        for r in results {
-            let rule_id = r["rule-id"].as_str().unwrap_or("");
-            assert_ne!(
-                rule_id, "slice-catalog-drift",
-                "no catalog drift row may appear when component is confirmed; got results: {results:#?}"
-            );
-        }
-    }
+    assert_no_finding(assert.get_output(), "slice-catalog-drift");
 }
 
 #[test]
@@ -918,14 +874,7 @@ fn validate_detects_missing_catalog_entry() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    let value = parse_json(&assert.get_output().stderr);
-    assert_eq!(value["error"], "validation");
-    let results = value["results"].as_array().expect("results array");
-    let detail = results
-        .iter()
-        .find(|r| r["rule-id"] == "slice-catalog-drift")
-        .and_then(|r| r["detail"].as_str())
-        .expect("slice-catalog-drift row must be present");
+    let detail = find_finding_impact(assert.get_output(), "slice-catalog-drift");
     assert!(
         detail.contains("tab-bar") && detail.contains("no entry exists"),
         "drift detail should name the missing slug, got: {detail}"
@@ -946,14 +895,7 @@ fn validate_detects_rejected_catalog_entry() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    let value = parse_json(&assert.get_output().stderr);
-    assert_eq!(value["error"], "validation");
-    let results = value["results"].as_array().expect("results array");
-    let detail = results
-        .iter()
-        .find(|r| r["rule-id"] == "slice-catalog-drift")
-        .and_then(|r| r["detail"].as_str())
-        .expect("slice-catalog-drift row must be present");
+    let detail = find_finding_impact(assert.get_output(), "slice-catalog-drift");
     assert!(
         detail.contains("tab-bar") && detail.contains("rejected"),
         "drift detail should describe the rejected status, got: {detail}"
@@ -971,18 +913,7 @@ fn validate_ignores_candidate_notes() {
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
-    let stderr = assert.get_output().stderr.clone();
-    let value: serde_json::Value =
-        serde_json::from_slice(&stderr).expect("command must emit JSON to stderr");
-    if let Some(results) = value["results"].as_array() {
-        for r in results {
-            let rule_id = r["rule-id"].as_str().unwrap_or("");
-            assert_ne!(
-                rule_id, "slice-catalog-drift",
-                "candidate_component notes must not trigger catalog drift; got results: {results:#?}"
-            );
-        }
-    }
+    assert_no_finding(assert.get_output(), "slice-catalog-drift");
 }
 
 #[test]
@@ -1006,18 +937,7 @@ claims:
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
-    let stderr = assert.get_output().stderr.clone();
-    let value: serde_json::Value =
-        serde_json::from_slice(&stderr).expect("command must emit JSON to stderr");
-    if let Some(results) = value["results"].as_array() {
-        for r in results {
-            let rule_id = r["rule-id"].as_str().unwrap_or("");
-            assert_ne!(
-                rule_id, "slice-catalog-drift",
-                "empty catalog with no component directives must not trigger drift"
-            );
-        }
-    }
+    assert_no_finding(assert.get_output(), "slice-catalog-drift");
 }
 
 #[test]
@@ -1035,15 +955,14 @@ fn validate_skips_provenance_without_metadata() {
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
-    let stderr = assert.get_output().stderr.clone();
     // Whether the run passes or fails (existing adapter rules may
     // still produce findings on the synthetic slice), no provenance
-    // rule should appear.
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
-        && let Some(results) = value["results"].as_array()
+    // rule should appear on the rendered report.
+    if let Ok(report) = serde_json::from_slice::<serde_json::Value>(&assert.get_output().stdout)
+        && let Some(findings) = report["findings"].as_array()
     {
-        for r in results {
-            let rule_id = r["rule-id"].as_str().unwrap_or("");
+        for finding in findings {
+            let rule_id = finding["rule-id"].as_str().unwrap_or("");
             assert!(
                 !rule_id.starts_with("spec.requirement-"),
                 "no provenance rule should fire on a pre-2.0 spec.md, got: {rule_id}"

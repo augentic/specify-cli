@@ -82,7 +82,6 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use specify_error::ValidationStatus;
     use tempfile::tempdir;
 
     use super::super::model::Status;
@@ -169,13 +168,10 @@ mod tests {
         std::fs::write(&path, "name: foo\nrogue: true\nslices: []\n").expect("write rogue plan");
 
         let err = Plan::load(&path).expect_err("rogue top-level field should fail schema");
-        let Error::Validation { results } = err else {
+        let Error::Validation { code, detail } = err else {
             panic!("expected Error::Validation, got {err:?}");
         };
-        assert_eq!(results.len(), 1, "expected one schema result, got {results:?}");
-        assert_eq!(results[0].status, ValidationStatus::Fail);
-        assert_eq!(results[0].rule_id, "plan-schema");
-        let detail = results[0].detail.as_deref().expect("schema failure detail");
+        assert_eq!(code, "plan-schema");
         assert!(detail.contains("/rogue"), "expected detail to mention `/rogue`, got {detail}");
     }
 

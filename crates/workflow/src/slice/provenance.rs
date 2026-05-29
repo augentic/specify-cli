@@ -1,13 +1,13 @@
-//! Reconciliation index — `reconciliation.yaml`.
+//! Provenance index — `provenance.yaml`.
 //!
-//! One file per slice at `.specify/slices/<slice>/reconciliation.yaml`. Lists
+//! One file per slice at `.specify/slices/<slice>/provenance.yaml`. Lists
 //! every `REQ-*` id in `spec.md` and the contributing
 //! `(source-key, claim-id)` pairs plus the authority outcome.
-//! Validated against `schemas/slice/reconciliation.schema.json`. The file is
-//! audit-only; see [`DECISIONS.md` §"`reconciliation.yaml` audit index"][reconciliation-audit] for the rationale (`spec.md` is the
+//! Validated against `schemas/slice/provenance.schema.json`. The file is
+//! audit-only; see [`DECISIONS.md` §"`provenance.yaml` audit index"][provenance-audit] for the rationale (`spec.md` is the
 //! authoritative artifact).
 //!
-//! [reconciliation-audit]: ../../../../DECISIONS.md#reconciliationyaml-audit-index
+//! [provenance-audit]: ../../../../DECISIONS.md#provenanceyaml-audit-index
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -16,18 +16,19 @@ use std::path::Path;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_diagnostics::{Artifact, Diagnostic};
+use specify_error::{Error, Result};
 use specify_model::spec::provenance::RequirementStatus;
 
 use crate::schema::{RECONCILIATION_JSON_SCHEMA, evidence_yaml_paths, validate_serialisable};
 
-/// In-memory model of `reconciliation.yaml` (workflow §Reconciliation index).
+/// In-memory model of `provenance.yaml` (workflow §Provenance index).
 ///
 /// Top-level shape is closed; unknown fields are rejected per the
 /// matching schema.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct ReconciliationIndex {
+pub struct ProvenanceIndex {
     /// Stored schema version. Currently `1`; additive fields land
     /// without a bump.
     pub version: u32,
@@ -43,13 +44,13 @@ pub struct ReconciliationIndex {
     /// One entry per `REQ-*` id in `spec.md`; order matches `spec.md`
     /// order. `specrun slice validate` enforces id-set parity in both
     /// directions.
-    pub requirements: Vec<ReconciliationRequirement>,
+    pub requirements: Vec<ProvenanceRequirement>,
 }
 
-/// One row under [`ReconciliationIndex::requirements`].
+/// One row under [`ProvenanceIndex::requirements`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct ReconciliationRequirement {
+pub struct ProvenanceRequirement {
     /// Requirement id matching a `REQ-NNN` heading in `spec.md`.
     pub id: String,
     /// Mirrors the `Status:` line on the matching `spec.md` block.
@@ -63,18 +64,18 @@ pub struct ReconciliationRequirement {
     /// what was dropped.
     pub contributing_claims: Vec<ContributingClaim>,
     /// How synthesis arrived at the requirement's final value. See
-    /// [`ReconciliationResolution`] for the closed variant set and meanings.
-    pub resolution: ReconciliationResolution,
+    /// [`ProvenanceResolution`] for the closed variant set and meanings.
+    pub resolution: ProvenanceResolution,
     /// Optional trace describing how a non-trivial resolution
     /// selected the winning claim. Present only when `resolution` is
-    /// [`ReconciliationResolution::AuthorityResolved`] or
-    /// [`ReconciliationResolution::PerSliceOverride`].
+    /// [`ProvenanceResolution::AuthorityResolved`] or
+    /// [`ProvenanceResolution::PerSliceOverride`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution_trace: Option<ResolutionTrace>,
 }
 
 /// One contributing-claim entry under
-/// [`ReconciliationRequirement::contributing_claims`].
+/// [`ProvenanceRequirement::contributing_claims`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ContributingClaim {
@@ -106,11 +107,11 @@ pub struct ContributingClaim {
     pub winner: Option<bool>,
 }
 
-/// Closed resolution enum per workflow §Reconciliation index.
+/// Closed resolution enum per workflow §Provenance index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
-pub enum ReconciliationResolution {
+pub enum ProvenanceResolution {
     /// One contributing claim only.
     SingleSource,
     /// Multiple contributors, identical value.
@@ -128,7 +129,7 @@ pub enum ReconciliationResolution {
     TiedConflict,
 }
 
-/// Optional resolution trace under [`ReconciliationRequirement::resolution_trace`].
+/// Optional resolution trace under [`ProvenanceRequirement::resolution_trace`].
 ///
 /// `step` is the name of the resolution step that broke the tie
 /// (e.g. `per-slice-authority-override`,
@@ -152,12 +153,11 @@ pub struct ResolutionTrace {
     pub winner: Option<String>,
 }
 
-impl ReconciliationIndex {
-    /// Validate `self` against the embedded `schemas/slice/reconciliation.schema.json`.
+impl ProvenanceIndex {
+    /// Validate `self` against the embedded `schemas/slice/provenance.schema.json`.
     ///
-    /// Returns `Ok(())` on a clean validation; otherwise an
-    /// [`Error::Validation`] whose single [`ValidationSummary`]
-    /// carries the rule id `"reconciliation-schema"`.
+    /// Returns `Ok(())` on a clean validation; otherwise a payload-free
+    /// [`Error::Validation`] keyed on the code `"provenance-schema"`.
     ///
     /// # Errors
     ///
@@ -168,16 +168,16 @@ impl ReconciliationIndex {
         validate_serialisable(
             self,
             RECONCILIATION_JSON_SCHEMA,
-            "reconciliation-schema",
-            "reconciliation.yaml conforms to schemas/slice/reconciliation.schema.json",
-            "reconciliation-schema-serialise",
-            "reconciliation.yaml",
+            "provenance-schema",
+            "provenance.yaml conforms to schemas/slice/provenance.schema.json",
+            "provenance-schema-serialise",
+            "provenance.yaml",
         )
     }
 
-    /// Load and schema-validate a `reconciliation.yaml` at `path`.
+    /// Load and schema-validate a `provenance.yaml` at `path`.
     ///
-    /// Returns the parsed [`ReconciliationIndex`] on success. Schema
+    /// Returns the parsed [`ProvenanceIndex`] on success. Schema
     /// validation runs *after* the YAML parse so unknown-field and
     /// shape problems surface as schema findings rather than serde
     /// deserialise errors when the schema can produce a clearer
@@ -189,7 +189,7 @@ impl ReconciliationIndex {
     /// - [`Error::Filesystem`] when `path` cannot be read.
     /// - [`Error::YamlDe`] when the file is not valid YAML.
     /// - [`Error::Validation`] when the file fails
-    ///   `schemas/slice/reconciliation.schema.json`.
+    ///   `schemas/slice/provenance.schema.json`.
     pub fn load(path: &Path) -> Result<Self> {
         let raw = std::fs::read_to_string(path).map_err(|source| Error::Filesystem {
             op: "read",
@@ -205,10 +205,10 @@ impl ReconciliationIndex {
     /// and the per-source evidence claim ids, returning every
     /// drift finding sorted for byte-stable error output.
     ///
-    /// Drift kinds (`reconciliation.yaml` audit index §Acceptance scenario #26-4):
+    /// Drift kinds (`provenance.yaml` audit index §Acceptance scenario #26-4):
     ///
     /// 1. **Requirement-id drift** — `spec.md` `REQ-*` set ≠
-    ///    `reconciliation.yaml.requirements[].id` set, in either direction.
+    ///    `provenance.yaml.requirements[].id` set, in either direction.
     /// 2. **Contributing-claim drift** — any
     ///    `contributing-claims[].(source, claim-id)` pair that does
     ///    not resolve to a real claim in the corresponding
@@ -221,21 +221,21 @@ impl ReconciliationIndex {
     #[must_use]
     pub fn detect_drift(
         &self, spec_req_ids: &BTreeSet<String>, evidence: &EvidenceClaimIds,
-    ) -> Vec<ReconciliationDrift> {
-        let mut out: Vec<ReconciliationDrift> = Vec::new();
+    ) -> Vec<ProvenanceDrift> {
+        let mut out: Vec<ProvenanceDrift> = Vec::new();
 
-        let reconciliation_req_ids: BTreeSet<&str> =
+        let provenance_req_ids: BTreeSet<&str> =
             self.requirements.iter().map(|r| r.id.as_str()).collect();
         for spec_id in spec_req_ids {
-            if !reconciliation_req_ids.contains(spec_id.as_str()) {
-                out.push(ReconciliationDrift::MissingReconciliationRequirement {
+            if !provenance_req_ids.contains(spec_id.as_str()) {
+                out.push(ProvenanceDrift::MissingProvenanceRequirement {
                     req_id: spec_id.clone(),
                 });
             }
         }
         for req in &self.requirements {
             if !spec_req_ids.contains(&req.id) {
-                out.push(ReconciliationDrift::ExtraReconciliationRequirement {
+                out.push(ProvenanceDrift::ExtraProvenanceRequirement {
                     req_id: req.id.clone(),
                 });
             }
@@ -247,7 +247,7 @@ impl ReconciliationIndex {
                     .get(claim.source.as_str())
                     .is_some_and(|ids| ids.contains(claim.claim_id.as_str()));
                 if !exists {
-                    out.push(ReconciliationDrift::ContributingClaimNotFound {
+                    out.push(ProvenanceDrift::ContributingClaimNotFound {
                         req_id: req.id.clone(),
                         source: claim.source.clone(),
                         claim_id: claim.claim_id.clone(),
@@ -257,38 +257,37 @@ impl ReconciliationIndex {
             }
         }
 
-        out.sort_by_key(ReconciliationDrift::sort_key);
+        out.sort_by_key(ProvenanceDrift::sort_key);
         out
     }
 }
 
-/// One drift finding produced by [`ReconciliationIndex::detect_drift`].
+/// One drift finding produced by [`ProvenanceIndex::detect_drift`].
 ///
-/// Each variant maps to one `slice-reconciliation-drift`
-/// [`ValidationSummary`] line via [`ReconciliationDrift::into_summary`] so
-/// the wire envelope shape stays compatible with the existing
-/// `slice validate` payload.
+/// Each variant maps to one `slice-provenance-drift` [`Diagnostic`]
+/// `violation` via [`ProvenanceDrift::into_diagnostic`], rendered on the
+/// `slice validate` surface alongside the other findings.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReconciliationDrift {
+pub enum ProvenanceDrift {
     /// A `REQ-*` heading exists in `spec.md` with no matching
-    /// `requirements[].id` row in `reconciliation.yaml`. Operator must
+    /// `requirements[].id` row in `provenance.yaml`. Operator must
     /// re-run `/spec:refine` to regenerate the index.
-    MissingReconciliationRequirement {
-        /// `REQ-NNN` id that is missing from `reconciliation.yaml`.
+    MissingProvenanceRequirement {
+        /// `REQ-NNN` id that is missing from `provenance.yaml`.
         req_id: String,
     },
-    /// A `requirements[].id` row exists in `reconciliation.yaml` with no
+    /// A `requirements[].id` row exists in `provenance.yaml` with no
     /// matching `REQ-*` heading in `spec.md` — typically a stale
-    /// reconciliation entry after the operator hand-deleted a requirement
+    /// provenance entry after the operator hand-deleted a requirement
     /// from `spec.md`.
-    ExtraReconciliationRequirement {
+    ExtraProvenanceRequirement {
         /// `REQ-NNN` id that has no matching `spec.md` heading.
         req_id: String,
     },
     /// A `contributing-claims[].(source, claim-id)` pair does not
     /// resolve to a real claim in
     /// `.specify/slices/<slice>/evidence/<source>.yaml`. Either the
-    /// evidence file was hand-edited or the reconciliation entry references
+    /// evidence file was hand-edited or the provenance entry references
     /// a claim from a stale extract.
     ContributingClaimNotFound {
         /// Owning requirement id (the `requirements[].id` the
@@ -304,13 +303,13 @@ pub enum ReconciliationDrift {
     },
 }
 
-impl ReconciliationDrift {
+impl ProvenanceDrift {
     fn sort_key(&self) -> (String, u8, String, String) {
         match self {
-            Self::MissingReconciliationRequirement { req_id } => {
+            Self::MissingProvenanceRequirement { req_id } => {
                 (req_id.clone(), 0, String::new(), String::new())
             }
-            Self::ExtraReconciliationRequirement { req_id } => {
+            Self::ExtraProvenanceRequirement { req_id } => {
                 (req_id.clone(), 1, String::new(), String::new())
             }
             Self::ContributingClaimNotFound {
@@ -322,20 +321,19 @@ impl ReconciliationDrift {
         }
     }
 
-    /// Lift a drift finding into the `slice-reconciliation-drift`
-    /// [`ValidationSummary`] line the CLI emits under the existing
-    /// `slice validate` envelope.
+    /// Lift a drift finding into the `slice-provenance-drift`
+    /// [`Diagnostic`] the CLI renders on the `slice validate` surface.
     #[must_use]
-    pub fn into_summary(self) -> ValidationSummary {
+    pub fn into_diagnostic(self) -> Diagnostic {
         let detail = match self {
-            Self::MissingReconciliationRequirement { req_id } => {
+            Self::MissingProvenanceRequirement { req_id } => {
                 format!(
-                    "{req_id} appears in spec.md but is missing from reconciliation.yaml; re-run `/spec:refine` to regenerate the reconciliation index"
+                    "{req_id} appears in spec.md but is missing from provenance.yaml; re-run `/spec:refine` to regenerate the provenance index"
                 )
             }
-            Self::ExtraReconciliationRequirement { req_id } => {
+            Self::ExtraProvenanceRequirement { req_id } => {
                 format!(
-                    "{req_id} appears in reconciliation.yaml but no matching `REQ-*` heading exists in spec.md; re-run `/spec:refine` to regenerate the reconciliation index"
+                    "{req_id} appears in provenance.yaml but no matching `REQ-*` heading exists in spec.md; re-run `/spec:refine` to regenerate the provenance index"
                 )
             }
             Self::ContributingClaimNotFound {
@@ -350,19 +348,19 @@ impl ReconciliationDrift {
                 )
             }
         };
-        ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: "slice-reconciliation-drift".into(),
-            rule: "reconciliation.yaml stays in sync with spec.md REQ ids and per-source evidence claims"
-                .into(),
-            detail: Some(detail),
-        }
+        Diagnostic::violation(
+            "slice-provenance-drift",
+            "provenance.yaml stays in sync with spec.md REQ ids and per-source evidence claims",
+            detail,
+            Artifact::Specs,
+            None,
+        )
     }
 }
 
 /// Map of source key → set of `claim-id` strings found in that
 /// source's evidence file. Built by [`collect_evidence_claim_ids`]
-/// and consumed by [`ReconciliationIndex::detect_drift`].
+/// and consumed by [`ProvenanceIndex::detect_drift`].
 pub type EvidenceClaimIds = BTreeMap<String, BTreeSet<String>>;
 
 /// Build the `(source-key → claim-id set)` lookup the drift gate
@@ -429,14 +427,14 @@ mod tests {
     use super::*;
     use crate::journal::test_timestamp;
 
-    fn sample() -> ReconciliationIndex {
-        ReconciliationIndex {
+    fn sample() -> ProvenanceIndex {
+        ProvenanceIndex {
             version: 1,
             slice: "identity-user-registration".to_string(),
             generated_at: test_timestamp("2026-05-22T13:15:00Z"),
             generator: "specify@2.1.0".to_string(),
             requirements: vec![
-                ReconciliationRequirement {
+                ProvenanceRequirement {
                     id: "REQ-001".to_string(),
                     status: RequirementStatus::Agreed,
                     sources: vec!["identity-design-notes".to_string(), "runtime".to_string()],
@@ -458,10 +456,10 @@ mod tests {
                             winner: None,
                         },
                     ],
-                    resolution: ReconciliationResolution::SingleValueAgreement,
+                    resolution: ProvenanceResolution::SingleValueAgreement,
                     resolution_trace: None,
                 },
-                ReconciliationRequirement {
+                ProvenanceRequirement {
                     id: "REQ-007".to_string(),
                     status: RequirementStatus::Divergence,
                     sources: vec![
@@ -486,7 +484,7 @@ mod tests {
                             winner: Some(false),
                         },
                     ],
-                    resolution: ReconciliationResolution::PerSliceOverride,
+                    resolution: ProvenanceResolution::PerSliceOverride,
                     resolution_trace: Some(ResolutionTrace {
                         step: "per-slice-authority-override".to_string(),
                         r#override: Some(serde_json::json!({
@@ -506,7 +504,7 @@ mod tests {
         assert!(yaml.contains("generated-at: 2026-05-22T13:15:00Z"));
         assert!(yaml.contains("contributing-claims:"));
         assert!(yaml.contains("resolution: per-slice-override"));
-        let reparsed: ReconciliationIndex = serde_saphyr::from_str(&yaml).expect("reparse");
+        let reparsed: ProvenanceIndex = serde_saphyr::from_str(&yaml).expect("reparse");
         assert_eq!(original, reparsed);
     }
 
@@ -514,18 +512,18 @@ mod tests {
     fn validates_against_embedded_schema() {
         sample()
             .validate()
-            .expect("sample reconciliation index must validate against the embedded schema");
+            .expect("sample provenance index must validate against the embedded schema");
     }
 
     #[test]
     fn resolution_round_trips_kebab_case() {
         for (variant, wire) in [
-            (ReconciliationResolution::SingleSource, "single-source"),
-            (ReconciliationResolution::SingleValueAgreement, "single-value-agreement"),
-            (ReconciliationResolution::AuthorityResolved, "authority-resolved"),
-            (ReconciliationResolution::PerSliceOverride, "per-slice-override"),
-            (ReconciliationResolution::UnknownNoEvidence, "unknown-no-evidence"),
-            (ReconciliationResolution::TiedConflict, "tied-conflict"),
+            (ProvenanceResolution::SingleSource, "single-source"),
+            (ProvenanceResolution::SingleValueAgreement, "single-value-agreement"),
+            (ProvenanceResolution::AuthorityResolved, "authority-resolved"),
+            (ProvenanceResolution::PerSliceOverride, "per-slice-override"),
+            (ProvenanceResolution::UnknownNoEvidence, "unknown-no-evidence"),
+            (ProvenanceResolution::TiedConflict, "tied-conflict"),
         ] {
             assert_eq!(serde_json::to_string(&variant).expect("serialise"), format!("\"{wire}\""));
         }
@@ -540,7 +538,7 @@ generator: specify@2.1.0
 requirements: []
 rogue: true
 ";
-        let err = serde_saphyr::from_str::<ReconciliationIndex>(yaml)
+        let err = serde_saphyr::from_str::<ProvenanceIndex>(yaml)
             .expect_err("deny_unknown_fields must reject rogue");
         assert!(err.to_string().contains("rogue"), "expected error to name rogue, got: {err}");
     }
@@ -548,7 +546,7 @@ rogue: true
     #[test]
     fn load_reports_schema_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("reconciliation.yaml");
+        let path = dir.path().join("provenance.yaml");
         // `version: 0` parses cleanly (u32) but trips the schema's
         // `minimum: 1` so the failure surfaces as Validation rather
         // than YAML deserialise.
@@ -561,14 +559,14 @@ rogue: true
              requirements: []\n",
         )
         .expect("write");
-        let err = ReconciliationIndex::load(&path).expect_err("schema must reject");
+        let err = ProvenanceIndex::load(&path).expect_err("schema must reject");
         assert!(matches!(err, Error::Validation { .. }), "expected Validation, got: {err}");
     }
 
     #[test]
     fn load_reports_yaml_parse_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("reconciliation.yaml");
+        let path = dir.path().join("provenance.yaml");
         // Missing required `generator` field — serde catches this
         // before the schema validator runs; the failure routes
         // through `Error::YamlDe`, not `Error::Validation`, but is
@@ -581,7 +579,7 @@ rogue: true
              requirements: []\n",
         )
         .expect("write");
-        let err = ReconciliationIndex::load(&path).expect_err("missing field must error");
+        let err = ProvenanceIndex::load(&path).expect_err("missing field must error");
         assert!(matches!(err, Error::YamlDe(_)), "expected YamlDe, got: {err}");
     }
 

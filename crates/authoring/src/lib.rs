@@ -8,8 +8,8 @@
 //!
 //! ## Dependency overview
 //!
-//! - [`specify_error`] — shared error layering (`Error::Validation`,
-//!   `ValidationSummary`) and the kebab-case wire discriminants.
+//! - [`specify_error`] — shared error layering (payload-free
+//!   `Error::Validation`) and the kebab-case wire discriminants.
 //! - [`specify_schema`] — canonical embedded JSON Schemas
 //!   (including `RULE_JSON_SCHEMA`) and the shared `jsonschema`
 //!   plumbing (`compile_schema`, `validate_value`,

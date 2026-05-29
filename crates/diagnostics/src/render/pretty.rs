@@ -1,32 +1,32 @@
-//! Terminal formatter per the diagnostics formatter set.
+//! Terminal formatter.
 //!
 //! Emits a severity tag, rule id, title, source location, and an
-//! indented impact/remediation block per finding plus a tally footer
-//! mirroring [`super::LintSummary`].
+//! indented impact/remediation block per diagnostic plus a tally
+//! footer mirroring [`crate::diagnostic::DiagnosticSummary`].
 //!
 //! ANSI escape codes are hand-written so the crate avoids a colour
 //! dependency. The `NO_COLOR` environment variable, when set
-//! (regardless of value, per <https://no-color.org>), suppresses
-//! the escape codes so tests and pipelines get plain text.
+//! (regardless of value, per <https://no-color.org>), suppresses the
+//! escape codes so tests and pipelines get plain text.
 
 use std::fmt::Write as _;
 
-use super::{LintResult, RenderError};
-use crate::rules::{FindingLocation, FindingStatus, LintFinding, Severity};
+use super::RenderError;
+use crate::diagnostic::{Diagnostic, DiagnosticReport, FindingLocation, FindingStatus, Severity};
 
-/// Render `result` as colourised terminal output.
+/// Render `report` as colourised terminal output.
 ///
 /// # Errors
 ///
 /// Never errors — the [`Result`] return mirrors the uniform
 /// [`super::render`] dispatch signature.
-pub fn render(result: &LintResult) -> Result<String, RenderError> {
+pub fn render(report: &DiagnosticReport) -> Result<String, RenderError> {
     let mut out = String::new();
-    let _ = writeln!(out, "Specify review — {} finding(s)", result.findings.len());
-    for finding in &result.findings {
+    let _ = writeln!(out, "Specify review — {} finding(s)", report.findings.len());
+    for finding in &report.findings {
         write_finding(&mut out, finding);
     }
-    let s = &result.summary;
+    let s = &report.summary;
     let _ = writeln!(
         out,
         "Summary: {} critical, {} important, {} suggestion, {} optional",
@@ -35,7 +35,7 @@ pub fn render(result: &LintResult) -> Result<String, RenderError> {
     Ok(out)
 }
 
-fn write_finding(out: &mut String, finding: &LintFinding) {
+fn write_finding(out: &mut String, finding: &Diagnostic) {
     let tag = paint(finding.severity, severity_tag(finding.severity));
     let status = status_tag(finding.status);
     let rule = finding.rule_id.as_deref().map_or(String::new(), |id| format!(" {id}"));
@@ -48,11 +48,6 @@ fn write_finding(out: &mut String, finding: &LintFinding) {
     let _ = writeln!(out, "  remediation: {}", finding.remediation);
 }
 
-/// RFC-33a §"Exit and presentation semantics": render the demoted
-/// status next to the severity tag so a glance at the pretty output
-/// shows why a finding is non-blocking. The `Open` (and unset) case
-/// renders nothing so the common, unfiltered run is byte-identical
-/// to the pre-RFC-33a output.
 const fn status_tag(status: Option<FindingStatus>) -> &'static str {
     match status {
         Some(FindingStatus::Ignored) => " [ignored]",

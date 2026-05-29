@@ -131,11 +131,8 @@ pub(super) fn plan_three_way(
                 Err(other) => return Err(other),
             };
 
-            for vr in validate_baseline(&result.output, None) {
-                if vr.status == specify_error::ValidationStatus::Fail {
-                    let detail = vr.detail.unwrap_or_default();
-                    aborts.push(format!("{}: {detail}", spec.spec_name));
-                }
+            for diagnostic in validate_baseline(&result.output, None) {
+                aborts.push(format!("{}: {}", spec.spec_name, diagnostic.impact));
             }
 
             merged.push(MergePreviewEntry {

@@ -174,11 +174,11 @@ pub fn emit_seed_events(
 /// Post-mutation orphan-source-key gate.
 ///
 /// Runs [`orphan_authority_override_keys`] on `plan` and
-/// short-circuits the CLI write with a single `Error::Validation`
-/// envelope when any finding fires. Findings are emitted in the
-/// deterministic order the domain helper produces (slice
-/// declaration order, then claim-kind iteration order); the
-/// envelope records each one as a [`specify_error::ValidationSummary`].
+/// short-circuits the CLI write with a single payload-free
+/// `Error::Validation` (exit 2) when any finding fires. Findings are
+/// joined in the deterministic order the domain helper produces (slice
+/// declaration order, then claim-kind iteration order) into the
+/// envelope's `detail`.
 ///
 /// This is the post-mutation gate that catches new orphan
 /// overrides introduced by `--authority-override` on `plan create`
@@ -195,19 +195,14 @@ pub fn reject_orphan_overrides(plan: &Plan) -> Result<()> {
         .into_iter()
         .filter(|f| f.level == Severity::Error)
         .collect();
-    if findings.is_empty() {
+    let Some(first) = findings.first() else {
         return Ok(());
-    }
-    let results: Vec<specify_error::ValidationSummary> = findings
-        .iter()
-        .map(|f| specify_error::ValidationSummary {
-            status: specify_error::ValidationStatus::Fail,
-            rule_id: f.code.to_string(),
-            rule: "slice authority-override must reference a bound source key".to_string(),
-            detail: Some(f.message.clone()),
-        })
-        .collect();
-    Err(Error::Validation { results })
+    };
+    let detail = findings.iter().map(|f| f.message.clone()).collect::<Vec<_>>().join("; ");
+    Err(Error::Validation {
+        code: first.code.to_string(),
+        detail,
+    })
 }
 
 /// Refuse the whole invocation if any flag references a slice not

@@ -18,22 +18,23 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value as JsonValue;
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_error::{Error, Result};
 pub use specify_schema::{
     COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA, PLAN_JSON_SCHEMA,
     RECONCILIATION_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, compile_schema,
     read_yaml_as_json, validate_serialisable, validate_value,
 };
+use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
 use crate::change::Plan;
 
 /// Validate `plan` against the embedded `schemas/plan/plan.schema.json`.
 ///
-/// Returns `Ok(())` on a clean validation; otherwise an
-/// [`Error::Validation`] whose single [`ValidationSummary`] carries the
-/// stable `rule_id` `"plan-schema"` and the JSON-pointer + reason list
-/// the schema produced. Used by `specrun plan add` and `specrun plan
-/// amend` so first-use validation refuses to write a malformed plan.
+/// Returns `Ok(())` on a clean validation; otherwise a payload-free
+/// [`Error::Validation`] keyed on the code `"plan-schema"`, with the
+/// JSON-pointer + reason list the schema produced joined into the
+/// detail. Used by `specrun plan add` and `specrun plan amend` so
+/// first-use validation refuses to write a malformed plan.
 ///
 /// # Errors
 ///
@@ -66,12 +67,15 @@ pub fn validate_plan_yaml(content: &str) -> Result<()> {
             format!("YAML parse failed: {err}"),
         )
     })?;
-    err_from_failures(validation_failures(
-        &instance,
-        PLAN_JSON_SCHEMA,
+    err_from_failures(
         "plan-schema",
-        "plan.yaml conforms to schemas/plan/plan.schema.json",
-    ))
+        &validation_failures(
+            &instance,
+            PLAN_JSON_SCHEMA,
+            "plan-schema",
+            "plan.yaml conforms to schemas/plan/plan.schema.json",
+        ),
+    )
 }
 
 /// Validate raw `plan.yaml` before typed deserialisation.
@@ -178,7 +182,14 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
         }
     }
 
-    if summaries.is_empty() { Ok(()) } else { Err(Error::Validation { results: summaries }) }
+    if summaries.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            code: "evidence-schema".to_string(),
+            detail: join_details(&summaries),
+        })
+    }
 }
 
 /// Validate raw `components.yaml` content against the embedded
@@ -197,12 +208,15 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
             format!("{}: YAML parse failed: {err}", source_path.display()),
         )
     })?;
-    err_from_failures(validation_failures(
-        &instance,
-        COMPONENTS_JSON_SCHEMA,
+    err_from_failures(
         "catalog-schema",
-        "components.yaml conforms to schemas/design-system/components.schema.json",
-    ))
+        &validation_failures(
+            &instance,
+            COMPONENTS_JSON_SCHEMA,
+            "catalog-schema",
+            "components.yaml conforms to schemas/design-system/components.schema.json",
+        ),
+    )
 }
 
 fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationSummary {
@@ -224,8 +238,15 @@ fn validation_failures(
         .collect()
 }
 
-fn err_from_failures(results: Vec<ValidationSummary>) -> Result<()> {
-    if results.is_empty() { Ok(()) } else { Err(Error::Validation { results }) }
+fn err_from_failures(code: &str, results: &[ValidationSummary]) -> Result<()> {
+    if results.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            code: code.to_string(),
+            detail: join_details(results),
+        })
+    }
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use serde::Serialize;
-use specify_error::{Error, ValidationSummary};
+use specify_error::Error;
 
 pub use crate::output::{Format, emit};
 
@@ -61,8 +61,11 @@ impl From<&Error> for Exit {
 /// Single dispatcher entry point: handlers return
 /// `Result<T, specify_error::Error>` and the run loop in
 /// [`crate::runtime::commands`] hands the error here. The body shape is
-/// always [`ErrorBody`]; for `Error::Validation`, the body's
-/// `results` field carries the per-row failures.
+/// always [`ErrorBody`]. `Error::Validation` is payload-free — its
+/// `code` becomes the wire `error` discriminant and its `detail` the
+/// `message`; per-finding rows are rendered by the producing handler on
+/// stdout as a [`specify_diagnostics::DiagnosticReport`] before the
+/// payload-free error is returned.
 pub fn report(format: Format, err: &Error) -> Exit {
     let code = Exit::from(err);
     let body = ErrorBody::from(err);
@@ -74,42 +77,38 @@ pub fn report(format: Format, err: &Error) -> Exit {
     code
 }
 
-/// Failure envelope used by [`report`] for every error variant. For
-/// `Error::Validation`, `results` is `Some(rows)`; otherwise it is
-/// `None` and serde elides the field from the JSON output via
-/// `skip_serializing_if`.
+/// Failure envelope used by [`report`] for every error variant. The
+/// shape is now payload-free: `error` carries the variant discriminant
+/// (the `code` for `Error::Validation`), `message` the rendered detail,
+/// and `exit-code` the numeric exit. Per-finding rows are no longer
+/// part of the error body — handlers render
+/// [`specify_diagnostics::DiagnosticReport`] on stdout before returning
+/// the payload-free error.
 ///
 /// Construct via `ErrorBody::from(&err)` — the variant is the only
 /// shape on the wire.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
-pub struct ErrorBody<'a> {
+pub struct ErrorBody {
     pub(crate) error: std::borrow::Cow<'static, str>,
     pub(crate) message: String,
     pub(crate) exit_code: u8,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) results: Option<&'a [ValidationSummary]>,
     #[serde(skip)]
     hint: Option<&'static str>,
 }
 
-impl<'a> From<&'a Error> for ErrorBody<'a> {
-    fn from(err: &'a Error) -> Self {
-        let results = match err {
-            Error::Validation { results } => Some(results.as_slice()),
-            _ => None,
-        };
+impl From<&Error> for ErrorBody {
+    fn from(err: &Error) -> Self {
         Self {
             error: err.variant_str(),
             message: err.to_string(),
             exit_code: Exit::from(err).code(),
-            results,
             hint: err.hint(),
         }
     }
 }
 
-fn write_error_text(w: &mut dyn Write, body: &ErrorBody<'_>) -> std::io::Result<()> {
+fn write_error_text(w: &mut dyn Write, body: &ErrorBody) -> std::io::Result<()> {
     writeln!(w, "error: {}", body.message)?;
     if let Some(hint) = body.hint {
         writeln!(w, "hint: {hint}")?;

@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
-use specify_lints::lint::diagnostics::{RenderError, map_hint_error};
+use specify_lints::lint::diagnostics::{
+    LintResultVersion, LintSummary, RenderError, map_hint_error, map_index_error,
+};
 use specify_lints::lint::eval::HintError;
 use specify_lints::lint::index::IndexError;
 use specify_lints::{
-    Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, FindingStatus, HintKind,
-    ResolvedRule, Severity,
+    Artifact, Confidence, DiagnosticKind, FindingEvidence, FindingLocation, FindingSource,
+    FindingStatus, HintKind, LintFinding, ResolvedRule, Severity,
 };
 
 use super::*;
@@ -134,7 +136,7 @@ const RENDER_CASES: &[DiagCase] = &[
 
 fn assert_validation_rule_id(got: Error, rule_id: &str) {
     match got {
-        Error::Validation { results } => assert_eq!(results[0].rule_id, rule_id),
+        Error::Validation { code, .. } => assert_eq!(code, rule_id),
         other => panic!("lint exit mapping: expected Validation({rule_id}), got {other:?}"),
     }
 }
@@ -195,6 +197,7 @@ fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> Li
         title: "exit-test finding".into(),
         severity,
         source: FindingSource::Deterministic,
+        kind: DiagnosticKind::Violation,
         target_adapter: None,
         source_adapter: None,
         slice: None,
@@ -220,7 +223,7 @@ fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> Li
 fn exit_result(findings: Vec<LintFinding>) -> LintResult {
     LintResult {
         version: LintResultVersion,
-        summary: LintSummary::from_findings(&findings),
+        summary: LintSummary::from_diagnostics(&findings),
         findings,
     }
 }
@@ -254,8 +257,8 @@ fn decide_exit_is_status_aware() {
     let critical_open = exit_fixture_finding(Severity::Critical, Some(FindingStatus::Open));
     let err = decide_exit(&exit_result(vec![critical_open])).expect_err("open critical blocks");
     match err {
-        Error::Validation { results } => {
-            assert_eq!(results[0].rule_id, "review-findings-present");
+        Error::Validation { code, .. } => {
+            assert_eq!(code, "review-findings-present");
         }
         other => panic!("expected Validation, got {other:?}"),
     }

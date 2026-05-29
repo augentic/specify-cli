@@ -45,7 +45,7 @@
 //! # Evidence cap (the structured evidence union)
 //!
 //! Every finding minted here passes through
-//! [`crate::rules::validate_evidence_size`] before [`compute_fingerprint`]
+//! [`crate::rules::validate_evidence_size`] before `compute_fingerprint`
 //! signs it. Snippet-evidence findings that exceed the 16 `KiB` cap are
 //! truncated by halving the snippet value (clamped to a UTF-8 char
 //! boundary) and appending a `…[truncated]` marker until the
@@ -79,8 +79,8 @@ use crate::lint::WorkspaceModel;
 use crate::lint::diagnostics::map_hint_error;
 use crate::rules::fingerprint::fingerprint as compute_fingerprint;
 use crate::rules::{
-    Artifact, Confidence, DeterministicHint, FindingEvidence, FindingLocation, FindingSource,
-    HintKind, LintFinding, LintMode, ResolvedRule, Severity, validate_evidence_size,
+    Artifact, Confidence, DeterministicHint, DiagnosticKind, FindingEvidence, FindingLocation,
+    FindingSource, HintKind, LintFinding, LintMode, ResolvedRule, Severity, validate_evidence_size,
 };
 
 /// Closed failure mode for the hint interpreter.
@@ -350,7 +350,14 @@ pub fn evaluate_rules(
         if !rule_filter.is_empty() && !rule_filter.contains(&rule.rule_id.as_str()) {
             continue;
         }
+        // `lint-mode: model-assisted` rules carry no executable hints
+        // the deterministic engine can score. Rather than silently
+        // dropping them, surface each as a non-blocking `kind: review`
+        // diagnostic so the "needs judgment" signal stays first-class
+        // on the wire (the model scorer / human reviewer picks it up).
         if matches!(rule.lint_mode, Some(LintMode::ModelAssisted)) {
+            findings.push(make_review_finding(rule, next_id));
+            next_id += 1;
             continue;
         }
         let Some(hints) = rule.deterministic_hints.as_deref() else {
@@ -398,6 +405,7 @@ pub fn reserved_hint_summary(
         title: "Reserved hint kinds awaiting implementation".to_string(),
         severity,
         source: FindingSource::Deterministic,
+        kind: DiagnosticKind::Violation,
         target_adapter: None,
         source_adapter: None,
         slice: None,
@@ -449,6 +457,7 @@ pub(crate) fn make_finding(
         title,
         severity: rule.severity,
         source: FindingSource::Deterministic,
+        kind: DiagnosticKind::Violation,
         target_adapter: single_adapter(rule),
         source_adapter: None,
         slice: None,
@@ -459,6 +468,42 @@ pub(crate) fn make_finding(
         impact: rule.trigger.clone(),
         remediation: format!("See {}", rule.path),
         confidence: Some(Confidence::High),
+        fingerprint: String::new(),
+        status: None,
+        disposition: None,
+    };
+    clamp_evidence(&mut finding);
+    finding.fingerprint = compute_fingerprint(&finding);
+    finding
+}
+
+/// Build a non-blocking `kind: review` diagnostic for a
+/// `lint-mode: model-assisted` rule the deterministic engine cannot
+/// score. The rule's `trigger` becomes the review prompt (impact +
+/// snippet evidence) and its `path` the remediation pointer. Source is
+/// `model-assisted` — the question is destined for a scorer, not a
+/// deterministic verdict.
+fn make_review_finding(rule: &ResolvedRule, id_num: u64) -> LintFinding {
+    let mut finding = LintFinding {
+        id: format!("FIND-{id_num:04}"),
+        rule_id: Some(rule.rule_id.clone()),
+        related_rule_ids: None,
+        title: rule.title.clone(),
+        severity: rule.severity,
+        source: FindingSource::ModelAssisted,
+        kind: DiagnosticKind::Review,
+        target_adapter: single_adapter(rule),
+        source_adapter: None,
+        slice: None,
+        change: None,
+        artifact: Artifact::Code,
+        location: None,
+        evidence: FindingEvidence::Snippet {
+            value: rule.trigger.clone(),
+        },
+        impact: rule.trigger.clone(),
+        remediation: format!("Model-assisted review required; see {}", rule.path),
+        confidence: Some(Confidence::Medium),
         fingerprint: String::new(),
         status: None,
         disposition: None,
@@ -516,6 +561,7 @@ pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> LintFinding 
         title,
         severity,
         source: FindingSource::Deterministic,
+        kind: DiagnosticKind::Violation,
         target_adapter,
         source_adapter: None,
         slice: None,
@@ -651,6 +697,7 @@ mod tests {
             title: "t".into(),
             severity: Severity::Important,
             source: FindingSource::Deterministic,
+            kind: DiagnosticKind::Violation,
             target_adapter: None,
             source_adapter: None,
             slice: None,

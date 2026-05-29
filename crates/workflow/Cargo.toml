@@ -23,6 +23,7 @@ semver.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
+specify-diagnostics.workspace = true
 specify-error.workspace = true
 specify-model.workspace = true
 specify-schema.workspace = true

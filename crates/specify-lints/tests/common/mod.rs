@@ -9,7 +9,8 @@
 use serde_json::json;
 use specify_lints::lint::diagnostics::{LintResult, LintResultVersion, LintSummary};
 use specify_lints::rules::{
-    Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, LintFinding, Severity,
+    Artifact, Confidence, DiagnosticKind, FindingEvidence, FindingLocation, FindingSource,
+    LintFinding, Severity,
 };
 
 /// Three-finding fixture covering the rendering matrix S8 needs to
@@ -23,6 +24,7 @@ pub fn make_fixture() -> LintResult {
             title: "Literal deployment URL in generated handler".into(),
             severity: Severity::Critical,
             source: FindingSource::Deterministic,
+            kind: DiagnosticKind::Violation,
             target_adapter: Some("omnia".into()),
             source_adapter: None,
             slice: Some("billing-invoice-export".into()),
@@ -52,6 +54,7 @@ pub fn make_fixture() -> LintResult {
             title: "Bundle digest, with comma, exceeds policy".into(),
             severity: Severity::Important,
             source: FindingSource::Deterministic,
+            kind: DiagnosticKind::Violation,
             target_adapter: Some("omnia".into()),
             source_adapter: None,
             slice: None,
@@ -83,6 +86,7 @@ pub fn make_fixture() -> LintResult {
             title: "Optional housekeeping note".into(),
             severity: Severity::Optional,
             source: FindingSource::Deterministic,
+            kind: DiagnosticKind::Violation,
             target_adapter: None,
             source_adapter: None,
             slice: None,
@@ -105,7 +109,7 @@ pub fn make_fixture() -> LintResult {
 
     LintResult {
         version: LintResultVersion,
-        summary: LintSummary::from_findings(&findings),
+        summary: LintSummary::from_diagnostics(&findings),
         findings,
     }
 }

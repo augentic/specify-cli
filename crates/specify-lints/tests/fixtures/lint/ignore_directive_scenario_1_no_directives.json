@@ -8,6 +8,7 @@
         "value": "const BASE_URL: &str = \"https://api.example.com\";"
       },
       "impact": "Trigger for UNI-014",
+      "kind": "violation",
       "location": {
         "column": 25,
         "line": 1,

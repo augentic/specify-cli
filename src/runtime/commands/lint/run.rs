@@ -25,19 +25,17 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_error::{Error, Result};
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::diagnostics::{
-    Format as DiagnosticsFormat, LintResult, LintResultVersion, LintSummary, count_status,
-    emit_dump_model, map_index_error, map_render_error, render,
+    Format as DiagnosticsFormat, LintResult, count_status, map_render_error, render,
 };
 use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_lints::lint::eval::{evaluate_rules, reserved_hint_summary};
-use specify_lints::lint::ignore::{apply as apply_directives, blocking_findings_present};
-use specify_lints::lint::index::build as build_model;
-use specify_lints::{
-    FindingStatus, LintFinding, ResolveInputs, build_resolved_rules, map_resolve_error,
+use specify_lints::lint::ignore::blocking_findings_present;
+use specify_lints::lint::runner::{
+    PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
+use specify_lints::{FindingStatus, LintFinding, ResolveInputs};
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
 use specify_workflow::journal::{
@@ -81,36 +79,21 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
         include_unmatched: false,
         include_core,
     };
-    let resolved = build_resolved_rules(&inputs).map_err(map_resolve_error)?;
 
-    let model = build_model(&ctx.project_dir, ScanProfile::Consumer, &artifact_set, languages)
-        .map_err(map_index_error)?;
-
-    if dump_model {
-        return emit_dump_model(&model);
-    }
-
-    let runner = WasiToolRunner::new(ctx)?;
-    let (mut findings, reserved, mut next_id) =
-        evaluate_rules(&resolved.rules, &model, &ctx.project_dir, &runner, 1, &[])?;
-
-    let outcome =
-        apply_directives(&mut findings, &model.ignore_directives, &resolved.rules, next_id);
-    findings.extend(outcome.synthetics);
-    next_id = outcome.next_id_counter;
-
-    if let Some(summary) = reserved_hint_summary(&reserved, strict_hints) {
-        findings.push(summary);
-    }
-    // `next_id` is intentionally not consumed further in v1; future
-    // post-passes (RFC-33b baseline matching, telemetry IDs) will
-    // continue to thread it.
-    let _ = next_id;
-
-    let result = LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::from_findings(&findings),
-        findings,
+    let tool_runner = WasiToolRunner::new(ctx)?;
+    let config = PipelineConfig {
+        profile: ScanProfile::Consumer,
+        dump_model,
+        strict_hints,
+        apply_ignore_directives: true,
+        rule_filter: &[],
+        resolver_degradation: ResolverDegradation::Fatal,
+        tool_runner: &tool_runner,
+        producers: &[],
+    };
+    let result = match run_pipeline(&inputs, &config)? {
+        RunOutcome::DumpedModel => return Ok(()),
+        RunOutcome::Report(result) => result,
     };
 
     let rendered = render(format, &result).map_err(map_render_error)?;
@@ -166,14 +149,11 @@ fn compose_artifact_set(
         match fs::read_to_string(&tasks_path) {
             Ok(text) => out.extend(parse_slice_tasks_paths(&text)),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                return Err(Error::Validation {
-                    results: vec![ValidationSummary {
-                        status: ValidationStatus::Fail,
-                        rule_id: "review-slice-tasks-missing".to_string(),
-                        rule: format!("slice {slice_name} has no tasks.md"),
-                        detail: Some(tasks_path.display().to_string()),
-                    }],
-                });
+                return Err(Error::validation_failed(
+                    "review-slice-tasks-missing",
+                    format!("slice {slice_name} has no tasks.md"),
+                    tasks_path.display().to_string(),
+                ));
             }
             Err(err) => {
                 return Err(Error::Filesystem {
@@ -273,14 +253,11 @@ fn decide_exit(result: &LintResult) -> Result<()> {
         result.summary.suggestion,
         result.summary.optional,
     );
-    Err(Error::Validation {
-        results: vec![ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: "review-findings-present".to_string(),
-            rule: "deterministic review surfaced open critical/important findings".to_string(),
-            detail: Some(detail),
-        }],
-    })
+    Err(Error::validation_failed(
+        "review-findings-present",
+        "deterministic review surfaced open critical/important findings",
+        detail,
+    ))
 }
 
 /// `ToolRunner` impl bridging `specify-lints`'s standards-layer

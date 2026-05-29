@@ -26,5 +26,7 @@ pub mod eval;
 pub mod ignore;
 pub mod index;
 pub mod model;
+pub mod producer;
+pub mod runner;
 
 pub use model::*;

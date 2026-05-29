@@ -22,10 +22,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use specify_error::ValidationStatus;
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::index::build;
-use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
+use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 use tempfile::TempDir;
 
 const FIXTURE_NAME: &str = "framework_minimal";

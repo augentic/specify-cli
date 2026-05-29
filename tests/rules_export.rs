@@ -394,9 +394,9 @@ fn negative_rules_root_required() {
     let envelope: Value = serde_json::from_str(stderr)
         .unwrap_or_else(|err| panic!("stderr is not JSON ({err}); raw:\n{stderr}"));
 
-    let rule_id = envelope
-        .pointer("/results/0/rule-id")
+    let code = envelope
+        .get("error")
         .and_then(Value::as_str)
-        .expect("envelope must carry results[0].rule-id");
-    assert_eq!(rule_id, "rules-root-required", "envelope:\n{envelope:#}");
+        .expect("envelope must carry the top-level error code");
+    assert_eq!(code, "rules-root-required", "envelope:\n{envelope:#}");
 }

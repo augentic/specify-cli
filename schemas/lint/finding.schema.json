@@ -47,8 +47,13 @@
         "deterministic",
         "model-assisted",
         "hybrid",
-        "human"
+        "human",
+        "tool"
       ]
+    },
+    "kind": {
+      "$ref": "#/$defs/diagnosticKind",
+      "description": "Nature of the diagnostic: `violation` (a defect) or `review` (a deterministically-raised request for agent/human judgment). Omitted defaults to `violation`."
     },
     "target-adapter": {
       "$ref": "#/$defs/adapterRef",
@@ -124,8 +129,8 @@
     },
     "ruleId": {
       "type": "string",
-      "pattern": "^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$",
-      "description": "Mirrors `codex/resolved.schema.json#/$defs/ruleId` and `crates/authoring/schemas/rule.schema.json#/$defs/ruleId`."
+      "pattern": "^((UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}|[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*)$",
+      "description": "Two namespaces share this field. The codex family (`UNI-014`, `CORE-003`, …) mirrors `codex/resolved.schema.json#/$defs/ruleId` and `crates/authoring/schemas/rule.schema.json#/$defs/ruleId`. The dot-/kebab-namespaced runtime-validation family (`spec.requirement-id-missing`, `merge.no-duplicate-ids`, `slice-provenance-drift`) carries the structural workflow invariant ids that `validate` surfaces emit as diagnostics."
     },
     "adapterRef": {
       "type": "string",
@@ -152,6 +157,14 @@
       ],
       "description": "Closed review severity enum, ordered for sort stability (`critical < important < suggestion < optional`)."
     },
+    "diagnosticKind": {
+      "type": "string",
+      "enum": [
+        "violation",
+        "review"
+      ],
+      "description": "Orthogonal nature axis. `violation` marks a deterministic defect; `review` marks a deterministically-raised request for agent or human judgment (e.g. a deferred semantic check). Only `violation` findings are default-blocking."
+    },
     "artifact": {
       "type": "string",
       "enum": [
@@ -164,6 +177,7 @@
         "assets",
         "tokens",
         "composition",
+        "plan",
         "unknown"
       ]
     },

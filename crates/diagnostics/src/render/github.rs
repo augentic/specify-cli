@@ -1,8 +1,7 @@
-//! GitHub Actions workflow-annotation formatter per the diagnostics formatter set.
+//! GitHub Actions workflow-annotation formatter.
 //!
 //! One `::<level> file=…,line=…,col=…,title=…::<message>` line per
-//! finding. Escaping follows the GitHub workflow-command rules
-//! (<https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions#example-of-a-workflow-command>):
+//! diagnostic. Escaping follows the GitHub workflow-command rules:
 //!
 //! - `%` -> `%25`, `\r` -> `%0D`, `\n` -> `%0A` everywhere.
 //! - Inside an argument list (between `::` and `::`) `,` -> `%2C`
@@ -13,25 +12,25 @@
 
 use std::fmt::Write as _;
 
-use super::{LintResult, RenderError};
-use crate::rules::{LintFinding, Severity};
+use super::RenderError;
+use crate::diagnostic::{Diagnostic, DiagnosticReport, Severity};
 
-/// Render `result` as one GitHub workflow-annotation line per
-/// finding.
+/// Render `report` as one GitHub workflow-annotation line per
+/// diagnostic.
 ///
 /// # Errors
 ///
 /// Never errors — the [`Result`] return mirrors the uniform
 /// [`super::render`] dispatch signature.
-pub fn render(result: &LintResult) -> Result<String, RenderError> {
+pub fn render(report: &DiagnosticReport) -> Result<String, RenderError> {
     let mut out = String::new();
-    for finding in &result.findings {
+    for finding in &report.findings {
         write_finding(&mut out, finding);
     }
     Ok(out)
 }
 
-fn write_finding(out: &mut String, finding: &LintFinding) {
+fn write_finding(out: &mut String, finding: &Diagnostic) {
     let level = github_level(finding.severity);
     let mut args: Vec<String> = Vec::new();
     if let Some(loc) = finding.location.as_ref() {

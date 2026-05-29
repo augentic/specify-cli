@@ -49,7 +49,7 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
         ("workspace-model", WORKSPACE_MODEL_JSON_SCHEMA),
         ("plan", PLAN_JSON_SCHEMA),
         ("evidence", EVIDENCE_JSON_SCHEMA),
-        ("reconciliation", RECONCILIATION_JSON_SCHEMA),
+        ("provenance", RECONCILIATION_JSON_SCHEMA),
         ("components", COMPONENTS_JSON_SCHEMA),
     ])
 });

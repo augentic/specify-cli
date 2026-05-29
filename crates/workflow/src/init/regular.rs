@@ -333,10 +333,10 @@ description: Colliding source adapter for the init-time uniqueness check.
 
         let err = init(base_opts(tmp.path(), &target_dir), fixed_now())
             .expect_err("cross-axis name collision must fail init");
-        let Error::Validation { results } = err else {
+        let Error::Validation { code, .. } = err else {
             panic!("expected Error::Validation, got: {err:?}");
         };
-        assert_eq!(results[0].rule_id, "adapter-name-axis-collision");
+        assert_eq!(code, "adapter-name-axis-collision");
         // Cache must not have been clobbered: the target cache dir
         // should be absent because the check fires before the copy.
         let cache_dir = tmp.path().join(".specify/.cache/manifests/targets/omnia");

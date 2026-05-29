@@ -63,7 +63,7 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Refinement
 
-`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `reconciliation.yaml`, and transitions the slice to `refined`. Validators live in [`crates/validate/src/`](../../crates/validate/src/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
+`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `provenance.yaml`, and transitions the slice to `refined`. Validators live in [`crates/validate/src/`](../../crates/validate/src/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
 
 ## Extraction
 
@@ -117,9 +117,9 @@ Touching `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/model/src/s
 
 `plan.yaml.slices[].authority-override` maps claim kind to a source key bound on the slice. Orphan keys surface as `slice-authority-override-orphan-source-key`. See [`DECISIONS.md` §"Plan per-slice authority overrides"](../../DECISIONS.md#plan-per-slice-authority-overrides).
 
-## D4 — `reconciliation.yaml` is audit-only
+## D4 — `provenance.yaml` is audit-only
 
-Reconciliation index at `.specify/slices/<slice>/reconciliation.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/reconciliation.schema.json`](../../schemas/slice/reconciliation.schema.json); validator at [`crates/workflow/src/slice/reconciliation.rs`](../../crates/workflow/src/slice/reconciliation.rs). See [`DECISIONS.md` §"`reconciliation.yaml` audit index"](../../DECISIONS.md#reconciliationyaml-audit-index).
+Provenance index at `.specify/slices/<slice>/provenance.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/provenance.schema.json`](../../schemas/slice/provenance.schema.json); validator at [`crates/workflow/src/slice/provenance.rs`](../../crates/workflow/src/slice/provenance.rs). See [`DECISIONS.md` §"`provenance.yaml` audit index"](../../DECISIONS.md#provenanceyaml-audit-index).
 
 ## D5 — Operator-driven `divergence`
 
@@ -137,6 +137,6 @@ Leads carry an optional `aliases[]` bullet. `slices[].sources[].lead` resolves f
 
 Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, lead id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/workflow/src/adapter/cache.rs`](../../crates/workflow/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
 
-## Reconciliation index
+## Provenance index
 
-Closed top-level shape on `reconciliation.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/workflow/src/slice/reconciliation.rs`](../../crates/workflow/src/slice/reconciliation.rs) and `kind: tool` evaluator contract above.
+Closed top-level shape on `provenance.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/workflow/src/slice/provenance.rs`](../../crates/workflow/src/slice/provenance.rs) and `kind: tool` evaluator contract above.

@@ -103,12 +103,10 @@ fn axis_collision_rejected_at_resolve_time() {
         TargetAdapter::resolve("foo", &project)
             .expect_err("target-axis resolve must reject the collision"),
     ] {
-        let Error::Validation { results } = err else {
+        let Error::Validation { code, detail } = err else {
             panic!("expected Error::Validation, got: {err:?}");
         };
-        assert_eq!(results.len(), 1, "single-finding payload");
-        assert_eq!(results[0].rule_id, "adapter-name-axis-collision");
-        let detail = results[0].detail.as_deref().unwrap_or_default();
+        assert_eq!(code, "adapter-name-axis-collision");
         assert!(
             detail.contains("adapters/sources/") && detail.contains("adapters/targets/"),
             "error body must name both axes, got: {detail}"
@@ -142,11 +140,10 @@ fn axis_unique_rejects_opposite_axis() {
     for axis in [Axis::Source, Axis::Target] {
         let err = check_axis_unique_for_name(axis, "foo", &project)
             .expect_err("colliding adapter name must fail");
-        let Error::Validation { results } = err else {
+        let Error::Validation { code, detail } = err else {
             panic!("expected Error::Validation, got: {err:?}");
         };
-        assert_eq!(results[0].rule_id, "adapter-name-axis-collision");
-        let detail = results[0].detail.as_deref().unwrap_or_default();
+        assert_eq!(code, "adapter-name-axis-collision");
         assert!(
             detail.contains("adapters/sources/") && detail.contains("adapters/targets/"),
             "error body must name both axes, got: {detail}"
@@ -248,7 +245,7 @@ fn resolves_captures_with_tools() {
     // This test is the cli-side complement to the deno harness
     // assertions in `augentic/specify` at
     // `tests/cross_repo/sources_test.ts` — the harness pins the
-    // golden-fixture data shape (Evidence + reconciliation.yaml +
+    // golden-fixture data shape (Evidence + provenance.yaml +
     // discovery.md) while this test pins the loader behaviour.
     let (_tmp, project) = local_project();
     let manifest_dir = project.join("adapters").join("sources").join("captures");

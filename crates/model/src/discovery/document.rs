@@ -29,6 +29,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use specify_diagnostics::{Artifact, Diagnostic};
 use specify_error::{Error, Result};
 
 use super::lead::{Lead, LeadAliases};
@@ -268,13 +269,18 @@ impl Discovery {
     }
 
     /// Convert a non-empty list of collision findings into the
-    /// single [`Error::Validation`] envelope the CLI emits. Shared
-    /// between [`Self::add_alias`] and `specrun slice validate`.
+    /// payload-free [`Error::Validation`] envelope the operational
+    /// `add_alias` path emits (exit 2). The `slice validate` surface
+    /// instead renders [`DiscoveryAliasCollision::to_diagnostic`] on
+    /// stdout; this constructor is the single-shot operational signal.
     #[must_use]
     pub fn collision_error(findings: &[DiscoveryAliasCollision]) -> Error {
-        let results: Vec<specify_error::ValidationSummary> =
-            findings.iter().map(DiscoveryAliasCollision::to_summary).collect();
-        Error::Validation { results }
+        let detail =
+            findings.iter().map(DiscoveryAliasCollision::detail).collect::<Vec<_>>().join("; ");
+        Error::Validation {
+            code: "discovery-alias-collision".to_string(),
+            detail,
+        }
     }
 
     /// Render the document back to its on-disk shape. Prose
@@ -349,20 +355,28 @@ pub struct DiscoveryAliasCollision {
 }
 
 impl DiscoveryAliasCollision {
-    /// Project the finding into the [`specify_error::ValidationSummary`]
-    /// shape `specrun slice validate` and `specrun plan amend` emit.
+    /// Human-readable detail naming the colliding name and bearing leads.
     #[must_use]
-    pub fn to_summary(&self) -> specify_error::ValidationSummary {
-        specify_error::ValidationSummary {
-            status: specify_error::ValidationStatus::Fail,
-            rule_id: "discovery-alias-collision".to_string(),
-            rule: "lead id and aliases share a single namespace per discovery.md".to_string(),
-            detail: Some(format!(
-                "name `{}` resolves to multiple leads: {}",
-                self.name,
-                self.bearing_leads.join(", ")
-            )),
-        }
+    pub fn detail(&self) -> String {
+        format!(
+            "name `{}` resolves to multiple leads: {}",
+            self.name,
+            self.bearing_leads.join(", ")
+        )
+    }
+
+    /// Project the finding into the neutral [`Diagnostic`] currency the
+    /// `specrun slice validate` surface renders. A deterministic
+    /// `violation` against the `plan`/discovery artifact.
+    #[must_use]
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        Diagnostic::violation(
+            "discovery-alias-collision",
+            "lead id and aliases share a single namespace per discovery.md",
+            self.detail(),
+            Artifact::Plan,
+            None,
+        )
     }
 }
 
@@ -830,9 +844,8 @@ Some trailing prose.
         let err =
             doc.add_alias("password-reset-request", "user-registration").expect_err("collision");
         match err {
-            Error::Validation { results } => {
-                assert_eq!(results.len(), 1);
-                assert_eq!(results[0].rule_id, "discovery-alias-collision");
+            Error::Validation { code, .. } => {
+                assert_eq!(code, "discovery-alias-collision");
             }
             other => panic!("expected Validation, got: {other:?}"),
         }

@@ -8,7 +8,11 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde_json::Value as JsonValue;
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_diagnostics::{
+    Artifact, Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary,
+    blocking_present, renumber,
+};
+use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
 use specify_model::spec::provenance::{self, ParsedSpec, RequirementTag};
 use specify_validate::validate_slice;
@@ -16,7 +20,7 @@ use specify_workflow::change::{Plan, orphan_authority_override_keys};
 use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
 use specify_workflow::journal::{Event, EventKind, append_batch};
 use specify_workflow::schema::{evidence_yaml_paths, validate_evidence_dir};
-use specify_workflow::slice::reconciliation::{self, ReconciliationIndex};
+use specify_workflow::slice::provenance::{self as slice_provenance, ProvenanceIndex};
 
 use crate::runtime::context::Ctx;
 
@@ -31,21 +35,19 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     validate_evidence_dir(&slice_dir)?;
 
     // Single walk of `<slice>/specs/**/*.md` feeds provenance
-    // validation, reconciliation-drift REQ-id gathering, and post-pass
+    // validation, provenance-drift REQ-id gathering, and post-pass
     // synthesis journal emission.
     let source_keys = resolve_slice_source_keys(ctx, name)?;
-    let (spec_req_ids, synthesis_tags, provenance_summaries) =
+    let (spec_req_ids, synthesis_tags, provenance_findings) =
         scan_slice_specs(&slice_dir, &source_keys)?;
-    if !provenance_summaries.is_empty() {
-        return Err(Error::Validation {
-            results: provenance_summaries,
-        });
+    if !provenance_findings.is_empty() {
+        return fail_with(ctx, "slice-provenance-invalid", provenance_findings);
     }
 
-    // `reconciliation.yaml` audit index — when `reconciliation.yaml` exists, cross-check it against
+    // `provenance.yaml` audit index — when `provenance.yaml` exists, cross-check it against
     // `spec.md` REQ ids and per-source evidence claim ids. Absence
-    // of `reconciliation.yaml` is *not* drift: older slices and pre-refine
-    // slices skip the check silently. The slice-reconciliation-drift error
+    // of `provenance.yaml` is *not* drift: older slices and pre-refine
+    // slices skip the check silently. The slice-provenance-drift error
     // body bundles every finding so the operator sees the full
     // re-refine surface in one pass.
     //
@@ -55,40 +57,67 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // structural issue before adapter rules surface downstream
     // breakage. Both checks share an error envelope when they
     // both fire so the operator can see every issue in one pass.
-    validate_pre_adapter_gates(ctx, &slice_dir, name, &spec_req_ids)?;
+    let gate_findings = collect_pre_adapter_gates(ctx, &slice_dir, name, &spec_req_ids)?;
+    if !gate_findings.is_empty() {
+        return fail_with(ctx, "slice-pre-adapter-gate", gate_findings);
+    }
 
-    let report = validate_slice(&slice_dir)?;
-    let passed = report.passed;
+    // Adapter validation findings — `validate_slice` returns one
+    // `violation` diagnostic per structural Fail and one `review`
+    // diagnostic per deferred semantic rule. The report is rendered
+    // on stdout either way; only a blocking diagnostic gates exit.
+    let findings = validate_slice(&slice_dir)?;
+    let blocking = blocking_present(&findings);
+    render_report(ctx, findings)?;
 
-    ctx.write(&report, |w, _| {
-        writeln!(w, "{}", if report.passed { "PASS" } else { "FAIL" })?;
-        for (key, results) in &report.brief_results {
-            writeln!(w, "{key}:")?;
-            for r in results {
-                writeln!(w, "  {}", format_result_line(r))?;
-            }
-        }
-        if !report.cross_checks.is_empty() {
-            writeln!(w, "cross_checks:")?;
-            for r in &report.cross_checks {
-                writeln!(w, "  {}", format_result_line(r))?;
-            }
-        }
-        Ok(())
-    })?;
-    if passed {
-        // DECISIONS.md — `slice.synthesis.{conflict,divergence,unknown}`
-        // emit once per tagged requirement after a successful validate
-        // (same posture as `slice.transition.refined` on transition).
-        append_synthesis_journal(ctx, name, synthesis_tags)?;
-        Ok(())
-    } else {
+    if blocking {
         Err(Error::validation_failed(
             "slice-validation-failed",
             "slice must satisfy adapter validation",
             format!("slice `{name}` failed validation"),
         ))
+    } else {
+        // DECISIONS.md — `slice.synthesis.{conflict,divergence,unknown}`
+        // emit once per tagged requirement after a successful validate
+        // (same posture as `slice.transition.refined` on transition).
+        append_synthesis_journal(ctx, name, synthesis_tags)?;
+        Ok(())
     }
+}
+
+/// Render `findings` as a [`DiagnosticReport`] on stdout in the active
+/// `Ctx` format. JSON serialises the wire envelope; text renders a
+/// PASS/FAIL banner plus one line per diagnostic. Ids are assigned
+/// sequentially at render time.
+fn render_report(ctx: &Ctx, mut findings: Vec<Diagnostic>) -> Result<()> {
+    renumber(&mut findings);
+    let blocking = blocking_present(&findings);
+    let report = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
+        findings,
+    };
+    ctx.write(&report, move |w, report| {
+        writeln!(w, "{}", if blocking { "FAIL" } else { "PASS" })?;
+        for finding in &report.findings {
+            writeln!(w, "  {}", format_finding_line(finding))?;
+        }
+        Ok(())
+    })
+}
+
+/// Render `findings` on stdout and return the payload-free
+/// [`Error::Validation`] keyed on `code`. Used by every pre-adapter
+/// gate so the operator sees the full diagnostic surface before the
+/// gate fails the command.
+fn fail_with(ctx: &Ctx, code: &'static str, findings: Vec<Diagnostic>) -> Result<()> {
+    let count = findings.len();
+    render_report(ctx, findings)?;
+    Err(Error::validation_failed(
+        code,
+        "slice must satisfy structural invariants",
+        format!("{count} blocking finding(s)"),
+    ))
 }
 
 /// Append one `slice.synthesis.*` journal line per `(requirement-id,
@@ -130,12 +159,11 @@ struct ScannedSpec {
     parsed: ParsedSpec,
 }
 
-type ScanSliceSpecsResult =
-    (BTreeSet<String>, Vec<(String, RequirementTag)>, Vec<ValidationSummary>);
+type ScanSliceSpecsResult = (BTreeSet<String>, Vec<(String, RequirementTag)>, Vec<Diagnostic>);
 
 /// Walk `<slice>/specs/**/*.md` once, parse each file, and fan out
 /// REQ ids (all files), synthesis tags (annotated files only), and
-/// provenance validation summaries (annotated files only).
+/// provenance diagnostics (annotated files only).
 fn scan_slice_specs(
     slice_dir: &Path, source_keys: &BTreeSet<String>,
 ) -> Result<ScanSliceSpecsResult> {
@@ -150,7 +178,7 @@ fn scan_slice_specs(
 
     let mut req_ids = BTreeSet::new();
     let mut synthesis_tags = Vec::new();
-    let mut provenance_summaries = Vec::new();
+    let mut provenance_findings = Vec::new();
 
     for path in spec_files {
         let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
@@ -177,17 +205,17 @@ fn scan_slice_specs(
         let path_hint = path_hint(&scanned.path, slice_dir);
         let validation_findings = provenance::validate(&scanned.parsed, source_keys);
         for f in scanned.parsed.findings.into_iter().chain(validation_findings) {
-            provenance_summaries.push(f.into_summary(&path_hint));
+            provenance_findings.push(f.into_diagnostic(&path_hint));
         }
     }
 
-    Ok((req_ids, synthesis_tags, provenance_summaries))
+    Ok((req_ids, synthesis_tags, provenance_findings))
 }
 
 /// Bundle the four pre-adapter gates that fire on a single slice:
 ///
-/// 1. `reconciliation.yaml` audit index — reconciliation-drift detection between `spec.md`, the
-///    per-slice `reconciliation.yaml`, and per-source `evidence/<key>.yaml`.
+/// 1. `provenance.yaml` audit index — provenance-drift detection between `spec.md`, the
+///    per-slice `provenance.yaml`, and per-source `evidence/<key>.yaml`.
 /// 2. per-slice authority override — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
 /// 3. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
@@ -199,17 +227,17 @@ fn scan_slice_specs(
 ///    directives and `.specify/design-system/components.yaml`.
 ///
 /// All four checks can fail independently; we collect every finding
-/// into a single [`Error::Validation`] so the operator sees the
-/// full surface in one pass instead of one error per re-run.
-fn validate_pre_adapter_gates(
+/// into one [`Diagnostic`] vector so the caller can render the full
+/// surface in one pass instead of one error per re-run.
+fn collect_pre_adapter_gates(
     ctx: &Ctx, slice_dir: &Path, name: &str, spec_req_ids: &BTreeSet<String>,
-) -> Result<()> {
-    let mut findings: Vec<ValidationSummary> = Vec::new();
-    findings.extend(collect_reconciliation_drift_findings(slice_dir, spec_req_ids)?);
+) -> Result<Vec<Diagnostic>> {
+    let mut findings: Vec<Diagnostic> = Vec::new();
+    findings.extend(collect_provenance_drift_findings(slice_dir, spec_req_ids)?);
     findings.extend(override_orphans(ctx, name)?);
     findings.extend(alias_collisions(ctx)?);
     findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
-    if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
+    Ok(findings)
 }
 
 /// discovery alias contract alias-collision gate. Loads
@@ -219,7 +247,7 @@ fn validate_pre_adapter_gates(
 /// silently — older slices and projects without an authored
 /// inventory remain valid (this is the read-only counterpart to
 /// the per-amend gate in `specrun plan amend --add-alias`).
-fn alias_collisions(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
+fn alias_collisions(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
     let path = ctx.layout().discovery_path();
     if !path.exists() {
         return Ok(Vec::new());
@@ -228,32 +256,32 @@ fn alias_collisions(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
     Ok(discovery
         .check_alias_collisions()
         .iter()
-        .map(specify_model::discovery::DiscoveryAliasCollision::to_summary)
+        .map(specify_model::discovery::DiscoveryAliasCollision::to_diagnostic)
         .collect())
 }
 
-/// `reconciliation.yaml` audit index drift gate. Loads `<slice>/reconciliation.yaml` when present,
+/// `provenance.yaml` audit index drift gate. Loads `<slice>/provenance.yaml` when present,
 /// gathers `REQ-*` ids from every `<slice>/specs/**/*.md` file and
 /// claim ids from every `<slice>/evidence/<source>.yaml` file, and
-/// emits one `slice-reconciliation-drift` finding per drift entry. The
-/// reconciliation file's own schema validation runs first
-/// ([`ReconciliationIndex::load`]) so structural errors surface as
-/// `reconciliation-schema` failures rather than bare drift noise.
+/// emits one `slice-provenance-drift` finding per drift entry. The
+/// provenance file's own schema validation runs first
+/// ([`ProvenanceIndex::load`]) so structural errors surface as
+/// `provenance-schema` failures rather than bare drift noise.
 ///
-/// Absence of `reconciliation.yaml` is a legal state — older slices and
+/// Absence of `provenance.yaml` is a legal state — older slices and
 /// `refining` slices that haven't yet been driven through
 /// `/spec:refine` skip the check silently.
-fn collect_reconciliation_drift_findings(
+fn collect_provenance_drift_findings(
     slice_dir: &Path, spec_req_ids: &BTreeSet<String>,
-) -> Result<Vec<ValidationSummary>> {
-    let index_path = slice_dir.join("reconciliation.yaml");
+) -> Result<Vec<Diagnostic>> {
+    let index_path = slice_dir.join("provenance.yaml");
     if !index_path.is_file() {
         return Ok(Vec::new());
     }
-    let reconciliation_index = ReconciliationIndex::load(&index_path)?;
-    let evidence = reconciliation::collect_evidence_claim_ids(slice_dir)?;
-    let drift = reconciliation_index.detect_drift(spec_req_ids, &evidence);
-    Ok(drift.into_iter().map(reconciliation::ReconciliationDrift::into_summary).collect())
+    let provenance_index = ProvenanceIndex::load(&index_path)?;
+    let evidence = slice_provenance::collect_evidence_claim_ids(slice_dir)?;
+    let drift = provenance_index.detect_drift(spec_req_ids, &evidence);
+    Ok(drift.into_iter().map(slice_provenance::ProvenanceDrift::into_diagnostic).collect())
 }
 
 /// per-slice authority override orphan-source-key gate. Loads `plan.yaml` (when
@@ -262,7 +290,7 @@ fn collect_reconciliation_drift_findings(
 /// list. Absent `plan.yaml` (e.g. ad-hoc slice without a plan)
 /// skips the check silently; the structural issue would already
 /// have surfaced earlier in workflow.
-fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<ValidationSummary>> {
+fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<Diagnostic>> {
     let plan_path = ctx.layout().plan_path();
     if !plan_path.exists() {
         return Ok(Vec::new());
@@ -275,13 +303,15 @@ fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<ValidationSummary>> {
     let findings = orphan_authority_override_keys(&slice_entries);
     Ok(findings
         .into_iter()
-        .map(|f| ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: f.code.to_string(),
-            rule: "Per-slice `authority-override` source key must appear in the slice's \
-                   `sources[]` list"
-                .to_string(),
-            detail: Some(f.message),
+        .map(|f| {
+            Diagnostic::violation(
+                f.code,
+                "Per-slice `authority-override` source key must appear in the slice's \
+                 `sources[]` list",
+                f.message,
+                Artifact::Plan,
+                None,
+            )
         })
         .collect())
 }
@@ -301,13 +331,13 @@ fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<ValidationSummary>> {
 ///
 /// When no catalog exists the check returns empty — the catalog is
 /// opt-in.
-fn collect_catalog_drift_findings(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<ValidationSummary>> {
+fn collect_catalog_drift_findings(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<Diagnostic>> {
     let Some(catalog) = ComponentsCatalog::load(&ctx.project_dir)? else {
         return Ok(Vec::new());
     };
 
     let paths = evidence_yaml_paths(slice_dir)?;
-    let mut findings: Vec<ValidationSummary> = Vec::new();
+    let mut findings: Vec<Diagnostic> = Vec::new();
 
     for path in &paths {
         let raw = std::fs::read_to_string(path).map_err(|source| Error::Filesystem {
@@ -350,17 +380,18 @@ fn collect_catalog_drift_findings(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<Val
         }
     }
 
-    findings.sort_by(|a, b| a.detail.cmp(&b.detail));
+    findings.sort_by(|a, b| a.impact.cmp(&b.impact));
     Ok(findings)
 }
 
-fn catalog_drift_summary(detail: &str) -> ValidationSummary {
-    ValidationSummary {
-        status: ValidationStatus::Fail,
-        rule_id: "slice-catalog-drift".into(),
-        rule: "Evidence `component:` directives resolve to confirmed catalog entries".into(),
-        detail: Some(detail.to_string()),
-    }
+fn catalog_drift_summary(detail: &str) -> Diagnostic {
+    Diagnostic::violation(
+        "slice-catalog-drift",
+        "Evidence `component:` directives resolve to confirmed catalog entries",
+        detail,
+        Artifact::Specs,
+        None,
+    )
 }
 
 /// Path the operator sees in each finding's detail. Anchored at the
@@ -426,14 +457,17 @@ fn resolve_slice_source_keys(ctx: &Ctx, name: &str) -> Result<BTreeSet<String>> 
     Ok(entry.sources.iter().map(|b| b.key().to_string()).collect())
 }
 
-fn format_result_line(r: &ValidationSummary) -> String {
-    match r.status {
-        ValidationStatus::Pass => format!("[ok] {}", r.rule_id),
-        ValidationStatus::Fail => {
-            format!("[fail] {}: {}", r.rule_id, r.detail.as_deref().unwrap_or(""))
+/// One-line text rendering of a diagnostic for the PASS/FAIL banner.
+/// `violation` findings are blocking defects (`[fail]`); `review`
+/// findings are deferred requests for judgment (`[review]`).
+fn format_finding_line(d: &Diagnostic) -> String {
+    let rule = d.rule_id.as_deref().unwrap_or("<unknown>");
+    match d.kind {
+        specify_diagnostics::DiagnosticKind::Violation => {
+            format!("[fail] {}: {}", rule, d.impact)
         }
-        ValidationStatus::Deferred => {
-            format!("[defer] {} ({})", r.rule_id, r.detail.as_deref().unwrap_or(""))
+        specify_diagnostics::DiagnosticKind::Review => {
+            format!("[review] {} ({})", rule, d.impact)
         }
     }
 }

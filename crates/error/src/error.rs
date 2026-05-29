@@ -4,8 +4,6 @@
 //! types directly into the crate's error surface; callers that don't
 //! care which API tripped can continue to `?`-propagate.
 
-use crate::validation::{Status as ValidationStatus, Summary as ValidationSummary};
-
 /// Structured error type for all `specify-*` crates.
 ///
 /// Variants carry enough context for the CLI to assign exit codes and
@@ -43,11 +41,18 @@ pub enum Error {
         detail: String,
     },
 
-    /// Validation failed with one or more findings.
-    #[error("validation failed: {} errors", results.len())]
+    /// A workflow-gating validation surface failed. Payload-free: the
+    /// rendered findings (a `DiagnosticReport`) are emitted to stdout by
+    /// the handler; this variant only carries the stable kebab `code`
+    /// (the JSON `error` discriminant) and a human-readable `detail`,
+    /// and routes to exit code 2 (`Exit::ValidationFailed`). Construct
+    /// via [`Self::validation_failed`].
+    #[error("{code}: {detail}")]
     Validation {
-        /// Individual validation results.
-        results: Vec<ValidationSummary>,
+        /// Stable kebab-case discriminant surfaced as the JSON `error` field.
+        code: String,
+        /// Human-readable message.
+        detail: String,
     },
 
     /// The installed CLI version is older than the project floor.
@@ -164,7 +169,7 @@ impl Error {
             Self::NotInitialized => Cow::Borrowed("not-initialized"),
             Self::Diag { code, .. } => Cow::Borrowed(*code),
             Self::Argument { .. } => Cow::Borrowed("argument"),
-            Self::Validation { .. } => Cow::Borrowed("validation"),
+            Self::Validation { code, .. } => Cow::Owned(code.clone()),
             Self::CliTooOld { .. } => Cow::Borrowed("specify-version-too-old"),
             Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
             Self::Filesystem { op, .. } => Cow::Owned(format!("filesystem-{op}")),
@@ -174,24 +179,29 @@ impl Error {
         }
     }
 
-    /// Build a single-finding `Validation` failure. Use at sites that
-    /// previously routed through `Error::Diag` to land on `Exit::ValidationFailed`:
-    /// the kebab `rule_id` becomes the wire-visible discriminant inside
-    /// the `results[]` array, and `Exit::from(&Error)` matches on the
-    /// `Validation` variant rather than a magic code list. Compose
-    /// multi-finding payloads with `Error::Validation { results }`
-    /// directly.
+    /// Build a payload-free `Validation` failure that lands on
+    /// `Exit::ValidationFailed` (exit 2).
+    ///
+    /// `code` is the stable kebab discriminant surfaced as the JSON
+    /// `error` field (and by [`Self::variant_str`]); `rule` (the
+    /// human-readable invariant) and `detail` (the specific
+    /// explanation) are folded into the rendered message. This is the
+    /// operational counterpart to the rich [`Diagnostic`] report a
+    /// handler renders on stdout — use it when the failure is a single
+    /// operational signal (malformed YAML, unknown slice name, …)
+    /// rather than a set of findings.
+    ///
+    /// [`Diagnostic`]: https://docs.rs/specify-diagnostics
     #[must_use]
     pub fn validation_failed(
-        rule_id: impl Into<String>, rule: impl Into<String>, detail: impl Into<String>,
+        code: impl Into<String>, rule: impl Into<String>, detail: impl Into<String>,
     ) -> Self {
+        let rule = rule.into();
+        let detail = detail.into();
+        let detail = if rule.is_empty() { detail } else { format!("{rule}: {detail}") };
         Self::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: rule_id.into(),
-                rule: rule.into(),
-                detail: Some(detail.into()),
-            }],
+            code: code.into(),
+            detail,
         }
     }
 }

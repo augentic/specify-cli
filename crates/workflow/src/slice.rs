@@ -6,7 +6,7 @@ pub mod actions;
 pub mod lifecycle;
 pub mod metadata;
 pub mod outcome;
-pub mod reconciliation;
+pub mod provenance;
 
 pub use actions::{CreateIfExists, Created, Overlap};
 pub use lifecycle::LifecycleStatus;

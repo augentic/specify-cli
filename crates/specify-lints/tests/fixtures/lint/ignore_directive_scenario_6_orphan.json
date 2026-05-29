@@ -8,6 +8,7 @@
         "value": "const BASE_URL: &str = \"https://api.example.com\";"
       },
       "impact": "Trigger for UNI-014",
+      "kind": "violation",
       "location": {
         "column": 25,
         "line": 2,
@@ -27,6 +28,7 @@
         "value": "// specify-ignore: UNI-999 — bogus rule id with rationale long enough to clear the floor"
       },
       "impact": "Directive references UNI-999 but no finding for that rule fires on the target line.",
+      "kind": "violation",
       "location": {
         "line": 1,
         "path": "app.rs"

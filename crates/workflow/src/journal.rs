@@ -197,10 +197,10 @@ pub enum EventKind {
         /// `cache: opt-out`).
         reason: CacheMissReason,
     },
-    /// `reconciliation.yaml` audit index — `/spec:refine` wrote `reconciliation.yaml` for a slice.
+    /// `provenance.yaml` audit index — `/spec:refine` wrote `provenance.yaml` for a slice.
     /// Agent-driven from `/spec:refine` step 5.
-    #[serde(rename = "slice.reconciliation.written", rename_all = "kebab-case")]
-    SliceReconciliationWritten {
+    #[serde(rename = "slice.provenance.written", rename_all = "kebab-case")]
+    SliceProvenanceWritten {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// CLI version that authored the file (e.g. `specify@2.1.0`).
@@ -566,13 +566,13 @@ mod tests {
                 ],
             ),
             (
-                EventKind::SliceReconciliationWritten {
+                EventKind::SliceProvenanceWritten {
                     slice_name: "identity-user-registration".to_string(),
                     generator: "specify@2.1.0".to_string(),
                     requirement_count: 7,
                 },
                 &[
-                    r#""event":"slice.reconciliation.written""#,
+                    r#""event":"slice.provenance.written""#,
                     r#""generator":"specify@2.1.0""#,
                     r#""requirement-count":7"#,
                 ],

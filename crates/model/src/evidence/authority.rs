@@ -229,7 +229,7 @@ mod tests {
     //
     // The CLI does not yet ship a synthesis resolver — `/spec:refine`
     // is still skill-driven and the in-Rust resolution helper lives
-    // alongside `reconciliation.yaml` in the plugin repo (Change 3.2). This
+    // alongside `provenance.yaml` in the plugin repo (Change 3.2). This
     // test pins the four-step resolution walk at the data-structure
     // level so any future migration of the resolver into this crate
     // (and the parallel skill rewrite) inherits a frozen contract:

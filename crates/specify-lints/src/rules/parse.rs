@@ -42,8 +42,7 @@ use std::path::Path;
 use std::{fs, io};
 
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use specify_error::ValidationStatus;
-use specify_schema::validate_value;
+use specify_schema::{ValidationStatus, validate_value};
 
 use super::Rule;
 

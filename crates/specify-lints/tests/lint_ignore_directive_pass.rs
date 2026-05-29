@@ -202,7 +202,7 @@ fn run_scenario(scenario: &Scenario) -> (LintResult, Vec<LintFinding>) {
 
     let result = LintResult {
         version: LintResultVersion,
-        summary: LintSummary::from_findings(&findings),
+        summary: LintSummary::from_diagnostics(&findings),
         findings: findings.clone(),
     };
     (result, findings)

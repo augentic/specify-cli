@@ -42,7 +42,7 @@ use crate::lint::IgnoreDirective;
 use crate::lint::eval::{SyntheticFinding, make_synthetic_finding};
 use crate::rules::{
     DirectiveDisposition, DispositionSource, FindingDisposition, FindingEvidence, FindingLocation,
-    FindingStatus, LintFinding, ResolvedRule, Severity,
+    FindingStatus, LintFinding, ResolvedRule,
 };
 
 /// Rationale prefix that demotes a matched finding to
@@ -203,13 +203,7 @@ pub fn apply(
 /// is treated as `open` per the same section).
 #[must_use]
 pub fn blocking_findings_present(findings: &[LintFinding]) -> bool {
-    findings.iter().any(is_blocking)
-}
-
-const fn is_blocking(finding: &LintFinding) -> bool {
-    let blocking_severity = matches!(finding.severity, Severity::Critical | Severity::Important);
-    let blocking_status = matches!(finding.status, None | Some(FindingStatus::Open));
-    blocking_severity && blocking_status
+    specify_diagnostics::blocking_present(findings)
 }
 
 fn finding_matches_directive(finding: &LintFinding, directive: &IgnoreDirective) -> bool {
@@ -268,8 +262,8 @@ mod tests {
     use super::*;
     use crate::rules::fingerprint::fingerprint as compute_fingerprint;
     use crate::rules::{
-        Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, Origin, PathRoot,
-        Severity,
+        Artifact, Confidence, DiagnosticKind, FindingEvidence, FindingLocation, FindingSource,
+        Origin, PathRoot, Severity,
     };
 
     fn directive(
@@ -297,6 +291,7 @@ mod tests {
             title: "demo".into(),
             severity: Severity::Important,
             source: FindingSource::Deterministic,
+            kind: DiagnosticKind::Violation,
             target_adapter: None,
             source_adapter: None,
             slice: None,

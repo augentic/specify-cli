@@ -12,14 +12,13 @@
 //!    miss.
 
 use serde_json::{Map, Value, json};
-use specify_error::ValidationStatus;
 use specify_lints::lint::{
     AdapterAxis, AdapterManifest, AgentTeam, Brief, File, FileKind, Frontmatter, IgnoreDirective,
     MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, ScanProfile, Skill, Symlink,
     TextMatch, WorkspaceModel, WorkspaceModelVersion,
 };
 use specify_lints::rules::Origin;
-use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
+use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 
 fn assert_schema_valid(value: &Value) {
     let summaries = validate_value(

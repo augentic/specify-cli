@@ -18,7 +18,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_error::{Error, ValidationStatus};
+use specify_error::Error;
+use specify_schema::ValidationStatus;
 
 use crate::adapter::operation::{SourceOperation, TargetOperation};
 use crate::schema::validate_value;

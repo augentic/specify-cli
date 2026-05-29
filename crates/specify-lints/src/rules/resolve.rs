@@ -66,7 +66,7 @@ use std::{fs, io};
 
 pub use filter::filter;
 pub use sort::{build_resolved_rules, sort_resolved};
-use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_error::Error;
 
 use super::parse::{ParseError, parse_rule_file};
 use super::{Origin, PathRoot, Rule};
@@ -176,36 +176,23 @@ pub enum ResolveError {
 #[must_use]
 pub fn map_resolve_error(err: ResolveError) -> Error {
     match err {
-        ResolveError::RulesRootRequired => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-root-required".to_string(),
-                rule: "shared UNI-* rules require --rules-root or a project-local \
-                       adapters/shared/rules/universal/ tree"
-                    .to_string(),
-                detail: Some(
-                    "pass --rules-root pointing at a tree containing \
-                     adapters/shared/rules/universal/"
-                        .to_string(),
-                ),
-            }],
-        },
-        ResolveError::DuplicateRuleId { id, paths } => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-duplicate-rule-id".to_string(),
-                rule: format!("rule id '{id}' appears in multiple files"),
-                detail: Some(paths),
-            }],
-        },
-        ResolveError::Parse { path, error } => Error::Validation {
-            results: vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: "rules-parse-error".to_string(),
-                rule: format!("failed to parse rule {}", path.display()),
-                detail: Some(error.to_string()),
-            }],
-        },
+        ResolveError::RulesRootRequired => Error::validation_failed(
+            "rules-root-required",
+            "shared UNI-* rules require --rules-root or a project-local \
+             adapters/shared/rules/universal/ tree",
+            "pass --rules-root pointing at a tree containing \
+             adapters/shared/rules/universal/",
+        ),
+        ResolveError::DuplicateRuleId { id, paths } => Error::validation_failed(
+            "rules-duplicate-rule-id",
+            format!("rule id '{id}' appears in multiple files"),
+            paths,
+        ),
+        ResolveError::Parse { path, error } => Error::validation_failed(
+            "rules-parse-error",
+            format!("failed to parse rule {}", path.display()),
+            error.to_string(),
+        ),
         ResolveError::Filesystem { path, source } => Error::Filesystem {
             op: "readdir",
             path,
@@ -932,24 +919,23 @@ mod tests {
         assert_eq!(result[0].rule.id, "UNI-001");
     }
 
-    /// `rules-root-required` from CH-12 maps to a single-finding
+    /// `rules-root-required` from CH-12 maps to a payload-free
     /// `Error::Validation` so the wire envelope carries the closed
-    /// kebab discriminant in `results[].rule-id`.
+    /// kebab discriminant in the top-level `error` code.
     #[test]
     fn maps_rules_root_required_to_validation() {
         let err = map_resolve_error(ResolveError::RulesRootRequired);
         match err {
-            Error::Validation { results } => {
-                assert_eq!(results.len(), 1);
-                assert_eq!(results[0].rule_id, "rules-root-required");
+            Error::Validation { code, .. } => {
+                assert_eq!(code, "rules-root-required");
             }
             other => panic!("expected Error::Validation, got {other:?}"),
         }
     }
 
-    /// `DuplicateRuleId` lands on `Error::Validation` with the
-    /// colliding id in the `rule` field and the comma-joined paths
-    /// in `detail`.
+    /// `DuplicateRuleId` lands on a payload-free `Error::Validation`
+    /// keyed on `rules-duplicate-rule-id`, with the colliding id and
+    /// joined paths folded into the `detail` message.
     #[test]
     fn maps_duplicate_rule_id_to_validation() {
         let err = map_resolve_error(ResolveError::DuplicateRuleId {
@@ -957,10 +943,10 @@ mod tests {
             paths: "a.md, b.md".into(),
         });
         match err {
-            Error::Validation { results } => {
-                assert_eq!(results[0].rule_id, "rules-duplicate-rule-id");
-                assert!(results[0].rule.contains("UNI-001"));
-                assert_eq!(results[0].detail.as_deref(), Some("a.md, b.md"));
+            Error::Validation { code, detail } => {
+                assert_eq!(code, "rules-duplicate-rule-id");
+                assert!(detail.contains("UNI-001"), "{detail}");
+                assert!(detail.contains("a.md, b.md"), "{detail}");
             }
             other => panic!("expected Error::Validation, got {other:?}"),
         }

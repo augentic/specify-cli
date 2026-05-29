@@ -16,6 +16,7 @@
         "value": "const BASE_URL: &str = \"https://api.example.com\";"
       },
       "impact": "Trigger for UNI-014",
+      "kind": "violation",
       "location": {
         "column": 25,
         "line": 2,
@@ -36,6 +37,7 @@
         "value": "// specify-ignore: UNI-014"
       },
       "impact": "Directive for UNI-014 omits rationale or carries fewer than 16 characters of rationale.",
+      "kind": "violation",
       "location": {
         "line": 1,
         "path": "app.rs"

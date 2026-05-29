@@ -17,7 +17,7 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_stderr, specrun};
+use common::{Project, parse_stderr, parse_stdout, specrun};
 
 /// Discovery document with one lead per source key plus a
 /// kebab-case alias for the password-reset lead. Mirrors the
@@ -153,10 +153,10 @@ fn plan_add_unknown_lead_refused() {
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "unknown lead must exit 2");
 
+    // Payload-free `Error::Validation`: the discriminant is the
+    // top-level `error` code.
     let body = parse_stderr(&assert.get_output().stderr, project.root());
-    let results = body["results"].as_array().expect("results array");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["rule-id"], "discovery-lead-unknown");
+    assert_eq!(body["error"], "discovery-lead-unknown");
 }
 
 #[test]
@@ -257,9 +257,10 @@ fn plan_amend_alias_refused_on_collision() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
+    // `Error::Validation` is payload-free: the colliding-alias
+    // discriminant is the top-level `error` code.
     let body = parse_stderr(&assert.get_output().stderr, project.root());
-    let results = body["results"].as_array().expect("results array");
-    assert_eq!(results[0]["rule-id"], "discovery-alias-collision");
+    assert_eq!(body["error"], "discovery-alias-collision");
 
     let saved = fs::read_to_string(project.root().join("discovery.md")).expect("read discovery");
     assert!(
@@ -390,11 +391,16 @@ fn slice_validate_alias_collision() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    let body = parse_stderr(&assert.get_output().stderr, project.root());
-    let results = body["results"].as_array().expect("results array");
+    // The pre-adapter gate renders its `DiagnosticReport` on stdout and
+    // fails payload-free: the colliding-alias diagnostic is one of the
+    // report's findings, while stderr carries only the gate discriminant.
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "slice-pre-adapter-gate");
+    let body = parse_stdout(&assert.get_output().stdout, project.root());
+    let findings = body["findings"].as_array().expect("findings array");
     assert!(
-        results.iter().any(|r| r["rule-id"] == "discovery-alias-collision"),
-        "expected at least one discovery-alias-collision finding, got: {results:?}"
+        findings.iter().any(|r| r["rule-id"] == "discovery-alias-collision"),
+        "expected at least one discovery-alias-collision finding, got: {findings:?}"
     );
 }
 

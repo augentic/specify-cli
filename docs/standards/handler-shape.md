@@ -33,6 +33,10 @@ Handlers never pick a stdout/stderr sink directly — `Ctx::write` (the success 
 
 For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"](./coding-standards.md#format-dispatch), [§"One emit path"](./coding-standards.md#one-emit-path), and [§"DTOs"](./coding-standards.md#dtos).
 
+### Gate handlers render, then fail payload-free
+
+Check surfaces that gate on findings — `slice validate`, the lint sentinels — own their rendering. They collect `Vec<Diagnostic>`, assemble a `DiagnosticReport`, and render it on **stdout** via `ctx.write` (the success sink), then, if any diagnostic blocks, return a payload-free `Error::validation_failed(code, detail)` purely to carry exit 2 and the discriminant on stderr. `Error::Validation` is `{ code, detail }` with no findings payload — the rich report already went to stdout. Single operational errors that are not findings (e.g. `tool-not-declared`, `discovery-lead-unknown`) take the same payload-free shape but render no report. The blocking decision uses the uniform predicate (`kind == violation && status == open && severity ∈ {critical, important}`); `kind: review` diagnostics surface but never block. See [DECISIONS.md §"Drained `Error::Validation` and the `Diagnostic` substrate"](../../DECISIONS.md#drained-errorvalidation-and-the-diagnostic-substrate).
+
 ## Exit codes
 
 The four-slot CLI exit-code table is fixed:

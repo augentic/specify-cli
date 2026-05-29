@@ -1,6 +1,6 @@
 //! `validate_slice` — the top-level runner that walks the canonical
 //! refine-time artifact set, locates each artifact, invokes the
-//! registered rules, and collects a [`ValidationReport`].
+//! registered rules, and collects a `Vec<Diagnostic>`.
 //!
 //! workflow §"Refinement" pins the canonical artifact set to
 //! `proposal.md`, `spec.md`, `design.md`, `tasks.md`, plus the
@@ -12,15 +12,15 @@
 //! `contracts`); the runner just feeds artifacts into that registry
 //! directly instead of routing via a `PipelineView`.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_diagnostics::{Artifact, Diagnostic, FindingLocation};
+use specify_error::Error;
 
 use crate::registry::{cross_rules, rules_for};
-use crate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationReport};
+use crate::{BriefContext, Classification, CrossContext, RuleOutcome};
 
-const DEFERRED_REASON: &str = "Semantic check — requires LLM judgment";
+const DEFERRED_REASON: &str = "Semantic check — requires agent judgment";
 
 /// Canonical refine-time artifact set, in registry-namespace order.
 ///
@@ -36,16 +36,29 @@ const CANONICAL_ARTIFACTS: &[(&str, &str)] = &[
     ("contracts", "contracts/**/*.yaml"),
 ];
 
-fn summary(
-    status: ValidationStatus, rule_id: impl Into<String>, rule: impl Into<String>,
-    detail: Option<String>,
-) -> ValidationSummary {
-    ValidationSummary {
-        status,
-        rule_id: rule_id.into(),
-        rule: rule.into(),
-        detail,
+/// Map a registry brief namespace to its diagnostic artifact category.
+fn artifact_for(brief_id: &str) -> Artifact {
+    match brief_id {
+        "specs" => Artifact::Specs,
+        "design" => Artifact::Design,
+        "tasks" => Artifact::Tasks,
+        "contracts" => Artifact::Contracts,
+        "composition" => Artifact::Composition,
+        _ => Artifact::Unknown,
     }
+}
+
+/// Slice-relative anchor location for an existing artifact, or `None`
+/// when the relative path cannot be formed.
+fn rel_location(slice_dir: &Path, artifact_path: &Path) -> Option<FindingLocation> {
+    let path = relative_key(slice_dir, artifact_path);
+    (!path.is_empty()).then_some(FindingLocation {
+        path,
+        line: None,
+        column: None,
+        end_line: None,
+        end_column: None,
+    })
 }
 
 /// Run all deterministic validations for a slice directory.
@@ -56,12 +69,18 @@ fn summary(
 /// matches are walked. Empty glob results are silently skipped — an
 /// absent `specs/login/spec.md` is not, by itself, a failure.
 ///
+/// Returns the [`Diagnostic`] findings only — structural `Fail`
+/// outcomes as deterministic `violation`s and semantic rules as
+/// non-blocking `review`s. Passing structural rules emit nothing, so an
+/// empty vector means a clean slice. The caller assembles these into a
+/// `DiagnosticReport`, renders it, and decides the exit policy.
+///
 /// # Errors
 ///
 /// Returns an error if a glob pattern is malformed or a glob traversal
 /// fails.
-pub fn validate_slice(slice_dir: &Path) -> Result<ValidationReport, Error> {
-    let mut brief_results: BTreeMap<String, Vec<ValidationSummary>> = BTreeMap::new();
+pub fn validate_slice(slice_dir: &Path) -> Result<Vec<Diagnostic>, Error> {
+    let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let specs_dir = slice_dir.join("specs");
 
     for (brief_id, artifact) in CANONICAL_ARTIFACTS {
@@ -75,39 +94,19 @@ pub fn validate_slice(slice_dir: &Path) -> Result<ValidationReport, Error> {
             // every overlay (e.g. `contracts/`).
             if !artifact.contains('*') {
                 let missing_path = slice_dir.join(artifact);
-                let key = (*brief_id).to_string();
-                let results = vec![artifact_missing_result(brief_id, &missing_path, slice_dir)];
-                brief_results.insert(key, results);
+                diagnostics.push(artifact_missing(brief_id, &missing_path, slice_dir));
             }
             continue;
         }
 
-        let single_artifact = artifacts.len() == 1 && !artifact.contains('*');
         for artifact_path in artifacts {
-            let key = if single_artifact {
-                (*brief_id).to_string()
-            } else {
-                relative_key(slice_dir, &artifact_path)
-            };
-
-            let results = run_brief_rules(brief_id, &artifact_path, slice_dir, &specs_dir);
-            brief_results.insert(key, results);
+            run_brief_rules(brief_id, &artifact_path, slice_dir, &specs_dir, &mut diagnostics);
         }
     }
 
-    let cross_checks = run_cross_rules(slice_dir, &specs_dir);
+    run_cross_rules(slice_dir, &specs_dir, &mut diagnostics);
 
-    let passed = brief_results
-        .values()
-        .flatten()
-        .chain(cross_checks.iter())
-        .all(|r| r.status != ValidationStatus::Fail);
-
-    Ok(ValidationReport {
-        brief_results,
-        cross_checks,
-        passed,
-    })
+    Ok(diagnostics)
 }
 
 /// Expand `artifact` into a concrete list of absolute paths under
@@ -145,10 +144,11 @@ fn expand_artifact(slice_dir: &Path, artifact: &str) -> Result<Vec<PathBuf>, Err
     Ok(out)
 }
 
-/// Build the key used to index `ValidationReport.brief_results` for
-/// multi-artifact briefs. We strip `slice_dir` to make the key stable
-/// across different tempdir prefixes; unix-style forward slashes are used
-/// so golden fixtures compare identically across platforms.
+/// Build the slice-relative key carried on each diagnostic's
+/// `location.path` for multi-artifact briefs. We strip `slice_dir` to
+/// make the key stable across different tempdir prefixes; unix-style
+/// forward slashes are used so golden fixtures compare identically
+/// across platforms.
 fn relative_key(slice_dir: &Path, artifact_path: &Path) -> String {
     let rel = artifact_path.strip_prefix(slice_dir).unwrap_or(artifact_path);
     rel.components()
@@ -157,23 +157,24 @@ fn relative_key(slice_dir: &Path, artifact_path: &Path) -> String {
         .join("/")
 }
 
-fn artifact_missing_result(
-    brief_id: &str, artifact_path: &Path, slice_dir: &Path,
-) -> ValidationSummary {
+fn artifact_missing(brief_id: &str, artifact_path: &Path, slice_dir: &Path) -> Diagnostic {
     let rel = relative_key(slice_dir, artifact_path);
-    summary(
-        ValidationStatus::Fail,
+    Diagnostic::violation(
         format!("{brief_id}.artifact-exists"),
         format!("Generated artifact {rel} exists"),
-        Some(format!("artifact `{rel}` not found under slice dir")),
+        format!("artifact `{rel}` not found under slice dir"),
+        artifact_for(brief_id),
+        None,
     )
 }
 
 fn run_brief_rules(
     brief_id: &str, artifact_path: &Path, slice_dir: &Path, specs_dir: &Path,
-) -> Vec<ValidationSummary> {
+    out: &mut Vec<Diagnostic>,
+) {
     let Ok(content) = std::fs::read_to_string(artifact_path) else {
-        return vec![artifact_missing_result(brief_id, artifact_path, slice_dir)];
+        out.push(artifact_missing(brief_id, artifact_path, slice_dir));
+        return;
     };
 
     // Parse brief-specific structured context.
@@ -189,52 +190,56 @@ fn run_brief_rules(
         specs_dir,
     };
 
-    let mut out: Vec<ValidationSummary> = Vec::new();
+    let artifact = artifact_for(brief_id);
+    let location = rel_location(slice_dir, artifact_path);
     for rule in rules_for(brief_id) {
-        let result = rule.check.map_or_else(
-            || {
-                summary(
-                    ValidationStatus::Deferred,
-                    rule.id,
-                    rule.description,
-                    Some(DEFERRED_REASON.into()),
-                )
-            },
-            |check| match check(&ctx) {
-                RuleOutcome::Pass => {
-                    summary(ValidationStatus::Pass, rule.id, rule.description, None)
-                }
-                RuleOutcome::Fail { detail } => {
-                    summary(ValidationStatus::Fail, rule.id, rule.description, Some(detail))
-                }
-            },
-        );
-        out.push(result);
-    }
-    out
-}
-
-fn run_cross_rules(slice_dir: &Path, specs_dir: &Path) -> Vec<ValidationSummary> {
-    let ctx = CrossContext { slice_dir, specs_dir };
-    let mut out: Vec<ValidationSummary> = Vec::new();
-    for rule in cross_rules() {
-        let result = match rule.classification {
-            Classification::Semantic => summary(
-                ValidationStatus::Deferred,
+        match rule.check {
+            // Semantic rule (`check: None`) — a non-blocking review
+            // request the agent must judge.
+            None => out.push(Diagnostic::review(
                 rule.id,
                 rule.description,
-                Some(DEFERRED_REASON.into()),
-            ),
-            Classification::Structural => match (rule.check)(&ctx) {
-                RuleOutcome::Pass => {
-                    summary(ValidationStatus::Pass, rule.id, rule.description, None)
+                DEFERRED_REASON,
+                artifact,
+                location.clone(),
+            )),
+            Some(check) => {
+                if let RuleOutcome::Fail { detail } = check(&ctx) {
+                    out.push(Diagnostic::violation(
+                        rule.id,
+                        rule.description,
+                        detail,
+                        artifact,
+                        location.clone(),
+                    ));
                 }
-                RuleOutcome::Fail { detail } => {
-                    summary(ValidationStatus::Fail, rule.id, rule.description, Some(detail))
-                }
-            },
-        };
-        out.push(result);
+            }
+        }
     }
-    out
+}
+
+fn run_cross_rules(slice_dir: &Path, specs_dir: &Path, out: &mut Vec<Diagnostic>) {
+    let ctx = CrossContext { slice_dir, specs_dir };
+    for rule in cross_rules() {
+        match rule.classification {
+            Classification::Semantic => out.push(Diagnostic::review(
+                rule.id,
+                rule.description,
+                DEFERRED_REASON,
+                Artifact::Specs,
+                None,
+            )),
+            Classification::Structural => {
+                if let RuleOutcome::Fail { detail } = (rule.check)(&ctx) {
+                    out.push(Diagnostic::violation(
+                        rule.id,
+                        rule.description,
+                        detail,
+                        Artifact::Specs,
+                        None,
+                    ));
+                }
+            }
+        }
+    }
 }

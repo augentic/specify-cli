@@ -26,7 +26,7 @@ pub struct ExampleClaim {
     /// literal `example`.
     pub kind: ExampleKind,
     /// Stable claim id (required on `example` per the schema's `allOf`
-    /// branch). Resolves the same id space the reconciliation table joins
+    /// branch). Resolves the same id space the provenance table joins
     /// against.
     pub claim_id: String,
     /// Optional `<path>#L<n>` anchor (the capture's on-disk location).

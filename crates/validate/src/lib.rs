@@ -1,17 +1,16 @@
 //! Validation rule registry and runner.
 //!
 //! `Rule` / `CrossRule` declare their `Classification`; [`validate_slice`]
-//! returns a `ValidationReport` whose entries are [`ValidationSummary`]
-//! values carrying a `Pass` / `Fail` / `Deferred` `ValidationStatus`.
-//! The report serialises directly via its `serde::Serialize` derive — the
-//! kebab-case wire shape (`brief-results`, `cross-checks`, `rule-id`) is
-//! produced by the `rename_all = "kebab-case"` attribute on the report and
-//! the matching attribute on `ValidationSummary`.
+//! returns a `Vec<Diagnostic>` — the neutral currency shared with the
+//! `lint` surface. Structural `Fail` outcomes become deterministic
+//! `violation` diagnostics (`important`, blocking); semantic rules become
+//! non-blocking `review` diagnostics (`suggestion`,
+//! [`specify_diagnostics::DiagnosticKind::Review`]) that ask the agent to
+//! apply judgment. Passing structural rules emit no diagnostic — the
+//! report carries only findings, never the full pass checklist.
 
-use std::collections::BTreeMap;
 use std::path::Path;
 
-use specify_error::ValidationSummary;
 use specify_model::spec::ParsedSpec;
 use specify_model::task::Progress;
 
@@ -21,31 +20,15 @@ mod run;
 
 pub use run::validate_slice;
 
-/// Structured result of running every applicable rule over a slice dir.
-///
-/// `brief_results` is keyed by brief id when a brief produces a single
-/// artifact (e.g. `"proposal"` → `proposal.md`), or by the artifact path
-/// relative to `slice_dir` when the brief's `generates` is a glob
-/// matching multiple files (e.g. `"specs/login/spec.md"`).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-#[must_use]
-pub struct ValidationReport {
-    /// Per-brief validation results, keyed by brief id or artifact path.
-    pub brief_results: BTreeMap<String, Vec<ValidationSummary>>,
-    /// Cross-brief validation results.
-    pub cross_checks: Vec<ValidationSummary>,
-    /// `true` when no rule produced a `Fail` outcome.
-    pub passed: bool,
-}
-
 /// How the CLI decides a rule's outcome — declared at the rule's
 /// definition site.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Classification {
-    /// CLI decides Pass/Fail deterministically.
+    /// CLI decides Pass/Fail deterministically; `Fail` becomes a
+    /// deterministic `violation` diagnostic.
     Structural,
-    /// CLI always emits `Deferred`; the agent applies judgment.
+    /// CLI cannot decide; emits a non-blocking `review` diagnostic that
+    /// asks the agent to apply judgment.
     Semantic,
 }
 
@@ -117,7 +100,6 @@ pub struct CrossContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::registry::{cross_rules, rules_for};
-    use super::*;
 
     /// `rules_for` returns empty for unknown brief ids.
     #[test]
@@ -135,60 +117,6 @@ mod tests {
         assert!(!rules_for("composition").is_empty());
         assert!(rules_for("contracts").len() >= 3);
         assert!(cross_rules().len() >= 3);
-    }
-
-    /// `ValidationReport` serialises with the canonical kebab-case wire
-    /// shape — `passed` / `brief-results` / `cross-checks` at the top,
-    /// `status` / `rule-id` / `rule` (+ optional `detail`) per result.
-    /// Pins the derive against accidental rename or reshape. `Pass`
-    /// entries omit `detail` thanks to `skip_serializing_if`; `Fail`
-    /// and `Deferred` entries carry their explanation in the uniform
-    /// `detail` slot.
-    #[test]
-    fn report_serialises_kebab_case_shape() {
-        use specify_error::{ValidationStatus, ValidationSummary};
-
-        let mut brief_results: BTreeMap<String, Vec<ValidationSummary>> = BTreeMap::new();
-        brief_results.insert(
-            "proposal".to_string(),
-            vec![ValidationSummary {
-                status: ValidationStatus::Pass,
-                rule_id: "proposal.why-has-content".into(),
-                rule: "Has a Why section with at least one sentence".into(),
-                detail: None,
-            }],
-        );
-        let report = ValidationReport {
-            brief_results,
-            cross_checks: vec![
-                ValidationSummary {
-                    status: ValidationStatus::Fail,
-                    rule_id: "cross.design-references-valid".into(),
-                    rule: "Every requirement id referenced in design.md exists in specs".into(),
-                    detail: Some("REQ-999 not found".to_string()),
-                },
-                ValidationSummary {
-                    status: ValidationStatus::Deferred,
-                    rule_id: "specs.uses-normative-language".into(),
-                    rule: "Uses SHALL/MUST language for normative requirements".into(),
-                    detail: Some("Semantic check — requires LLM judgment".to_string()),
-                },
-            ],
-            passed: false,
-        };
-
-        let value = serde_json::to_value(&report).expect("report serialises");
-        assert_eq!(value["passed"], false);
-        assert_eq!(value["brief-results"]["proposal"][0]["status"], "pass");
-        assert_eq!(value["brief-results"]["proposal"][0]["rule-id"], "proposal.why-has-content");
-        assert!(
-            value["brief-results"]["proposal"][0].get("detail").is_none(),
-            "pass entries must omit `detail` to preserve the historical wire shape"
-        );
-        assert_eq!(value["cross-checks"][0]["status"], "fail");
-        assert_eq!(value["cross-checks"][0]["detail"], "REQ-999 not found");
-        assert_eq!(value["cross-checks"][1]["status"], "deferred");
-        assert_eq!(value["cross-checks"][1]["detail"], "Semantic check — requires LLM judgment");
     }
 
     /// Every rule carries a stable `<brief>.<kebab>` id.

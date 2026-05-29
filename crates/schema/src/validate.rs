@@ -15,7 +15,41 @@ use jsonschema::Validator;
 use jsonschema::error::{ValidationError, ValidationErrorKind};
 use serde::Serialize;
 use serde_json::Value as JsonValue;
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_error::{Error, Result};
+
+/// Outcome of a single schema-validation check.
+///
+/// The schema layer is operational: it only ever decides `Pass` /
+/// `Fail` deterministically. The richer agent-judgment axis lives on
+/// the [`Diagnostic`](https://docs.rs/specify-diagnostics) currency the
+/// user-facing `validate` surface emits, not here.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ValidationStatus {
+    /// Rule passed.
+    Pass,
+    /// Rule failed.
+    Fail,
+}
+
+/// Compact result of one schema-validation check.
+///
+/// Owned by `specify-schema` (the operational schema layer) rather than
+/// the error leaf: `Error::Validation` is now payload-free, so the
+/// outcome rows live with the validator that produces them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ValidationSummary {
+    /// Outcome of this validation check.
+    pub status: ValidationStatus,
+    /// Stable rule identifier (e.g. `plan-schema`).
+    pub rule_id: String,
+    /// Human-readable rule description.
+    pub rule: String,
+    /// Populated for `fail`; `None` for `pass`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
 
 /// Read `path` as UTF-8 YAML and reinterpret the document as a
 /// [`serde_json::Value`] for schema validation. Returns a free-form
@@ -55,7 +89,21 @@ pub fn validate_serialisable<T: Serialize>(
         .into_iter()
         .filter(|summary| summary.status == ValidationStatus::Fail)
         .collect();
-    if failures.is_empty() { Ok(()) } else { Err(Error::Validation { results: failures }) }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            code: rule_id.to_string(),
+            detail: join_details(&failures),
+        })
+    }
+}
+
+/// Join the `detail` strings of a failure list into a single
+/// payload-free [`Error::Validation`] message.
+#[must_use]
+pub fn join_details(failures: &[ValidationSummary]) -> String {
+    failures.iter().filter_map(|summary| summary.detail.clone()).collect::<Vec<_>>().join("; ")
 }
 
 /// Validate `instance` against the embedded JSON Schema `schema_source`.

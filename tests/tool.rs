@@ -145,12 +145,11 @@ fn run_json_failure(project: &Path, cache: &Path, args: &[&str], code: i32) -> V
 }
 
 fn assert_validation_rule(value: &Value, rule_id: &str) {
-    assert_eq!(value["error"], "validation", "{value}");
-    let results = value["results"].as_array().expect("validation results array");
-    assert!(
-        results.iter().any(|result| result["rule-id"] == rule_id),
-        "expected rule-id `{rule_id}` in {value}"
-    );
+    // Tool-manifest validation failures surface as a payload-free
+    // `Error::Validation` keyed on the first failing rule id; the wire
+    // `error` discriminant is that rule id directly.
+    assert_eq!(value["error"], rule_id, "{value}");
+    assert_eq!(value["exit-code"], 2, "{value}");
 }
 
 #[test]

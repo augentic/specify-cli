@@ -7,12 +7,15 @@ changing error layering, exit codes, atomic writes, or the YAML library.
 
 `specify-error` is the dependency leaf of the workspace. It depends only
 on `thiserror` and `serde-saphyr`; every other `specify-*` crate may
-depend on it, and it depends on none of them. Variants that need to
-carry data from a downstream crate (e.g. `Error::Validation`) take a
-small projection type defined in `specify-error` (`ValidationSummary`)
-rather than re-exporting the rich domain type, so the leaf stays
-cycle-free. The cost is a lossy projection at the boundary; callers that
-need full fidelity reach for the downstream crate's own type directly.
+depend on it, and it depends on none of them. The leaf stays free of
+rich domain payloads: `Error::Validation { code, detail }` is
+payload-free (see [§"Drained `Error::Validation` and the `Diagnostic`
+substrate"](#drained-errorvalidation-and-the-diagnostic-substrate)) — the
+top-level wire `error` is the carried `code` discriminant, and any
+rendered findings travel on stdout as a `DiagnosticReport`, not inside
+the error. Earlier revisions carried a `ValidationSummary` projection
+type here; it was removed when the diagnostic substrate moved to its own
+`specify-diagnostics` leaf.
 
 ## Exit codes
 
@@ -25,7 +28,7 @@ run` WASI passthrough.
 |------|--------------------------|-----------------------------------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, reconciliation, and discovery kebab discriminants `slice-authority-override-orphan-source-key`, `slice-reconciliation-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
+| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, provenance, and discovery kebab discriminants `slice-authority-override-orphan-source-key`, `slice-provenance-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
 The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
@@ -43,9 +46,11 @@ via `Exit::from(&Error)`:
 `Exit::ArgumentError` and `Exit::ValidationFailed` share code `2` so the
 wire contract stays four-slot; the named distinction exists for
 dispatcher-side clarity (`Error::Argument` flags malformed CLI input
-shape; `Error::Validation` carries a `ValidationSummary` payload). The
-two never need separate exit codes — anything actionable by the
-operator is in the JSON envelope's `code` discriminant.
+shape; `Error::Validation` is the payload-free gate-failure signal whose
+`code` is the specific discriminant). The two never need separate exit
+codes — anything actionable by the operator is in the JSON envelope's
+`code` discriminant, and any per-finding detail is on the stdout
+`DiagnosticReport`.
 
 `specrun lint run` is the one finding-driven exit slot in the table.
 Its decision is **status-aware severity**: it returns `2` only when a
@@ -380,7 +385,7 @@ state.
   whenever the key and the lead id differ.
 
 Collapsing the two variants into one struct means every consumer
-(`validate`, `doctor`, `reconciliation`, CLI handlers) goes through the same
+(`validate`, `doctor`, `provenance`, CLI handlers) goes through the same
 `key()` / `lead()` accessors instead of `match`-ing the
 discriminator — the shorthand stays a pure parser concern. Construct in
 tests via `SliceSourceBinding::bare(key)` or
@@ -423,17 +428,17 @@ keys are rejected by `specrun slice validate` with the
 map is scoped to one slice — plan-wide and project-wide overrides
 are out of scope.
 
-## `reconciliation.yaml` audit index
+## `provenance.yaml` audit index
 
-`schemas/slice/reconciliation.schema.json`
+`schemas/slice/provenance.schema.json`
 fixes the closed top-level shape (`version`, `slice`,
 `generated-at`, `generator`, `requirements[]`). `/spec:refine`
 writes the file atomically; downstream verbs read `spec.md` as the
-authoritative artifact and treat `reconciliation.yaml` as an inspection
+authoritative artifact and treat `provenance.yaml` as an inspection
 surface. `specrun slice validate` enforces id-set parity between
-`spec.md` `REQ-*` ids and `reconciliation.yaml.requirements[].id` and
+`spec.md` `REQ-*` ids and `provenance.yaml.requirements[].id` and
 catches contributing-claim → Evidence-claim drift, both via the
-`slice-reconciliation-drift` discriminant.
+`slice-provenance-drift` discriminant.
 
 ## Extraction cache fingerprint inputs
 
@@ -466,7 +471,7 @@ variants are `snake_case` and bridge to the wire via
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
-| `slice.reconciliation.written` | `/spec:refine`'s atomic `reconciliation.yaml` writer (Change 2.6). `reconciliation.yaml` audit semantics. |
+| `slice.provenance.written` | `/spec:refine`'s atomic `provenance.yaml` writer (Change 2.6). `provenance.yaml` audit semantics. |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
 | `lint-completed` | `specrun lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the RFC-33a §"Journal event" (D8) payload verbatim. |
@@ -722,7 +727,7 @@ file work exactly as before. Slugs are kebab-case
 must resolve to a confirmed catalog entry; absent or rejected entries
 are findings. `notes.candidate_component` annotations are
 informational-only and do not trigger drift. Validation gates at
-position 4 in `validate_pre_adapter_gates` (after reconciliation drift,
+position 4 in `validate_pre_adapter_gates` (after provenance drift,
 authority override, and discovery alias).
 
 ## Vectis catalog consumer
@@ -743,12 +748,12 @@ the check is silently skipped.
 
 ## Standards layer split into `specify-lints` and `specify-schema`
 
-The standards surface (rules parser / resolver / finding
-validator, `WorkspaceModel`, indexer, deterministic hint
-interpreter, diagnostic formatters, and `specrun lint` runner) lives
-in `specify-lints`, a sibling of `specify-workflow` rather than a module
-inside it. `specify-schema` is the shared leaf: it owns every embedded
-JSON Schema constant (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
+The standards surface (rules parser / resolver, `WorkspaceModel`,
+indexer, deterministic hint interpreter, the `DiagnosticProducer`
+trait, and `specrun lint` runner) lives in `specify-lints`, a sibling
+of `specify-workflow` rather than a module inside it. `specify-schema`
+is the shared leaf: it owns every embedded JSON Schema constant
+(`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
 `RECONCILIATION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
 `RESOLVED_RULES_JSON_SCHEMA`, `LINT_FINDING_JSON_SCHEMA`,
 `LINT_RESULT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
@@ -757,17 +762,28 @@ JSON Schema constant (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
 the leaf layer with `specify-error` and depends on no workspace crate
 other than `specify-error` itself.
 
+The neutral diagnostic substrate — the `Diagnostic` / `DiagnosticReport`
+/ `DiagnosticSummary` currency, the fingerprint algorithm, the
+`validate_diagnostic` validator, the four renderers, and the `blocking`
+predicate — lives in its own `specify-diagnostics` leaf (see
+[§"Drained `Error::Validation` and the `Diagnostic`
+substrate"](#drained-errorvalidation-and-the-diagnostic-substrate)).
+`specify-lints` depends on it for the report shape; so do the producer
+crates (`specify-validate`, `specify-model`, `specify-tool`,
+`specify-workflow`). `specify-lints` keeps the lint-specific engine.
+
 Dependency direction: `specify-lints` depends on `specify-error`,
-`specify-schema`, and `specify-tool` (for the `kind: tool` hint). It
-does **not** depend on `specify-workflow`, and `specify-workflow` does
-**not** depend on `specify-lints`. The sibling shape makes the
-§"Principles" / "No lifecycle authority in review" rule a type-system
-invariant: review code cannot reach for slice or plan lifecycle
-transitions because the workflow types are not visible from the
-standards layer. If a future workflow validator needs to mint a
-`LintFinding`, `specify-workflow` gains a dependency on `specify-lints`
-at that point (leaf-→-root still holds); v1 does not need this and the
-sibling shape stays.
+`specify-schema`, `specify-diagnostics`, and `specify-tool` (for the
+`kind: tool` hint). It does **not** depend on `specify-workflow`, and
+`specify-workflow` does **not** depend on `specify-lints`. The sibling
+shape makes the §"Principles" / "No lifecycle authority in review" rule
+a type-system invariant: review code cannot reach for slice or plan
+lifecycle transitions because the workflow types are not visible from
+the standards layer. The substrate split lets `specify-workflow` and
+`specify-validate` mint diagnostics (via `specify-diagnostics`) without
+ever depending on anything named `lint` — the litmus test that keeps
+the lint-vs-validate concept split from re-appearing at the crate
+graph.
 
 The `specdev` predicate library (`crates/authoring/`) picks up
 `specify-lints` and `specify-schema` directly so codex predicates
@@ -778,6 +794,73 @@ standards layer for indexing and evaluation and the workflow layer for
 project / slice context resolution; the two halves never call each
 other directly. The dependency-direction rationale is captured in this topic and
 [`docs/standards/architecture.md`](./docs/standards/architecture.md).
+
+## Drained `Error::Validation` and the `Diagnostic` substrate
+
+Every check surface — `specrun lint`, `specdev lint`, `specrun slice
+validate`, plan validation, and the library-level validators — speaks
+one currency: `Diagnostic` / `DiagnosticReport`, housed in the
+`specify-diagnostics` leaf. The leaf depends only on `specify-error` and
+`specify-schema` (and `serde`/`serde_json`/`sha2`); it must never depend
+on `specify-lints`, `specify-model`, or `specify-workflow`, so it stays
+cycle-free and importable by every producer.
+
+**Lint and validate stay conceptually distinct surfaces.** They share
+the substrate, not the authority:
+
+- **validate** gates a lifecycle transition (`refining → refined`). It is
+  workflow-owned, non-negotiable, and non-silenceable — ignore
+  directives are *off* for the lifecycle gate.
+- **lint** is standards/policy compliance. It is codex-owned, versioned,
+  lifecycle-neutral (may block CI, never transitions a slice), and
+  silenceable with an in-source rationale.
+
+Convergence applies to the data type, fingerprint, validator, renderer,
+and blocking predicate — never to the concepts or their gate policies.
+The naming convention encodes the same neutrality one layer down:
+surfaces keep concept names (`lint` / `validate`), the shared machinery
+is neutral (`specify-diagnostics`). The litmus test is that `validate`
+(or any non-lint producer) must not depend on a crate or module named
+`lint`.
+
+**Two orthogonal axes** keep the concepts queryable on the one type:
+
+- `source` — provenance: `deterministic | model-assisted | hybrid |
+  human | tool`.
+- `kind` — nature: `violation` (a defect) vs `review` (a
+  deterministically-raised request for agent/human judgment). The
+  former `Deferred` classification and lint's `lint-mode:
+  model-assisted` rules both surface as `kind: review`, `source:
+  deterministic` (the CLI raised the question; it did not score it).
+
+**Uniform blocking predicate, per-surface application.** `blocking()` in
+`specify-diagnostics` returns true iff `kind == violation && status ==
+open && severity ∈ {critical, important}`. `kind == review` never blocks
+anywhere; the refine surface reads its judgment worklist as
+`diagnostics.filter(kind == review)`. Each surface applies the same
+predicate, differing only in whether ignore directives run first (lint:
+yes; validate: no).
+
+**`Error::Validation` is payload-free.** The variant is
+`Error::Validation { code, detail }`; `variant_str()` returns the
+carried `code`, so the top-level wire `error` is the specific
+discriminant (e.g. `slice-pre-adapter-gate`, `plan-schema`,
+`tool.name-format`) rather than the historical generic `"validation"`.
+Handlers own rendering: a gate failure renders the full
+`DiagnosticReport` on **stdout** and then returns the payload-free error
+purely to carry the exit code (2) and the discriminant on stderr.
+Single operational errors that are not findings (e.g.
+`discovery-lead-unknown`, `adapter-name-axis-collision`,
+`tool-not-declared`, `rules-root-required`) take the same payload-free
+shape via `Error::validation_failed(code, detail)` but render no report.
+
+**Widened `ruleId` namespace.** The diagnostic `ruleId` pattern accepts
+both the closed codex family (`UNI-`/`CORE-`/`FRAME-`/… `-NNN`) and the
+runtime-validation discriminant form (dotted/kebab lowercase, e.g.
+`spec.requirement-id-missing`, `slice-provenance-drift`), so workflow
+and validate producers can stamp their invariant ids onto the same
+finding shape the codex engine uses. `validate_diagnostic` mirrors the
+widened pattern.
 
 ## Vendored codex-rule schema removed
 
@@ -806,10 +889,11 @@ standards schema. Cross-repo prose that named `codex.schema-drift`
 
 ## Lint finding status, disposition, and exit
 
-`LintFinding.status` is a closed kebab-case enum on the wire. The
-RFC-28 fingerprint algorithm excludes both `status` and `disposition`,
-so demoting a finding from `open` to `ignored` (or `false-positive`)
-never changes its identity.
+`Diagnostic.status` (the finding type formerly named `LintFinding`,
+relocated to `specify-diagnostics`) is a closed kebab-case enum on the
+wire. The RFC-28 fingerprint algorithm excludes both `status` and
+`disposition`, so demoting a finding from `open` to `ignored` (or
+`false-positive`) never changes its identity.
 
 | Value            | Set by                | Meaning                                                                                                                                |
 |------------------|-----------------------|----------------------------------------------------------------------------------------------------------------------------------------|
@@ -819,7 +903,7 @@ never changes its identity.
 | `fixed`          | reserved              | Reserved for the cross-run baseline diff verb. No producer in v1.                                                                      |
 | `accepted`       | reserved              | Reserved for explicit operator acceptance via the baseline file. No producer in v1.                                                    |
 
-`disposition` is an optional sibling object on `LintFinding`, populated
+`disposition` is an optional sibling object on `Diagnostic`, populated
 only when `status != open`:
 
 ```text

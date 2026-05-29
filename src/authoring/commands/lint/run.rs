@@ -1,33 +1,22 @@
 //! `specdev lint` handler — composes the framework's imperative
 //! `Check` predicates with the declarative deterministic-hint
-//! interpreter into a single [`LintResult`] envelope per RFC-34 §F2.
+//! interpreter into a single [`LintResult`] envelope.
 //!
-//! Pipeline mirrors `src/runtime/commands/lint/run.rs`:
+//! The shared pipeline lives in [`specify_lints::lint::runner`]; this
+//! handler is thin:
 //!
 //! 1. Resolve the framework root and load the imperative
 //!    [`AuthoringContext`].
-//! 2. Run the imperative pass via [`specify_authoring::check::run`]
-//!    and map each [`Finding`] to [`LintFinding`] through the
-//!    existing RFC-28 Phase 3 mapper at
-//!    [`crate::authoring::map_finding`].
-//! 3. Build the resolved codex
-//!    ([`specify_lints::build_resolved_rules`]) with `include_core:
-//!    true` so `CORE-*` rules participate by default per RFC-34
-//!    §A3 / §F3.
-//! 4. Build the framework [`WorkspaceModel`] via
-//!    [`build_model`] under [`ScanProfile::Framework`].
-//! 5. Evaluate executable deterministic hints (skipping
-//!    `lint-mode: model-assisted` rules), mint the reserved-hint
-//!    summary, apply ignore directives.
-//! 6. Deduplicate the combined findings by fingerprint per RFC-34
-//!    §F5 — the imperative and declarative passes may surface the
-//!    same `(rule-id, location)` during migration.
-//! 7. Render the envelope via [`render`] and append exactly one
-//!    `lint-completed` event to `<framework_root>/.specify/journal.jsonl`
-//!    per RFC-34 §F7.
-//! 8. Decide exit per [`blocking_findings_present`] (lint exit map).
+//! 2. Wrap the imperative `Check` pass as a [`DiagnosticProducer`]
+//!    ([`AuthoringProducer`]) so the runner composes it with the
+//!    declarative pass and dedupes the combined set by fingerprint.
+//! 3. Configure the runner for the framework surface
+//!    ([`ScanProfile::Framework`], [`NoopToolRunner`],
+//!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
+//! 4. Render the envelope and append exactly one `lint-completed`
+//!    event to `<framework_root>/.specify/journal.jsonl`.
+//! 5. Decide exit per [`blocking_findings_present`].
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -35,22 +24,20 @@ use jiff::Timestamp;
 use specify_authoring::check;
 use specify_authoring::context::Context as AuthoringContext;
 use specify_authoring::exit::Exit;
-use specify_authoring::finding::Finding;
 use specify_error::{Error, Result};
 use specify_lints::fingerprint::fingerprint as compute_fingerprint;
-use specify_lints::lint::ScanProfile;
 use specify_lints::lint::diagnostics::{
     Format as DiagnosticsFormat, LintResult, LintResultVersion, LintSummary, count_status,
-    emit_dump_model, map_index_error, map_render_error, render,
+    map_render_error, render,
 };
 use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_lints::lint::eval::{evaluate_rules, reserved_hint_summary};
-use specify_lints::lint::ignore::{apply as apply_directives, blocking_findings_present};
-use specify_lints::lint::index::build as build_model;
-use specify_lints::rules::ResolvedRules;
-use specify_lints::{
-    FindingStatus, LintFinding, ResolveInputs, build_resolved_rules, map_resolve_error,
+use specify_lints::lint::ignore::blocking_findings_present;
+use specify_lints::lint::producer::DiagnosticProducer;
+use specify_lints::lint::runner::{
+    PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
+use specify_lints::lint::{ScanProfile, WorkspaceModel};
+use specify_lints::{FindingStatus, LintFinding, ResolveInputs};
 use specify_workflow::config::Layout;
 use specify_workflow::journal::{
     self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
@@ -65,7 +52,7 @@ use crate::output::Format;
 /// Always renders an envelope on stdout (an empty all-zero envelope
 /// when JSON output is requested but the pipeline aborts before
 /// emit) so CI consumers can rely on a stable shape regardless of
-/// outcome — preserving the Phase 3 wire contract.
+/// outcome.
 pub fn run(format: Format, action: &LintAction) -> Exit {
     let started_at = Instant::now();
     let diagnostics_format = pick_format(format, action.output_format);
@@ -133,10 +120,6 @@ fn build_envelope(action: &LintAction) -> Result<BuildOutcome> {
         })?;
     let project_dir = authoring_ctx.framework_root().to_path_buf();
 
-    let imperative: Vec<Finding> = check::run(&authoring_ctx);
-    let mut combined: Vec<LintFinding> = map_findings(&imperative);
-    rebase_locations_to_project(&mut combined, &project_dir);
-
     let inputs = ResolveInputs {
         project_dir: &project_dir,
         rules_root: Some(&project_dir),
@@ -148,60 +131,26 @@ fn build_envelope(action: &LintAction) -> Result<BuildOutcome> {
         include_unmatched: false,
         include_core: true,
     };
-    // Resolver failures are non-fatal under `specdev lint`: the
-    // imperative `Check` pass already surfaces the codex-shape
-    // violations the resolver trips over (`rules.duplicate-rule-id`,
-    // `rules.schema-violation`, …). Swallowing the resolver error
-    // and skipping the declarative pass keeps the framework
-    // contributor's edit-loop legible — the imperative findings
-    // still emit, and stderr carries the diagnostic so the resolver
-    // failure isn't hidden.
-    let resolved = match build_resolved_rules(&inputs) {
-        Ok(resolved) => resolved,
-        Err(err) => {
-            eprintln!("specdev lint: declarative pass skipped: {}", map_resolve_error(err));
-            empty_resolved(target.clone(), sources.clone())
-        }
-    };
 
-    let model = build_model(&project_dir, ScanProfile::Framework, artifacts, languages)
-        .map_err(map_index_error)?;
-
-    if *dump_model {
-        emit_dump_model(&model)?;
-        return Ok(BuildOutcome::DumpedModel);
-    }
-
-    let runner = NoopToolRunner;
+    let producer = AuthoringProducer { ctx: &authoring_ctx };
+    let producers: [&dyn DiagnosticProducer; 1] = [&producer];
     let rule_filter_slice: Vec<&str> = rule_filter.iter().map(String::as_str).collect();
-    let (declarative, reserved, mut next_id) = evaluate_rules(
-        &resolved.rules,
-        &model,
-        &project_dir,
-        &runner,
-        next_imperative_id(&combined),
-        &rule_filter_slice,
-    )?;
-
-    combined.extend(declarative);
-    deduplicate_by_fingerprint(&mut combined);
-
-    let directive_outcome =
-        apply_directives(&mut combined, &model.ignore_directives, &resolved.rules, next_id);
-    combined.extend(directive_outcome.synthetics);
-    next_id = directive_outcome.next_id_counter;
-
-    if let Some(summary) = reserved_hint_summary(&reserved, *strict_hints) {
-        combined.push(summary);
-    }
-    let _ = next_id;
-
-    let result = LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::from_findings(&combined),
-        findings: combined,
+    let tool_runner = NoopToolRunner;
+    let config = PipelineConfig {
+        profile: ScanProfile::Framework,
+        dump_model: *dump_model,
+        strict_hints: *strict_hints,
+        apply_ignore_directives: true,
+        rule_filter: &rule_filter_slice,
+        resolver_degradation: ResolverDegradation::SkipDeclarative,
+        tool_runner: &tool_runner,
+        producers: &producers,
     };
-    Ok(BuildOutcome::Envelope { result, project_dir })
+
+    match run_pipeline(&inputs, &config)? {
+        RunOutcome::DumpedModel => Ok(BuildOutcome::DumpedModel),
+        RunOutcome::Report(result) => Ok(BuildOutcome::Envelope { result, project_dir }),
+    }
 }
 
 /// Resolve the diagnostics format for the success body. Per-subcommand
@@ -218,12 +167,11 @@ fn pick_format(global: Format, output_format: Option<LintFormat>) -> Diagnostics
     }
 }
 
-/// Map a `specify_error::Error` onto the closed [`Exit`] code set per
-/// the lint exit map. `specify-authoring::exit::Exit` only models
-/// the codes the framework run can produce — `Success(0)`,
-/// `GenericFailure(1)`, `ValidationFailed(2)` — and `Argument`
-/// failures piggy-back on `ValidationFailed` to match the runtime
-/// convention.
+/// Map a `specify_error::Error` onto the closed [`Exit`] code set.
+/// `specify-authoring::exit::Exit` only models the codes the framework
+/// run can produce — `Success(0)`, `GenericFailure(1)`,
+/// `ValidationFailed(2)` — and `Argument` failures piggy-back on
+/// `ValidationFailed` to match the runtime convention.
 const fn exit_from_error(err: &Error) -> Exit {
     match err {
         Error::Validation { .. } | Error::Argument { .. } => Exit::ValidationFailed,
@@ -233,8 +181,6 @@ const fn exit_from_error(err: &Error) -> Exit {
 
 /// Print an empty all-zero envelope on stdout when the run aborts
 /// before reaching the success-path emit, but only for JSON output.
-/// Matches the Phase 3 contract that CI consumers can rely on a
-/// stable wire shape on infrastructure error.
 fn emit_fallback_envelope(format: DiagnosticsFormat) {
     if !matches!(format, DiagnosticsFormat::Json) {
         return;
@@ -250,16 +196,35 @@ fn emit_fallback_envelope(format: DiagnosticsFormat) {
     }
 }
 
+/// Imperative producer wrapping the framework's `Check` pass.
+///
+/// Holds the loaded [`AuthoringContext`]; ignores the `WorkspaceModel`
+/// the runner threads in (the imperative predicates index their own
+/// inputs from the context). Maps each [`specify_authoring::finding::Finding`]
+/// to a [`LintFinding`] and rebases locations to project-relative form
+/// so the schema-validating JSON formatter accepts the envelope.
+struct AuthoringProducer<'a> {
+    ctx: &'a AuthoringContext,
+}
+
+impl DiagnosticProducer for AuthoringProducer<'_> {
+    fn produce(&self, _model: &WorkspaceModel, project_dir: &Path) -> Vec<LintFinding> {
+        let imperative = check::run(self.ctx);
+        let mut findings = map_findings(&imperative);
+        rebase_locations_to_project(&mut findings, project_dir);
+        findings
+    }
+}
+
 /// Rewrite each finding's `location.path` to be project-relative
 /// against `project_dir`. The imperative `Check` predicates emit
 /// absolute paths anchored at the canonicalised framework root, but
 /// `finding.schema.json` constrains `location.path` to project-relative
-/// forward-slash strings (no leading `/`, no URL scheme, no `..`
-/// segments). Rebasing here keeps the schema-validating diagnostics
+/// forward-slash strings. Rebasing here keeps the schema-validating
 /// JSON formatter from rejecting the imperative envelope on emit.
 ///
-/// Re-fingerprints each finding after the rewrite so the stored
-/// hash reflects the canonical (rebased) preimage.
+/// Re-fingerprints each finding after the rewrite so the stored hash
+/// reflects the canonical (rebased) preimage.
 fn rebase_locations_to_project(findings: &mut [LintFinding], project_dir: &Path) {
     let prefix = project_dir.to_string_lossy().replace('\\', "/");
     for finding in findings {
@@ -276,28 +241,9 @@ fn rebase_locations_to_project(findings: &mut [LintFinding], project_dir: &Path)
     }
 }
 
-/// Compute the next `FIND-{NNNN}` id counter after the imperative
-/// pass. The imperative mapper assigns ids 1..=N in order; the
-/// declarative pass must continue past N so the two pass results
-/// don't collide on `id`.
-fn next_imperative_id(findings: &[LintFinding]) -> u64 {
-    u64::try_from(findings.len()).unwrap_or(u64::MAX).saturating_add(1)
-}
-
-/// Deduplicate `findings` by canonical fingerprint while preserving
-/// first-occurrence order. RFC-34 §F5 guarantees that during the
-/// migration overlap a `CORE-*` rule and its retiring imperative
-/// predicate will produce byte-identical fingerprints for the same
-/// `(rule-id, location)` pair; this dedupe collapses the duplicate
-/// so a single envelope row survives.
-fn deduplicate_by_fingerprint(findings: &mut Vec<LintFinding>) {
-    let mut seen: HashSet<String> = HashSet::with_capacity(findings.len());
-    findings.retain(|f| seen.insert(f.fingerprint.clone()));
-}
-
-/// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`
-/// per RFC-34 §F7. Best-effort: telemetry I/O failures log to stderr
-/// and never override the scan's exit code.
+/// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`.
+/// Best-effort: telemetry I/O failures log to stderr and never
+/// override the scan's exit code.
 fn emit_lint_completed(
     project_dir: &Path, single_artifact: Option<&Path>, findings: &[LintFinding],
     duration_ms: u128, exit_code: i32,
@@ -326,26 +272,12 @@ fn emit_lint_completed(
     }
 }
 
-/// Empty resolved-codex stub used when the declarative pass is
-/// skipped because the codex tree itself failed to resolve. Keeps
-/// the eval loop's input type uniform.
-const fn empty_resolved(target_adapter: String, source_adapters: Vec<String>) -> ResolvedRules {
-    ResolvedRules {
-        version: 1,
-        target_adapter,
-        source_adapters,
-        rules: Vec::new(),
-    }
-}
-
 /// `ToolRunner` stub used by the framework run.
 ///
 /// `specdev lint` never has a `project.yaml` to populate a tool
 /// inventory from — framework runs live alongside the codex tree
-/// itself, not inside an initialised consumer project. Until a
-/// future RFC introduces a framework-side tool inventory, any
-/// `kind: tool` hint a framework-applicable rule declares is
-/// reported as undeclared.
+/// itself, not inside an initialised consumer project. Any `kind: tool`
+/// hint a framework-applicable rule declares is reported as undeclared.
 struct NoopToolRunner;
 
 impl ToolRunner for NoopToolRunner {
