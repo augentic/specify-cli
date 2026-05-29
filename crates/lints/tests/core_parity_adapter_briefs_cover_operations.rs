@@ -14,7 +14,7 @@
 //!   seed rule against a synthetic fixture when no `Check` row maps
 //!   cleanly to the reserved kind (the deletion is gated on parity, not
 //!   required for the kind landing).
-//! - `adapter.missing-manifest` (in `crates/authoring/src/check/adapter.rs`)
+//! - `adapter.missing-manifest` (in `crates/lints/src/framework/check/adapter.rs`)
 //!   was considered but explicitly NOT retired: it walks adapter directories
 //!   that lack `adapter.yaml` entirely, which produce no `AdapterManifest`
 //!   fact and are therefore invisible to a `set-coverage` evaluator that

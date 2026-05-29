@@ -7,10 +7,12 @@ use regex::Regex;
 use serde_json::Value as JsonValue;
 use walkdir::WalkDir;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::{relative_display, under_symlink};
-use crate::schema::{SchemaId, collect_errors};
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::helpers::{relative_display, under_symlink};
+use crate::framework::schema::{SchemaId, collect_errors};
+use crate::rules::Diagnostic;
 
 pub const RULE_SCHEMA_VIOLATION: &str = "scenarios.schema-violation";
 pub const RULE_STAGES_NOT_CONTIGUOUS: &str = "scenarios.stages-not-contiguous-prefix";
@@ -29,7 +31,7 @@ const TRACE_REQUIRED_FIELDS: [&str; 6] =
 pub struct ScenariosCheck;
 
 impl Check for ScenariosCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         let mut findings = validate_scenario_frontmatter(ctx);
         findings.extend(check_recorded_trace_freshness(ctx));
         findings
@@ -44,8 +46,8 @@ struct ScenarioFile {
 }
 
 /// Run scenario frontmatter validation only (tests / direct invocation).
-pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Finding> {
-    let validator = match crate::schema::validator(ctx, SchemaId::Scenario) {
+pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Diagnostic> {
+    let validator = match crate::framework::schema::validator(ctx, SchemaId::Scenario) {
         Ok(v) => v,
         Err(error) => {
             return vec![finding(
@@ -216,12 +218,12 @@ pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Finding> {
         }
     }
 
-    findings.sort_by(|a, b| a.message.cmp(&b.message));
+    findings.sort_by(|a, b| a.title.cmp(&b.title));
     findings
 }
 
 /// Run recorded-trace header validation and best-effort recency hints.
-pub fn check_recorded_trace_freshness(ctx: &Context) -> Vec<Finding> {
+pub fn check_recorded_trace_freshness(ctx: &Context) -> Vec<Diagnostic> {
     let recorded_root = ctx.framework_root().join("tests").join("recorded");
     if !recorded_root.is_dir() {
         return Vec::new();
@@ -344,7 +346,7 @@ pub fn check_recorded_trace_freshness(ctx: &Context) -> Vec<Finding> {
 
     emit_stale_trace_hints(ctx, &trace_paths, &headers_by_path);
 
-    findings.sort_by(|a, b| a.message.cmp(&b.message));
+    findings.sort_by(|a, b| a.title.cmp(&b.title));
     findings
 }
 
@@ -544,16 +546,8 @@ fn body_after_frontmatter(content: &str) -> String {
     content[consumed..].to_string()
 }
 
-fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Finding {
-    Finding {
-        rule_id,
-        message,
-        location: path.map(|path| Location {
-            path,
-            line: 1,
-            column: None,
-        }),
-    }
+fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Diagnostic {
+    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }
 
 #[cfg(test)]

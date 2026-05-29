@@ -2,10 +2,12 @@ use std::fs;
 
 use regex::{Regex, RegexBuilder};
 
-use crate::context::Context;
-use crate::error::ToolingError;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::{relative_display, skill_body_lines, walk_skill_files};
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::error::ToolingError;
+use crate::framework::helpers::{relative_display, skill_body_lines, walk_skill_files};
+use crate::rules::Diagnostic;
 
 const CRITICAL_PATH_MIN_LINES: usize = 150;
 const CRITICAL_PATH_HEADING: &str = "## Critical Path";
@@ -48,7 +50,7 @@ pub struct VariableCoverage;
 macro_rules! impl_skill_body_check {
     ($ty:ty, $rule:expr, $body:expr) => {
         impl Check for $ty {
-            fn run(&self, ctx: &Context) -> Vec<Finding> {
+            fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
                 $body(ctx).unwrap_or_else(|error| vec![infrastructure_finding($rule, error)])
             }
         }
@@ -80,7 +82,7 @@ impl_skill_body_check!(
 );
 impl_skill_body_check!(VariableCoverage, RULE_VARIABLE_COVERAGE, check_variables);
 
-fn check_section_line_counts(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_section_line_counts(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 
@@ -150,7 +152,7 @@ fn count_section_body_lines(section_lines: &[String]) -> usize {
     count
 }
 
-fn check_missing_critical_path(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_missing_critical_path(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 
@@ -181,7 +183,7 @@ fn check_missing_critical_path(ctx: &Context) -> Result<Vec<Finding>, ToolingErr
     Ok(findings)
 }
 
-fn check_invalid_critical_path(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_invalid_critical_path(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let list_item_re = Regex::new(r"^(?:\d+\.|-)\s+\S").expect("list item pattern");
     let root = ctx.framework_root();
     let mut findings = Vec::new();
@@ -276,7 +278,7 @@ enum CriticalPathMode {
     List,
 }
 
-fn check_inline_json_blocks(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_inline_json_blocks(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let fence_open_re = Regex::new(r"^```(json|jsonc)\b").expect("json fence pattern");
     let root = ctx.framework_root();
     let mut findings = Vec::new();
@@ -320,7 +322,7 @@ fn check_inline_json_blocks(ctx: &Context) -> Result<Vec<Finding>, ToolingError>
     Ok(findings)
 }
 
-fn check_no_envelope_examples(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_no_envelope_examples(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let fence_open_re = Regex::new(r"^\s*(`{3,})(json|jsonc)\b").expect("json fence pattern");
     let root = ctx.framework_root();
     let mut findings = Vec::new();
@@ -393,7 +395,7 @@ fn is_envelope_body(body: &[String]) -> bool {
     has_ok && (has_data || has_error)
 }
 
-fn check_step_body_vs_critical_path(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_step_body_vs_critical_path(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 
@@ -515,7 +517,7 @@ fn is_list_or_heading_line(line: &str) -> bool {
         || line.starts_with("#### ")
 }
 
-fn check_no_frontmatter_restatement(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_no_frontmatter_restatement(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 
@@ -541,7 +543,7 @@ fn check_no_frontmatter_restatement(ctx: &Context) -> Result<Vec<Finding>, Tooli
     Ok(findings)
 }
 
-fn check_variables(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_variables(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let def_re = Regex::new(r"(?m)^\$([A-Z_][A-Z_0-9]*)\s*=").expect("def pattern");
     let use_re = Regex::new(r"\$([A-Z_][A-Z_0-9]*)").expect("use pattern");
     let args_heading_re = Regex::new(r"(?m)^## (?:Derived )?Arguments").expect("args heading");
@@ -643,22 +645,12 @@ fn truncate(text: &str, max: usize) -> String {
     if text.len() <= max { text.to_string() } else { text[..max].to_string() }
 }
 
-fn finding(rule_id: &'static str, message: String, path: Option<std::path::PathBuf>) -> Finding {
-    Finding {
-        rule_id,
-        message,
-        location: path.map(|path| Location {
-            path,
-            line: 1,
-            column: None,
-        }),
-    }
+fn finding(
+    rule_id: &'static str, message: String, path: Option<std::path::PathBuf>,
+) -> Diagnostic {
+    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }
 
-fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Finding {
-    Finding {
-        rule_id,
-        message: error.to_string(),
-        location: None,
-    }
+fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Diagnostic {
+    framework_finding(rule_id, error.to_string(), None)
 }

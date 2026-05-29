@@ -1,9 +1,12 @@
+//! Integration coverage for the framework skill body discipline checks.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_authoring::Context;
-use specify_authoring::check::{EnvelopeJsonInBody, InvalidCriticalPath, VariableCoverage};
-use specify_authoring::finding::Check;
+use specify_lints::framework::check::{
+    Check, EnvelopeJsonInBody, InvalidCriticalPath, VariableCoverage,
+};
+use specify_lints::framework::{Context, core_id_for, snippet};
 
 fn fixture_root(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/skill_body").join(name)
@@ -44,8 +47,8 @@ fn invalid_critical_path_wrong_count() {
 
     let findings = InvalidCriticalPath.run(&ctx);
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "skill.invalid-critical-path");
-    assert!(findings[0].message.contains("found 4"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("skill.invalid-critical-path"));
+    assert!(snippet(&findings[0]).contains("found 4"));
 }
 
 #[test]
@@ -65,8 +68,8 @@ fn envelope_json_flags_shape() {
 
     let findings = EnvelopeJsonInBody.run(&ctx);
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "skill.envelope-json-in-body");
-    assert!(findings[0].message.contains("Envelope JSON in skill body"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("skill.envelope-json-in-body"));
+    assert!(snippet(&findings[0]).contains("Envelope JSON in skill body"));
 }
 
 #[test]
@@ -86,7 +89,7 @@ Validate $PROJECT for $SLICE before continuing.
 
     let findings = VariableCoverage.run(&ctx);
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "skill.variable-coverage");
-    assert!(findings[0].message.contains("Undefined variable"));
-    assert!(findings[0].message.contains("$PROJECT"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("skill.variable-coverage"));
+    assert!(snippet(&findings[0]).contains("Undefined variable"));
+    assert!(snippet(&findings[0]).contains("$PROJECT"));
 }

@@ -1,11 +1,13 @@
+//! Integration coverage for the framework scenario frontmatter checks.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_authoring::Context;
-use specify_authoring::check::{
+use specify_lints::framework::check::{
     RULE_RECORDED_TRACE_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS, SCENARIO_RULE_ARTIFACT_PATH_UNSAFE,
     SCENARIO_RULE_SCHEMA_VIOLATION, check_recorded_trace_freshness, validate_scenario_frontmatter,
 };
+use specify_lints::framework::{Context, core_id_for, snippet};
 use tempfile::TempDir;
 
 fn scaffold_framework_root(base: &Path) -> PathBuf {
@@ -51,11 +53,13 @@ fn schema_violation_on_missing_required_field() {
     );
 
     let findings = validate_scenario_frontmatter(&context_for(&root));
-    let schema: Vec<_> =
-        findings.iter().filter(|f| f.rule_id == SCENARIO_RULE_SCHEMA_VIOLATION).collect();
+    let schema: Vec<_> = findings
+        .iter()
+        .filter(|f| f.rule_id.as_deref() == core_id_for(SCENARIO_RULE_SCHEMA_VIOLATION))
+        .collect();
     assert!(!schema.is_empty(), "expected schema violation, got: {findings:?}");
     assert!(
-        schema.iter().any(|f| f.message.contains("Scenario frontmatter:")),
+        schema.iter().any(|f| snippet(f).contains("Scenario frontmatter:")),
         "expected Deno-shaped message prefix, got: {findings:?}"
     );
 }
@@ -72,10 +76,12 @@ fn stages_not_contiguous_emits_finding() {
     );
 
     let findings = validate_scenario_frontmatter(&context_for(&root));
-    let stages: Vec<_> =
-        findings.iter().filter(|f| f.rule_id == RULE_STAGES_NOT_CONTIGUOUS).collect();
+    let stages: Vec<_> = findings
+        .iter()
+        .filter(|f| f.rule_id.as_deref() == core_id_for(RULE_STAGES_NOT_CONTIGUOUS))
+        .collect();
     assert_eq!(stages.len(), 1, "expected one stages finding, got: {findings:?}");
-    assert!(stages[0].message.contains("contiguous slice"));
+    assert!(snippet(stages[0]).contains("contiguous slice"));
 }
 
 #[test]
@@ -92,10 +98,12 @@ fn artifact_path_unsafe_rejects_parent_escape() {
     );
 
     let findings = validate_scenario_frontmatter(&context_for(&root));
-    let art: Vec<_> =
-        findings.iter().filter(|f| f.rule_id == SCENARIO_RULE_ARTIFACT_PATH_UNSAFE).collect();
+    let art: Vec<_> = findings
+        .iter()
+        .filter(|f| f.rule_id.as_deref() == core_id_for(SCENARIO_RULE_ARTIFACT_PATH_UNSAFE))
+        .collect();
     assert_eq!(art.len(), 1, "expected one artifact finding, got: {findings:?}");
-    assert!(art[0].message.contains("'..' segment not allowed"));
+    assert!(snippet(art[0]).contains("'..' segment not allowed"));
 }
 
 #[test]
@@ -109,8 +117,8 @@ fn recorded_trace_invalid_header() {
     let findings = check_recorded_trace_freshness(&context_for(&root));
     assert!(
         findings.iter().any(|f| {
-            f.rule_id == RULE_RECORDED_TRACE_VIOLATION
-                && f.message.contains("kind must be 'recorded-trace-header'")
+            f.rule_id.as_deref() == core_id_for(RULE_RECORDED_TRACE_VIOLATION)
+                && snippet(f).contains("kind must be 'recorded-trace-header'")
         }),
         "expected kind violation, got: {findings:?}"
     );

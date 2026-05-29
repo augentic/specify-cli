@@ -5,9 +5,9 @@ use jsonschema::Validator;
 use serde_json::Value as JsonValue;
 use specify_schema::RULE_JSON_SCHEMA;
 
-use crate::context::Context;
-use crate::error::ToolingError;
-use crate::helpers::skill_frontmatter;
+use crate::framework::context::Context;
+use crate::framework::error::ToolingError;
+use crate::framework::helpers::skill_frontmatter;
 
 /// Cache key for the embedded codex-rule schema. The schema is compiled from
 /// the in-memory [`RULE_JSON_SCHEMA`] constant rather than a filesystem
@@ -19,7 +19,7 @@ const EMBEDDED_CODEX_RULE_CACHE_KEY: &str = "<embedded>/rule.schema.json";
 ///
 /// `Rule` resolves to the embedded constant
 /// [`specify_schema::RULE_JSON_SCHEMA`]; the rest resolve to files under
-/// `crates/authoring/schemas/`.
+/// `crates/lints/schemas/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SchemaId {
     Skill,
@@ -29,7 +29,7 @@ pub enum SchemaId {
 }
 
 impl SchemaId {
-    /// Basename of the schema file in `crates/authoring/schemas/`, when one
+    /// Basename of the schema file in `crates/lints/schemas/`, when one
     /// exists. Returns `None` for schemas served from an embedded constant.
     pub const fn file_name(self) -> Option<&'static str> {
         match self {
@@ -80,7 +80,7 @@ pub fn schema_path(ctx: &Context, schema_id: SchemaId) -> Option<PathBuf> {
 /// Schemas backed by an in-memory constant (today only
 /// `SchemaId::Rule`, sourced from [`RULE_JSON_SCHEMA`]) compile
 /// from the embedded bytes and are cached under a synthetic path; the rest
-/// read from `crates/authoring/schemas/`.
+/// read from `crates/lints/schemas/`.
 pub fn validator(
     ctx: &Context, schema_id: SchemaId,
 ) -> Result<std::sync::Arc<Validator>, ToolingError> {

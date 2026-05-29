@@ -130,7 +130,7 @@
     "ruleId": {
       "type": "string",
       "pattern": "^((UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}|[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*)$",
-      "description": "Two namespaces share this field. The codex family (`UNI-014`, `CORE-003`, …) mirrors `codex/resolved.schema.json#/$defs/ruleId` and `crates/authoring/schemas/rule.schema.json#/$defs/ruleId`. The dot-/kebab-namespaced runtime-validation family (`spec.requirement-id-missing`, `merge.no-duplicate-ids`, `slice-provenance-drift`) carries the structural workflow invariant ids that `validate` surfaces emit as diagnostics."
+      "description": "Two namespaces share this field. The codex family (`UNI-014`, `CORE-003`, …) mirrors `codex/resolved.schema.json#/$defs/ruleId` and `schemas/rules/rule.schema.json#/$defs/ruleId`. The dot-/kebab-namespaced runtime-validation family (`spec.requirement-id-missing`, `merge.no-duplicate-ids`, `slice-provenance-drift`) carries the structural workflow invariant ids that `validate` surfaces emit as diagnostics."
     },
     "adapterRef": {
       "type": "string",

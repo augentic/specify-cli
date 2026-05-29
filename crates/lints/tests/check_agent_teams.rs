@@ -1,10 +1,12 @@
+//! Integration coverage for the framework agent-teams overlay check.
+
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
-use specify_authoring::Context;
-use specify_authoring::check::agent_teams;
+use specify_lints::framework::check::agent_teams;
+use specify_lints::framework::{Context, core_id_for, snippet};
 
 const CANONICAL_CONTENT: &str = "# Review team protocol\n\ncanonical body\n";
 const CANONICAL_REL: &str = "docs/reference/review-team-protocol.md";
@@ -36,8 +38,8 @@ fn drifted_regular_file_overlay_fails() {
 
     let findings = agent_teams::run(&ctx_for(&root));
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "agent-teams.non-canonical-overlay");
-    assert!(findings[0].message.contains("content drifted"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("agent-teams.non-canonical-overlay"));
+    assert!(snippet(&findings[0]).contains("content drifted"));
 }
 
 #[test]
@@ -52,6 +54,6 @@ fn broken_symlink_fails() {
 
     let findings = agent_teams::run(&ctx_for(&root));
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "agent-teams.non-canonical-overlay");
-    assert!(findings[0].message.contains("symlink does not resolve"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("agent-teams.non-canonical-overlay"));
+    assert!(snippet(&findings[0]).contains("symlink does not resolve"));
 }

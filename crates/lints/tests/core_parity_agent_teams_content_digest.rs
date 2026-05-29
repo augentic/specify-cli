@@ -8,7 +8,7 @@
 //!
 //! Declarative rule id `CORE-008` ≅ `agent-teams.content-digest`
 //! (notional). **No imperative `Check` row is retired by this card.**
-//! The C16 plan card named `crates/authoring/src/check/agent_teams.rs`
+//! The C16 plan card named `crates/lints/src/framework/check/agent_teams.rs`
 //! (the `agent-teams.non-canonical-overlay` /
 //! `agent-teams.missing-canonical` predicate) as a strong candidate,
 //! but `content-digest-eq` does not subsume it cleanly, so the

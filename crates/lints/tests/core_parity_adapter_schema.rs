@@ -6,7 +6,7 @@
 //! - Imperative rule id `adapter.schema-violation` ↔ declarative rule id `CORE-001`.
 //! - Imperative location: absolute `Path` to the offending `adapter.yaml`.
 //! - Declarative location: project-relative path string (`adapters/sources/<name>/adapter.yaml`).
-//! - Imperative emitted one [`specify_authoring::Finding`] per
+//! - Imperative emitted one [`specify_lints::Diagnostic`] per
 //!   `jsonschema::Validator::iter_errors` entry; the declarative `schema` hint
 //!   evaluator does the same. Both walk the same `iter_errors` iterator over
 //!   the same `serde_saphyr`-parsed body, so the cardinality and
@@ -25,7 +25,7 @@
 //!
 //! 1. The shared `adapter.schema.json` validator directly via
 //!    `jsonschema::validator_for`, mirroring the deleted
-//!    `crates/authoring/src/check/adapter.rs::validate_manifest` body.
+//!    `crates/lints/src/framework/check/adapter.rs::validate_manifest` body.
 //!    Captures the `instance_path` set per fixture file.
 //! 2. The declarative pipeline: `lint::index::build` under the framework
 //!    scan profile, plus `lint::eval::evaluate` against a synthesised

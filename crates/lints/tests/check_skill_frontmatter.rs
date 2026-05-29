@@ -1,12 +1,13 @@
+//! Integration coverage for the framework skill frontmatter checks.
+
 use std::fs;
 use std::path::Path;
 
-use specify_authoring::Context;
-use specify_authoring::check::{
-    ArgumentHintGrammar, DescriptionGrammar, FrontmatterSchema, NameDirMismatch, RULE_UNKNOWN_TOOL,
-    SKILL_RULE_SCHEMA_VIOLATION, UnknownTool,
+use specify_lints::framework::check::{
+    ArgumentHintGrammar, Check, DescriptionGrammar, FrontmatterSchema, NameDirMismatch,
+    RULE_UNKNOWN_TOOL, SKILL_RULE_SCHEMA_VIOLATION, UnknownTool,
 };
-use specify_authoring::finding::Check;
+use specify_lints::framework::{Context, core_id_for, snippet};
 
 fn fixture_context(root: &Path) -> Context {
     Context::from_framework_root(root).expect("fixture framework root")
@@ -39,9 +40,9 @@ fn schema_reports_missing_use_when() {
     let findings = FrontmatterSchema.run(&ctx);
     assert!(
         findings.iter().any(|finding| {
-            finding.rule_id == SKILL_RULE_SCHEMA_VIOLATION
-                && finding.message.contains("bad-description")
-                && finding.message.contains("/description")
+            finding.rule_id.as_deref() == core_id_for(SKILL_RULE_SCHEMA_VIOLATION)
+                && snippet(finding).contains("bad-description")
+                && snippet(finding).contains("/description")
         }),
         "expected schema violation for description, got {findings:?}"
     );
@@ -62,7 +63,8 @@ fn unknown_tool_reports_disallowed() {
     let findings = UnknownTool.run(&ctx);
     assert!(
         findings.iter().any(|finding| {
-            finding.rule_id == RULE_UNKNOWN_TOOL && finding.message.contains("NotARealTool")
+            finding.rule_id.as_deref() == core_id_for(RULE_UNKNOWN_TOOL)
+                && snippet(finding).contains("NotARealTool")
         }),
         "expected unknown-tool finding, got {findings:?}"
     );

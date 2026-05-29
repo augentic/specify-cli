@@ -3,7 +3,7 @@
 //! Composes two enforcement passes against the framework repo:
 //!
 //! 1. The imperative `Check` predicates in
-//!    [`specify_authoring::check`] (today's `make check` surface).
+//!    [`specify_lints::framework::check`] (today's `make check` surface).
 //! 2. The declarative deterministic-hint interpreter in
 //!    [`specify_lints::lint`] driven by `CORE-*` / `UNI-*` rules
 //!    under the framework's own codex tree.

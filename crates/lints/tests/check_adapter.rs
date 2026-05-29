@@ -1,8 +1,10 @@
+//! Integration coverage for the framework adapter-manifest check.
+
 use std::fs;
 use std::path::Path;
 
-use specify_authoring::Context;
-use specify_authoring::check::{RULE_MISSING_MANIFEST, run_adapter_check};
+use specify_lints::framework::check::{RULE_MISSING_MANIFEST, run_adapter_check};
+use specify_lints::framework::{Context, core_id_for, snippet};
 
 fn scaffold_framework(root: &Path) {
     fs::create_dir_all(root.join("plugins")).expect("plugins");
@@ -25,9 +27,11 @@ fn missing_manifest_without_yaml() {
     let ctx = Context::from_framework_root(temp.path()).expect("context");
     let findings = run_adapter_check(&ctx);
 
-    let missing: Vec<_> =
-        findings.iter().filter(|finding| finding.rule_id == RULE_MISSING_MANIFEST).collect();
+    let missing: Vec<_> = findings
+        .iter()
+        .filter(|finding| finding.rule_id.as_deref() == core_id_for(RULE_MISSING_MANIFEST))
+        .collect();
     assert_eq!(missing.len(), 1, "expected one missing-manifest finding");
-    assert!(missing[0].message.contains("adapters/sources/no-manifest"));
-    assert!(missing[0].message.contains("adapter.yaml"));
+    assert!(snippet(missing[0]).contains("adapters/sources/no-manifest"));
+    assert!(snippet(missing[0]).contains("adapter.yaml"));
 }

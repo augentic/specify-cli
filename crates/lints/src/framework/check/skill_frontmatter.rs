@@ -5,11 +5,13 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use serde_json::Value as JsonValue;
 
-use crate::context::Context;
-use crate::error::ToolingError;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::{relative_display, skill_frontmatter, walk_skill_files};
-use crate::schema::{SchemaError, SchemaId, validate_frontmatter};
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::error::ToolingError;
+use crate::framework::helpers::{relative_display, skill_frontmatter, walk_skill_files};
+use crate::framework::schema::{SchemaError, SchemaId, validate_frontmatter};
+use crate::rules::Diagnostic;
 
 pub const RULE_SCHEMA_VIOLATION: &str = "skill.schema-violation";
 pub const RULE_MISSING_FRONTMATTER: &str = "skill.missing-frontmatter";
@@ -18,12 +20,12 @@ pub const RULE_UNKNOWN_TOOL: &str = "skill.unknown-tool";
 pub const RULE_DESCRIPTION_GRAMMAR: &str = "skill.description-grammar";
 pub const RULE_ARGUMENT_HINT_GRAMMAR: &str = "skill.argument-hint-grammar";
 
-/// Kept in sync with `crates/authoring/schemas/skill.schema.json` (`description.maxLength`).
+/// Kept in sync with `crates/lints/schemas/skill.schema.json` (`description.maxLength`).
 pub const MAX_DESCRIPTION_CHARS: usize = 512;
 
 const PREFIX_OVERRIDES: &[(&str, &str)] = &[("spec", "specify")];
 
-/// Validate SKILL.md frontmatter against `crates/authoring/schemas/skill.schema.json`.
+/// Validate SKILL.md frontmatter against `crates/lints/schemas/skill.schema.json`.
 pub struct FrontmatterSchema;
 
 /// Require `name:` to carry the containing plugin's discovery prefix.
@@ -39,14 +41,14 @@ pub struct DescriptionGrammar;
 pub struct ArgumentHintGrammar;
 
 impl Check for FrontmatterSchema {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_schema(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_SCHEMA_VIOLATION, error)])
     }
 }
 
 impl Check for NameDirMismatch {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_name_directory_mismatch(ctx).unwrap_or_else(|error| {
             vec![infrastructure_finding(RULE_NAME_DIRECTORY_MISMATCH, error)]
         })
@@ -54,21 +56,21 @@ impl Check for NameDirMismatch {
 }
 
 impl Check for UnknownTool {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_unknown_tools(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_UNKNOWN_TOOL, error)])
     }
 }
 
 impl Check for DescriptionGrammar {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_description_grammar(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_DESCRIPTION_GRAMMAR, error)])
     }
 }
 
 impl Check for ArgumentHintGrammar {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_argument_hint_grammar(ctx)
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_ARGUMENT_HINT_GRAMMAR, error)])
     }
@@ -107,7 +109,7 @@ fn load_skill_entries(ctx: &Context) -> Result<Vec<SkillEntry>, ToolingError> {
         .collect()
 }
 
-fn check_schema(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_schema(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let mut findings = Vec::new();
 
     for entry in load_skill_entries(ctx)? {
@@ -139,7 +141,7 @@ fn check_schema(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
     Ok(findings)
 }
 
-fn check_name_directory_mismatch(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_name_directory_mismatch(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let name_re = Regex::new(r"^[a-z][a-z0-9-]*$").expect("name regex");
     let mut findings = Vec::new();
 
@@ -175,7 +177,7 @@ fn check_name_directory_mismatch(ctx: &Context) -> Result<Vec<Finding>, ToolingE
     Ok(findings)
 }
 
-fn check_unknown_tools(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_unknown_tools(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let mut findings = Vec::new();
 
     for entry in load_skill_entries(ctx)? {
@@ -201,7 +203,7 @@ fn check_unknown_tools(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
     Ok(findings)
 }
 
-fn check_description_grammar(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_description_grammar(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let mut findings = Vec::new();
 
     for entry in load_skill_entries(ctx)? {
@@ -247,7 +249,7 @@ fn check_description_grammar(ctx: &Context) -> Result<Vec<Finding>, ToolingError
         findings.push(finding(
             RULE_DESCRIPTION_GRAMMAR,
             format!(
-                "Skill description must start with an imperative verb: {} — '{first_alpha}' not in allow-list (add to IMPERATIVE_VERBS in crates/authoring/src/check/skill_frontmatter.rs if it is genuinely imperative)", 
+                "Skill description must start with an imperative verb: {} — '{first_alpha}' not in allow-list (add to IMPERATIVE_VERBS in crates/lints/src/framework/check/skill_frontmatter.rs if it is genuinely imperative)", 
                 entry.rel
             ),
             &entry.path,
@@ -257,7 +259,7 @@ fn check_description_grammar(ctx: &Context) -> Result<Vec<Finding>, ToolingError
     Ok(findings)
 }
 
-fn check_argument_hint_grammar(ctx: &Context) -> Result<Vec<Finding>, ToolingError> {
+fn check_argument_hint_grammar(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let mut findings = Vec::new();
 
     for entry in load_skill_entries(ctx)? {
@@ -422,24 +424,12 @@ fn imperative_verbs() -> &'static [&'static str] {
     ]
 }
 
-fn finding(rule_id: &'static str, message: impl Into<String>, path: &Path) -> Finding {
-    Finding {
-        rule_id,
-        message: message.into(),
-        location: Some(Location {
-            path: path.to_path_buf(),
-            line: 1,
-            column: None,
-        }),
-    }
+fn finding(rule_id: &'static str, message: impl Into<String>, path: &Path) -> Diagnostic {
+    framework_finding(rule_id, message.into(), Some(loc(path, 1, None)))
 }
 
-fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Finding {
-    Finding {
-        rule_id,
-        message: error.to_string(),
-        location: None,
-    }
+fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Diagnostic {
+    framework_finding(rule_id, error.to_string(), None)
 }
 
 #[cfg(test)]

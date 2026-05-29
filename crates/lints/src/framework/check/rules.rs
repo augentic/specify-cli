@@ -5,10 +5,14 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::{relative_display, skill_frontmatter, under_symlink, walk_matching_files};
-use crate::schema::{SchemaError, SchemaId, ValidationError, validate_frontmatter};
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::helpers::{
+    relative_display, skill_frontmatter, under_symlink, walk_matching_files,
+};
+use crate::framework::schema::{SchemaError, SchemaId, ValidationError, validate_frontmatter};
+use crate::rules::Diagnostic;
 
 pub const RULE_SCHEMA_VIOLATION: &str = "rules.schema-violation";
 pub const RULE_NAMESPACE_OWNERSHIP_VIOLATION: &str = "rules.namespace-ownership-violation";
@@ -43,20 +47,20 @@ static BUILTIN_NAMESPACES: LazyLock<HashMap<&'static str, HashSet<&'static str>>
 pub struct RulesCheck;
 
 impl Check for RulesCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         run_rules_check(ctx)
     }
 }
 
-pub fn run_rules_check(ctx: &Context) -> Vec<Finding> {
+pub fn run_rules_check(ctx: &Context) -> Vec<Diagnostic> {
     let paths = match discover_rule_files(ctx) {
         Ok(paths) => paths,
         Err(error) => {
-            return vec![Finding {
-                rule_id: RULE_SCHEMA_VIOLATION,
-                message: format!("Rule discovery failed: {error}"),
-                location: None,
-            }];
+            return vec![framework_finding(
+                RULE_SCHEMA_VIOLATION,
+                format!("Rule discovery failed: {error}"),
+                None,
+            )];
         }
     };
 
@@ -147,7 +151,7 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Finding> {
             findings.push(finding_at(
                 RULE_NAMESPACE_OWNERSHIP_VIOLATION,
                 format!(
-                    "Rules namespace ownership: {rel} — rules owner '{owner}' has no configured namespace; update crates/authoring/src/check/rules.rs before adding first-party rules here"
+                    "Rules namespace ownership: {rel} — rules owner '{owner}' has no configured namespace; update crates/lints/src/framework/check/rules.rs before adding first-party rules here"
                 ),
                 &path,
             ));
@@ -170,11 +174,11 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Finding> {
 
     for (id, paths) in ids_by_value {
         if paths.len() > 1 {
-            findings.push(Finding {
-                rule_id: RULE_DUPLICATE_RULE_ID,
-                message: format!("Rule duplicate id '{id}' across files: {}", paths.join(", ")),
-                location: None,
-            });
+            findings.push(framework_finding(
+                RULE_DUPLICATE_RULE_ID,
+                format!("Rule duplicate id '{id}' across files: {}", paths.join(", ")),
+                None,
+            ));
         }
     }
 
@@ -236,7 +240,7 @@ fn source_rules_owners(ctx: &Context) -> Vec<String> {
     owners
 }
 
-fn discover_rule_files(ctx: &Context) -> Result<Vec<PathBuf>, crate::error::ToolingError> {
+fn discover_rule_files(ctx: &Context) -> Result<Vec<PathBuf>, crate::framework::error::ToolingError> {
     let framework_root = ctx.framework_root();
     let mut paths = Vec::new();
 
@@ -352,16 +356,8 @@ fn format_validation_error(error: &ValidationError) -> String {
     format!("{at} {}", error.message).trim().to_string()
 }
 
-fn finding_at(rule_id: &'static str, message: String, path: &Path) -> Finding {
-    Finding {
-        rule_id,
-        message,
-        location: Some(Location {
-            path: path.to_path_buf(),
-            line: 1,
-            column: None,
-        }),
-    }
+fn finding_at(rule_id: &'static str, message: String, path: &Path) -> Diagnostic {
+    framework_finding(rule_id, message, Some(loc(path, 1, None)))
 }
 
 #[cfg(test)]
@@ -372,6 +368,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::framework::builder::{core_id_for, snippet};
 
     #[test]
     fn namespace_for_rule_id_extracts_prefix() {
@@ -444,7 +441,9 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         let ownership: Vec<_> = findings
             .iter()
-            .filter(|finding| finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+            .filter(|finding| {
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+            })
             .collect();
         assert!(
             ownership.is_empty(),
@@ -465,10 +464,10 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         assert!(
             findings.iter().any(|finding| {
-                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
-                    && finding.message.contains("rules owner 'documentation' may only use")
-                    && finding.message.contains("SRC-*")
-                    && finding.message.contains("OMNIA-001")
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+                    && snippet(finding).contains("rules owner 'documentation' may only use")
+                    && snippet(finding).contains("SRC-*")
+                    && snippet(finding).contains("OMNIA-001")
             }),
             "expected SRC-only enforcement under source adapter, got: {findings:?}",
         );
@@ -483,11 +482,11 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         assert!(
             findings.iter().any(|finding| {
-                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
-                    && finding.message.contains("FRAME-*")
-                    && finding.message.contains("framework-repo declarative rules")
-                    && finding.message.contains("FRAME-001")
-                    && finding.message.contains("omnia")
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+                    && snippet(finding).contains("FRAME-*")
+                    && snippet(finding).contains("framework-repo declarative rules")
+                    && snippet(finding).contains("FRAME-001")
+                    && snippet(finding).contains("omnia")
             }),
             "expected FRAME placement violation with framework rule-namespace reservation message, got: {findings:?}",
         );
@@ -506,11 +505,11 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         assert!(
             findings.iter().any(|finding| {
-                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
-                    && finding.message.contains("FRAME-*")
-                    && finding.message.contains("framework-repo declarative rules")
-                    && finding.message.contains("FRAME-007")
-                    && finding.message.contains("documentation")
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+                    && snippet(finding).contains("FRAME-*")
+                    && snippet(finding).contains("framework-repo declarative rules")
+                    && snippet(finding).contains("FRAME-007")
+                    && snippet(finding).contains("documentation")
             }),
             "expected FRAME placement violation under source adapter, got: {findings:?}",
         );
@@ -525,7 +524,9 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         let ownership: Vec<_> = findings
             .iter()
-            .filter(|finding| finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+            .filter(|finding| {
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+            })
             .collect();
         assert!(
             ownership.is_empty(),
@@ -542,10 +543,10 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         assert!(
             findings.iter().any(|finding| {
-                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
-                    && finding.message.contains("rules owner 'omnia' may only use")
-                    && finding.message.contains("OMNIA-*")
-                    && finding.message.contains("CORE-001")
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+                    && snippet(finding).contains("rules owner 'omnia' may only use")
+                    && snippet(finding).contains("OMNIA-*")
+                    && snippet(finding).contains("CORE-001")
             }),
             "expected CORE-* under target adapter to be rejected, got: {findings:?}",
         );
@@ -564,10 +565,10 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         assert!(
             findings.iter().any(|finding| {
-                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
-                    && finding.message.contains("rules owner 'documentation' may only use")
-                    && finding.message.contains("SRC-*")
-                    && finding.message.contains("CORE-007")
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+                    && snippet(finding).contains("rules owner 'documentation' may only use")
+                    && snippet(finding).contains("SRC-*")
+                    && snippet(finding).contains("CORE-007")
             }),
             "expected CORE-* under source adapter to be rejected, got: {findings:?}",
         );
@@ -582,10 +583,10 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         assert!(
             findings.iter().any(|finding| {
-                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
-                    && finding.message.contains("rules owner 'core' may only use")
-                    && finding.message.contains("CORE-*")
-                    && finding.message.contains("UNI-001")
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+                    && snippet(finding).contains("rules owner 'core' may only use")
+                    && snippet(finding).contains("CORE-*")
+                    && snippet(finding).contains("UNI-001")
             }),
             "expected non-CORE-* under core pack to be rejected, got: {findings:?}",
         );
@@ -600,10 +601,10 @@ mod tests {
         let findings = run_rules_check(&ctx_for(temp.path()));
         assert!(
             findings.iter().any(|finding| {
-                finding.rule_id == RULE_NAMESPACE_OWNERSHIP_VIOLATION
-                    && finding.message.contains("rules owner 'vectis' may only use")
-                    && finding.message.contains("VECTIS-*")
-                    && finding.message.contains("RUST-001")
+                finding.rule_id.as_deref() == core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION)
+                    && snippet(finding).contains("rules owner 'vectis' may only use")
+                    && snippet(finding).contains("VECTIS-*")
+                    && snippet(finding).contains("RUST-001")
             }),
             "expected vectis to keep rejecting non-VECTIS ids, got: {findings:?}",
         );

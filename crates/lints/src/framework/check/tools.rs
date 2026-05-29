@@ -7,9 +7,11 @@ use regex::Regex;
 use serde_json::Value;
 use walkdir::WalkDir;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::under_symlink;
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::helpers::under_symlink;
+use crate::rules::Diagnostic;
 
 const RULE_INVALID_DECLARATION: &str = "tools.invalid-declaration";
 const RULE_INVOCATION_NOT_EQUIVALENT: &str = "tools.invocation-not-equivalent";
@@ -102,7 +104,7 @@ fn retired_helper_regexes() -> &'static [(&'static RetiredHelperPattern, Regex)]
 pub struct FirstPartyTools;
 
 impl Check for FirstPartyTools {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_first_party_tools(ctx)
     }
 }
@@ -111,13 +113,13 @@ impl Check for FirstPartyTools {
 pub struct DeclaredToolInvocations;
 
 impl Check for DeclaredToolInvocations {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_declared_tool_invocations(ctx)
     }
 }
 
 /// Run first-party tool declaration validation against `ctx`.
-pub fn check_first_party_tools(ctx: &Context) -> Vec<Finding> {
+pub fn check_first_party_tools(ctx: &Context) -> Vec<Diagnostic> {
     let mut findings = Vec::new();
     let mut cache: HashMap<String, Option<ResolvedAdapter>> = HashMap::new();
     let mut shape_reported = HashSet::new();
@@ -156,7 +158,7 @@ pub fn check_first_party_tools(ctx: &Context) -> Vec<Finding> {
 }
 
 /// Run declared-tool invocation equivalence validation against `ctx`.
-pub fn check_declared_tool_invocations(ctx: &Context) -> Vec<Finding> {
+pub fn check_declared_tool_invocations(ctx: &Context) -> Vec<Diagnostic> {
     let mut findings = Vec::new();
     let root = ctx.framework_root();
 
@@ -175,21 +177,17 @@ pub fn check_declared_tool_invocations(ctx: &Context) -> Vec<Finding> {
                 if !retired_helper_matches(line, helper, pattern) {
                     continue;
                 }
-                findings.push(Finding {
-                    rule_id: RULE_INVOCATION_NOT_EQUIVALENT,
-                    message: format!(
+                findings.push(framework_finding(
+                    RULE_INVOCATION_NOT_EQUIVALENT,
+                    format!(
                         "{}:{} — '{}' has a declared-tool equivalent; use `{}`",
                         rel,
                         line_idx + 1,
                         helper.token,
                         helper.replacement
                     ),
-                    location: Some(Location {
-                        path: PathBuf::from(&rel),
-                        line: line_idx + 1,
-                        column: None,
-                    }),
-                });
+                    Some(loc(PathBuf::from(&rel), line_idx + 1, None)),
+                ));
             }
         }
     }
@@ -210,7 +208,7 @@ struct ResolvedAdapter {
     rel: String,
     path: PathBuf,
     declarations: HashMap<String, String>,
-    shape_findings: Vec<Finding>,
+    shape_findings: Vec<Diagnostic>,
 }
 
 fn resolve_adapter_declarations(ctx: &Context, adapter: &str) -> Option<ResolvedAdapter> {
@@ -264,19 +262,17 @@ fn resolve_adapter_declarations(ctx: &Context, adapter: &str) -> Option<Resolved
     })
 }
 
-fn invalid_declaration(rel: &str, path: &Path, detail: &str) -> Finding {
-    Finding {
-        rule_id: RULE_INVALID_DECLARATION,
-        message: format!("First-party tool declaration: {rel} — {detail}"),
-        location: Some(Location {
-            path: path.to_path_buf(),
-            line: 1,
-            column: None,
-        }),
-    }
+fn invalid_declaration(rel: &str, path: &Path, detail: &str) -> Diagnostic {
+    framework_finding(
+        RULE_INVALID_DECLARATION,
+        format!("First-party tool declaration: {rel} — {detail}"),
+        Some(loc(path, 1, None)),
+    )
 }
 
-fn active_brief_and_skill_files(ctx: &Context) -> Result<Vec<PathBuf>, crate::error::ToolingError> {
+fn active_brief_and_skill_files(
+    ctx: &Context,
+) -> Result<Vec<PathBuf>, crate::framework::error::ToolingError> {
     let mut files = Vec::new();
     let root = ctx.framework_root();
     let targets_dir = ctx.targets_dir();
@@ -306,10 +302,13 @@ fn active_brief_and_skill_files(ctx: &Context) -> Result<Vec<PathBuf>, crate::er
 
 fn collect_markdown_under(
     framework_root: &Path, root: &Path, include: impl Fn(&[&str]) -> bool, out: &mut Vec<PathBuf>,
-) -> Result<(), crate::error::ToolingError> {
+) -> Result<(), crate::framework::error::ToolingError> {
     for entry in WalkDir::new(root).follow_links(false).into_iter() {
         let entry = entry.map_err(|source| {
-            crate::error::ToolingError::Infrastructure(format!("walk {}: {source}", root.display()))
+            crate::framework::error::ToolingError::Infrastructure(format!(
+                "walk {}: {source}",
+                root.display()
+            ))
         })?;
         if !entry.file_type().is_file() {
             continue;

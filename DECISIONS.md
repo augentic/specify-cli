@@ -148,10 +148,10 @@ without extra plumbing.
 Workspace crates: `specify-error` (leaf), `specify-schema` (embedded
 JSON Schemas), `specify-model` (artifact types and parsers, plus the
 shared atomic writer), `specify-validate` (artifact validation rule
-registry), `specify-lints` (standards layer), `specify-workflow`
-(workflow lifecycle authority), `specify-tool` (WASI host, gated),
-`specify-authoring` (publish-disabled framework authoring checks), and
-the root binary package.
+registry), `specify-lints` (standards layer, which also hosts the
+framework authoring checks behind `specdev lint` in its `framework`
+module), `specify-workflow` (workflow lifecycle authority),
+`specify-tool` (WASI host, gated), and the root binary package.
 
 `specify-model` and `specify-validate` are the two crates that earn a
 new-crate paragraph under the rule below. `specify-model` exists so the
@@ -181,13 +181,24 @@ dependency direction is overhead; refactor within an existing module
 instead. Adapter-specific logic never lands as a workspace crate
 — it lands in the adapter's WASI carve-out.
 
-`specify-authoring` is the exception for framework authoring checks
-moved from the plugin repo's retired `tooling/` crate. It stays
-publish-disabled and depends only on leaf/shared crates; the root
-`specdev` binary calls into it. Keeping the checker as a library crate
-preserves its integration-test shape without making framework-repo
-predicates part of the runtime dispatcher or `specify-workflow`'s
-workflow contract.
+The framework authoring checks behind `specdev lint` (originally the
+plugin repo's retired `tooling/` crate, then the publish-disabled
+`specify-authoring` crate) were dissolved into the `specify_lints::framework`
+module. The imperative `Check` predicates are retained as-is; only their
+output type was unified — every predicate now emits the canonical
+`Diagnostic` directly (via the `framework::builder` `framework_finding()`
+/ `loc()` helpers and the `CORE_ID_TABLE`), and `framework::check::run`
+runs the single finalize pass (rebase locations → fingerprint → assign
+sequential `FIND-NNNN` ids). The lightweight `Finding` / `Location` types
+and the binary-boundary `map_finding.rs` mapper are gone. `specdev`'s
+`AuthoringProducer` stays as the lone `DiagnosticProducer` bridge because
+the predicates need `&Context` (framework root + schema cache), which the
+`DiagnosticProducer::produce(&WorkspaceModel, project_dir)` signature does
+not carry. The dissolution does not change crates.io exposure: the root
+`specify` crate (which builds both `specrun` and `specdev`) already pulled
+the predicates into the published binary's dependency graph. RFC-34 deletes
+this imperative code incrementally as each predicate migrates to a
+`CORE-NNN` rule file.
 
 ## Tool architecture
 
@@ -693,7 +704,7 @@ convention settles the prior disagreement between
 framework schemas (e.g. the component catalog) use
 `https://schemas.specify.dev/specify/<path>`. The
 `links.brief-schema-link-resolve` predicate in
-[`crates/authoring/src/check/schema_links.rs`](./crates/authoring/src/check/schema_links.rs)
+[`crates/lints/src/framework/check/schema_links.rs`](./crates/lints/src/framework/check/schema_links.rs)
 enforces that every `schemas.specify.dev` URL cited in adapter briefs
 resolves to a known schema in the hardcoded registry.
 

@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
 
-use crate::error::ToolingError;
+use crate::framework::error::ToolingError;
 
 /// Shared scan context: framework root and schema cache.
 pub struct Context {

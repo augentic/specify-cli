@@ -5,9 +5,11 @@ use std::sync::OnceLock;
 use regex::Regex;
 use walkdir::WalkDir;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::under_symlink;
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::helpers::under_symlink;
+use crate::rules::Diagnostic;
 
 const RULE_BRIEF_SCHEMA_LINK_RESOLVE: &str = "links.brief-schema-link-resolve";
 
@@ -20,14 +22,14 @@ const KNOWN_SCHEMAS: &[(&str, &[&str])] = &[("vectis", &["tokens", "assets", "co
 pub struct SchemaLinksCheck;
 
 impl Check for SchemaLinksCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         run_on_root(ctx.framework_root())
     }
 }
 
 /// Run the schema-link predicate against a framework root (used by
 /// integration tests).
-pub fn run_on_root(root: &std::path::Path) -> Vec<Finding> {
+pub fn run_on_root(root: &std::path::Path) -> Vec<Diagnostic> {
     let url_re = schema_url_pattern();
     let inline_re = inline_code_pattern();
 
@@ -63,19 +65,15 @@ pub fn run_on_root(root: &std::path::Path) -> Vec<Finding> {
 
                 if !is_known_schema(tool, name) {
                     let url = cap.get(0).map(|m| m.as_str()).unwrap_or("");
-                    findings.push(Finding {
-                        rule_id: RULE_BRIEF_SCHEMA_LINK_RESOLVE,
-                        message: format!(
+                    findings.push(framework_finding(
+                        RULE_BRIEF_SCHEMA_LINK_RESOLVE,
+                        format!(
                             "{rel}:{} — schema URL '{url}' does not resolve to a known \
                              tool-owned schema",
                             line_idx + 1,
                         ),
-                        location: Some(Location {
-                            path: path.clone(),
-                            line: line_idx + 1,
-                            column: None,
-                        }),
-                    });
+                        Some(loc(path.clone(), line_idx + 1, None)),
+                    ));
                 }
             }
         }
@@ -90,11 +88,11 @@ fn is_known_schema(tool: &str, name: &str) -> bool {
 
 fn walk_adapter_markdown(
     framework_root: &std::path::Path, adapters_dir: &std::path::Path,
-) -> Result<Vec<PathBuf>, crate::error::ToolingError> {
+) -> Result<Vec<PathBuf>, crate::framework::error::ToolingError> {
     let mut out = Vec::new();
     for entry in WalkDir::new(adapters_dir).follow_links(false).into_iter() {
         let entry = entry.map_err(|source| {
-            crate::error::ToolingError::Infrastructure(format!(
+            crate::framework::error::ToolingError::Infrastructure(format!(
                 "walk {}: {source}",
                 adapters_dir.display()
             ))

@@ -6,9 +6,11 @@ use std::sync::OnceLock;
 use regex::Regex;
 use walkdir::WalkDir;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::{walk_markdown_files, walk_skill_files};
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::helpers::{walk_markdown_files, walk_skill_files};
+use crate::rules::Diagnostic;
 
 const RULE_BROKEN_REFERENCE: &str = "links.broken-reference";
 const RULE_UNRESOLVED_DIRECTIVE: &str = "links.unresolved-directive";
@@ -20,7 +22,7 @@ const RULE_UNRESOLVED_DIRECTIVE: &str = "links.unresolved-directive";
 /// that surface via a `path-pattern` + `reference-resolves`
 /// deterministic hint pair (`adapters/shared/rules/core/CORE-002-links-unresolved.md`
 /// in the framework repo). The parity test
-/// `crates/authoring/tests/core_parity_links_unresolved.rs` proves
+/// `crates/lints/tests/core_parity_links_unresolved.rs` proves
 /// the declarative interpreter flags the same unresolved-reference
 /// set as the deleted imperative row, with the rule-id mapping
 /// `links.unresolved` ↔ `CORE-002`. Skill reference and skill
@@ -29,24 +31,24 @@ const RULE_UNRESOLVED_DIRECTIVE: &str = "links.unresolved-directive";
 pub struct LinksCheck;
 
 impl Check for LinksCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         run(ctx)
     }
 }
 
 /// Run all link predicates against `ctx`.
-pub fn run(ctx: &Context) -> Vec<Finding> {
+pub fn run(ctx: &Context) -> Vec<Diagnostic> {
     run_on_root(ctx.framework_root())
 }
 
 /// Run all link predicates against a framework root (used by integration tests).
-pub fn run_on_root(root: &Path) -> Vec<Finding> {
+pub fn run_on_root(root: &Path) -> Vec<Diagnostic> {
     let mut findings = check_references(root);
     findings.extend(check_directives(root));
     findings
 }
 
-fn check_references(root: &Path) -> Vec<Finding> {
+fn check_references(root: &Path) -> Vec<Diagnostic> {
     let ref_re = reference_link_pattern();
     let fence_re = fenced_code_pattern();
     let plugins_dir = root.join("plugins");
@@ -91,7 +93,7 @@ fn check_references(root: &Path) -> Vec<Finding> {
     findings
 }
 
-fn check_directives(root: &Path) -> Vec<Finding> {
+fn check_directives(root: &Path) -> Vec<Diagnostic> {
     let directive_re = directive_pattern();
     let fence_re = fenced_code_pattern();
     let inline_re = inline_code_pattern();
@@ -166,7 +168,7 @@ fn build_skill_registry(root: &Path) -> HashMap<String, HashSet<String>> {
 }
 
 fn skip_test_fixtures(path: &str) -> bool {
-    path.contains("tooling/tests/fixtures") || path.contains("crates/authoring/tests/fixtures")
+    path.contains("tooling/tests/fixtures") || path.contains("crates/lints/tests/fixtures")
 }
 
 fn directive_skip_patterns() -> &'static [Regex] {
@@ -219,14 +221,6 @@ fn inline_code_pattern() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"`[^`]+`").expect("valid inline code pattern"))
 }
 
-fn finding(rule_id: &'static str, message: String, path: PathBuf) -> Finding {
-    Finding {
-        rule_id,
-        message,
-        location: Some(Location {
-            path,
-            line: 1,
-            column: None,
-        }),
-    }
+fn finding(rule_id: &'static str, message: String, path: PathBuf) -> Diagnostic {
+    framework_finding(rule_id, message, Some(loc(path, 1, None)))
 }

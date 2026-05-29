@@ -1,9 +1,11 @@
 use std::fs;
 use std::path::Path;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::under_symlink;
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::helpers::under_symlink;
+use crate::rules::Diagnostic;
 
 pub const RULE_MISSING_MANIFEST: &str = "adapter.missing-manifest";
 const ADAPTER_FILENAME: &str = "adapter.yaml";
@@ -15,7 +17,7 @@ const ADAPTER_FILENAME: &str = "adapter.yaml";
 /// that surface via a `path-pattern` + `schema` deterministic hint
 /// pair (`adapters/shared/rules/core/CORE-001-adapter-schema.md` in the
 /// framework repo). The parity test
-/// `crates/authoring/tests/core_parity_adapter_schema.rs` proves the
+/// `crates/lints/tests/core_parity_adapter_schema.rs` proves the
 /// declarative pipeline cites the same `iter_errors` instance pointers
 /// as the deleted imperative row, with the documented rule-id mapping
 /// `adapter.schema-violation` ↔ `CORE-001`. The missing-manifest check
@@ -28,19 +30,19 @@ const ADAPTER_FILENAME: &str = "adapter.yaml";
 pub struct AdapterCheck;
 
 impl Check for AdapterCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         run_adapter_check(ctx)
     }
 }
 
-pub fn run_adapter_check(ctx: &Context) -> Vec<Finding> {
+pub fn run_adapter_check(ctx: &Context) -> Vec<Diagnostic> {
     let mut findings = Vec::new();
     findings.extend(check_missing_manifests(ctx, &ctx.sources_dir()));
     findings.extend(check_missing_manifests(ctx, &ctx.targets_dir()));
     findings
 }
 
-fn check_missing_manifests(ctx: &Context, axis_dir: &Path) -> Vec<Finding> {
+fn check_missing_manifests(ctx: &Context, axis_dir: &Path) -> Vec<Diagnostic> {
     let Ok(entries) = fs::read_dir(axis_dir) else {
         return Vec::new();
     };
@@ -59,19 +61,13 @@ fn check_missing_manifests(ctx: &Context, axis_dir: &Path) -> Vec<Finding> {
             continue;
         }
         let rel = relative_path(ctx, &path);
-        findings.push(Finding {
-            rule_id: RULE_MISSING_MANIFEST,
-            message: format!(
-                "Adapter directory missing manifest: {rel} — expected {ADAPTER_FILENAME}"
-            ),
-            location: Some(Location {
-                path: path.clone(),
-                line: 1,
-                column: None,
-            }),
-        });
+        findings.push(framework_finding(
+            RULE_MISSING_MANIFEST,
+            format!("Adapter directory missing manifest: {rel} — expected {ADAPTER_FILENAME}"),
+            Some(loc(path.clone(), 1, None)),
+        ));
     }
-    findings.sort_by(|a, b| a.message.cmp(&b.message));
+    findings.sort_by(|a, b| a.title.cmp(&b.title));
     findings
 }
 
@@ -82,6 +78,7 @@ fn relative_path(ctx: &Context, path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framework::builder::{core_id_for, snippet};
 
     #[test]
     fn relative_path_strips_framework_root() {
@@ -101,8 +98,8 @@ mod tests {
         let ctx = Context::from_framework_root(temp.path()).expect("context");
         let findings = check_missing_manifests(&ctx, &ctx.sources_dir());
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].rule_id, RULE_MISSING_MANIFEST);
-        assert!(findings[0].message.contains("adapters/sources/broken"));
+        assert_eq!(findings[0].rule_id.as_deref(), core_id_for(RULE_MISSING_MANIFEST));
+        assert!(snippet(&findings[0]).contains("adapters/sources/broken"));
     }
 
     fn scaffold_framework(root: &Path) {

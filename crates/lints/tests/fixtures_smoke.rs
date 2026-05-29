@@ -1,4 +1,6 @@
-use specify_authoring::Context;
+//! Smoke test running the framework `Check` pass against a live root.
+
+use specify_lints::framework::Context;
 
 fn framework_root() -> Option<std::path::PathBuf> {
     std::env::var("SPECDEV_FRAMEWORK_ROOT").ok().map(std::path::PathBuf::from)
@@ -20,6 +22,6 @@ fn check_runs_with_no_findings() {
         return;
     };
     let ctx = Context::from_framework_root(root).expect("framework root resolves");
-    let findings = specify_authoring::check::run(&ctx);
+    let findings = specify_lints::framework::check::run(&ctx);
     assert!(findings.is_empty());
 }

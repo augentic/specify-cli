@@ -3,8 +3,10 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::rules::Diagnostic;
 
 const CANONICAL_REL: &str = "docs/reference/review-team-protocol.md";
 const RULE_NON_CANONICAL: &str = "agent-teams.non-canonical-overlay";
@@ -14,17 +16,17 @@ const RULE_MISSING_CANONICAL: &str = "agent-teams.missing-canonical";
 pub struct AgentTeamsCheck;
 
 impl Check for AgentTeamsCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         run(ctx)
     }
 }
 
 /// Run the agent-teams overlay check against `ctx`.
-pub fn run(ctx: &Context) -> Vec<Finding> {
+pub fn run(ctx: &Context) -> Vec<Diagnostic> {
     check_overlays(ctx.framework_root())
 }
 
-fn check_overlays(root: &Path) -> Vec<Finding> {
+fn check_overlays(root: &Path) -> Vec<Diagnostic> {
     let canonical_path = root.join(CANONICAL_REL);
     let canonical_bytes = match fs::read(&canonical_path) {
         Ok(bytes) => bytes,
@@ -144,14 +146,6 @@ fn path_relative(root: &Path, path: &Path) -> String {
         .unwrap_or_else(|_| path.display().to_string())
 }
 
-fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Finding {
-    Finding {
-        rule_id,
-        message,
-        location: path.map(|path| Location {
-            path,
-            line: 1,
-            column: None,
-        }),
-    }
+fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Diagnostic {
+    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }

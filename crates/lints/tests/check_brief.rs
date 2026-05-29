@@ -1,9 +1,10 @@
+//! Integration coverage for the framework brief size/frontmatter checks.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_authoring::Context;
-use specify_authoring::check::BriefCheck;
-use specify_authoring::finding::Check;
+use specify_lints::framework::check::{BriefCheck, Check};
+use specify_lints::framework::{Context, core_id_for, snippet};
 use tempfile::TempDir;
 
 fn scaffold_framework_root(base: &Path) -> PathBuf {
@@ -44,10 +45,10 @@ fn parent_brief_over_cap_finding() {
     let findings = BriefCheck.run(&context_for(&root));
     let size = findings
         .iter()
-        .find(|f| f.rule_id == "brief.exceeds-size-limit")
+        .find(|f| f.rule_id.as_deref() == core_id_for("brief.exceeds-size-limit"))
         .expect("expected size finding");
-    assert!(size.message.contains("parent brief is 151 non-blank lines"));
-    assert!(size.message.contains("exceeds hard cap 150"));
+    assert!(snippet(size).contains("parent brief is 151 non-blank lines"));
+    assert!(snippet(size).contains("exceeds hard cap 150"));
 }
 
 #[test]
@@ -63,10 +64,10 @@ fn sub_brief_over_hard_cap_finding() {
     let findings = BriefCheck.run(&context_for(&root));
     let size = findings
         .iter()
-        .find(|f| f.rule_id == "brief.exceeds-size-limit")
+        .find(|f| f.rule_id.as_deref() == core_id_for("brief.exceeds-size-limit"))
         .expect("expected size finding");
-    assert!(size.message.contains("phase sub-brief is 801 non-blank lines"));
-    assert!(size.message.contains("exceeds hard cap 800"));
+    assert!(snippet(size).contains("phase sub-brief is 801 non-blank lines"));
+    assert!(snippet(size).contains("exceeds hard cap 800"));
 }
 
 #[test]
@@ -82,8 +83,8 @@ fn brief_with_frontmatter_finding() {
     let findings = BriefCheck.run(&context_for(&root));
     let fm = findings
         .iter()
-        .find(|f| f.rule_id == "brief.frontmatter-forbidden")
+        .find(|f| f.rule_id.as_deref() == core_id_for("brief.frontmatter-forbidden"))
         .expect("expected frontmatter finding");
-    assert!(fm.message.contains("brief has YAML frontmatter"));
-    assert!(fm.message.contains("docs/standards/skill-authoring.md#brief-authoring"));
+    assert!(snippet(fm).contains("brief has YAML frontmatter"));
+    assert!(snippet(fm).contains("docs/standards/skill-authoring.md#brief-authoring"));
 }

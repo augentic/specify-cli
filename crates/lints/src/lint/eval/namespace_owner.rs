@@ -51,7 +51,7 @@ use crate::rules::{
 const SOURCE_RULE_NAMESPACE_MATCHES_OWNER: &str = "rule-namespace-matches-owner";
 
 /// Owner → allowed id-prefix set, kept in sync with the static
-/// entries of `crates/authoring/src/check/rules.rs` `BUILTIN_NAMESPACES`.
+/// entries of `crates/lints/src/framework/check/rules.rs` `BUILTIN_NAMESPACES`.
 /// The source-axis `SRC-*` rule is derived from the path shape rather
 /// than enumerated here so source-adapter names are never hardcoded.
 const TARGET_OWNERS: &[(&str, &[&str])] =

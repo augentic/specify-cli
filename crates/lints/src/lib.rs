@@ -21,6 +21,7 @@
 //! mirrors the historical `specify_workflow::rules::*` surface so call
 //! sites only change their crate prefix.
 
+pub mod framework;
 pub mod lint;
 pub mod rules;
 

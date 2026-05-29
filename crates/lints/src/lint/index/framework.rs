@@ -293,8 +293,8 @@ mod tests {
     #[test]
     fn include_set_accepts_top_level_markers() {
         assert!(is_included("AGENTS.md"));
-        assert!(is_included("crates/authoring/AGENTS.md"));
-        assert!(is_included("crates/authoring/REVIEW.md"));
+        assert!(is_included("crates/lints/AGENTS.md"));
+        assert!(is_included("crates/lints/REVIEW.md"));
     }
 
     #[test]

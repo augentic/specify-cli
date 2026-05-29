@@ -1,8 +1,12 @@
+//! Integration coverage for the framework tool declaration checks.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_authoring::Context;
-use specify_authoring::check::tools::{check_declared_tool_invocations, check_first_party_tools};
+use specify_lints::framework::check::tools::{
+    check_declared_tool_invocations, check_first_party_tools,
+};
+use specify_lints::framework::{Context, core_id_for, snippet};
 
 fn scaffold_framework_root(root: &Path) -> PathBuf {
     fs::create_dir_all(root.join("plugins")).expect("plugins dir");
@@ -38,9 +42,11 @@ fn invalid_tool_entry_shape_fails() {
 
     let findings = check_first_party_tools(&ctx_for(&root));
     assert_eq!(findings.len(), 2);
-    assert!(findings.iter().all(|f| f.rule_id == "tools.invalid-declaration"));
-    assert!(findings.iter().any(|f| f.message.contains("must be { name, version } objects")));
-    assert!(findings.iter().any(|f| f.message.contains("'contract' package must be")));
+    assert!(
+        findings.iter().all(|f| f.rule_id.as_deref() == core_id_for("tools.invalid-declaration"))
+    );
+    assert!(findings.iter().any(|f| snippet(f).contains("must be { name, version } objects")));
+    assert!(findings.iter().any(|f| snippet(f).contains("'contract' package must be")));
 }
 
 #[test]
@@ -54,7 +60,7 @@ fn retired_helper_in_brief_fails() {
 
     let findings = check_declared_tool_invocations(&ctx_for(&root));
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "tools.invocation-not-equivalent");
-    assert!(findings[0].message.contains("specify-contract"));
-    assert!(findings[0].message.contains("specrun tool run contract"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("tools.invocation-not-equivalent"));
+    assert!(snippet(&findings[0]).contains("specify-contract"));
+    assert!(snippet(&findings[0]).contains("specrun tool run contract"));
 }

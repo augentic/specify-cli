@@ -21,11 +21,9 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_authoring::check;
-use specify_authoring::context::Context as AuthoringContext;
-use specify_authoring::exit::Exit;
 use specify_error::{Error, Result};
-use specify_lints::fingerprint::fingerprint as compute_fingerprint;
+use specify_lints::framework::check;
+use specify_lints::framework::context::Context as AuthoringContext;
 use specify_lints::lint::diagnostics::{
     DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format as DiagnosticsFormat,
     count_status, map_render_error, render,
@@ -44,7 +42,7 @@ use specify_workflow::journal::{
 };
 
 use crate::authoring::commands::lint::cli::{LintAction, LintFormat};
-use crate::authoring::map_finding::map_findings;
+use crate::authoring::exit::Exit;
 use crate::output::Format;
 
 /// Handler entry point dispatched from `src/authoring/commands.rs`.
@@ -168,10 +166,10 @@ fn pick_format(global: Format, output_format: Option<LintFormat>) -> Diagnostics
 }
 
 /// Map a `specify_error::Error` onto the closed [`Exit`] code set.
-/// `specify-authoring::exit::Exit` only models the codes the framework
-/// run can produce — `Success(0)`, `GenericFailure(1)`,
-/// `ValidationFailed(2)` — and `Argument` failures piggy-back on
-/// `ValidationFailed` to match the runtime convention.
+/// The `specdev` [`Exit`] only models the codes the framework run can
+/// produce — `Success(0)`, `GenericFailure(1)`, `ValidationFailed(2)` —
+/// and `Argument` failures piggy-back on `ValidationFailed` to match
+/// the runtime convention.
 const fn exit_from_error(err: &Error) -> Exit {
     match err {
         Error::Validation { .. } | Error::Argument { .. } => Exit::ValidationFailed,
@@ -200,44 +198,19 @@ fn emit_fallback_envelope(format: DiagnosticsFormat) {
 ///
 /// Holds the loaded [`AuthoringContext`]; ignores the `WorkspaceModel`
 /// the runner threads in (the imperative predicates index their own
-/// inputs from the context). Maps each [`specify_authoring::finding::Finding`]
-/// to a [`Diagnostic`] and rebases locations to project-relative form
-/// so the schema-validating JSON formatter accepts the envelope.
+/// inputs from the context). [`check::run`] now finalises the batch
+/// itself — building each [`Diagnostic`] via
+/// [`specify_lints::framework::framework_finding`], rebasing locations
+/// to project-relative form, and stamping fingerprints and ids — so
+/// this producer is a thin pass-through that satisfies the
+/// [`DiagnosticProducer`] contract directly.
 struct AuthoringProducer<'a> {
     ctx: &'a AuthoringContext,
 }
 
 impl DiagnosticProducer for AuthoringProducer<'_> {
-    fn produce(&self, _model: &WorkspaceModel, project_dir: &Path) -> Vec<Diagnostic> {
-        let imperative = check::run(self.ctx);
-        let mut findings = map_findings(&imperative);
-        rebase_locations_to_project(&mut findings, project_dir);
-        findings
-    }
-}
-
-/// Rewrite each finding's `location.path` to be project-relative
-/// against `project_dir`. The imperative `Check` predicates emit
-/// absolute paths anchored at the canonicalised framework root, but
-/// `finding.schema.json` constrains `location.path` to project-relative
-/// forward-slash strings. Rebasing here keeps the schema-validating
-/// JSON formatter from rejecting the imperative envelope on emit.
-///
-/// Re-fingerprints each finding after the rewrite so the stored hash
-/// reflects the canonical (rebased) preimage.
-fn rebase_locations_to_project(findings: &mut [Diagnostic], project_dir: &Path) {
-    let prefix = project_dir.to_string_lossy().replace('\\', "/");
-    for finding in findings {
-        let Some(location) = finding.location.as_mut() else {
-            continue;
-        };
-        let normalised = location.path.replace('\\', "/");
-        if let Some(rest) = normalised.strip_prefix(&prefix) {
-            location.path = rest.trim_start_matches('/').to_string();
-        } else {
-            location.path = normalised;
-        }
-        finding.fingerprint = compute_fingerprint(finding);
+    fn produce(&self, _model: &WorkspaceModel, _project_dir: &Path) -> Vec<Diagnostic> {
+        check::run(self.ctx)
     }
 }
 

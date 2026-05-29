@@ -6,7 +6,7 @@
 //! - Imperative rule id `skill.duplicate-name` ↔ declarative rule id `CORE-003`.
 //! - Imperative behaviour: walk every `plugins/<plugin>/skills/<skill>/SKILL.md`
 //!   under `framework_root`, read the YAML frontmatter, group files by their
-//!   `name:` field, and emit one [`specify_authoring::Finding`] per duplicated
+//!   `name:` field, and emit one [`specify_lints::Diagnostic`] per duplicated
 //!   name with the comma-joined offender list in the message and the first
 //!   path (sorted by insertion order from the walk, which sorts entries
 //!   lexically) carried in the location.

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value as JsonValue;
 use walkdir::WalkDir;
 
-use crate::error::ToolingError;
+use crate::framework::error::ToolingError;
 
 /// Extract YAML frontmatter from a Markdown file.
 ///

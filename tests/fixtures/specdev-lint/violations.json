@@ -4,26 +4,10 @@
       "artifact": "unknown",
       "evidence": {
         "kind": "snippet",
-        "value": "Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
-      },
-      "fingerprint": "sha256:aeaec43fc2a37a5bf7c3dcdd1afd363df51ee41fe513998ea4da0396824400d7",
-      "id": "FIND-0001",
-      "impact": "Authoring check 'rules.duplicate-rule-id' failed.",
-      "kind": "violation",
-      "remediation": "Resolve the violation reported by 'rules.duplicate-rule-id'. See the finding message for details.",
-      "rule-id": "CORE-026",
-      "severity": "important",
-      "source": "deterministic",
-      "title": "Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
-    },
-    {
-      "artifact": "unknown",
-      "evidence": {
-        "kind": "snippet",
         "value": "Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' under rules owner 'omnia')"
       },
       "fingerprint": "sha256:051fe0c3ffd8635a0a63a7609ac19ce8905a11dbf05b0a8b173d6f4599530c98",
-      "id": "FIND-0002",
+      "id": "FIND-0001",
       "impact": "Authoring check 'rules.namespace-ownership-violation' failed.",
       "kind": "violation",
       "location": {
@@ -35,6 +19,22 @@
       "severity": "important",
       "source": "deterministic",
       "title": "Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' u…"
+    },
+    {
+      "artifact": "unknown",
+      "evidence": {
+        "kind": "snippet",
+        "value": "Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
+      },
+      "fingerprint": "sha256:aeaec43fc2a37a5bf7c3dcdd1afd363df51ee41fe513998ea4da0396824400d7",
+      "id": "FIND-0002",
+      "impact": "Authoring check 'rules.duplicate-rule-id' failed.",
+      "kind": "violation",
+      "remediation": "Resolve the violation reported by 'rules.duplicate-rule-id'. See the finding message for details.",
+      "rule-id": "CORE-026",
+      "severity": "important",
+      "source": "deterministic",
+      "title": "Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
     },
     {
       "artifact": "unknown",

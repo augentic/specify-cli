@@ -1,8 +1,10 @@
 use std::fs;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::{relative_display, resolve_markdown_asset, walk_markdown_files};
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::helpers::{relative_display, resolve_markdown_asset, walk_markdown_files};
+use crate::rules::Diagnostic;
 
 const RULE_SPECIFY_HISTORY_CITATION: &str = "docs.specify-history-citation-in-docs";
 const RULE_MISSING_DIAGRAM: &str = "docs.missing-diagram-asset";
@@ -17,7 +19,7 @@ const TEXT_FENCE_ALLOWLIST: &[&str] = &[];
 pub struct HistoryCitation;
 
 impl Check for HistoryCitation {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         let mut findings = Vec::new();
         let markdown_roots = ["docs", "adapters", "plugins"];
         let root_files = ["AGENTS.md", "REVIEW.md"];
@@ -47,7 +49,7 @@ impl Check for HistoryCitation {
 }
 
 fn collect_specify_history_citations(
-    ctx: &Context, path: &std::path::Path, findings: &mut Vec<Finding>,
+    ctx: &Context, path: &std::path::Path, findings: &mut Vec<Diagnostic>,
 ) {
     let rel = relative_display(ctx.framework_root(), path);
     if rel.starts_with("docs/assets/") {
@@ -61,19 +63,15 @@ fn collect_specify_history_citations(
 
     for (line_idx, line) in content.lines().enumerate() {
         if has_specify_history_citation(line) {
-            findings.push(Finding {
-                rule_id: RULE_SPECIFY_HISTORY_CITATION,
-                message: format!(
+            findings.push(framework_finding(
+                RULE_SPECIFY_HISTORY_CITATION,
+                format!(
                     "Specify design-history citation in user-facing docs at {rel}:{} -- {} -- cite the live decision topic or strip",
                     line_idx + 1,
                     line.trim()
                 ),
-                location: Some(Location {
-                    path: path.to_path_buf(),
-                    line: line_idx + 1,
-                    column: None,
-                }),
-            });
+                Some(loc(path, line_idx + 1, None)),
+            ));
         }
     }
 }
@@ -82,7 +80,7 @@ fn collect_specify_history_citations(
 pub struct MissingDiagramAsset;
 
 impl Check for MissingDiagramAsset {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         let root = ctx.framework_root().join("docs");
         if !root.is_dir() {
             return Vec::new();
@@ -114,15 +112,11 @@ impl Check for MissingDiagramAsset {
                     continue;
                 }
                 let resolved = relative_display(ctx.framework_root(), &abs);
-                findings.push(Finding {
-                    rule_id: RULE_MISSING_DIAGRAM,
-                    message: format!("{rel} references missing SVG {target} (resolved {resolved})"),
-                    location: Some(Location {
-                        path: path.clone(),
-                        line: 1,
-                        column: None,
-                    }),
-                });
+                findings.push(framework_finding(
+                    RULE_MISSING_DIAGRAM,
+                    format!("{rel} references missing SVG {target} (resolved {resolved})"),
+                    Some(loc(path.clone(), 1, None)),
+                ));
             }
         }
 
@@ -134,7 +128,7 @@ impl Check for MissingDiagramAsset {
 pub struct TextPipelineDiagram;
 
 impl Check for TextPipelineDiagram {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         let mut findings = Vec::new();
 
         for rel_root in TEXT_DIAGRAM_ROOTS {
@@ -157,17 +151,13 @@ impl Check for TextPipelineDiagram {
 
                 for block in find_text_fence_blocks(&content) {
                     if has_text_diagram_arrow(&block) {
-                        findings.push(Finding {
-                            rule_id: RULE_TEXT_PIPELINE,
-                            message: format!(
+                        findings.push(framework_finding(
+                            RULE_TEXT_PIPELINE,
+                            format!(
                                 "{rel} uses a ```text flow diagram — replace with SVG under docs/assets/diagrams/ (see docs/assets/diagrams/_STYLE.md)"
                             ),
-                            location: Some(Location {
-                                path: path.clone(),
-                                line: 1,
-                                column: None,
-                            }),
-                        });
+                            Some(loc(path.clone(), 1, None)),
+                        ));
                     }
                 }
             }

@@ -43,11 +43,28 @@ pub use skill_frontmatter::{
 };
 pub use tools::{DeclaredToolInvocations, FirstPartyTools};
 
-use crate::context::Context;
-use crate::finding::{Check, Finding};
+use std::path::Path;
 
-/// Run every registered check predicate sequentially.
-pub fn run(ctx: &Context) -> Vec<Finding> {
+use crate::framework::context::Context;
+use crate::rules::Diagnostic;
+use crate::rules::fingerprint::fingerprint;
+
+/// A check predicate that scans the framework repo and returns
+/// [`Diagnostic`]s. The predicates need a `&Context` (framework root +
+/// schema cache), which the declarative
+/// [`crate::lint::producer::DiagnosticProducer`] contract does not
+/// provide, so this trait survives the finding-type unification — only
+/// its return type changed from the deleted lightweight `Finding`.
+pub trait Check {
+    /// Scan `ctx` and return this predicate's findings. Locations are
+    /// absolute (anchored at the canonicalised framework root) and
+    /// `id` / `fingerprint` are left unset for [`run`] to finalise.
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic>;
+}
+
+/// Run every registered check predicate sequentially, then finalise the
+/// combined batch.
+pub fn run(ctx: &Context) -> Vec<Diagnostic> {
     let checks: &[&dyn Check] = &[
         &AdapterCheck,
         &AgentTeamsCheck,
@@ -86,13 +103,44 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
         findings.extend(check.run(ctx));
     }
 
+    finalize(&mut findings, ctx.framework_root());
+    findings
+}
+
+/// Finalise a batch of predicate findings into ready-to-render
+/// [`Diagnostic`]s: rebase each `location.path` to project-relative
+/// form, sort deterministically, then compute fingerprints and assign
+/// sequential `FIND-NNNN` ids.
+///
+/// The fingerprint preimage excludes `id`, so hashing before assigning
+/// ids is safe. Rebasing before hashing is required because the
+/// imperative predicates emit absolute paths anchored at the
+/// canonicalised framework root, while `diagnostic.schema.json`
+/// constrains `location.path` to project-relative forward-slash
+/// strings.
+fn finalize(findings: &mut [Diagnostic], framework_root: &Path) {
+    let prefix = framework_root.to_string_lossy().replace('\\', "/");
+    for finding in findings.iter_mut() {
+        if let Some(location) = finding.location.as_mut() {
+            let normalised = location.path.replace('\\', "/");
+            if let Some(rest) = normalised.strip_prefix(&prefix) {
+                location.path = rest.trim_start_matches('/').to_string();
+            } else {
+                location.path = normalised;
+            }
+        }
+    }
+
     findings.sort_by(|a, b| {
-        let a_path = a.location.as_ref().map(|l| l.path.as_path());
-        let b_path = b.location.as_ref().map(|l| l.path.as_path());
-        let a_line = a.location.as_ref().map(|l| l.line);
-        let b_line = b.location.as_ref().map(|l| l.line);
-        (a.rule_id, a_path, a_line, &a.message).cmp(&(b.rule_id, b_path, b_line, &b.message))
+        let a_path = a.location.as_ref().map(|l| l.path.as_str());
+        let b_path = b.location.as_ref().map(|l| l.path.as_str());
+        let a_line = a.location.as_ref().and_then(|l| l.line);
+        let b_line = b.location.as_ref().and_then(|l| l.line);
+        (&a.rule_id, a_path, a_line, &a.title).cmp(&(&b.rule_id, b_path, b_line, &b.title))
     });
 
-    findings
+    for (index, finding) in findings.iter_mut().enumerate() {
+        finding.fingerprint = fingerprint(finding);
+        finding.id = format!("FIND-{:04}", index + 1);
+    }
 }

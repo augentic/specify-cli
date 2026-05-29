@@ -3,10 +3,12 @@ use std::path::{Path, PathBuf};
 
 use walkdir::WalkDir;
 
-use crate::context::Context;
-use crate::error::ToolingError;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::under_symlink;
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::error::ToolingError;
+use crate::framework::helpers::under_symlink;
+use crate::rules::Diagnostic;
 
 const PARENT_BRIEF_HARD_CAP: usize = 150;
 const PHASE_BRIEF_SOFT_CAP: usize = 500;
@@ -22,13 +24,13 @@ static PARENT_BRIEF_NAMES: &[&str] =
 pub struct BriefCheck;
 
 impl Check for BriefCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         run(ctx)
     }
 }
 
 /// Run brief size and frontmatter checks against `ctx`.
-pub fn run(ctx: &Context) -> Vec<Finding> {
+pub fn run(ctx: &Context) -> Vec<Diagnostic> {
     let root = ctx.framework_root();
     let briefs = match walk_briefs(root) {
         Ok(briefs) => briefs,
@@ -65,7 +67,7 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
     findings
 }
 
-fn check_frontmatter(rel_path: &str, content: &str, path: &Path) -> Vec<Finding> {
+fn check_frontmatter(rel_path: &str, content: &str, path: &Path) -> Vec<Diagnostic> {
     if content.starts_with("---\n") || content.starts_with("---\r\n") {
         return vec![finding(
             RULE_FRONTMATTER_FORBIDDEN,
@@ -84,7 +86,7 @@ fn check_frontmatter(rel_path: &str, content: &str, path: &Path) -> Vec<Finding>
 
 fn check_size(
     rel_path: &str, content: &str, parent: bool, phase: bool, path: &Path,
-) -> Vec<Finding> {
+) -> Vec<Diagnostic> {
     let lines = count_non_blank_lines(content);
     let path = path.to_path_buf();
 
@@ -231,16 +233,8 @@ fn path_relative(root: &Path, path: &Path) -> String {
         .unwrap_or_else(|_| path.display().to_string())
 }
 
-fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Finding {
-    Finding {
-        rule_id,
-        message,
-        location: path.map(|path| Location {
-            path,
-            line: 1,
-            column: None,
-        }),
-    }
+fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Diagnostic {
+    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }
 
 #[cfg(test)]

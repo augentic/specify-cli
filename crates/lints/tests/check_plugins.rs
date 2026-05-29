@@ -1,10 +1,11 @@
+//! Integration coverage for the framework plugin symlink/marketplace checks.
+
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-use specify_authoring::Context;
-use specify_authoring::check::{BrokenSymlinkCheck, MarketplaceDriftCheck};
-use specify_authoring::finding::Check;
+use specify_lints::framework::check::{BrokenSymlinkCheck, Check, MarketplaceDriftCheck};
+use specify_lints::framework::{Context, core_id_for, snippet};
 
 fn fixture_context(root: &Path) -> Context {
     Context::from_framework_root(root).expect("fixture framework root")
@@ -78,8 +79,8 @@ fn broken_symlink_reports_unresolved() {
     let ctx = fixture_context(temp.path());
     let findings = BrokenSymlinkCheck.run(&ctx);
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "plugins.broken-symlink");
-    assert!(findings[0].message.contains("broken-link"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("plugins.broken-symlink"));
+    assert!(snippet(&findings[0]).contains("broken-link"));
 }
 
 #[test]
@@ -94,9 +95,9 @@ fn marketplace_drift_reports_undeclared() {
     let findings = MarketplaceDriftCheck.run(&ctx);
     assert!(
         findings.iter().any(|finding| {
-            finding.rule_id == "plugins.marketplace-drift"
-                && finding.message.contains("orphan")
-                && finding.message.contains("not in marketplace.json")
+            finding.rule_id.as_deref() == core_id_for("plugins.marketplace-drift")
+                && snippet(finding).contains("orphan")
+                && snippet(finding).contains("not in marketplace.json")
         }),
         "expected undeclared plugin finding, got {findings:?}"
     );
@@ -128,8 +129,8 @@ fn marketplace_drift_reports_schema() {
     let findings = MarketplaceDriftCheck.run(&ctx);
     assert!(
         findings.iter().any(|finding| {
-            finding.rule_id == "plugins.marketplace-drift"
-                && finding.message.contains("schema violation")
+            finding.rule_id.as_deref() == core_id_for("plugins.marketplace-drift")
+                && snippet(finding).contains("schema violation")
         }),
         "expected schema violation finding, got {findings:?}"
     );

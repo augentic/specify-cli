@@ -15,9 +15,10 @@ specify-tool                     # depends on specify-{error,diagnostics} (WASI 
 specify-validate                 # depends on specify-{model,error,diagnostics} — artifact rule registry; NOT on specify-workflow or anything named lint
 specify-lints                    # standards layer — depends on specify-{error,schema,tool,diagnostics}; NOT on specify-workflow
 specify-workflow                 # workflow layer — depends on specify-{error,schema,tool,model,diagnostics}; NOT on specify-lints / specify-validate
-specify-authoring                # depends on specify-{error,schema,codex} (framework authoring checks; publish=false)
-specify (root crate)             # wires runtime + authoring crates into specrun/specdev
+specify (root crate)             # wires runtime + framework crates into specrun/specdev
 ```
+
+The framework authoring checks behind `specdev lint` are no longer a standalone crate: the dissolved `specify-authoring` now lives as the `specify_lints::framework` module (see [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout)).
 
 `specify-lints` (standards) and `specify-workflow` (workflow) are siblings: they never import each other. `specify-validate` is the validation analog: it depends on `specify-model` only and never on `specify-workflow`, so an artifact rule cannot reach workflow lifecycle types — the same no-lifecycle-authority invariant `specify-lints` enforces. `specify-model` is the lifecycle-free leaf carrying the artifact types and parsers both `specify-validate` and `specify-workflow` read, alongside `specify-schema` and `specify-error` at the bottom. The Phase 1B collapse from 13 crates, the standards-layer split that re-introduced `specify-lints` and `specify-schema`, and the model/validate split that extracted `specify-model` and `specify-validate` are logged in [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout) and [DECISIONS.md §"Standards layer split into `specify-lints` and `specify-schema`"](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema).
 

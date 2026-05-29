@@ -4,9 +4,11 @@ use std::path::{Component, Path};
 use serde_json::Value as JsonValue;
 use walkdir::WalkDir;
 
-use crate::context::Context;
-use crate::finding::{Check, Finding, Location};
-use crate::schema::{SchemaError, SchemaId, validate_value};
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::schema::{SchemaError, SchemaId, validate_value};
+use crate::rules::{Diagnostic, FindingLocation};
 
 const RULE_BROKEN_SYMLINK: &str = "plugins.broken-symlink";
 const RULE_MARKETPLACE_DRIFT: &str = "plugins.marketplace-drift";
@@ -18,18 +20,18 @@ pub struct BrokenSymlinkCheck;
 pub struct MarketplaceDriftCheck;
 
 impl Check for BrokenSymlinkCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_symlinks(ctx)
     }
 }
 
 impl Check for MarketplaceDriftCheck {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_marketplace_consistency(ctx)
     }
 }
 
-fn check_symlinks(ctx: &Context) -> Vec<Finding> {
+fn check_symlinks(ctx: &Context) -> Vec<Diagnostic> {
     let plugins_dir = ctx.plugins_dir();
     if !plugins_dir.is_dir() {
         return Vec::new();
@@ -55,18 +57,18 @@ fn check_symlinks(ctx: &Context) -> Vec<Finding> {
 
         if fs::metadata(path).is_err() {
             let rel = path.strip_prefix(framework_root).unwrap_or(path).display();
-            findings.push(Finding {
-                rule_id: RULE_BROKEN_SYMLINK,
-                message: format!("Broken symlink: {rel}"),
-                location: Some(location(path)),
-            });
+            findings.push(framework_finding(
+                RULE_BROKEN_SYMLINK,
+                format!("Broken symlink: {rel}"),
+                Some(location(path)),
+            ));
         }
     }
 
     findings
 }
 
-fn check_marketplace_consistency(ctx: &Context) -> Vec<Finding> {
+fn check_marketplace_consistency(ctx: &Context) -> Vec<Diagnostic> {
     let manifest_path = ctx.framework_root().join(".cursor-plugin").join("marketplace.json");
     let plugins_dir = ctx.plugins_dir();
 
@@ -154,7 +156,7 @@ fn check_marketplace_consistency(ctx: &Context) -> Vec<Finding> {
     findings
 }
 
-fn schema_findings(ctx: &Context, value: &JsonValue, manifest_path: &Path) -> Vec<Finding> {
+fn schema_findings(ctx: &Context, value: &JsonValue, manifest_path: &Path) -> Vec<Diagnostic> {
     match validate_value(ctx, value, SchemaId::Marketplace) {
         Ok(()) => Vec::new(),
         Err(SchemaError::Infrastructure(error)) => vec![drift_finding(
@@ -178,7 +180,7 @@ fn schema_findings(ctx: &Context, value: &JsonValue, manifest_path: &Path) -> Ve
 
 fn undeclared_plugin_findings(
     plugins_dir: &Path, declared_sources: &std::collections::HashSet<String>,
-) -> Vec<Finding> {
+) -> Vec<Diagnostic> {
     if !plugins_dir.is_dir() {
         return Vec::new();
     }
@@ -234,18 +236,10 @@ fn undeclared_plugin_findings(
     findings
 }
 
-fn drift_finding(message: impl Into<String>, path: &Path) -> Finding {
-    Finding {
-        rule_id: RULE_MARKETPLACE_DRIFT,
-        message: message.into(),
-        location: Some(location(path)),
-    }
+fn drift_finding(message: impl Into<String>, path: &Path) -> Diagnostic {
+    framework_finding(RULE_MARKETPLACE_DRIFT, message.into(), Some(location(path)))
 }
 
-fn location(path: &Path) -> Location {
-    Location {
-        path: path.to_path_buf(),
-        line: 1,
-        column: None,
-    }
+fn location(path: &Path) -> FindingLocation {
+    loc(path, 1, None)
 }

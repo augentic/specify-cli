@@ -4,10 +4,12 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use walkdir::WalkDir;
 
-use crate::context::Context;
-use crate::error::ToolingError;
-use crate::finding::{Check, Finding, Location};
-use crate::helpers::under_symlink;
+use crate::framework::builder::{framework_finding, loc};
+use crate::framework::check::Check;
+use crate::framework::context::Context;
+use crate::framework::error::ToolingError;
+use crate::framework::helpers::under_symlink;
+use crate::rules::Diagnostic;
 
 const RULE_INVOCATION_POSITIONAL: &str = "prose.invocation-positional";
 const RULE_OPERATIONAL_VOCABULARY: &str = "prose.operational-vocabulary";
@@ -31,14 +33,14 @@ pub struct OperationalVocabulary;
 pub struct NumericCaps;
 
 impl Check for InvocationPositional {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_invocation_positionals(ctx.framework_root())
             .unwrap_or_else(|error| vec![infrastructure_finding(RULE_INVOCATION_POSITIONAL, error)])
     }
 }
 
 impl Check for OperationalVocabulary {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_operational_vocabulary(ctx.framework_root()).unwrap_or_else(|error| {
             vec![infrastructure_finding(RULE_OPERATIONAL_VOCABULARY, error)]
         })
@@ -46,12 +48,12 @@ impl Check for OperationalVocabulary {
 }
 
 impl Check for NumericCaps {
-    fn run(&self, ctx: &Context) -> Vec<Finding> {
+    fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
         check_skill_numeric_caps(ctx.framework_root())
     }
 }
 
-fn check_operational_vocabulary(framework_root: &Path) -> Result<Vec<Finding>, ToolingError> {
+fn check_operational_vocabulary(framework_root: &Path) -> Result<Vec<Diagnostic>, ToolingError> {
     let scan_roots = [
         framework_root.join("docs"),
         framework_root.join("plugins"),
@@ -94,20 +96,16 @@ fn check_operational_vocabulary(framework_root: &Path) -> Result<Vec<Finding>, T
         for (line_idx, line) in content.lines().enumerate() {
             for entry in &forbidden {
                 if entry.pattern.is_match(line) {
-                    findings.push(Finding {
-                        rule_id: RULE_OPERATIONAL_VOCABULARY,
-                        message: format!(
+                    findings.push(framework_finding(
+                        RULE_OPERATIONAL_VOCABULARY,
+                        format!(
                             "Stale Specify vocabulary in {rel}:{} -- {} -- {}",
                             line_idx + 1,
                             line.trim(),
                             entry.fix
                         ),
-                        location: Some(Location {
-                            path: path.clone(),
-                            line: line_idx + 1,
-                            column: None,
-                        }),
-                    });
+                        Some(loc(path.clone(), line_idx + 1, None)),
+                    ));
                 }
             }
         }
@@ -116,7 +114,7 @@ fn check_operational_vocabulary(framework_root: &Path) -> Result<Vec<Finding>, T
     Ok(findings)
 }
 
-fn check_skill_numeric_caps(framework_root: &Path) -> Vec<Finding> {
+fn check_skill_numeric_caps(framework_root: &Path) -> Vec<Diagnostic> {
     let files: [(&str, bool, bool); 2] = [
         (".cursor/schemas/skill.schema.json", true, false),
         ("docs/standards/skill-authoring.md", true, true),
@@ -128,49 +126,35 @@ fn check_skill_numeric_caps(framework_root: &Path) -> Vec<Finding> {
         let content = match fs::read_to_string(&path) {
             Ok(content) => content,
             Err(_) => {
-                findings.push(Finding {
-                    rule_id: RULE_NUMERIC_CAP_EXCEEDED,
-                    message: format!("Skill numeric cap source missing: {rel}"),
-                    location: Some(Location {
-                        path: path.clone(),
-                        line: 1,
-                        column: None,
-                    }),
-                });
+                findings.push(framework_finding(
+                    RULE_NUMERIC_CAP_EXCEEDED,
+                    format!("Skill numeric cap source missing: {rel}"),
+                    Some(loc(path.clone(), 1, None)),
+                ));
                 continue;
             }
         };
 
         if checks_description && !content.contains(&EXPECTED_DESCRIPTION_CAP.to_string()) {
-            findings.push(Finding {
-                rule_id: RULE_NUMERIC_CAP_EXCEEDED,
-                message: format!(
-                    "Skill description cap drift in {rel}; expected {EXPECTED_DESCRIPTION_CAP}"
-                ),
-                location: Some(Location {
-                    path: path.clone(),
-                    line: 1,
-                    column: None,
-                }),
-            });
+            findings.push(framework_finding(
+                RULE_NUMERIC_CAP_EXCEEDED,
+                format!("Skill description cap drift in {rel}; expected {EXPECTED_DESCRIPTION_CAP}"),
+                Some(loc(path.clone(), 1, None)),
+            ));
         }
         if checks_body && !content.contains(&EXPECTED_BODY_CAP.to_string()) {
-            findings.push(Finding {
-                rule_id: RULE_NUMERIC_CAP_EXCEEDED,
-                message: format!("Skill body cap drift in {rel}; expected {EXPECTED_BODY_CAP}"),
-                location: Some(Location {
-                    path: path.clone(),
-                    line: 1,
-                    column: None,
-                }),
-            });
+            findings.push(framework_finding(
+                RULE_NUMERIC_CAP_EXCEEDED,
+                format!("Skill body cap drift in {rel}; expected {EXPECTED_BODY_CAP}"),
+                Some(loc(path.clone(), 1, None)),
+            ));
         }
     }
 
     findings
 }
 
-fn check_invocation_positionals(framework_root: &Path) -> Result<Vec<Finding>, ToolingError> {
+fn check_invocation_positionals(framework_root: &Path) -> Result<Vec<Diagnostic>, ToolingError> {
     let scan_roots = [
         framework_root.join("docs"),
         framework_root.join("plugins"),
@@ -241,19 +225,15 @@ fn check_invocation_positionals(framework_root: &Path) -> Result<Vec<Finding>, T
                     if !cli_command_re.is_match(between) {
                         let line_suffix =
                             if end > start_line { format!("-{}", end + 1) } else { String::new() };
-                        findings.push(Finding {
-                            rule_id: RULE_INVOCATION_POSITIONAL,
-                            message: format!(
+                        findings.push(framework_finding(
+                            RULE_INVOCATION_POSITIONAL,
+                            format!(
                                 "Slash skill invocation uses flag-style arguments in {rel}:{start}{line_suffix} — use positional skill arguments; reserve --flags for underlying CLI commands",
                                 start = start_line + 1,
                                 line_suffix = line_suffix,
                             ),
-                            location: Some(Location {
-                                path: path.clone(),
-                                line: start_line + 1,
-                                column: None,
-                            }),
-                        });
+                            Some(loc(path.clone(), start_line + 1, None)),
+                        ));
                     }
                 }
             }
@@ -326,10 +306,6 @@ fn has_extension(path: &Path, extensions: &[&str]) -> bool {
     path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| extensions.contains(&ext))
 }
 
-fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Finding {
-    Finding {
-        rule_id,
-        message: error.to_string(),
-        location: None,
-    }
+fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Diagnostic {
+    framework_finding(rule_id, error.to_string(), None)
 }

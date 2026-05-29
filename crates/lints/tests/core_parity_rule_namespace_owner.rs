@@ -9,7 +9,7 @@
 //! the imperative `check::rules` predicate
 //! (`rules.namespace-ownership-violation`). **No imperative `Check` row
 //! is retired by this card.** The C17 plan card named the
-//! `crates/authoring/src/check/rules.rs` `BUILTIN_NAMESPACES`
+//! `crates/lints/src/framework/check/rules.rs` `BUILTIN_NAMESPACES`
 //! owner-mismatch row as a strong candidate, but `namespace-owner` does
 //! not subsume it cleanly:
 //!

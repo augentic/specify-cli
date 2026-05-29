@@ -12,7 +12,7 @@
 //!   fixture when no `Check` row maps cleanly to the reserved kind
 //!   ("the imperative deletion is gated on parity, not required for
 //!   the kind landing"). The closest existing imperative surface,
-//!   `crates/authoring/src/check/tools.rs::FirstPartyTools`, asserts
+//!   `crates/lints/src/framework/check/tools.rs::FirstPartyTools`, asserts
 //!   adapter-specific tool-package constants
 //!   (`specify:contract@0.3.0`, `specify:vectis@0.3.0`) but mixes
 //!   existence + equality across multiple `(adapter, tool, package)`

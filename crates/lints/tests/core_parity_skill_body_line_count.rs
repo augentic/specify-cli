@@ -9,7 +9,7 @@
 //! - Imperative behaviour: walk every
 //!   `plugins/<plugin>/skills/<skill>/SKILL.md` under `framework_root`,
 //!   strip the leading YAML frontmatter, count the resulting body
-//!   lines, and emit one [`specify_authoring::Finding`] per skill
+//!   lines, and emit one [`specify_lints::Diagnostic`] per skill
 //!   whose body exceeds 200 lines (the global cap pinned by
 //!   [`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md)).
 //! - Declarative behaviour: the framework-profile indexer extracts

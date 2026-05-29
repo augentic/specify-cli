@@ -1,7 +1,10 @@
+//! Integration coverage for the framework brief schema-link checks.
+
 use std::fs;
 use std::path::Path;
 
-use specify_authoring::check::schema_links::run_on_root;
+use specify_lints::framework::check::schema_links::run_on_root;
+use specify_lints::framework::{core_id_for, snippet};
 
 fn scaffold(root: &Path) {
     fs::create_dir_all(root.join("plugins")).expect("plugins dir");
@@ -62,8 +65,8 @@ fn unknown_tool_name_fails() {
 
     let findings = run_on_root(root);
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "links.brief-schema-link-resolve");
-    assert!(findings[0].message.contains("unknown-tool/foo.schema.json"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("links.brief-schema-link-resolve"));
+    assert!(snippet(&findings[0]).contains("unknown-tool/foo.schema.json"));
 }
 
 #[test]
@@ -79,8 +82,8 @@ fn unknown_schema_for_known_tool() {
 
     let findings = run_on_root(root);
     assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "links.brief-schema-link-resolve");
-    assert!(findings[0].message.contains("vectis/missing.schema.json"));
+    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("links.brief-schema-link-resolve"));
+    assert!(snippet(&findings[0]).contains("vectis/missing.schema.json"));
 }
 
 #[test]
@@ -140,5 +143,9 @@ fn multiple_bad_urls_multiple_findings() {
 
     let findings = run_on_root(root);
     assert_eq!(findings.len(), 2);
-    assert!(findings.iter().all(|f| f.rule_id == "links.brief-schema-link-resolve"));
+    assert!(
+        findings
+            .iter()
+            .all(|f| f.rule_id.as_deref() == core_id_for("links.brief-schema-link-resolve"))
+    );
 }

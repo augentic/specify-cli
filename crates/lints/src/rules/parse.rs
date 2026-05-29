@@ -50,7 +50,7 @@ use super::Rule;
 /// [`specify_schema::RULE_JSON_SCHEMA`]. Per the standards-layer contract
 /// §"Eliminates the vendored codex-rule schema", this is the single
 /// source of truth — `specdev lint`'s codex predicate compiles the
-/// same constant via `specify-authoring`.
+/// same constant via `specify_lints::framework`.
 const RULE_SCHEMA: &str = include_str!("../../../../schemas/rules/rule.schema.json");
 
 /// Failure modes for [`parse_rule`] / [`parse_rule_file`].

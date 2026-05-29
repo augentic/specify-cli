@@ -9,7 +9,7 @@
 //!   (notional). No imperative `Check` row is retired by this card.
 //!   The brief-completeness surface the C15 plan card named as a strong
 //!   candidate (`briefs.keys() == operations_for_axis(axis)` in
-//!   `crates/authoring/src/check/adapter.rs`) does not exist as a clean
+//!   `crates/lints/src/framework/check/adapter.rs`) does not exist as a clean
 //!   imperative row: that module retains only `adapter.missing-manifest`,
 //!   which walks adapter directories lacking `adapter.yaml` entirely and
 //!   (per its own doc comment) produces no `AdapterManifest` fact, so it

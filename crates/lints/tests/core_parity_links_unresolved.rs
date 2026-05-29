@@ -9,7 +9,7 @@
 //!   record the link line).
 //! - Declarative location: project-relative path string with the 1-based
 //!   link line populated from the `WorkspaceModel.markdown_links` fact.
-//! - Imperative emitted one [`specify_authoring::Finding`] per broken
+//! - Imperative emitted one [`specify_lints::Diagnostic`] per broken
 //!   `[label](target)` link after fence / inline-code / HTML-comment
 //!   stripping. The declarative `reference-resolves` evaluator consumes
 //!   the same fence-aware link facts the indexer already extracted
