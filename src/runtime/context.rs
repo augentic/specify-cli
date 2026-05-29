@@ -2,10 +2,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
-use specify_domain::config::{Layout, ProjectConfig};
-use specify_domain::init::adapter_name_from_value;
 use specify_error::Error;
+use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
+use specify_workflow::config::{Layout, ProjectConfig};
+use specify_workflow::init::adapter_name_from_value;
 
 use crate::output::Format;
 use crate::runtime::output;
@@ -33,7 +33,7 @@ impl Ctx {
 
     /// Variant of [`Self::load`] that walks from `start_dir` instead of
     /// the process CWD. Used by handlers that accept a `--project-dir`
-    /// flag (e.g. `specrun review`); the resolved `project_dir` is the
+    /// flag (e.g. `specrun lint`); the resolved `project_dir` is the
     /// nearest ancestor of `start_dir` containing `.specify/project.yaml`.
     pub(crate) fn load_at(format: Format, start_dir: &Path) -> Result<Self, Error> {
         let project_dir = ProjectConfig::find_root(start_dir).ok_or(Error::NotInitialized)?;
@@ -67,7 +67,7 @@ impl Ctx {
     }
 
     /// Typed view over `.specify/`-anchored paths. Hand this to
-    /// [`specify_domain::config::with_state`] in handlers that mutate
+    /// [`specify_workflow::config::with_state`] in handlers that mutate
     /// `plan.yaml` / `registry.yaml`.
     pub(crate) fn layout(&self) -> Layout<'_> {
         Layout::new(&self.project_dir)
@@ -93,6 +93,6 @@ impl Ctx {
     pub(crate) fn write<T: Serialize>(
         &self, body: &T, render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
     ) -> Result<(), Error> {
-        output::emit(Box::new(std::io::stdout().lock()), self.format, body, render_text)
+        output::emit(&mut std::io::stdout().lock(), self.format, body, render_text)
     }
 }

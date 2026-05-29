@@ -4,8 +4,8 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::slice::{CreateIfExists, Created, LifecycleStatus, actions as slice_actions};
 use specify_error::{Error, Result};
+use specify_workflow::slice::{CreateIfExists, Created, LifecycleStatus, actions as slice_actions};
 
 use crate::runtime::context::Ctx;
 

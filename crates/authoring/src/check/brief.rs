@@ -16,7 +16,7 @@ const RULE_EXCEEDS_SIZE: &str = "brief.exceeds-size-limit";
 const RULE_FRONTMATTER_FORBIDDEN: &str = "brief.frontmatter-forbidden";
 
 static PARENT_BRIEF_NAMES: &[&str] =
-    &["shape.md", "build.md", "merge.md", "enumerate.md", "extract.md"];
+    &["shape.md", "build.md", "merge.md", "survey.md", "extract.md"];
 
 /// Brief size limits and no-frontmatter discipline for adapter briefs.
 pub struct BriefCheck;
@@ -154,7 +154,7 @@ pub fn count_non_blank_lines(content: &str) -> usize {
     count
 }
 
-/// True for parent orchestrator briefs at `adapters/<axis>/<adapter>/briefs/{shape,build,merge,enumerate,extract}.md`.
+/// True for parent orchestrator briefs at `adapters/<axis>/<adapter>/briefs/{shape,build,merge,survey,extract}.md`.
 pub fn is_parent_brief(rel_path: &str) -> bool {
     let parts: Vec<&str> = rel_path.split('/').collect();
     if parts.len() != 5 {
@@ -248,7 +248,7 @@ mod unit_tests {
     use super::*;
 
     #[test]
-    fn count_non_blank_lines_ignores_html_comments() {
+    fn count_lines_ignores_comments() {
         let content = "line one\n\n<!-- block\nstill comment\n-->\nline two\n<!-- inline -->\n";
         assert_eq!(count_non_blank_lines(content), 2);
     }

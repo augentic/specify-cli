@@ -2,7 +2,7 @@
 //!
 //! Verifies that each CLI-owned emit site writes the documented wire
 //! shape into `.specify/journal.jsonl` and that the agent-facing
-//! [`specify_domain::journal::append_batch`] helper can be driven directly
+//! [`specify_workflow::journal::append_batch`] helper can be driven directly
 //! from a synthesised event. Golden files under
 //! `tests/fixtures/journal/` pin the canonical JSON-line shape; rerun
 //! with `REGENERATE_GOLDENS=1 cargo test --test journal` to refresh.
@@ -11,14 +11,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
-use specify_domain::change::Divergence;
-use specify_domain::config::Layout;
-use specify_domain::journal::{self, Event, EventKind};
+use specify_workflow::change::Divergence;
+use specify_workflow::config::Layout;
+use specify_workflow::journal::{self, Event, EventKind};
 
 mod common;
 use common::{Project, assert_golden_at, repo_root, specrun};
 
-/// Pinned RFC-3339 timestamp used by every golden snapshot. CLI-driven
+/// Pinned RFC 3339 timestamp used by every golden snapshot. CLI-driven
 /// emits use `Timestamp::now()`; tests normalise the value to this
 /// placeholder before diffing so goldens stay deterministic.
 const FIXED_TIMESTAMP: &str = "2026-05-21T20:00:00Z";
@@ -61,10 +61,10 @@ fn assert_journal_golden(name: &str, events: Vec<Value>) {
     assert_golden_at(&fixtures_dir(), name, actual);
 }
 
-// -- plan.transition.reviewed ----------------------------------------
+// -- plan.transition.approved ----------------------------------------
 
 #[test]
-fn plan_transition_reviewed_emits_journal_event() {
+fn plan_transition_emits_event() {
     let project = Project::init();
     project.seed_plan(
         "name: platform-v2
@@ -77,20 +77,20 @@ slices:
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "transition", "platform-v2", "reviewed"])
+        .args(["plan", "transition", "platform-v2", "approved"])
         .assert()
         .success();
 
     let events = read_journal(project.root());
     assert_eq!(events.len(), 1, "expected one journal event, got {}", events.len());
-    assert_eq!(events[0]["event"], "plan.transition.reviewed");
+    assert_eq!(events[0]["event"], "plan.transition.approved");
     assert_eq!(events[0]["payload"]["plan-name"], "platform-v2");
     assert!(
         events[0]["timestamp"].as_str().is_some(),
         "timestamp must be present, got:\n{}",
         events[0]
     );
-    assert_journal_golden("plan-transition-reviewed.json", events);
+    assert_journal_golden("plan-transition-approved.json", events);
 }
 
 // -- plan.amend.divergence -------------------------------------------
@@ -108,7 +108,7 @@ slices:
 
 #[test]
 fn plan_amend_divergence_from_none_to_accepted() {
-    // RFC-25 subagent note: the implicit-default first transition
+    // source/target split note: the implicit-default first transition
     // serialises `from: none` because the on-disk slice has no
     // `divergence:` key.
     let project = Project::init();
@@ -132,8 +132,8 @@ fn plan_amend_divergence_from_none_to_accepted() {
 }
 
 #[test]
-fn plan_amend_divergence_none_to_likely_emits_event() {
-    // workflow §D5: the CLI is the single writer of every variant of
+fn plan_amend_divergence_none_to_likely() {
+    // divergence and writer-ownership contract: the CLI is the single writer of every variant of
     // `slices[].divergence`, including `likely`. A `plan amend
     // --divergence likely` against a slice with no prior divergence
     // emits one `plan.amend.divergence` event with `from: none, to:
@@ -155,8 +155,8 @@ fn plan_amend_divergence_none_to_likely_emits_event() {
 }
 
 #[test]
-fn plan_amend_divergence_likely_round_trips_to_yaml() {
-    // workflow §D5: `specrun plan amend --divergence likely` is the
+fn plan_amend_divergence_likely_round_trips() {
+    // divergence and writer-ownership contract: `specrun plan amend --divergence likely` is the
     // bare-skill fallback writer of `slices[].divergence: likely`.
     // The CLI must persist the field byte-identically to the legacy
     // skill-written form so existing fixtures keep round-tripping.
@@ -190,7 +190,7 @@ slices:
 
 #[test]
 fn plan_amend_divergence_from_likely_to_rejected() {
-    // RFC-25 subagent note: `propose` writes `divergence: likely` and
+    // source/target split note: `propose` writes `divergence: likely` and
     // the operator may transition it to `rejected` at Gate 1.
     let project = Project::init();
     project.seed_plan(
@@ -270,7 +270,7 @@ slices:
 }
 
 #[test]
-fn plan_amend_without_divergence_flag_emits_no_event() {
+fn plan_amend_without_divergence_no_event() {
     let project = Project::init();
     project.seed_plan(TWO_SLICE_PLAN);
 
@@ -299,7 +299,7 @@ fn slice_create_writes_no_refined_journal() {
 }
 
 #[test]
-fn slice_transition_refined_cli_writes_journal() {
+fn slice_transition_refined_writes() {
     let project = Project::init();
     specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
     specrun()
@@ -316,7 +316,7 @@ fn slice_transition_refined_cli_writes_journal() {
 }
 
 #[test]
-fn slice_transition_to_built_appends_no_refined_event() {
+fn slice_transition_built_no_refined_event() {
     let project = Project::init();
     specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
     specrun()
@@ -340,7 +340,7 @@ fn slice_transition_to_built_appends_no_refined_event() {
 // -- slice.synthesis.* (specrun slice validate) ----------------------
 
 const PLAN_WITH_LEGACY_MONOLITH: &str = "\
-name: rfc25-prov
+name: workflow-prov
 lifecycle: pending
 sources:
   legacy-monolith:
@@ -351,7 +351,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { key: legacy-monolith, candidate: my-slice }
+      - { key: legacy-monolith, lead: my-slice }
 ";
 
 const TAGGED_SPEC_UNKNOWN: &str = "# Login Specification
@@ -384,7 +384,7 @@ fn stage_slice_for_synthesis_journal() -> Project {
 }
 
 #[test]
-fn slice_validate_appends_synthesis_journal_on_success() {
+fn slice_validate_appends_synthesis() {
     let project = stage_slice_for_synthesis_journal();
     specrun()
         .current_dir(project.root())
@@ -401,7 +401,7 @@ fn slice_validate_appends_synthesis_journal_on_success() {
 }
 
 #[test]
-fn slice_validate_provenance_failure_writes_no_synthesis_journal() {
+fn slice_validate_provenance_no_journal() {
     let project = stage_slice_for_synthesis_journal();
     let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
     let bad = TAGGED_SPEC_UNKNOWN.replace("Status: unknown", "Status: agreed");
@@ -422,7 +422,7 @@ fn slice_validate_provenance_failure_writes_no_synthesis_journal() {
 // -- agent-emit helper (slice.extract.completed, plan.propose.divergence)
 
 #[test]
-fn agent_emit_helper_writes_one_event_per_jsonl_line() {
+fn agent_emit_one_event_per_line() {
     // Exercises the public Rust helper skill bodies call for
     // agent-driven events. The harness drives `append` directly
     // because the CLI does not own a `journal append` verb

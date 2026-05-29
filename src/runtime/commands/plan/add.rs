@@ -5,39 +5,43 @@
 
 use std::collections::BTreeMap;
 
-use specify_domain::change::{
+use specify_error::Result;
+use specify_workflow::change::{
     Entry, Plan, SliceAuthorityOverride, Status, emit_authority_override_seed_events, entry_mut,
 };
-use specify_domain::config::with_state;
-use specify_domain::journal;
-use specify_domain::schema::validate_plan;
-use specify_error::Result;
+use specify_workflow::config::with_state;
+use specify_workflow::journal;
+use specify_workflow::schema::validate_plan;
 
 use super::args::{bindings_from_args, load_discovery, parse_target_flag};
+use super::cli::AddArgs;
 use super::entry::{Action, EntryBody, write_entry_text};
 use super::{check_project, plan_ref};
-use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg};
 use crate::runtime::context::Ctx;
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "plan add's clap surface is the source of truth for the argument set; \
-              the handler threads it through verbatim."
-)]
-pub(super) fn add(
-    ctx: &Ctx, name: &str, depends_on: Vec<String>, sources: Vec<SliceSourceArg>,
-    description: Option<String>, project: Option<String>, target: Option<String>,
-    context: Vec<String>, authority_override: &[AuthorityOverrideKindAssign],
-) -> Result<()> {
+pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
+    let AddArgs {
+        name,
+        depends_on,
+        sources,
+        description,
+        project,
+        target,
+        context,
+        authority_override,
+    } = args;
+    let name = name.as_str();
+    let authority_override = authority_override.as_slice();
+
     if let Some(proj) = &project {
         check_project(&ctx.project_dir, proj)?;
     }
 
-    // workflow §D6 — resolve `--sources <key>=<alias>` to the
-    // canonical candidate `id` before persisting; the on-disk
-    // `plan.yaml.slices[].sources[].candidate` always carries the
+    // discovery alias contract — resolve `--sources <key>=<alias>` to the
+    // canonical lead `id` before persisting; the on-disk
+    // `plan.yaml.slices[].sources[].lead` always carries the
     // canonical id. Absence of `discovery.md` short-circuits to the
-    // legacy (verbatim) path so existing tests and pre-RFC-27
+    // legacy (verbatim) path so existing tests and pre-authority and reconciliation contract
     // projects continue to work.
     let discovery = load_discovery(ctx.layout())?;
     let sources = bindings_from_args(sources, name, discovery.as_ref())?;

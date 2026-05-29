@@ -1,27 +1,27 @@
 pub mod adapter;
 pub mod agent_teams;
 pub mod brief;
-pub mod codex;
 mod docs_quality;
 pub mod links;
 mod plugins;
 mod prose;
+pub mod rules;
 pub mod scenarios;
 pub mod schema_links;
 mod skill_body;
 pub mod skill_frontmatter;
 pub mod tools;
 
-pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, RULE_SCHEMA_VIOLATION, run_adapter_check};
+pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, run_adapter_check};
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
-pub use codex::{
-    CodexCheck, RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, run_codex_check,
-};
-pub use docs_quality::{MissingDiagramAsset, RfcCitationInDocs, TextPipelineDiagram};
+pub use docs_quality::{HistoryCitation, MissingDiagramAsset, TextPipelineDiagram};
 pub use links::LinksCheck;
 pub use plugins::{BrokenSymlinkCheck, MarketplaceDriftCheck};
-pub use prose::{InvocationPositional, OperationalVocabulary, SkillNumericCaps};
+pub use prose::{InvocationPositional, NumericCaps, OperationalVocabulary};
+pub use rules::{
+    RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, RulesCheck, run_rules_check,
+};
 pub use scenarios::{
     RULE_ARTIFACT_PATH_UNSAFE as SCENARIO_RULE_ARTIFACT_PATH_UNSAFE,
     RULE_BODY_ID_MISMATCH as SCENARIO_RULE_BODY_ID_MISMATCH,
@@ -32,18 +32,16 @@ pub use scenarios::{
 };
 pub use schema_links::SchemaLinksCheck;
 pub use skill_body::{
-    SkillBodyLineCount, SkillEnvelopeJsonInBody, SkillFrontmatterRestatement,
-    SkillInlineJsonTooLong, SkillInvalidCriticalPath, SkillMissingCriticalPath,
-    SkillSectionLineCount, SkillStepBodyDuplicatesCriticalPath, SkillVariableCoverage,
+    EnvelopeJsonInBody, FrontmatterRestatement, InlineJsonTooLong, InvalidCriticalPath,
+    MissingCriticalPath, SectionLineCount, StepBodyDuplicatesCriticalPath, VariableCoverage,
 };
 pub use skill_frontmatter::{
-    RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_DUPLICATE_NAME,
-    RULE_MISSING_FRONTMATTER, RULE_NAME_DIRECTORY_MISMATCH,
-    RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION, RULE_UNKNOWN_TOOL,
-    SkillArgumentHintGrammarCheck, SkillDescriptionGrammarCheck, SkillDuplicateNameCheck,
-    SkillFrontmatterSchemaCheck, SkillNameDirectoryMismatchCheck, SkillUnknownToolCheck,
+    ArgumentHintGrammar, DescriptionGrammar, FrontmatterSchema, NameDirMismatch,
+    RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_MISSING_FRONTMATTER,
+    RULE_NAME_DIRECTORY_MISMATCH, RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION,
+    RULE_UNKNOWN_TOOL, UnknownTool,
 };
-pub use tools::{DeclaredToolEquivalentInvocations, FirstPartyToolDeclarations};
+pub use tools::{DeclaredToolInvocations, FirstPartyTools};
 
 use crate::context::Context;
 use crate::finding::{Check, Finding};
@@ -54,34 +52,32 @@ pub fn run(ctx: &Context) -> Vec<Finding> {
         &AdapterCheck,
         &AgentTeamsCheck,
         &BriefCheck,
-        &CodexCheck,
-        &RfcCitationInDocs,
+        &RulesCheck,
+        &HistoryCitation,
         &MissingDiagramAsset,
         &TextPipelineDiagram,
         &LinksCheck,
         &BrokenSymlinkCheck,
         &MarketplaceDriftCheck,
-        &FirstPartyToolDeclarations,
-        &DeclaredToolEquivalentInvocations,
+        &FirstPartyTools,
+        &DeclaredToolInvocations,
         &OperationalVocabulary,
-        &SkillNumericCaps,
+        &NumericCaps,
         &InvocationPositional,
         &ScenariosCheck,
-        &SkillFrontmatterSchemaCheck,
-        &SkillNameDirectoryMismatchCheck,
-        &SkillDuplicateNameCheck,
-        &SkillUnknownToolCheck,
-        &SkillDescriptionGrammarCheck,
-        &SkillArgumentHintGrammarCheck,
-        &SkillBodyLineCount,
-        &SkillSectionLineCount,
-        &SkillMissingCriticalPath,
-        &SkillInvalidCriticalPath,
-        &SkillInlineJsonTooLong,
-        &SkillEnvelopeJsonInBody,
-        &SkillStepBodyDuplicatesCriticalPath,
-        &SkillFrontmatterRestatement,
-        &SkillVariableCoverage,
+        &FrontmatterSchema,
+        &NameDirMismatch,
+        &UnknownTool,
+        &DescriptionGrammar,
+        &ArgumentHintGrammar,
+        &SectionLineCount,
+        &MissingCriticalPath,
+        &InvalidCriticalPath,
+        &InlineJsonTooLong,
+        &EnvelopeJsonInBody,
+        &StepBodyDuplicatesCriticalPath,
+        &FrontmatterRestatement,
+        &VariableCoverage,
         &SchemaLinksCheck,
     ];
     let mut findings = Vec::new();

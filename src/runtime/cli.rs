@@ -6,13 +6,13 @@ use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
 use clap_complete::Shell;
-use specify_domain::evidence::ClaimKind;
+use specify_model::evidence::ClaimKind;
 
 pub use crate::output::Format;
-use crate::runtime::commands::codex::cli::CodexAction;
+use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
-use crate::runtime::commands::review::cli::ReviewAction;
+use crate::runtime::commands::rules::cli::RulesAction;
 use crate::runtime::commands::slice::cli::SliceAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
@@ -64,7 +64,7 @@ pub enum Commands {
     },
 
     /// Source adapter operations (workflow contract). Source adapters provide
-    /// `enumerate` + `extract` capabilities and are resolved against
+    /// `extract` + `survey` capabilities and are resolved against
     /// `adapters/sources/<name>/adapter.yaml` (in-repo) or
     /// `.specify/.cache/manifests/sources/<name>/` (agent manifest cache).
     Source {
@@ -81,13 +81,13 @@ pub enum Commands {
         action: TargetAction,
     },
 
-    /// Codex resolution operations (RFC-28). Read-only: no
+    /// Rules resolution operations. Read-only: no
     /// `.specify/` writes, no journal events. Today the only verb is
-    /// `export`, which streams a `ResolvedCodex` JSON envelope built
-    /// from the shared / source / target overlay tree.
-    Codex {
+    /// `export`, which streams a `ResolvedRules` JSON envelope built
+    /// from the shared / source / target codex overlay tree.
+    Rules {
         #[command(subcommand)]
-        action: CodexAction,
+        action: RulesAction,
     },
 
     /// WASI tool runner.
@@ -96,12 +96,12 @@ pub enum Commands {
         action: ToolAction,
     },
 
-    /// Deterministic review (RFC-32 Phase 2). Resolves applicable codex
+    /// Deterministic lint (`specrun lint` v1). Resolves applicable codex
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
-    /// and emits the §D9 review-result envelope. Read-only.
-    Review {
+    /// and emits the `LintResult` envelope lint-result envelope. Read-only.
+    Lint {
         #[command(subcommand)]
-        action: ReviewAction,
+        action: LintAction,
     },
 
     /// Slice lifecycle operations — one `refine → build → merge` loop.
@@ -156,7 +156,7 @@ pub enum Commands {
 ///   after the second `:` and may contain anything (newlines,
 ///   colons, equals signs).
 ///
-/// Materialises as [`specify_domain::change::SourceBinding`] under
+/// Materialises as [`specify_workflow::change::SourceBinding`] under
 /// the structured `{ adapter, path?, value? }` wire form. The 1.x
 /// bare-string `--source <key>=<path>` form was dropped at the 2.0
 /// cut — every binding now carries an explicit adapter name.
@@ -229,14 +229,14 @@ impl FromStr for SourceArg {
 ///
 /// Wire forms (workflow §`Slice.sources`):
 ///
-/// - `<key>=<candidate-id>` — structured binding; both sides are
+/// - `<key>=<lead-id>` — structured binding; both sides are
 ///   non-empty kebab identifiers. Materialises via
-///   [`specify_domain::change::SliceSourceBinding::structured`].
+///   [`specify_workflow::change::SliceSourceBinding::structured`].
 /// - `<key>` — bare-string shorthand; sugar for
-///   `{ key: <key>, candidate: <slice.name> }`. Materialises via
-///   [`specify_domain::change::SliceSourceBinding::bare`].
+///   `{ key: <key>, lead: <slice.name> }`. Materialises via
+///   [`specify_workflow::change::SliceSourceBinding::bare`].
 ///
-/// Malformed inputs (empty key, empty candidate, dangling `=`, more
+/// Malformed inputs (empty key, empty lead, dangling `=`, more
 /// than one `=`) produce a `FromStr` error that clap surfaces as a
 /// standard usage diagnostic (exit code 2 via `Error::Argument` at
 /// the handler boundary).
@@ -244,10 +244,10 @@ impl FromStr for SourceArg {
 pub struct SliceSourceArg {
     pub(crate) key: String,
     /// `None` when the operator wrote the bare-string shorthand;
-    /// `Some(candidate)` otherwise. The handler downconverts to the
-    /// bare wire form when `candidate == slice.name` so the on-disk
+    /// `Some(lead)` otherwise. The handler downconverts to the
+    /// bare wire form when `lead == slice.name` so the on-disk
     /// `plan.yaml` stays minimal.
-    pub(crate) candidate: Option<String>,
+    pub(crate) lead: Option<String>,
 }
 
 /// Typed value for the per-slice `--authority-override <kind>=<key>`
@@ -267,17 +267,17 @@ pub struct AuthorityOverrideKindAssign {
 }
 
 /// Typed value for `specrun plan amend --add-alias` /
-/// `--remove-alias` (workflow §D6). Wire form is
-/// `<candidate-id>=<alias>`; both sides must be non-empty
+/// `--remove-alias` (discovery alias contract). Wire form is
+/// `<lead-id>=<alias>`; both sides must be non-empty
 /// kebab-case strings. The closed [`specify_error::is_kebab`]
 /// check runs at the handler boundary so the parser stays focused
 /// on the `=` split.
 #[derive(Clone, Debug)]
 pub struct AliasAssign {
-    /// Candidate id (left of `=`). The candidate must exist in
+    /// Lead id (left of `=`). The lead must exist in
     /// `discovery.md`; the handler refuses with
-    /// `discovery-candidate-unknown` otherwise.
-    pub(crate) candidate: String,
+    /// `discovery-lead-unknown` otherwise.
+    pub(crate) lead: String,
     /// Alias value (right of `=`).
     pub(crate) alias: String,
 }
@@ -286,19 +286,17 @@ impl FromStr for AliasAssign {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (candidate, alias) = s
+        let (lead, alias) = s
             .split_once('=')
-            .ok_or_else(|| format!("alias flag must be <candidate-id>=<alias>, got `{s}`"))?;
-        if candidate.is_empty() || alias.is_empty() {
-            return Err(format!(
-                "alias flag candidate and alias must both be non-empty, got `{s}`"
-            ));
+            .ok_or_else(|| format!("alias flag must be <lead-id>=<alias>, got `{s}`"))?;
+        if lead.is_empty() || alias.is_empty() {
+            return Err(format!("alias flag lead and alias must both be non-empty, got `{s}`"));
         }
         if alias.contains('=') {
             return Err(format!("alias flag value `{s}` must contain exactly one `=` separator"));
         }
         Ok(Self {
-            candidate: candidate.to_string(),
+            lead: lead.to_string(),
             alias: alias.to_string(),
         })
     }
@@ -340,22 +338,20 @@ impl FromStr for SliceSourceArg {
         if let Some((k, v)) = s.split_once('=') {
             if v.contains('=') {
                 return Err(format!(
-                    "--sources value `{s}` must be <key>=<candidate-id> with at most one `=`"
+                    "--sources value `{s}` must be <key>=<lead-id> with at most one `=`"
                 ));
             }
             if k.is_empty() || v.is_empty() {
-                return Err(format!(
-                    "--sources key and candidate-id must both be non-empty, got `{s}`"
-                ));
+                return Err(format!("--sources key and lead-id must both be non-empty, got `{s}`"));
             }
             Ok(Self {
                 key: k.to_string(),
-                candidate: Some(v.to_string()),
+                lead: Some(v.to_string()),
             })
         } else {
             Ok(Self {
                 key: s.to_string(),
-                candidate: None,
+                lead: None,
             })
         }
     }

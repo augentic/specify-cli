@@ -7,8 +7,8 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use specify_domain::slice::atomic::yaml_write;
 use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_model::atomic::yaml_write;
 
 use super::fingerprint::ContextFingerprint;
 
@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn input_diff_sorts_changed_added_and_removed_by_path() {
+    fn input_diff_sorts_by_path() {
         let expected = vec![input("a.txt", "old"), input("b.txt", "same"), input("d.txt", "gone")];
         let actual = vec![input("a.txt", "new"), input("b.txt", "same"), input("c.txt", "added")];
 

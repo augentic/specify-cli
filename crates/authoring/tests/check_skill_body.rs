@@ -2,9 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_authoring::Context;
-use specify_authoring::check::{
-    SkillBodyLineCount, SkillEnvelopeJsonInBody, SkillInvalidCriticalPath, SkillVariableCoverage,
-};
+use specify_authoring::check::{EnvelopeJsonInBody, InvalidCriticalPath, VariableCoverage};
 use specify_authoring::finding::Check;
 
 fn fixture_root(name: &str) -> PathBuf {
@@ -34,19 +32,7 @@ fn repeated_lines(prefix: &str, count: usize) -> String {
 }
 
 #[test]
-fn body_line_count_flags_long_body() {
-    let ctx = context_for_fixture("body-too-long");
-    write_skill(&fixture_root("body-too-long"), &repeated_lines("line", 201));
-
-    let findings = SkillBodyLineCount.run(&ctx);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id, "skill.body-line-count");
-    assert!(findings[0].message.contains("body lines (limit 200)"));
-    assert!(findings[0].message.contains("Skill body too long"));
-}
-
-#[test]
-fn invalid_critical_path_flags_wrong_item_count() {
+fn invalid_critical_path_wrong_count() {
     let ctx = context_for_fixture("invalid-critical-path");
     let mut body = String::from("## Critical Path\n\n");
     for i in 1..=4 {
@@ -56,14 +42,14 @@ fn invalid_critical_path_flags_wrong_item_count() {
     body.push_str(&repeated_lines("padding", 150));
     write_skill(&fixture_root("invalid-critical-path"), &body);
 
-    let findings = SkillInvalidCriticalPath.run(&ctx);
+    let findings = InvalidCriticalPath.run(&ctx);
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].rule_id, "skill.invalid-critical-path");
     assert!(findings[0].message.contains("found 4"));
 }
 
 #[test]
-fn envelope_json_in_body_flags_envelope_shape() {
+fn envelope_json_flags_shape() {
     let ctx = context_for_fixture("envelope-json");
     let body = r##"## Output
 
@@ -77,7 +63,7 @@ fn envelope_json_in_body_flags_envelope_shape() {
 "##;
     write_skill(&fixture_root("envelope-json"), body);
 
-    let findings = SkillEnvelopeJsonInBody.run(&ctx);
+    let findings = EnvelopeJsonInBody.run(&ctx);
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].rule_id, "skill.envelope-json-in-body");
     assert!(findings[0].message.contains("Envelope JSON in skill body"));
@@ -98,7 +84,7 @@ Validate $PROJECT for $SLICE before continuing.
 "#;
     write_skill(&fixture_root("undefined-variable"), body);
 
-    let findings = SkillVariableCoverage.run(&ctx);
+    let findings = VariableCoverage.run(&ctx);
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].rule_id, "skill.variable-coverage");
     assert!(findings[0].message.contains("Undefined variable"));

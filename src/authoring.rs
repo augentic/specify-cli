@@ -3,7 +3,6 @@
 mod cli;
 mod commands;
 pub mod map_finding;
-mod output;
 pub mod severity;
 
 use std::process::ExitCode;
@@ -15,5 +14,5 @@ use clap::Parser;
 #[must_use]
 pub fn run() -> ExitCode {
     let cli = cli::Cli::parse();
-    ExitCode::from(commands::run(cli).code())
+    ExitCode::from(commands::run(&cli).code())
 }

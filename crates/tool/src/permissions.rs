@@ -185,7 +185,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn substitute_expands_project_and_capability_dirs() {
+    fn substitute_expands_dirs() {
         let project = Path::new("/tmp/project");
         let adapter = Path::new("/tmp/adapter");
 
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn substitute_rejects_capability_dir_outside_plugin_scope() {
+    fn substitute_rejects_capability_out_of_scope() {
         let err = substitute("$CAPABILITY_DIR/templates", Path::new("/tmp/project"), None)
             .expect_err("project-scope capability dir must fail");
         assert!(matches!(err, ToolError::InvalidPermission { .. }), "{err}");
@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn substitute_rejects_unknown_variables_parent_segments_and_relative_paths() {
+    fn substitute_rejects_bad_variables() {
         for template in ["$HOME/contracts", "$PROJECT_DIR/../contracts", "contracts"] {
             let err = substitute(template, Path::new("/tmp/project"), None)
                 .expect_err("invalid template must fail");
@@ -234,7 +234,7 @@ mod tests {
     }
 
     #[test]
-    fn canonicalise_under_accepts_existing_descendant() {
+    fn canonicalise_accepts_descendant() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         let contracts = project.join("contracts");
@@ -245,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_write_denial_rejects_specify_state() {
+    fn lifecycle_denies_specify_state() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         let specify = project.join(".specify");

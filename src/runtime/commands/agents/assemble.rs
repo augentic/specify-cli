@@ -6,11 +6,11 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use specify_domain::adapter::{ADAPTER_FILENAME, ResolvedTargetAdapter};
-use specify_domain::config::{Layout, ProjectConfig};
-use specify_domain::registry::Registry;
-use specify_domain::slice::SliceMetadata;
 use specify_error::{Error, Result};
+use specify_workflow::adapter::{ADAPTER_FILENAME, ResolvedTargetAdapter};
+use specify_workflow::config::{Layout, ProjectConfig};
+use specify_workflow::registry::Registry;
+use specify_workflow::slice::SliceMetadata;
 
 use super::{detect, fingerprint, render};
 use crate::runtime::context::Ctx;

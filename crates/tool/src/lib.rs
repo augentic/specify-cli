@@ -1,7 +1,3 @@
-#![allow(
-    clippy::doc_markdown,
-    reason = "The crate-level decision record mirrors RFC prose and manifest keys."
-)]
 //! Specify's declared WASI tool model, cache, resolver, and
 //! Wasmtime-backed execution host. See `DECISIONS.md`
 //! §"Tool architecture" for the canonical contract.

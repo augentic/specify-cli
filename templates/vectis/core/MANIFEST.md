@@ -5,7 +5,7 @@ registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.core`); `wasi-to
 
 Source filenames are flat under `templates/vectis/core/`. Nested target paths (e.g. `shared/src/bin/codegen.rs`) are declared in `manifest.yaml`, not mirrored in this directory layout. The `gitignore` source has no leading dot because shipping a literal `.gitignore` inside the `templates/` tree would be silently honoured by git tools that walk the repo; the engine renames it on write.
 
-Total: 13 files (matches RFC § File Manifests § Core Assembly).
+Total: 13 files (matches the core assembly file manifest).
 
 ## Placeholder reference
 
@@ -37,7 +37,7 @@ emits Kotlin types into the package the Android shell expects:
 | ------------------------ | --------------------- | ------------- |
 | `__ANDROID_PACKAGE__`    | `com.vectis.counter`  | `codegen.rs`  |
 
-The placeholder defaults to `com.vectis.<lower app name>` per RFC § CLI Surface §
+The placeholder defaults to `com.vectis.<lower app name>` per the CLI surface contract
 `vectis init` -- the codegen binary still compiles for core-only and iOS-only
 projects (Kotlin codegen just isn't wired up in those layouts).
 

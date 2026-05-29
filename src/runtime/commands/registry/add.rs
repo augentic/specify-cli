@@ -1,8 +1,8 @@
 //! `specrun registry add` handler.
 
-use specify_domain::registry::{Registry, RegistryProject};
-use specify_domain::slice::atomic::yaml_write;
 use specify_error::{Error, Result, is_kebab};
+use specify_model::atomic::yaml_write;
+use specify_workflow::registry::{Registry, RegistryProject};
 
 use super::dto::{AddBody, write_add_text};
 use crate::runtime::context::Ctx;

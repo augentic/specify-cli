@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.specify.dev/specify/design-system/components.schema.json",
   "title": "Component Catalog",
-  "description": "Validates `.specify/design-system/components.yaml`, the operator-curated component catalog (RFC-31 D5). Each entry declares a shared UI component that the Vectis target factors into shared code at build time. The catalog follows the same operator-curated pattern as `tokens.yaml` and `assets.yaml`.",
+  "description": "Validates `.specify/design-system/components.yaml`, the operator-curated component catalog. Each entry declares a shared UI component that the Vectis target factors into shared code at build time. The catalog follows the same operator-curated pattern as `tokens.yaml` and `assets.yaml`.",
   "type": "object",
   "required": ["version", "components"],
   "additionalProperties": false,

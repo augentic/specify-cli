@@ -79,7 +79,7 @@ fn expand_path_template_handles_name_substitution() {
 /// template) before falling back to `design-system/layout.yaml` (the
 /// `project` template).
 #[test]
-fn resolve_default_path_prefers_change_local_over_project() {
+fn resolve_default_path_prefers_change_local() {
     let tmp = write_specify_project();
     let change_dir = tmp.path().join(".specify/slices/active");
     std::fs::create_dir_all(&change_dir).expect("mkdir change");
@@ -101,7 +101,7 @@ fn resolve_default_path_prefers_change_local_over_project() {
 /// When the change-local file is absent but the project-shape exists,
 /// `validate layout` falls back to `design-system/`.
 #[test]
-fn resolve_default_path_falls_back_to_project_when_change_local_missing() {
+fn resolve_default_path_falls_back_when_missing() {
     let tmp = write_specify_project();
     let design = tmp.path().join("design-system");
     std::fs::create_dir_all(&design).expect("mkdir design-system");
@@ -120,7 +120,7 @@ fn resolve_default_path_falls_back_to_project_when_change_local_missing() {
 /// "<file>.yaml not readable" error names the most operator-friendly
 /// path.
 #[test]
-fn resolve_default_path_returns_last_candidate_when_nothing_exists() {
+fn resolve_default_path_last_candidate() {
     let tmp = write_specify_project();
     let layout = resolve_default_path_with_root(ValidateMode::Layout, tmp.path());
     assert!(
@@ -262,7 +262,7 @@ fn all_envelope_skips_missing_inputs_without_failing() {
 /// them up. This test feeds a deliberately-broken tokens.yaml and
 /// asserts the broken-hex error rides the nested sub-report.
 #[test]
-fn all_envelope_propagates_sub_mode_errors_into_nested_report() {
+fn all_envelope_propagates_sub_errors() {
     let tmp = write_specify_project();
     let design = tmp.path().join("design-system");
     std::fs::create_dir_all(&design).expect("mkdir design-system");

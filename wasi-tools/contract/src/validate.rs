@@ -9,7 +9,7 @@
 //! invariant (a adapter's logic is reachable from the host only
 //! through `specrun tool run <name>`).
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 mod parse;
@@ -50,7 +50,7 @@ pub fn validate_baseline(contracts_dir: &Path) -> Vec<ContractFinding> {
     let docs = parse::collect_top_level_docs(contracts_dir);
 
     let mut findings: Vec<ContractFinding> = Vec::new();
-    let mut id_to_paths: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let mut id_to_paths: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
 
     for doc in &docs {
         let info = doc.value.get("info");
@@ -91,10 +91,6 @@ pub fn validate_baseline(contracts_dir: &Path) -> Vec<ContractFinding> {
         }
     }
 
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "findings.sort_by below re-establishes deterministic order across the whole vec"
-    )]
     for (id, paths) in &id_to_paths {
         if paths.len() < 2 {
             continue;

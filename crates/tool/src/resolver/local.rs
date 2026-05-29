@@ -79,7 +79,7 @@ mod tests {
     }
 
     #[test]
-    fn local_path_rejects_non_file_and_empty_file() {
+    fn local_rejects_non_file() {
         let cache_dir = scratch_dir("resolver-invalid-local-cache");
         let project_dir = scratch_dir("resolver-invalid-local-project");
         let source_dir = scratch_dir("resolver-invalid-local-source");
@@ -113,7 +113,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn local_path_chases_symlinks_to_regular_files() {
+    fn local_chases_symlinks() {
         let cache_dir = scratch_dir("resolver-symlink-cache");
         let project_dir = scratch_dir("resolver-symlink-project");
         let source_dir = scratch_dir("resolver-symlink-source");

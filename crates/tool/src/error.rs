@@ -18,22 +18,39 @@ use std::path::PathBuf;
 /// with a kebab-case `code` carried at the constructor site (see the
 /// `sidecar_*` / `network_*` helpers below).
 #[derive(Debug, thiserror::Error)]
-#[expect(missing_docs, reason = "field names are self-evident; variant docs carry the contract")]
 pub enum ToolError {
     /// Catch-all diagnostic. The `code` becomes the `error` field of the
     /// JSON envelope after [`From<ToolError> for specify_error::Error`];
     /// `detail` is the human-readable message.
     #[error("{detail}")]
-    Diag { code: &'static str, detail: String },
+    Diag {
+        /// Kebab-case diagnostic code carried at the constructor site.
+        code: &'static str,
+        /// Human-readable message rendered into the envelope.
+        detail: String,
+    },
     /// The requested tool name was not present in merged declarations.
     #[error("tool not declared: {name}")]
-    ToolNotDeclared { name: String },
+    ToolNotDeclared {
+        /// Tool name absent from the merged declaration set.
+        name: String,
+    },
     /// A tool permission template or expanded permission path is invalid.
     #[error("invalid tool permission `{template}`: {reason}")]
-    InvalidPermission { template: String, reason: String },
+    InvalidPermission {
+        /// Offending permission template or expanded path.
+        template: String,
+        /// Why the template or path is rejected.
+        reason: String,
+    },
     /// A requested preopen or filesystem authority is denied.
     #[error("tool permission denied for {}: {reason}", path.display())]
-    PermissionDenied { path: PathBuf, reason: String },
+    PermissionDenied {
+        /// Path whose access was denied.
+        path: PathBuf,
+        /// Why access to the path is denied.
+        reason: String,
+    },
 }
 
 impl ToolError {

@@ -17,7 +17,7 @@
 //!   layout, composition, plus an `all` fan-out.
 //! - `scaffold` — render-only Crux project scaffolds (core / iOS /
 //!   Android shells).
-//! - `schema` — print a tool-owned embedded schema to stdout (RFC-31 D1).
+//! - `schema` — print a tool-owned embedded schema to stdout (the tool-owned schema and catalog decisions D1).
 //!
 //! Each subcommand serialises its body directly; there is no shared
 //! envelope wrapper.

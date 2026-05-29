@@ -99,25 +99,25 @@ fn retired_helper_regexes() -> &'static [(&'static RetiredHelperPattern, Regex)]
 }
 
 /// Validate first-party WASM tool declarations in target adapter manifests.
-pub struct FirstPartyToolDeclarations;
+pub struct FirstPartyTools;
 
-impl Check for FirstPartyToolDeclarations {
+impl Check for FirstPartyTools {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
-        run_first_party_tool_declarations(ctx)
+        check_first_party_tools(ctx)
     }
 }
 
 /// Reject retired host helper invocations that have declared-tool equivalents.
-pub struct DeclaredToolEquivalentInvocations;
+pub struct DeclaredToolInvocations;
 
-impl Check for DeclaredToolEquivalentInvocations {
+impl Check for DeclaredToolInvocations {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
-        run_declared_tool_equivalent_invocations(ctx)
+        check_declared_tool_invocations(ctx)
     }
 }
 
 /// Run first-party tool declaration validation against `ctx`.
-pub fn run_first_party_tool_declarations(ctx: &Context) -> Vec<Finding> {
+pub fn check_first_party_tools(ctx: &Context) -> Vec<Finding> {
     let mut findings = Vec::new();
     let mut cache: HashMap<String, Option<ResolvedAdapter>> = HashMap::new();
     let mut shape_reported = HashSet::new();
@@ -156,7 +156,7 @@ pub fn run_first_party_tool_declarations(ctx: &Context) -> Vec<Finding> {
 }
 
 /// Run declared-tool invocation equivalence validation against `ctx`.
-pub fn run_declared_tool_equivalent_invocations(ctx: &Context) -> Vec<Finding> {
+pub fn check_declared_tool_invocations(ctx: &Context) -> Vec<Finding> {
     let mut findings = Vec::new();
     let root = ctx.framework_root();
 

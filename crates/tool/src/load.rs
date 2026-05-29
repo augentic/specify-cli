@@ -90,7 +90,7 @@ mod tests {
     }
 
     #[test]
-    fn load_plugin_sidecar_returns_empty_when_absent() {
+    fn sidecar_empty_when_absent() {
         let tmp = tempdir().expect("tempdir");
         let loaded =
             plugin_sidecar(tmp.path(), "contracts", Axis::Target).expect("absent sidecar is valid");
@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn load_plugin_sidecar_rejects_wrong_top_level_shape() {
+    fn sidecar_rejects_wrong_shape() {
         let tmp = tempdir().expect("tempdir");
         fs::write(
             tmp.path().join("tools.yaml"),
@@ -143,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_scoped_project_wins_and_warns_once() {
+    fn merge_project_wins_and_warns() {
         let project_scope = ToolScope::Project {
             project_name: "demo".to_string(),
         };

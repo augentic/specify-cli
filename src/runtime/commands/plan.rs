@@ -1,8 +1,3 @@
-#![allow(
-    clippy::too_many_arguments,
-    reason = "Plan dispatcher passes through clap-shaped argument tuples."
-)]
-
 mod add;
 mod amend;
 mod args;
@@ -14,10 +9,10 @@ mod lifecycle;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify_domain::change::Plan;
-use specify_domain::config::Layout;
-use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
+use specify_workflow::change::Plan;
+use specify_workflow::config::Layout;
+use specify_workflow::registry::Registry;
 
 use self::cli::PlanAction;
 use crate::runtime::context::Ctx;
@@ -28,67 +23,20 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
             name,
             sources,
             divergence_likely,
-            auto_review,
+            auto_approve,
             authority_override,
-        } => {
-            create::create(ctx, name, sources, &divergence_likely, auto_review, &authority_override)
-        }
+        } => create::create(
+            ctx,
+            name,
+            sources,
+            &divergence_likely,
+            auto_approve,
+            &authority_override,
+        ),
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
-        PlanAction::Add {
-            name,
-            depends_on,
-            sources,
-            description,
-            project,
-            target,
-            context,
-            authority_override,
-        } => add::add(
-            ctx,
-            &name,
-            depends_on,
-            sources,
-            description,
-            project,
-            target,
-            context,
-            &authority_override,
-        ),
-        PlanAction::Amend {
-            name,
-            depends_on,
-            sources,
-            add_source,
-            remove_source,
-            divergence,
-            description,
-            project,
-            target,
-            context,
-            authority_override,
-            clear_authority_override,
-            clear_authority_overrides,
-            add_alias,
-            remove_alias,
-        } => amend::amend(
-            ctx,
-            name,
-            depends_on,
-            sources,
-            add_source,
-            remove_source,
-            divergence.as_deref(),
-            description,
-            project,
-            target,
-            context,
-            &authority_override,
-            &clear_authority_override,
-            &clear_authority_overrides,
-            &add_alias,
-            &remove_alias,
-        ),
+        PlanAction::Add(args) => add::add(ctx, args),
+        PlanAction::Amend(args) => amend::amend(ctx, args),
         PlanAction::Transition { name, target, undo } => {
             lifecycle::transition(ctx, name, target, undo)
         }

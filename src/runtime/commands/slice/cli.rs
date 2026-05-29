@@ -2,7 +2,7 @@
 //! The umbrella `cli.rs` re-exports the action enums.
 
 use clap::Subcommand;
-use specify_domain::slice::{CreateIfExists, LifecycleStatus};
+use specify_workflow::slice::{CreateIfExists, LifecycleStatus};
 
 #[derive(Subcommand)]
 pub enum SliceAction {

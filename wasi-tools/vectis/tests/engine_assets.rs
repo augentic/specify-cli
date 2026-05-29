@@ -97,7 +97,7 @@ const APPENDIX_E_FILES: &[&str] = &[
 /// `xxxhdpi`, which surfaces as a warning, not an error), the run is
 /// "errors-clean" rather than "absolutely silent".
 #[test]
-fn assets_appendix_e_paired_with_composition_validates_cleanly() {
+fn appendix_e_with_composition_validates() {
     let (tmp, assets_path) = write_assets_project(APPENDIX_E_ASSETS_YAML, APPENDIX_E_FILES);
     write_specs_composition(
         tmp.path(),
@@ -173,7 +173,7 @@ screens:
 /// entry and the missing path. The `path` field uses the
 /// JSON-Pointer-shaped indicator `/assets/<id>/sources/ios/1x`.
 #[test]
-fn assets_missing_raster_file_is_a_pathful_error() {
+fn missing_raster_file_pathful() {
     let mut files = APPENDIX_E_FILES.to_vec();
     files.retain(|p| *p != "assets/empty-tasks-hero.png");
     let (_tmp, assets_path) = write_assets_project(APPENDIX_E_ASSETS_YAML, &files);
@@ -197,7 +197,7 @@ fn assets_missing_raster_file_is_a_pathful_error() {
 /// composition that references the asset, because density warnings
 /// only fire for composition-referenced assets.
 #[test]
-fn assets_missing_optional_density_is_a_warning() {
+fn missing_optional_density_warns() {
     let yaml = r"version: 1
 assets:
   empty-tasks-hero:
@@ -256,7 +256,7 @@ screens:
 /// Composition referencing an asset id that is NOT in `assets.yaml`
 /// is an error.
 #[test]
-fn assets_unresolved_composition_reference_is_an_error() {
+fn unresolved_composition_reference_errors() {
     let (tmp, assets_path) = write_assets_project(APPENDIX_E_ASSETS_YAML, APPENDIX_E_FILES);
     write_specs_composition(
         tmp.path(),
@@ -296,7 +296,7 @@ screens:
 /// `sources.android` is an error (the targeted shell platform has no
 /// usable source).
 #[test]
-fn assets_vector_missing_platform_export_is_an_error() {
+fn vector_missing_platform_export_errors() {
     let yaml = r"version: 1
 assets:
   brand-logo:
@@ -343,7 +343,7 @@ screens:
 /// valid at the schema layer because `sources.minProperties: 1` -- and
 /// is fine without composition reference.)
 #[test]
-fn assets_without_sibling_composition_only_runs_schema_and_files() {
+fn without_sibling_composition_runs_schema_and_files() {
     let yaml = r"version: 1
 assets:
   empty-tasks-hero:
@@ -368,7 +368,7 @@ assets:
 }
 
 #[test]
-fn assets_missing_file_returns_invalid_project_error() {
+fn missing_file_invalid_project() {
     let args = Args {
         mode: ValidateMode::Assets,
         path: Some(PathBuf::from("/definitely/not/here/assets.yaml")),
@@ -385,7 +385,7 @@ fn assets_missing_file_returns_invalid_project_error() {
 /// the rejection rides the same envelope shape as the cross-artifact
 /// errors and the dispatcher exits non-zero.
 #[test]
-fn assets_schema_violation_reports_pathful_error() {
+fn schema_violation_pathful() {
     let yaml = r"version: 1
 assets:
   bad:
@@ -412,7 +412,7 @@ assets:
 /// schema's `propertyNames` pattern and surfaces as an error rooted at
 /// the assets map.
 #[test]
-fn assets_kebab_case_violation_is_a_schema_error() {
+fn kebab_case_violation_schema_error() {
     let yaml = r"version: 1
 assets:
   Bad-Id:
@@ -436,7 +436,7 @@ assets:
 /// A vector entry with both `variant_of` and `usage_hint` validates
 /// without errors.
 #[test]
-fn assets_variant_of_and_usage_hint_validate_cleanly() {
+fn variant_of_and_usage_hint_validate() {
     let yaml = r#"version: 1
 assets:
   nav-lists-active:
@@ -461,7 +461,7 @@ assets:
 /// A `variant_of` value that violates the kebab-case pattern is
 /// rejected by the schema.
 #[test]
-fn assets_variant_of_pattern_violation_is_a_schema_error() {
+fn variant_of_pattern_violation_schema_error() {
     let yaml = r#"version: 1
 assets:
   nav-lists-active:
@@ -486,7 +486,7 @@ assets:
 /// and `usage_hint`. A single fixture with one of each validates
 /// cleanly.
 #[test]
-fn assets_variant_of_on_each_entry_kind() {
+fn variant_of_on_each_entry_kind() {
     let yaml = r#"version: 1
 assets:
   hero-active:
@@ -529,7 +529,7 @@ assets:
 /// A `usage_hint` without `variant_of` is schema-valid (the fields
 /// are independently optional).
 #[test]
-fn assets_usage_hint_alone_validates_cleanly() {
+fn usage_hint_alone_validates() {
     let yaml = r#"version: 1
 assets:
   brand-logo:

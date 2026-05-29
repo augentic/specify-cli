@@ -1,4 +1,4 @@
-//! RFC-28 CH-23 golden tests for `specdev check --format json`.
+//! Golden tests for `specdev lint --format json`.
 //!
 //! These tests pin the byte-stable wire envelope emitted by the
 //! `specdev` binary's `--format json` mode (CH-22 plumbing, CH-21
@@ -17,7 +17,7 @@
 //! `tempfile::TempDir`. That path is machine-specific (e.g.
 //! `/private/var/folders/.tmpXXXXXX/...` on macOS,
 //! `/tmp/.tmpXXXXXX/...` on Linux) and would make any golden file
-//! non-portable. Worse, RFC-28's fingerprint algorithm hashes the
+//! non-portable. Worse, the structured lint fingerprint algorithm hashes the
 //! raw path, so a naive prefix-swap on the wire JSON would carry
 //! stale fingerprints that no consumer could re-verify.
 //!
@@ -25,15 +25,15 @@
 //!
 //! 1. Capture the binary's pretty-printed JSON envelope from stdout.
 //! 2. For each finding, deserialise into the typed
-//!    [`ReviewFinding`], swap any `location.path` prefix that
+//!    [`LintFinding`], swap any `location.path` prefix that
 //!    matches the canonicalised tempdir root with the literal
 //!    `<FRAMEWORK_ROOT>` placeholder.
 //! 3. Recompute the fingerprint via
-//!    [`specify_codex::fingerprint::fingerprint`] against
+//!    [`specify_lints::fingerprint::fingerprint`] against
 //!    the normalised finding. The stored fingerprint then reflects
 //!    the placeholder-anchored canonical preimage.
 //! 4. Re-serialise and compare/regenerate the placeholder-anchored
-//!    envelope against `tests/fixtures/specdev-check/<name>.json`.
+//!    envelope against `tests/fixtures/specdev-lint/<name>.json`.
 //!
 //! The resulting goldens are machine-portable and self-consistent:
 //! consumers replaying the test on any host produce the same path
@@ -59,8 +59,8 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::{Value, json};
-use specify_codex::finding::validate_finding_json;
-use specify_codex::{ReviewFinding, fingerprint};
+use specify_lints::finding::validate_finding_json;
+use specify_lints::{LintFinding, fingerprint};
 use tempfile::TempDir;
 
 /// Replacement token for the canonicalised framework-root prefix in
@@ -70,7 +70,7 @@ const FRAMEWORK_ROOT_PLACEHOLDER: &str = "<FRAMEWORK_ROOT>";
 
 /// Resolve the directory where golden fixtures live.
 fn goldens_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("specdev-check")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("specdev-lint")
 }
 
 /// Write the minimal directory and file scaffold that
@@ -184,8 +184,8 @@ fn write_scaffold(root: &Path) {
 /// Write a minimal source-adapter manifest at
 /// `adapters/sources/<name>/adapter.yaml` so
 /// `adapter.missing-manifest` does not fire when a `<name>` source
-/// adapter directory is created (e.g. by writing a codex rule under
-/// `adapters/sources/<name>/codex/`).
+/// adapter directory is created (e.g. by writing a rule under
+/// `adapters/sources/<name>/rules/`).
 fn write_source_adapter_manifest(root: &Path, name: &str) {
     let path = root.join("adapters").join("sources").join(name).join("adapter.yaml");
     fs::create_dir_all(path.parent().expect("source adapter parent"))
@@ -198,7 +198,7 @@ version: 1
 axis: source
 description: Synthetic source adapter for specdev golden tests.
 briefs:
-  enumerate: briefs/enumerate.md
+  survey: briefs/survey.md
   extract: briefs/extract.md
 "
         ),
@@ -206,14 +206,14 @@ briefs:
     .expect("source adapter.yaml");
 }
 
-/// Render a structurally-valid codex rule body with the supplied id.
+/// Render a structurally-valid rule body with the supplied id.
 fn valid_rule_body(id: &str) -> String {
     format!(
         r"---
 id: {id}
 title: Synthetic Test Rule
 severity: important
-trigger: When the test harness needs a structurally-valid codex rule.
+trigger: When the test harness needs a structurally-valid rule.
 ---
 
 ## Rule
@@ -223,12 +223,12 @@ Body preserved so the rule passes shape validation.
     )
 }
 
-/// Write a codex rule file under `<root>/<rel_path>`, creating any
+/// Write a rule file under `<root>/<rel_path>`, creating any
 /// missing parents.
 fn write_codex_rule(root: &Path, rel_path: &str, body: &str) {
     let path = root.join(rel_path);
     fs::create_dir_all(path.parent().expect("rule parent")).expect("mkdir rule parent");
-    fs::write(&path, body).expect("write codex rule");
+    fs::write(&path, body).expect("write rule");
 }
 
 /// Write a minimal target-adapter manifest at
@@ -256,12 +256,12 @@ briefs:
     .expect("adapter.yaml");
 }
 
-/// Run `specdev check --framework-root <root> --format json` and
+/// Run `specdev lint --framework-root <root> --format json` and
 /// return the (exit code, stdout, stderr) triple.
 fn run_specdev_json(root: &Path) -> (Option<i32>, Vec<u8>, Vec<u8>) {
     let output = Command::cargo_bin("specdev")
         .expect("cargo_bin(specdev)")
-        .args(["check", "--framework-root"])
+        .args(["lint", "--framework-root"])
         .arg(root)
         .args(["--format", "json"])
         .output()
@@ -298,8 +298,8 @@ fn normalize_envelope(envelope: Value, framework_root: &Path) -> Value {
     };
 
     for finding_json in findings.iter_mut() {
-        let mut finding: ReviewFinding = serde_json::from_value(finding_json.clone())
-            .expect("finding must deserialise into ReviewFinding");
+        let mut finding: LintFinding = serde_json::from_value(finding_json.clone())
+            .expect("finding must deserialise into LintFinding");
         if let Some(location) = finding.location.as_mut() {
             let raw = location.path.replace('\\', "/");
             if let Some(rest) = raw.strip_prefix(&prefix) {
@@ -359,7 +359,7 @@ fn clean_tree_emits_empty_envelope() {
     write_source_adapter_manifest(temp.path(), "documentation");
     write_codex_rule(
         temp.path(),
-        "adapters/sources/documentation/codex/src-001.md",
+        "adapters/sources/documentation/rules/src-001.md",
         &valid_rule_body("SRC-001"),
     );
 
@@ -390,7 +390,7 @@ fn clean_tree_emits_empty_envelope() {
 /// (2) A framework tree carrying one schema violation, one
 /// namespace-ownership violation, and one duplicate-id violation
 /// emits the populated envelope captured by
-/// `tests/fixtures/specdev-check/violations.json`. Every finding in
+/// `tests/fixtures/specdev-lint/violations.json`. Every finding in
 /// the envelope is additionally schema-validated via
 /// [`validate_finding_json`] (CH-16) — covering scenario (3) from
 /// CH-23 in the same test pass.
@@ -401,22 +401,22 @@ fn violations_tree_emits_expected_envelope() {
 
     write_codex_rule(
         temp.path(),
-        "adapters/shared/codex/universal/uni-999.md",
+        "adapters/shared/rules/universal/uni-999.md",
         &valid_rule_body("UNI-999"),
     );
     write_codex_rule(
         temp.path(),
-        "adapters/shared/codex/universal/uni-100-first.md",
+        "adapters/shared/rules/universal/uni-100-first.md",
         &valid_rule_body("UNI-100"),
     );
     write_codex_rule(
         temp.path(),
-        "adapters/shared/codex/universal/uni-100-second.md",
+        "adapters/shared/rules/universal/uni-100-second.md",
         &valid_rule_body("UNI-100"),
     );
     write_codex_rule(
         temp.path(),
-        "adapters/shared/codex/universal/bad-frontmatter.md",
+        "adapters/shared/rules/universal/bad-frontmatter.md",
         r"---
 id: UNI-001
 title: Missing required fields
@@ -431,7 +431,7 @@ Body without trigger and severity.
     write_target_adapter_manifest(temp.path(), "omnia");
     write_codex_rule(
         temp.path(),
-        "adapters/targets/omnia/codex/frame-misplaced.md",
+        "adapters/targets/omnia/rules/frame-misplaced.md",
         &valid_rule_body("FRAME-001"),
     );
 
@@ -469,13 +469,13 @@ Body without trigger and severity.
 /// prefix on stderr — the contract CH-22 codified for the JSON
 /// branch.
 #[test]
-fn missing_framework_root_still_emits_envelope_on_stdout() {
+fn missing_framework_root_emits_envelope() {
     let temp = TempDir::new().expect("tempdir");
     let missing = temp.path().join("does-not-exist");
 
     let output = Command::cargo_bin("specdev")
         .expect("cargo_bin(specdev)")
-        .args(["check", "--framework-root"])
+        .args(["lint", "--framework-root"])
         .arg(&missing)
         .args(["--format", "json"])
         .output()
@@ -508,24 +508,27 @@ fn missing_framework_root_still_emits_envelope_on_stdout() {
     assert!(stderr.contains("error:"), "expected `error:` prefix on stderr; got:\n{stderr}");
 }
 
-/// (5) Default text output on a clean tree still prints the
-/// familiar `All checks passed.` line — the JSON addition (CH-22)
-/// must not regress the human surface.
+/// (5) Default text output on a clean tree now prints the
+/// diagnostics-formatter set's pretty summary line per RFC-34's
+/// `specdev lint` extension. Specifically: a `0 finding(s)`
+/// header and a `Summary: 0 critical, 0 important, ...` tally,
+/// driven by `specify_lints::lint::diagnostics::pretty::render`.
 #[test]
-fn default_text_output_says_all_checks_passed() {
+fn default_text_output_renders_pretty_summary() {
     let temp = TempDir::new().expect("tempdir");
     write_scaffold(temp.path());
     write_source_adapter_manifest(temp.path(), "documentation");
     write_codex_rule(
         temp.path(),
-        "adapters/sources/documentation/codex/src-001.md",
+        "adapters/sources/documentation/rules/src-001.md",
         &valid_rule_body("SRC-001"),
     );
 
     let output = Command::cargo_bin("specdev")
         .expect("cargo_bin(specdev)")
-        .args(["check", "--framework-root"])
+        .args(["lint", "--framework-root"])
         .arg(temp.path())
+        .env("NO_COLOR", "1")
         .output()
         .expect("specdev invocation");
 
@@ -538,7 +541,7 @@ fn default_text_output_says_all_checks_passed() {
 
     let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
     assert!(
-        stdout.contains("All checks passed."),
-        "expected human summary on stdout; got:\n{stdout}",
+        stdout.contains("0 finding(s)") && stdout.contains("Summary: 0 critical"),
+        "expected pretty diagnostics summary on stdout; got:\n{stdout}",
     );
 }

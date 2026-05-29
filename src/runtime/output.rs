@@ -66,7 +66,7 @@ impl From<&Error> for Exit {
 pub fn report(format: Format, err: &Error) -> Exit {
     let code = Exit::from(err);
     let body = ErrorBody::from(err);
-    let result = emit(Box::new(std::io::stderr().lock()), format, &body, write_error_text);
+    let result = emit(&mut std::io::stderr().lock(), format, &body, write_error_text);
     if let Err(serialise_err) = result {
         eprintln!("error: {err}");
         eprintln!("error: {serialise_err}");
@@ -84,7 +84,7 @@ pub fn report(format: Format, err: &Error) -> Exit {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ErrorBody<'a> {
-    pub(crate) error: String,
+    pub(crate) error: std::borrow::Cow<'static, str>,
     pub(crate) message: String,
     pub(crate) exit_code: u8,
     #[serde(skip_serializing_if = "Option::is_none")]

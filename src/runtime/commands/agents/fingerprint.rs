@@ -153,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_hash_uses_sorted_canonical_inputs() {
+    fn aggregate_hash_sorts_inputs() {
         let inputs = vec![
             input(
                 "registry.yaml",
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_hash_is_stable_when_collection_order_changes() {
+    fn aggregate_hash_order_stable() {
         let alpha = input(
             ".specify/project.yaml",
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -193,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn body_hash_changes_when_fenced_body_changes() {
+    fn body_hash_changes_with_body() {
         let original = body_sha256(b"\n## Runtime\n- detected: Rust.\n\n");
         let edited = body_sha256(b"\n## Runtime\n- detected: Node.js.\n\n");
 

@@ -4,7 +4,7 @@ The contract every CLI command handler obeys: how `Ctx` is constructed, how outp
 
 ## Ctx construction
 
-Handlers take `&Ctx` (renamed from `CommandContext` so the module path `crate::runtime::context::Ctx` carries the noun). `Ctx` exposes the resolved project dir, layout, output format, and a few thin facade methods for handler ergonomics; everything else flows through workspace crates. `Layout<'a>` lives on `Ctx` rather than at call sites so path helpers stay anchored in `specify-domain` — see [architecture.md §"Layout boundary"](./architecture.md#layout-boundary).
+Handlers take `&Ctx` (renamed from `CommandContext` so the module path `crate::runtime::context::Ctx` carries the noun). `Ctx` exposes the resolved project dir, layout, output format, and a few thin facade methods for handler ergonomics; everything else flows through workspace crates. `Layout<'a>` lives on `Ctx` rather than at call sites so path helpers stay anchored in `specify-workflow` — see [architecture.md §"Layout boundary"](./architecture.md#layout-boundary).
 
 ## Default handler signature
 
@@ -29,7 +29,7 @@ A free `fn ... -> Result<Exit>` belongs in `src/runtime/commands.rs`. Elsewhere,
 
 Success bodies leave handlers via `ctx.write(&body, write_text)?;`. `Ctx::write` chooses the JSON vs text path based on `Format`; the handler never sees the branch. The `write_text` closure has signature `FnOnce(&mut dyn Write, &T) -> std::io::Result<()>` and is colocated with each handler so the response shape stays in a single block of code; the JSON path goes through `serde::Serialize` automatically.
 
-Handlers never pick a stdout/stderr sink directly — `Ctx::write` (the success path), `output::report` (the failure path), and the free `output::emit` (the rare format-only path) are the sink-bearing entry points. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run` and the unified `commands::resolve_adapter` shared by `source resolve` / `target resolve` (the two RFC-25 adapter-resolve verbs) — receive a bare `Format` and call `output::emit(Box::new(std::io::stdout().lock()), format, &body, write_text)?;` directly because `Ctx::write` is not available.
+Handlers never pick a stdout/stderr sink directly — `Ctx::write` (the success path), `output::report` (the failure path), and the free `output::emit` (the rare format-only path) are the sink-bearing entry points. Format-only handlers that run before (or outside of) a `Ctx` — `commands::init::run` and the unified `commands::resolve_adapter` shared by `source resolve` / `target resolve` (the source/target adapter resolve verbs) — receive a bare `Format` and call `output::emit(&mut std::io::stdout().lock(), format, &body, write_text)?;` directly because `Ctx::write` is not available.
 
 For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"](./coding-standards.md#format-dispatch), [§"One emit path"](./coding-standards.md#one-emit-path), and [§"DTOs"](./coding-standards.md#dtos).
 
@@ -48,7 +48,7 @@ The four-slot CLI exit-code table is fixed:
 
 ## Dispatcher contract
 
-`src/runtime/cli.rs` declares the clap derive surface. Every command has a doc comment that doubles as `--help` output — keep it accurate and operator-facing (no internal jargon, no RFC numbers without a hyperlink). Add new commands as enum variants on `Commands` with a nested action enum where the verb has subactions; mirror existing groups (`SliceAction`, `PlanAction`, `SourceAction`, `TargetAction`, …).
+`src/runtime/cli.rs` declares the clap derive surface. Every command has a doc comment that doubles as `--help` output — keep it accurate and operator-facing (no internal jargon or historical labels). Add new commands as enum variants on `Commands` with a nested action enum where the verb has subactions; mirror existing groups (`SliceAction`, `PlanAction`, `SourceAction`, `TargetAction`, …).
 
 `--source key=value` arguments are parsed via the typed `SourceArg` (`impl FromStr for SourceArg`) so call sites read named fields instead of tuple positions.
 
@@ -69,7 +69,7 @@ Never put domain logic in the binary. If a function needs unit tests, it belongs
 handlers — both clap arms in `src/runtime/commands.rs` dispatch to a single
 private `commands::resolve_adapter(format, axis, value, project_dir)`
 helper that takes a bare `Format` plus the project dir, switches on
-`axis` to invoke `specify_domain::adapter::SourceAdapter::resolve(name,
+`axis` to invoke `specify_workflow::adapter::SourceAdapter::resolve(name,
 project_dir)?` or `TargetAdapter::resolve(name, project_dir)?`, and
 emits a `ResolveBody { axis, name, resolved_path, location,
 operations, description }` via the direct `output::emit` path
@@ -81,7 +81,7 @@ so adding a third axis later is a one-extra-arm addition to the
 existing `match`.
 
 `plan amend` extends the canonical `with_state::<Plan, _, _>(...)`
-handler shape with three RFC-25 flag families on the `--sources`
+handler shape with the three `--sources` flag families
 axis: `--sources <binding>...` (wholesale replace), `--add-source
 <binding>` (repeatable), `--remove-source <key>` (repeatable). The
 parser routes `--add-source` / `--remove-source` *after* the
@@ -94,7 +94,7 @@ names"](../../DECISIONS.md#journal-event-names).
 
 `plan transition <name> <target>` is one verb that dispatches on
 the operands: `<plan-name> reviewed` is the Gate 1 stamp and emits
-a `plan.transition.reviewed` journal event; `<entry-name> done` is
+a `plan.transition.approved` journal event; `<entry-name> done` is
 the per-entry close (`/spec:merge` is the canonical caller).
 Anything else is an `Error::Argument` (exit 2). The journal append
 runs *after* `with_state` returns so the plan write and the journal

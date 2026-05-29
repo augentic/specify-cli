@@ -1,18 +1,18 @@
-//! CH-21: map a `specify_authoring::Finding` to a structured RFC-28
-//! [`ReviewFinding`].
+//! Map a `specify_authoring::Finding` to a structured lint finding
+//! [`LintFinding`].
 //!
 //! This module deliberately lives at the binary boundary
 //! (`src/authoring/map_finding.rs`) alongside CH-20's
-//! [`crate::authoring::severity`]. Per RFC-28 §"Relationship to
+//! [`crate::authoring::severity`]. Per the rules contract §"Relationship to
 //! framework authoring", the `specify-authoring` library MUST NOT
-//! depend on `specify-domain`; the structured-finding mapper therefore
+//! depend on `specify-workflow`; the structured-finding mapper therefore
 //! has to live in the binary crate so the `specdev` JSON export can
 //! reach across both worlds without polluting the authoring layer's
 //! dependency graph.
 //!
 //! ## Mapping table
 //!
-//! | `Finding` source                       | `ReviewFinding` field                  |
+//! | `Finding` source                       | `LintFinding` field                  |
 //! | -------------------------------------- | -------------------------------------- |
 //! | sequence index (1-based, 4-digit)      | `id` = `"FIND-{NNNN}"`                 |
 //! | `rule_id` (authoring imperative)       | `title` prefix `"[{rule_id}] ..."`     |
@@ -28,16 +28,17 @@
 //! | (deterministic producer)               | `confidence` = `None`                  |
 //! | `fingerprint::fingerprint(&self)`      | `fingerprint`                          |
 //! | (raw scanner output)                   | `status` = `None`                      |
+//! | (raw scanner output)                   | `disposition` = `None`                 |
 //!
 //! ### Decision: imperative `rule_id` vs closed codex `rule-id`
 //!
 //! `crates/authoring/src/finding.rs` returns a static authoring
-//! identifier such as `codex.schema-violation`, `skill.duplicate-name`,
-//! or `links.unresolved`. The wire schema at
-//! `schemas/review/finding.schema.json` constrains `rule-id` to the
+//! identifier such as `rules.schema-violation`, `skill.unknown-tool`,
+//! or `links.broken-reference`. The wire schema at
+//! `schemas/lint/finding.schema.json` constrains `rule-id` to the
 //! closed codex regex
-//! `^(UNI|SRC|FRAME|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
-//! Setting `rule_id: Some("codex.schema-violation".into())` would
+//! `^(UNI|SRC|FRAME|CORE|RUST|IFACE|SEC|OMNIA|VECTIS|ORG)-[0-9]{3}$`.
+//! Setting `rule_id: Some("rules.schema-violation".into())` would
 //! therefore fail schema validation.
 //!
 //! To preserve the schema's closed contract while keeping the
@@ -47,20 +48,20 @@
 //! tooling can recover the imperative id without re-running the
 //! check.
 //!
-//! TODO(RFC-32): once authoring rule families migrate to codex
+//! TODO(standards-layer): once authoring rule families migrate to codex
 //! `FRAME-NNN` ids (the declarative framework-rule namespace
-//! introduced by RFC-32), this mapper should set
+//! introduced by the standards-layer split), this mapper should set
 //! `rule_id: Some("FRAME-NNN")` and drop the `[...]` title prefix.
 
 use specify_authoring::finding::{Finding, Location};
-use specify_codex::fingerprint::fingerprint;
-use specify_codex::{Artifact, FindingEvidence, FindingLocation, FindingSource, ReviewFinding};
+use specify_lints::fingerprint::fingerprint;
+use specify_lints::{Artifact, FindingEvidence, FindingLocation, FindingSource, LintFinding};
 use specify_tool::sha256_hex;
 
 use crate::authoring::severity::severity_for;
 
-/// 16 `KiB` cap on the serialised evidence object per RFC-28 (mirror
-/// of `specify_codex::finding::EVIDENCE_MAX_BYTES`, kept
+/// 16 `KiB` cap on the serialised evidence object per the rules contract (mirror
+/// of `specify_lints::finding::EVIDENCE_MAX_BYTES`, kept
 /// local so the mapper does not import the validator).
 const EVIDENCE_MAX_BYTES: usize = 16 * 1024;
 
@@ -77,36 +78,36 @@ const EVIDENCE_MARGIN_BYTES: usize = 1024;
 /// comment / dashboard rendering predictable.
 const TITLE_MAX_CHARS: usize = 200;
 
-/// Map a single authoring [`Finding`] to a [`ReviewFinding`] with id
+/// Map a single authoring [`Finding`] to a [`LintFinding`] with id
 /// `FIND-0001`.
 ///
 /// Equivalent to `map_findings(&[input.clone()]).into_iter().next()`
 /// but avoids the allocation. The fingerprint is computed last so
 /// every other field is hashed exactly as serialised.
 #[must_use]
-pub fn map_finding(input: &Finding) -> ReviewFinding {
+pub fn map_finding(input: &Finding) -> LintFinding {
     map_one(input, 1)
 }
 
-/// Map a batch of authoring [`Finding`]s to [`ReviewFinding`]s,
+/// Map a batch of authoring [`Finding`]s to [`LintFinding`]s,
 /// assigning sequential `FIND-{NNNN}` ids in input order (1-based,
 /// 4-digit zero-padded).
 ///
 /// The sequence is producer-local: it MUST NOT be assumed stable
 /// across runs because reordering in upstream `Check::run`
 /// implementations will shuffle the ids. Callers that need a stable
-/// dedup key SHOULD use [`ReviewFinding::fingerprint`] instead.
+/// dedup key SHOULD use [`LintFinding::fingerprint`] instead.
 #[must_use]
-pub fn map_findings(inputs: &[Finding]) -> Vec<ReviewFinding> {
+pub fn map_findings(inputs: &[Finding]) -> Vec<LintFinding> {
     inputs.iter().enumerate().map(|(idx, finding)| map_one(finding, idx + 1)).collect()
 }
 
-fn map_one(input: &Finding, index: usize) -> ReviewFinding {
+fn map_one(input: &Finding, index: usize) -> LintFinding {
     let title = build_title(input.rule_id, &input.message);
     let evidence = build_evidence(&input.message);
     let location = input.location.as_ref().map(map_location);
 
-    let mut review = ReviewFinding {
+    let mut review = LintFinding {
         id: format!("FIND-{index:04}"),
         rule_id: None,
         related_rule_ids: None,
@@ -128,6 +129,7 @@ fn map_one(input: &Finding, index: usize) -> ReviewFinding {
         confidence: None,
         fingerprint: String::new(),
         status: None,
+        disposition: None,
     };
     review.fingerprint = fingerprint(&review);
     review
@@ -189,8 +191,8 @@ mod tests {
     use std::path::PathBuf;
 
     use specify_authoring::finding::{Finding, Location};
-    use specify_codex::fingerprint::verify_fingerprint;
-    use specify_codex::{Artifact, FindingEvidence, FindingSource, Severity, validate_finding};
+    use specify_lints::fingerprint::verify_fingerprint;
+    use specify_lints::{Artifact, FindingEvidence, FindingSource, Severity, validate_finding};
 
     use super::{map_finding, map_findings};
 
@@ -213,11 +215,11 @@ mod tests {
     /// recomputable fingerprint — the strongest correctness signal
     /// for the binary-boundary mapper.
     #[test]
-    fn mapper_output_validates_against_review_finding_schema() {
+    fn mapper_output_validates_schema() {
         let input = fixture(
-            "codex.schema-violation",
-            "Codex rule frontmatter failed schema validation.",
-            Some("adapters/shared/codex/universal/example.md"),
+            "rules.schema-violation",
+            "Rule frontmatter failed schema validation.",
+            Some("adapters/shared/rules/universal/example.md"),
             12,
             Some(4),
         );
@@ -229,10 +231,10 @@ mod tests {
     /// rules map to Important via CH-20's table.
     #[test]
     fn severity_table_wires_through() {
-        let critical = map_finding(&fixture("codex.schema-violation", "boom", None, 1, None));
+        let critical = map_finding(&fixture("rules.schema-violation", "boom", None, 1, None));
         assert_eq!(critical.severity, Severity::Critical);
 
-        let important = map_finding(&fixture("skill.duplicate-name", "dup", None, 1, None));
+        let important = map_finding(&fixture("skill.unknown-tool", "dup", None, 1, None));
         assert_eq!(important.severity, Severity::Important);
     }
 
@@ -240,16 +242,16 @@ mod tests {
     /// `[...]` prefix so downstream consumers can recover the
     /// imperative identifier even though `rule_id` is `None`.
     #[test]
-    fn title_prefixes_authoring_rule_id_in_brackets() {
+    fn title_prefixes_rule_id() {
         let mapped = map_finding(&fixture(
-            "codex.schema-violation",
-            "Codex rule frontmatter failed schema validation.\nsecond line ignored",
+            "rules.schema-violation",
+            "Rule frontmatter failed schema validation.\nsecond line ignored",
             None,
             1,
             None,
         ));
         assert!(
-            mapped.title.starts_with("[codex.schema-violation] "),
+            mapped.title.starts_with("[rules.schema-violation] "),
             "title must lead with the authoring rule id: {}",
             mapped.title,
         );
@@ -260,13 +262,13 @@ mod tests {
         );
     }
 
-    /// (4) Authoring imperative ids (`codex.schema-violation`,
-    /// `skill.duplicate-name`, ...) do not match the codex `rule-id`
+    /// (4) Authoring imperative ids (`rules.schema-violation`,
+    /// `skill.unknown-tool`, ...) do not match the codex `rule-id`
     /// regex, so the mapper leaves `rule_id: None` and keeps the
     /// schema legal.
     #[test]
     fn rule_id_is_omitted_for_imperative_ids() {
-        for rule in ["codex.schema-violation", "skill.duplicate-name", "links.unresolved"] {
+        for rule in ["rules.schema-violation", "skill.unknown-tool", "links.broken-reference"] {
             let mapped = map_finding(&fixture(rule, "msg", None, 1, None));
             assert!(mapped.rule_id.is_none(), "{rule} must yield rule_id: None");
         }
@@ -276,7 +278,7 @@ mod tests {
     /// scanners, so `source` is always `Deterministic`.
     #[test]
     fn source_is_deterministic() {
-        let mapped = map_finding(&fixture("skill.duplicate-name", "msg", None, 1, None));
+        let mapped = map_finding(&fixture("skill.unknown-tool", "msg", None, 1, None));
         assert_eq!(mapped.source, FindingSource::Deterministic);
     }
 
@@ -284,8 +286,8 @@ mod tests {
     /// change, or adapter context — and carry `Artifact::Unknown`
     /// until a future enrichment pass classifies them.
     #[test]
-    fn artifact_is_unknown_and_context_is_empty() {
-        let mapped = map_finding(&fixture("skill.duplicate-name", "msg", None, 1, None));
+    fn artifact_unknown_context_empty() {
+        let mapped = map_finding(&fixture("skill.unknown-tool", "msg", None, 1, None));
         assert_eq!(mapped.artifact, Artifact::Unknown);
         assert!(mapped.slice.is_none());
         assert!(mapped.change.is_none());
@@ -300,9 +302,9 @@ mod tests {
     /// `end_line` / `end_column` always `None` because the authoring
     /// `Location` does not carry ranges.
     #[test]
-    fn location_widens_usize_fields_and_clears_range_endings() {
+    fn location_widens_and_clears_endings() {
         let mapped =
-            map_finding(&fixture("skill.duplicate-name", "msg", Some("foo/bar.md"), 42, Some(7)));
+            map_finding(&fixture("skill.unknown-tool", "msg", Some("foo/bar.md"), 42, Some(7)));
         let loc = mapped.location.expect("location must round-trip");
         assert_eq!(loc.path, "foo/bar.md");
         assert_eq!(loc.line, Some(42));
@@ -316,9 +318,9 @@ mod tests {
     #[test]
     fn map_findings_assigns_sequential_ids() {
         let inputs = vec![
-            fixture("skill.duplicate-name", "a", None, 1, None),
-            fixture("skill.duplicate-name", "b", None, 1, None),
-            fixture("skill.duplicate-name", "c", None, 1, None),
+            fixture("skill.unknown-tool", "a", None, 1, None),
+            fixture("skill.unknown-tool", "b", None, 1, None),
+            fixture("skill.unknown-tool", "c", None, 1, None),
         ];
         let mapped = map_findings(&inputs);
         let ids: Vec<&str> = mapped.iter().map(|f| f.id.as_str()).collect();
@@ -330,10 +332,10 @@ mod tests {
     /// must not introduce non-determinism (e.g. wall-clock,
     /// hash-map iteration order).
     #[test]
-    fn fingerprint_is_deterministic_across_runs() {
+    fn fingerprint_deterministic() {
         let input = fixture(
-            "skill.duplicate-name",
-            "duplicate `name:` field in skill frontmatter",
+            "skill.unknown-tool",
+            "unknown `allowed-tools` entry in skill frontmatter",
             Some("plugins/spec/skills/build/SKILL.md"),
             3,
             Some(1),
@@ -349,8 +351,8 @@ mod tests {
     #[test]
     fn stored_fingerprint_verifies() {
         let mapped = map_finding(&fixture(
-            "links.unresolved",
-            "broken markdown link",
+            "links.broken-reference",
+            "broken markdown reference",
             Some("docs/intro.md"),
             10,
             None,
@@ -366,7 +368,7 @@ mod tests {
     fn oversize_message_becomes_digest_evidence() {
         let big_message = "a".repeat(17 * 1024);
         let mapped = map_finding(&fixture(
-            "skill.duplicate-name",
+            "skill.unknown-tool",
             &big_message,
             Some("plugins/spec/skills/build/SKILL.md"),
             1,
@@ -386,9 +388,9 @@ mod tests {
     /// (whether produced on Windows or hand-built in a test) is
     /// rewritten to `/`.
     #[test]
-    fn path_separators_are_normalised_to_forward_slash() {
+    fn path_separators_normalised() {
         let mapped =
-            map_finding(&fixture("skill.duplicate-name", "msg", Some("foo\\bar\\baz.md"), 1, None));
+            map_finding(&fixture("skill.unknown-tool", "msg", Some("foo\\bar\\baz.md"), 1, None));
         let loc = mapped.location.expect("location must round-trip");
         assert_eq!(loc.path, "foo/bar/baz.md", "back-slashes must be rewritten to forward slashes");
     }

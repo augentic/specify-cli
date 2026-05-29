@@ -1,7 +1,7 @@
 //! Integration tests for `specrun source resolve`.
 //!
 //! Mirrors the source-adapter loader exposed by
-//! `crates/domain/src/plugin/`. The CLI verb is a thin
+//! `crates/workflow/src/plugin/`. The CLI verb is a thin
 //! `Plugin::resolve(Axis::Source, …)` wrapper; the cases below pin
 //! the wire shape skill bodies and downstream callers rely on.
 
@@ -12,7 +12,7 @@ mod common;
 use common::{Project, parse_stderr, parse_stdout, repo_root, specrun};
 
 fn plugin_fixtures_root() -> PathBuf {
-    repo_root().join("crates/domain/tests/fixtures/plugins")
+    repo_root().join("crates/workflow/tests/fixtures/plugins")
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
@@ -36,7 +36,7 @@ fn stage_source_fixture(project: &Project, name: &str) {
 }
 
 #[test]
-fn source_resolve_local_returns_resolved_manifest() {
+fn resolve_local_returns_manifest() {
     let project = Project::init();
     stage_source_fixture(&project, "code-typescript");
 
@@ -54,7 +54,7 @@ fn source_resolve_local_returns_resolved_manifest() {
     assert_eq!(actual["location"], "local");
     let operations = actual["operations"].as_array().expect("operations array");
     let ops: Vec<&str> = operations.iter().map(|v| v.as_str().unwrap()).collect();
-    assert_eq!(ops, vec!["enumerate", "extract"]);
+    assert_eq!(ops, vec!["extract", "survey"]);
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
         resolved.ends_with("adapters/sources/code-typescript"),
@@ -63,7 +63,7 @@ fn source_resolve_local_returns_resolved_manifest() {
 }
 
 #[test]
-fn source_resolve_missing_emits_not_found() {
+fn resolve_missing_emits_not_found() {
     let project = Project::init();
 
     let assert = specrun()

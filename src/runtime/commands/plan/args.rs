@@ -1,19 +1,19 @@
 //! CLI-side argument-parsing helpers shared by `plan create`,
 //! `plan add`, and `plan amend`. Each helper turns the clap-shaped
 //! string payload into the domain type the handler will hand to
-//! [`specify_domain::change::Plan`]; the handlers themselves stay
+//! [`specify_workflow::change::Plan`]; the handlers themselves stay
 //! free of `FromStr` chatter and `--flag` plumbing.
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use specify_domain::change::{
+use specify_error::{Error, Result};
+use specify_model::discovery::{Discovery, DiscoveryResolveError};
+use specify_model::evidence::ClaimKind;
+use specify_workflow::change::{
     Divergence, SliceSourceBinding, SourceBinding, TargetRef, TargetRefParseError,
 };
-use specify_domain::config::Layout;
-use specify_domain::discovery::{Discovery, DiscoveryResolveError};
-use specify_domain::evidence::ClaimKind;
-use specify_error::{Error, Result};
+use specify_workflow::config::Layout;
 
 use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 
@@ -48,14 +48,14 @@ pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, Sour
 
 /// Materialise CLI `--sources` / `--add-source` arguments into the
 /// on-disk [`SliceSourceBinding`] shape, preferring the bare-string
-/// shorthand when the candidate id equals the slice's name
+/// shorthand when the lead id equals the slice's name
 /// (workflow §`Slice.sources`).
 ///
-/// workflow §D6 — when `discovery` is `Some(_)`, the operator-supplied
-/// candidate value is resolved against the loaded `discovery.md` so
+/// discovery alias contract — when `discovery` is `Some(_)`, the operator-supplied
+/// lead value is resolved against the loaded `discovery.md` so
 /// aliases rewrite to the canonical `id` before persisting. Unknown
 /// tokens or alias collisions surface as `Error::validation_failed`
-/// (exit 2) with the discriminants `discovery-candidate-unknown` and
+/// (exit 2) with the discriminants `discovery-lead-unknown` and
 /// `discovery-alias-collision` respectively. With `discovery` `None`
 /// (no `discovery.md` on disk) the discovery-absent passthrough
 /// applies — the supplied value is used verbatim.
@@ -68,48 +68,46 @@ pub fn bindings_from_args(
 fn binding_from_arg(
     arg: SliceSourceArg, slice_name: &str, discovery: Option<&Discovery>,
 ) -> Result<SliceSourceBinding> {
-    let candidate = match arg.candidate {
+    let lead = match arg.lead {
         None => None,
-        Some(value) => Some(resolve_candidate_token(&value, discovery)?),
+        Some(value) => Some(resolve_lead_token(&value, discovery)?),
     };
-    Ok(match candidate {
+    Ok(match lead {
         None => SliceSourceBinding::bare(arg.key),
-        Some(candidate) if candidate == slice_name => SliceSourceBinding::bare(arg.key),
-        Some(candidate) => SliceSourceBinding::structured(arg.key, candidate),
+        Some(lead) if lead == slice_name => SliceSourceBinding::bare(arg.key),
+        Some(lead) => SliceSourceBinding::structured(arg.key, lead),
     })
 }
 
-/// Rewrite a `--sources <key>=<value>` candidate token to the
+/// Rewrite a `--sources <key>=<value>` lead token to the
 /// canonical `id` discovered in `discovery.md`.
 ///
 /// When `discovery` is `None` (no `discovery.md` on disk), the
 /// token round-trips unchanged — the legacy path predates
-/// workflow §D6 and many tests operate without a discovery file.
-fn resolve_candidate_token(token: &str, discovery: Option<&Discovery>) -> Result<String> {
+/// discovery alias contract and many tests operate without a discovery file.
+fn resolve_lead_token(token: &str, discovery: Option<&Discovery>) -> Result<String> {
     let Some(discovery) = discovery else {
         return Ok(token.to_string());
     };
-    match discovery.resolve_candidate(token) {
-        Ok(candidate) => Ok(candidate.id.clone()),
+    match discovery.resolve_lead(token) {
+        Ok(lead) => Ok(lead.id.clone()),
         Err(DiscoveryResolveError::Unknown { token }) => Err(Error::validation_failed(
-            "discovery-candidate-unknown",
-            "--sources <key>=<value> must resolve to a candidate in discovery.md",
+            "discovery-lead-unknown",
+            "--sources <key>=<value> must resolve to a lead in discovery.md",
             format!(
-                "no candidate in discovery.md has an id or alias matching `{token}`; inspect \
+                "no lead in discovery.md has an id or alias matching `{token}`; inspect \
                  discovery.md directly to review the inventory"
             ),
         )),
-        Err(DiscoveryResolveError::Collision { token, candidates }) => {
-            Err(Error::validation_failed(
-                "discovery-alias-collision",
-                "candidate id and aliases share a single namespace per discovery.md",
-                format!(
-                    "`{token}` resolves to multiple candidates in discovery.md: {}; run \
+        Err(DiscoveryResolveError::Collision { token, leads }) => Err(Error::validation_failed(
+            "discovery-alias-collision",
+            "lead id and aliases share a single namespace per discovery.md",
+            format!(
+                "`{token}` resolves to multiple leads in discovery.md: {}; run \
                      `specrun slice validate` to enumerate every collision",
-                    candidates.join(", ")
-                ),
-            ))
-        }
+                leads.join(", ")
+            ),
+        )),
     }
 }
 
@@ -144,7 +142,7 @@ pub fn parse_target_flag(raw: &str) -> Result<TargetRef> {
 }
 
 /// Parse the `--divergence` flag value. `likely` / `accepted` /
-/// `rejected` are wire-legal — workflow §D5 widens the operator
+/// `rejected` are wire-legal — divergence and writer-ownership contract widens the operator
 /// surface so the CLI is the single writer of every variant
 /// reachable on disk. The implicit default (absent on disk) has
 /// no flag spelling; any other token — including `none` — falls
@@ -192,10 +190,8 @@ where
 
 /// Parse `--authority-override <slice> <kind>=<source-key>` repeats
 /// into the typed `(slice, kind, source-key)` tuple
-/// [`specify_domain::change::mutate_authority_overrides`] expects.
-pub fn parse_authority_override_assigns(
-    raw: &[String],
-) -> Result<Vec<(String, ClaimKind, String)>> {
+/// [`specify_workflow::change::mutate_authority_overrides`] expects.
+pub fn parse_override_assigns(raw: &[String]) -> Result<Vec<(String, ClaimKind, String)>> {
     Ok(parse_slice_pair_args::<AuthorityOverrideKindAssign>(raw, "--authority-override")?
         .into_iter()
         .map(|(slice, a)| (slice, a.kind, a.source_key))

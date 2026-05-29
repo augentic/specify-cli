@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::config::{ProjectConfig, is_workspace_clone};
-use specify_domain::init::{InitOptions, InitResult, init};
 use specify_error::{Error, Result};
+use specify_workflow::config::{ProjectConfig, is_workspace_clone};
+use specify_workflow::init::{InitOptions, InitResult, init};
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::agents;
@@ -91,7 +91,7 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     } else {
         writeln!(
             w,
-            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specrun plan create <name>` followed by `specrun plan add` and `specrun plan transition <name> reviewed`."
+            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specrun plan create <name>` followed by `specrun plan add` and `specrun plan transition <name> approved`."
         )?;
     }
     Ok(())
@@ -112,7 +112,7 @@ fn emit_init_result(
         context_skipped: context_skip_reason.is_some(),
         context_skip_reason,
     };
-    output::emit(Box::new(std::io::stdout().lock()), format, &body, write_text)?;
+    output::emit(&mut std::io::stdout().lock(), format, &body, write_text)?;
     Ok(())
 }
 

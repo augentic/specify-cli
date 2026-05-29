@@ -1,0 +1,327 @@
+{
+  "rules": [
+    {
+      "body": "\n## Rule\n\nPreserve compatibility for existing OpenAPI consumers unless the slice intentionally introduces a breaking contract change and classifies its impact. Removing or renaming paths, methods, operation ids, status codes, media types, parameters, request fields, or response fields is breaking. Adding new endpoints, status codes, examples, documentation, or optional fields is compatible when existing requests and responses remain valid.\n\nWhen editing an existing `contracts/http/*.yaml` file, keep the unrelated baseline content intact. Contract merge uses opaque file replacement, so omitted operations or reordered unrelated sections can hide accidental deletions from reviewers.\n\n## Look For\n\n- Removed or renamed paths, methods, `operationId` values, parameters, request bodies, response bodies, content types, or status codes.\n- Previously optional parameters or request-body properties that become required.\n- Response schemas that remove fields, narrow field types, remove enum values, or tighten validation constraints.\n- `$ref` changes that point to a narrower schema or break the shared `../schemas/` reference discipline.\n- Delta files that omit existing operations from the same baseline file or reformat unrelated sections during an otherwise small compatibility change.\n\n## Spec Guidance\n\nWhen the spec requires a breaking HTTP contract change, require an explicit consumer-impact note: affected consumers, migration path, version bump, and whether the previous endpoint or response shape remains available during transition.\n",
+      "deprecated": null,
+      "origin": "target",
+      "path": "adapters/targets/contracts/rules/openapi-consumer-compatibility.md",
+      "path-root": "rules-root",
+      "rule-id": "IFACE-001",
+      "severity": "critical",
+      "title": "OpenAPI Consumer Compatibility",
+      "trigger": "An OpenAPI path, operation, parameter, request body, response, status code, or referenced payload schema changes in a contract that existing consumers may use."
+    },
+    {
+      "body": "\n## Rule\n\nPreserve compatibility for existing AsyncAPI producers and consumers unless the slice intentionally introduces a breaking event contract change and classifies its impact. Removing or renaming channel addresses, channel keys, operations, messages, message names, payload schemas, required headers, or operation roles is breaking. Adding new optional channels, operations, messages, headers, or payload fields is compatible when existing publishers and subscribers keep working unchanged.\n\nAsyncAPI contracts describe the wire shape and operation semantics, not broker runtime policy. Keep retry, dead-letter, partitioning, retention, and consumer-group behavior in implementation design unless those details are required for wire compatibility.\n\n## Look For\n\n- Removed or renamed channel addresses, channel keys, operations, message definitions, or `send` / `receive` role declarations.\n- Message payload `$ref` changes that remove fields, add required fields, narrow types, remove enum values, or tighten validation constraints.\n- Required message headers added without a migration path for existing publishers.\n- Channel address changes that look like a rename but are represented as delete-plus-add for consumers.\n- Broker-specific bindings used to smuggle implementation policy into the contract when they do not affect wire compatibility.\n- Delta files that omit existing channels or operations from the same baseline file during opaque replacement.\n\n## Spec Guidance\n\nWhen the spec requires a breaking event contract change, require an explicit producer / consumer impact note: affected channels, migration path, version bump, and whether both old and new channels or message shapes coexist during transition.\n",
+      "deprecated": null,
+      "origin": "target",
+      "path": "adapters/targets/contracts/rules/asyncapi-consumer-compatibility.md",
+      "path-root": "rules-root",
+      "rule-id": "IFACE-002",
+      "severity": "critical",
+      "title": "AsyncAPI Consumer Compatibility",
+      "trigger": "An AsyncAPI channel, operation, message, header, payload schema, or operation role changes in a contract that existing producers or consumers may use."
+    },
+    {
+      "body": "\n## Rule\n\nTreat JSON Schema files as shared payload vocabulary consumed by OpenAPI, AsyncAPI, generated code, and downstream projects. Once a schema is merged, its `$id` is stable. Schema changes must be backward-compatible for existing payload producers and consumers, or they must be classified as breaking with a migration path.\n\nCompatible evolution is additive or widening: optional fields, wider enum sets, looser ranges, broader accepted types, documentation, examples, or descriptions. Breaking evolution removes or renames fields, adds required fields, narrows types or formats, removes enum values, tightens patterns or numeric ranges, changes `additionalProperties` from open to closed, or changes a schema's `$id`.\n\n## Look For\n\n- `$id`, filename, or `title` drift on an existing schema instead of introducing a new schema and deprecating the old one.\n- Removed or renamed properties, newly required properties, narrower `type` / `format`, stricter `pattern`, tighter numeric or length constraints, or enum values removed.\n- `additionalProperties` tightened from absent or `true` to `false`.\n- Schema changes made without checking HTTP and messaging contracts that already reference the schema.\n- Inline schema definitions used to avoid evolving the shared schema file.\n- Opaque replacement deltas that omit existing properties from the baseline schema file.\n\n## Spec Guidance\n\nWhen the spec requires a breaking payload change, ask whether it should be a new schema identity with a deprecation path for the old `$id`, or an accepted breaking change with named consumers and a planned rollout.\n",
+      "deprecated": null,
+      "origin": "target",
+      "path": "adapters/targets/contracts/rules/json-schema-evolution-safety.md",
+      "path-root": "rules-root",
+      "rule-id": "IFACE-003",
+      "severity": "critical",
+      "title": "JSON Schema Evolution Safety",
+      "trigger": "A JSON Schema under contracts/schemas changes fields, required properties, types, formats, enum values, validation constraints, additionalProperties, or its stable $id."
+    },
+    {
+      "body": "\n## Rule\n\nValidate all user-supplied or external data at the boundary before domain logic consumes it. Validation should cover text normalization, required values, numeric ranges, identifier existence, and external payload shape.\n\n## Look For\n\n- Handler entry points that accept strings from the user without trimming whitespace or rejecting empty values.\n- Numeric parameters without range or sign validation.\n- ID lookups that assume the referenced item exists, with no guard for missing targets.\n- Data received from external APIs consumed without schema or type validation.\n\n## Spec Guidance\n\nWhen the spec is silent on validation rules for a user action, propose explicit acceptance criteria such as \"title must be non-empty after trimming\" or \"quantity must be 1..999\".\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/unvalidated-input.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-002",
+      "severity": "critical",
+      "title": "Unvalidated Input",
+      "trigger": "User-supplied or external data enters a handler or domain boundary without validation."
+    },
+    {
+      "body": "\n## Rule\n\nHandle serialization and deserialization failures explicitly. A failed encode, decode, or boundary conversion must not be silently swallowed, crash the process, or fall back to a value that can corrupt state.\n\n## Look For\n\n- Serialize or deserialize calls with no error handling or a catch-all that discards the error.\n- Types crossing a serialization boundary, such as FFI, persistence, or network, that are missing required derive macros or protocol conformances.\n- Deserialization failures that fall back to a default value which could overwrite valid persisted data.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/serialization-failures.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-003",
+      "severity": "critical",
+      "title": "Serialization / Deserialization Failures Not Handled",
+      "trigger": "Fallible encode or decode operations can fail without a handled error path."
+    },
+    {
+      "body": "\n## Rule\n\nReason through the control flow and state transitions that implement each behavior. Missing edges, inverted conditions, impossible branches, and boundary mistakes should be fixed or traced back to a missing scenario in the spec.\n\n## Look For\n\n- State machine transitions with missing edges, where state A can reach state B but the handler for that transition is absent.\n- Inverted boolean conditions, such as `if !condition` where `if condition` was intended.\n- Off-by-one errors in index arithmetic or boundary checks.\n- Conditions that are always true or always false, making one branch unreachable.\n\n## Spec Guidance\n\nWhen a state transition is missing because the spec never defined that edge case, propose a new scenario rather than an ad hoc code fix.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/logic-bugs.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-004",
+      "severity": "critical",
+      "title": "Logic Bugs",
+      "trigger": "Control flow, conditions, or state transitions can produce behavior that contradicts the intended domain logic."
+    },
+    {
+      "body": "\n## Rule\n\nProtect shared mutable state and async workflows against unsafe interleavings. The implementation should define the isolation, ordering, cancellation, or in-flight guards needed to keep state consistent.\n\n## Look For\n\n- State mutations performed outside the expected isolation context, such as updating UI state from a background thread.\n- Two async operations that can complete in either order, where only one ordering is handled correctly.\n- Missing operation in-flight guards that allow a second operation to start before the first completes, corrupting shared state.\n- Broad-scope cleanup, such as removing all pending operations for an item, that can interfere with an unrelated in-flight operation.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/concurrency-issues.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-006",
+      "severity": "critical",
+      "title": "Race Conditions and Concurrency Bugs",
+      "trigger": "Shared mutable state or in-flight operations can interleave in an order the implementation does not safely handle."
+    },
+    {
+      "body": "\n## Rule\n\nHandle or safely propagate failures from operations that can throw, panic, trap, or otherwise terminate execution. A recoverable failure should not crash the host process or leave the user without a recovery path.\n\n## Look For\n\n- Calls to operations that can fail, such as I/O, parsing, arithmetic, or collection access, without error handling, try/catch, or result propagation.\n- Force-unwrap patterns that assume a value is always present when it may not be.\n- Index-based collection access without bounds checking.\n- Division or modulo operations without zero-divisor guards.\n- FFI boundary methods that panic instead of returning an error type.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/unhandled-exceptions.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-010",
+      "severity": "critical",
+      "title": "Unhandled Exceptions / Panics Causing Crashes",
+      "trigger": "A fallible operation can terminate the process because the failure is not handled or propagated safely."
+    },
+    {
+      "body": "\n## Rule\n\nPreserve compatibility for persisted state across schema changes. Added, removed, renamed, or retyped fields need migration logic, safe defaults, or other compatibility handling so existing data is not lost or made unreadable.\n\n## Look For\n\n- Persisted-state struct changes, such as new fields, renamed fields, or changed types, without corresponding default annotations or migration code.\n- Removed fields that cause existing stored data to fail schema validation.\n- Enum variants added to a persisted type without a fallback for unrecognised values in old data.\n- Missing integration tests that verify deserialization of data stored by the previous version.\n\n## Spec Guidance\n\nWhen the spec does not address data migration for model changes, propose forward-compatibility requirements or a migration strategy.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/persisted-state-compatibility.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-012",
+      "severity": "critical",
+      "title": "Backward-Incompatible Changes to Persisted State",
+      "trigger": "A persisted model changes shape without migration or backward-compatible deserialization behavior."
+    },
+    {
+      "body": "\n## Rule\n\nDo not embed secrets or credentials directly in source code. Secrets grant access to protected resources and should be supplied through approved secret management or configuration mechanisms rather than committed literals.\n\n## Look For\n\n- String literals matching known secret prefixes such as `sk-`, `pk-`, `ghp_`, `Bearer `, `AKIA`, or `xox-`.\n- Variables or constants named `password`, `secret`, `token`, `api_key`, `apikey`, `auth`, or `credential` assigned a literal value.\n- Base64-encoded strings longer than 20 characters in `const` or `static` declarations.\n- URLs containing embedded credentials, such as `https://user:pass@...`.\n- Private keys or certificates inlined as string literals.\n\n## Exemption\n\nPlaceholder or example values such as `https://api.example.com`, `your-api-key-here`, and test fixtures with obviously fake tokens are acceptable.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/hardcoded-secrets.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-018",
+      "severity": "critical",
+      "title": "Hardcoded Secrets and Credentials",
+      "trigger": "Source code contains literal credentials, tokens, keys, connection strings, or private key material."
+    },
+    {
+      "body": "\n## Rule\n\nTreat untrusted input as data, not executable code or structure. Validate at the boundary and use parameterization, escaping, canonicalization, builders, or allowlists before the input reaches dangerous sinks.\n\n## Look For\n\n- SQL or query injection: string concatenation or interpolation used to build database queries, search filters, or ORM conditions from user-supplied values.\n- Command injection: user input passed to shell execution, process spawning, or system command APIs without escaping or allowlisting.\n- Cross-site scripting: user-supplied text embedded in HTML, XML, or markup output without escaping.\n- Path traversal: user-controlled values used in file path construction without canonicalization, prefix validation, or allowlisting.\n- Template injection: user input interpolated into template engines, expression evaluators, or DSL interpreters that can execute arbitrary logic.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/injection-vulnerabilities.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-019",
+      "severity": "critical",
+      "title": "Injection Vulnerabilities",
+      "trigger": "Untrusted input can reach an execution, query, path, template, markup, or structured-output sink without sanitization or parameterization."
+    },
+    {
+      "body": "\n## Rule\n\nDo not deserialize untrusted input directly into privileged internal domain types without validation and limits. The target type and payload bounds should prevent privilege injection, unexpected fields, polymorphic abuse, and denial of service.\n\n## Look For\n\n- Deserializing untrusted input directly into internal domain types that carry privilege or authorization state, such as a `User` struct with an `is_admin` field populated from an external payload.\n- Accepting serialized data from an external source without schema validation, allowing unexpected fields to be injected.\n- Deserializing into polymorphic or trait-object types where the concrete type is attacker-controlled.\n- Large or deeply nested payloads deserialized without size limits, enabling denial of service via memory exhaustion or stack overflow.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/unsafe-deserialization.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-020",
+      "severity": "critical",
+      "title": "Unsafe Deserialization of Untrusted Data",
+      "trigger": "Untrusted serialized data is decoded into types or shapes that can bypass validation, escalate privileges, or exhaust resources."
+    },
+    {
+      "body": "\n## Rule\n\nAuthenticate callers and authorize the requested action before exposing sensitive data or changing protected state. Server-side or trusted-boundary checks must not rely solely on client-supplied claims.\n\n## Look For\n\n- Handler entry points that accept and act on requests without checking for an authentication token, session, or identity credential.\n- Endpoints that return sensitive data, such as PII, financial records, or internal system state, without verifying the caller has read access.\n- State-mutating operations such as create, update, or delete that do not verify the caller has write permission for the target resource.\n- Authorization checks that rely solely on client-supplied role or permission claims without server-side verification.\n- Inconsistent enforcement: some handlers in a module check auth while others in the same module do not, suggesting an oversight.\n\n## Spec Guidance\n\nWhen the spec does not define which operations require authentication or what authorization model applies, propose adding access control requirements before fixing the code.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/missing-auth.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-021",
+      "severity": "critical",
+      "title": "Missing Authentication or Authorization Checks",
+      "trigger": "A handler accesses sensitive data or mutates protected state without verifying identity and permissions."
+    },
+    {
+      "body": "\n## Rule\n\nOpenAPI and AsyncAPI `info.version` values must parse as SemVer and should communicate the compatibility impact of the contract delta. Use a major version bump for breaking wire-shape changes, a minor version bump for backward-compatible additions, and a patch version bump for metadata, examples, descriptions, or other non-behavioral corrections. Do not use dates, build timestamps, branch names, or opaque release labels in place of SemVer.\n\nVersion numbers do not make a breaking change safe. They are a review and rollout signal that must agree with the consumer-impact classification and migration plan.\n\n## Look For\n\n- `info.version` values such as dates, free-form strings, or unquoted numbers that do not parse as SemVer.\n- Breaking changes with no version bump, or with only a minor or patch bump.\n- Additive changes that unnecessarily reset identity or create a new top-level contract instead of a SemVer minor bump.\n- Patch bumps attached to wire-shape changes that affect payload validation, operations, channels, status codes, or message definitions.\n- Multiple top-level contracts changed for one interface where versions disagree about the same compatibility impact.\n\n## Spec Guidance\n\nWhen a slice changes a public contract, require the spec or alignment report to state the intended SemVer impact. For unpublished drafts, prerelease labels are acceptable when they still parse as SemVer, such as `1.0.0-draft.1`.\n",
+      "deprecated": null,
+      "origin": "target",
+      "path": "adapters/targets/contracts/rules/semver-contract-versioning.md",
+      "path-root": "rules-root",
+      "rule-id": "IFACE-004",
+      "severity": "important",
+      "title": "SemVer Contract Versioning",
+      "trigger": "An OpenAPI or AsyncAPI contract is created or changed and its info.version is missing, non-SemVer, unchanged, or inconsistent with the compatibility impact."
+    },
+    {
+      "body": "\n## Rule\n\nClassify contract deltas with the shared consumer-impact vocabulary so operators can triage compatibility risk consistently across OpenAPI, AsyncAPI, and JSON Schema. Cross-project reports should use the RM-04 classifications `additive`, `breaking`, `ambiguous`, and `unverifiable`. Breaking deltas should map to a known `change-kind` such as `removed-field`, `required-field-added`, `type-narrowed`, `enum-value-removed`, `additional-properties-tightened`, `removed-endpoint`, `status-code-removed`, `removed-channel`, or `removed-operation`. Safe additive deltas should not be reported as warnings or failures.\n\nEach finding should identify the producer project, consumer project, producer contract, consumer view or baseline being compared, affected locator, classification, optional `change-kind`, and expected operator action. Do not invent one-off categories when a known `change-kind` applies, and do not hide ambiguous or unverifiable compatibility risk behind a generic note.\n\n## Look For\n\n- Findings that say \"breaking\", \"changed\", or \"incompatible\" without a stable `change-kind`.\n- Custom category names that duplicate the shared vocabulary.\n- Warnings for safe additive changes such as optional fields, new endpoints, new channels, wider enum values, or documentation-only edits.\n- Missing producer contract path, consumer baseline path, schema locator, operation id, channel address, or message locator.\n- Cross-project checks that inspect consumer source code, mutate workspace clones, or transition plan state as part of RM-04 reporting.\n- Ambiguous or unverifiable deltas silently dropped because they do not fit the deterministic classification table.\n\n## Spec Guidance\n\nWhen a spec intentionally asks for an incompatible interface change, require the proposal or contract alignment report to name the expected classification, `change-kind` categories where applicable, and the consumer migration action before implementation proceeds.\n",
+      "deprecated": null,
+      "origin": "target",
+      "path": "adapters/targets/contracts/rules/consumer-impact-classification.md",
+      "path-root": "rules-root",
+      "rule-id": "IFACE-005",
+      "severity": "important",
+      "title": "Consumer Impact Classification",
+      "trigger": "A contract verifier, reviewer, or alignment report describes compatibility risk without mapping the delta to the shared change-kind vocabulary and a consumer-facing action."
+    },
+    {
+      "body": "\n## Rule\n\nDo not let language defaults or ambiguous sentinel values represent meaningful domain state unless that state is explicitly valid. Model unknown, unloaded, empty, and intentionally absent values distinctly when the distinction affects behavior.\n\n## Look For\n\n- Struct fields whose default value is used at runtime but has no domain meaning, such as `count: 0` where zero is indistinguishable from \"unknown\".\n- Optional or nullable fields accessed before the value is populated by an async load, with no guard or loading-state check.\n- Default enum variants that silently swallow missing data rather than representing a genuine initial state.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/uninitialised-defaults.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-001",
+      "severity": "important",
+      "title": "Uninitialised or Incorrectly Defaulted Values",
+      "trigger": "A default, sentinel, nil, zero, or empty value is used where that state has no valid domain meaning."
+    },
+    {
+      "body": "\n## Rule\n\nBound retained resources and release them when they are no longer needed. Accumulated data, subscriptions, retained references, and long-lived async work need caps, eviction, cancellation, or cleanup paths.\n\n## Look For\n\n- Collections such as lists, maps, or queues that receive `.push()`, `.append()`, or `.insert()` without a corresponding removal, cap, or eviction policy.\n- Event listeners, observers, or subscriptions registered without a matching unsubscribe or cancellation path.\n- Strong reference cycles between objects, especially closures capturing their owning object.\n- Long-lived async tasks or futures that are never cancelled when they become irrelevant.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/resource-leaks.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-005",
+      "severity": "important",
+      "title": "Unbounded Growth and Resource Leaks",
+      "trigger": "Collections, queues, caches, subscriptions, observers, or async work can grow or remain alive without bounds."
+    },
+    {
+      "body": "\n## Rule\n\nAvoid redundant or excessive external calls. Prefer batching, debouncing, deduplication, caching, or using data already available when those choices preserve the required behavior.\n\n## Look For\n\n- Re-fetching data the app already has, such as a full reload after receiving a real-time update that already contains the new state.\n- N+1 call patterns: looping over items and making one external call per item when a batch API exists.\n- Missing debounce on rapid-fire user actions that each trigger a network call.\n- Fetch-on-navigate patterns that re-request unchanged data without caching or staleness checks.\n\n## Spec Guidance\n\nWhen the spec mandates behavior that inherently creates chattiness, such as refreshing the full list on every keystroke, propose a spec amendment with a more efficient interaction pattern.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/chatty-external-calls.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-007",
+      "severity": "important",
+      "title": "Unnecessarily Chatty External Calls",
+      "trigger": "External systems are called redundantly or excessively where batching, caching, debouncing, or deduplication is expected."
+    },
+    {
+      "body": "\n## Rule\n\nKeep instrumentation useful and safe. Important failures should leave enough diagnostic signal, hot paths should not emit noisy per-item logs, and logs must not include sensitive data or debug-only output in production paths.\n\n## Look For\n\n- Error or failure branches that silently discard the error with no log statement, metric, or diagnostic output.\n- Log statements inside tight loops or per-item processing that would produce excessive output at scale.\n- Personally identifiable information, tokens, or credentials interpolated into log messages.\n- Debug-only output such as `println!`, `dbg!`, `print()`, or `debugPrint()` remaining in production code.\n\n## Spec Guidance\n\nWhen the spec has no observability requirements but the app clearly needs them, propose adding an observability section that covers error tracking, performance metrics, or other required diagnostics.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/instrumentation-issues.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-008",
+      "severity": "important",
+      "title": "Instrumentation and Logging Balance",
+      "trigger": "Error paths lack diagnostics, hot paths log excessively, or logs can expose sensitive data."
+    },
+    {
+      "body": "\n## Rule\n\nDo not partially handle an error in a way that leaves visible side effects while still reporting the operation as failed. Handle the error completely at the right layer, or propagate it with enough context for the caller to handle it.\n\n## Look For\n\n- Catch blocks that mutate shared state, such as a model, view, or database, before re-throwing or returning an error so the mutation persists even though the operation failed.\n- Error handlers that convert a specific, informative error into a generic one, losing diagnostic context.\n- Try/catch at a low level that swallows errors which the caller needs to know about, such as returning a default from a helper when the caller should show an error state.\n- Nested error handling where an inner handler partially handles and the outer handler also partially handles, with neither completing the job.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/handle-then-throw.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-009",
+      "severity": "important",
+      "title": "Handle-Then-Throw Anti-Pattern",
+      "trigger": "An error path performs partial handling or side effects and then rethrows, replaces, or swallows the error."
+    },
+    {
+      "body": "\n## Rule\n\nExternal calls should define timeout, retry, cancellation, and failure behavior appropriate to the operation. Hanging calls must not block effect chains indefinitely or leave the app non-responsive without explanation.\n\n## Look For\n\n- HTTP requests dispatched without a configured timeout.\n- SSE or WebSocket connections with no reconnection strategy after disconnect.\n- Effect handlers that await a response indefinitely with no timeout or cancellation path.\n- Retry logic that retries without backoff, risking a tight retry loop on persistent failures.\n\n## Spec Guidance\n\nWhen the spec does not define timeout or retry behavior for external calls, propose resilience requirements such as timeout duration, retry count, backoff strategy, and user-facing indication of failure.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/missing-timeout-retry.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-011",
+      "severity": "important",
+      "title": "Missing Timeout or Retry on External Calls",
+      "trigger": "An external call or connection can hang or fail transiently without timeout, retry, cancellation, or user-visible failure behavior."
+    },
+    {
+      "body": "\n## Rule\n\nKeep operational parameters discoverable and reviewable. Timeouts, URLs, retry counts, buffer sizes, page sizes, polling intervals, and similar values should be named constants or configuration rather than unexplained literals in behavior code.\n\n## Look For\n\n- Numeric literals in function calls that represent tunable parameters, such as timeout durations, retry counts, page sizes, or polling intervals.\n- URL strings embedded directly in handler code rather than sourced from configuration.\n- Magic numbers that require domain knowledge to understand, such as `42`, `1000`, or `86400`.\n- The same literal value repeated in multiple locations where a shared constant should be used.\n\n## Spec Guidance\n\nWhen the spec does not define operational parameters such as timeouts, page sizes, retry limits, or polling intervals, propose adding them as explicit design decisions so they are reviewed and documented.\n",
+      "deprecated": null,
+      "deterministic-hints": [
+        {
+          "description": "Restrict the URL-literal scan to Rust source files.",
+          "kind": "path-pattern",
+          "value": "**/*.rs"
+        },
+        {
+          "description": "Literal HTTP(S) URL embedded in Rust source.",
+          "kind": "regex",
+          "value": "\\bhttps?://\\S+"
+        }
+      ],
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-014",
+      "severity": "important",
+      "title": "Hardcoded Configuration Values",
+      "trigger": "Operational parameters are embedded as literals instead of named constants or configuration."
+    },
+    {
+      "body": "\n## Rule\n\nEnsure closures and async blocks observe the state they are meant to use at execution time. Avoid stale snapshots when the value may change between capture and execution, and avoid references whose owning scope can invalidate them.\n\n## Look For\n\n- Async blocks or callbacks that capture local variables which are mutated between the capture point and the execution point.\n- Closures that capture a model state snapshot before an async operation, then use the snapshot when the operation resolves even though the model may have changed in the interim.\n- Event handlers that capture loop variables or iterator state.\n- Closures capturing mutable references where the owning scope may invalidate the reference before the closure runs.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/stale-closure-captures.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-015",
+      "severity": "important",
+      "title": "Stale Closure Captures",
+      "trigger": "A closure or async block can execute after captured values have changed or become invalid."
+    },
+    {
+      "body": "\n## Rule\n\nUse domain types to make invalid states unrepresentable where practical. Prefer enums, newtypes, and constrained types over plain strings, booleans, or loosely typed values when the domain has known valid values or distinct identifiers.\n\n## Look For\n\n- Fields typed as `String` that hold values from a known, closed set, such as status codes, filter names, categories, or roles.\n- ID fields typed as plain `String` that are interchangeable with unrelated IDs, such as a user ID accidentally passed where an item ID is expected.\n- Boolean parameters where more than two states exist or may exist in the future.\n- Struct fields whose valid values are constrained, but the constraint is only enforced at one call site rather than by the type system.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/type-safety-erosion.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-017",
+      "severity": "important",
+      "title": "Type Safety Erosion",
+      "trigger": "Weakly typed values are used where enums, newtypes, or stronger domain types would prevent invalid states."
+    },
+    {
+      "body": "\n## Rule\n\nEvery in-source `specify-ignore` directive must name a rule id and carry a non-empty rationale that explains, in human terms, why the finding is being tolerated at that location. Suppressing a finding without explanation strips the next reader of the context they need to decide whether the directive still applies, and undermines the operator policy that directives are a deliberate exception rather than a silent mute.\n\nThe 16-character minimum on the rationale is the floor at which a rationale is long enough to be useful to a reviewer; shorter rationales are accepted by the parser but reported under this rule so the operator can replace them with a real explanation. This is a workflow-hygiene rule: it ships at `important` because every unrationaled directive is a small but durable knowledge gap, and accumulating them is how a project drifts from \"we acknowledge this exception\" to \"we forgot why this is here.\"\n\n## Look For\n\n- A directive of the form `specify-ignore: <RULE-ID>` with no following em-dash (or `--`) and rationale.\n- A directive with the delimiter present but the rationale text empty or whitespace-only.\n- A rationale shorter than 16 characters (for example, `bug`, `fix later`, `todo`).\n- Rationales that paraphrase the directive itself rather than explaining why the finding is tolerated (for example, `ignore this`).\n- Drive-by suppression added in the same change as the protected code with no commit-message or in-line rationale context.\n\n## See Also\n\n- [Ignore directives reference](../../../../docs/reference/ignore-directives.md) — full grammar, comment-style table, and exit semantics.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/ignore-directive-missing-rationale.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-022",
+      "severity": "important",
+      "title": "Ignore Directive Missing Rationale",
+      "trigger": "A `specify-ignore` directive omits its rationale or carries a rationale shorter than 16 characters."
+    },
+    {
+      "body": "\n## Rule\n\nA `specify-ignore` directive must suppress a real finding. When a directive's rule id does not match any finding emitted for the next non-blank, non-comment line, the directive is an orphan — it does nothing today, but it leaves the reader with the impression that an exception is in force at that location. Orphan directives accumulate over time as the underlying rule, hint, or code path drifts, and they silently fail to suppress whatever finding the operator may have meant to suppress next.\n\n`important` is the defensible tier here because a dead directive is an authored statement of intent that no longer matches reality: unlike ordinary dead code (UNI-013, `suggestion`), it actively misleads the next reader about what is being tolerated at that location, and the fix is mechanical — delete the directive or restore the underlying finding it was meant to suppress.\n\n## Look For\n\n- A directive whose rule id belongs to a rule that has since been retired or renumbered.\n- A directive left behind after the offending code was refactored so the finding no longer fires.\n- A directive whose target line is empty or comment-only because of an intervening reformat (the directive now applies to a line that emits no finding).\n- A copy-pasted directive carried into a file where the targeted finding never fired in the first place.\n- A directive whose rule id does not belong to any rule resolved by the current scan (typo, wrong namespace, or a rule from a codex tree not loaded in this project).\n\n## See Also\n\n- [Ignore directives reference](../../../../docs/reference/ignore-directives.md) — full grammar, comment-style table, and exit semantics.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/ignore-directive-orphan.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-023",
+      "severity": "important",
+      "title": "Ignore Directive Orphan",
+      "trigger": "A `specify-ignore` directive names a rule id that does not match any finding on its target line."
+    },
+    {
+      "body": "\n## Rule\n\nRemove or justify code that cannot execute. Dead code and unreachable paths hide stale behavior, missing dispatch wiring, and incorrect assumptions even when the compiler cannot prove they are unreachable.\n\n## Look For\n\n- Functions or methods with no call site in the codebase.\n- Match or switch arms that are unreachable because an earlier arm catches all matching values.\n- Code after unconditional `return`, `break`, `continue`, or `throw`.\n- Conditional branches guarded by conditions that are always true or always false given the surrounding context.\n- Event variants defined in the data model but never dispatched by any view or handler.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/dead-code.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-013",
+      "severity": "suggestion",
+      "title": "Dead Code and Unreachable Paths",
+      "trigger": "Code, handlers, branches, or model variants appear impossible to execute."
+    },
+    {
+      "body": "\n## Rule\n\nError messages should carry enough diagnostic context to identify what operation failed, on what data, and why. Avoid messages that require reproducing the issue just to locate the failing path.\n\n## Look For\n\n- Generic error messages with no specifics, such as \"operation failed\", \"invalid input\", or \"something went wrong\".\n- Error messages that omit the item ID, field name, or value that caused the failure.\n- Catch blocks that log the error type but not the error message or underlying cause.\n- Multiple error sites using identical messages, making it impossible to determine which site produced the error in logs.\n",
+      "deprecated": null,
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/error-message-quality.md",
+      "path-root": "rules-root",
+      "rule-id": "UNI-016",
+      "severity": "suggestion",
+      "title": "Error Message Quality",
+      "trigger": "An error path reports a generic message without enough context to identify the failed operation, data, or cause."
+    }
+  ],
+  "source-adapters": [],
+  "target-adapter": "contracts",
+  "version": 1
+}

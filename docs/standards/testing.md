@@ -16,6 +16,17 @@ One file per integration binary is the intentional layout — `tests/it.rs` cons
 
 If a function needs unit tests, it belongs in a workspace crate, not the binary — see [architecture.md §"Workspace layout"](./architecture.md#workspace-layout) and [handler-shape.md §"Dispatcher contract"](./handler-shape.md#dispatcher-contract).
 
+## Test naming
+
+Test function names are identifiers, not sentences — the same brevity rules as production code ([coding-standards.md §"Naming"](./coding-standards.md#naming)) apply. The enclosing context already names the subject: an integration binary `tests/<area>.rs` supplies `<area>`, and an in-file `mod tests` (or `mod doctor`) supplies its module. Don't restate it in every `fn`.
+
+- Drop tokens the binary name or enclosing module already supplies: in `engine_layout.rs`, write `different_skeletons_error`, not `layout_different_skeletons_is_an_error`.
+- Group a cluster that shares a subject under a nested `mod <subject>` rather than repeating the subject as a prefix: six `mark_complete_*` tests become `mod mark_complete { fn idempotent() … }`.
+- Compress outcome tails to the assertion's shape: `_is_an_error` / `_returns_…_error` → `_errors`; `_validates_cleanly` → `_validates`; `_surfaces_as_a_single_error_entry` → `_one_error`.
+- Push the full narrative into the test body or a `//` comment above the `fn`, not the identifier.
+
+`module_name_repetitions` does not fire on `#[test]` fns, so this is a review-time rule.
+
 ## Patterns to follow
 
 - Spin up a real `specrun init` in a `tempfile::TempDir`. Reach for the existing helpers in `tests/cross_repo.rs` for multi-repo / fake-forge work; do not invent a parallel harness.

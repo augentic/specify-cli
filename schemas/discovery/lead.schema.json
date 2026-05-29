@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/discovery/lead.schema.json",
+  "title": "Specify discovery lead",
+  "description": "Validates a single `Lead` block under `## Lead inventory` in `discovery.md` per workflow §Discovery handshake. Each block has a kebab-case `id`, a non-empty `sources[]` list of source keys, a one-line `summary`, an optional `tentative` boolean flag set by `/spec:plan`'s `propose` sub-step when the agent merged the lead across sources with low confidence, and an optional `aliases[]` list of kebab-case aliases. `slices[].sources[].lead` resolves first against `id`, then against any `aliases[]` entry; aliases are stable across re-survey. An alias MUST NOT collide with another lead's `id` or `aliases[]` in the same `discovery.md` (`discovery-alias-collision` from `specrun slice validate`).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "sources", "summary"],
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/kebabName",
+      "description": "Stable kebab-case lead identifier. Re-survey replaces by id."
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/kebabName" },
+      "description": "Non-empty list of source keys that surfaced this lead (each entry matches a top-level `plan.yaml.sources.<key>` binding)."
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line human-readable summary."
+    },
+    "tentative": {
+      "type": "boolean",
+      "description": "Optional. Set to `true` by `/spec:plan`'s `propose` sub-step when the cross-source merge that produced this lead is uncertain; the operator reconciles at Gate 1."
+    },
+    "aliases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/kebabName" },
+      "description": "Optional kebab-case aliases for cross-source merge. `slices[].sources[].lead` resolves a binding's lead against the lead's `id` or any `alias`. Authored by the source adapter at `survey` time or by `/spec:plan` at `propose` time when merging differently-named leads across sources. Stable across re-survey; operator additions through `specrun plan amend --add-alias` survive re-survey. Empty `aliases: []` and a missing field are equivalent."
+    }
+  },
+  "$defs": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    }
+  }
+}

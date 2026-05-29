@@ -327,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_validate_structure_reports_all_chunk_one_rule_ids() {
+    fn validate_reports_chunk_one_rules() {
         let tool = Tool {
             name: "BadName".to_string(),
             version: "not-semver".to_string(),
@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn package_tool_validation_reports_package_rule_ids() {
+    fn package_validation_reports_rules() {
         let tool = Tool {
             name: "contract".to_string(),
             version: "v1".to_string(),
@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn scalar_contract_package_passes_with_embedded_permissions() {
+    fn scalar_package_passes_with_perms() {
         let manifest: ToolManifest =
             serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
                 .expect("parse scalar package");
@@ -385,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    fn write_permission_to_project_root_is_valid_when_tool_needs_root_outputs() {
+    fn root_write_valid_for_root_outputs() {
         let mut tool = valid_tool("contract");
         tool.permissions.write = vec!["$PROJECT_DIR".to_string()];
 
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_validate_structure_rejects_duplicate_names() {
+    fn validate_rejects_duplicate_names() {
         let manifest = ToolManifest {
             tools: vec![valid_tool("contract"), valid_tool("contract")],
         };
@@ -403,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn project_scope_rejects_capability_dir_permissions() {
+    fn project_scope_rejects_capability_dir() {
         let mut tool = valid_tool("contract");
         tool.permissions.read.push("$CAPABILITY_DIR/templates".to_string());
 
@@ -418,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_schema_rejects_chunk_one_invalid_shapes() {
+    fn schema_rejects_invalid_shapes() {
         let schema: serde_json::Value =
             serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
         let validator = jsonschema::validator_for(&schema).expect("schema compiles");
@@ -446,7 +446,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_schema_accepts_project_root_write_permission() {
+    fn schema_accepts_root_write() {
         let schema: serde_json::Value =
             serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
         let validator = jsonschema::validator_for(&schema).expect("schema compiles");
@@ -463,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_schema_accepts_scalar_and_object_package_requests() {
+    fn schema_accepts_scalar_and_object() {
         let schema: serde_json::Value =
             serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
         let validator = jsonschema::validator_for(&schema).expect("schema compiles");
@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_schema_accepts_template_path_sources() {
+    fn schema_accepts_template_sources() {
         let schema: serde_json::Value =
             serde_json::from_str(TOOL_JSON_SCHEMA).expect("schema parses");
         let validator = jsonschema::validator_for(&schema).expect("schema compiles");
@@ -490,7 +490,7 @@ mod tests {
     }
 
     #[test]
-    fn template_source_passes_structure_validation() {
+    fn template_source_passes_validation() {
         let tool = Tool {
             name: "vectis".to_string(),
             version: "0.3.0".to_string(),
@@ -506,7 +506,7 @@ mod tests {
     }
 
     #[test]
-    fn template_source_capability_dir_rejected_in_project_scope() {
+    fn template_capability_dir_rejected() {
         let tool = Tool {
             name: "vectis".to_string(),
             version: "0.3.0".to_string(),

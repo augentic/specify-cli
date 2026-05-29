@@ -1,7 +1,7 @@
 //! Integration tests for `specrun target resolve`.
 //!
 //! Mirrors the target-adapter loader exposed by
-//! `crates/domain/src/adapter/`. The CLI verb is a thin
+//! `crates/workflow/src/adapter/`. The CLI verb is a thin
 //! `TargetAdapter::resolve(name, project_dir)` wrapper.
 
 use std::fs;
@@ -11,7 +11,7 @@ mod common;
 use common::{Project, parse_stdout, repo_root, specrun};
 
 fn plugin_fixtures_root() -> PathBuf {
-    repo_root().join("crates/domain/tests/fixtures/plugins")
+    repo_root().join("crates/workflow/tests/fixtures/plugins")
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
@@ -35,7 +35,7 @@ fn stage_target_fixture(project: &Project, name: &str) {
 }
 
 #[test]
-fn target_resolve_local_returns_resolved_manifest() {
+fn resolve_local_returns_manifest() {
     let project = Project::init();
     // `Project::init()` seeds `.specify/.cache/manifests/targets/omnia/`; remove
     // it so the local probe wins for this test.
@@ -71,7 +71,7 @@ fn target_resolve_local_returns_resolved_manifest() {
 }
 
 #[test]
-fn target_resolve_strips_version_suffix() {
+fn resolve_strips_version_suffix() {
     // workflow §CLI surface: `specrun target resolve <value>` takes
     // either `<name>` or `<name>@<version>`. The `@version` part is
     // opaque metadata; the loader is keyed on the bare kebab name.

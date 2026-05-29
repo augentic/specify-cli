@@ -8,15 +8,15 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde_json::Value as JsonValue;
-use specify_domain::change::{Plan, authority_override_orphan_source_keys};
-use specify_domain::design_system::{ComponentStatus, ComponentsCatalog};
-use specify_domain::discovery::Discovery;
-use specify_domain::journal::{Event, EventKind, append_batch};
-use specify_domain::schema::{evidence_yaml_paths, validate_evidence_dir};
-use specify_domain::slice::fusion::{self, FusionIndex};
-use specify_domain::spec::provenance::{self, ParsedSpec, RequirementTag};
-use specify_domain::validate::validate_slice;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_model::discovery::Discovery;
+use specify_model::spec::provenance::{self, ParsedSpec, RequirementTag};
+use specify_validate::validate_slice;
+use specify_workflow::change::{Plan, orphan_authority_override_keys};
+use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
+use specify_workflow::journal::{Event, EventKind, append_batch};
+use specify_workflow::schema::{evidence_yaml_paths, validate_evidence_dir};
+use specify_workflow::slice::reconciliation::{self, ReconciliationIndex};
 
 use crate::runtime::context::Ctx;
 
@@ -31,7 +31,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     validate_evidence_dir(&slice_dir)?;
 
     // Single walk of `<slice>/specs/**/*.md` feeds provenance
-    // validation, fusion-drift REQ-id gathering, and post-pass
+    // validation, reconciliation-drift REQ-id gathering, and post-pass
     // synthesis journal emission.
     let source_keys = resolve_slice_source_keys(ctx, name)?;
     let (spec_req_ids, synthesis_tags, provenance_summaries) =
@@ -42,14 +42,14 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         });
     }
 
-    // workflow §D4 — when `fusion.yaml` exists, cross-check it against
+    // `reconciliation.yaml` audit index — when `reconciliation.yaml` exists, cross-check it against
     // `spec.md` REQ ids and per-source evidence claim ids. Absence
-    // of `fusion.yaml` is *not* drift: older slices and pre-refine
-    // slices skip the check silently. The slice-fusion-drift error
+    // of `reconciliation.yaml` is *not* drift: older slices and pre-refine
+    // slices skip the check silently. The slice-reconciliation-drift error
     // body bundles every finding so the operator sees the full
     // re-refine surface in one pass.
     //
-    // workflow §D3 — refuse a per-slice `authority-override` map that
+    // per-slice authority override — refuse a per-slice `authority-override` map that
     // names a source key absent from the slice's own `sources[]`
     // list. Runs before `validate_slice` so the operator sees the
     // structural issue before adapter rules surface downstream
@@ -186,16 +186,16 @@ fn scan_slice_specs(
 
 /// Bundle the four pre-adapter gates that fire on a single slice:
 ///
-/// 1. workflow §D4 — fusion-drift detection between `spec.md`, the
-///    per-slice `fusion.yaml`, and per-source `evidence/<key>.yaml`.
-/// 2. workflow §D3 — orphan source keys on the slice's
+/// 1. `reconciliation.yaml` audit index — reconciliation-drift detection between `spec.md`, the
+///    per-slice `reconciliation.yaml`, and per-source `evidence/<key>.yaml`.
+/// 2. per-slice authority override — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
-/// 3. workflow §D6 — candidate `id` ↔ `aliases[]` collisions in
+/// 3. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
 ///    `<project_dir>/discovery.md`. A discovery-level check (not
 ///    per-slice) but evaluated here because `specrun slice validate`
 ///    is the single CLI surface skills shell out to between
 ///    `/spec:refine` and `/spec:build`.
-/// 4. RFC-31 D5 — catalog drift between Evidence `component:`
+/// 4. component catalog contract — catalog drift between Evidence `component:`
 ///    directives and `.specify/design-system/components.yaml`.
 ///
 /// All four checks can fail independently; we collect every finding
@@ -205,21 +205,21 @@ fn validate_pre_adapter_gates(
     ctx: &Ctx, slice_dir: &Path, name: &str, spec_req_ids: &BTreeSet<String>,
 ) -> Result<()> {
     let mut findings: Vec<ValidationSummary> = Vec::new();
-    findings.extend(collect_fusion_drift_findings(slice_dir, spec_req_ids)?);
-    findings.extend(collect_authority_override_orphan_findings(ctx, name)?);
-    findings.extend(collect_discovery_alias_collision_findings(ctx)?);
+    findings.extend(collect_reconciliation_drift_findings(slice_dir, spec_req_ids)?);
+    findings.extend(override_orphans(ctx, name)?);
+    findings.extend(alias_collisions(ctx)?);
     findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
     if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
 }
 
-/// workflow §D6 alias-collision gate. Loads
+/// discovery alias contract alias-collision gate. Loads
 /// `<project_dir>/discovery.md` when present and emits one
 /// `discovery-alias-collision` finding per name that resolves to
 /// more than one candidate. Absent `discovery.md` skips the check
 /// silently — older slices and projects without an authored
 /// inventory remain valid (this is the read-only counterpart to
 /// the per-amend gate in `specrun plan amend --add-alias`).
-fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
+fn alias_collisions(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
     let path = ctx.layout().discovery_path();
     if !path.exists() {
         return Ok(Vec::new());
@@ -228,43 +228,41 @@ fn collect_discovery_alias_collision_findings(ctx: &Ctx) -> Result<Vec<Validatio
     Ok(discovery
         .check_alias_collisions()
         .iter()
-        .map(specify_domain::discovery::DiscoveryAliasCollision::to_summary)
+        .map(specify_model::discovery::DiscoveryAliasCollision::to_summary)
         .collect())
 }
 
-/// workflow §D4 drift gate. Loads `<slice>/fusion.yaml` when present,
+/// `reconciliation.yaml` audit index drift gate. Loads `<slice>/reconciliation.yaml` when present,
 /// gathers `REQ-*` ids from every `<slice>/specs/**/*.md` file and
 /// claim ids from every `<slice>/evidence/<source>.yaml` file, and
-/// emits one `slice-fusion-drift` finding per drift entry. The
-/// fusion file's own schema validation runs first
-/// ([`FusionIndex::load`]) so structural errors surface as
-/// `fusion-schema` failures rather than bare drift noise.
+/// emits one `slice-reconciliation-drift` finding per drift entry. The
+/// reconciliation file's own schema validation runs first
+/// ([`ReconciliationIndex::load`]) so structural errors surface as
+/// `reconciliation-schema` failures rather than bare drift noise.
 ///
-/// Absence of `fusion.yaml` is a legal state — older slices and
+/// Absence of `reconciliation.yaml` is a legal state — older slices and
 /// `refining` slices that haven't yet been driven through
 /// `/spec:refine` skip the check silently.
-fn collect_fusion_drift_findings(
+fn collect_reconciliation_drift_findings(
     slice_dir: &Path, spec_req_ids: &BTreeSet<String>,
 ) -> Result<Vec<ValidationSummary>> {
-    let index_path = slice_dir.join("fusion.yaml");
+    let index_path = slice_dir.join("reconciliation.yaml");
     if !index_path.is_file() {
         return Ok(Vec::new());
     }
-    let fusion_index = FusionIndex::load(&index_path)?;
-    let evidence = fusion::collect_evidence_claim_ids(slice_dir)?;
-    let drift = fusion_index.detect_drift(spec_req_ids, &evidence);
-    Ok(drift.into_iter().map(fusion::FusionDrift::into_summary).collect())
+    let reconciliation_index = ReconciliationIndex::load(&index_path)?;
+    let evidence = reconciliation::collect_evidence_claim_ids(slice_dir)?;
+    let drift = reconciliation_index.detect_drift(spec_req_ids, &evidence);
+    Ok(drift.into_iter().map(reconciliation::ReconciliationDrift::into_summary).collect())
 }
 
-/// workflow §D3 orphan-source-key gate. Loads `plan.yaml` (when
+/// per-slice authority override orphan-source-key gate. Loads `plan.yaml` (when
 /// present) and reports one finding per `(slice, kind)` pair
 /// whose source-key value is not in the slice's own `sources[]`
 /// list. Absent `plan.yaml` (e.g. ad-hoc slice without a plan)
 /// skips the check silently; the structural issue would already
 /// have surfaced earlier in workflow.
-fn collect_authority_override_orphan_findings(
-    ctx: &Ctx, name: &str,
-) -> Result<Vec<ValidationSummary>> {
+fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<ValidationSummary>> {
     let plan_path = ctx.layout().plan_path();
     if !plan_path.exists() {
         return Ok(Vec::new());
@@ -274,7 +272,7 @@ fn collect_authority_override_orphan_findings(
     // per-slice by definition, and surfacing findings from other
     // slices would confuse the operator.
     let slice_entries: Vec<_> = plan.entries.iter().filter(|e| e.name == name).cloned().collect();
-    let findings = authority_override_orphan_source_keys(&slice_entries);
+    let findings = orphan_authority_override_keys(&slice_entries);
     Ok(findings
         .into_iter()
         .map(|f| ValidationSummary {
@@ -288,7 +286,7 @@ fn collect_authority_override_orphan_findings(
         .collect())
 }
 
-/// RFC-31 D5 catalog-drift gate. Loads the project-level component
+/// component catalog contract catalog-drift gate. Loads the project-level component
 /// catalog (`.specify/design-system/components.yaml`) when present
 /// and cross-references every `component: <slug>` directive on
 /// Evidence claims in `<slice>/evidence/*.yaml` against it:

@@ -28,7 +28,7 @@ pub struct InvocationPositional;
 pub struct OperationalVocabulary;
 
 /// Skill description/body numeric caps must stay in sync across schema, standards, and checks.
-pub struct SkillNumericCaps;
+pub struct NumericCaps;
 
 impl Check for InvocationPositional {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
@@ -45,7 +45,7 @@ impl Check for OperationalVocabulary {
     }
 }
 
-impl Check for SkillNumericCaps {
+impl Check for NumericCaps {
     fn run(&self, ctx: &Context) -> Vec<Finding> {
         check_skill_numeric_caps(ctx.framework_root())
     }
@@ -58,8 +58,11 @@ fn check_operational_vocabulary(framework_root: &Path) -> Result<Vec<Finding>, T
         framework_root.join(".cursor"),
     ];
     let scan_files = [framework_root.join("AGENTS.md"), framework_root.join("README.md")];
-    let allowed_prefixes =
-        ["rfcs/", "docs/explanation/decision-log.md", "docs/explanation/release-notes.md"];
+    let allowed_prefixes = [
+        "docs/explanation/decision-log.md",
+        "docs/explanation/release-notes.md",
+        "docs/proposals/",
+    ];
     let allowed_segments = ["/fixtures/", "/archive/"];
     let forbidden = forbidden_patterns();
 
@@ -201,6 +204,9 @@ fn check_invocation_positionals(framework_root: &Path) -> Result<Vec<Finding>, T
     for path in targets {
         let rel =
             path.strip_prefix(framework_root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+        if rel.starts_with("docs/proposals/") {
+            continue;
+        }
         let content = fs::read_to_string(&path).map_err(ToolingError::from)?;
         let lines: Vec<&str> = content.lines().collect();
 

@@ -28,17 +28,17 @@ pub enum Format {
 ///
 /// Propagates the underlying serialization or I/O error.
 pub fn emit<T: Serialize>(
-    mut writer: Box<dyn Write>, format: Format, payload: &T,
+    writer: &mut dyn Write, format: Format, payload: &T,
     render_text: impl FnOnce(&mut dyn Write, &T) -> std::io::Result<()>,
 ) -> Result<(), Error> {
     match format {
         Format::Json => {
-            serde_json::to_writer_pretty(&mut writer, payload).map_err(|err| Error::Diag {
+            serde_json::to_writer_pretty(&mut *writer, payload).map_err(|err| Error::Diag {
                 code: "json-serialize-failed",
                 detail: format!("failed to serialize JSON response: {err}"),
             })?;
             writeln!(writer).map_err(Error::Io)
         }
-        Format::Text => render_text(&mut writer, payload).map_err(Error::Io),
+        Format::Text => render_text(writer, payload).map_err(Error::Io),
     }
 }

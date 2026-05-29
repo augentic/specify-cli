@@ -1,4 +1,4 @@
-//! Integration tests for the workflow §D8 cache index explain surface.
+//! Integration tests for the extraction cache fingerprint contract cache index explain surface.
 
 use std::fs;
 
@@ -6,20 +6,17 @@ mod common;
 use common::{Project, parse_stdout, specrun};
 
 #[test]
-fn source_resolve_explain_prints_empty_fingerprint_chain() {
+fn source_resolve_explain_empty_chain() {
     let project = Project::init();
     let adapter_dir = project.root().join("adapters/sources/code-typescript/briefs");
     fs::create_dir_all(&adapter_dir).expect("create source adapter dirs");
     fs::write(
         project.root().join("adapters/sources/code-typescript/adapter.yaml"),
-        "name: code-typescript\nversion: 1\naxis: source\nbriefs:\n  enumerate: briefs/enumerate.md\n  extract: briefs/extract.md\ndescription: Code-typescript test fixture.\n",
+        "name: code-typescript\nversion: 1\naxis: source\nbriefs:\n  survey: briefs/survey.md\n  extract: briefs/extract.md\ndescription: Code-typescript test fixture.\n",
     )
     .expect("write adapter manifest");
-    fs::write(
-        adapter_dir.join("enumerate.md"),
-        "---\nid: enumerate\ndescription: enumerate\n---\n",
-    )
-    .expect("write enumerate brief");
+    fs::write(adapter_dir.join("survey.md"), "---\nid: survey\ndescription: survey\n---\n")
+        .expect("write survey brief");
     fs::write(adapter_dir.join("extract.md"), "---\nid: extract\ndescription: extract\n---\n")
         .expect("write extract brief");
 

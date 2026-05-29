@@ -1,0 +1,79 @@
+{
+  "findings": [
+    {
+      "artifact": "unknown",
+      "evidence": {
+        "kind": "snippet",
+        "value": "Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
+      },
+      "fingerprint": "sha256:36d75d794ddaf8703e4fe6c42c773d38a4ac53328d8622c7079dc56f74f0b270",
+      "id": "FIND-0001",
+      "impact": "Authoring check 'rules.duplicate-rule-id' failed.",
+      "remediation": "Resolve the violation reported by 'rules.duplicate-rule-id'. See the finding message for details.",
+      "severity": "important",
+      "source": "deterministic",
+      "title": "[rules.duplicate-rule-id] Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
+    },
+    {
+      "artifact": "unknown",
+      "evidence": {
+        "kind": "snippet",
+        "value": "Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' under rules owner 'omnia')"
+      },
+      "fingerprint": "sha256:c0f1ceda4084f04aa92942254e4bd0b9f0bafe2c6bdc63f0ab1665c815a36241",
+      "id": "FIND-0002",
+      "impact": "Authoring check 'rules.namespace-ownership-violation' failed.",
+      "location": {
+        "line": 1,
+        "path": "adapters/targets/omnia/rules/frame-misplaced.md"
+      },
+      "remediation": "Resolve the violation reported by 'rules.namespace-ownership-violation'. See the finding message for details.",
+      "severity": "important",
+      "source": "deterministic",
+      "title": "[rules.namespace-ownership-violation] Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed …"
+    },
+    {
+      "artifact": "unknown",
+      "evidence": {
+        "kind": "snippet",
+        "value": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"severity\" is a required property"
+      },
+      "fingerprint": "sha256:86de3de1d730aab45b6911b254d8f3af713a998460273c3c1206d9abf7443c95",
+      "id": "FIND-0003",
+      "impact": "Authoring check 'rules.schema-violation' failed.",
+      "location": {
+        "line": 1,
+        "path": "adapters/shared/rules/universal/bad-frontmatter.md"
+      },
+      "remediation": "Resolve the violation reported by 'rules.schema-violation'. See the finding message for details.",
+      "severity": "critical",
+      "source": "deterministic",
+      "title": "[rules.schema-violation] Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"severity\" is a required property"
+    },
+    {
+      "artifact": "unknown",
+      "evidence": {
+        "kind": "snippet",
+        "value": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"trigger\" is a required property"
+      },
+      "fingerprint": "sha256:6c5071f94b164d1dafb174da3dcefc17aabecc0a65238a20520d0daee0fae501",
+      "id": "FIND-0004",
+      "impact": "Authoring check 'rules.schema-violation' failed.",
+      "location": {
+        "line": 1,
+        "path": "adapters/shared/rules/universal/bad-frontmatter.md"
+      },
+      "remediation": "Resolve the violation reported by 'rules.schema-violation'. See the finding message for details.",
+      "severity": "critical",
+      "source": "deterministic",
+      "title": "[rules.schema-violation] Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"trigger\" is a required property"
+    }
+  ],
+  "summary": {
+    "critical": 2,
+    "important": 2,
+    "optional": 0,
+    "suggestion": 0
+  },
+  "version": 1
+}

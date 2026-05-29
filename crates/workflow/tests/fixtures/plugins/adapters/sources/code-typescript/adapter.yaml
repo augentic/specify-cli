@@ -1,0 +1,7 @@
+name: code-typescript
+version: 1
+axis: source
+briefs:
+  survey: briefs/survey.md
+  extract: briefs/extract.md
+description: Extracts behavioural evidence from TypeScript codebases.

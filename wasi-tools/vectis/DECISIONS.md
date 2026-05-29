@@ -1,13 +1,13 @@
 # `vectis validate` decisions log
 
 Provenance and rationale for the deterministic validation engine. Each
-entry quotes (or paraphrases) the RFC that grounds the rule and names
+entry records the decision that grounds the rule and names
 the call site(s) that implement it. Inline comments in `src/validate/engine/`
-state the rules without RFC numbers; this file carries the citation.
+state the rules without historical labels; this file carries the citation.
 
-## RFC-11 — Vectis UI artifact surface
+## Vectis UI artifact surface
 
-The umbrella RFC for `tokens.yaml`, `assets.yaml`, `layout.yaml`,
+The umbrella decision for `tokens.yaml`, `assets.yaml`, `layout.yaml`,
 `composition.yaml`, the embedded JSON Schemas, and the
 `vectis validate` command surface.
 
@@ -176,11 +176,11 @@ the layout- and composition-mode test suites under
 _Codified in: `crates/vectis/src/validate/engine/composition.rs::check_structural_identity`
 (early-exit when `base.len() < 2`)._
 
-## RFC-7 — Wiring resolution rules
+## Wiring resolution rules
 
 > `maps_to` / `bind` / `event` / overlay `trigger` / navigation
 > target full resolution against `design.md` / `specs/` is deferred
-> to a follow-on RFC. Composition mode's schema regex patterns
+> to a follow-on contract. Composition mode's schema regex patterns
 > (`bindValue`, `eventValue`, `triggerValue`) shape-check these
 > fields at parse time; the runtime resolution layer is intentionally
 > out of scope here. Phase 1.7's static-asset walker (the
@@ -193,7 +193,7 @@ _Codified in:
 `engine/assets.rs::collect_asset_references` (the shared walker
 composition mode reuses)._
 
-## RFC-16 — WASI command surface
+## WASI command surface
 
 > `vectis validate` is a WASI command tool. The library crate carries
 > the deterministic engine and the embedded schemas so the WASI
@@ -217,7 +217,7 @@ surface) and `src/main.rs` (the binary entry point)._
 _Codified in: `crates/vectis/src/scaffold/versions.rs::Versions::resolve`,
 `load_required`, and `load_embedded`._
 
-## RFC 6901 — JSON Pointer
+## JSON Pointer
 
 > Every error / warning entry carries a `path` field shaped like a
 > JSON Pointer (the same `instance_path` the `jsonschema` crate

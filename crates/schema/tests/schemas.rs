@@ -7,9 +7,10 @@ use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_error::ValidationStatus;
 use specify_schema::{
-    CODEX_RULE_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FUSION_JSON_SCHEMA,
-    PLAN_JSON_SCHEMA, RESOLVED_CODEX_JSON_SCHEMA, REVIEW_FINDING_JSON_SCHEMA,
-    REVIEW_RESULT_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
+    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
+    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
+    validate_value,
 };
 
 #[test]
@@ -23,8 +24,8 @@ fn evidence_schema_compiles() {
 }
 
 #[test]
-fn fusion_schema_compiles() {
-    compile_schema(FUSION_JSON_SCHEMA).expect("fusion schema compiles");
+fn reconciliation_schema_compiles() {
+    compile_schema(RECONCILIATION_JSON_SCHEMA).expect("reconciliation schema compiles");
 }
 
 #[test]
@@ -34,17 +35,17 @@ fn components_schema_compiles() {
 
 #[test]
 fn resolved_codex_schema_compiles() {
-    compile_schema(RESOLVED_CODEX_JSON_SCHEMA).expect("resolved codex schema compiles");
+    compile_schema(RESOLVED_RULES_JSON_SCHEMA).expect("resolved codex schema compiles");
 }
 
 #[test]
 fn codex_rule_schema_compiles() {
-    compile_schema(CODEX_RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
+    compile_schema(RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
 }
 
 #[test]
-fn review_finding_schema_compiles() {
-    compile_schema(REVIEW_FINDING_JSON_SCHEMA).expect("review finding schema compiles");
+fn lint_finding_schema_compiles() {
+    compile_schema(LINT_FINDING_JSON_SCHEMA).expect("lint finding schema compiles");
 }
 
 #[test]
@@ -68,7 +69,7 @@ fn workspace_model_schema_accepts_minimal_envelope() {
         "skills": [],
         "adapter_manifests": [],
         "marketplace_entries": [],
-        "codex_rules": [],
+        "rule_index": [],
         "text_matches": []
     });
     let summaries = validate_value(
@@ -84,18 +85,18 @@ fn workspace_model_schema_accepts_minimal_envelope() {
 }
 
 #[test]
-fn review_result_schema_compiles() {
+fn lint_result_schema_compiles() {
     // The envelope $ref's `finding.schema.json` by relative URI; the
     // standalone `compile_schema` helper has no resource registry, so
     // compile through a registry that pins the finding schema under
     // the same directory the relative ref resolves to.
     let envelope: Value =
-        serde_json::from_str(REVIEW_RESULT_JSON_SCHEMA).expect("review-result schema parses");
+        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
-        serde_json::from_str(REVIEW_FINDING_JSON_SCHEMA).expect("finding schema parses");
+        serde_json::from_str(LINT_FINDING_JSON_SCHEMA).expect("finding schema parses");
     let registry = Registry::new()
         .add(
-            "https://github.com/augentic/specify-cli/schemas/review/finding.schema.json",
+            "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json",
             Resource::from_contents(finding),
         )
         .and_then(jsonschema::RegistryBuilder::prepare)
@@ -103,18 +104,18 @@ fn review_result_schema_compiles() {
     let _validator = jsonschema::options()
         .with_registry(&registry)
         .build(&envelope)
-        .expect("review-result schema compiles with finding $ref resolved");
+        .expect("lint-result schema compiles with finding $ref resolved");
 }
 
 #[test]
-fn review_result_schema_accepts_envelope_with_one_finding() {
+fn lint_result_schema_accepts_envelope_with_one_finding() {
     let envelope: Value =
-        serde_json::from_str(REVIEW_RESULT_JSON_SCHEMA).expect("review-result schema parses");
+        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
-        serde_json::from_str(REVIEW_FINDING_JSON_SCHEMA).expect("finding schema parses");
+        serde_json::from_str(LINT_FINDING_JSON_SCHEMA).expect("finding schema parses");
     let registry = Registry::new()
         .add(
-            "https://github.com/augentic/specify-cli/schemas/review/finding.schema.json",
+            "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json",
             Resource::from_contents(finding),
         )
         .and_then(jsonschema::RegistryBuilder::prepare)
@@ -122,7 +123,7 @@ fn review_result_schema_accepts_envelope_with_one_finding() {
     let validator = jsonschema::options()
         .with_registry(&registry)
         .build(&envelope)
-        .expect("review-result schema compiles with finding $ref resolved");
+        .expect("lint-result schema compiles with finding $ref resolved");
     let instance = json!({
         "version": 1,
         "summary": { "critical": 0, "important": 1, "suggestion": 0, "optional": 0 },
@@ -150,16 +151,16 @@ fn review_result_schema_accepts_envelope_with_one_finding() {
         }]
     });
     let errors: Vec<String> = validator.iter_errors(&instance).map(|err| err.to_string()).collect();
-    assert!(errors.is_empty(), "RFC-28 FIND-0001 envelope must validate; errors: {errors:?}");
+    assert!(errors.is_empty(), "FIND-0001 envelope must validate; errors: {errors:?}");
 }
 
 /// Pins the relative-ref form: integrations downstream rely on
 /// `finding.schema.json` resolving against the envelope schema's
 /// directory rather than an absolute URL.
 #[test]
-fn review_result_schema_uses_relative_finding_ref() {
+fn lint_result_schema_uses_relative_finding_ref() {
     let envelope: Value =
-        serde_json::from_str(REVIEW_RESULT_JSON_SCHEMA).expect("review-result schema parses");
+        serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("lint-result schema parses");
     let items_ref = envelope
         .pointer("/properties/findings/items/$ref")
         .and_then(Value::as_str)
@@ -167,10 +168,10 @@ fn review_result_schema_uses_relative_finding_ref() {
     assert_eq!(items_ref, "finding.schema.json");
 }
 
-/// Per RFC-32 §"Hint kinds — reserved", reserved kinds are
+/// Per the standards-layer contract §"Hint kinds — reserved", reserved kinds are
 /// shape-validated by this schema with no execution semantics. A
 /// minimal codex-rule frontmatter that declares each reserved kind
-/// must round-trip cleanly so RFC-28 exporters accept files awaiting
+/// must round-trip cleanly so rules exporters accept files awaiting
 /// implementation.
 #[test]
 fn codex_rule_schema_accepts_each_reserved_hint_kind() {
@@ -189,18 +190,14 @@ fn codex_rule_schema_accepts_each_reserved_hint_kind() {
             "id": "UNI-014",
             "title": "Reserved-kind smoke fixture",
             "severity": "important",
-            "trigger": "Reserved hint kind smoke fixture for RFC-32 §Hint kinds — reserved.",
+            "trigger": "Reserved hint kind smoke fixture.",
             "deterministic_hints": [{
                 "kind": kind,
                 "value": "placeholder"
             }]
         });
-        let summaries = validate_value(
-            &instance,
-            CODEX_RULE_JSON_SCHEMA,
-            "codex-rule",
-            "codex rule fixture per reserved kind",
-        );
+        let summaries =
+            validate_value(&instance, RULE_JSON_SCHEMA, "rule", "rule fixture per reserved kind");
         assert!(
             summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
             "kind {kind} must validate; got {summaries:?}"

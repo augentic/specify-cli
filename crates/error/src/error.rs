@@ -72,7 +72,7 @@ pub enum Error {
     /// kebab-case suffix that, prefixed with `filesystem-`, becomes the
     /// JSON envelope's `error` discriminant (e.g. `filesystem-readdir`).
     /// Canonical call sites: the slice-merge engine
-    /// (`specify_domain::merge::slice::{read, write}`), where every
+    /// (`specify_workflow::merge::slice::{read, write}`), where every
     /// recursive directory walk and file copy needs a stable, testable
     /// discriminant for operator follow-up.
     #[error("filesystem-{op}: {} ({source})", path.display())]
@@ -154,21 +154,23 @@ impl Error {
 
     /// Kebab-case identifier used in structured CLI error payloads.
     ///
-    /// Most arms return a `&'static str` literal; [`Self::Filesystem`]
-    /// composes `filesystem-<op>` and returns the owned form.
+    /// Most arms borrow a `&'static str` literal at zero cost;
+    /// [`Self::Filesystem`] is the lone owned arm, composing
+    /// `filesystem-<op>`.
     #[must_use]
-    pub fn variant_str(&self) -> String {
+    pub fn variant_str(&self) -> std::borrow::Cow<'static, str> {
+        use std::borrow::Cow;
         match self {
-            Self::NotInitialized => "not-initialized".to_string(),
-            Self::Diag { code, .. } => (*code).to_string(),
-            Self::Argument { .. } => "argument".to_string(),
-            Self::Validation { .. } => "validation".to_string(),
-            Self::CliTooOld { .. } => "specify-version-too-old".to_string(),
-            Self::ArtifactNotFound { .. } => "artifact-not-found".to_string(),
-            Self::Filesystem { op, .. } => format!("filesystem-{op}"),
-            Self::BranchPrepareFailed { .. } => "branch-preparation-failed".to_string(),
-            Self::Io(_) => "io".to_string(),
-            Self::YamlDe(_) | Self::YamlSer(_) => "yaml".to_string(),
+            Self::NotInitialized => Cow::Borrowed("not-initialized"),
+            Self::Diag { code, .. } => Cow::Borrowed(*code),
+            Self::Argument { .. } => Cow::Borrowed("argument"),
+            Self::Validation { .. } => Cow::Borrowed("validation"),
+            Self::CliTooOld { .. } => Cow::Borrowed("specify-version-too-old"),
+            Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
+            Self::Filesystem { op, .. } => Cow::Owned(format!("filesystem-{op}")),
+            Self::BranchPrepareFailed { .. } => Cow::Borrowed("branch-preparation-failed"),
+            Self::Io(_) => Cow::Borrowed("io"),
+            Self::YamlDe(_) | Self::YamlSer(_) => Cow::Borrowed("yaml"),
         }
     }
 

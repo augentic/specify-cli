@@ -2,9 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use specify_authoring::Context;
-use specify_authoring::check::tools::{
-    run_declared_tool_equivalent_invocations, run_first_party_tool_declarations,
-};
+use specify_authoring::check::tools::{check_declared_tool_invocations, check_first_party_tools};
 
 fn scaffold_framework_root(root: &Path) -> PathBuf {
     fs::create_dir_all(root.join("plugins")).expect("plugins dir");
@@ -38,7 +36,7 @@ fn invalid_tool_entry_shape_fails() {
     );
     write_adapter(&root, "vectis", "tools:\n  - name: vectis\n    version: 0.3.0\n");
 
-    let findings = run_first_party_tool_declarations(&ctx_for(&root));
+    let findings = check_first_party_tools(&ctx_for(&root));
     assert_eq!(findings.len(), 2);
     assert!(findings.iter().all(|f| f.rule_id == "tools.invalid-declaration"));
     assert!(findings.iter().any(|f| f.message.contains("must be { name, version } objects")));
@@ -54,7 +52,7 @@ fn retired_helper_in_brief_fails() {
     fs::create_dir_all(brief.parent().unwrap()).expect("brief dir");
     fs::write(&brief, "Run specify-contract on the baseline.\n").expect("brief");
 
-    let findings = run_declared_tool_equivalent_invocations(&ctx_for(&root));
+    let findings = check_declared_tool_invocations(&ctx_for(&root));
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].rule_id, "tools.invocation-not-equivalent");
     assert!(findings[0].message.contains("specify-contract"));

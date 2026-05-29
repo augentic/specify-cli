@@ -1,8 +1,8 @@
-//! Integration tests for `specrun registry` (RFC-9 §2A).
+//! Integration tests for `specrun registry` (registry add/remove).
 //!
 //! Covers `registry add`, `registry remove`, the hub-mode `registry
 //! validate` invariants surfaced after a fresh `init --hub`, and the
-//! schema-level `registry {show,validate}` matrix (RFC-3a C12/C13) on
+//! schema-level `registry {show,validate}` matrix (registry show/validate) on
 //! single- and multi-project layouts.
 
 use std::fs;
@@ -70,10 +70,10 @@ fn init_hub_validate_rejects_dot_url() {
     assert!(msg.contains("registry.yaml"), "message must scope the file: {msg}");
 }
 
-// ---- specrun registry {add, remove} (RFC-9 §2A) ----
+// ---- specrun registry {add, remove} (registry add/remove) ----
 
 #[test]
-fn registry_add_round_trips_through_show() {
+fn add_round_trips_through_show() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -112,7 +112,7 @@ fn registry_add_round_trips_through_show() {
 }
 
 #[test]
-fn registry_add_rejects_dot_url_in_hub_mode() {
+fn add_rejects_dot_url_in_hub_mode() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -141,7 +141,7 @@ fn registry_add_rejects_dot_url_in_hub_mode() {
 }
 
 #[test]
-fn registry_add_rejects_non_kebab() {
+fn add_rejects_non_kebab() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -168,7 +168,7 @@ fn registry_add_rejects_non_kebab() {
 }
 
 #[test]
-fn registry_remove_succeeds_and_round_trips() {
+fn remove_succeeds_and_round_trips() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -214,7 +214,7 @@ fn registry_remove_succeeds_and_round_trips() {
 }
 
 #[test]
-fn registry_remove_warns_on_plan_ref() {
+fn remove_warns_on_plan_ref() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -269,7 +269,7 @@ fn registry_remove_warns_on_plan_ref() {
 }
 
 #[test]
-fn registry_remove_unknown_project_errors() {
+fn remove_unknown_project_errors() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
 
@@ -286,7 +286,7 @@ fn registry_remove_unknown_project_errors() {
 }
 
 #[test]
-fn registry_remove_refuses_when_absent() {
+fn remove_refuses_when_absent() {
     let tmp = tempdir().unwrap();
     // Plain init (no hub) — single-repo project has no registry.yaml
     // by default.
@@ -310,11 +310,11 @@ fn registry_remove_refuses_when_absent() {
     assert!(msg.contains("no registry declared"), "msg: {msg}");
 }
 
-// ---- Registry (RFC-3a C12) ----
+// ---- Registry (registry validation) ----
 
 #[test]
-fn registry_load_from_tempdir() {
-    use specify_domain::registry::Registry;
+fn load_from_tempdir() {
+    use specify_workflow::registry::Registry;
 
     let project = Project::init();
     let registry_path = project.root().join("registry.yaml");
@@ -338,7 +338,7 @@ fn registry_load_from_tempdir() {
     assert!(loaded.is_single_repo());
 }
 
-// ---- Registry CLI verbs (RFC-3a C13) ----
+// ---- Registry CLI verbs (registry CLI verbs) ----
 //
 // `specrun registry validate` isolates the same shape check the C12 hook drives through
 // `specrun plan validate`. The tests below cover the full
@@ -374,7 +374,7 @@ fn write_registry(project: &Project, body: &str) {
 }
 
 #[test]
-fn registry_validate_absent() {
+fn validate_absent() {
     let project = Project::init();
 
     let assert = specrun()
@@ -397,7 +397,7 @@ fn registry_validate_absent() {
 }
 
 #[test]
-fn registry_validate_well_formed() {
+fn validate_well_formed() {
     let project = Project::init();
     write_registry(&project, REGISTRY_SINGLE);
 
@@ -413,7 +413,7 @@ fn registry_validate_well_formed() {
 }
 
 #[test]
-fn registry_validate_multi_project() {
+fn validate_multi_project() {
     let project = Project::init();
     write_registry(&project, REGISTRY_THREE);
 
@@ -429,7 +429,7 @@ fn registry_validate_multi_project() {
 }
 
 #[test]
-fn registry_validate_malformed_version() {
+fn validate_malformed_version() {
     let project = Project::init();
     write_registry(&project, "version: 2\nprojects: []\n");
 
@@ -448,7 +448,7 @@ fn registry_validate_malformed_version() {
 }
 
 #[test]
-fn registry_validate_duplicate_name() {
+fn validate_duplicate_name() {
     let project = Project::init();
     write_registry(
         &project,
@@ -478,7 +478,7 @@ projects:
 }
 
 #[test]
-fn registry_validate_non_kebab() {
+fn validate_non_kebab() {
     let project = Project::init();
     write_registry(
         &project,
@@ -497,7 +497,7 @@ projects:
 }
 
 #[test]
-fn registry_validate_unknown_key() {
+fn validate_unknown_key() {
     let project = Project::init();
     write_registry(&project, "version: 1\nversions: 2\nprojects: []\n");
 
@@ -509,7 +509,7 @@ fn registry_validate_unknown_key() {
 /// Plan "Done when" criterion: on a scaffolded project with no
 /// registry, `specrun registry validate` exits 0.
 #[test]
-fn registry_validate_on_bare_repo() {
+fn validate_on_bare_repo() {
     let project = Project::init();
     assert!(!project.root().join("registry.yaml").exists(), "bare repo must not have a registry");
     specrun().current_dir(project.root()).args(["registry", "validate"]).assert().success();

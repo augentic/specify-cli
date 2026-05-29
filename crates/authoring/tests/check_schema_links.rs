@@ -67,7 +67,7 @@ fn unknown_tool_name_fails() {
 }
 
 #[test]
-fn unknown_schema_name_for_known_tool_fails() {
+fn unknown_schema_for_known_tool() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let root = tmp.path();
     scaffold(root);
@@ -84,7 +84,7 @@ fn unknown_schema_name_for_known_tool_fails() {
 }
 
 #[test]
-fn urls_inside_fenced_code_blocks_are_skipped() {
+fn urls_in_fences_skipped() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let root = tmp.path();
     scaffold(root);
@@ -114,7 +114,7 @@ fn urls_inside_inline_code_are_skipped() {
 }
 
 #[test]
-fn no_adapters_directory_produces_no_findings() {
+fn no_adapters_no_findings() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let root = tmp.path();
     fs::create_dir_all(root.join("plugins")).expect("plugins dir");
@@ -124,7 +124,7 @@ fn no_adapters_directory_produces_no_findings() {
 }
 
 #[test]
-fn multiple_bad_urls_in_one_file_produce_multiple_findings() {
+fn multiple_bad_urls_multiple_findings() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let root = tmp.path();
     scaffold(root);

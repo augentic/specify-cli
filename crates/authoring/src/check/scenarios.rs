@@ -563,7 +563,7 @@ mod unit_tests {
     use super::*;
 
     #[test]
-    fn contiguous_stages_prefix_accepts_refine_anchor() {
+    fn contiguous_stages_accepts_refine() {
         assert!(is_contiguous_stages_prefix(&json!(["refine", "build"])));
     }
 
@@ -573,7 +573,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn contiguous_stages_prefix_rejects_unknown_stage() {
+    fn contiguous_stages_rejects_unknown() {
         assert!(!is_contiguous_stages_prefix(&json!(["draft"])));
     }
 }
