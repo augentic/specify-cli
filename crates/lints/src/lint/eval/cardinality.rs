@@ -35,11 +35,11 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
+
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{
-    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
-};
+use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
 
 const SOURCE_SKILL_BODY_LINE_COUNT_MAX_200: &str = "skill-body-line-count-max-200";
 const SKILL_BODY_LINE_MAX: u32 = 200;

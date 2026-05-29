@@ -17,20 +17,19 @@
 use std::collections::HashSet;
 use std::fmt;
 
+use specify_diagnostics::{
+    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary,
+};
 use specify_error::Result;
 
 use crate::lint::ScanProfile;
-use crate::lint::diagnostics::{
-    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, emit_dump_model, map_index_error,
-};
+use crate::lint::diagnostics::{emit_dump_model, map_index_error};
 use crate::lint::eval::tool::ToolRunner;
 use crate::lint::eval::{evaluate_rules, reserved_hint_summary};
 use crate::lint::ignore::apply as apply_directives;
 use crate::lint::index::build as build_model;
 use crate::lint::producer::DiagnosticProducer;
-use crate::rules::{
-    Diagnostic, ResolveInputs, ResolvedRules, build_resolved_rules, map_resolve_error,
-};
+use crate::rules::{ResolveInputs, ResolvedRules, build_resolved_rules, map_resolve_error};
 
 /// How the runner treats a codex-resolution failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -41,13 +41,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value as JsonValue;
+use specify_diagnostics::{Diagnostic, FindingEvidence, Severity};
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
-use specify_lints::rules::{
-    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
-    Severity,
-};
+use specify_lints::rules::{DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule};
 
 const BAD_MANIFEST: &str = "name: bad-source\nversion: 1\naxis: source\n";
 const GOOD_MANIFEST: &str = concat!(

@@ -9,7 +9,7 @@
 //! `WorkspaceModel` the declarative hint pass consumes.
 //!
 //! Unlike the lightweight `Finding` the predicates used to emit, every
-//! predicate now builds the canonical [`crate::rules::Diagnostic`]
+//! predicate now builds the canonical [`specify_diagnostics::Diagnostic`]
 //! directly via [`builder::framework_finding`]. [`check::run`] finalises
 //! the batch — rebasing locations to project-relative form, computing
 //! fingerprints, and assigning sequential `FIND-NNNN` ids — so the

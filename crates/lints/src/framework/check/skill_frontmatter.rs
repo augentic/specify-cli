@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 use serde_json::Value as JsonValue;
+use specify_diagnostics::Diagnostic;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
@@ -11,7 +12,6 @@ use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
 use crate::framework::helpers::{relative_display, skill_frontmatter, walk_skill_files};
 use crate::framework::schema::{SchemaError, SchemaId, validate_frontmatter};
-use crate::rules::Diagnostic;
 
 pub const RULE_SCHEMA_VIOLATION: &str = "skill.schema-violation";
 pub const RULE_MISSING_FRONTMATTER: &str = "skill.missing-frontmatter";

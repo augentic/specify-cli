@@ -25,12 +25,11 @@
 
 use std::path::Path;
 
-use specify_tool::sha256_hex;
-
-use crate::rules::{
+use specify_diagnostics::{
     Artifact, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
     Severity,
 };
+use specify_tool::sha256_hex;
 
 /// Mapping from each still-active imperative authoring rule id to its
 /// closed codex `CORE-NNN` id.
@@ -228,6 +227,8 @@ fn build_evidence(message: &str) -> FindingEvidence {
 
 #[cfg(test)]
 mod tests {
+    use specify_diagnostics::Severity;
+
     use super::{core_id_for, severity_for};
     use crate::framework::check::skill_frontmatter::{
         RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_MISSING_FRONTMATTER,
@@ -239,7 +240,6 @@ mod tests {
         SCENARIO_RULE_ARTIFACT_PATH_UNSAFE, SCENARIO_RULE_BODY_ID_MISMATCH,
         SCENARIO_RULE_DUPLICATE_ID, SCENARIO_RULE_SCHEMA_VIOLATION, SKILL_RULE_SCHEMA_VIOLATION,
     };
-    use crate::rules::Severity;
 
     /// `rules.schema-violation` is the one rule the table elevates to
     /// `Critical` — schema breakage blocks every downstream consumer of

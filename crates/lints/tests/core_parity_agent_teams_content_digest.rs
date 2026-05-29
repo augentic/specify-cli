@@ -91,13 +91,11 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+use specify_diagnostics::{Diagnostic, FindingEvidence, Severity};
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
-use specify_lints::rules::{
-    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
-    Severity,
-};
+use specify_lints::rules::{DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule};
 
 const CANONICAL_REL: &str = "docs/reference/review-team-protocol.md";
 const CANONICAL_BODY: &str = "# Review Team Protocol\n\nCanonical review-team-protocol body.\n";

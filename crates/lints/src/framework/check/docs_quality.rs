@@ -1,10 +1,11 @@
 use std::fs;
 
+use specify_diagnostics::Diagnostic;
+
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::helpers::{relative_display, resolve_markdown_asset, walk_markdown_files};
-use crate::rules::Diagnostic;
 
 const RULE_SPECIFY_HISTORY_CITATION: &str = "docs.specify-history-citation-in-docs";
 const RULE_MISSING_DIAGRAM: &str = "docs.missing-diagram-asset";

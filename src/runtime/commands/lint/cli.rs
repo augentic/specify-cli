@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Subcommand, ValueEnum};
-use specify_lints::lint::diagnostics::Format as DiagnosticsFormat;
+use specify_diagnostics::Format as DiagnosticsFormat;
 
 #[derive(Subcommand)]
 pub enum LintAction {

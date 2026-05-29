@@ -20,8 +20,9 @@
 
 use std::path::Path;
 
+use specify_diagnostics::Diagnostic;
+
 use crate::lint::WorkspaceModel;
-use crate::rules::Diagnostic;
 
 /// An imperative source of [`Diagnostic`]s composed by the shared
 /// lint runner alongside the declarative hint pass.

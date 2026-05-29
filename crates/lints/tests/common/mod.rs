@@ -7,12 +7,9 @@
 //! (`line + column`, `line only`, and `no location at all`).
 
 use serde_json::json;
-use specify_lints::lint::diagnostics::{
-    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary,
-};
-use specify_lints::rules::{
-    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence,
-    FindingLocation, Severity,
+use specify_diagnostics::{
+    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticReport, DiagnosticReportVersion,
+    DiagnosticSource, DiagnosticSummary, FindingEvidence, FindingLocation, Severity,
 };
 
 /// Three-finding fixture covering the rendering matrix S8 needs to

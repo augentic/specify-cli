@@ -1,11 +1,12 @@
 use std::fs;
 use std::path::Path;
 
+use specify_diagnostics::Diagnostic;
+
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::helpers::under_symlink;
-use crate::rules::Diagnostic;
 
 pub const RULE_MISSING_MANIFEST: &str = "adapter.missing-manifest";
 const ADAPTER_FILENAME: &str = "adapter.yaml";

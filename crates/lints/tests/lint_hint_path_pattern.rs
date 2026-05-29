@@ -12,10 +12,11 @@ mod eval_support;
 use std::fs;
 
 use eval_support::{NoToolRunner, hint, make_rule};
+use specify_diagnostics::Severity;
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolRunner, evaluate};
 use specify_lints::lint::index::build;
-use specify_lints::rules::{HintKind, Severity};
+use specify_lints::rules::HintKind;
 
 #[test]
 fn path_pattern_narrows_candidates() {

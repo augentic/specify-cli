@@ -28,6 +28,7 @@ use std::sync::LazyLock;
 
 use jsonschema::Validator;
 use serde_json::Value;
+use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA,
     EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
@@ -36,7 +37,7 @@ use specify_schema::{
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, ResolvedRule};
+use crate::rules::{DeterministicHint, ResolvedRule};
 
 static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     HashMap::from([

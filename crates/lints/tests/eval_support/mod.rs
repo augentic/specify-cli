@@ -11,9 +11,10 @@
 
 use std::path::Path;
 
+use specify_diagnostics::Severity;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner};
 use specify_lints::rules::{
-    Applicability, DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule, Severity,
+    Applicability, DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule,
 };
 
 pub fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {

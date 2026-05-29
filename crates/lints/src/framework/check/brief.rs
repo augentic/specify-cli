@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
 use crate::framework::builder::{framework_finding, loc};
@@ -8,7 +9,6 @@ use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
 use crate::framework::helpers::under_symlink;
-use crate::rules::Diagnostic;
 
 const PARENT_BRIEF_HARD_CAP: usize = 150;
 const PHASE_BRIEF_SOFT_CAP: usize = 500;

@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use regex::Regex;
+use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
 use crate::framework::builder::{framework_finding, loc};
@@ -9,7 +10,6 @@ use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
 use crate::framework::helpers::under_symlink;
-use crate::rules::Diagnostic;
 
 const RULE_INVOCATION_POSITIONAL: &str = "prose.invocation-positional";
 const RULE_OPERATIONAL_VOCABULARY: &str = "prose.operational-vocabulary";

@@ -3,7 +3,7 @@
 
 mod common;
 
-use specify_lints::lint::diagnostics::{Format, render};
+use specify_diagnostics::{Format, render};
 
 use crate::common::make_fixture;
 

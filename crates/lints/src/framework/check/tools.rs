@@ -5,13 +5,13 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 use serde_json::Value;
+use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::helpers::under_symlink;
-use crate::rules::Diagnostic;
 
 const RULE_INVALID_DECLARATION: &str = "tools.invalid-declaration";
 const RULE_INVOCATION_NOT_EQUIVALENT: &str = "tools.invocation-not-equivalent";

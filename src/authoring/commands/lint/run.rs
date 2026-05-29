@@ -21,13 +21,15 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
+use specify_diagnostics::{
+    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, FindingStatus,
+    Format as DiagnosticsFormat, count_status, render,
+};
 use specify_error::{Error, Result};
+use specify_lints::ResolveInputs;
 use specify_lints::framework::check;
 use specify_lints::framework::context::Context as AuthoringContext;
-use specify_lints::lint::diagnostics::{
-    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format as DiagnosticsFormat,
-    count_status, map_render_error, render,
-};
+use specify_lints::lint::diagnostics::map_render_error;
 use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
 use specify_lints::lint::ignore::blocking_findings_present;
 use specify_lints::lint::producer::DiagnosticProducer;
@@ -35,7 +37,6 @@ use specify_lints::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
 use specify_lints::lint::{ScanProfile, WorkspaceModel};
-use specify_lints::{Diagnostic, FindingStatus, ResolveInputs};
 use specify_workflow::config::Layout;
 use specify_workflow::journal::{
     self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,

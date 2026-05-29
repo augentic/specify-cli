@@ -55,13 +55,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use specify_diagnostics::{Diagnostic, FindingEvidence, Severity};
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
-use specify_lints::rules::{
-    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
-    Severity,
-};
+use specify_lints::rules::{DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule};
 
 const DUP_A: &str =
     "---\nname: duplicate-skill\ndescription: Run the duplicate-skill flow.\n---\n# Body A\n";

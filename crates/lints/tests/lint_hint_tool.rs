@@ -13,10 +13,11 @@ mod eval_support;
 use std::fs;
 
 use eval_support::{FakeToolRunner, NoToolRunner, hint, make_rule};
+use specify_diagnostics::{FindingEvidence, Severity, validate_evidence_size};
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ReservedSkipped, ToolRunner, evaluate, reserved_hint_summary};
 use specify_lints::lint::index::build;
-use specify_lints::rules::{FindingEvidence, HintKind, Severity, validate_evidence_size};
+use specify_lints::rules::HintKind;
 
 fn synthetic_envelope_stdout() -> Vec<u8> {
     let body = serde_json::json!({

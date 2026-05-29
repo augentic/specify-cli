@@ -3,11 +3,11 @@
 //!
 //! Per the standards-layer dependency invariant, this crate is a standards-layer
 //! sibling of `specify-workflow`: it carries every rules/lint DTO, the CH-11
-//! frontmatter parser, the CH-12/13/14 resolver pipeline, the CH-15
-//! fingerprint algorithm, and the CH-16 finding validators. The
-//! separation is enforced by the type system — `specify-lints` MUST
-//! NOT depend on `specify-workflow`, and `specify-workflow` MUST NOT
-//! depend on `specify-lints`.
+//! frontmatter parser, the CH-12/13/14 resolver pipeline, and the CH-16
+//! hint interpreter. The structured diagnostic currency
+//! ([`specify_diagnostics::Diagnostic`], renderers, fingerprint) lives in
+//! the neutral [`specify_diagnostics`] leaf — import it directly rather
+//! than through this crate.
 //!
 //! **Crate name vs modules:** `specify-lints` is the whole standards layer
 //! (policy resolution plus the `specrun lint` scanner). The [`rules`]
@@ -15,11 +15,10 @@
 //! and hint evaluation — not a separate `specify-rules` crate.
 //!
 //! The internal module shape preserves the rules-vs-lint split:
-//! the [`rules`] umbrella wraps the rule, resolver, fingerprint
-//! and finding modules so paths like `specify_lints::rules::parse`
-//! stay stable for downstream consumers; the top-level re-export
-//! mirrors the historical `specify_workflow::rules::*` surface so call
-//! sites only change their crate prefix.
+//! the [`rules`] umbrella wraps the parser and resolver so paths like
+//! `specify_lints::rules::parse` stay stable for downstream consumers.
+//! Rule and resolver DTOs re-export at the crate root via `pub use rules::*`.
+//! Import diagnostic types from [`specify_diagnostics`] directly.
 
 pub mod framework;
 pub mod lint;

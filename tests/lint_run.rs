@@ -26,7 +26,7 @@ const FINDING_SCHEMA_URL: &str =
 /// Compile the diagnostic-report envelope schema with the
 /// `diagnostic.schema.json` child resource wired through a
 /// `jsonschema::Registry`. Mirrors the
-/// `specify_lints::lint::diagnostics::json::render_value` setup so the
+/// `specify_diagnostics::render` with `Format::Json` setup so the
 /// e2e test re-validates the same shape the CLI emits.
 fn compile_review_result_validator() -> Validator {
     let envelope: Value =

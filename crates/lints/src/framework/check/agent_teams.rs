@@ -2,11 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
+use specify_diagnostics::Diagnostic;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
-use crate::rules::Diagnostic;
 
 const CANONICAL_REL: &str = "docs/reference/review-team-protocol.md";
 const RULE_NON_CANONICAL: &str = "agent-teams.non-canonical-overlay";

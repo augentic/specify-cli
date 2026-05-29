@@ -37,11 +37,11 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
+
 use super::{HintError, make_finding};
 use crate::lint::{AdapterAxis, WorkspaceModel};
-use crate::rules::{
-    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
-};
+use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
 
 const SOURCE_ADAPTER_BRIEFS_COVER_OPERATIONS: &str = "adapter-briefs-cover-operations";
 

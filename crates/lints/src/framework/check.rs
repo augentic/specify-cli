@@ -43,11 +43,10 @@ pub use skill_frontmatter::{
     RULE_NAME_DIRECTORY_MISMATCH, RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION,
     RULE_UNKNOWN_TOOL, UnknownTool,
 };
+use specify_diagnostics::{Diagnostic, fingerprint};
 pub use tools::{DeclaredToolInvocations, FirstPartyTools};
 
 use crate::framework::context::Context;
-use crate::rules::Diagnostic;
-use crate::rules::fingerprint::fingerprint;
 
 /// A check predicate that scans the framework repo and returns
 /// [`Diagnostic`]s. The predicates need a `&Context` (framework root +

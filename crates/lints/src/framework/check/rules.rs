@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
+use specify_diagnostics::Diagnostic;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
@@ -12,7 +13,6 @@ use crate::framework::helpers::{
     relative_display, skill_frontmatter, under_symlink, walk_matching_files,
 };
 use crate::framework::schema::{SchemaError, SchemaId, ValidationError, validate_frontmatter};
-use crate::rules::Diagnostic;
 
 pub const RULE_SCHEMA_VIOLATION: &str = "rules.schema-violation";
 pub const RULE_NAMESPACE_OWNERSHIP_VIOLATION: &str = "rules.namespace-ownership-violation";

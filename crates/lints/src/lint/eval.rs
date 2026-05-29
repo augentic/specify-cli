@@ -70,18 +70,17 @@ pub mod unique;
 
 use std::path::{Path, PathBuf};
 
+use specify_diagnostics::{
+    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence,
+    FindingLocation, Severity, fingerprint as compute_fingerprint, validate_evidence_size,
+};
 use specify_error::Error as CliError;
 use thiserror::Error;
 pub use tool::{ToolOutput, ToolRunError, ToolRunner};
 
 use crate::lint::WorkspaceModel;
 use crate::lint::diagnostics::map_hint_error;
-use crate::rules::fingerprint::fingerprint as compute_fingerprint;
-use crate::rules::{
-    Artifact, Confidence, DeterministicHint, Diagnostic, DiagnosticKind, DiagnosticSource,
-    FindingEvidence, FindingLocation, HintKind, LintMode, ResolvedRule, Severity,
-    validate_evidence_size,
-};
+use crate::rules::{DeterministicHint, HintKind, LintMode, ResolvedRule};
 
 /// Closed failure mode for the hint interpreter.
 ///

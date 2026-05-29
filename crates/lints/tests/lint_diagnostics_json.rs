@@ -15,7 +15,7 @@ mod common;
 use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_diagnostics::render::json as json_formatter;
-use specify_lints::lint::diagnostics::{DiagnosticReport, Format, RenderError, render};
+use specify_diagnostics::{DiagnosticReport, Format, RenderError, render};
 use specify_schema::{DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA};
 
 use crate::common::make_fixture;

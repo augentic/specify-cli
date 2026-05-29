@@ -55,13 +55,11 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
+use specify_diagnostics::{Diagnostic, FindingEvidence, Severity};
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolOutput, ToolRunError, ToolRunner, evaluate};
 use specify_lints::lint::index::build;
-use specify_lints::rules::{
-    DeterministicHint, Diagnostic, FindingEvidence, HintKind, Origin, PathRoot, ResolvedRule,
-    Severity,
-};
+use specify_lints::rules::{DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule};
 
 const VALID_BODY: &str =
     "# Valid page\n\nSee [target](./target.md) and [external](https://example.com).\n";

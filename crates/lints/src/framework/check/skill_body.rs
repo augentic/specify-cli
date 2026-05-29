@@ -1,13 +1,13 @@
 use std::fs;
 
 use regex::{Regex, RegexBuilder};
+use specify_diagnostics::Diagnostic;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
 use crate::framework::helpers::{relative_display, skill_body_lines, walk_skill_files};
-use crate::rules::Diagnostic;
 
 const CRITICAL_PATH_MIN_LINES: usize = 150;
 const CRITICAL_PATH_HEADING: &str = "## Critical Path";

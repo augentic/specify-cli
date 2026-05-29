@@ -31,9 +31,7 @@ impl SchemaId {
         match self {
             Self::Skill => ("<embedded>/authoring/skill.schema.json", SKILL_JSON_SCHEMA),
             Self::Rule => ("<embedded>/rules/rule.schema.json", RULE_JSON_SCHEMA),
-            Self::Scenario => {
-                ("<embedded>/authoring/scenario.schema.json", SCENARIO_JSON_SCHEMA)
-            }
+            Self::Scenario => ("<embedded>/authoring/scenario.schema.json", SCENARIO_JSON_SCHEMA),
             Self::Marketplace => {
                 ("<embedded>/authoring/marketplace.schema.json", MARKETPLACE_JSON_SCHEMA)
             }

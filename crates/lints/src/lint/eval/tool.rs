@@ -34,13 +34,13 @@
 
 use std::path::{Path, PathBuf};
 
+use specify_diagnostics::{
+    Diagnostic, DiagnosticReport, FindingEvidence, FindingLocation, Severity,
+};
 use thiserror::Error;
 
 use super::{HintError, SyntheticFinding, make_synthetic_finding, restamp_finding};
-use crate::lint::diagnostics::DiagnosticReport;
-use crate::rules::{
-    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, ResolvedRule, Severity,
-};
+use crate::rules::{DeterministicHint, ResolvedRule};
 
 const STDERR_MAX_BYTES: usize = 8 * 1024;
 

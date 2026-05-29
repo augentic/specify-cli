@@ -5,6 +5,7 @@ use std::process::Command;
 
 use regex::Regex;
 use serde_json::Value as JsonValue;
+use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
 use crate::framework::builder::{framework_finding, loc};
@@ -12,7 +13,6 @@ use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::helpers::{relative_display, under_symlink};
 use crate::framework::schema::{SchemaId, collect_errors};
-use crate::rules::Diagnostic;
 
 pub const RULE_SCHEMA_VIOLATION: &str = "scenarios.schema-violation";
 pub const RULE_STAGES_NOT_CONTIGUOUS: &str = "scenarios.stages-not-contiguous-prefix";

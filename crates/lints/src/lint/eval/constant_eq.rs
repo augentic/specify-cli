@@ -38,11 +38,11 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
+
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{
-    DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, HintKind, ResolvedRule,
-};
+use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
 
 const SOURCE_ADAPTER_MANIFEST_VERSION_EQUALS_V1: &str = "adapter-manifest-version-equals-v1";
 const ADAPTER_MANIFEST_EXPECTED_VERSION: &str = "1";

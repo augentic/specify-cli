@@ -3,13 +3,13 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use regex::Regex;
+use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::helpers::under_symlink;
-use crate::rules::Diagnostic;
 
 const RULE_BRIEF_SCHEMA_LINK_RESOLVE: &str = "links.brief-schema-link-resolve";
 

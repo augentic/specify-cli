@@ -1,19 +1,15 @@
 //! Lint-surface diagnostic glue.
 //!
-//! The neutral diagnostic substrate — the [`DiagnosticReport`]
-//! envelope, the [`Format`] discriminant, the four renderers, and the
-//! [`RenderError`] type — lives in the [`specify_diagnostics`]
-//! leaf so both the advisory `lint` surface and the workflow-gating
-//! `validate` surface share one currency. This module re-exports that
-//! surface under its neutral names and keeps the
-//! lint-specific glue the leaf must not carry: the `WorkspaceModel`
-//! dump path and the `IndexError` / `HintError` / `RenderError` →
-//! [`Error`] mappers that pin the lint exit-code table.
+//! The neutral diagnostic substrate — [`specify_diagnostics::DiagnosticReport`]
+//! envelope, [`specify_diagnostics::Format`], renderers, and
+//! [`specify_diagnostics::RenderError`] — lives in the
+//! [`specify_diagnostics`] leaf. Import those types directly from the
+//! leaf; this module keeps lint-specific glue the leaf must not carry:
+//! the `WorkspaceModel` dump path and the `IndexError` / `HintError` /
+//! [`specify_diagnostics::RenderError`] → [`Error`] mappers that pin the
+//! lint exit-code table.
 
-pub use specify_diagnostics::{
-    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format, RenderError,
-    count_status, render,
-};
+use specify_diagnostics::RenderError;
 use specify_error::{Error, Result};
 use specify_schema::{WORKSPACE_MODEL_JSON_SCHEMA, validate_serialisable};
 
@@ -155,7 +151,7 @@ pub fn map_hint_error(rule: &ResolvedRule, err: HintError) -> Error {
     }
 }
 
-/// Map a `lint::diagnostics::RenderError` onto the lint exit mapping exit-code table.
+/// Map a [`specify_diagnostics::RenderError`] onto the lint exit mapping exit-code table.
 ///
 /// Both variants are internal bugs (the typed envelope cannot
 /// legally fail v1 schema validation or JSON serialisation); the

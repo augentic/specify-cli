@@ -1,14 +1,13 @@
 use std::path::PathBuf;
 
-use specify_lints::lint::diagnostics::{
-    DiagnosticReportVersion, DiagnosticSummary, RenderError, map_hint_error, map_index_error,
+use specify_diagnostics::{
+    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticReportVersion, DiagnosticSource,
+    DiagnosticSummary, FindingEvidence, FindingLocation, FindingStatus, RenderError, Severity,
 };
+use specify_lints::lint::diagnostics::{map_hint_error, map_index_error};
 use specify_lints::lint::eval::HintError;
 use specify_lints::lint::index::IndexError;
-use specify_lints::{
-    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence,
-    FindingLocation, FindingStatus, HintKind, ResolvedRule, Severity,
-};
+use specify_lints::rules::{HintKind, Origin, PathRoot, ResolvedRule};
 
 use super::*;
 
@@ -22,8 +21,8 @@ fn fake_rule() -> ResolvedRule {
         applicability: None,
         deterministic_hints: None,
         references: None,
-        origin: specify_lints::Origin::Shared,
-        path_root: specify_lints::PathRoot::RulesRoot,
+        origin: Origin::Shared,
+        path_root: PathRoot::RulesRoot,
         path: "shared/UNI-001.md".into(),
         body: String::new(),
         deprecated: None,

@@ -14,13 +14,10 @@
 //!   emitted by `specrun rules export --format json` (CH-17). They
 //!   add resolver-only fields ([`Origin`], [`PathRoot`], `path`,
 //!   `body`) on top of the codex-rule shape.
-//! - [`Diagnostic`] / [`FindingEvidence`] / [`FindingLocation`] /
-//!   [`DiagnosticSource`] / [`Artifact`] / [`Confidence`] /
-//!   [`FindingStatus`] / [`FindingDisposition`] /
-//!   [`DirectiveDisposition`] / [`DispositionSource`] are the
-//!   structured diagnostic shape shared by `specrun lint`, the
-//!   workflow-gating validate surface, target adapter review briefs,
-//!   and CI annotations (CH-16/CH-21).
+//!
+//! Structured diagnostic types ([`specify_diagnostics::Diagnostic`],
+//! renderers, fingerprint helpers) live in the neutral
+//! [`specify_diagnostics`] leaf — import them from there directly.
 //!
 //! Severity comparator order is `Critical < Important < Suggestion <
 //! Optional` and origin order is `Target < Source < Shared <
@@ -33,32 +30,16 @@
     reason = "The public wire contract uses the names Rule and ResolvedRules; renaming to avoid the codex prefix would obscure the schema mapping."
 )]
 
-pub mod finding;
-pub mod fingerprint;
 pub mod parse;
 pub mod resolve;
 
-pub use finding::{
-    DiagnosticError, validate, validate_diagnostic, validate_diagnostic_json,
-    validate_evidence_size, validate_fingerprint,
-};
 pub use parse::{ParseError, parse_rule, parse_rule_file};
 pub use resolve::{
     ResolveError, ResolveInputs, ResolvedRuleEntry, build_resolved_rules, filter,
     map_resolve_error, resolve, sort_resolved,
 };
 use serde::{Deserialize, Serialize};
-// The structured-diagnostic currency lives in the neutral
-// `specify_diagnostics` leaf so the `validate` surface can produce it
-// without depending on anything named `lint`. The rules layer
-// re-exports it here under its neutral names so the codex
-// parser/resolver and every diagnostic consumer reach one shared shape
-// through a single import path.
-pub use specify_diagnostics::{
-    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticSource, DirectiveDisposition,
-    DispositionSource, FindingDisposition, FindingEvidence, FindingLocation, FindingStatus,
-    Severity,
-};
+use specify_diagnostics::Severity;
 
 /// Resolver origin tier per `ResolvedRules` export contract.
 ///

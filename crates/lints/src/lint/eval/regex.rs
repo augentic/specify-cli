@@ -18,10 +18,11 @@
 use std::path::{Path, PathBuf};
 
 use ::regex::Regex;
+use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::{FileKind, WorkspaceModel};
-use crate::rules::{DeterministicHint, Diagnostic, FindingEvidence, FindingLocation, ResolvedRule};
+use crate::rules::{DeterministicHint, ResolvedRule};
 
 const SNIPPET_MAX_CHARS: usize = 240;
 

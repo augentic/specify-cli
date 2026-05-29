@@ -40,7 +40,7 @@
 //! byte-for-byte so future evidence-cap drift surfaces as a tiny
 //! diff rather than every golden going red). The fingerprint
 //! algorithm itself is pinned by
-//! `crates/lints/src/rules/fingerprint.rs` (the
+//! `specify_diagnostics::fingerprint` (the
 //! `golden_fingerprint_pins_algorithm` and
 //! `excluded_producer_fields_do_not_change_fingerprint` tests
 //! together cover the fingerprint-algorithm guarantees from the
@@ -54,15 +54,15 @@ use std::path::PathBuf;
 
 use eval_support::{NoToolRunner, hint, make_rule};
 use serde_json::Value;
-use specify_lints::lint::ScanProfile;
-use specify_lints::lint::diagnostics::{
-    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format, render,
+use specify_diagnostics::{
+    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format, Severity,
+    fingerprint as compute_fingerprint, render,
 };
+use specify_lints::lint::ScanProfile;
 use specify_lints::lint::eval::{ToolRunner, evaluate};
 use specify_lints::lint::ignore::apply as apply_directives;
 use specify_lints::lint::index::build;
-use specify_lints::rules::fingerprint::fingerprint as compute_fingerprint;
-use specify_lints::rules::{Diagnostic, HintKind, Origin, PathRoot, ResolvedRule, Severity};
+use specify_lints::rules::{HintKind, Origin, PathRoot, ResolvedRule};
 
 /// Pre-directive-pass fingerprint snapshot for the URL fixture below.
 ///
@@ -73,7 +73,7 @@ use specify_lints::rules::{Diagnostic, HintKind, Origin, PathRoot, ResolvedRule,
 /// has been stamped by the directive pass or not. If this constant
 /// ever needs updating the algorithm has drifted; bump the version,
 /// do not edit the constant. Aligned with the algorithm canary at
-/// `crates/lints/src/rules/fingerprint.rs::golden_fingerprint_pins_algorithm`.
+/// `specify_diagnostics::fingerprint::golden_fingerprint_pins_algorithm`.
 const PRE_DIRECTIVE_URL_FINGERPRINT: &str =
     "sha256:28b4fbaa698f563815a938785e7bf618e512dd6e09bc2bfb9e55881f80c7c76d";
 
@@ -208,7 +208,7 @@ fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
 /// `FIND-NNNN` reshuffles. The fingerprint is also stripped because
 /// the snippet evidence is verbatim-equal across runs but
 /// fingerprint determinism is pinned separately by
-/// `crates/lints/src/rules/fingerprint.rs`.
+/// `specify_diagnostics::fingerprint`.
 fn normalise(value: Value) -> Value {
     let mut value = value;
     if let Value::Object(map) = &mut value
@@ -330,10 +330,10 @@ fn scenario_1_no_directives_stable_fp() {
     // outside the fingerprint preimage: stamp them on a clone and
     // assert the recomputed fingerprint is byte-equal.
     let mut stamped = finding.clone();
-    stamped.status = Some(specify_lints::rules::FindingStatus::Ignored);
-    stamped.disposition = Some(specify_lints::rules::FindingDisposition {
-        source: specify_lints::rules::DispositionSource::Directive,
-        directive: Some(specify_lints::rules::DirectiveDisposition {
+    stamped.status = Some(specify_diagnostics::FindingStatus::Ignored);
+    stamped.disposition = Some(specify_diagnostics::FindingDisposition {
+        source: specify_diagnostics::DispositionSource::Directive,
+        directive: Some(specify_diagnostics::DirectiveDisposition {
             path: "app.rs".into(),
             line: 1,
             rationale: "fingerprint must survive disposition stamping".into(),
@@ -371,9 +371,9 @@ fn scenario_2_directive_match_flips_finding_to_ignored() {
 
     assert_eq!(findings.len(), 1, "single URL finding; no synthetics");
     let f = &findings[0];
-    assert_eq!(f.status, Some(specify_lints::rules::FindingStatus::Ignored));
+    assert_eq!(f.status, Some(specify_diagnostics::FindingStatus::Ignored));
     let disp = f.disposition.as_ref().expect("disposition stamped");
-    assert_eq!(disp.source, specify_lints::rules::DispositionSource::Directive);
+    assert_eq!(disp.source, specify_diagnostics::DispositionSource::Directive);
     let directive = disp.directive.as_ref().expect("directive payload populated");
     assert_eq!(directive.path, "app.rs");
     assert_eq!(directive.line, 1);
@@ -403,7 +403,7 @@ fn scenario_3_false_positive_prefix() {
 
     assert_eq!(findings.len(), 1, "single URL finding; no synthetics");
     let f = &findings[0];
-    assert_eq!(f.status, Some(specify_lints::rules::FindingStatus::FalsePositive));
+    assert_eq!(f.status, Some(specify_diagnostics::FindingStatus::FalsePositive));
     let rationale = &f
         .disposition
         .as_ref()
@@ -443,7 +443,7 @@ fn scenario_4_missing_rationale_mints_uni_022_synthetic() {
         .find(|f| f.rule_id.as_deref() == Some("UNI-022"))
         .expect("UNI-022 synthetic present");
     assert_eq!(uni_022.severity, Severity::Important, "severity comes from the resolved rule");
-    assert_eq!(uni_022.status, Some(specify_lints::rules::FindingStatus::Open));
+    assert_eq!(uni_022.status, Some(specify_diagnostics::FindingStatus::Open));
     assert!(uni_022.disposition.is_none(), "synthetic findings carry no disposition");
 
     assert_json_golden(&result, "ignore_directive_scenario_4_missing_rationale.json");
@@ -474,7 +474,7 @@ fn scenario_5_short_rationale_mints_uni_022_synthetic() {
         .expect("URL finding present");
     assert_eq!(
         url_finding.status,
-        Some(specify_lints::rules::FindingStatus::Ignored),
+        Some(specify_diagnostics::FindingStatus::Ignored),
         "short rationale still flips the matched finding",
     );
     assert_eq!(
@@ -567,7 +567,7 @@ fn scenario_7_graceful_degradation() {
         Some("UNI-014"),
         "the matched URL finding survives; no UNI-022/UNI-023 noise",
     );
-    assert_eq!(f.status, Some(specify_lints::rules::FindingStatus::Ignored));
+    assert_eq!(f.status, Some(specify_diagnostics::FindingStatus::Ignored));
 
     assert_json_golden(&result, "ignore_directive_scenario_7_graceful_degradation.json");
 }

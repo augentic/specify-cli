@@ -4,13 +4,13 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
+use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::helpers::{walk_markdown_files, walk_skill_files};
-use crate::rules::Diagnostic;
 
 const RULE_BROKEN_REFERENCE: &str = "links.broken-reference";
 const RULE_UNRESOLVED_DIRECTIVE: &str = "links.unresolved-directive";

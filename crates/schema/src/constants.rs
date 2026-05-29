@@ -57,8 +57,7 @@ pub const DIAGNOSTIC_REPORT_JSON_SCHEMA: &str =
     include_str!("../../../schemas/diagnostics/diagnostic-report.schema.json");
 
 /// Schema for `SKILL.md` YAML frontmatter (framework authoring).
-pub const SKILL_JSON_SCHEMA: &str =
-    include_str!("../../../schemas/authoring/skill.schema.json");
+pub const SKILL_JSON_SCHEMA: &str = include_str!("../../../schemas/authoring/skill.schema.json");
 
 /// Schema for scenario-pack YAML frontmatter (framework authoring).
 pub const SCENARIO_JSON_SCHEMA: &str =

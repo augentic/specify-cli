@@ -2,13 +2,13 @@ use std::fs;
 use std::path::{Component, Path};
 
 use serde_json::Value as JsonValue;
+use specify_diagnostics::{Diagnostic, FindingLocation};
 use walkdir::WalkDir;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::schema::{SchemaError, SchemaId, validate_value};
-use crate::rules::{Diagnostic, FindingLocation};
 
 const RULE_BROKEN_SYMLINK: &str = "plugins.broken-symlink";
 const RULE_MARKETPLACE_DRIFT: &str = "plugins.marketplace-drift";

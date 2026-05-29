@@ -29,7 +29,7 @@
 //!    matches the canonicalised tempdir root with the literal
 //!    `<FRAMEWORK_ROOT>` placeholder.
 //! 3. Recompute the fingerprint via
-//!    [`specify_lints::fingerprint::fingerprint`] against
+//!    [`specify_diagnostics::fingerprint`] against
 //!    the normalised finding. The stored fingerprint then reflects
 //!    the placeholder-anchored canonical preimage.
 //! 4. Re-serialise and compare/regenerate the placeholder-anchored
@@ -59,8 +59,7 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::{Value, json};
-use specify_lints::finding::validate_diagnostic_json;
-use specify_lints::{Diagnostic, fingerprint};
+use specify_diagnostics::{Diagnostic, fingerprint, validate_diagnostic_json};
 use tempfile::TempDir;
 
 /// Replacement token for the canonicalised framework-root prefix in
@@ -308,7 +307,7 @@ fn normalize_envelope(envelope: Value, framework_root: &Path) -> Value {
                 location.path = raw;
             }
         }
-        finding.fingerprint = fingerprint::fingerprint(&finding);
+        finding.fingerprint = fingerprint(&finding);
         *finding_json = serde_json::to_value(&finding).expect("finding must reserialise");
     }
 
@@ -512,7 +511,7 @@ fn missing_framework_root_emits_envelope() {
 /// diagnostics-formatter set's pretty summary line from the
 /// `specdev lint` extension. Specifically: a `0 finding(s)`
 /// header and a `Summary: 0 critical, 0 important, ...` tally,
-/// driven by `specify_lints::lint::diagnostics::pretty::render`.
+/// driven by `specify_diagnostics::render` with `Format::Pretty`.
 #[test]
 fn default_text_output_renders_pretty_summary() {
     let temp = TempDir::new().expect("tempdir");

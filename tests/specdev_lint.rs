@@ -12,7 +12,7 @@
 //!   `scope.slice = null`, `baseline_present = false` shape.
 //! - The pretty formatter (`--output-format pretty`) produces a
 //!   non-empty human summary, confirming the four-formatter set
-//!   from `specify_lints::lint::diagnostics` round-trips through
+//!   from [`specify_diagnostics`] round-trips through
 //!   the new verb.
 //!
 //! The scaffold mirrors `tests/specdev_check_json.rs::write_scaffold`
@@ -226,7 +226,7 @@ fn lint_completed_event_lands_in_journal() {
 
 /// `--output-format pretty` produces a non-empty stdout body that
 /// includes the diagnostics-formatter header — confirms the four
-/// formatters from `specify_lints::lint::diagnostics` are wired
+/// formatters from [`specify_diagnostics`] are wired
 /// into the `specdev lint` verb.
 #[test]
 fn pretty_format_emits_diagnostics_summary() {

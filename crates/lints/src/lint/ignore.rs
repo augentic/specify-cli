@@ -37,12 +37,14 @@
 
 use std::collections::HashMap;
 
+use specify_diagnostics::{
+    Diagnostic, DirectiveDisposition, DispositionSource, FindingDisposition, FindingEvidence,
+    FindingLocation, FindingStatus,
+};
+
 use crate::lint::IgnoreDirective;
 use crate::lint::eval::{SyntheticFinding, make_synthetic_finding};
-use crate::rules::{
-    Diagnostic, DirectiveDisposition, DispositionSource, FindingDisposition, FindingEvidence,
-    FindingLocation, FindingStatus, ResolvedRule,
-};
+use crate::rules::ResolvedRule;
 
 /// Rationale prefix that demotes a matched finding to
 /// [`FindingStatus::FalsePositive`] instead of
@@ -254,12 +256,13 @@ fn mint_synthetic(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::rules::fingerprint::fingerprint as compute_fingerprint;
-    use crate::rules::{
+    use specify_diagnostics::{
         Artifact, Confidence, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
-        Origin, PathRoot, Severity,
+        Severity, fingerprint as compute_fingerprint,
     };
+
+    use super::*;
+    use crate::rules::{Origin, PathRoot};
 
     fn directive(
         path: &str, line: u32, rule_id: &str, target_line: u32, rationale: Option<&str>,

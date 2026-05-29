@@ -10,7 +10,7 @@
 //! 4. Evaluate executable deterministic hints per rule, skipping
 //!    `lint-mode: model-assisted` rules.
 //! 5. Mint the reserved-hint diagnostics reserved-hint summary finding.
-//! 6. Render the `DiagnosticReport` envelope via `lint::diagnostics::render`.
+//! 6. Render the `DiagnosticReport` envelope via `specify_diagnostics::render`.
 //! 7. Decide exit: any `critical | important` finding lands the
 //!    process on `Exit::ValidationFailed` (code 2) per lint exit mapping.
 //!
@@ -25,17 +25,18 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_error::{Error, Result};
-use specify_lints::lint::ScanProfile;
-use specify_lints::lint::diagnostics::{
-    DiagnosticReport, Format as DiagnosticsFormat, count_status, map_render_error, render,
+use specify_diagnostics::{
+    Diagnostic, DiagnosticReport, FindingStatus, Format as DiagnosticsFormat, count_status, render,
 };
+use specify_error::{Error, Result};
+use specify_lints::ResolveInputs;
+use specify_lints::lint::ScanProfile;
+use specify_lints::lint::diagnostics::map_render_error;
 use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
 use specify_lints::lint::ignore::blocking_findings_present;
 use specify_lints::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
-use specify_lints::{Diagnostic, FindingStatus, ResolveInputs};
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
 use specify_workflow::journal::{
