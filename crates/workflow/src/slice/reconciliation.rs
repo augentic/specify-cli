@@ -330,12 +330,12 @@ impl ReconciliationDrift {
         let detail = match self {
             Self::MissingReconciliationRequirement { req_id } => {
                 format!(
-                    "{req_id} appears in spec.md but is missing from reconciliation.yaml; re-run `/spec:refine` to regenerate the reconciliation index"
+                    "{req_id} appears in spec files under `specs/` but is missing from reconciliation.yaml; re-run `/spec:refine` to regenerate the reconciliation index"
                 )
             }
             Self::ExtraReconciliationRequirement { req_id } => {
                 format!(
-                    "{req_id} appears in reconciliation.yaml but no matching `REQ-*` heading exists in spec.md; re-run `/spec:refine` to regenerate the reconciliation index"
+                    "{req_id} listed in reconciliation.yaml but no requirement block with `ID: {req_id}` exists in any spec file under `specs/`; re-run `/spec:refine` to regenerate the reconciliation index"
                 )
             }
             Self::ContributingClaimNotFound {
@@ -353,7 +353,7 @@ impl ReconciliationDrift {
         ValidationSummary {
             status: ValidationStatus::Fail,
             rule_id: "slice-reconciliation-drift".into(),
-            rule: "reconciliation.yaml stays in sync with spec.md REQ ids and per-source evidence claims"
+            rule: "reconciliation.yaml stays in sync with specs/ REQ ids and per-source evidence claims"
                 .into(),
             detail: Some(detail),
         }

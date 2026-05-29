@@ -188,6 +188,7 @@ struct ResolveBody {
     name: String,
     resolved_path: String,
     location: &'static str,
+    briefs_dir: String,
     operations: Vec<String>,
     description: Option<String>,
 }
@@ -197,6 +198,7 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
     writeln!(w, "  axis: {}", body.axis)?;
     writeln!(w, "  name: {}", body.name)?;
     writeln!(w, "  location: {}", body.location)?;
+    writeln!(w, "  briefs-dir: {}", body.briefs_dir)?;
     writeln!(w, "  operations: {}", body.operations.join(", "))?;
     if let Some(desc) = &body.description {
         writeln!(w, "  description: {desc}")?;
@@ -217,16 +219,18 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) -> Result<()> {
     // Common envelope shape; only the per-axis resolver and the
     // `@version` strip (target-only) differ.
-    let (name, resolved_path, location, operations, description) = match axis {
+    let (name, resolved_path, location, briefs_dir, operations, description) = match axis {
         Axis::Source => {
             let resolved = SourceAdapter::resolve(value, project_dir)?;
             let operations = resolved.manifest.operations().map(ToString::to_string).collect();
             let resolved_path = resolved.location.path().display().to_string();
+            let briefs_dir = resolved.location.path().join("briefs").display().to_string();
             let location = resolved.location.label();
             (
                 resolved.manifest.name,
                 resolved_path,
                 location,
+                briefs_dir,
                 operations,
                 resolved.manifest.description,
             )
@@ -236,11 +240,13 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
             let resolved = TargetAdapter::resolve(name, project_dir)?;
             let operations = resolved.manifest.operations().map(ToString::to_string).collect();
             let resolved_path = resolved.location.path().display().to_string();
+            let briefs_dir = resolved.location.path().join("briefs").display().to_string();
             let location = resolved.location.label();
             (
                 resolved.manifest.name,
                 resolved_path,
                 location,
+                briefs_dir,
                 operations,
                 resolved.manifest.description,
             )
@@ -251,6 +257,7 @@ fn resolve_adapter(format: Format, axis: Axis, value: &str, project_dir: &Path) 
         name,
         resolved_path,
         location,
+        briefs_dir,
         operations,
         description,
     };
