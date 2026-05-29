@@ -20,7 +20,7 @@ use specify_diagnostics::{Artifact, Diagnostic};
 use specify_error::{Error, Result};
 use specify_model::spec::provenance::RequirementStatus;
 
-use crate::schema::{RECONCILIATION_JSON_SCHEMA, evidence_yaml_paths, validate_serialisable};
+use crate::schema::{PROVENANCE_JSON_SCHEMA, evidence_yaml_paths, validate_serialisable};
 
 /// In-memory model of `provenance.yaml` (workflow §Provenance index).
 ///
@@ -167,7 +167,7 @@ impl ProvenanceIndex {
     pub fn validate(&self) -> Result<(), Error> {
         validate_serialisable(
             self,
-            RECONCILIATION_JSON_SCHEMA,
+            PROVENANCE_JSON_SCHEMA,
             "provenance-schema",
             "provenance.yaml conforms to schemas/slice/provenance.schema.json",
             "provenance-schema-serialise",

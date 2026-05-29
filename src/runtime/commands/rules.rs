@@ -1,12 +1,17 @@
-//! `specrun rules {export}` — read-only codex resolution surface.
+//! `specrun rules {export, sync}` — codex resolution surface.
 //!
-//! The export verb is the `ResolvedRules` export contract CLI entry
+//! `export` is the read-only `ResolvedRules` export contract CLI entry
 //! point. It does not require an initialised `.specify/` tree:
 //! callers supply `--rules-root` directly (or rely on the resolver's
-//! probe step 2 against a monorepo `{project_dir}/adapters/shared/
-//! codex/universal/`). No journal events, no lifecycle transitions,
-//! no on-disk writes — the handler streams a `ResolvedRules` JSON
-//! envelope to stdout and exits.
+//! probe against a monorepo or the distributed codex cache). No journal
+//! events, no lifecycle transitions, no on-disk writes — the handler
+//! streams a `ResolvedRules` JSON envelope to stdout and exits.
+//!
+//! `sync` distributes the shared codex into `.specify/.cache/codex/`
+//! pinned to the project's adapter source/ref (RM-07), so consumer
+//! projects resolve shared `UNI-*` rules without a co-located framework
+//! checkout or a manual `--rules-root`.
 
 pub mod cli;
 pub mod export;
+pub mod sync;

@@ -20,6 +20,7 @@ fn canonical(p: &Path) -> String {
 
 pub(super) fn run(
     format: Format, adapter: Option<&str>, name: Option<&str>, domain: Option<&str>, hub: bool,
+    include_framework: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
@@ -29,6 +30,7 @@ pub(super) fn run(
         name,
         domain,
         hub,
+        include_framework,
     };
 
     let result = init(opts, Timestamp::now())?;
@@ -49,6 +51,10 @@ struct Body {
     /// renderers dispatch on this value).
     adapter_name: String,
     cache_present: bool,
+    /// `true` when the shared codex was distributed into
+    /// `.specify/.cache/codex/` (RM-07). `false` when the adapter source
+    /// carries no shared pack, and always `false` for hub init.
+    codex_present: bool,
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
     specify_version: String,
@@ -72,6 +78,9 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     writeln!(w, "  adapter: {}", body.adapter_name)?;
     writeln!(w, "  config: {}", body.config_path)?;
     writeln!(w, "  cache present: {}", body.cache_present)?;
+    if !hub {
+        writeln!(w, "  codex present: {}", body.codex_present)?;
+    }
     if !body.directories_created.is_empty() {
         writeln!(w, "  directories created: {}", body.directories_created.join(", "))?;
     }
@@ -104,6 +113,7 @@ fn emit_init_result(
         config_path: canonical(&result.config_path),
         adapter_name: result.adapter_name.clone(),
         cache_present: result.cache_present,
+        codex_present: result.codex_present,
         directories_created: result.directories_created.iter().map(|p| canonical(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),

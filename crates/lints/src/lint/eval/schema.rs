@@ -30,7 +30,7 @@ use jsonschema::Validator;
 use serde_json::Value;
 use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA,
-    EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
+    EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
     RULE_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
 };
 
@@ -47,7 +47,7 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
         ("workspace-model", WORKSPACE_MODEL_JSON_SCHEMA),
         ("plan", PLAN_JSON_SCHEMA),
         ("evidence", EVIDENCE_JSON_SCHEMA),
-        ("provenance", RECONCILIATION_JSON_SCHEMA),
+        ("provenance", PROVENANCE_JSON_SCHEMA),
         ("components", COMPONENTS_JSON_SCHEMA),
     ])
 });

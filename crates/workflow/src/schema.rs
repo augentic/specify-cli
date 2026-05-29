@@ -21,7 +21,7 @@ use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
 pub use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA,
-    RECONCILIATION_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, compile_schema,
+    PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, compile_schema,
     read_yaml_as_json, validate_serialisable, validate_value,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};

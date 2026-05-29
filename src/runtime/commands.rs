@@ -36,8 +36,16 @@ pub fn run(cli: Cli) -> Exit {
             name,
             domain,
             hub,
+            include_framework,
         } => dispatch(format, || {
-            init::run(format, adapter.as_deref(), name.as_deref(), domain.as_deref(), hub)
+            init::run(
+                format,
+                adapter.as_deref(),
+                name.as_deref(),
+                domain.as_deref(),
+                hub,
+                include_framework,
+            )
         }),
         Commands::Source { action } => match action {
             SourceAction::Resolve {
@@ -75,6 +83,7 @@ pub fn run(cli: Cli) -> Exit {
         },
         Commands::Rules { action } => match action {
             RulesAction::Export(args) => dispatch(format, || rules::export::run(format, &args)),
+            RulesAction::Sync(args) => scoped(format, |ctx| rules::sync::run(ctx, &args)),
         },
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => run_tool_with(format, &name, args),

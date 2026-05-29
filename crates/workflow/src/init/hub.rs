@@ -110,6 +110,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         config_path,
         adapter_name: "hub".to_string(),
         cache_present,
+        codex_present: false,
         directories_created,
         scaffolded_rule_keys: Vec::new(),
         specify_version,
@@ -135,6 +136,7 @@ mod tests {
             name: Some(name),
             domain: None,
             hub: true,
+            include_framework: false,
         }
     }
 

@@ -12,7 +12,7 @@ use specify_error::Error;
 use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
 use crate::init::adapter_uri::adapter_name_from_value;
-use crate::init::cache::{CacheMeta, cache_adapter};
+use crate::init::cache::{CacheMeta, cache_adapter, cache_codex};
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
     upsert_gitignore,
@@ -53,7 +53,13 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         }
     }
 
-    let adapter_value = cache_adapter(adapter, opts.project_dir, now)?;
+    let source = cache_adapter(adapter, opts.project_dir, now)?;
+    // Distribute the shared codex from the same resolved checkout
+    // (pinned to the adapter source/ref) before the checkout guard in
+    // `source` drops. Fail-soft: a source tree without the shared pack
+    // leaves `codex_present` false.
+    let codex_present = cache_codex(opts.project_dir, &source, opts.include_framework, now)?;
+    let adapter_value = source.adapter_value;
     let adapter_name_in_value = adapter_name_from_value(&adapter_value).to_string();
     let resolved = TargetAdapter::resolve(&adapter_name_in_value, opts.project_dir)?;
     let adapter_name = resolved.manifest.name;
@@ -90,6 +96,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         config_path,
         adapter_name,
         cache_present,
+        codex_present,
         directories_created,
         scaffolded_rule_keys,
         specify_version,
@@ -120,6 +127,49 @@ mod tests {
         repo_root().join("tests").join("fixtures").join("adapters").join("targets").join("omnia")
     }
 
+    /// Recursively copy `src` into `dst`, used to assemble a synthetic
+    /// framework source tree from the in-repo omnia fixture.
+    fn copy_tree(src: &Path, dst: &Path) {
+        fs::create_dir_all(dst).expect("mkdir dst");
+        for entry in fs::read_dir(src).expect("read_dir src") {
+            let entry = entry.expect("dir entry");
+            let target = dst.join(entry.file_name());
+            if entry.file_type().expect("file_type").is_dir() {
+                copy_tree(&entry.path(), &target);
+            } else {
+                fs::copy(entry.path(), &target).expect("copy file");
+            }
+        }
+    }
+
+    /// Write a schema-valid shared-rules markdown file under
+    /// `<root>/adapters/shared/rules/<pack>/<id>.md`.
+    fn write_shared_rule(root: &Path, pack: &str, id: &str) {
+        let path = root.join(format!("adapters/shared/rules/{pack}/{id}.md"));
+        fs::create_dir_all(path.parent().expect("parent")).expect("mkdir rule dir");
+        fs::write(
+            &path,
+            format!(
+                "---\nid: {id}\ntitle: {id} fixture\nseverity: important\ntrigger: Synthetic codex distribution fixture trigger sentence for schema.\n---\n\n## Rule\n\nBody for {id}.\n"
+            ),
+        )
+        .expect("write rule fixture");
+    }
+
+    /// Build a synthetic framework source repo under `root` carrying the
+    /// omnia target adapter plus the shared `universal/` pack (and,
+    /// when `with_core`, the framework `core/` pack). Returns the path
+    /// to the target adapter dir for use as the init `<adapter>` arg.
+    fn synthetic_framework_source(root: &Path, with_core: bool) -> PathBuf {
+        let omnia = root.join("adapters/targets/omnia");
+        copy_tree(&omnia_target_dir(), &omnia);
+        write_shared_rule(root, "universal", "UNI-901");
+        if with_core {
+            write_shared_rule(root, "core", "CORE-901");
+        }
+        omnia
+    }
+
     fn base_opts<'a>(project_dir: &'a Path, target_dir: &'a Path) -> InitOptions<'a> {
         InitOptions {
             project_dir,
@@ -127,6 +177,7 @@ mod tests {
             name: Some("demo"),
             domain: None,
             hub: false,
+            include_framework: false,
         }
     }
 
@@ -174,6 +225,84 @@ mod tests {
         for value in cfg.rules.values() {
             assert!(value.is_empty());
         }
+    }
+
+    #[test]
+    fn init_distributes_shared_codex() {
+        let src = tempdir().unwrap();
+        let omnia = synthetic_framework_source(src.path(), true);
+        let project = tempdir().unwrap();
+
+        let result = init(
+            InitOptions {
+                project_dir: project.path(),
+                adapter: Some(omnia.to_str().expect("adapter path utf8")),
+                name: Some("demo"),
+                domain: None,
+                hub: false,
+                include_framework: false,
+            },
+            fixed_now(),
+        )
+        .expect("init ok");
+
+        assert!(
+            result.codex_present,
+            "codex must be distributed from a source carrying the shared pack"
+        );
+        let universal =
+            project.path().join(".specify/.cache/codex/adapters/shared/rules/universal/UNI-901.md");
+        assert!(universal.is_file(), "universal pack must land in the codex cache");
+        let core =
+            project.path().join(".specify/.cache/codex/adapters/shared/rules/core/CORE-901.md");
+        assert!(!core.exists(), "core pack must NOT be distributed without --include-framework");
+
+        let meta = project.path().join(".specify/.cache/codex/.codex-meta.yaml");
+        let meta_text = fs::read_to_string(&meta).expect("read codex meta");
+        assert!(meta_text.contains("include_framework: false"), "meta:\n{meta_text}");
+        assert!(
+            meta_text.contains("source:"),
+            "meta must record the pinned adapter source:\n{meta_text}"
+        );
+    }
+
+    #[test]
+    fn init_include_framework_distributes_core_pack() {
+        let src = tempdir().unwrap();
+        let omnia = synthetic_framework_source(src.path(), true);
+        let project = tempdir().unwrap();
+
+        init(
+            InitOptions {
+                project_dir: project.path(),
+                adapter: Some(omnia.to_str().expect("adapter path utf8")),
+                name: Some("demo"),
+                domain: None,
+                hub: false,
+                include_framework: true,
+            },
+            fixed_now(),
+        )
+        .expect("init ok");
+
+        let core =
+            project.path().join(".specify/.cache/codex/adapters/shared/rules/core/CORE-901.md");
+        assert!(core.is_file(), "core pack must be distributed under --include-framework");
+        let meta = project.path().join(".specify/.cache/codex/.codex-meta.yaml");
+        let meta_text = fs::read_to_string(&meta).expect("read codex meta");
+        assert!(meta_text.contains("include_framework: true"), "meta:\n{meta_text}");
+    }
+
+    #[test]
+    fn init_without_shared_pack_skips_codex() {
+        // The in-repo omnia fixture has no sibling
+        // `adapters/shared/rules/` tree, so codex distribution is a
+        // silent no-op (fail-soft).
+        let tmp = tempdir().unwrap();
+        let result =
+            init(base_opts(tmp.path(), &omnia_target_dir()), fixed_now()).expect("init ok");
+        assert!(!result.codex_present, "no shared pack at the source means no codex distribution");
+        assert!(!tmp.path().join(".specify/.cache/codex").exists());
     }
 
     #[test]
@@ -361,6 +490,7 @@ description: Colliding source adapter for the init-time uniqueness check.
                 name: None,
                 domain: None,
                 hub: false,
+                include_framework: false,
             },
             fixed_now(),
         )

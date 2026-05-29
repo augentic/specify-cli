@@ -61,6 +61,13 @@ pub enum Commands {
         /// project. Refuses to run when `.specify/` already exists.
         #[arg(long)]
         hub: bool,
+        /// Also distribute the framework `core/` pack
+        /// (`adapters/shared/rules/core/`) into the project codex cache
+        /// alongside the shared `universal/` pack. Default off —
+        /// consumer projects carry only `UNI-*` rules. Ignored with
+        /// `--hub`.
+        #[arg(long, conflicts_with = "hub")]
+        include_framework: bool,
     },
 
     /// Source adapter operations (workflow contract). Source adapters provide

@@ -18,13 +18,13 @@
       "path": ".specify/.!50591!nonutf8.json"
     },
     {
-      "kind": "binary",
-      "path": ".specify/blob.bin"
-    },
-    {
       "kind": "text",
       "language": "markdown",
-      "path": ".specify/cache/rules/adapters/shared/rules/universal/UNI-099.md"
+      "path": ".specify/.cache/codex/adapters/shared/rules/universal/UNI-099.md"
+    },
+    {
+      "kind": "binary",
+      "path": ".specify/blob.bin"
     },
     {
       "kind": "text",
@@ -76,7 +76,7 @@
       "level": 2,
       "line-end": 12,
       "line-start": 7,
-      "path": ".specify/cache/rules/adapters/shared/rules/universal/UNI-099.md",
+      "path": ".specify/.cache/codex/adapters/shared/rules/universal/UNI-099.md",
       "title": "Rule"
     },
     {
@@ -116,9 +116,9 @@
   "project_dir": "<TEMPDIR>",
   "rule_index": [
     {
-      "frontmatter-ref": ".specify/cache/rules/adapters/shared/rules/universal/UNI-099.md#frontmatter",
+      "frontmatter-ref": ".specify/.cache/codex/adapters/shared/rules/universal/UNI-099.md#frontmatter",
       "origin": "shared",
-      "path": ".specify/cache/rules/adapters/shared/rules/universal/UNI-099.md",
+      "path": ".specify/.cache/codex/adapters/shared/rules/universal/UNI-099.md",
       "rule-id": "UNI-099"
     }
   ],

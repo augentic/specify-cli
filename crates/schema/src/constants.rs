@@ -16,7 +16,7 @@ pub const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.s
 
 /// Schema for `provenance.yaml`, the audit-only provenance
 /// index emitted by slice synthesis.
-pub const RECONCILIATION_JSON_SCHEMA: &str =
+pub const PROVENANCE_JSON_SCHEMA: &str =
     include_str!("../../../schemas/slice/provenance.schema.json");
 
 /// Schema for `components.yaml`, the operator-curated design-system

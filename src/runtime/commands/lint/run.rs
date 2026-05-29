@@ -66,11 +66,10 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
 
     let started_at = Instant::now();
     let artifact_set = compose_artifact_set(&ctx.project_dir, slice, artifacts)?;
-    let resolved_root = resolve_rules_root(ctx, rules_root);
 
     let inputs = ResolveInputs {
         project_dir: &ctx.project_dir,
-        rules_root: resolved_root.as_deref(),
+        rules_root,
         target_adapter: target,
         source_adapters: sources,
         artifact_paths: &artifact_set,
@@ -110,24 +109,6 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
         exit_code,
     );
     decide_exit(&result)
-}
-
-/// Resolve the rules root per rules-root resolution.
-///
-/// Order: explicit `--rules-root` (clap-bound to `RULES_ROOT` env)
-/// → `<project_dir>/.specify/cache/rules/` when present → defer to
-/// `build_resolved_rules`, which performs the monorepo probe and
-/// surfaces `rules-root-required` when every step misses.
-///
-/// The rules-root resolution step that walks a bundled tree alongside the binary
-/// install is intentionally not implemented in v1; consumer projects
-/// pin a codex via `--rules-root` or the project cache rung.
-fn resolve_rules_root(ctx: &Ctx, flag: Option<&Path>) -> Option<PathBuf> {
-    if let Some(path) = flag {
-        return Some(path.to_path_buf());
-    }
-    let cache = ctx.project_dir.join(".specify").join("cache").join("rules");
-    cache.is_dir().then_some(cache)
 }
 
 /// Compose the `artifact_paths` vector handed to both the resolver

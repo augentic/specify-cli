@@ -765,7 +765,7 @@ trait, and `specrun lint` runner) lives in `specify-lints`, a sibling
 of `specify-workflow` rather than a module inside it. `specify-schema`
 is the shared leaf: it owns every embedded JSON Schema constant
 (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
-`RECONCILIATION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
+`PROVENANCE_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
 `RESOLVED_RULES_JSON_SCHEMA`, `DIAGNOSTIC_JSON_SCHEMA`,
 `DIAGNOSTIC_REPORT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
 `jsonschema` plumbing (`compile_schema`, `validate_value`,
@@ -949,8 +949,13 @@ rules at `important`.
 yet picked up the shared codex tree — the directive pass silently
 skips synthetic emission. Status stamping on matched directives
 continues to run; only the policing of malformed and orphan
-directives degrades. The fix is to pass `--rules-root` or to vendor
-the shared tree under `.specify/cache/rules/`.
+directives degrades. The fix is to pass `--rules-root` or to
+distribute the shared codex into `.specify/.cache/codex/` via
+`specrun init` / `specrun rules sync` (codex distribution, RM-07);
+once the `universal/` pack resolves, `UNI-022` / `UNI-023` policing
+stops degrading and fires on the consumer project. The
+codex-distribution probe rung and pinning are recorded in
+[§"Shared codex distribution"](#shared-codex-distribution).
 
 **Operator-facing reference.** The directive grammar (comment-style
 table, em-dash / `--` separator tolerance, target-line semantics,
@@ -960,3 +965,44 @@ the operator-facing reference at
 in the parent plugin repo; it is not re-stated here. The journal
 `lint-completed` event payload lives in
 [§"Journal event names"](#journal-event-names).
+
+## Shared codex distribution
+
+Consumer projects resolve shared `UNI-*` rules without a co-located
+framework checkout or a manual `--rules-root` (RM-07). The shared codex
+ships beside the target adapter in its source repo
+(`adapters/shared/rules/{universal,core}/`); `specrun init` and the
+standalone `specrun rules sync` verb mirror it into the project codex
+cache, **pinned to the same adapter source/ref**.
+
+- **Cache location.** `<project_dir>/.specify/.cache/codex/`, mirroring
+  `adapters/shared/rules/{universal,core}/` underneath. The codex
+  resolver joins the same relative path onto its rules root, so the new
+  rung needs no special-casing. This replaces the earlier lint-only
+  `.specify/cache/rules/` fallback (now removed) and standardises on the
+  dotted `.specify/.cache/` tree the manifest cache already uses.
+- **Probe order.** `probe_rules_root` in
+  [`crates/lints/src/rules/resolve.rs`](./crates/lints/src/rules/resolve.rs)
+  is the closed precedence: (1) explicit `--rules-root`; (2) monorepo
+  `{project_dir}/adapters/shared/rules/universal/`; (3) **new** codex
+  cache `{project_dir}/.specify/.cache/codex/...`; (4)
+  `rules-root-required`. Step 3 is a derived (non-explicit) root, so the
+  rules-root fallback overlay step stays skipped, exactly like the
+  monorepo case. The rung lives in the resolver so both `specrun lint`
+  and `specrun rules export` honour it.
+- **Distribution.** `cache_codex` /
+  `sync_codex` in [`crates/workflow/src/init/`](./crates/workflow/src/init)
+  walk up from the resolved adapter `source_dir` to the nearest ancestor
+  carrying the `universal/` pack and copy it (and, under
+  `--include-framework`, `core/`) into the cache. Git sources fetch
+  `adapters/shared/rules/` in the same sparse checkout as the adapter —
+  no second clone. **Fail-soft:** a source tree without the shared pack
+  leaves the cache empty and the consumer falls back to `--rules-root`.
+- **Provenance.** `CodexMeta` (`.specify/.cache/codex/.codex-meta.yaml`)
+  records the pinned adapter `source` value, `include_framework`, and
+  `fetched_at`. Audit-only; the resolver never reads it.
+- **Distribution vs evaluation.** `--include-framework` (init / `rules
+  sync`) controls what lands in the cache; the resolver's `include_core`
+  (on `lint` / `rules export`) controls whether `CORE-*` rules are
+  evaluated/exported. They are independent: consumer projects default to
+  neither distributing nor evaluating the framework `core/` pack.

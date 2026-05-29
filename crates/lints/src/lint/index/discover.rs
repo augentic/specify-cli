@@ -2,9 +2,10 @@
 //! rules-root resolution.
 //!
 //! For the consumer scan, the rules tree lives at
-//! `<project_dir>/.specify/cache/rules/` (populated by `specrun init`
-//! and refreshed by `specrun workspace sync`). This module walks that
-//! tree, reuses the rule frontmatter parser
+//! `<project_dir>/.specify/.cache/codex/` (the distributed codex cache
+//! populated by `specrun init` and refreshed by `specrun rules sync` —
+//! codex distribution, RM-07). This module walks that tree, reuses the
+//! rule frontmatter parser
 //! ([`crate::rules::parse::parse_rule_file`]), and emits one
 //! [`RuleIndexEntry`] per `*.md` rule found.
 //!
@@ -35,7 +36,7 @@ use crate::lint::RuleIndexEntry;
 use crate::rules::Origin;
 use crate::rules::parse::parse_rule_file;
 
-const CACHE_ROOT: &str = ".specify/cache/rules";
+const CACHE_ROOT: &str = ".specify/.cache/codex";
 
 /// Walk the consumer rules cache and emit one fact per discovered
 /// `*.md` rule. Returns an empty vector when the cache is missing.

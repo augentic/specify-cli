@@ -20,7 +20,14 @@
 //!    case the rules-root fallback overlay step is **skipped** —
 //!    re-walking `project_dir` would just shadow the project-local
 //!    rung with the same filesystem tree.
-//! 3. Else → [`ResolveError::RulesRootRequired`].
+//! 3. Else if the distributed codex cache
+//!    `{project_dir}/.specify/.cache/codex/adapters/shared/rules/universal/`
+//!    exists, treat `{project_dir}/.specify/.cache/codex/` as the rules
+//!    root. Populated by codex distribution (RM-07) at `specrun init`
+//!    or `specrun rules sync`. Like the monorepo case this is a derived
+//!    (non-explicit) root, so the rules-root fallback overlay step is
+//!    **skipped**.
+//! 4. Else → [`ResolveError::RulesRootRequired`].
 //!
 //! Source-adapter (root 3) and target-adapter (root 4) overlays follow
 //! the closed location order in rules root resolution:
@@ -131,11 +138,12 @@ pub struct ResolvedRuleEntry {
 /// Failure modes for [`resolve`].
 #[derive(Debug, thiserror::Error)]
 pub enum ResolveError {
-    /// Shared probe failed: no `--rules-root` and no monorepo
-    /// fallback under `project_dir`. Wire-id `rules-root-required`
-    /// per codex root resolution and the §490 golden.
+    /// Shared probe failed: no `--rules-root`, no monorepo fallback
+    /// under `project_dir`, and no distributed codex cache. Wire-id
+    /// `rules-root-required` per codex root resolution and the §490
+    /// golden.
     #[error(
-        "rules-root-required: shared UNI-* rules require --rules-root pointing at a tree containing adapters/shared/rules/universal/"
+        "rules-root-required: shared UNI-* rules require --rules-root pointing at a tree containing adapters/shared/rules/universal/, a monorepo adapters/shared/rules/universal/ tree, or a distributed codex cache (run `specrun rules sync`)"
     )]
     RulesRootRequired,
     /// A rule id appeared in more than one discovered file. Per
@@ -177,9 +185,11 @@ pub fn map_resolve_error(err: ResolveError) -> Error {
     match err {
         ResolveError::RulesRootRequired => Error::validation_failed(
             "rules-root-required",
-            "shared UNI-* rules require --rules-root or a project-local \
-             adapters/shared/rules/universal/ tree",
-            "pass --rules-root pointing at a tree containing \
+            "shared UNI-* rules require --rules-root, a project-local \
+             adapters/shared/rules/universal/ tree, or a distributed \
+             codex cache under .specify/.cache/codex/",
+            "run `specrun rules sync` to distribute the shared codex, or \
+             pass --rules-root pointing at a tree containing \
              adapters/shared/rules/universal/",
         ),
         ResolveError::DuplicateRuleId { id, paths } => Error::validation_failed(
@@ -203,6 +213,11 @@ pub fn map_resolve_error(err: ResolveError) -> Error {
 const SHARED_REL: &str = "adapters/shared/rules/universal";
 const CORE_REL: &str = "adapters/shared/rules/core";
 const MANIFEST_CACHE_REL: &str = ".specify/.cache/manifests";
+/// Project codex cache root populated by codex distribution (RM-07).
+/// Probe step 3 treats it as a derived rules root when it carries the
+/// shared `universal/` pack. Kept in lockstep with
+/// `specify_workflow::init::codex_cache_root`.
+const CODEX_CACHE_REL: &str = ".specify/.cache/codex";
 
 /// Discover every rule visible to `inputs` and parse it.
 ///
@@ -283,6 +298,10 @@ fn probe_rules_root(inputs: &ResolveInputs<'_>) -> Result<PathBuf, ResolveError>
     let project_shared = inputs.project_dir.join(SHARED_REL);
     if project_shared.is_dir() {
         return Ok(inputs.project_dir.to_path_buf());
+    }
+    let codex_cache = inputs.project_dir.join(CODEX_CACHE_REL);
+    if codex_cache.join(SHARED_REL).is_dir() {
+        return Ok(codex_cache);
     }
     Err(ResolveError::RulesRootRequired)
 }
@@ -539,14 +558,96 @@ mod tests {
         assert_eq!(entry.path, "adapters/shared/rules/universal/uni-001.md");
     }
 
-    /// Test 3: probe step 3 — no explicit root, no monorepo fallback —
-    /// must produce the closed `rules-root-required` error.
+    /// Test 3: probe step 4 — no explicit root, no monorepo fallback,
+    /// no distributed codex cache — must produce the closed
+    /// `rules-root-required` error.
     #[test]
     fn rules_root_required_when_no_probe() {
         let project = TempDir::new().expect("project");
         let sources = no_sources();
         let err = resolve(&inputs(project.path(), None, "omnia", &sources)).unwrap_err();
         assert!(matches!(err, ResolveError::RulesRootRequired), "got: {err:?}");
+    }
+
+    /// Probe step 3 (RM-07): with no `--rules-root` and no monorepo
+    /// tree, the distributed codex cache under
+    /// `.specify/.cache/codex/` resolves shared rules. The cache root
+    /// becomes the rules root, so the path is relative to it.
+    #[test]
+    fn shared_rules_from_codex_cache() {
+        let project = TempDir::new().expect("project");
+        write_rule(
+            &project
+                .path()
+                .join(".specify/.cache/codex/adapters/shared/rules/universal/uni-001.md"),
+            "UNI-001",
+            "Distributed codex shared",
+        );
+
+        let sources = no_sources();
+        let result = resolve(&inputs(project.path(), None, "omnia", &sources))
+            .expect("resolve succeeds via the distributed codex cache");
+
+        assert_eq!(result.len(), 1);
+        let entry = &result[0];
+        assert_eq!(entry.rule.id, "UNI-001");
+        assert_eq!(entry.origin, Origin::Shared);
+        assert_eq!(entry.path_root, PathRoot::RulesRoot);
+        assert_eq!(entry.path, "adapters/shared/rules/universal/uni-001.md");
+    }
+
+    /// Probe precedence: the monorepo tree (step 2) wins over the
+    /// distributed codex cache (step 3). Only the monorepo rule
+    /// resolves; the cache tree is never walked.
+    #[test]
+    fn monorepo_wins_over_codex_cache() {
+        let project = TempDir::new().expect("project");
+        write_rule(
+            &project.path().join("adapters/shared/rules/universal/uni-001.md"),
+            "UNI-001",
+            "Monorepo shared",
+        );
+        write_rule(
+            &project
+                .path()
+                .join(".specify/.cache/codex/adapters/shared/rules/universal/uni-002.md"),
+            "UNI-002",
+            "Cache shared",
+        );
+
+        let sources = no_sources();
+        let result = resolve(&inputs(project.path(), None, "omnia", &sources))
+            .expect("resolve succeeds choosing the monorepo root");
+
+        assert_eq!(result.len(), 1, "only the monorepo tree should be walked");
+        assert_eq!(result[0].rule.id, "UNI-001");
+    }
+
+    /// Probe precedence: an explicit `--rules-root` (step 1) wins over
+    /// a distributed codex cache (step 3).
+    #[test]
+    fn explicit_rules_root_wins_over_codex_cache() {
+        let rules_root = TempDir::new().expect("rules root");
+        let project = TempDir::new().expect("project");
+        write_rule(
+            &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+            "UNI-001",
+            "Explicit shared",
+        );
+        write_rule(
+            &project
+                .path()
+                .join(".specify/.cache/codex/adapters/shared/rules/universal/uni-002.md"),
+            "UNI-002",
+            "Cache shared",
+        );
+
+        let sources = no_sources();
+        let result = resolve(&inputs(project.path(), Some(rules_root.path()), "omnia", &sources))
+            .expect("resolve succeeds choosing the explicit rules root");
+
+        assert_eq!(result.len(), 1, "only the explicit rules root should be walked");
+        assert_eq!(result[0].rule.id, "UNI-001");
     }
 
     /// Test 4: target overlay resolves from the project-local rung

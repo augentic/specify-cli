@@ -28,9 +28,11 @@ pub enum LintAction {
 #[derive(Args)]
 pub struct RunArgs {
     /// Codex root supplying shared `UNI-*` rules. Resolution
-    /// order (rules-root resolution): this flag → `$RULES_ROOT` env →
-    /// project's `.specify/cache/rules/` → bundled tree.
-    /// Validation failure exits 2 with `rules-root-required`.
+    /// order (rules-root resolution): this flag / `$RULES_ROOT` env →
+    /// monorepo `adapters/shared/rules/universal/` under the project →
+    /// distributed codex cache `.specify/.cache/codex/` (populated by
+    /// `specrun init` / `specrun rules sync`). Missing every rung exits
+    /// 2 with `rules-root-required`.
     #[arg(long, env = "RULES_ROOT")]
     pub rules_root: Option<PathBuf>,
 
