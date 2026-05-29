@@ -12,12 +12,12 @@ fn proposal_why_has_content(ctx: &BriefContext<'_>) -> RuleOutcome {
     }
 }
 
-fn proposal_crates_listed(ctx: &BriefContext<'_>) -> RuleOutcome {
-    if primitives::has_content_after_heading(ctx.content, "## Crates") {
+fn proposal_units_listed(ctx: &BriefContext<'_>) -> RuleOutcome {
+    if primitives::has_content_after_heading(ctx.content, "## Units") {
         RuleOutcome::Pass
     } else {
         RuleOutcome::Fail {
-            detail: "`## Crates` section missing or has no prose".to_string(),
+            detail: "`## Units` section missing or has no prose".to_string(),
         }
     }
 }
@@ -30,10 +30,10 @@ pub(super) const PROPOSAL_RULES: &[Rule] = &[
         check: Some(proposal_why_has_content),
     },
     Rule {
-        id: "proposal.crates-listed",
-        description: "Has a Crates section listing at least one entry",
+        id: "proposal.units-listed",
+        description: "Has a Units section listing at least one entry",
         classification: Classification::Structural,
-        check: Some(proposal_crates_listed),
+        check: Some(proposal_units_listed),
     },
     Rule {
         id: "proposal.uses-imperative-language",

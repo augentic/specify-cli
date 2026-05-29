@@ -16,8 +16,8 @@
         "status": "fail"
       },
       {
-        "rule": "Has a Crates section listing at least one entry",
-        "rule-id": "proposal.crates-listed",
+        "rule": "Has a Units section listing at least one entry",
+        "rule-id": "proposal.units-listed",
         "status": "pass"
       },
       {
@@ -68,9 +68,9 @@
   },
   "cross-checks": [
     {
-      "detail": "one or more crates listed in the proposal have no matching spec file",
-      "rule": "Every crate listed in the proposal has a matching spec file",
-      "rule-id": "cross.proposal-crates-have-specs",
+      "detail": "one or more units listed in the proposal have no matching spec file",
+      "rule": "Every unit listed in the proposal has a matching spec file",
+      "rule-id": "cross.proposal-units-have-specs",
       "status": "fail"
     },
     {

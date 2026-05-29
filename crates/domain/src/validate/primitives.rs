@@ -144,12 +144,12 @@ pub(super) fn tasks_grouped_under_headings(tasks: &Progress) -> bool {
     tasks.tasks.iter().all(|t| !t.group.is_empty())
 }
 
-/// Return `true` iff every crate entry listed under the proposal's
-/// `## Crates` section has a matching `specs/<name>/spec.md` on disk.
+/// Return `true` iff every unit entry listed under the proposal's
+/// `## Units` section has a matching `specs/<name>/spec.md` on disk.
 /// If the section is absent or empty, returns `true` — the sibling
 /// `has-content-after-heading` rule is responsible for that case.
 pub(super) fn proposal_deliverables_have_specs(proposal: &str, specs_dir: &Path) -> bool {
-    let entries = extract_deliverables(proposal, "## Crates");
+    let entries = extract_deliverables(proposal, "## Units");
     if entries.is_empty() {
         return true;
     }
@@ -163,7 +163,7 @@ pub(super) fn proposal_deliverables_have_specs(proposal: &str, specs_dir: &Path)
 }
 
 /// Parse the proposal for entries under `heading`. Accepts `- name`,
-/// `` - `name` ``, or sub-headings (`### New Crates` / `### Modified Crates`)
+/// `` - `name` ``, or sub-headings (`### New Units` / `### Modified Units`)
 /// whose bullets are in turn parsed. Placeholder tokens (values that look
 /// like HTML comments) are skipped.
 fn extract_deliverables(proposal: &str, heading: &str) -> Vec<String> {
@@ -337,10 +337,10 @@ mod tests {
         fs::create_dir_all(specs.join("login")).unwrap();
         fs::write(specs.join("login").join("spec.md"), "# Login\n").unwrap();
 
-        let ok_proposal = "## Crates\n\n- login\n";
+        let ok_proposal = "## Units\n\n- login\n";
         assert!(proposal_deliverables_have_specs(ok_proposal, &specs));
 
-        let missing = "## Crates\n\n- login\n- missing\n";
+        let missing = "## Units\n\n- login\n- missing\n";
         assert!(!proposal_deliverables_have_specs(missing, &specs));
 
         // Absent section → true (the has-content rule handles this case).
@@ -354,7 +354,7 @@ mod tests {
         let specs = dir.path().join("specs");
         fs::create_dir_all(specs.join("user-auth")).unwrap();
         fs::write(specs.join("user-auth").join("spec.md"), "# Login\n").unwrap();
-        let proposal = "## Crates\n\n### New Crates\n\n- `user-auth`\n";
+        let proposal = "## Units\n\n### New Units\n\n- `user-auth`\n";
         assert!(proposal_deliverables_have_specs(proposal, &specs));
     }
 
