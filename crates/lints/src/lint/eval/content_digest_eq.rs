@@ -8,11 +8,11 @@
 //! and asserts that every `**/agent-teams.md` symlink resolves to
 //! content whose digest equals the canonical
 //! `docs/reference/review-team-protocol.md` review-team-protocol
-//! document. The interpreter emits one [`crate::rules::Diagnostic`]
+//! document. The interpreter emits one [`specify_diagnostics::Diagnostic`]
 //! per symlink whose resolved-target digest diverges from the
 //! canonical digest, with the symlink path as the finding's location
 //! and the `(resolved-target, expected, actual)` shape surfaced via
-//! [`crate::rules::FindingEvidence::Structured`] for downstream
+//! [`specify_diagnostics::FindingEvidence::Structured`] for downstream
 //! tooling.
 //!
 //! The expected canonical digest is sourced from the fact set itself:

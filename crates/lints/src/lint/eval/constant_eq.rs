@@ -9,10 +9,10 @@
 //! field stringifies both integer and string YAML forms) and flags
 //! each `adapters/{sources,targets}/<name>/adapter.yaml` whose
 //! `version:` does not equal the literal string `"1"`. The
-//! interpreter emits one [`crate::rules::Diagnostic`] per
+//! interpreter emits one [`specify_diagnostics::Diagnostic`] per
 //! non-conforming manifest with the manifest path as the finding's
 //! location and the `(actual, expected)` pair surfaced via
-//! [`crate::rules::FindingEvidence::Structured`] for downstream
+//! [`specify_diagnostics::FindingEvidence::Structured`] for downstream
 //! tooling. Manifests whose `version:` is absent count as actual
 //! `"(absent)"`; that string can never collide with a real version
 //! because the extractor rejects empty / non-string-or-number

@@ -6,9 +6,9 @@
 //! indexer already produced (see [`crate::lint::index::skill`]) and
 //! flags each `name:` frontmatter value that appears on two or more
 //! `plugins/**/SKILL.md` files. The interpreter emits one
-//! [`crate::rules::Diagnostic`] per duplicated name, with the lowest
+//! [`specify_diagnostics::Diagnostic`] per duplicated name, with the lowest
 //! offending path used as the finding's location and the full sorted
-//! path list surfaced via [`crate::rules::FindingEvidence::Structured`].
+//! path list surfaced via [`specify_diagnostics::FindingEvidence::Structured`].
 //!
 //! Skills whose `path` is not in the caller-supplied candidate set
 //! are ignored, so the closed `path-pattern` filter the umbrella

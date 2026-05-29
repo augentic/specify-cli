@@ -7,10 +7,10 @@
 //! the [`crate::lint::Frontmatter`] facts the indexer already produced
 //! (see [`crate::lint::index::frontmatter::extract`]) and flags each
 //! rule whose id prefix is not owned by its containing rules
-//! directory. The interpreter emits one [`crate::rules::Diagnostic`]
+//! directory. The interpreter emits one [`specify_diagnostics::Diagnostic`]
 //! per misplaced rule, with the rule file path as the finding's
 //! location and the `(rule-id, namespace, owner, allowed)` shape
-//! surfaced via [`crate::rules::FindingEvidence::Structured`] for
+//! surfaced via [`specify_diagnostics::FindingEvidence::Structured`] for
 //! downstream tooling.
 //!
 //! This is the declarative form of the hand-written namespace

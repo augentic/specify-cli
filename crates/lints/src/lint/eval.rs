@@ -44,13 +44,13 @@
 //! # Evidence cap (the structured evidence union)
 //!
 //! Every finding minted here passes through
-//! [`crate::rules::validate_evidence_size`] before `compute_fingerprint`
+//! [`specify_diagnostics::validate_evidence_size`] before `compute_fingerprint`
 //! signs it. Snippet-evidence findings that exceed the 16 `KiB` cap are
 //! truncated by halving the snippet value (clamped to a UTF-8 char
 //! boundary) and appending a `…[truncated]` marker until the
 //! serialised evidence object fits, then re-fingerprinted. Structured
 //! evidence too large to inline collapses to
-//! `{"truncated": true}`. Findings with [`crate::rules::FindingEvidence::Digest`]
+//! `{"truncated": true}`. Findings with [`specify_diagnostics::FindingEvidence::Digest`]
 //! evidence above the cap are not produced by v1 evaluators; the
 //! truncation loop bails on them rather than synthesising a bogus
 //! payload.

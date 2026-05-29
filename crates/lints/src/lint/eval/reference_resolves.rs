@@ -7,9 +7,9 @@
 //! and whose `resolves` flag the umbrella sequential pass populates by
 //! joining each link target against `from_path`'s parent and looking
 //! it up in the discovered file set (see [`crate::lint::index::build`]
-//! `resolve_link`). The interpreter emits one [`crate::rules::Diagnostic`]
+//! `resolve_link`). The interpreter emits one [`specify_diagnostics::Diagnostic`]
 //! per `resolves == Some(false)` link, with a 1-indexed `line`
-//! location and the raw target captured in [`crate::rules::FindingEvidence::Snippet`].
+//! location and the raw target captured in [`specify_diagnostics::FindingEvidence::Snippet`].
 //!
 //! URL-style targets (`https://…`, `mailto://…`, anchor-only `#frag`,
 //! etc.) leave `resolves` unset upstream and are silently skipped here

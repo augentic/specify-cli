@@ -11,13 +11,13 @@
 //! `briefs.keys()` set is not exactly the axis-appropriate closed
 //! operation enum (`SourceOperation::{Extract, Survey}` xor
 //! `TargetOperation::{Shape, Build, Merge}`). The interpreter emits
-//! one [`crate::rules::Diagnostic`] per `(adapter, divergence)`
+//! one [`specify_diagnostics::Diagnostic`] per `(adapter, divergence)`
 //! pair, where the divergence is either a `missing` operation (in the
 //! expected enum, absent from `briefs.keys()`) or an `unexpected` key
 //! (present in `briefs.keys()`, absent from the expected enum). The
 //! manifest path is the finding's location and the per-adapter
 //! `(divergence, operation, expected, actual)` shape is surfaced via
-//! [`crate::rules::FindingEvidence::Structured`] for downstream
+//! [`specify_diagnostics::FindingEvidence::Structured`] for downstream
 //! tooling.
 //!
 //! `set-eq` fires on both halves where `set-coverage` is silent on

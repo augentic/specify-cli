@@ -1,7 +1,7 @@
 //! `kind: regex` evaluator per the executable hint-kind contract.
 //!
 //! Compiles the hint's `value` once and walks each text candidate
-//! line by line, emitting one [`crate::rules::Diagnostic`] per
+//! line by line, emitting one [`specify_diagnostics::Diagnostic`] per
 //! match with a 1-indexed `line` / `column` location and the matched
 //! line clipped to a bounded char count in the `Snippet` evidence
 //! payload.

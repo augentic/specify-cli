@@ -9,10 +9,10 @@
 //! body lines) and flags each `plugins/<plugin>/skills/<skill>/SKILL.md`
 //! whose body exceeds the 200-line cap pinned by
 //! [`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md).
-//! The interpreter emits one [`crate::rules::Diagnostic`] per
+//! The interpreter emits one [`specify_diagnostics::Diagnostic`] per
 //! over-budget skill with the SKILL.md path as the finding's location
 //! and the `(actual, max)` pair surfaced via
-//! [`crate::rules::FindingEvidence::Structured`] for downstream
+//! [`specify_diagnostics::FindingEvidence::Structured`] for downstream
 //! tooling.
 //!
 //! Skills whose `path` is not in the caller-supplied candidate set

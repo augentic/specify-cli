@@ -11,10 +11,10 @@
 //! axis-appropriate closed enum
 //! (`SourceOperation::{Extract, Survey}` xor
 //! `TargetOperation::{Shape, Build, Merge}`). The interpreter emits
-//! one [`crate::rules::Diagnostic`] per `(adapter, missing-operation)`
+//! one [`specify_diagnostics::Diagnostic`] per `(adapter, missing-operation)`
 //! pair, with the manifest path as the finding's location and the
 //! per-adapter `(missing, expected, actual)` triple surfaced via
-//! [`crate::rules::FindingEvidence::Structured`] for downstream
+//! [`specify_diagnostics::FindingEvidence::Structured`] for downstream
 //! tooling.
 //!
 //! `set-coverage` is one-sided by design: extras (`briefs.keys()`

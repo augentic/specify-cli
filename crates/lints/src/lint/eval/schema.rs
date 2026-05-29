@@ -19,7 +19,7 @@
 //! — the closed [`crate::rules::DeterministicHint`] shape carries no
 //! `target` field, so v1 cannot opt into it.
 //!
-//! Each `iter_errors` entry maps to one [`crate::rules::Diagnostic`]
+//! Each `iter_errors` entry maps to one [`specify_diagnostics::Diagnostic`]
 //! with `Structured` evidence carrying the failing JSON-pointer.
 
 use std::collections::HashMap;
