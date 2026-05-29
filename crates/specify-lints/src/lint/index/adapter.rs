@@ -136,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_briefs_map_leaves_brief_keys_empty() {
+    fn missing_briefs_leaves_keys_empty() {
         let file = manifest("adapters/targets/omnia/adapter.yaml", "name: omnia\nversion: 1\n");
         let manifest = extract(&file).expect("manifest extracted");
         assert!(manifest.brief_keys.is_empty());

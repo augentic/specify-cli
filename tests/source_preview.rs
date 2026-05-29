@@ -89,7 +89,7 @@ fn preview_creates_output_directory() {
 }
 
 #[test]
-fn preview_default_out_creates_specify_preview() {
+fn default_out_creates_preview() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
     stage_source_adapter(root, "code-typescript");

@@ -359,7 +359,7 @@ fn authority_override_valid_keys_pass() {
 }
 
 #[test]
-fn authority_override_findings_sort_deterministically() {
+fn authority_overrides_sort() {
     let mut entry = change("identity-user-registration", Status::Pending);
     entry.sources = vec![SliceSourceBinding::bare("legacy")];
     // Insert in non-sorted order; BTreeMap iteration sorts by kind.

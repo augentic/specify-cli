@@ -100,7 +100,7 @@ fn case_07_all_sections_is_byte_for_byte_identical() {
 }
 
 #[test]
-fn merge_failure_surfaces_consolidated_error_messages() {
+fn merge_failure_consolidates_errors() {
     // No fixture on disk for this case — every repo fixture is expected
     // to succeed, so we hand-craft a small failing pair here.
     let baseline = "### Requirement: A\n\nID: REQ-001\n\n#### Scenario: ok\n\n- ok\n\n### Requirement: B\n\nID: REQ-002\n\n#### Scenario: ok\n\n- ok\n";

@@ -806,7 +806,7 @@ Some trailing prose.
     }
 
     #[test]
-    fn check_alias_collisions_no_findings_on_clean_doc() {
+    fn alias_collisions_clean_doc() {
         let doc = Discovery::parse(SAMPLE).expect("parse ok");
         let findings = doc.check_alias_collisions();
         assert!(findings.is_empty(), "clean doc must produce no findings; got: {findings:?}");
@@ -825,7 +825,7 @@ Some trailing prose.
     }
 
     #[test]
-    fn add_alias_refuses_collision_with_other_id() {
+    fn add_alias_refuses_collision() {
         let mut doc = Discovery::parse(SAMPLE).expect("parse ok");
         let err =
             doc.add_alias("password-reset-request", "user-registration").expect_err("collision");

@@ -248,7 +248,7 @@ mod unit_tests {
     use super::*;
 
     #[test]
-    fn count_non_blank_lines_ignores_html_comments() {
+    fn count_lines_ignores_comments() {
         let content = "line one\n\n<!-- block\nstill comment\n-->\nline two\n<!-- inline -->\n";
         assert_eq!(count_non_blank_lines(content), 2);
     }

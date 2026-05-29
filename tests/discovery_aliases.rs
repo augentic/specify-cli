@@ -96,7 +96,7 @@ fn plan_add_resolves_alias_to_canonical_id() {
 }
 
 #[test]
-fn plan_add_structured_form_persists_canonical_id_when_slice_differs() {
+fn plan_add_persists_canonical_id() {
     // Slice name differs from lead id, so the structured
     // binding form survives. Aliases still resolve to the canonical
     // id.
@@ -127,7 +127,7 @@ fn plan_add_structured_form_persists_canonical_id_when_slice_differs() {
 }
 
 #[test]
-fn plan_add_unknown_lead_in_discovery_refused() {
+fn plan_add_unknown_lead_refused() {
     // discovery alias contract — when `discovery.md` exists, an unresolvable
     // lead token refuses at exit 2 with
     // `discovery-lead-unknown`.
@@ -160,7 +160,7 @@ fn plan_add_unknown_lead_in_discovery_refused() {
 }
 
 #[test]
-fn plan_add_without_discovery_md_skips_alias_resolution() {
+fn plan_add_without_discovery_skips_alias() {
     // Legacy backwards-compat: without `discovery.md`, the supplied
     // lead value round-trips verbatim. Pre-authority and fusion contract projects
     // continue to work unchanged.
@@ -189,7 +189,7 @@ fn plan_add_without_discovery_md_skips_alias_resolution() {
 }
 
 #[test]
-fn plan_amend_add_alias_mutates_discovery_md() {
+fn plan_amend_alias_mutates_discovery() {
     // discovery alias contract — `--add-alias` appends to `discovery.md` (NOT to
     // `plan.yaml`). The mutation round-trips through the parser
     // unchanged.
@@ -231,7 +231,7 @@ fn plan_amend_add_alias_mutates_discovery_md() {
 }
 
 #[test]
-fn plan_amend_add_alias_refused_on_collision() {
+fn plan_amend_alias_refused_on_collision() {
     // Self-shadow: alias equals the bearing lead's own id.
     let project = Project::init();
     project.seed_plan(PLAN_WITH_SOURCES);
@@ -313,7 +313,7 @@ fn plan_amend_remove_alias_is_idempotent() {
 }
 
 #[test]
-fn plan_amend_add_alias_then_resolves_in_same_invocation() {
+fn plan_amend_alias_resolves_same_invocation() {
     // discovery alias contract — operator can author an alias and consume it on
     // a downstream `--sources` rewrite in the same invocation. The
     // amend writes discovery.md before threading the updated
@@ -351,7 +351,7 @@ fn plan_amend_add_alias_then_resolves_in_same_invocation() {
 }
 
 #[test]
-fn slice_validate_surfaces_discovery_alias_collision() {
+fn slice_validate_alias_collision() {
     // discovery alias contract — slice validate is the read-only gate that
     // surfaces every alias collision on the project's discovery.md.
     let project = Project::init();

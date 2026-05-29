@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn tool_versions_sort_independently_of_input_order() {
+    fn tool_versions_sort_stable() {
         let unsorted = CacheFingerprint::new(
             FingerprintSource::Path {
                 path: "/p".to_string(),
@@ -442,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_reason_picks_first_change_when_multiple_fields_drift() {
+    fn diff_reason_picks_first_change() {
         let prior = sample("a@1", Some("c1"));
         let mut both = prior.clone();
         both.source = FingerprintSource::Path {

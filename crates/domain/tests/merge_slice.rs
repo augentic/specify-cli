@@ -110,7 +110,7 @@ fn build_project() -> Project {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn happy_path_writes_baselines_flips_status_and_archives() {
+fn happy_path_writes_flips_and_archives() {
     let project = build_project();
     let slice_dir = project.slice_dir();
     let specs_dir = project.specs_dir();
@@ -304,7 +304,7 @@ fn merge_copies_contract_files_to_baseline() {
 }
 
 #[test]
-fn merge_replaces_existing_baseline_contract_files() {
+fn merge_replaces_baseline_contracts() {
     let project = build_project();
     let slice_dir = project.slice_dir();
 
@@ -326,7 +326,7 @@ fn merge_replaces_existing_baseline_contract_files() {
 }
 
 #[test]
-fn merge_leaves_untouched_baseline_contract_files() {
+fn merge_leaves_untouched_contracts() {
     let project = build_project();
     let slice_dir = project.slice_dir();
 
@@ -410,7 +410,7 @@ fn preview_no_contracts_returns_empty_list() {
 }
 
 #[test]
-fn preview_new_contract_files_reported_as_added() {
+fn preview_new_contracts_added() {
     let project = build_project();
     let slice_dir = project.slice_dir();
 
@@ -435,7 +435,7 @@ fn preview_new_contract_files_reported_as_added() {
 }
 
 #[test]
-fn preview_existing_baseline_contracts_reported_as_replaced() {
+fn preview_baseline_contracts_replaced() {
     let project = build_project();
     let slice_dir = project.slice_dir();
 

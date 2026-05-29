@@ -407,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn namespace_owners_merge_builtins_and_discovered() {
+    fn owners_merge_builtins_and_discovered() {
         let temp = TempDir::new().expect("tempdir");
         scaffold_framework(temp.path());
         fs::create_dir_all(temp.path().join("adapters/sources/documentation/rules"))

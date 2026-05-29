@@ -15,7 +15,7 @@ fn ctx_at(root: &Path) -> Context {
 }
 
 #[test]
-fn specify_history_citation_flags_user_facing_docs() {
+fn history_citation_flags_docs() {
     let dir = tempfile::tempdir().expect("tempdir");
     scaffold_framework_root(dir.path());
     fs::create_dir_all(dir.path().join("docs/tutorials")).expect("docs dir");
@@ -32,7 +32,7 @@ fn specify_history_citation_flags_user_facing_docs() {
 }
 
 #[test]
-fn missing_diagram_asset_flags_broken_svg_ref() {
+fn missing_diagram_flags_broken_svg() {
     let dir = tempfile::tempdir().expect("tempdir");
     scaffold_framework_root(dir.path());
     fs::create_dir_all(dir.path().join("docs/reference")).expect("docs dir");

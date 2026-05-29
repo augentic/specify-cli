@@ -135,7 +135,7 @@ mod tests {
     /// Unknown / unclassified rule ids fall through to the documented
     /// `Important` default.
     #[test]
-    fn unclassified_rule_id_defaults_to_important() {
+    fn unclassified_defaults_important() {
         assert_eq!(severity_for("future.unmapped-rule"), Severity::Important);
         assert_eq!(severity_for(""), Severity::Important);
         assert_eq!(severity_for("totally.made.up"), Severity::Important);

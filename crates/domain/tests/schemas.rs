@@ -110,7 +110,7 @@ fn plugin_accepts_source_and_target_shapes() {
 }
 
 #[test]
-fn plugin_rejects_axis_violations_and_bad_primitives() {
+fn plugin_rejects_axis_and_primitives() {
     let v = load("adapter.schema.json");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_NO_AXIS), "plugin/no-axis");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_BAD_AXIS), "plugin/bad-axis");
@@ -154,7 +154,7 @@ fn source_accepts_canonical_shape() {
 }
 
 #[test]
-fn source_rejects_axis_mismatch_extra_brief_and_missing_brief() {
+fn source_rejects_axis_and_brief_violations() {
     // With the dedicated `operations[]` field collapsed (review 1.A1),
     // brief-key validity is the only thing closing the operation set.
     // Cover both "extra key under briefs:" and "required brief
@@ -204,7 +204,7 @@ fn target_accepts_canonical_shape() {
 }
 
 #[test]
-fn target_rejects_axis_brief_set_and_brief_violations() {
+fn target_rejects_axis_and_brief_violations() {
     // With the dedicated `operations[]` field collapsed (review 1.A1),
     // the `briefs.*` key set is what closes the target operation set.
     // Cover an axis-mismatch fixture, an extra source-axis brief key,
@@ -299,7 +299,7 @@ claims: []
 ";
 
 #[test]
-fn evidence_accepts_canonical_documentation_legacy_and_spatial() {
+fn evidence_accepts_doc_legacy_and_spatial() {
     let v = load("evidence.schema.json");
     assert_valid(&v, &yaml(EVIDENCE_VALID_REQUIREMENT), "evidence/requirement");
     assert_valid(&v, &yaml(EVIDENCE_VALID_SPATIAL), "evidence/spatial-region-container-leaf");
@@ -307,7 +307,7 @@ fn evidence_accepts_canonical_documentation_legacy_and_spatial() {
 }
 
 #[test]
-fn evidence_rejects_missing_or_invalid_authority_and_kinds() {
+fn evidence_rejects_bad_authority_and_kinds() {
     let v = load("evidence.schema.json");
     assert_invalid(&v, &yaml(EVIDENCE_INVALID_MISSING_AUTHORITY), "evidence/missing-authority");
     assert_invalid(&v, &yaml(EVIDENCE_INVALID_BAD_AUTHORITY), "evidence/bad-authority");
@@ -362,7 +362,7 @@ fn lead_accepts_minimal_and_tentative_shapes() {
 }
 
 #[test]
-fn lead_rejects_empty_sources_bad_id_and_wrong_tentative_type() {
+fn lead_rejects_bad_sources_id_and_tentative() {
     let v = load("discovery/lead.schema.json");
     assert_invalid(&v, &yaml(LEAD_INVALID_NO_SOURCES), "lead/no-sources");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
@@ -388,14 +388,14 @@ fn plan_schema_accepts_workflow_intent_n1() {
 }
 
 #[test]
-fn plan_schema_accepts_workflow_multi_source() {
+fn plan_accepts_multi_source() {
     let v = load("plan/plan.schema.json");
     let raw = std::fs::read_to_string(plan_v2_fixture_path("multi-source.yaml")).expect("read");
     assert_valid(&v, &yaml(&raw), "plan/v2/multi-source");
 }
 
 #[test]
-fn plan_schema_accepts_workflow_divergence_likely() {
+fn plan_accepts_divergence_likely() {
     let v = load("plan/plan.schema.json");
     let raw =
         std::fs::read_to_string(plan_v2_fixture_path("divergence-likely.yaml")).expect("read");
@@ -403,7 +403,7 @@ fn plan_schema_accepts_workflow_divergence_likely() {
 }
 
 #[test]
-fn plan_schema_rejects_unknown_divergence_value() {
+fn plan_rejects_unknown_divergence() {
     let v = load("plan/plan.schema.json");
     let raw =
         std::fs::read_to_string(plan_v2_fixture_path("divergence-likely.yaml")).expect("read");
@@ -412,7 +412,7 @@ fn plan_schema_rejects_unknown_divergence_value() {
 }
 
 #[test]
-fn plan_schema_rejects_slice_source_missing_lead_field() {
+fn plan_rejects_slice_missing_lead() {
     let v = load("plan/plan.schema.json");
     let bad = r"
 name: bad

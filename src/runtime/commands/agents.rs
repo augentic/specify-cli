@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn assemble_render_input_skips_pipeline_for_hubs() {
+    fn render_input_skips_for_hubs() {
         let tmp = tempdir().expect("tempdir");
         let cfg_path = Layout::new(tmp.path()).config_path();
         fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");

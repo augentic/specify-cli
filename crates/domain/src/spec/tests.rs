@@ -165,7 +165,7 @@ fn parse_baseline_preamble_only() {
 }
 
 #[test]
-fn scenario_splitting_roundtrips_three_scenarios() {
+fn scenario_splitting_round_trips() {
     let req_text = "\
 ### Requirement: Inline three-scenario req
 

@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn embedded_default_injects_first_party_namespace() {
+    fn embedded_injects_first_party() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-embedded-default");
         let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
@@ -282,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn embedded_default_skipped_for_other_namespaces() {
+    fn embedded_skipped_for_others() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-embedded-other");
         let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
@@ -299,7 +299,7 @@ mod tests {
     }
 
     #[test]
-    fn project_local_config_overrides_embedded_default() {
+    fn local_config_overrides_default() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-project-config-home");
         let _wkg = EnvGuard::scoped("WKG_CONFIG", None);
@@ -351,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_project_config_is_silently_skipped() {
+    fn missing_config_skipped() {
         let _guard = env_lock();
         let (_home, _isolated) = isolate_global_config_dir("package-missing-project-home");
         let _wkg = EnvGuard::scoped("WKG_CONFIG", None);

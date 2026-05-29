@@ -88,7 +88,7 @@ fn assert_schema_valid(value: &Value) {
 }
 
 #[test]
-fn framework_extractors_each_emit_at_least_one_fact() {
+fn extractors_emit_facts() {
     let tempdir = stage_fixture();
     let model = build(tempdir.path(), ScanProfile::Framework, &[], &[]).expect("build ok");
     let value = serde_json::to_value(&model).expect("serialise");
@@ -158,7 +158,7 @@ fn agent_teams_symlink_records_endpoint_pair_and_sha256() {
 }
 
 #[test]
-fn framework_walk_is_byte_stable_across_runs() {
+fn walk_byte_stable() {
     let tempdir = stage_fixture();
     let first = build(tempdir.path(), ScanProfile::Framework, &[], &[]).expect("first build");
     let second = build(tempdir.path(), ScanProfile::Framework, &[], &[]).expect("second build");

@@ -35,7 +35,7 @@ fn stage_target_fixture(project: &Project, name: &str) {
 }
 
 #[test]
-fn target_resolve_local_returns_resolved_manifest() {
+fn resolve_local_returns_manifest() {
     let project = Project::init();
     // `Project::init()` seeds `.specify/.cache/manifests/targets/omnia/`; remove
     // it so the local probe wins for this test.
@@ -71,7 +71,7 @@ fn target_resolve_local_returns_resolved_manifest() {
 }
 
 #[test]
-fn target_resolve_strips_version_suffix() {
+fn resolve_strips_version_suffix() {
     // workflow §CLI surface: `specrun target resolve <value>` takes
     // either `<name>` or `<name>@<version>`. The `@version` part is
     // opaque metadata; the loader is keyed on the bare kebab name.

@@ -348,7 +348,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_manifest_yaml_round_trips_all_source_variants() {
+    fn manifest_round_trips_all_sources() {
         let manifest = ToolManifest {
             tools: vec![
                 Tool {
@@ -396,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_source_fails_during_deserialize() {
+    fn unsupported_source_fails() {
         serde_saphyr::from_str::<ToolManifest>(
             "tools:\n  - name: bad\n    version: 1.0.0\n    source: relative.wasm\n",
         )
@@ -404,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn scalar_package_entry_derives_tool_fields_and_permissions() {
+    fn scalar_package_derives_fields() {
         let manifest: ToolManifest =
             serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
                 .expect("parse package manifest");
@@ -432,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_package_entry_keeps_empty_permissions_for_validation() {
+    fn unknown_package_keeps_empty_perms() {
         let manifest: ToolManifest =
             serde_saphyr::from_str("tools:\n  - \"other:helper@latest\"\n")
                 .expect("parse package manifest");
@@ -443,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn template_path_source_parses_and_round_trips() {
+    fn template_source_round_trips() {
         let manifest: ToolManifest = serde_saphyr::from_str(
             "tools:\n  - name: vectis\n    version: 0.3.0\n    source: $PROJECT_DIR/../specify-cli/target/vectis.wasm\n",
         )
@@ -475,20 +475,20 @@ mod tests {
     }
 
     #[test]
-    fn expand_rejects_capability_dir_without_scope() {
+    fn expand_rejects_capability_dir() {
         let source = ToolSource::TemplatePath("$CAPABILITY_DIR/bin/tool.wasm".to_string());
         source.expand(Path::new("/project"), None).expect_err("must reject missing adapter dir");
     }
 
     #[test]
-    fn expand_is_identity_for_non_template_sources() {
+    fn expand_identity_for_non_template() {
         let source = ToolSource::LocalPath(PathBuf::from("/absolute/path.wasm"));
         let expanded = source.expand(Path::new("/project"), None).expect("expand");
         assert_eq!(expanded, ToolSource::LocalPath(PathBuf::from("/absolute/path.wasm")));
     }
 
     #[test]
-    fn template_detection_requires_boundary_after_variable() {
+    fn template_requires_boundary() {
         assert!(!looks_like_template_path("$PROJECT_DIRX/foo.wasm"));
         assert!(!looks_like_template_path("$CAPABILITY_DIRX/foo.wasm"));
         assert!(looks_like_template_path("$PROJECT_DIR/foo.wasm"));

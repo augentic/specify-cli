@@ -61,7 +61,7 @@ fn schema_violation_on_missing_required_field() {
 }
 
 #[test]
-fn stages_not_contiguous_prefix_emits_finding() {
+fn stages_not_contiguous_emits_finding() {
     let tmp = TempDir::new().expect("tempdir");
     let root = scaffold_framework_root(tmp.path());
     write_scenario(
@@ -99,7 +99,7 @@ fn artifact_path_unsafe_rejects_parent_escape() {
 }
 
 #[test]
-fn recorded_trace_invalid_header_emits_violation() {
+fn recorded_trace_invalid_header() {
     let tmp = TempDir::new().expect("tempdir");
     let root = scaffold_framework_root(tmp.path());
     let trace = root.join("tests/recorded/demo.jsonl");

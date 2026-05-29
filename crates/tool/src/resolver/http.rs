@@ -178,7 +178,7 @@ mod tests {
     use crate::test_support::{cache_env, fixed_now, project_scope, scratch_dir, tool};
 
     #[test]
-    fn http_sources_are_rejected_before_network_access() {
+    fn http_rejected_before_network() {
         let cache_dir = scratch_dir("resolver-http-cache");
         let project_dir = scratch_dir("resolver-http-project");
         let scope = project_scope();
@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn network_error_mapping_has_timeout_and_too_large_variants() {
+    fn network_error_mapping_variants() {
         let timeout = map_network_error(
             "https://example.test/tool.wasm",
             ureq::Error::Timeout(ureq::Timeout::Global),

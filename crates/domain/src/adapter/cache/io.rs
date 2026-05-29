@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn adapter_opt_out_misses_without_writing_dir() {
+    fn adapter_opt_out_misses() {
         let dir = tempdir().expect("tempdir");
         let layout = CacheLayout::new(dir.path(), "doc");
         let fingerprint = fp("doc@1");
@@ -458,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_prior_record_is_treated_as_no_prior_entry() {
+    fn corrupt_prior_record_ignored() {
         let dir = tempdir().expect("tempdir");
         let layout = CacheLayout::new(dir.path(), "code-typescript");
         let prior = fp("code-typescript@1");
@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn index_read_skips_blank_lines_and_rejects_garbage() {
+    fn index_read_skips_blanks_rejects_garbage() {
         let dir = tempdir().expect("tempdir");
         let layout = CacheLayout::new(dir.path(), "code-typescript");
         std::fs::create_dir_all(layout.adapter_dir()).expect("mkdir");

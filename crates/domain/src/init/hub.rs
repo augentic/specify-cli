@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn hub_init_refuses_when_specify_dir_exists() {
+    fn init_refuses_when_specify_dir_exists() {
         let tmp = tempdir().unwrap();
         // Pre-create `.specify/` with arbitrary content as if a regular
         // `specrun init` had already run here.

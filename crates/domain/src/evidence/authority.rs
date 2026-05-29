@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn claim_kind_from_str_round_trips_every_variant() {
+    fn claim_kind_from_str_round_trips() {
         for variant in [
             ClaimKind::Intent,
             ClaimKind::Requirement,
@@ -419,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn resolution_order_per_slice_overrides_dominate_per_evidence() {
+    fn per_slice_override_dominates() {
         // Operator intent: behaviour-class runtime captures
         // (`runtime`) should win this slice, overriding the
         // documentation evidence's authority-override that would

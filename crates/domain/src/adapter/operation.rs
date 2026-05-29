@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_operation_rejected_with_clear_error() {
+    fn unknown_operation_rejected() {
         let err = serde_json::from_str::<SourceOperation>("\"foo\"")
             .expect_err("unknown source operation must fail");
         let detail = err.to_string();

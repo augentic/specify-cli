@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn reinit_preserves_operator_edited_wasm_pkg_config() {
+    fn reinit_preserves_wasm_pkg_config() {
         let tmp = tempdir().unwrap();
         let target_dir = omnia_target_dir();
         init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("first init");

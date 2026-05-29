@@ -8,7 +8,7 @@ use specify_lints::lint::diagnostics::{Format, render};
 use crate::common::make_fixture;
 
 #[test]
-fn github_formatter_emits_one_line_per_finding() {
+fn one_line_per_finding() {
     let fixture = make_fixture();
     let rendered = render(Format::Github, &fixture).expect("github render succeeds");
     let lines: Vec<&str> = rendered.lines().collect();

@@ -25,7 +25,7 @@ fn write_skill(root: &Path, plugin: &str, skill: &str, frontmatter: &str) {
 }
 
 #[test]
-fn schema_check_reports_missing_use_when_clause() {
+fn schema_reports_missing_use_when() {
     let temp = tempfile::tempdir().expect("temp dir");
     write_framework_scaffold(temp.path());
     write_skill(
@@ -48,7 +48,7 @@ fn schema_check_reports_missing_use_when_clause() {
 }
 
 #[test]
-fn unknown_tool_check_reports_disallowed_tool() {
+fn unknown_tool_reports_disallowed() {
     let temp = tempfile::tempdir().expect("temp dir");
     write_framework_scaffold(temp.path());
     write_skill(

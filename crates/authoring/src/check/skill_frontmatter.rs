@@ -447,7 +447,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn argument_hint_grammar_accepts_valid_tokens() {
+    fn arg_hint_accepts_valid() {
         assert!(argument_hint_grammar_error("<slice-dir>").is_none());
         assert!(argument_hint_grammar_error("[crate-name]").is_none());
         assert!(argument_hint_grammar_error("<a|b|c>").is_none());
@@ -455,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn argument_hint_grammar_rejects_bare_prose() {
+    fn arg_hint_rejects_prose() {
         assert_eq!(argument_hint_grammar_error("the slice name"), Some("the".to_string()));
     }
 }

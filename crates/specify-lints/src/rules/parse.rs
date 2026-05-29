@@ -236,7 +236,7 @@ mod tests {
     /// frontmatter blocks (`applicability.adapters`, `references`)
     /// and confirms the body preserves multi-paragraph prose.
     #[test]
-    fn parses_documentation_verbatim_preservation_fixture() {
+    fn parses_verbatim_fixture() {
         let rule = parse_rule(DOCUMENTATION_VERBATIM_PRESERVATION).expect("parses");
         assert_eq!(rule.id, "SRC-001");
         assert_eq!(rule.severity, Severity::Important);
@@ -302,7 +302,7 @@ Body.
     /// consume the body as policy text, so any byte-level edit here
     /// is a correctness break.
     #[test]
-    fn body_is_preserved_verbatim_with_code_fences() {
+    fn body_preserved_with_fences() {
         let content = "---\n\
 id: UNI-014\n\
 title: Body fidelity\n\
@@ -440,7 +440,7 @@ deterministic_hints:
     /// schema enum. A rule whose applicability mixes both sides
     /// must shape-validate cleanly.
     #[test]
-    fn applicability_artifacts_accepts_framework_tokens() {
+    fn artifacts_accepts_framework_tokens() {
         let content = r"---
 id: UNI-014
 title: Framework artifact tokens

@@ -109,7 +109,7 @@ fn preview_emits_readable_text() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn conflict_check_no_conflicts_when_unmodified() {
+fn conflict_check_no_conflicts_unmodified() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 

@@ -50,7 +50,7 @@ fn run_composition(comp_path: &Path) -> Value {
 /// `results` array when no sibling files were found (the array is
 /// only emitted when auto-invoke folded something in).
 #[test]
-fn composition_clean_run_validates_silently_without_siblings() {
+fn clean_run_validates_without_siblings() {
     let yaml = r"version: 1
 screens:
   s:
@@ -78,7 +78,7 @@ screens:
 /// `*-when`) and `delta:` shape. This pins the contract distinction
 /// that justifies two runtime layers over the same schema.
 #[test]
-fn composition_permits_wired_keys_layout_rejects() {
+fn permits_wired_keys_layout_rejects() {
     let yaml = r"version: 1
 screens:
   s:
@@ -112,7 +112,7 @@ screens:
 /// lifecycle shape). The schema's `oneOf` accepts either `screens` or
 /// `delta`.
 #[test]
-fn composition_accepts_delta_documents() {
+fn accepts_delta_documents() {
     let yaml = r"version: 1
 delta:
   added:
@@ -143,7 +143,7 @@ delta:
 /// "tokens.yaml is itself broken" -- this catches "composition
 /// references something tokens.yaml does not declare").
 #[test]
-fn composition_unresolved_color_token_is_an_error() {
+fn unresolved_color_token_errors() {
     let composition = r"version: 1
 screens:
   s:
@@ -176,7 +176,7 @@ colors:
 /// `spacing.<name>`. A typo (`gap: mid` instead of `md`) MUST surface
 /// as an error.
 #[test]
-fn composition_unresolved_spacing_token_is_an_error() {
+fn unresolved_spacing_token_errors() {
     let composition = r"version: 1
 screens:
   s:
@@ -211,7 +211,7 @@ spacing:
 /// is a literal pixel value. This pins the string-or-number split at
 /// the resolver layer.
 #[test]
-fn composition_numeric_spacing_is_not_a_token_ref() {
+fn numeric_spacing_not_token_ref() {
     let composition = r"version: 1
 screens:
   s:
@@ -241,7 +241,7 @@ spacing:
 /// (`top: md`, etc.). Each side resolves against `spacing.<name>`
 /// independently.
 #[test]
-fn composition_padding_object_resolves_per_side() {
+fn padding_object_resolves_per_side() {
     let composition = r"version: 1
 screens:
   s:
@@ -281,7 +281,7 @@ spacing:
 /// `corner_radius` tokens against `cornerRadius.<name>`. A typo in
 /// either category surfaces as an error.
 #[test]
-fn composition_unresolved_elevation_and_corner_radius_are_errors() {
+fn unresolved_elevation_and_radius_error() {
     let composition = r"version: 1
 screens:
   s:
@@ -325,7 +325,7 @@ cornerRadius:
 /// produce composition-mode errors via the shared
 /// `collect_asset_references` walker.
 #[test]
-fn composition_unresolved_asset_id_is_an_error() {
+fn unresolved_asset_id_errors() {
     let composition = r"version: 1
 screens:
   s:
@@ -372,7 +372,7 @@ assets:
 /// `results[].report.errors`, which the dispatcher's
 /// `validate_exit_code` recurses through.
 #[test]
-fn composition_auto_invokes_tokens_and_folds_into_results() {
+fn auto_folds_tokens_into_results() {
     let composition = r"version: 1
 screens:
   s:
@@ -404,7 +404,7 @@ colors:
 /// reports surface and the order in `results` is `tokens` before
 /// `assets` (matches the order `validate all` will ship).
 #[test]
-fn composition_auto_invokes_tokens_and_assets_in_order() {
+fn auto_invokes_tokens_and_assets_in_order() {
     let composition = r"version: 1
 screens:
   s:
@@ -432,7 +432,7 @@ assets: {}
 /// instances with materially different skeletons in the `screens`
 /// shape MUST produce a composition-mode error.
 #[test]
-fn composition_structural_identity_violation_in_screens() {
+fn structural_identity_violation_in_screens() {
     let composition = r"version: 1
 screens:
   one:
@@ -476,7 +476,7 @@ screens:
 /// in `delta.added` must agree with the same slug modified in
 /// `delta.modified`.
 #[test]
-fn composition_structural_identity_violation_in_delta() {
+fn structural_identity_violation_in_delta() {
     let composition = r"version: 1
 delta:
   added:
@@ -524,7 +524,7 @@ delta:
 /// `<root>/design-system/tokens.yaml` and
 /// `<root>/design-system/assets.yaml`.
 #[test]
-fn composition_design_system_fallback_picks_up_siblings() {
+fn design_system_fallback_picks_siblings() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let specs_dir = tmp.path().join(".specify/specs");
     let design_dir = tmp.path().join("design-system");
@@ -570,7 +570,7 @@ colors:
 /// rejected by the F.2 patch's `not.enum` -- composition mode
 /// surfaces this as a schema error just like layout mode does.
 #[test]
-fn composition_reserved_component_slug_is_rejected() {
+fn reserved_component_slug_rejected() {
     let yaml = r"version: 1
 screens:
   s:
@@ -592,7 +592,7 @@ screens:
 }
 
 #[test]
-fn composition_invalid_yaml_surfaces_as_a_single_error_entry() {
+fn invalid_yaml_one_error() {
     let (_tmp, comp_path) = write_composition_project(": : not valid yaml :::\n", None, None);
     let envelope = run_composition(&comp_path);
     let errors = errors_array(&envelope);
@@ -605,7 +605,7 @@ fn composition_invalid_yaml_surfaces_as_a_single_error_entry() {
 }
 
 #[test]
-fn composition_missing_file_returns_invalid_project_error() {
+fn missing_file_invalid_project() {
     let args = Args {
         mode: ValidateMode::Composition,
         path: Some(PathBuf::from("/definitely/not/here/composition.yaml")),
@@ -749,7 +749,7 @@ screens:
 /// A confirmed catalog entry with zero `component:` references in
 /// the composition emits a warning (not an error).
 #[test]
-fn catalog_unreferenced_confirmed_entry_is_warning() {
+fn catalog_unreferenced_confirmed_warns() {
     let composition = r"version: 1
 screens:
   s:
@@ -776,7 +776,7 @@ screens:
 /// warning — `rejected` means the operator intentionally declined
 /// the component.
 #[test]
-fn catalog_unreferenced_rejected_entry_no_warning() {
+fn catalog_unreferenced_rejected_no_warning() {
     let composition = r"version: 1
 screens:
   s:

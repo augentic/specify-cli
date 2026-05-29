@@ -409,7 +409,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn url_scheme_detection_accepts_common_schemes() {
+    fn url_scheme_accepts_common() {
         assert!(is_url_scheme("https://example.com"));
         assert!(is_url_scheme("http://example.com"));
         assert!(is_url_scheme("mailto://x"));
@@ -426,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn drop_symlink_traversed_links_strips_descendants_and_the_link_itself() {
+    fn drop_traversed_strips_descendants() {
         let symlinks = vec![Symlink {
             path: "plugins/spec/skills/merge/references".to_string(),
             target: "../../references".to_string(),

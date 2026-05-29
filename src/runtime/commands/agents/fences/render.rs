@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_creates_full_document_when_agents_is_absent() {
+    fn writer_creates_full_document() {
         let planned = plan_agents_write(None, GENERATED, false).expect("plan ok");
 
         assert_eq!(planned.bytes, GENERATED);
@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_requires_generated_document_to_be_fenced() {
+    fn writer_requires_fenced() {
         let err = plan_agents_write(None, b"# generated but unfenced\n", false)
             .expect_err("generated document without fences must fail");
 

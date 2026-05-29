@@ -83,7 +83,7 @@ fn schema_carries_no_reserved_hint_kinds() {
 }
 
 #[test]
-fn every_schema_hint_kind_has_an_interpreter_module() {
+fn every_kind_has_interpreter() {
     let schema: Value =
         serde_json::from_str(specify_schema::RULE_JSON_SCHEMA).expect("rule.schema.json parses");
     let mut kinds = BTreeSet::new();
@@ -109,7 +109,7 @@ fn every_schema_hint_kind_has_an_interpreter_module() {
 }
 
 #[test]
-fn every_interpreter_module_maps_to_a_schema_hint_kind() {
+fn every_interpreter_maps_to_kind() {
     let schema: Value =
         serde_json::from_str(specify_schema::RULE_JSON_SCHEMA).expect("rule.schema.json parses");
     let mut kinds = BTreeSet::new();

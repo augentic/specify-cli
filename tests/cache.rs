@@ -6,7 +6,7 @@ mod common;
 use common::{Project, parse_stdout, specrun};
 
 #[test]
-fn source_resolve_explain_prints_empty_fingerprint_chain() {
+fn source_resolve_explain_empty_chain() {
     let project = Project::init();
     let adapter_dir = project.root().join("adapters/sources/code-typescript/briefs");
     fs::create_dir_all(&adapter_dir).expect("create source adapter dirs");

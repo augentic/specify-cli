@@ -16,7 +16,7 @@ fn scaffold_framework(root: &Path) {
 // `adapter.schema-violation` predicate row (RFC-34 C8 / §F5).
 
 #[test]
-fn missing_manifest_on_adapter_directory_without_yaml() {
+fn missing_manifest_without_yaml() {
     let temp = tempfile::tempdir().expect("tempdir");
     scaffold_framework(temp.path());
 

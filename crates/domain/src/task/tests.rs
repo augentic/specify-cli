@@ -19,7 +19,7 @@ const HAPPY_PATH: &str = "\
 ";
 
 #[test]
-fn parses_two_groups_four_tasks_mixed_completion() {
+fn parses_groups_and_tasks() {
     let progress = parse_tasks(HAPPY_PATH);
 
     assert_eq!(progress.total, 4);
@@ -60,7 +60,7 @@ fn parses_two_groups_four_tasks_mixed_completion() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn mark_complete_flips_checkbox_and_preserves_the_rest() {
+fn mark_complete_flips_checkbox() {
     let out = mark_complete(HAPPY_PATH, "1.2").expect("1.2 exists and is unchecked");
 
     assert!(out.contains("- [x] 1.2 Configure CI <!-- skill: omnia:crate-writer -->"));
@@ -87,7 +87,7 @@ fn mark_complete_flips_checkbox_and_preserves_the_rest() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn mark_complete_already_complete_returns_input_byte_identical() {
+fn mark_complete_idempotent() {
     let out = mark_complete(HAPPY_PATH, "1.1").expect("1.1 exists");
     assert_eq!(out, HAPPY_PATH);
     assert_eq!(out.as_bytes(), HAPPY_PATH.as_bytes());
@@ -98,7 +98,7 @@ fn mark_complete_already_complete_returns_input_byte_identical() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn mark_complete_missing_task_returns_config_error() {
+fn mark_complete_missing_task_errors() {
     let err = mark_complete(HAPPY_PATH, "9.9").expect_err("9.9 does not exist");
     match err {
         Error::Diag { detail: msg, .. } => {
@@ -113,7 +113,7 @@ fn mark_complete_missing_task_returns_config_error() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn skill_directive_parses_multiple_plugins_and_skills() {
+fn skill_directive_parses_variants() {
     let input = "\
 ## 1. Group
 
@@ -154,7 +154,7 @@ fn skill_directive_parses_multiple_plugins_and_skills() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn non_skill_comment_is_preserved_in_description() {
+fn non_skill_comment_preserved() {
     let input = "\
 ## 3. Notes
 
@@ -203,7 +203,7 @@ fn mark_complete_targets_first_duplicate_only() {
 }
 
 #[test]
-fn mark_complete_first_duplicate_already_complete_is_noop() {
+fn mark_complete_duplicate_complete_noop() {
     let input = "\
 ## 1. Group
 
@@ -320,7 +320,7 @@ fn non_task_bullets_are_ignored() {
 }
 
 #[test]
-fn deep_task_numbers_are_preserved_verbatim() {
+fn deep_task_numbers_preserved() {
     let input = "\
 ## 1. Deep
 
@@ -335,7 +335,7 @@ fn deep_task_numbers_are_preserved_verbatim() {
 }
 
 #[test]
-fn mark_complete_preserves_windows_line_endings_in_other_lines() {
+fn mark_complete_preserves_crlf() {
     // CRLF in the input — ensure `mark_complete` edits exactly one byte
     // range and doesn't normalise line endings elsewhere.
     let input = "## 1. Group\r\n\r\n- [ ] 1.1 task\r\n- [ ] 1.2 other\r\n";

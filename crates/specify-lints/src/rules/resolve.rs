@@ -534,7 +534,7 @@ mod tests {
     /// project tree carries the shared rules. Probe step 2 fires and
     /// resolution succeeds with `project_dir` as the rules root.
     #[test]
-    fn rules_root_probe_falls_back_to_project_dir() {
+    fn rules_root_probe_falls_back() {
         let project = TempDir::new().expect("project");
         write_rule(
             &project.path().join("adapters/shared/rules/universal/uni-001.md"),
@@ -556,7 +556,7 @@ mod tests {
     /// Test 3: probe step 3 — no explicit root, no monorepo fallback —
     /// must produce the closed `rules-root-required` error.
     #[test]
-    fn rules_root_required_error_when_no_probe_succeeds() {
+    fn rules_root_required_when_no_probe() {
         let project = TempDir::new().expect("project");
         let sources = no_sources();
         let err = resolve(&inputs(project.path(), None, "omnia", &sources)).unwrap_err();
@@ -685,7 +685,7 @@ mod tests {
     /// cache present — the result carries `PathRoot::ProjectDir` and
     /// the path starts with `.specify/.cache/manifests/...`.
     #[test]
-    fn manifest_cache_overlay_when_project_local_missing() {
+    fn cache_overlay_when_local_missing() {
         let rules_root = TempDir::new().expect("rules root");
         let project = TempDir::new().expect("project");
         write_rule(
@@ -715,7 +715,7 @@ mod tests {
     /// twice — fails with [`ResolveError::DuplicateRuleId`] regardless
     /// of namespace ownership (which is `check::rules`'s problem).
     #[test]
-    fn duplicate_rule_id_across_overlays_errors() {
+    fn duplicate_rule_id_errors() {
         let rules_root = TempDir::new().expect("rules root");
         let project = TempDir::new().expect("project");
         write_rule(
@@ -879,7 +879,7 @@ mod tests {
     /// Parse failures bubble up as [`ResolveError::Parse`] carrying
     /// the offending absolute path.
     #[test]
-    fn parse_error_surfaces_with_offending_path() {
+    fn parse_error_includes_path() {
         let rules_root = TempDir::new().expect("rules root");
         let project = TempDir::new().expect("project");
         let bad_path = rules_root.path().join("adapters/shared/rules/universal/broken.md");

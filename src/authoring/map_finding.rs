@@ -242,7 +242,7 @@ mod tests {
     /// `[...]` prefix so downstream consumers can recover the
     /// imperative identifier even though `rule_id` is `None`.
     #[test]
-    fn title_prefixes_authoring_rule_id_in_brackets() {
+    fn title_prefixes_rule_id() {
         let mapped = map_finding(&fixture(
             "rules.schema-violation",
             "Rule frontmatter failed schema validation.\nsecond line ignored",
@@ -286,7 +286,7 @@ mod tests {
     /// change, or adapter context — and carry `Artifact::Unknown`
     /// until a future enrichment pass classifies them.
     #[test]
-    fn artifact_is_unknown_and_context_is_empty() {
+    fn artifact_unknown_context_empty() {
         let mapped = map_finding(&fixture("skill.unknown-tool", "msg", None, 1, None));
         assert_eq!(mapped.artifact, Artifact::Unknown);
         assert!(mapped.slice.is_none());
@@ -302,7 +302,7 @@ mod tests {
     /// `end_line` / `end_column` always `None` because the authoring
     /// `Location` does not carry ranges.
     #[test]
-    fn location_widens_usize_fields_and_clears_range_endings() {
+    fn location_widens_and_clears_endings() {
         let mapped =
             map_finding(&fixture("skill.unknown-tool", "msg", Some("foo/bar.md"), 42, Some(7)));
         let loc = mapped.location.expect("location must round-trip");
@@ -332,7 +332,7 @@ mod tests {
     /// must not introduce non-determinism (e.g. wall-clock,
     /// hash-map iteration order).
     #[test]
-    fn fingerprint_is_deterministic_across_runs() {
+    fn fingerprint_deterministic() {
         let input = fixture(
             "skill.unknown-tool",
             "unknown `allowed-tools` entry in skill frontmatter",
@@ -388,7 +388,7 @@ mod tests {
     /// (whether produced on Windows or hand-built in a test) is
     /// rewritten to `/`.
     #[test]
-    fn path_separators_are_normalised_to_forward_slash() {
+    fn path_separators_normalised() {
         let mapped =
             map_finding(&fixture("skill.unknown-tool", "msg", Some("foo\\bar\\baz.md"), 1, None));
         let loc = mapped.location.expect("location must round-trip");

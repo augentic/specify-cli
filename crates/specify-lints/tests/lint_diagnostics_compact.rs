@@ -7,7 +7,7 @@ use specify_lints::lint::diagnostics::{Format, render};
 use crate::common::make_fixture;
 
 #[test]
-fn compact_formatter_emits_one_tsv_line_per_finding() {
+fn one_tsv_line_per_finding() {
     let fixture = make_fixture();
     let rendered = render(Format::Compact, &fixture).expect("compact render succeeds");
     assert!(rendered.ends_with('\n'));

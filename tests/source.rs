@@ -36,7 +36,7 @@ fn stage_source_fixture(project: &Project, name: &str) {
 }
 
 #[test]
-fn source_resolve_local_returns_resolved_manifest() {
+fn resolve_local_returns_manifest() {
     let project = Project::init();
     stage_source_fixture(&project, "code-typescript");
 
@@ -63,7 +63,7 @@ fn source_resolve_local_returns_resolved_manifest() {
 }
 
 #[test]
-fn source_resolve_missing_emits_not_found() {
+fn resolve_missing_emits_not_found() {
     let project = Project::init();
 
     let assert = specrun()

@@ -121,7 +121,7 @@ mod tests {
     use crate::config::Layout;
 
     #[test]
-    fn with_state_propagates_closure_error_and_skips_write() {
+    fn with_state_propagates_error_skips_write() {
         let tmp = tempdir().expect("tempdir");
         let layout = Layout::new(tmp.path());
         let initial = Registry {
@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn with_state_require_existing_round_trips_mutation() {
+    fn with_state_require_existing_round_trips() {
         let tmp = tempdir().expect("tempdir");
         let layout = Layout::new(tmp.path());
         let initial = Registry {
@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn project_config_load_maps_not_initialized_to_none() {
+    fn load_maps_not_initialized_to_none() {
         let tmp = tempdir().expect("tempdir");
         let layout = Layout::new(tmp.path());
         let loaded = <ProjectConfig as AtomicYaml>::load_state(layout).expect("load ok");
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn project_config_load_round_trips_when_present() {
+    fn load_round_trips_when_present() {
         let tmp = tempdir().expect("tempdir");
         let layout = Layout::new(tmp.path());
         let cfg = ProjectConfig {

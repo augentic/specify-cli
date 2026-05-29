@@ -241,7 +241,7 @@ mod tests {
     /// versioned, target/source carry through, and rules emerge
     /// sorted per the closed four-tuple.
     #[test]
-    fn build_resolved_rules_emits_versioned_envelope() {
+    fn build_emits_versioned_envelope() {
         let rules_root = TempDir::new().expect("rules root");
         let project = TempDir::new().expect("project");
         write_rule(
@@ -280,7 +280,7 @@ mod tests {
     /// Windows). Guards the cross-platform determinism the plan calls
     /// out.
     #[test]
-    fn resolved_paths_are_anchored_and_not_absolute() {
+    fn paths_anchored_not_absolute() {
         let rules_root = TempDir::new().expect("rules root");
         let project = TempDir::new().expect("project");
         write_rule(
@@ -327,7 +327,7 @@ mod tests {
     /// runs. Pins the stability guarantee CH-17 will rely on for
     /// golden tests.
     #[test]
-    fn build_resolved_rules_is_byte_stable_across_runs() {
+    fn build_byte_stable() {
         let rules_root = TempDir::new().expect("rules root");
         let project = TempDir::new().expect("project");
         write_rule(

@@ -40,7 +40,7 @@ fn envelope_validator() -> jsonschema::Validator {
 }
 
 #[test]
-fn json_formatter_round_trips_through_schema() {
+fn round_trips_through_schema() {
     let fixture = make_fixture();
     let rendered = render(Format::Json, &fixture).expect("json render succeeds");
     assert!(rendered.ends_with('\n'), "render must terminate with a newline");
@@ -70,7 +70,7 @@ fn json_formatter_rejects_bad_envelope() {
 }
 
 #[test]
-fn json_formatter_rejects_missing_summary_key() {
+fn rejects_missing_summary_key() {
     let bad = json!({
         "version": 1,
         "summary": { "critical": 0, "important": 0, "suggestion": 0 },

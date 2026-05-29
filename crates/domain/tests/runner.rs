@@ -77,7 +77,7 @@ fn missing_artifact_produces_synth_failure() {
 }
 
 #[test]
-fn validate_slice_reports_passed_without_panics_across_semantic_rules() {
+fn validate_slice_passes_all_rules() {
     // Reuses the good fixture to exercise the Semantic-rules-never-called
     // invariant in situ: if any Semantic rule's `check` were invoked the
     // runner would panic (by construction) and this test would fail.

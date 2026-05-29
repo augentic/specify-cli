@@ -126,7 +126,7 @@ fn embedded_assets_schema_compiles() {
 }
 
 #[test]
-fn appendix_d_validates_cleanly() {
+fn appendix_d_validates() {
     let file = write_named(APPENDIX_D_TOKENS_YAML);
     let args = Args {
         mode: ValidateMode::Tokens,
@@ -190,7 +190,7 @@ fn unknown_provenance_kind_is_rejected() {
 }
 
 #[test]
-fn invalid_yaml_surfaces_as_a_single_error_entry() {
+fn invalid_yaml_one_error() {
     let file = write_named(": : not valid yaml :::\n");
     let args = Args {
         mode: ValidateMode::Tokens,
@@ -207,7 +207,7 @@ fn invalid_yaml_surfaces_as_a_single_error_entry() {
 }
 
 #[test]
-fn missing_file_returns_invalid_project_error() {
+fn missing_file_invalid_project() {
     let args = Args {
         mode: ValidateMode::Tokens,
         path: Some(PathBuf::from("/definitely/not/here/tokens.yaml")),
@@ -221,7 +221,7 @@ fn missing_file_returns_invalid_project_error() {
 }
 
 #[test]
-fn typefaces_with_typeface_references_validates_cleanly() {
+fn typeface_references_validate() {
     let yaml = r#"version: 1
 typefaces:
   default:
@@ -328,7 +328,7 @@ fn typeface_entry_requires_family() {
 }
 
 #[test]
-fn validate_mode_as_str_matches_value_enum_spelling() {
+fn mode_as_str_matches_enum() {
     for (mode, expected) in [
         (ValidateMode::Layout, "layout"),
         (ValidateMode::Composition, "composition"),

@@ -248,7 +248,7 @@ projects:
 }
 
 #[test]
-fn registry_rejects_duplicate_project_names() {
+fn rejects_duplicate_project_names() {
     let yaml = "\
 version: 1
 projects:
@@ -280,7 +280,7 @@ fn registry_accepts_empty_projects_list() {
 }
 
 #[test]
-fn registry_accepts_single_project_and_is_single_repo() {
+fn accepts_single_project_single_repo() {
     let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
     let registry = Registry::load(tmp.path()).unwrap().unwrap();
     assert_eq!(registry.projects.len(), 1);
@@ -288,7 +288,7 @@ fn registry_accepts_single_project_and_is_single_repo() {
 }
 
 #[test]
-fn registry_accepts_multi_project_and_is_single_repo_false() {
+fn accepts_multi_project_not_single_repo() {
     let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
     let registry = Registry::load(tmp.path()).unwrap().unwrap();
     assert_eq!(registry.projects.len(), 3);
@@ -331,7 +331,7 @@ fn registry_project_order_preserved() {
 }
 
 #[test]
-fn registry_multi_project_with_descriptions_validates() {
+fn multi_project_with_descriptions_validates() {
     let yaml = "\
 version: 1
 projects:
@@ -352,7 +352,7 @@ projects:
 }
 
 #[test]
-fn registry_multi_project_missing_description_rejected() {
+fn multi_project_missing_description_rejected() {
     let yaml = "\
 version: 1
 projects:
@@ -376,7 +376,7 @@ projects:
 }
 
 #[test]
-fn registry_multi_project_empty_description_rejected() {
+fn multi_project_empty_description_rejected() {
     let yaml = "\
 version: 1
 projects:
@@ -401,7 +401,7 @@ projects:
 }
 
 #[test]
-fn registry_single_project_without_description_ok() {
+fn single_project_without_description_ok() {
     let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
     let registry = Registry::load(tmp.path()).expect("parses").expect("present");
     assert_eq!(registry.projects.len(), 1);
@@ -409,7 +409,7 @@ fn registry_single_project_without_description_ok() {
 }
 
 #[test]
-fn registry_description_round_trips_through_serde() {
+fn description_round_trips_through_serde() {
     let original = RegistryProject {
         name: "traffic".into(),
         url: ".".into(),
@@ -423,7 +423,7 @@ fn registry_description_round_trips_through_serde() {
 }
 
 #[test]
-fn registry_path_helper_points_at_repo_root() {
+fn path_helper_points_at_repo_root() {
     let dir = Path::new("/tmp/some/project");
     assert_eq!(Registry::path(dir), PathBuf::from("/tmp/some/project/registry.yaml"));
 }
@@ -444,7 +444,7 @@ fn registry_with_one_url(url: &str) -> Registry {
 }
 
 #[test]
-fn registry_project_url_materialises_as_symlink_classification() {
+fn project_url_materialises_as_symlink() {
     for (url, symlink) in [
         (".", true),
         ("../peer", true),
@@ -510,7 +510,7 @@ fn registry_rejects_file_url_scheme() {
 }
 
 #[test]
-fn registry_rejects_colon_without_scheme_or_git_at() {
+fn rejects_colon_without_scheme_or_git_at() {
     let err = registry_with_one_url("weird:path")
         .validate_shape()
         .expect_err("colon form must be rejected");
@@ -521,7 +521,7 @@ fn registry_rejects_colon_without_scheme_or_git_at() {
 }
 
 #[test]
-fn registry_rejects_absolute_unix_path_as_url() {
+fn rejects_absolute_unix_path_as_url() {
     let err = registry_with_one_url("/absolute/path")
         .validate_shape()
         .expect_err("absolute path must be rejected");
@@ -542,7 +542,7 @@ fn registry_rejects_whitespace_only_url() {
 }
 
 #[test]
-fn registry_rejects_url_with_leading_whitespace() {
+fn rejects_url_with_leading_whitespace() {
     let err = registry_with_one_url(" https://example.com/a")
         .validate_shape()
         .expect_err("leading space must be rejected");
@@ -555,7 +555,7 @@ fn registry_rejects_url_with_leading_whitespace() {
 // ---------- Registry hub-mode validation (registry hub-mode validation) ----------
 
 #[test]
-fn registry_validate_shape_hub_accepts_empty_projects() {
+fn validate_shape_hub_accepts_empty_projects() {
     let reg = Registry {
         version: 1,
         projects: vec![],
@@ -564,7 +564,7 @@ fn registry_validate_shape_hub_accepts_empty_projects() {
 }
 
 #[test]
-fn registry_validate_shape_hub_accepts_non_dot_urls() {
+fn validate_shape_hub_accepts_non_dot_urls() {
     let reg = Registry {
         version: 1,
         projects: vec![
@@ -588,7 +588,7 @@ fn registry_validate_shape_hub_accepts_non_dot_urls() {
 }
 
 #[test]
-fn registry_validate_shape_hub_rejects_dot_url_entry() {
+fn validate_shape_hub_rejects_dot_url_entry() {
     let reg = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -614,7 +614,7 @@ fn registry_validate_shape_hub_rejects_dot_url_entry() {
 }
 
 #[test]
-fn registry_validate_shape_hub_rejects_dot_url_in_multi_project() {
+fn validate_shape_hub_rejects_dot_url_multi() {
     let reg = Registry {
         version: 1,
         projects: vec![
@@ -645,7 +645,7 @@ fn registry_validate_shape_hub_rejects_dot_url_in_multi_project() {
 }
 
 #[test]
-fn registry_validate_shape_hub_inherits_base_shape_errors() {
+fn validate_shape_hub_inherits_base_errors() {
     // version != 1 is a base-shape error; hub mode must surface it
     // without ever reaching the `hub-cannot-be-project` check.
     let reg = Registry {
@@ -666,7 +666,7 @@ fn registry_validate_shape_hub_inherits_base_shape_errors() {
 }
 
 #[test]
-fn registry_validate_shape_unchanged_for_dot_url() {
+fn validate_shape_unchanged_for_dot_url() {
     // The base `validate_shape` continues to accept `url: .` — only
     // the new hub-only mode rejects it. This pins the additive-API
     // contract from the registry design.
@@ -709,7 +709,7 @@ projects:
 ";
 
 #[test]
-fn registry_with_contract_roles_parses_and_validates() {
+fn with_contract_roles_parses_and_validates() {
     let tmp = scaffold_registry(REGISTRY_WITH_CONTRACT_ROLES_YAML);
     let registry = Registry::load(tmp.path()).expect("parses").expect("present");
     assert_eq!(registry.projects.len(), 2);
@@ -726,7 +726,7 @@ fn registry_with_contract_roles_parses_and_validates() {
 }
 
 #[test]
-fn registry_without_contract_roles_still_parses() {
+fn without_contract_roles_still_parses() {
     let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
     let registry = Registry::load(tmp.path()).expect("parses").expect("present");
     for project in &registry.projects {
@@ -735,7 +735,7 @@ fn registry_without_contract_roles_still_parses() {
 }
 
 #[test]
-fn registry_contract_roles_round_trip_omits_empty_fields() {
+fn contract_roles_round_trip_omits_empty() {
     let original = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -756,7 +756,7 @@ fn registry_contract_roles_round_trip_omits_empty_fields() {
 }
 
 #[test]
-fn registry_contract_roles_none_omits_contracts_key() {
+fn contract_roles_none_omits_contracts_key() {
     let original = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -772,7 +772,7 @@ fn registry_contract_roles_none_omits_contracts_key() {
 }
 
 #[test]
-fn registry_rejects_single_producer_violation() {
+fn rejects_single_producer_violation() {
     let yaml = "\
 version: 1
 projects:
@@ -827,7 +827,7 @@ projects:
 }
 
 #[test]
-fn registry_rejects_absolute_path_in_contract_role() {
+fn rejects_absolute_path_in_contract_role() {
     let yaml = "\
 version: 1
 projects:
@@ -850,7 +850,7 @@ projects:
 }
 
 #[test]
-fn registry_rejects_dotdot_in_contract_path() {
+fn rejects_dotdot_in_contract_path() {
     let yaml = "\
 version: 1
 projects:
@@ -873,7 +873,7 @@ projects:
 }
 
 #[test]
-fn registry_rejects_self_consistency_violation() {
+fn rejects_self_consistency_violation() {
     let yaml = "\
 version: 1
 projects:
@@ -900,7 +900,7 @@ projects:
 }
 
 #[test]
-fn registry_rejects_unknown_contract_roles_key() {
+fn rejects_unknown_contract_roles_key() {
     let yaml = "\
 version: 1
 projects:

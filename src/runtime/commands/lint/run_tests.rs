@@ -171,7 +171,7 @@ fn error_mapping_matches_d8_table() {
 }
 
 #[test]
-fn slice_tasks_parser_collects_bullet_paths() {
+fn tasks_parser_collects_paths() {
     let text = "## Tasks\n\n- intro\n\n## Touches\n\n- crates/billing/src/lib.rs\n* docs/billing.md\n\n## Notes\n\n- unrelated\n";
     let paths = parse_slice_tasks_paths(text);
     assert_eq!(
@@ -181,7 +181,7 @@ fn slice_tasks_parser_collects_bullet_paths() {
 }
 
 #[test]
-fn slice_tasks_parser_handles_both_touches_and_produces() {
+fn tasks_parser_handles_touches_and_produces() {
     let text = "## Produces\n\n- a.md\n\n## Touches\n\n- b.md\n";
     let paths = parse_slice_tasks_paths(text);
     assert_eq!(paths, vec![PathBuf::from("a.md"), PathBuf::from("b.md")]);

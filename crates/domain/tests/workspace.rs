@@ -1010,7 +1010,7 @@ fn c07_push_selector_unknown_preflight() {
 // ---------- forge:: branch matchers ----------------------------------
 
 #[test]
-fn forge_branch_matchers_round_trip_canonical_inputs() {
+fn forge_branch_matchers_round_trip() {
     assert!(is_specify_branch("specify/foo"));
     assert!(is_specify_branch("specify/platform-v2"));
     assert!(!is_specify_branch("feature/bar"));

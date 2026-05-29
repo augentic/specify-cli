@@ -42,7 +42,7 @@ fn synthetic_envelope_stdout() -> Vec<u8> {
 }
 
 #[test]
-fn tool_envelope_findings_thread_through_unchanged() {
+fn tool_findings_thread_through() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("openapi.json"), "{}").expect("write openapi");
     let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
@@ -98,7 +98,7 @@ fn tool_undeclared_emits_synthetic_finding() {
 }
 
 #[test]
-fn tool_invocation_failed_truncates_oversize_stderr() {
+fn tool_failure_truncates_stderr() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("openapi.json"), "{}").expect("write openapi");
     let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
@@ -141,7 +141,7 @@ fn tool_invocation_failed_truncates_oversize_stderr() {
 // any variant works as a sample) and asserting `reserved_hint_summary`
 // still mints the `review.reserved-hint-skipped` finding in both modes.
 #[test]
-fn reserved_summary_folds_skipped_entries_in_both_modes() {
+fn reserved_summary_folds_skipped() {
     let skipped = vec![ReservedSkipped {
         rule_id: "UNI-906".to_string(),
         hint_index: 0,

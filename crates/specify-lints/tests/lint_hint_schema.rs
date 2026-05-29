@@ -16,7 +16,7 @@ use specify_lints::lint::index::build;
 use specify_lints::rules::{FindingEvidence, HintKind};
 
 #[test]
-fn schema_hint_against_codex_rule_flags_invalid_frontmatter() {
+fn flags_invalid_frontmatter() {
     let tmp = tempfile::tempdir().expect("tmp");
     let bad = "---\nid: UNI-999\ntitle: Bad\nseverity: bogus\ntrigger: trigger\n---\n## Rule\n";
     fs::write(tmp.path().join("rule.md"), bad).expect("write rule.md");

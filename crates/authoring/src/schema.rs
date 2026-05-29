@@ -147,7 +147,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validate_frontmatter_rejects_invalid_skill_description() {
+    fn validate_rejects_invalid_description() {
         let tempdir = tempfile::tempdir().expect("tempdir");
         std::fs::create_dir_all(tempdir.path().join("plugins")).expect("plugins");
         std::fs::create_dir_all(tempdir.path().join("adapters")).expect("adapters");
@@ -170,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_frontmatter_accepts_minimal_valid_skill() {
+    fn validate_accepts_minimal_skill() {
         let tempdir = tempfile::tempdir().expect("tempdir");
         std::fs::create_dir_all(tempdir.path().join("plugins")).expect("plugins");
         std::fs::create_dir_all(tempdir.path().join("adapters")).expect("adapters");

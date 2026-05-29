@@ -212,7 +212,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn namespace_prefix_extracts_well_formed_ids() {
+    fn namespace_prefix_extracts_ids() {
         assert_eq!(namespace_prefix("CORE-009"), Some("CORE"));
         assert_eq!(namespace_prefix("UNI-014"), Some("UNI"));
         assert_eq!(namespace_prefix("OMNIA-001"), Some("OMNIA"));

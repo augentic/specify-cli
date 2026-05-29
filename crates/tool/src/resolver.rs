@@ -237,7 +237,7 @@ mod tests {
     };
 
     #[test]
-    fn local_path_cache_miss_hit_and_source_change() {
+    fn cache_miss_hit_and_change() {
         let cache_dir = scratch_dir("resolver-local-cache");
         let project_dir = scratch_dir("resolver-local-project");
         let source_dir = scratch_dir("resolver-local-source");
@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn project_and_adapter_scopes_have_isolated_cache_dirs() {
+    fn scopes_have_isolated_cache_dirs() {
         let cache_dir = scratch_dir("resolver-scope-cache");
         let project_dir = scratch_dir("resolver-scope-project");
         let source_dir = scratch_dir("resolver-scope-source");
@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn package_source_uses_injected_fetcher_and_records_metadata() {
+    fn package_source_uses_fetcher() {
         let cache_dir = scratch_dir("resolver-package-cache");
         let project_dir = scratch_dir("resolver-package-project");
         let scope = project_scope();
@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn template_path_source_expands_and_resolves() {
+    fn template_source_expands() {
         let cache_dir = scratch_dir("resolver-template-cache");
         let project_dir = scratch_dir("resolver-template-project");
         let wasm_dir = project_dir.join("tools");
@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn template_path_with_parent_segments_resolves() {
+    fn template_with_parent_segments_resolves() {
         let cache_dir = scratch_dir("resolver-template-parent-cache");
         let project_dir = scratch_dir("resolver-template-parent-project");
         let sibling_dir = project_dir.parent().expect("parent").join("sibling-cli");

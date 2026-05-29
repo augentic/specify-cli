@@ -529,7 +529,7 @@ mod tests {
     /// violation is reported even when the evidence cap and
     /// fingerprint are independently broken.
     #[test]
-    fn validate_short_circuits_on_first_failure() {
+    fn validate_short_circuits() {
         let mut finding = sample_finding();
         finding.title = String::new();
         finding.fingerprint =

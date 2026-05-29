@@ -187,7 +187,7 @@ fn malformed_source_key_reported() {
 }
 
 #[test]
-fn tag_status_mismatch_reported_when_tag_lies() {
+fn tag_mismatch_when_tag_lies() {
     let parsed = parse_spec_md(
         "### Requirement: Mismatched tag [divergence]\n\nID: REQ-001\nSources: [a]\nStatus: agreed\n",
     );
@@ -199,7 +199,7 @@ fn tag_status_mismatch_reported_when_tag_lies() {
 }
 
 #[test]
-fn tag_status_mismatch_reported_when_status_lies() {
+fn tag_mismatch_when_status_lies() {
     let parsed = parse_spec_md(
         "### Requirement: Status without tag\n\nID: REQ-001\nSources: [a]\nStatus: divergence\n",
     );
@@ -290,7 +290,7 @@ fn req_id_shape_predicate() {
 }
 
 #[test]
-fn requirement_status_round_trips_kebab_case() {
+fn requirement_status_round_trips() {
     for (variant, wire) in [
         (RequirementStatus::Agreed, "agreed"),
         (RequirementStatus::Unknown, "unknown"),

@@ -425,7 +425,7 @@ mod tests {
     /// Test 8: `languages` populated, caller supplies none, and
     /// `include_unmatched` is off — rule filtered.
     #[test]
-    fn languages_caller_absent_excluded_by_default() {
+    fn languages_absent_excluded() {
         let entry = make_entry(
             "LANG-003",
             Some(applicability_with(None, Some(vec!["rust"]), None, None)),
@@ -439,7 +439,7 @@ mod tests {
     /// Test 9: `languages` populated, caller supplies none, and
     /// `include_unmatched` is on — rule passes.
     #[test]
-    fn languages_caller_absent_passes_with_include_unmatched() {
+    fn languages_absent_passes_with_include() {
         let entry = make_entry(
             "LANG-004",
             Some(applicability_with(None, Some(vec!["rust"]), None, None)),
@@ -467,7 +467,7 @@ mod tests {
     /// Test 11: `artifacts` populated + `include_unmatched` — rule
     /// passes.
     #[test]
-    fn artifacts_populated_passes_with_include_unmatched() {
+    fn artifacts_passes_with_include() {
         let entry = make_entry(
             "ART-002",
             Some(applicability_with(None, None, Some(vec!["code"]), None)),
@@ -530,7 +530,7 @@ mod tests {
     /// Test 15: a single `*` segment does not cross `/`. The same
     /// pattern matches `src/lib.rs` but not `src/nested/lib.rs`.
     #[test]
-    fn paths_single_star_does_not_cross_separator() {
+    fn single_star_no_cross_separator() {
         let entry = make_entry(
             "PATH-004",
             Some(applicability_with(None, None, None, Some(vec!["src/*.rs"]))),
@@ -647,7 +647,7 @@ mod tests {
     /// `--include-core` is orthogonal to other origins: shared / source
     /// / target entries flow through whether the flag is on or off.
     #[test]
-    fn core_filter_is_orthogonal_to_other_origins() {
+    fn core_filter_orthogonal() {
         let shared = make_entry("UNI-001", None, None);
         let core = core_entry("CORE-001");
         let inputs = make_inputs("omnia", &[], &[], &[], false, false);

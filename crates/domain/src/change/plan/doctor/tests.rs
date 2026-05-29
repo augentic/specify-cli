@@ -27,7 +27,7 @@ fn plan_with_sources(sources: Vec<(&str, &str)>, changes: Vec<Entry>) -> Plan {
 // ------- 1. Cycle detection ----------------------------------------
 
 #[test]
-fn doctor_cycle_two_node() {
+fn cycle_two_node() {
     let plan = plan_with_changes(vec![
         change_with_deps("a", Status::Pending, &["b"]),
         change_with_deps("b", Status::Pending, &["a"]),
@@ -44,7 +44,7 @@ fn doctor_cycle_two_node() {
 }
 
 #[test]
-fn doctor_cycle_three_node() {
+fn cycle_three_node() {
     let plan = plan_with_changes(vec![
         change_with_deps("a", Status::Pending, &["c"]),
         change_with_deps("b", Status::Pending, &["a"]),
@@ -65,7 +65,7 @@ fn doctor_cycle_three_node() {
 }
 
 #[test]
-fn doctor_cycle_two_disjoint() {
+fn cycle_two_disjoint() {
     let plan = plan_with_changes(vec![
         change_with_deps("a", Status::Pending, &["b"]),
         change_with_deps("b", Status::Pending, &["a"]),
@@ -77,7 +77,7 @@ fn doctor_cycle_two_disjoint() {
 }
 
 #[test]
-fn doctor_cycle_self_loop() {
+fn cycle_self_loop() {
     let plan = plan_with_changes(vec![change_with_deps("a", Status::Pending, &["a"])]);
     let hits: Vec<_> =
         doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
@@ -91,7 +91,7 @@ fn doctor_cycle_self_loop() {
 }
 
 #[test]
-fn doctor_no_cycle_quiet() {
+fn no_cycle_quiet() {
     let plan = plan_with_changes(vec![
         change("a", Status::Done),
         change_with_deps("b", Status::Pending, &["a"]),
@@ -104,7 +104,7 @@ fn doctor_no_cycle_quiet() {
 // ------- 2. Orphan source keys -------------------------------------
 
 #[test]
-fn doctor_orphan_source_zero() {
+fn orphan_source_zero() {
     let mut e = change("a", Status::Pending);
     e.sources = vec![SliceSourceBinding::bare("monolith")];
     let plan = plan_with_sources(vec![("monolith", "/path")], vec![e]);
@@ -113,7 +113,7 @@ fn doctor_orphan_source_zero() {
 }
 
 #[test]
-fn doctor_orphan_source_one() {
+fn orphan_source_one() {
     let plan = plan_with_sources(
         vec![("monolith", "/path"), ("orphan", "/elsewhere")],
         vec![{
@@ -133,7 +133,7 @@ fn doctor_orphan_source_one() {
 }
 
 #[test]
-fn doctor_orphan_source_multiple_sorted() {
+fn orphan_source_multiple_sorted() {
     let plan = plan_with_sources(
         vec![("alpha", "/a"), ("beta", "/b"), ("gamma", "/g"), ("monolith", "/m")],
         vec![{
@@ -155,7 +155,7 @@ fn doctor_orphan_source_multiple_sorted() {
 }
 
 #[test]
-fn doctor_orphan_source_mixed_references() {
+fn orphan_source_mixed_references() {
     let plan = plan_with_sources(
         vec![("monolith", "/m"), ("orders", "/o"), ("ghost", "/g")],
         vec![
@@ -228,7 +228,7 @@ fn symlink_dir(target: &Path, link: &Path) {
 }
 
 #[test]
-fn doctor_stale_clone_reports_missing_origin_without_sync_stamp_warning() {
+fn stale_clone_reports_missing_origin() {
     let tmp = tempdir().unwrap();
     let _slot = make_clone_slot(tmp.path(), "alpha", None);
     let registry = registry_with(vec![rp(
@@ -266,7 +266,7 @@ fn doctor_stale_clone_reports_missing_origin_without_sync_stamp_warning() {
 }
 
 #[test]
-fn doctor_stale_clone_signature_changed() {
+fn stale_clone_signature_changed() {
     let tmp = tempdir().unwrap();
     make_clone_slot(tmp.path(), "alpha", Some("git@github.com:old/alpha.git"));
     let registry = registry_with(vec![rp(
@@ -303,7 +303,7 @@ fn doctor_stale_clone_signature_changed() {
 }
 
 #[test]
-fn doctor_stale_clone_signature_current() {
+fn stale_clone_signature_current() {
     let tmp = tempdir().unwrap();
     make_clone_slot(tmp.path(), "alpha", Some("git@github.com:org/alpha.git"));
     let registry = registry_with(vec![rp(
@@ -321,7 +321,7 @@ fn doctor_stale_clone_signature_current() {
 }
 
 #[test]
-fn doctor_stale_clone_diagnoses_wrong_symlink_target() {
+fn stale_clone_wrong_symlink_target() {
     let tmp = tempdir().unwrap();
     let peer = tmp.path().join("peer");
     let other = tmp.path().join("other");
@@ -357,7 +357,7 @@ fn doctor_stale_clone_diagnoses_wrong_symlink_target() {
 }
 
 #[test]
-fn doctor_stale_clone_ignores_missing_symlink_slots() {
+fn stale_clone_ignores_missing_slots() {
     let tmp = tempdir().unwrap();
     let registry = registry_with(vec![rp("self", ".", "omnia@v1", "self service")]);
     let plan = plan_with_changes(vec![]);
@@ -370,7 +370,7 @@ fn doctor_stale_clone_ignores_missing_symlink_slots() {
 // ------- Combined / negative cases --------------------------------
 
 #[test]
-fn doctor_healthy_plan_emits_zero_doctor_diagnostics() {
+fn healthy_plan_no_diagnostics() {
     let plan = plan_with_sources(
         vec![("monolith", "/m")],
         vec![
@@ -396,7 +396,7 @@ fn doctor_healthy_plan_emits_zero_doctor_diagnostics() {
 }
 
 #[test]
-fn doctor_includes_validate_findings_unchanged() {
+fn includes_validate_findings() {
     // A plan with an unknown depends-on (validate-only). Doctor must
     // forward the validate diagnostic with code unchanged.
     let plan = plan_with_changes(vec![

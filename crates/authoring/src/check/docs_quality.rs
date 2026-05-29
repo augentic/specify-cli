@@ -270,7 +270,7 @@ mod unit {
     use super::*;
 
     #[test]
-    fn specify_history_citation_detects_link_targets() {
+    fn history_citation_detects_links() {
         let line = format!(
             "See [details]({}s/done/{}-5.md) for more.",
             "r".to_owned() + "fc",
@@ -280,7 +280,7 @@ mod unit {
     }
 
     #[test]
-    fn specify_history_citation_detects_numbered_refs() {
+    fn history_citation_detects_numbered() {
         assert!(has_specify_history_citation(&format!(
             "See {}-5 for details",
             "R".to_owned() + "FC"
@@ -297,7 +297,7 @@ mod unit {
     }
 
     #[test]
-    fn find_text_fence_blocks_collects_inner_content() {
+    fn find_fence_blocks_collects_content() {
         let content = "Intro\n\n```text\nA -> B\n```\n\nOutro";
         let blocks = find_text_fence_blocks(content);
         assert_eq!(blocks.len(), 1);

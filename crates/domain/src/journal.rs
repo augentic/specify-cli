@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn append_batch_writes_every_event_in_order_in_one_call() {
+    fn append_batch_writes_in_order() {
         // auto-approve Gate-1 contract: `specrun plan create --auto-review` may emit
         // both `plan.propose.divergence` and
         // `plan.transition.approved` in a single fsynced append.
@@ -625,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn cache_miss_reason_round_trips_kebab_case() {
+    fn cache_miss_reason_round_trips() {
         for (variant, wire) in [
             (CacheMissReason::NoPriorEntry, "no-prior-entry"),
             (CacheMissReason::SourcePathChanged, "source-path-changed"),
@@ -639,7 +639,7 @@ mod tests {
     }
 
     #[test]
-    fn lint_completed_round_trips_with_snake_case_wire_fields() {
+    fn lint_completed_round_trips() {
         // RFC-33a §"Journal event" (D8): the lint-completed payload
         // uses snake_case wire fields (`duration_ms`, `baseline_present`,
         // `false_positive`, `exit_code`) so the JSON matches the RFC
@@ -697,7 +697,7 @@ mod tests {
     }
 
     #[test]
-    fn no_snake_case_fields_or_values_leak_to_wire() {
+    fn no_snake_case_leaks_to_wire() {
         // workflow §Wire format: snake_case lifecycle values are never
         // produced on disk. Exercise every variant that carries an
         // enum-shaped or hyphenable field name.

@@ -495,7 +495,7 @@ mod tests {
     /// same target line — each targets a different rule and stamps
     /// its own finding.
     #[test]
-    fn composed_directives_stamp_two_different_findings() {
+    fn composed_directives_stamp_two() {
         let mut findings =
             vec![finding("UNI-014", "src/lib.rs", 20), finding("UNI-015", "src/lib.rs", 20)];
         let dirs = vec![
@@ -557,7 +557,7 @@ mod tests {
     /// Test 8: status-aware exit helper — only `Open` (or unset)
     /// findings with `critical | important` severity block.
     #[test]
-    fn blocking_findings_present_respects_status() {
+    fn blocking_present_respects_status() {
         // Open + Important → blocks.
         let mut open_important = finding("UNI-014", "src/lib.rs", 1);
         open_important.severity = Severity::Important;

@@ -34,7 +34,7 @@ fn assert_schema_valid(value: &Value) {
 }
 
 #[test]
-fn empty_workspace_model_round_trips_through_schema() {
+fn empty_model_round_trips() {
     let model = WorkspaceModel {
         version: WorkspaceModelVersion,
         project_dir: ".".into(),
@@ -94,7 +94,7 @@ fn empty_workspace_model_round_trips_through_schema() {
     clippy::too_many_lines,
     reason = "Single fixture covers every entity family's rename_all wiring; splitting hides the contract."
 )]
-fn populated_workspace_model_round_trips_through_schema() {
+fn populated_model_round_trips() {
     let mut frontmatter_fields: Map<String, Value> = Map::new();
     frontmatter_fields.insert("title".into(), json!("Refine"));
     frontmatter_fields.insert("description".into(), json!("Refine a Specify slice"));

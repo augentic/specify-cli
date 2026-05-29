@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn load_returns_not_initialized_when_missing() {
+    fn load_not_initialized_when_missing() {
         let tmp = tempdir().unwrap();
         let err = ProjectConfig::load(tmp.path()).expect_err("missing file errs");
         assert!(matches!(err, Error::NotInitialized));
@@ -348,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn hub_field_defaults_false_and_round_trips_when_true() {
+    fn hub_field_defaults_false_round_trips() {
         let tmp = tempdir().unwrap();
         write_config(tmp.path(), "name: demo\nadapter: omnia\n");
         let cfg = ProjectConfig::load(tmp.path()).expect("loads");
@@ -380,7 +380,7 @@ mod tests {
     }
 
     #[test]
-    fn hub_field_serialised_when_true_and_adapter_omitted() {
+    fn hub_field_serialised_when_true() {
         let cfg = ProjectConfig {
             name: "platform".to_string(),
             domain: None,
@@ -396,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn tools_field_parses_and_serialises_when_present() {
+    fn tools_field_round_trips() {
         let tmp = tempdir().unwrap();
         write_config(
             tmp.path(),
@@ -432,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_clone_detects_nested_directory_inside_slot() {
+    fn workspace_clone_detects_nested() {
         let path = Path::new("/repo/.specify/workspace/orders/src/service");
         assert!(is_workspace_clone(path));
     }
@@ -457,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn find_root_returns_none_outside_initialised_tree() {
+    fn find_root_none_outside_tree() {
         let tmp = tempdir().unwrap();
         assert!(ProjectConfig::find_root(tmp.path()).is_none());
     }

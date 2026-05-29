@@ -682,7 +682,7 @@ briefs:
     }
 
     #[test]
-    fn unknown_brief_key_rejected_at_serde_parse() {
+    fn unknown_brief_key_rejected() {
         // `shape` is a target operation; appearing on a source manifest
         // must fail at the typed `briefs: BTreeMap<SourceOperation, _>`
         // deserialisation boundary before any downstream code runs.

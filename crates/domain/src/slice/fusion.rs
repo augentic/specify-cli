@@ -515,7 +515,7 @@ mod tests {
     }
 
     #[test]
-    fn fusion_resolution_round_trips_kebab_case() {
+    fn resolution_round_trips_kebab_case() {
         for (variant, wire) in [
             (FusionResolution::SingleSource, "single-source"),
             (FusionResolution::SingleValueAgreement, "single-value-agreement"),
@@ -543,7 +543,7 @@ rogue: true
     }
 
     #[test]
-    fn load_reports_schema_failure_for_hand_edited_file() {
+    fn load_reports_schema_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("fusion.yaml");
         // `version: 0` parses cleanly (u32) but trips the schema's
@@ -563,7 +563,7 @@ rogue: true
     }
 
     #[test]
-    fn load_reports_yaml_parse_failure_when_required_field_missing() {
+    fn load_reports_yaml_parse_failure() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("fusion.yaml");
         // Missing required `generator` field — serde catches this
@@ -593,7 +593,7 @@ rogue: true
     }
 
     #[test]
-    fn detect_drift_clean_inputs_yield_no_findings() {
+    fn detect_drift_clean_no_findings() {
         let index = sample();
         let spec_ids = req_id_set(["REQ-001", "REQ-007"]);
         let evidence = evidence_map([
@@ -605,7 +605,7 @@ rogue: true
     }
 
     #[test]
-    fn collect_evidence_claim_ids_walks_yaml_and_yml() {
+    fn collect_claim_ids_walks_yaml_and_yml() {
         let dir = tempfile::tempdir().expect("tempdir");
         let evidence_dir = dir.path().join("evidence");
         std::fs::create_dir_all(&evidence_dir).expect("mkdir");
@@ -652,7 +652,7 @@ claims:
     }
 
     #[test]
-    fn collect_evidence_claim_ids_missing_dir_is_empty() {
+    fn collect_claim_ids_missing_dir_empty() {
         let dir = tempfile::tempdir().expect("tempdir");
         let map = collect_evidence_claim_ids(dir.path()).expect("collect");
         assert!(map.is_empty());

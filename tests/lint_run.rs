@@ -177,7 +177,7 @@ fn review_emits_important_finding_and_exits_2() {
 /// must emit byte-identical stdout. Pins the deterministic ordering
 /// contract through the CLI boundary.
 #[test]
-fn review_run_is_byte_stable_across_invocations() {
+fn review_run_byte_stable() {
     let fx = build_fixture();
     let first = run_review(&fx.project, Some(&fx.codex), &[]);
     let second = run_review(&fx.project, Some(&fx.codex), &[]);
@@ -215,7 +215,7 @@ fn review_dump_model_exits_0() {
 /// the status-aware exit decision RFC-33a §"Exit and presentation
 /// semantics" defines.
 #[test]
-fn lint_run_emits_lint_completed_journal_event() {
+fn emits_lint_completed_event() {
     use std::path::PathBuf;
 
     let root = TempDir::new().expect("create tempdir");

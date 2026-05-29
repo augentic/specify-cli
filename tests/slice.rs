@@ -365,7 +365,7 @@ fn phase_outcome_round_trips_serde() {
 // ---- Top-level help surfaces source/target axis verbs ----
 
 #[test]
-fn top_level_help_lists_source_and_target_axis_verbs() {
+fn help_lists_axis_verbs() {
     let assert = specrun().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("slice"), "Top-level --help must still list `slice`, got:\n{stdout}");
@@ -438,7 +438,7 @@ slices:
 ";
 
 #[test]
-fn validate_rejects_missing_id_with_exit_two() {
+fn validate_rejects_missing_id() {
     let spec = "### Requirement: Missing id\n\n\
                 Sources: [legacy-monolith]\n\
                 Status: agreed\n\n\
@@ -454,7 +454,7 @@ fn validate_rejects_missing_id_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_malformed_id_with_exit_two() {
+fn validate_rejects_malformed_id() {
     let spec = "### Requirement: Malformed id\n\n\
                 ID: REQ-1\n\
                 Sources: [legacy-monolith]\n\
@@ -470,7 +470,7 @@ fn validate_rejects_malformed_id_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_missing_sources_with_exit_two() {
+fn validate_rejects_missing_sources() {
     let spec = "### Requirement: No sources\n\n\
                 ID: REQ-001\n\
                 Status: agreed\n";
@@ -485,7 +485,7 @@ fn validate_rejects_missing_sources_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_missing_status_with_exit_two() {
+fn validate_rejects_missing_status() {
     let spec = "### Requirement: No status\n\n\
                 ID: REQ-001\n\
                 Sources: [legacy-monolith]\n";
@@ -500,7 +500,7 @@ fn validate_rejects_missing_status_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_unknown_status_value_with_exit_two() {
+fn validate_rejects_unknown_status() {
     let spec = "### Requirement: Bogus status\n\n\
                 ID: REQ-001\n\
                 Sources: [legacy-monolith]\n\
@@ -519,7 +519,7 @@ fn validate_rejects_unknown_status_value_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_source_key_not_in_plan_with_exit_two() {
+fn validate_rejects_source_key_not_in_plan() {
     let spec = "### Requirement: Stray source key\n\n\
                 ID: REQ-001\n\
                 Sources: [phantom]\n\
@@ -538,7 +538,7 @@ fn validate_rejects_source_key_not_in_plan_with_exit_two() {
 }
 
 #[test]
-fn validate_rejects_tag_status_mismatch_with_exit_two() {
+fn validate_rejects_tag_status_mismatch() {
     let spec = "### Requirement: Lying tag [divergence]\n\n\
                 ID: REQ-001\n\
                 Sources: [legacy-monolith]\n\
@@ -713,7 +713,7 @@ fn validate_claim_drift_on_rename() {
 }
 
 #[test]
-fn validate_skips_drift_gate_when_fusion_yaml_absent() {
+fn validate_skips_drift_gate_without_fusion() {
     // Stage a slice with spec.md but no fusion.yaml — the drift gate
     // must be a silent no-op so older slices and pre-refine slices
     // still validate. (Any other adapter-level rules can still
@@ -856,7 +856,7 @@ fn stage_slice_with_catalog(evidence: &str, catalog: Option<&str>, plan: Option<
 }
 
 #[test]
-fn validate_skips_catalog_drift_when_no_catalog_exists() {
+fn validate_skips_catalog_drift_without_catalog() {
     let project =
         stage_slice_with_catalog(EVIDENCE_WITH_COMPONENT, None, Some(PLAN_WITH_UI_SCREENS));
     let assert = specrun()
@@ -878,7 +878,7 @@ fn validate_skips_catalog_drift_when_no_catalog_exists() {
 }
 
 #[test]
-fn validate_passes_when_component_slug_is_confirmed() {
+fn validate_passes_when_slug_confirmed() {
     let project = stage_slice_with_catalog(
         EVIDENCE_WITH_COMPONENT,
         Some(CATALOG_YAML),
@@ -959,7 +959,7 @@ fn validate_detects_rejected_catalog_entry() {
 }
 
 #[test]
-fn validate_does_not_flag_candidate_component_notes() {
+fn validate_ignores_candidate_notes() {
     let project = stage_slice_with_catalog(
         EVIDENCE_WITH_CANDIDATE_COMPONENT,
         Some(CATALOG_YAML),

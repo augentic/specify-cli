@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_manifest_detects_empty_adapter_directory() {
+    fn missing_manifest_on_empty_dir() {
         let temp = tempfile::tempdir().expect("tempdir");
         scaffold_framework(temp.path());
         let adapter_dir = temp.path().join("adapters/sources/broken");

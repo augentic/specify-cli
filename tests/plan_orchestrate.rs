@@ -572,7 +572,7 @@ fn plan_transition_rejects_illegal_edge() {
 }
 
 #[test]
-fn plan_transition_undo_walks_done_to_in_progress() {
+fn transition_undo_done_to_in_progress() {
     let project = Project::init();
     project.seed_plan(SINGLE_DONE);
 
@@ -604,7 +604,7 @@ fn plan_transition_undo_walks_done_to_in_progress() {
 }
 
 #[test]
-fn plan_undo_in_progress_to_pending_refuses() {
+fn undo_in_progress_to_pending_refuses() {
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
 
@@ -630,7 +630,7 @@ fn plan_undo_in_progress_to_pending_refuses() {
 }
 
 #[test]
-fn plan_transition_plan_level_approved_json() {
+fn transition_plan_level_approved() {
     // workflow §The plan gate: `specrun plan transition <plan-name>
     // approved` is the operator-stamped Gate 1 transition. The plan
     // name on the wire matches `plan.yaml.name`.
@@ -652,7 +652,7 @@ fn plan_transition_plan_level_approved_json() {
 }
 
 #[test]
-fn plan_transition_rejects_per_entry_in_progress() {
+fn transition_rejects_per_entry_in_progress() {
     // Per-entry `in-progress` is owned by `plan next`. `plan transition`
     // must reject the request with an argument-shape error (exit 2).
     let project = Project::init();
@@ -694,7 +694,7 @@ fn plan_transition_rejects_retired_states() {
 // `plan_transition_rejects_retired_states` above.
 
 #[test]
-fn plan_transition_rejects_unknown_reason_flag() {
+fn transition_rejects_unknown_reason() {
     // `--reason` was retired in source/target adapter split (no v1 per-entry state accepts a
     // reason). Clap surfaces unknown flags as exit 2 with `--reason`
     // named in stderr.
@@ -788,7 +788,7 @@ slices:
 }
 
 #[test]
-fn plan_create_scaffolds_plan_only_json_matches_golden() {
+fn create_scaffolds_matches_golden() {
     let project = Project::init();
 
     let assert = specrun()
@@ -812,7 +812,7 @@ fn plan_create_scaffolds_plan_only_json_matches_golden() {
 }
 
 #[test]
-fn plan_create_divergence_likely_unknown_slice_refused() {
+fn create_divergence_unknown_slice_refused() {
     // divergence and writer-ownership contract: `--divergence-likely` on `plan create` must
     // reference a slice already present in the plan. A fresh
     // `plan create` scaffolds an empty plan, so any slice name is
@@ -835,7 +835,7 @@ fn plan_create_divergence_likely_unknown_slice_refused() {
 }
 
 #[test]
-fn plan_create_refuses_to_overwrite_existing_plan() {
+fn create_refuses_overwrite() {
     let project = Project::init();
     specrun().current_dir(project.root()).args(["plan", "create", "first"]).assert().success();
 
@@ -867,7 +867,7 @@ fn plan_create_then_validate_passes_clean() {
 // -- plan create --auto-approve (auto-approve Gate-1 contract) ---------------------------
 
 #[test]
-fn plan_create_auto_approve_stamps_approved() {
+fn create_auto_approve_stamps() {
     // auto-approve Gate-1 contract: `--auto-approve` is the operator's Gate-1 consent at
     // create time. The on-disk plan carries `lifecycle: approved`
     // directly (single atomic write — no transient `pending`
@@ -989,7 +989,7 @@ fn plan_create_auto_approve_invalid_name() {
 }
 
 #[test]
-fn plan_create_auto_approve_no_partial_events() {
+fn create_auto_approve_no_partial_events() {
     // auto-approve Gate-1 contract: validation failure under --auto-approve must not
     // surface a partial-state event sequence — no orphan
     // `plan.propose.divergence` without the matching
@@ -1019,7 +1019,7 @@ fn plan_create_auto_approve_no_partial_events() {
 }
 
 #[test]
-fn plan_create_auto_approve_then_validate_passes_clean() {
+fn create_auto_approve_then_validate_passes() {
     // The empty-scaffold + `--auto-approve` combination must still
     // validate cleanly — `--auto-approve` is a Gate-1 consent flag,
     // not a validation bypass, but it also must not introduce any
@@ -1177,7 +1177,7 @@ fn plan_archive_with_force_succeeds() {
 }
 
 #[test]
-fn plan_archive_filename_is_kebab_plus_date() {
+fn archive_filename_kebab_plus_date() {
     let project = Project::init();
     project.seed_plan(
         "\
@@ -1386,7 +1386,7 @@ fn plan_validate_surfaces_registry_errors() {
 // ---- planning-path workspace smoke — planning-path smoke (Stage A/B, manifest, Layer 2) ----
 
 #[test]
-fn planning_path_stage_ab_change_brief_and_plan_validate() {
+fn planning_stage_ab_brief_and_validate() {
     let project = Project::init();
     specrun()
         .current_dir(project.root())
@@ -1415,7 +1415,7 @@ fn init_omnia_project(tmp: &TempDir) {
 }
 
 #[test]
-fn plan_validate_reports_all_three_health_diagnostics() {
+fn validate_reports_all_health_diagnostics() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1501,7 +1501,7 @@ fn plan_validate_reports_all_three_health_diagnostics() {
 }
 
 #[test]
-fn plan_validate_reports_workspace_adapter_mismatch() {
+fn validate_reports_adapter_mismatch() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1743,7 +1743,7 @@ fn plan_add_structured_lead_differs() {
 }
 
 #[test]
-fn plan_add_rejects_dangling_equals_in_sources() {
+fn add_rejects_dangling_equals() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
@@ -1823,7 +1823,7 @@ fn plan_amend_remove_source_drops_binding() {
 }
 
 #[test]
-fn plan_amend_remove_source_unknown_key_errors() {
+fn amend_remove_source_unknown_key_errors() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
@@ -1843,7 +1843,7 @@ fn plan_amend_remove_source_unknown_key_errors() {
 }
 
 #[test]
-fn plan_amend_divergence_accepted_writes_field() {
+fn amend_divergence_accepted_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
@@ -1867,7 +1867,7 @@ fn plan_amend_divergence_accepted_writes_field() {
 }
 
 #[test]
-fn plan_amend_divergence_rejected_writes_field() {
+fn amend_divergence_rejected_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
@@ -1891,7 +1891,7 @@ fn plan_amend_divergence_rejected_writes_field() {
 }
 
 #[test]
-fn plan_amend_divergence_likely_writes_field() {
+fn amend_divergence_likely_writes() {
     // divergence and writer-ownership contract: `--divergence likely` is operator-settable from
     // the CLI; the field is byte-identical to the legacy
     // skill-written `divergence: likely` line.
@@ -1976,7 +1976,7 @@ fn read_journal_lines(project: &Project) -> Vec<String> {
 }
 
 #[test]
-fn plan_amend_authority_override_round_trips_and_validates() {
+fn amend_authority_override_round_trips() {
     // per-slice authority override happy path: set an override via `amend`, re-read
     // `plan.yaml` and confirm the field landed under the named
     // slice; `slice validate` accepts it because `runtime` is in
@@ -2066,7 +2066,7 @@ fn plan_amend_override_orphan_refused() {
 }
 
 #[test]
-fn slice_validate_surfaces_authority_override_orphan() {
+fn slice_validate_authority_override_orphan() {
     // per-slice authority override — `specrun slice validate` is the per-slice gate
     // that mirrors the plan-level check; it runs before refine
     // synthesises any artifacts so a bad override is caught
@@ -2109,7 +2109,7 @@ fn slice_validate_surfaces_authority_override_orphan() {
 }
 
 #[test]
-fn plan_amend_clear_authority_override_removes_only_one_entry() {
+fn amend_clear_authority_override_removes_one() {
     // per-slice authority override: `--clear-authority-override <slice> <kind>` peels
     // off a single entry; the rest of the map survives. Journal
     // records the Clear without any spurious Set events for the
@@ -2221,7 +2221,7 @@ fn plan_amend_clear_overrides_wipes_map() {
 }
 
 #[test]
-fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
+fn amend_authority_override_set_then_clear() {
     // per-slice authority override deterministic-order rule: a same-invocation set +
     // clear pair on the same `(slice, kind)` resolves to the
     // cleared state; the journal records the Clear (not the Set).
@@ -2259,7 +2259,7 @@ fn plan_amend_authority_override_set_then_clear_resolves_to_cleared() {
 }
 
 #[test]
-fn plan_add_authority_override_seeds_map_on_new_slice() {
+fn add_authority_override_seeds_map() {
     // per-slice authority override add path: `plan add --authority-override
     // <kind>=<key>` pre-seeds the override map at create time. Each
     // entry fires one PlanAmendAuthorityOverride / `set` event.
@@ -2310,7 +2310,7 @@ fn plan_add_authority_override_seeds_map_on_new_slice() {
 }
 
 #[test]
-fn plan_amend_authority_override_unknown_slice_refused() {
+fn amend_authority_override_unknown_slice_refused() {
     // per-slice authority override: unknown `--authority-override <slice>` must
     // refuse at exit 2 before any plan.yaml write happens. Mirror
     // the existing `--divergence-likely` guard.

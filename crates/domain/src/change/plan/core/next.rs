@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[test]
-    fn advance_next_reports_drained_when_all_done() {
+    fn advance_reports_drained() {
         let mut plan =
             plan_with_changes(vec![change("a", Status::Done), change("b", Status::Done)]);
         let next = plan.advance_next().expect("advance ok");

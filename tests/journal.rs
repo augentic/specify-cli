@@ -64,7 +64,7 @@ fn assert_journal_golden(name: &str, events: Vec<Value>) {
 // -- plan.transition.approved ----------------------------------------
 
 #[test]
-fn plan_transition_approved_emits_journal_event() {
+fn plan_transition_emits_event() {
     let project = Project::init();
     project.seed_plan(
         "name: platform-v2
@@ -132,7 +132,7 @@ fn plan_amend_divergence_from_none_to_accepted() {
 }
 
 #[test]
-fn plan_amend_divergence_none_to_likely_emits_event() {
+fn plan_amend_divergence_none_to_likely() {
     // divergence and writer-ownership contract: the CLI is the single writer of every variant of
     // `slices[].divergence`, including `likely`. A `plan amend
     // --divergence likely` against a slice with no prior divergence
@@ -155,7 +155,7 @@ fn plan_amend_divergence_none_to_likely_emits_event() {
 }
 
 #[test]
-fn plan_amend_divergence_likely_round_trips_to_yaml() {
+fn plan_amend_divergence_likely_round_trips() {
     // divergence and writer-ownership contract: `specrun plan amend --divergence likely` is the
     // bare-skill fallback writer of `slices[].divergence: likely`.
     // The CLI must persist the field byte-identically to the legacy
@@ -270,7 +270,7 @@ slices:
 }
 
 #[test]
-fn plan_amend_without_divergence_flag_emits_no_event() {
+fn plan_amend_without_divergence_no_event() {
     let project = Project::init();
     project.seed_plan(TWO_SLICE_PLAN);
 
@@ -299,7 +299,7 @@ fn slice_create_writes_no_refined_journal() {
 }
 
 #[test]
-fn slice_transition_refined_cli_writes_journal() {
+fn slice_transition_refined_writes() {
     let project = Project::init();
     specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
     specrun()
@@ -316,7 +316,7 @@ fn slice_transition_refined_cli_writes_journal() {
 }
 
 #[test]
-fn slice_transition_to_built_appends_no_refined_event() {
+fn slice_transition_built_no_refined_event() {
     let project = Project::init();
     specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
     specrun()
@@ -384,7 +384,7 @@ fn stage_slice_for_synthesis_journal() -> Project {
 }
 
 #[test]
-fn slice_validate_appends_synthesis_journal_on_success() {
+fn slice_validate_appends_synthesis() {
     let project = stage_slice_for_synthesis_journal();
     specrun()
         .current_dir(project.root())
@@ -422,7 +422,7 @@ fn slice_validate_provenance_no_journal() {
 // -- agent-emit helper (slice.extract.completed, plan.propose.divergence)
 
 #[test]
-fn agent_emit_helper_writes_one_event_per_jsonl_line() {
+fn agent_emit_one_event_per_line() {
     // Exercises the public Rust helper skill bodies call for
     // agent-driven events. The harness drives `append` directly
     // because the CLI does not own a `journal append` verb

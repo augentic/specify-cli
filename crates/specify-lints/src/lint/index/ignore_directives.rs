@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn rust_double_slash_directive_is_recognised() {
+    fn rust_double_slash_recognised() {
         let f = file(
             "src/lib.rs",
             "rust",
@@ -204,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn em_dash_and_double_hyphen_separators_both_work() {
+    fn em_dash_and_hyphen_separators() {
         let em = file(
             "a.rs",
             "rust",
@@ -220,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn inline_trailing_directive_targets_its_own_line() {
+    fn inline_trailing_targets_own_line() {
         let f = file(
             "src/lib.rs",
             "rust",
@@ -233,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn blank_lines_between_directive_and_target_are_skipped() {
+    fn blank_lines_skipped() {
         let f = file(
             "src/lib.rs",
             "rust",
@@ -245,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_directives_compose_to_same_target() {
+    fn consecutive_compose_same_target() {
         let f = file(
             "src/lib.rs",
             "rust",
@@ -278,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn c_family_block_comment_directive_is_recognised() {
+    fn c_block_comment_recognised() {
         let f = file(
             "src/lib.rs",
             "rust",
@@ -294,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn directive_token_inside_string_literal_is_ignored() {
+    fn token_in_string_literal_ignored() {
         let f = file(
             "src/lib.rs",
             "rust",
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn target_line_past_eof_when_directive_is_terminal() {
+    fn target_line_past_eof() {
         let f =
             file("src/lib.rs", "rust", "// specify-ignore: UNI-014 — terminal directive only\n");
         let d = only(extract(&f));
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn placeholder_rule_id_is_not_recognised_as_directive() {
+    fn placeholder_rule_id_ignored() {
         // The rationale-table example in `docs/reference/ignore-directives.md`
         // (and similar prose) uses the Unicode ellipsis as a stand-in for a
         // real rule id; the extractor must skip such lines so documentation
@@ -329,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn angle_placeholder_rule_id_is_not_recognised_as_directive() {
+    fn angle_placeholder_rule_id_ignored() {
         let f = file(
             "docs/reference/ignore-directives.md",
             "markdown",
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn languages_outside_closed_list_are_skipped() {
+    fn languages_outside_list_skipped() {
         let f =
             file("data.json", "json", "{\"//\": \"specify-ignore: UNI-014 — no comments here\"}\n");
         assert!(extract(&f).is_empty());

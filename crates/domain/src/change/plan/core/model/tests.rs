@@ -210,7 +210,7 @@ fn patch_omits_status() {
 }
 
 #[test]
-fn slice_source_binding_round_trips_both_shapes() {
+fn binding_round_trips_both_shapes() {
     let yaml = r"
 name: bindings
 slices:
@@ -241,7 +241,7 @@ slices:
 }
 
 #[test]
-fn slice_source_binding_normalises_shorthand() {
+fn binding_normalises_shorthand() {
     let bare = SliceSourceBinding::bare("intent");
     assert_eq!(bare.key(), "intent");
     assert_eq!(bare.lead("add-search-filter"), "add-search-filter");

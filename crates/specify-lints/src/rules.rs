@@ -704,7 +704,7 @@ mod tests {
     /// against `resolved.schema.json`, and round-trips back to the
     /// same struct.
     #[test]
-    fn resolved_codex_round_trips_against_schema() {
+    fn resolved_codex_round_trips() {
         let resolved = ResolvedRules {
             version: 1,
             target_adapter: "omnia".into(),
@@ -748,7 +748,7 @@ mod tests {
     /// key `replaced-by` per `ResolvedRules` export contract. Test
     /// covers the explicitly-called-out rename.
     #[test]
-    fn deprecated_replaced_by_uses_kebab_wire_key() {
+    fn deprecated_replaced_by_kebab() {
         let deprecated = Deprecated {
             reason: "superseded by SEC-001".into(),
             replaced_by: Some("SEC-001".into()),
@@ -775,7 +775,7 @@ mod tests {
     /// against `finding.schema.json`, and round-trips back to the
     /// same struct.
     #[test]
-    fn review_finding_round_trips_against_schema() {
+    fn review_finding_round_trips() {
         let finding = LintFinding {
             id: "FIND-0001".into(),
             rule_id: Some("UNI-014".into()),

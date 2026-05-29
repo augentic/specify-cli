@@ -237,7 +237,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parser_splits_fenced_document_and_metadata() {
+    fn parser_splits_document_and_metadata() {
         let input = b"# hand title\n\n<!-- specify:context begin\nfingerprint: sha256:old\n-->\n\nold body\n\n<!-- specify:context end -->\n\noperator notes\n";
         let parsed = parse_document(input).expect("parse ok").expect("fences present");
 
@@ -260,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_rejects_opening_fence_without_terminator() {
+    fn parser_rejects_missing_terminator() {
         let err = parse_document(b"<!-- specify:context begin\nfingerprint: sha256:test\nbody")
             .expect_err("unterminated fence must fail");
 
@@ -278,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_rejects_opening_fence_without_metadata() {
+    fn parser_rejects_missing_metadata() {
         let err =
             parse_document(b"<!-- specify:context begin\n-->\nbody\n<!-- specify:context end -->")
                 .expect_err("missing metadata must fail");
@@ -297,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_rejects_closing_fence_with_trailing_space() {
+    fn parser_rejects_trailing_space() {
         let err = parse_document(
             b"<!-- specify:context begin\nfingerprint: sha256:test\n-->\nbody\n<!-- specify:context end --> \n",
         )

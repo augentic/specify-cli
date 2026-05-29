@@ -16,7 +16,7 @@ use specify_lints::lint::index::build;
 use specify_lints::rules::{FindingEvidence, HintKind};
 
 #[test]
-fn regex_matches_text_files_and_skips_binaries() {
+fn matches_text_skips_binaries() {
     let tmp = tempfile::tempdir().expect("tmp");
     let rs_body = "use std::env;\nfn endpoint() -> &'static str { \"https://api.example.com\" }\n";
     fs::write(tmp.path().join("app.rs"), rs_body).expect("write app.rs");

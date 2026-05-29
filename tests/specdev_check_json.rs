@@ -469,7 +469,7 @@ Body without trigger and severity.
 /// prefix on stderr — the contract CH-22 codified for the JSON
 /// branch.
 #[test]
-fn missing_framework_root_still_emits_envelope_on_stdout() {
+fn missing_framework_root_emits_envelope() {
     let temp = TempDir::new().expect("tempdir");
     let missing = temp.path().join("does-not-exist");
 

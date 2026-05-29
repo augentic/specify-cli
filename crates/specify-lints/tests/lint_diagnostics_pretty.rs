@@ -48,7 +48,7 @@ fn assert_golden(actual: &str, name: &str) {
 /// execution within a binary would race if the colour-on and
 /// colour-off branches lived in separate `#[test]` functions.
 #[test]
-fn pretty_formatter_matches_golden_and_honours_no_color() {
+fn matches_golden_honours_no_color() {
     let fixture = make_fixture();
 
     // SAFETY: `std::env::set_var` is `unsafe` (env mutation racing

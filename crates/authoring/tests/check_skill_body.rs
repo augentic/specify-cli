@@ -32,7 +32,7 @@ fn repeated_lines(prefix: &str, count: usize) -> String {
 }
 
 #[test]
-fn invalid_critical_path_flags_wrong_item_count() {
+fn invalid_critical_path_wrong_count() {
     let ctx = context_for_fixture("invalid-critical-path");
     let mut body = String::from("## Critical Path\n\n");
     for i in 1..=4 {
@@ -49,7 +49,7 @@ fn invalid_critical_path_flags_wrong_item_count() {
 }
 
 #[test]
-fn envelope_json_in_body_flags_envelope_shape() {
+fn envelope_json_flags_shape() {
     let ctx = context_for_fixture("envelope-json");
     let body = r##"## Output
 

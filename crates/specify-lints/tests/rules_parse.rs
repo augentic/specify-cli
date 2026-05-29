@@ -70,7 +70,7 @@ fn parses_every_universal_codex_rule() {
 }
 
 #[test]
-fn parses_every_documentation_source_codex_rule() {
+fn parses_every_codex_rule() {
     let Some(adapters) = plugin_adapters_dir() else {
         eprintln!("skip: sibling augentic/specify plugin checkout not found");
         return;

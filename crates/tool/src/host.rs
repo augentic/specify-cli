@@ -383,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn prepare_preopens_promotes_write_over_read() {
+    fn preopens_promote_write_over_read() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         let output = project.join("output");
@@ -449,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn invalid_component_bytes_surface_as_runtime_error() {
+    fn invalid_component_bytes_error() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         fs::create_dir_all(&project).expect("project");

@@ -73,7 +73,7 @@ Body without trigger and severity.
 }
 
 #[test]
-fn namespace_ownership_violation_on_wrong_prefix() {
+fn namespace_violation_wrong_prefix() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_framework_scaffold(temp.path());
     write_rule_file(

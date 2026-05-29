@@ -617,18 +617,18 @@ mod tests {
     }
 
     #[test]
-    fn single_adapter_returns_none_when_multiple() {
+    fn single_adapter_none_when_multiple() {
         let r = rule(Some(vec!["omnia".into(), "vectis".into()]));
         assert!(single_adapter(&r).is_none());
     }
 
     #[test]
-    fn reserved_summary_is_empty_when_no_skipped() {
+    fn reserved_summary_empty_when_none() {
         assert!(reserved_hint_summary(&[], false).is_none());
     }
 
     #[test]
-    fn reserved_summary_uses_stable_rule_id_in_both_modes() {
+    fn reserved_summary_stable_rule_id() {
         let skipped = vec![ReservedSkipped {
             rule_id: "UNI-099".into(),
             hint_index: 0,

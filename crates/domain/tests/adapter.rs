@@ -170,7 +170,7 @@ fn cache_dir_resolves_under_axis_segment() {
 }
 
 #[test]
-fn cache_directory_wins_over_local_when_both_exist() {
+fn cache_wins_over_local() {
     // Stage a manifest under `.specify/.cache/manifests/sources/code-typescript/`
     // alongside the in-tree `adapters/sources/code-typescript/`; assert the
     // cached copy wins per workflow §Resolver and cache.
@@ -235,7 +235,7 @@ briefs:
 }
 
 #[test]
-fn resolves_captures_source_adapter_with_tools_array() {
+fn resolves_captures_with_tools() {
     // workflow §Acceptance scenario #26-1 (release blocker, D1):
     // pin the loader against the live `adapters/sources/captures/`
     // adapter shape shipped by the `plg` repo. The manifest carries

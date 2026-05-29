@@ -296,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn language_inference_covers_documented_extensions() {
+    fn language_inference_covers_extensions() {
         assert_eq!(infer_language("src/lib.rs").as_deref(), Some("rust"));
         assert_eq!(infer_language("App.swift").as_deref(), Some("swift"));
         assert_eq!(infer_language("build.gradle").as_deref(), Some("kotlin"));

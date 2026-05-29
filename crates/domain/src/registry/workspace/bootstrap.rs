@@ -26,7 +26,7 @@ pub(super) fn greenfield_init(
 ) -> Result<(), Error> {
     let adapter = resolve_greenfield_adapter(adapter, initiating_project_dir)?;
 
-    scaffold_greenfield_specify_tree(dest, &adapter)?;
+    scaffold_greenfield(dest, &adapter)?;
 
     git::run(dest, &["add", "."], &format!("git add in {}", dest.display()))?;
 
@@ -45,7 +45,7 @@ pub(super) fn greenfield_init(
     Ok(())
 }
 
-fn scaffold_greenfield_specify_tree(dest: &Path, adapter: &str) -> Result<(), Error> {
+fn scaffold_greenfield(dest: &Path, adapter: &str) -> Result<(), Error> {
     let specify_dir = dest.join(".specify");
     for dir in [
         specify_dir.clone(),

@@ -316,7 +316,7 @@ mod tests {
 
     /// (4a) Changing `location.path` MUST change the fingerprint.
     #[test]
-    fn location_path_change_changes_fingerprint() {
+    fn location_path_changes() {
         let baseline = fingerprint(&sample_finding());
         let mut mutated = sample_finding();
         mutated.location.as_mut().expect("location present").path = "src/other.rs".into();
@@ -325,7 +325,7 @@ mod tests {
 
     /// (4b) Changing `location.line` MUST change the fingerprint.
     #[test]
-    fn location_line_change_changes_fingerprint() {
+    fn location_line_changes() {
         let baseline = fingerprint(&sample_finding());
         let mut mutated = sample_finding();
         mutated.location.as_mut().expect("location present").line = Some(42);
@@ -334,7 +334,7 @@ mod tests {
 
     /// (4c) Changing `location.column` MUST change the fingerprint.
     #[test]
-    fn location_column_change_changes_fingerprint() {
+    fn location_column_changes() {
         let baseline = fingerprint(&sample_finding());
         let mut mutated = sample_finding();
         mutated.location.as_mut().expect("location present").column = Some(42);
@@ -345,7 +345,7 @@ mod tests {
     /// canonical location. Mutating either MUST NOT change the
     /// fingerprint.
     #[test]
-    fn location_end_fields_do_not_change_fingerprint() {
+    fn location_end_fields_stable() {
         let baseline = fingerprint(&sample_finding());
         let mut mutated = sample_finding();
         let loc = mutated.location.as_mut().expect("location present");
@@ -357,7 +357,7 @@ mod tests {
     /// (5) Changing `evidence.value` (snippet variant) MUST change
     /// the fingerprint.
     #[test]
-    fn snippet_value_change_changes_fingerprint() {
+    fn snippet_value_changes() {
         let baseline = fingerprint(&sample_finding());
         let mut mutated = sample_finding();
         mutated.evidence = FindingEvidence::Snippet {
@@ -422,7 +422,7 @@ mod tests {
     /// `evidence.summary` or `evidence.data` MUST change the
     /// fingerprint.
     #[test]
-    fn structured_summary_and_data_change_fingerprint() {
+    fn summary_and_data_change() {
         let mut original = sample_finding();
         original.evidence = FindingEvidence::Structured {
             summary: "contract compat".into(),
@@ -500,7 +500,7 @@ mod tests {
     /// matches the recomputed one and rejects every malformed or
     /// stale variant.
     #[test]
-    fn verify_fingerprint_round_trip_and_rejection() {
+    fn verify_round_trip_and_rejection() {
         let mut finding = sample_finding();
         finding.fingerprint = fingerprint(&finding);
         assert!(verify_fingerprint(&finding));

@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn adapter_name_from_value_handles_common_shapes() {
+    fn name_from_value_handles_shapes() {
         assert_eq!(adapter_name_from_value("omnia"), "omnia");
         assert_eq!(adapter_name_from_value("file:///abs/adapters/targets/omnia"), "omnia");
         assert_eq!(adapter_name_from_value("file:///abs/adapters/targets/omnia/"), "omnia");
