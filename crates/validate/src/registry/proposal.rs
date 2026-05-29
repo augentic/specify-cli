@@ -1,6 +1,6 @@
 //! Proposal-brief rules.
 
-use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+use crate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
 
 fn proposal_why_has_content(ctx: &BriefContext<'_>) -> RuleOutcome {
     if primitives::has_content_after_heading(ctx.content, "## Why") {

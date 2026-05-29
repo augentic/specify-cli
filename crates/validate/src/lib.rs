@@ -12,9 +12,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use specify_error::ValidationSummary;
-
-use crate::spec::ParsedSpec;
-use crate::task::Progress;
+use specify_model::spec::ParsedSpec;
+use specify_model::task::Progress;
 
 mod primitives;
 mod registry;

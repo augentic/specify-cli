@@ -27,7 +27,9 @@ serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
 specify-lints.workspace = true
-specify-domain.workspace = true
+specify-workflow.workspace = true
+specify-model.workspace = true
+specify-validate.workspace = true
 specify-authoring.workspace = true
 specify-error.workspace = true
 specify-schema.workspace = true
@@ -48,10 +50,12 @@ workspace = true
 members = [
     "crates/authoring",
     "crates/specify-lints",
-    "crates/domain",
     "crates/error",
+    "crates/model",
     "crates/schema",
     "crates/tool",
+    "crates/validate",
+    "crates/workflow",
 ]
 
 [workspace.package]
@@ -171,7 +175,9 @@ serde_json = "1"
 sha2 = "0.11"
 specify-authoring = { path = "crates/authoring" }
 specify-lints = { path = "crates/specify-lints" }
-specify-domain = { path = "crates/domain" }
+specify-model = { path = "crates/model" }
+specify-validate = { path = "crates/validate" }
+specify-workflow = { path = "crates/workflow" }
 specify-error = { path = "crates/error" }
 specify-schema = { path = "crates/schema" }
 specify-tool = { path = "crates/tool" }

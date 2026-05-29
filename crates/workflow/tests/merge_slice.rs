@@ -1,4 +1,4 @@
-//! End-to-end filesystem tests for `specify_domain::merge::slice::commit`.
+//! End-to-end filesystem tests for `specify_workflow::merge::slice::commit`.
 //!
 //! Each test builds a throw-away project under `tempfile::TempDir`, seeds a
 //! slice directory with delta specs at `specs/<name>/spec.md`, and drives
@@ -10,12 +10,12 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use regex::Regex;
-use specify_domain::adapter::TargetOperation;
-use specify_domain::merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
-use specify_domain::slice::{
+use specify_error::Error;
+use specify_workflow::adapter::TargetOperation;
+use specify_workflow::merge::{ArtifactClass, MergeStrategy, OpaqueAction, slice};
+use specify_workflow::slice::{
     LifecycleStatus, Outcome, OutcomeKind, SLICES_DIR_NAME, SliceMetadata,
 };
-use specify_error::Error;
 
 fn parse_stamp(raw: &str) -> Timestamp {
     raw.parse().expect("valid RFC3339 timestamp in test fixture")

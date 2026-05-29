@@ -1,5 +1,5 @@
 //! Integration tests for `schemas/plan/plan.schema.json` plus the
-//! kebab-name regex shared with `specify_domain::slice::actions::validate_name`.
+//! kebab-name regex shared with `specify_workflow::slice::actions::validate_name`.
 //!
 //! The schema tests are pure-library: they compile the bundled JSON
 //! Schema and feed it YAML fixtures converted to `serde_json::Value`.
@@ -155,11 +155,11 @@ fn schema_rejects_non_kebab_name() {
 /// The JSON Schema regex and `validate_name` must agree on every name,
 /// in both directions. The cases below are the plan schema alias cases
 /// out; keep them in sync with the doc-comment on
-/// `specify_domain::slice::actions::validate_name`.
+/// `specify_workflow::slice::actions::validate_name`.
 #[test]
 fn kebab_name_regex_matches_validate_name() {
     use regex::Regex;
-    use specify_domain::slice::actions as slice_actions;
+    use specify_workflow::slice::actions as slice_actions;
 
     // Extract the pattern from the compiled schema to keep this test
     // honest against drift — the schema file is the source of truth.

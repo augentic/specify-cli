@@ -1,5 +1,5 @@
-//! Integration tests for `specify_domain::registry::registry` and
-//! `specify_domain::registry::validate`.
+//! Integration tests for `specify_workflow::registry::registry` and
+//! `specify_workflow::registry::validate`.
 //!
 //! Lifted from `crates/adapter/src/tests.rs` as part of the workspace split
 //! 2.1 (extract platform-component artefacts out of the adapter
@@ -9,8 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
-use specify_domain::registry::{ContractRoles, Registry, RegistryProject};
 use specify_error::Error;
+use specify_workflow::registry::{ContractRoles, Registry, RegistryProject};
 use tempfile::TempDir;
 
 /// Scaffold `registry.yaml` (at the repo root) with `contents` and

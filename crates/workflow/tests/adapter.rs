@@ -1,5 +1,5 @@
 //! Integration tests for the the axis-aware adapter loader
-//! (`specify_domain::adapter`).
+//! (`specify_workflow::adapter`).
 //!
 //! Covers:
 //! - axis routing — `(source, foo)` and `(target, foo)` resolve to
@@ -19,14 +19,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_domain::adapter::{
+use specify_error::Error;
+use specify_workflow::adapter::{
     AdapterLocation, Axis, SourceAdapter, SourceOperation, TargetAdapter, TargetOperation,
     cache_dir, check_axis_unique_for_name,
 };
-use specify_error::Error;
 
 fn fixtures_root() -> PathBuf {
-    // `crates/domain/tests/` -> `tests/fixtures/plugins/`.
+    // `crates/workflow/tests/` -> `tests/fixtures/plugins/`.
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/plugins")
 }
 

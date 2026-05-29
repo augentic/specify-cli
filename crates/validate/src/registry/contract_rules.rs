@@ -1,6 +1,6 @@
 //! Contracts-brief rules.
 
-use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+use crate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
 
 fn contracts_schemas_dir_has_files(ctx: &BriefContext<'_>) -> RuleOutcome {
     let schemas_dir = ctx.slice_dir.join("contracts").join("schemas");

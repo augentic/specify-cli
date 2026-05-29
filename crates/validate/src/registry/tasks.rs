@@ -1,6 +1,6 @@
 //! Tasks-brief rules.
 
-use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+use crate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
 
 fn tasks_use_checkbox_format(ctx: &BriefContext<'_>) -> RuleOutcome {
     let Some(tasks) = ctx.tasks else {

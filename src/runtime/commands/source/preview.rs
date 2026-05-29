@@ -13,8 +13,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify_domain::adapter::SourceAdapter;
 use specify_error::{Error, Result};
+use specify_workflow::adapter::SourceAdapter;
 
 use crate::runtime::cli::Format;
 use crate::runtime::output;

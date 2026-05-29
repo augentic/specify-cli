@@ -7,8 +7,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
-
-use crate::evidence::ClaimKind;
+use specify_model::evidence::ClaimKind;
 
 /// Lifecycle state of a single entry in [`Plan::entries`].
 ///

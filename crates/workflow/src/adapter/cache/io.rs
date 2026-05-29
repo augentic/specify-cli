@@ -23,18 +23,18 @@
 //!
 //! [DECISIONS.md §"Atomic writes"]: ../../../../DECISIONS.md#atomic-writes
 //! [DECISIONS.md §"Cache layout"]: ../../../../DECISIONS.md#cache-layout
-//! [`bytes_write`]: crate::slice::atomic::bytes_write
+//! [`bytes_write`]: specify_model::atomic::bytes_write
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
+use specify_model::atomic::bytes_write;
 
 use crate::adapter::CacheMode;
 use crate::adapter::cache::{CacheFingerprint, CacheIndexEntry, CacheMissReason, SourceOperation};
 use crate::adapter::core::EXTRACTIONS_CACHE_DIR;
-use crate::slice::atomic::bytes_write;
 
 const INDEX_FILE_NAME: &str = "index.jsonl";
 const FINGERPRINT_RECORD_NAME: &str = "fingerprint.json";

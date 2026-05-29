@@ -17,7 +17,7 @@ const FIRST_PARTY_NAMESPACE: &str = "specify";
 const FIRST_PARTY_REGISTRY: &str = "augentic.io";
 /// Filename of the project-local wasm-pkg config inside `.specify/`.
 ///
-/// Paired with [`Layout::specify_dir`](specify-domain) at the init
+/// Paired with [`Layout::specify_dir`](specify-workflow) at the init
 /// site so the helper does not have to re-derive the relative path.
 pub const WASM_PKG_CONFIG_FILENAME: &str = "wasm-pkg.toml";
 

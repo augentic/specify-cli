@@ -1,5 +1,5 @@
-//! Integration tests for `specify_domain::registry::workspace` and
-//! `specify_domain::registry::forge`.
+//! Integration tests for `specify_workflow::registry::workspace` and
+//! `specify_workflow::registry::forge`.
 //!
 //! Pins the public surface lifted from the binary by the workspace split 2.2:
 //! `github_slug`, `sync_projects` (registry-absent short-circuit at the
@@ -14,16 +14,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use specify_domain::registry::branch::{
+use specify_workflow::registry::branch::{
     LocalAction, RemoteAction, Request as BranchRequest, prepare,
 };
-use specify_domain::registry::forge::{branches_match, is_specify_branch};
-use specify_domain::registry::workspace::{
+use specify_workflow::registry::forge::{branches_match, is_specify_branch};
+use specify_workflow::registry::workspace::{
     PushOutcome, SlotKind, SlotProblemReason, SlotStatus, github_slug, push_projects, slot_problem,
     status as workspace_status, status_projects as workspace_status_projects,
     sync_projects as workspace_sync_projects,
 };
-use specify_domain::registry::{Registry, RegistryProject};
+use specify_workflow::registry::{Registry, RegistryProject};
 use tempfile::TempDir;
 
 #[cfg(unix)]
@@ -784,7 +784,7 @@ projects:
     assert_eq!(slot.slot_path, project_dir.join(".specify/workspace/peer"));
     assert_eq!(
         slot.configured_target_kind,
-        specify_domain::registry::workspace::ConfiguredTargetKind::Local
+        specify_workflow::registry::workspace::ConfiguredTargetKind::Local
     );
     assert_eq!(slot.configured_target, fs::canonicalize(&peer).unwrap().display().to_string());
     assert_eq!(slot.actual_symlink_target, Some(fs::canonicalize(&peer).unwrap()));
@@ -827,7 +827,7 @@ fn c03_status_git_clone_mismatch() {
     assert_eq!(slot.kind, SlotKind::GitClone);
     assert_eq!(
         slot.configured_target_kind,
-        specify_domain::registry::workspace::ConfiguredTargetKind::Remote
+        specify_workflow::registry::workspace::ConfiguredTargetKind::Remote
     );
     assert_eq!(slot.configured_target, remote_url);
     assert_eq!(slot.actual_origin.as_deref(), Some(remote_url));

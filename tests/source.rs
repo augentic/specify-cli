@@ -1,7 +1,7 @@
 //! Integration tests for `specrun source resolve`.
 //!
 //! Mirrors the source-adapter loader exposed by
-//! `crates/domain/src/plugin/`. The CLI verb is a thin
+//! `crates/workflow/src/plugin/`. The CLI verb is a thin
 //! `Plugin::resolve(Axis::Source, …)` wrapper; the cases below pin
 //! the wire shape skill bodies and downstream callers rely on.
 
@@ -12,7 +12,7 @@ mod common;
 use common::{Project, parse_stderr, parse_stdout, repo_root, specrun};
 
 fn plugin_fixtures_root() -> PathBuf {
-    repo_root().join("crates/domain/tests/fixtures/plugins")
+    repo_root().join("crates/workflow/tests/fixtures/plugins")
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {

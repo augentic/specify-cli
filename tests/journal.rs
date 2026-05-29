@@ -2,7 +2,7 @@
 //!
 //! Verifies that each CLI-owned emit site writes the documented wire
 //! shape into `.specify/journal.jsonl` and that the agent-facing
-//! [`specify_domain::journal::append_batch`] helper can be driven directly
+//! [`specify_workflow::journal::append_batch`] helper can be driven directly
 //! from a synthesised event. Golden files under
 //! `tests/fixtures/journal/` pin the canonical JSON-line shape; rerun
 //! with `REGENERATE_GOLDENS=1 cargo test --test journal` to refresh.
@@ -11,9 +11,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
-use specify_domain::change::Divergence;
-use specify_domain::config::Layout;
-use specify_domain::journal::{self, Event, EventKind};
+use specify_workflow::change::Divergence;
+use specify_workflow::config::Layout;
+use specify_workflow::journal::{self, Event, EventKind};
 
 mod common;
 use common::{Project, assert_golden_at, repo_root, specrun};

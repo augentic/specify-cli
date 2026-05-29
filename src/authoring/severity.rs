@@ -51,7 +51,7 @@
 //! library crate. Per the framework-authoring mapping contract,
 //! the CH-21 `Finding` → `LintFinding` mapper sits at the
 //! `specdev` binary boundary so `specify-authoring` does not take a
-//! dependency on `specify-domain`. CH-20 is a building block for that
+//! dependency on `specify-workflow`. CH-20 is a building block for that
 //! mapper, so the severity table must live in the binary layer too.
 
 use specify_lints::Severity;

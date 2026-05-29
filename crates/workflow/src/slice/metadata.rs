@@ -168,12 +168,12 @@ impl SliceMetadata {
     /// since every field of [`SliceMetadata`] is YAML-safe by
     /// construction. Returns [`Error::Io`] when the temp-file create /
     /// write / `sync_all` / atomic rename in
-    /// [`crate::slice::atomic::yaml_write`] fails. The atomicity
+    /// [`specify_model::atomic::yaml_write`] fails. The atomicity
     /// envelope is preserved: a failure here leaves any pre-existing
     /// `.metadata.yaml` intact.
     pub fn save(&self, slice_dir: &Path) -> Result<(), Error> {
         let path = Self::path(slice_dir);
-        crate::slice::atomic::yaml_write(&path, self)
+        specify_model::atomic::yaml_write(&path, self)
     }
 }
 

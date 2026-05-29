@@ -13,11 +13,11 @@ use std::collections::{HashMap, HashSet};
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
 pub(super) use run::run;
-use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
-use specify_domain::init::adapter_name_from_value;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
+use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
+use specify_workflow::init::adapter_name_from_value;
 
 pub(super) use self::dto::{Inventory, ScopedTool};
 use self::dto::{WarningRow, warning_row};

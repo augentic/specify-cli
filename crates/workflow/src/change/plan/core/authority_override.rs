@@ -17,10 +17,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use specify_error::{Error, Result};
+use specify_model::evidence::ClaimKind;
 
 use super::model::{Entry, Plan, Severity};
 use super::validate::orphan_authority_override_keys;
-use crate::evidence::ClaimKind;
 use crate::journal::{self, AuthorityOverrideAction};
 
 /// Build the batched `plan.amend.authority-override` event list

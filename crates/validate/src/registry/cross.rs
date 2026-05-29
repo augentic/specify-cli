@@ -1,6 +1,6 @@
 //! Cross-brief rules that span multiple artifacts.
 
-use crate::validate::{Classification, CrossContext, CrossRule, RuleOutcome, primitives};
+use crate::{Classification, CrossContext, CrossRule, RuleOutcome, primitives};
 
 fn cross_proposal_crates_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
     let proposal_path = ctx.slice_dir.join("proposal.md");

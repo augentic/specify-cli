@@ -2,7 +2,7 @@
 //! by brief id, plus the cross-brief rules. Semantic rules declare
 //! `check: None` and are materialised as `Deferred` by construction.
 
-use crate::validate::Rule;
+use crate::Rule;
 
 mod composition;
 mod contract_rules;

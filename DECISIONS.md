@@ -127,7 +127,7 @@ above:
   surface; clap parse errors exit `2` with the standard "required
   arguments were not provided" / "the argument cannot be used with"
   diagnostics. The discriminant survives in the domain library
-  (`crates/domain/src/init/`) as defence-in-depth for embedders that
+  (`crates/workflow/src/init/`) as defence-in-depth for embedders that
   call `init()` directly.
 
 ## Shell completions
@@ -140,10 +140,26 @@ without extra plumbing.
 
 ## Crate layout
 
-Five workspace crates: `specify-error` (leaf), `specify-domain`
-(every runtime domain module), `specify-tool` (WASI host, gated),
+Workspace crates: `specify-error` (leaf), `specify-schema` (embedded
+JSON Schemas), `specify-model` (artifact types and parsers, plus the
+shared atomic writer), `specify-validate` (artifact validation rule
+registry), `specify-lints` (standards layer), `specify-workflow`
+(workflow lifecycle authority), `specify-tool` (WASI host, gated),
 `specify-authoring` (publish-disabled framework authoring checks), and
 the root binary package.
+
+`specify-model` and `specify-validate` are the two crates that earn a
+new-crate paragraph under the rule below. `specify-model` exists so the
+artifact types and parsers (`spec`, `task`, `evidence`, `discovery`)
+sit on a lifecycle-free leaf: it depends only on `specify-error` and
+preserves the `specify-error -> specify-model` edge. `specify-validate`
+holds the artifact rule registry and depends on `specify-model` only —
+never on `specify-workflow`. That dependency direction is the whole
+point: a validation rule physically cannot reach a slice transition or
+plan stamp, the same no-lifecycle-authority invariant `specify-lints`
+already enforces. `specify-workflow` depends on `specify-model` but
+**not** on `specify-validate` (only the root binary orchestrates
+validation), so no cycle forms.
 
 The Phase 1B collapse from 13 crates and the subsequent
 `specify-validate` re-extraction (folded into the `wasi-tools/contract`
@@ -165,7 +181,7 @@ moved from the plugin repo's retired `tooling/` crate. It stays
 publish-disabled and depends only on leaf/shared crates; the root
 `specdev` binary calls into it. Keeping the checker as a library crate
 preserves its integration-test shape without making framework-repo
-predicates part of the runtime dispatcher or `specify-domain`'s
+predicates part of the runtime dispatcher or `specify-workflow`'s
 workflow contract.
 
 ## Tool architecture
@@ -265,11 +281,11 @@ The output-role domain types are spelled `Target*`
 `plan.entry-needs-project-or-target` / `init-requires-adapter-or-hub`
 discriminants, plus every fixture, JSON envelope, and call site). The
 shared manifest *shape* is loaded by the axis-aware module
-`crates/domain/src/adapter/` (`SourceAdapter` / `TargetAdapter` /
+`crates/workflow/src/adapter/` (`SourceAdapter` / `TargetAdapter` /
 `Axis` / `ResolvedAdapter` / `AdapterLocation`). Briefs are resolved by
 path through `briefs.<op>` on the adapter manifest; they carry no YAML
 frontmatter and the CLI never reads their bodies. `CacheMeta` lives in
-[`crates/domain/src/init/cache.rs`](./crates/domain/src/init/cache.rs);
+[`crates/workflow/src/init/cache.rs`](./crates/workflow/src/init/cache.rs);
 the slice-metadata wire uses `Operation { Shape, Build, Merge }`
 (`phase: shape | build | merge`).
 
@@ -284,7 +300,7 @@ including the names of the retired axis-generic types and the prior
 
 ## Adapter loader axis routing
 
-`specify_domain::adapter::Adapter::resolve(axis, name, project_dir)` is
+`specify_workflow::adapter::Adapter::resolve(axis, name, project_dir)` is
 the single entry point for loading a source or target adapter manifest.
 Probe order is path-agnostic and matches workflow §"Resolver and cache"
 verbatim:
@@ -434,7 +450,7 @@ adapter-opt-out`.
 
 ## Journal event names
 
-`crates/domain/src/journal.rs` emits the closed journal event
+`crates/workflow/src/journal.rs` emits the closed journal event
 taxonomy. The wire ids are dotted kebab-case; the Rust `EventKind`
 variants are `snake_case` and bridge to the wire via
 `#[serde(rename = "…")]`. The taxonomy added in Wave 1.4
@@ -505,7 +521,7 @@ binding now carries an explicit kebab-case `adapter` and exactly one
 of `path` (filesystem path or repo location) or `value` (literal
 payload supplied directly to the adapter — used by `intent`). The
 `oneOf [path, value]` exclusion is enforced in both the JSON Schema
-and the Rust loader (`specify_domain::change::SourceBinding`).
+and the Rust loader (`specify_workflow::change::SourceBinding`).
 
 The `specrun plan create --source` flag grammar mirrors the wire
 shape:
@@ -523,7 +539,7 @@ to literal mode, so the literal payload may contain any character
 (including `:`, `=`, and newlines) without further escaping. No
 shorthand exists for "the adapter name equals the key"; every flag
 invocation carries both. Refer to workflow §Source and
-`crates/domain/src/change/plan/core/model.rs::SourceBinding`.
+`crates/workflow/src/change/plan/core/model.rs::SourceBinding`.
 
 Source keys are plan-scoped; each key maps to exactly one binding
 under `Plan::sources`, but slices may reference the same key with
@@ -552,10 +568,10 @@ Adapter names are unique across axes — a name is declared under
 (and the same applies to their
 `.specify/.cache/manifests/{sources,targets}/<name>/` manifest-cache
 mirrors). Eagerly enforced at `specrun init` time (inside
-`crates/domain/src/init/cache.rs::cache_adapter`, before the target
+`crates/workflow/src/init/cache.rs::cache_adapter`, before the target
 cache directory is rewritten) and at `*Adapter::resolve` time. The
 resolve-time probe lives in
-`crates/domain/src/adapter/core.rs::locate_axis`, which checks the
+`crates/workflow/src/adapter/core.rs::locate_axis`, which checks the
 opposite axis for a sibling `adapter.yaml` via `sibling_manifest_path`
 on every resolve. `specrun` is fork-and-exit, so the pair of `is_file`
 probes is cheaper than memoising them behind process-global state. The
@@ -575,12 +591,12 @@ without grepping the manifest tree.
   agent-populated mirror of `adapters/{sources,targets}/<name>/`
   (`adapter.yaml` plus the brief markdown files it references). Per-axis
   because adapter names are unique per axis. Resolved by
-  `crates/domain/src/adapter/core.rs::cache_dir`.
+  `crates/workflow/src/adapter/core.rs::cache_dir`.
 - `extractions/<adapter>/<fingerprint>/` — per-source extraction result cache, with the append-only `index.jsonl` at the
   adapter root (`extractions/<adapter>/index.jsonl`). Per-adapter only —
   not per-axis — because extraction is a source-axis operation; the
   adapter name carries enough identity. Resolved by
-  `crates/domain/src/adapter/cache/io.rs::CacheLayout`.
+  `crates/workflow/src/adapter/cache/io.rs::CacheLayout`.
 
 Each cache owns its own root, so the loader no longer probes for an
 `adapter.yaml` inside the cache directory to disambiguate manifest vs.
@@ -597,7 +613,7 @@ decorative metadata:
 - `schemas/plan/plan.schema.json` pins the wire shape with the regex
   `^[a-z][a-z0-9-]*@v\d+$`; bare names and non-kebab variants are
   rejected at schema-validation time.
-- `crates/domain/src/change/plan/core/model.rs::TargetRef` is the
+- `crates/workflow/src/change/plan/core/model.rs::TargetRef` is the
   parsed in-memory representation. Serde routes
   `Option<TargetRef>` through `TargetRef::parse`, so any value that
   reaches the validator already carries a typed `(name, version)`
@@ -627,7 +643,7 @@ finishes; string operation names never survive past the manifest loader.
   `briefs: BTreeMap<SourceOperation, String>` and
   `BTreeMap<TargetOperation, String>` respectively. The closed
   `{Source,Target}Operation` enums in
-  `crates/domain/src/adapter/operation.rs` are the typed `briefs.keys()`
+  `crates/workflow/src/adapter/operation.rs` are the typed `briefs.keys()`
   carried by each manifest struct; manifest brief maps are enum-keyed
   and string literals at call sites are gone.
 - **Wire invariant.** The `specrun source resolve` and
@@ -697,7 +713,7 @@ declares shared UI components (`status: confirmed | rejected`). The
 schema is CLI-owned at
 [`schemas/design-system/components.schema.json`](./schemas/design-system/components.schema.json);
 the domain type is `ComponentsCatalog` in
-[`crates/domain/src/design_system.rs`](./crates/domain/src/design_system.rs)
+[`crates/workflow/src/design_system.rs`](./crates/workflow/src/design_system.rs)
 with `load()`, `confirmed_slugs()`, `rejected_slugs()`, and
 `status_of()` accessors. The catalog is opt-in — projects without the
 file work exactly as before. Slugs are kebab-case
@@ -730,7 +746,7 @@ the check is silently skipped.
 The standards surface (rules parser / resolver / finding
 validator, `WorkspaceModel`, indexer, deterministic hint
 interpreter, diagnostic formatters, and `specrun lint` runner) lives
-in `specify-lints`, a sibling of `specify-domain` rather than a module
+in `specify-lints`, a sibling of `specify-workflow` rather than a module
 inside it. `specify-schema` is the shared leaf: it owns every embedded
 JSON Schema constant (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
 `RECONCILIATION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
@@ -743,13 +759,13 @@ other than `specify-error` itself.
 
 Dependency direction: `specify-lints` depends on `specify-error`,
 `specify-schema`, and `specify-tool` (for the `kind: tool` hint). It
-does **not** depend on `specify-domain`, and `specify-domain` does
+does **not** depend on `specify-workflow`, and `specify-workflow` does
 **not** depend on `specify-lints`. The sibling shape makes the
 §"Principles" / "No lifecycle authority in review" rule a type-system
 invariant: review code cannot reach for slice or plan lifecycle
 transitions because the workflow types are not visible from the
 standards layer. If a future workflow validator needs to mint a
-`LintFinding`, `specify-domain` gains a dependency on `specify-lints`
+`LintFinding`, `specify-workflow` gains a dependency on `specify-lints`
 at that point (leaf-→-root still holds); v1 does not need this and the
 sibling shape stays.
 

@@ -5,11 +5,11 @@
 use std::path::{Path, PathBuf};
 
 use specify_error::Error;
+use specify_model::atomic::yaml_write;
 
 use super::model::Plan;
 use crate::config::{AtomicYaml, Layout};
 use crate::schema::validate_plan_yaml;
-use crate::slice::atomic::yaml_write;
 
 impl AtomicYaml for Plan {
     fn layout_path(layout: Layout<'_>) -> PathBuf {

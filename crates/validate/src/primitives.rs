@@ -1,5 +1,6 @@
 //! Structural primitives — the small, unit-testable checks that named
-//! rules compose. Each helper is `pub(crate)` and side-effect free
+//! rules compose. Each helper is `pub` (crate-internal via the private
+//! `primitives` module) and side-effect free
 //! apart from `specs_dir` reads in two helpers.
 
 use std::collections::HashSet;
@@ -7,13 +8,12 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use regex::Regex;
-
-use crate::spec::ParsedSpec;
-use crate::task::Progress;
+use specify_model::spec::ParsedSpec;
+use specify_model::task::Progress;
 
 // ---------------------------------------------------------------------------
 // Compiled regexes (constructed once, on first use). Mirrors the pattern in
-// `crate::task` so the domain crate is uniformly OnceLock-backed for literal
+// `specify_model::task` so the model crate is uniformly OnceLock-backed for literal
 // patterns. The dynamic `ids_match_pattern` accessor stays inline because its
 // pattern is caller-supplied.
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ pub fn screen_slug_re() -> &'static Regex {
 /// Return `true` when `heading` appears AND at least one non-empty,
 /// non-whitespace line follows it before the next `##`-or-higher heading.
 /// Blank lines between the heading and prose are fine.
-pub(super) fn has_content_after_heading(content: &str, heading: &str) -> bool {
+pub fn has_content_after_heading(content: &str, heading: &str) -> bool {
     let mut lines = content.lines();
     while let Some(line) = lines.next() {
         if line.trim_end() != heading {
@@ -89,17 +89,17 @@ fn leading_hash_count(line: &str) -> usize {
     if rest.is_empty() || rest.starts_with(' ') || rest.starts_with('\t') { count } else { 0 }
 }
 
-pub(super) fn all_requirements_have_scenarios(spec: &ParsedSpec) -> bool {
+pub fn all_requirements_have_scenarios(spec: &ParsedSpec) -> bool {
     spec.requirements.iter().all(|r| !r.scenarios.is_empty())
 }
 
-pub(super) fn all_requirements_have_ids(spec: &ParsedSpec) -> bool {
+pub fn all_requirements_have_ids(spec: &ParsedSpec) -> bool {
     spec.requirements.iter().all(|r| !r.id.is_empty())
 }
 
 /// Compile `pattern` as a regex and return `true` iff every requirement's
 /// `id` fully matches. Invalid patterns (programmer error) return `false`.
-pub(super) fn ids_match_pattern(spec: &ParsedSpec, pattern: &str) -> bool {
+pub fn ids_match_pattern(spec: &ParsedSpec, pattern: &str) -> bool {
     let Ok(re) = Regex::new(pattern) else {
         return false;
     };
@@ -117,7 +117,7 @@ pub(super) fn ids_match_pattern(spec: &ParsedSpec, pattern: &str) -> bool {
 ///
 /// Also returns `false` if the parsed total disagrees with the recognised
 /// count (defensive — shouldn't happen by construction).
-pub(super) fn all_tasks_use_checkbox(tasks: &Progress, content: &str) -> bool {
+pub fn all_tasks_use_checkbox(tasks: &Progress, content: &str) -> bool {
     if tasks.total != tasks.tasks.len() {
         return false;
     }
@@ -140,7 +140,7 @@ pub(super) fn all_tasks_use_checkbox(tasks: &Progress, content: &str) -> bool {
     true
 }
 
-pub(super) fn tasks_grouped_under_headings(tasks: &Progress) -> bool {
+pub fn tasks_grouped_under_headings(tasks: &Progress) -> bool {
     tasks.tasks.iter().all(|t| !t.group.is_empty())
 }
 
@@ -148,7 +148,7 @@ pub(super) fn tasks_grouped_under_headings(tasks: &Progress) -> bool {
 /// `## Crates` section has a matching `specs/<name>/spec.md` on disk.
 /// If the section is absent or empty, returns `true` — the sibling
 /// `has-content-after-heading` rule is responsible for that case.
-pub(super) fn proposal_deliverables_have_specs(proposal: &str, specs_dir: &Path) -> bool {
+pub fn proposal_deliverables_have_specs(proposal: &str, specs_dir: &Path) -> bool {
     let entries = extract_deliverables(proposal, "## Crates");
     if entries.is_empty() {
         return true;
@@ -213,7 +213,7 @@ fn extract_deliverables(proposal: &str, heading: &str) -> Vec<String> {
 /// Extract the `$ref` target path from a YAML line like
 /// `$ref: "../schemas/user.yaml"`. Returns `None` when the line is not a
 /// `$ref:` entry or the value is empty/non-file (fragment-only or URL).
-pub(super) fn extract_ref(line: &str) -> Option<&str> {
+pub fn extract_ref(line: &str) -> Option<&str> {
     let trimmed = line.trim();
     let rest = trimmed.strip_prefix("$ref:")?;
     let value = rest.trim().trim_matches('"').trim_matches('\'');
@@ -230,7 +230,7 @@ pub(super) fn extract_ref(line: &str) -> Option<&str> {
 /// Match `REQ-XXX` IDs in the design doc; return `true` iff each is present
 /// in at least one `specs/*/spec.md` under `specs_dir`. Returns `true` if
 /// no references are found.
-pub(super) fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
+pub fn design_references_exist(design: &str, specs_dir: &Path) -> bool {
     let refs: HashSet<String> =
         req_id_ref_re().find_iter(design).map(|m| m.as_str().to_string()).collect();
     if refs.is_empty() {
@@ -279,54 +279,56 @@ mod tests {
 
     #[test]
     fn requirements_need_scenarios() {
-        let ok = crate::spec::parse_baseline(
+        let ok = specify_model::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n- WHEN foo\n- THEN bar\n",
         );
         assert!(all_requirements_have_scenarios(&ok));
-        let bad =
-            crate::spec::parse_baseline("### Requirement: Thing\n\nID: REQ-001\n\nno scenario\n");
+        let bad = specify_model::spec::parse_baseline(
+            "### Requirement: Thing\n\nID: REQ-001\n\nno scenario\n",
+        );
         assert!(!all_requirements_have_scenarios(&bad));
     }
 
     #[test]
     fn requirements_need_ids() {
-        let ok = crate::spec::parse_baseline(
+        let ok = specify_model::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
         assert!(all_requirements_have_ids(&ok));
-        let bad = crate::spec::parse_baseline("### Requirement: Thing\n\n#### Scenario: Happy\n");
+        let bad =
+            specify_model::spec::parse_baseline("### Requirement: Thing\n\n#### Scenario: Happy\n");
         assert!(!all_requirements_have_ids(&bad));
     }
 
     #[test]
     fn req_id_pattern() {
-        let ok = crate::spec::parse_baseline(
+        let ok = specify_model::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
-        assert!(ids_match_pattern(&ok, crate::spec::REQ_ID_PATTERN));
-        let bad = crate::spec::parse_baseline(
+        assert!(ids_match_pattern(&ok, specify_model::spec::REQ_ID_PATTERN));
+        let bad = specify_model::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-1\n\n#### Scenario: Happy\n",
         );
-        assert!(!ids_match_pattern(&bad, crate::spec::REQ_ID_PATTERN));
+        assert!(!ids_match_pattern(&bad, specify_model::spec::REQ_ID_PATTERN));
     }
 
     #[test]
     fn checkbox_rejects_bare_bullets() {
         let ok = "## 1. Setup\n- [ ] 1.1 Do thing\n- [ ] 1.2 Do other\n";
-        let progress = crate::task::parse_tasks(ok);
+        let progress = specify_model::task::parse_tasks(ok);
         assert!(all_tasks_use_checkbox(&progress, ok));
         let bad = "## 1. Setup\n- [ ] 1.1 Do thing\n- bare bullet\n";
-        let progress = crate::task::parse_tasks(bad);
+        let progress = specify_model::task::parse_tasks(bad);
         assert!(!all_tasks_use_checkbox(&progress, bad));
     }
 
     #[test]
     fn tasks_require_group_headings() {
         let ok = "## 1. Setup\n- [ ] 1.1 Do thing\n";
-        let progress = crate::task::parse_tasks(ok);
+        let progress = specify_model::task::parse_tasks(ok);
         assert!(tasks_grouped_under_headings(&progress));
         let bad = "- [ ] 1.1 Do thing\n";
-        let progress = crate::task::parse_tasks(bad);
+        let progress = specify_model::task::parse_tasks(bad);
         assert!(!tasks_grouped_under_headings(&progress));
     }
 

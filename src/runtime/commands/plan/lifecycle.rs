@@ -2,13 +2,13 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::change::{
+use specify_error::{Error, Result};
+use specify_workflow::change::{
     Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, detect,
     plan_doctor,
 };
-use specify_domain::config::{ProjectConfig, with_state};
-use specify_domain::registry::Registry;
-use specify_error::{Error, Result};
+use specify_workflow::config::{ProjectConfig, with_state};
+use specify_workflow::registry::Registry;
 
 use super::{Ref, plan_ref, require_file};
 use crate::runtime::context::Ctx;
@@ -193,29 +193,29 @@ pub(super) fn transition(
     // flags `changed = false` so we skip the emit.
     match (body.kind, body.changed) {
         (TransitionKind::Plan, true) => {
-            let event = specify_domain::journal::Event::new(
+            let event = specify_workflow::journal::Event::new(
                 Timestamp::now(),
-                specify_domain::journal::EventKind::PlanTransitionApproved {
+                specify_workflow::journal::EventKind::PlanTransitionApproved {
                     plan_name: body.name.clone(),
                 },
             );
-            specify_domain::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+            specify_workflow::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
         }
         (TransitionKind::Undo, true) => {
             let pair = body.undo.ok_or_else(|| Error::Diag {
                 code: "plan-transition-undo",
                 detail: "undo body must carry the status pair".to_string(),
             })?;
-            let event = specify_domain::journal::Event::new(
+            let event = specify_workflow::journal::Event::new(
                 Timestamp::now(),
-                specify_domain::journal::EventKind::PlanTransitionUndone {
+                specify_workflow::journal::EventKind::PlanTransitionUndone {
                     plan_name: body.plan.name.clone(),
                     slice_name: body.name.clone(),
                     from: pair.from,
                     to: pair.to,
                 },
             );
-            specify_domain::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+            specify_workflow::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
         }
         _ => {}
     }

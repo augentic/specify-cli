@@ -46,13 +46,13 @@ use crate::rules::{
 const SOURCE_ADAPTER_BRIEFS_COVER_OPERATIONS: &str = "adapter-briefs-cover-operations";
 
 /// Closed source-adapter operation set kept in sync with
-/// `specify_domain::adapter::SourceOperation` (kebab-case wire
+/// `specify_workflow::adapter::SourceOperation` (kebab-case wire
 /// form). Held inline here so the standards-layer crate does not
 /// take a workflow-layer dependency.
 const SOURCE_OPERATIONS: &[&str] = &["extract", "survey"];
 
 /// Closed target-adapter operation set kept in sync with
-/// `specify_domain::adapter::TargetOperation`.
+/// `specify_workflow::adapter::TargetOperation`.
 const TARGET_OPERATIONS: &[&str] = &["build", "merge", "shape"];
 
 pub(crate) fn evaluate(

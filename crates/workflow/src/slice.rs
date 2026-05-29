@@ -3,7 +3,6 @@
 //! Verb-level filesystem operations live in [`actions`].
 
 pub mod actions;
-pub mod atomic;
 pub mod lifecycle;
 pub mod metadata;
 pub mod outcome;

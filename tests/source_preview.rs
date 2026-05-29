@@ -8,7 +8,7 @@ use common::{parse_stderr, parse_stdout, repo_root, specrun};
 use tempfile::tempdir;
 
 fn plugin_fixtures_root() -> PathBuf {
-    repo_root().join("crates/domain/tests/fixtures/plugins")
+    repo_root().join("crates/workflow/tests/fixtures/plugins")
 }
 
 fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {

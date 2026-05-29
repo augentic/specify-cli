@@ -325,7 +325,7 @@ fn drop_transitions_and_archives() {
 
 #[test]
 fn metadata_without_outcome_still_parses() {
-    use specify_domain::slice::SliceMetadata;
+    use specify_workflow::slice::SliceMetadata;
     // Hand-craft a `.metadata.yaml` that predates the `outcome` field
     // and assert that SliceMetadata::load accepts it and leaves
     // `outcome` as None.
@@ -345,7 +345,7 @@ created-at: "2024-08-01T10:00:00Z"
 
 #[test]
 fn phase_outcome_round_trips_serde() {
-    use specify_domain::slice::Outcome;
+    use specify_workflow::slice::Outcome;
     // Construction via struct literal would require crossing the
     // `#[non_exhaustive]` boundary on `Outcome`; round-trip through
     // YAML instead so the wire shape is what's exercised.

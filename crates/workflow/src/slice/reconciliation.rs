@@ -17,9 +17,9 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_model::spec::provenance::RequirementStatus;
 
 use crate::schema::{RECONCILIATION_JSON_SCHEMA, evidence_yaml_paths, validate_serialisable};
-use crate::spec::provenance::RequirementStatus;
 
 /// In-memory model of `reconciliation.yaml` (workflow §Reconciliation index).
 ///
@@ -87,7 +87,7 @@ pub struct ContributingClaim {
     /// Claim kind copied from the source Evidence claim — closed
     /// enum (mirrored from
     /// `schemas/evidence.schema.json#/$defs/claimKind`).
-    pub kind: crate::evidence::ClaimKind,
+    pub kind: specify_model::evidence::ClaimKind,
     /// Optional single-line claim payload (statement / criterion /
     /// decision body). Multi-line bodies truncate to the first
     /// non-empty line with a trailing `…`; the 16 `KiB` cap is
@@ -377,7 +377,7 @@ pub type EvidenceClaimIds = BTreeMap<String, BTreeSet<String>>;
 ///
 /// The evidence schema is `additionalProperties: true` on every
 /// claim, so this helper deliberately uses `serde_json::Value`
-/// rather than the typed [`crate::evidence`] surface: drift
+/// rather than the typed [`specify_model::evidence`] surface: drift
 /// detection cares only about the `(source, claim-id)` join keys,
 /// and tolerating unknown per-kind body fields here keeps the
 /// helper forward-compatible with future claim kinds.
@@ -424,8 +424,9 @@ fn extract_claim_ids(doc: &JsonValue) -> BTreeSet<String> {
 
 #[cfg(test)]
 mod tests {
+    use specify_model::evidence::ClaimKind;
+
     use super::*;
-    use crate::evidence::ClaimKind;
     use crate::journal::test_timestamp;
 
     fn sample() -> ReconciliationIndex {

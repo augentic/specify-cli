@@ -15,9 +15,9 @@ mod lock;
 mod render;
 
 pub use generate::for_init as generate_for_init;
-#[cfg(test)]
-use specify_domain::config::Layout;
 use specify_error::{Error, Result};
+#[cfg(test)]
+use specify_workflow::config::Layout;
 
 use crate::runtime::context::Ctx;
 
@@ -68,8 +68,8 @@ fn context_lock_path(ctx: &Ctx) -> PathBuf {
 mod tests {
     use std::collections::BTreeMap;
 
-    use specify_domain::config::ProjectConfig;
-    use specify_domain::registry::Registry;
+    use specify_workflow::config::ProjectConfig;
+    use specify_workflow::registry::Registry;
     use tempfile::tempdir;
 
     use super::*;

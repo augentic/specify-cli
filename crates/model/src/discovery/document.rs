@@ -32,7 +32,7 @@ use std::path::Path;
 use specify_error::{Error, Result};
 
 use super::lead::{Lead, LeadAliases};
-use crate::slice::atomic;
+use crate::atomic;
 
 /// In-memory model of one `discovery.md` file.
 ///

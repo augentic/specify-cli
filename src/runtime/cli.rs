@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use clap::{Parser, Subcommand};
 use clap_complete::Shell;
-use specify_domain::evidence::ClaimKind;
+use specify_model::evidence::ClaimKind;
 
 pub use crate::output::Format;
 use crate::runtime::commands::lint::cli::LintAction;
@@ -156,7 +156,7 @@ pub enum Commands {
 ///   after the second `:` and may contain anything (newlines,
 ///   colons, equals signs).
 ///
-/// Materialises as [`specify_domain::change::SourceBinding`] under
+/// Materialises as [`specify_workflow::change::SourceBinding`] under
 /// the structured `{ adapter, path?, value? }` wire form. The 1.x
 /// bare-string `--source <key>=<path>` form was dropped at the 2.0
 /// cut — every binding now carries an explicit adapter name.
@@ -231,10 +231,10 @@ impl FromStr for SourceArg {
 ///
 /// - `<key>=<lead-id>` — structured binding; both sides are
 ///   non-empty kebab identifiers. Materialises via
-///   [`specify_domain::change::SliceSourceBinding::structured`].
+///   [`specify_workflow::change::SliceSourceBinding::structured`].
 /// - `<key>` — bare-string shorthand; sugar for
 ///   `{ key: <key>, lead: <slice.name> }`. Materialises via
-///   [`specify_domain::change::SliceSourceBinding::bare`].
+///   [`specify_workflow::change::SliceSourceBinding::bare`].
 ///
 /// Malformed inputs (empty key, empty lead, dangling `=`, more
 /// than one `=`) produce a `FromStr` error that clap surfaces as a

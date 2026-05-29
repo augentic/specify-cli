@@ -4,9 +4,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use specify_domain::slice::SLICES_DIR_NAME;
-use specify_domain::validate::validate_slice;
 use specify_error::ValidationStatus;
+use specify_validate::validate_slice;
+use specify_workflow::slice::SLICES_DIR_NAME;
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
@@ -82,7 +82,7 @@ fn validate_slice_passes_all_rules() {
     // invariant in situ: if any Semantic rule's `check` were invoked the
     // runner would panic (by construction) and this test would fail.
     let repo = repo_root();
-    let fixture = repo.join("crates/domain/tests/fixtures/change-good");
+    let fixture = repo.join("crates/workflow/tests/fixtures/change-good");
     let (_guard, project_dir) = stage_project();
     let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join("change-good");
     copy_dir_recursive(&fixture, &slice_dir);

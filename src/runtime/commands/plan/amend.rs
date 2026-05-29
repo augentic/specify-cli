@@ -3,16 +3,16 @@
 //! through direct entry mutation, and authority-override flags
 //! through the shared domain engine.
 
-use specify_domain::change::{
+use specify_error::{Error, Result};
+use specify_model::discovery::Discovery;
+use specify_model::evidence::ClaimKind;
+use specify_workflow::change::{
     Divergence, EntryPatch, Patch, Plan, SliceSourceBinding, entry_mut, mutate_authority_overrides,
     reject_orphan_overrides,
 };
-use specify_domain::config::with_state;
-use specify_domain::discovery::Discovery;
-use specify_domain::evidence::ClaimKind;
-use specify_domain::journal;
-use specify_domain::schema::validate_plan;
-use specify_error::{Error, Result};
+use specify_workflow::config::with_state;
+use specify_workflow::journal;
+use specify_workflow::schema::validate_plan;
 
 use super::args::{
     bindings_from_args, load_discovery, parse_divergence, parse_override_assigns,
@@ -127,11 +127,10 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
             reject_orphan_overrides(plan)?;
 
             validate_plan(plan)?;
-            let amended = plan
-                .entries
-                .iter()
-                .find(|c| c.name == name)
-                .ok_or_else(|| specify_domain::change::unknown_slice_err(&plan_name, &name))?;
+            let amended =
+                plan.entries.iter().find(|c| c.name == name).ok_or_else(|| {
+                    specify_workflow::change::unknown_slice_err(&plan_name, &name)
+                })?;
 
             // Build the journal event only when --divergence flipped
             // the slice's `divergence` (workflow §Observability —

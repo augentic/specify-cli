@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::config::{ProjectConfig, is_workspace_clone};
-use specify_domain::init::{InitOptions, InitResult, init};
 use specify_error::{Error, Result};
+use specify_workflow::config::{ProjectConfig, is_workspace_clone};
+use specify_workflow::init::{InitOptions, InitResult, init};
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::agents;

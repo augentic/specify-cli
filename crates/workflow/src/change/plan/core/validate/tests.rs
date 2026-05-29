@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
+use specify_model::evidence::ClaimKind;
 use tempfile::tempdir;
 
 use super::super::model::{
@@ -7,7 +8,6 @@ use super::super::model::{
 };
 use super::super::{PLAN_EXAMPLE_YAML, change, plan_with_changes};
 use crate::change::{CYCLE, detect};
-use crate::evidence::ClaimKind;
 use crate::registry::{Registry, RegistryProject};
 
 #[test]

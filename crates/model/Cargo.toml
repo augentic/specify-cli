@@ -1,13 +1,13 @@
 [package]
-name = "specify-workflow"
+name = "specify-model"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Specify workflow crate: slice, change, adapter, registry, config, merge, init lifecycle authority"
+description = "Specify model crate: artifact types and parsers (spec, task, evidence, discovery) plus the shared atomic writer"
 categories = ["development-tools"]
-keywords = ["specify", "workflow", "lifecycle"]
+keywords = ["specify", "model", "workflow"]
 readme = "../../README.md"
 
 [lints]
@@ -15,27 +15,14 @@ workspace = true
 
 [dependencies]
 clap.workspace = true
-glob.workspace = true
-jiff.workspace = true
-petgraph.workspace = true
 regex.workspace = true
-semver.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
 specify-error.workspace = true
-specify-model.workspace = true
-specify-schema.workspace = true
-specify-tool.workspace = true
 strum.workspace = true
 tempfile.workspace = true
 
-[target.'cfg(unix)'.dependencies]
-libc.workspace = true
-
 [dev-dependencies]
-jsonschema.workspace = true
-regex.workspace = true
 serde_json.workspace = true
-specify-validate.workspace = true
 tempfile.workspace = true

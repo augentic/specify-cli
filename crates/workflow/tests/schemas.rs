@@ -16,7 +16,7 @@ use jsonschema::Validator;
 use serde_json::Value as JsonValue;
 
 fn schemas_root() -> PathBuf {
-    // `crates/domain/tests/` -> `crates/domain/` -> `crates/` -> repo root.
+    // `crates/workflow/tests/` -> `crates/workflow/` -> `crates/` -> repo root.
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas")
 }
 
@@ -372,7 +372,7 @@ fn lead_rejects_bad_sources_id_and_tentative() {
 // --- plan/plan.schema.json (source/target adapter split deltas) -------------------------
 
 fn plan_v2_fixture_path(name: &str) -> PathBuf {
-    // `crates/domain/tests/` -> `crates/domain/` -> `crates/` -> repo
+    // `crates/workflow/tests/` -> `crates/workflow/` -> `crates/` -> repo
     // root -> `tests/fixtures/plan/v2/`.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")

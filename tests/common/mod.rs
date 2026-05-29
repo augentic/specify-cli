@@ -56,11 +56,11 @@ pub fn specrun() -> Command {
 /// Integration tests call this directly because outcome inspection is no
 /// longer exposed as CLI product surface.
 pub fn stamp_slice_outcome(
-    project: &Project, name: &str, phase: specify_domain::adapter::TargetOperation,
-    kind: specify_domain::slice::OutcomeKind, summary: &str, context: Option<&str>,
+    project: &Project, name: &str, phase: specify_workflow::adapter::TargetOperation,
+    kind: specify_workflow::slice::OutcomeKind, summary: &str, context: Option<&str>,
 ) {
     use jiff::Timestamp;
-    use specify_domain::slice::actions as slice_actions;
+    use specify_workflow::slice::actions as slice_actions;
 
     let slice_dir = project.slices_dir().join(name);
     slice_actions::stamp_outcome(

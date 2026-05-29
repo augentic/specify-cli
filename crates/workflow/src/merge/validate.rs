@@ -6,8 +6,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 use specify_error::{ValidationStatus, ValidationSummary};
-
-use crate::spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
+use specify_model::spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
 
 fn fail(rule_id: &str, rule: &str, detail: String) -> ValidationSummary {
     ValidationSummary {
@@ -129,7 +128,7 @@ pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Validation
         // Parity quirk: Python's regex is anchored with ^...$ but lacks
         // re.MULTILINE, so finditer() on a multi-line design string never
         // matches. The rule `cross.design-references-valid` in
-        // `specify-domain::validate` covers this with a correct
+        // `specify-validate` covers this with a correct
         // multi-line check. `REQ_ID_PATTERN` itself already
         // contains ^ and $ — Rust's default `Regex` treats them as
         // string boundaries (no MULTILINE flag), so we match Python

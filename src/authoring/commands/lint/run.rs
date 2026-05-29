@@ -36,10 +36,6 @@ use specify_authoring::check;
 use specify_authoring::context::Context as AuthoringContext;
 use specify_authoring::exit::Exit;
 use specify_authoring::finding::Finding;
-use specify_domain::config::Layout;
-use specify_domain::journal::{
-    self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
-};
 use specify_error::{Error, Result};
 use specify_lints::fingerprint::fingerprint as compute_fingerprint;
 use specify_lints::lint::ScanProfile;
@@ -54,6 +50,10 @@ use specify_lints::lint::index::build as build_model;
 use specify_lints::rules::ResolvedRules;
 use specify_lints::{
     FindingStatus, LintFinding, ResolveInputs, build_resolved_rules, map_resolve_error,
+};
+use specify_workflow::config::Layout;
+use specify_workflow::journal::{
+    self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
 };
 
 use crate::authoring::commands::lint::cli::{LintAction, LintFormat};

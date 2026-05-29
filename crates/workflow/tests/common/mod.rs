@@ -1,4 +1,4 @@
-//! Shared test helpers for `specify-domain` integration tests.
+//! Shared test helpers for `specify-workflow` integration tests.
 //!
 //! Centralises [`MockCmd`], a recorder that captures every invocation
 //! and dispatches the response through a per-test closure. Pass it to

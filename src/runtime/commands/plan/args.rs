@@ -1,19 +1,19 @@
 //! CLI-side argument-parsing helpers shared by `plan create`,
 //! `plan add`, and `plan amend`. Each helper turns the clap-shaped
 //! string payload into the domain type the handler will hand to
-//! [`specify_domain::change::Plan`]; the handlers themselves stay
+//! [`specify_workflow::change::Plan`]; the handlers themselves stay
 //! free of `FromStr` chatter and `--flag` plumbing.
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use specify_domain::change::{
+use specify_error::{Error, Result};
+use specify_model::discovery::{Discovery, DiscoveryResolveError};
+use specify_model::evidence::ClaimKind;
+use specify_workflow::change::{
     Divergence, SliceSourceBinding, SourceBinding, TargetRef, TargetRefParseError,
 };
-use specify_domain::config::Layout;
-use specify_domain::discovery::{Discovery, DiscoveryResolveError};
-use specify_domain::evidence::ClaimKind;
-use specify_error::{Error, Result};
+use specify_workflow::config::Layout;
 
 use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 
@@ -190,7 +190,7 @@ where
 
 /// Parse `--authority-override <slice> <kind>=<source-key>` repeats
 /// into the typed `(slice, kind, source-key)` tuple
-/// [`specify_domain::change::mutate_authority_overrides`] expects.
+/// [`specify_workflow::change::mutate_authority_overrides`] expects.
 pub fn parse_override_assigns(raw: &[String]) -> Result<Vec<(String, ClaimKind, String)>> {
     Ok(parse_slice_pair_args::<AuthorityOverrideKindAssign>(raw, "--authority-override")?
         .into_iter()

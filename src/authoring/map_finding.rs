@@ -5,7 +5,7 @@
 //! (`src/authoring/map_finding.rs`) alongside CH-20's
 //! [`crate::authoring::severity`]. Per the rules contract §"Relationship to
 //! framework authoring", the `specify-authoring` library MUST NOT
-//! depend on `specify-domain`; the structured-finding mapper therefore
+//! depend on `specify-workflow`; the structured-finding mapper therefore
 //! has to live in the binary crate so the `specdev` JSON export can
 //! reach across both worlds without polluting the authoring layer's
 //! dependency graph.

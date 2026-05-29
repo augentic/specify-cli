@@ -1,7 +1,7 @@
 //! Integration tests for `specrun target resolve`.
 //!
 //! Mirrors the target-adapter loader exposed by
-//! `crates/domain/src/adapter/`. The CLI verb is a thin
+//! `crates/workflow/src/adapter/`. The CLI verb is a thin
 //! `TargetAdapter::resolve(name, project_dir)` wrapper.
 
 use std::fs;
@@ -11,7 +11,7 @@ mod common;
 use common::{Project, parse_stdout, repo_root, specrun};
 
 fn plugin_fixtures_root() -> PathBuf {
-    repo_root().join("crates/domain/tests/fixtures/plugins")
+    repo_root().join("crates/workflow/tests/fixtures/plugins")
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {

@@ -2,10 +2,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify_domain::adapter::{ResolvedTargetAdapter, TargetAdapter};
-use specify_domain::config::{Layout, ProjectConfig};
-use specify_domain::init::adapter_name_from_value;
 use specify_error::Error;
+use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
+use specify_workflow::config::{Layout, ProjectConfig};
+use specify_workflow::init::adapter_name_from_value;
 
 use crate::output::Format;
 use crate::runtime::output;
@@ -67,7 +67,7 @@ impl Ctx {
     }
 
     /// Typed view over `.specify/`-anchored paths. Hand this to
-    /// [`specify_domain::config::with_state`] in handlers that mutate
+    /// [`specify_workflow::config::with_state`] in handlers that mutate
     /// `plan.yaml` / `registry.yaml`.
     pub(crate) fn layout(&self) -> Layout<'_> {
         Layout::new(&self.project_dir)

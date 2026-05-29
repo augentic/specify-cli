@@ -15,8 +15,8 @@ use std::path::Path;
 
 use clap::CommandFactory;
 use serde::Serialize;
-use specify_domain::adapter::{Axis, SourceAdapter, TargetAdapter};
 use specify_error::Result;
+use specify_workflow::adapter::{Axis, SourceAdapter, TargetAdapter};
 
 use crate::runtime::cli::{Cli, Commands, Format};
 use crate::runtime::commands::lint::cli::LintAction;

@@ -314,7 +314,7 @@ fn remove_refuses_when_absent() {
 
 #[test]
 fn load_from_tempdir() {
-    use specify_domain::registry::Registry;
+    use specify_workflow::registry::Registry;
 
     let project = Project::init();
     let registry_path = project.root().join("registry.yaml");

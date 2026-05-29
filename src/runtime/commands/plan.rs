@@ -9,10 +9,10 @@ mod lifecycle;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use specify_domain::change::Plan;
-use specify_domain::config::Layout;
-use specify_domain::registry::Registry;
 use specify_error::{Error, Result};
+use specify_workflow::change::Plan;
+use specify_workflow::config::Layout;
+use specify_workflow::registry::Registry;
 
 use self::cli::PlanAction;
 use crate::runtime::context::Ctx;

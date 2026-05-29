@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
-use specify_domain::change::{Plan, Status};
-use specify_domain::config::{Layout, is_workspace_clone, with_state};
-use specify_domain::merge::{
+use specify_error::{Error, Result};
+use specify_workflow::change::{Plan, Status};
+use specify_workflow::config::{Layout, is_workspace_clone, with_state};
+use specify_workflow::merge::{
     BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
 };
-use specify_error::{Error, Result};
 
 use super::artifact_classes;
 use crate::runtime::context::Ctx;

@@ -5,13 +5,13 @@
 
 use std::collections::BTreeMap;
 
-use specify_domain::change::{
+use specify_error::Result;
+use specify_workflow::change::{
     Entry, Plan, SliceAuthorityOverride, Status, emit_authority_override_seed_events, entry_mut,
 };
-use specify_domain::config::with_state;
-use specify_domain::journal;
-use specify_domain::schema::validate_plan;
-use specify_error::Result;
+use specify_workflow::config::with_state;
+use specify_workflow::journal;
+use specify_workflow::schema::validate_plan;
 
 use super::args::{bindings_from_args, load_discovery, parse_target_flag};
 use super::cli::AddArgs;

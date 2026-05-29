@@ -8,15 +8,15 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde_json::Value as JsonValue;
-use specify_domain::change::{Plan, orphan_authority_override_keys};
-use specify_domain::design_system::{ComponentStatus, ComponentsCatalog};
-use specify_domain::discovery::Discovery;
-use specify_domain::journal::{Event, EventKind, append_batch};
-use specify_domain::schema::{evidence_yaml_paths, validate_evidence_dir};
-use specify_domain::slice::reconciliation::{self, ReconciliationIndex};
-use specify_domain::spec::provenance::{self, ParsedSpec, RequirementTag};
-use specify_domain::validate::validate_slice;
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_model::discovery::Discovery;
+use specify_model::spec::provenance::{self, ParsedSpec, RequirementTag};
+use specify_validate::validate_slice;
+use specify_workflow::change::{Plan, orphan_authority_override_keys};
+use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
+use specify_workflow::journal::{Event, EventKind, append_batch};
+use specify_workflow::schema::{evidence_yaml_paths, validate_evidence_dir};
+use specify_workflow::slice::reconciliation::{self, ReconciliationIndex};
 
 use crate::runtime::context::Ctx;
 
@@ -228,7 +228,7 @@ fn alias_collisions(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
     Ok(discovery
         .check_alias_collisions()
         .iter()
-        .map(specify_domain::discovery::DiscoveryAliasCollision::to_summary)
+        .map(specify_model::discovery::DiscoveryAliasCollision::to_summary)
         .collect())
 }
 

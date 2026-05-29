@@ -2,7 +2,7 @@
 
 use regex::Regex;
 
-use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+use crate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
 
 fn parse_composition(ctx: &BriefContext<'_>) -> Result<serde_json::Value, RuleOutcome> {
     match serde_saphyr::from_str(ctx.content) {

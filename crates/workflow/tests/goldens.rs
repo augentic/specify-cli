@@ -9,17 +9,17 @@
 //! The goldens pin `envelope_version: 1` and the full shape of a
 //! `ValidationReport` as observed by skill consumers. If you change the
 //! registry, rule wording, or `rule_id`, regenerate both goldens with
-//! `REGENERATE_GOLDENS=1 cargo test -p specify-domain --test goldens`.
+//! `REGENERATE_GOLDENS=1 cargo test -p specify-workflow --test goldens`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_domain::slice::SLICES_DIR_NAME;
-use specify_domain::validate::validate_slice;
+use specify_validate::validate_slice;
+use specify_workflow::slice::SLICES_DIR_NAME;
 use tempfile::TempDir;
 
 fn repo_root() -> PathBuf {
-    // `CARGO_MANIFEST_DIR` is `<repo>/crates/domain/` for this crate.
+    // `CARGO_MANIFEST_DIR` is `<repo>/crates/workflow/` for this crate.
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest.parent().and_then(Path::parent).expect("repo root exists").to_path_buf()
 }
@@ -43,7 +43,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 /// Stage a fixture into a tempdir and return `(tempdir_guard, slice_dir)`.
 fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf) {
     let repo = repo_root();
-    let fixture_src = repo.join("crates/domain/tests/fixtures").join(fixture_name);
+    let fixture_src = repo.join("crates/workflow/tests/fixtures").join(fixture_name);
 
     let tempdir = tempfile::tempdir().unwrap();
     let project_dir = tempdir.path().to_path_buf();
@@ -55,7 +55,7 @@ fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf) {
 }
 
 fn golden_path(fixture_name: &str) -> PathBuf {
-    repo_root().join("crates/domain/tests/fixtures").join(format!("{fixture_name}.golden.json"))
+    repo_root().join("crates/workflow/tests/fixtures").join(format!("{fixture_name}.golden.json"))
 }
 
 fn run_fixture_and_diff(fixture_name: &str, expected_passed: bool) {

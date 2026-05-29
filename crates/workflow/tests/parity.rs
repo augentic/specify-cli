@@ -2,8 +2,8 @@
 //! outputs captured from the archived Python reference implementation
 //! (now retired). The Rust port must match them exactly.
 
-use specify_domain::merge::{merge, validate_baseline};
 use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_workflow::merge::{merge, validate_baseline};
 
 macro_rules! fixture {
     ($case:literal, $file:literal) => {

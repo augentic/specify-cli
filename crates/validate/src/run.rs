@@ -7,7 +7,7 @@
 //! `contracts/` overlay; per-define-brief `generates` paths from the
 //! pre-2.0 `pipeline.define[]` are gone with the legacy adapter
 //! shape. Rules are still registered in
-//! [`crate::validate::registry::rules_for`] under the historical
+//! [`crate::registry::rules_for`] under the historical
 //! per-brief namespaces (`proposal`, `specs`, `design`, `tasks`,
 //! `contracts`); the runner just feeds artifacts into that registry
 //! directly instead of routing via a `PipelineView`.
@@ -17,8 +17,8 @@ use std::path::{Path, PathBuf};
 
 use specify_error::{Error, ValidationStatus, ValidationSummary};
 
-use crate::validate::registry::{cross_rules, rules_for};
-use crate::validate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationReport};
+use crate::registry::{cross_rules, rules_for};
+use crate::{BriefContext, Classification, CrossContext, RuleOutcome, ValidationReport};
 
 const DEFERRED_REASON: &str = "Semantic check — requires LLM judgment";
 
@@ -27,7 +27,7 @@ const DEFERRED_REASON: &str = "Semantic check — requires LLM judgment";
 /// `(brief_id, artifact)` where `artifact` is either a literal path
 /// relative to the slice dir or a glob (containing `*`). Mirrors the
 /// validation registry's namespaces verbatim — rules are registered
-/// under these ids in [`crate::validate::registry::rules_for`].
+/// under these ids in [`crate::registry::rules_for`].
 const CANONICAL_ARTIFACTS: &[(&str, &str)] = &[
     ("proposal", "proposal.md"),
     ("specs", "specs/**/*.md"),
@@ -177,8 +177,8 @@ fn run_brief_rules(
     };
 
     // Parse brief-specific structured context.
-    let parsed_spec = (brief_id == "specs").then(|| crate::spec::parse_baseline(&content));
-    let tasks = (brief_id == "tasks").then(|| crate::task::parse_tasks(&content));
+    let parsed_spec = (brief_id == "specs").then(|| specify_model::spec::parse_baseline(&content));
+    let tasks = (brief_id == "tasks").then(|| specify_model::task::parse_tasks(&content));
 
     let ctx = BriefContext {
         id: brief_id,

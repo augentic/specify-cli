@@ -1,6 +1,6 @@
 //! Specs-brief rules.
 
-use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+use crate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
 
 fn specs_requirements_have_scenarios(ctx: &BriefContext<'_>) -> RuleOutcome {
     let Some(spec) = ctx.parsed_spec else {
@@ -38,13 +38,13 @@ fn specs_ids_match_pattern(ctx: &BriefContext<'_>) -> RuleOutcome {
             detail: "spec was not parsed".to_string(),
         };
     };
-    if primitives::ids_match_pattern(spec, crate::spec::REQ_ID_PATTERN) {
+    if primitives::ids_match_pattern(spec, specify_model::spec::REQ_ID_PATTERN) {
         RuleOutcome::Pass
     } else {
         RuleOutcome::Fail {
             detail: format!(
                 "one or more requirement IDs do not match `{}`",
-                crate::spec::REQ_ID_PATTERN
+                specify_model::spec::REQ_ID_PATTERN
             ),
         }
     }

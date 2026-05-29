@@ -1,6 +1,6 @@
 //! Design-brief rules.
 
-use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+use crate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
 
 fn design_references_valid_ids(ctx: &BriefContext<'_>) -> RuleOutcome {
     if primitives::design_references_exist(ctx.content, ctx.specs_dir) {

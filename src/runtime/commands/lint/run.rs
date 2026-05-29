@@ -25,9 +25,6 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_domain::journal::{
-    self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
-};
 use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
 use specify_lints::lint::ScanProfile;
 use specify_lints::lint::diagnostics::{
@@ -43,6 +40,9 @@ use specify_lints::{
 };
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
+use specify_workflow::journal::{
+    self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
+};
 
 use crate::runtime::commands::lint::cli::RunArgs;
 use crate::runtime::commands::tool::{Inventory, ScopedTool, build_inventory};

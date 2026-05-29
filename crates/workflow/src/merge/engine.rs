@@ -5,8 +5,9 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 use specify_error::Error;
-
-use crate::spec::{REQ_HEADING, Requirement, has_delta_headers, parse_baseline, parse_delta};
+use specify_model::spec::{
+    REQ_HEADING, Requirement, has_delta_headers, parse_baseline, parse_delta,
+};
 
 /// Result of a successful [`merge`] call.
 ///
@@ -80,7 +81,7 @@ pub enum MergeOperation {
 /// "new adapter": the baseline is being created from scratch. In that
 /// case:
 ///   * if the delta has **no** delta-section headers (per
-///     [`crate::spec::has_delta_headers`]), the delta text is returned
+///     [`specify_model::spec::has_delta_headers`]), the delta text is returned
 ///     verbatim and `operations` holds a single
 ///     [`MergeOperation::CreatedBaseline`] entry whose `requirement_count`
 ///     counts the `### Requirement:` blocks found in the delta body;
@@ -110,7 +111,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
     let delta_spec = parse_delta(delta);
 
     if is_new {
-        // `crate::spec::has_delta_headers` uses a full-line match rather
+        // `specify_model::spec::has_delta_headers` uses a full-line match rather
         // than Python's substring `.lower() in delta_text.lower()`. See
         // the spec-crate unit test `has_delta_headers_requires_full_line_match`
         // for the pinning decision.
@@ -179,7 +180,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
             name: entry.new_name.clone(),
             id: old_block.id,
             body: new_body,
-            // `crate::spec::parse_scenarios` only looks at body text so
+            // `specify_model::spec::parse_scenarios` only looks at body text so
             // we could recompute; keep the old scenarios since rename
             // doesn't touch scenario text.
             scenarios: old_block.scenarios,
