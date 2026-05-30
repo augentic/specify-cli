@@ -34,6 +34,7 @@ specify-validate.workspace = true
 specify-error.workspace = true
 specify-schema.workspace = true
 specify-tool.workspace = true
+specify-digest.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 
@@ -54,6 +55,7 @@ members = [
     "crates/model",
     "crates/schema",
     "crates/tool",
+    "crates/digest",
     "crates/validate",
     "crates/workflow",
 ]
@@ -181,6 +183,7 @@ specify-workflow = { path = "crates/workflow" }
 specify-error = { path = "crates/error" }
 specify-schema = { path = "crates/schema" }
 specify-tool = { path = "crates/tool" }
+specify-digest = { path = "crates/digest" }
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"

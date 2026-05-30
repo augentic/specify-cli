@@ -86,7 +86,7 @@ impl CacheFingerprint {
     #[must_use]
     pub fn digest(&self) -> String {
         let bytes = self.canonical_bytes();
-        format!("sha256:{}", specify_tool::sha256_hex(&bytes))
+        format!("sha256:{}", specify_digest::sha256_hex(&bytes))
     }
 
     /// First field that differs between `prior` and `self`, walking
@@ -125,7 +125,7 @@ impl CacheFingerprint {
 /// [`CacheFingerprint::digest`] for the brief-file input.
 #[must_use]
 pub fn sha256_prefixed(bytes: &[u8]) -> String {
-    format!("sha256:{}", specify_tool::sha256_hex(bytes))
+    format!("sha256:{}", specify_digest::sha256_hex(bytes))
 }
 
 /// Closed two-form `source:` shape inside a [`CacheFingerprint`].

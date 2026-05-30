@@ -4,21 +4,22 @@ This is a Rust workspace. It produces the `specrun` runtime binary that the [aug
 
 ## Crate graph
 
-The workspace is leaf → root. `specify-error` is the dependency leaf and depends on no other workspace crate.
+The workspace is leaf → root. `specify-error` and `specify-digest` are dependency leaves and depend on no other workspace crate.
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
+specify-digest                   # leaf — sha2 + base16ct only (SHA-256 hex digest encoding)
 specify-schema                   # depends on specify-error (embedded JSON Schemas + jsonschema plumbing)
-specify-diagnostics              # leaf — depends on specify-{error,schema} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
+specify-diagnostics              # depends on specify-{error,schema,digest} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
 specify-model                    # depends on specify-{error,diagnostics} (artifact types + parsers: spec, task, evidence, discovery; shared atomic writer)
-specify-tool                     # depends on specify-{error,diagnostics} (WASI tool runner; wasmtime, gated)
+specify-tool                     # depends on specify-{error,diagnostics,digest} (WASI tool runner; wasmtime, gated)
 specify-validate                 # depends on specify-{model,error,diagnostics} — artifact rule registry; NOT on specify-workflow or anything named lint
-specify-standards                # standards layer — depends on specify-{error,schema,tool,diagnostics}; NOT on specify-workflow
-specify-workflow                 # workflow layer — depends on specify-{error,schema,tool,model,diagnostics}; NOT on specify-standards / specify-validate
+specify-standards                # standards layer — depends on specify-{error,schema,digest,diagnostics}; NOT on specify-workflow or specify-tool
+specify-workflow                 # workflow layer — depends on specify-{error,schema,digest,tool,model,diagnostics}; NOT on specify-standards / specify-validate
 specify (root crate)             # wires every workspace crate above into the CLI binary
 ```
 
-`specify-standards` and `specify-workflow` are siblings: neither imports the other. The standards-layer-vs-workflow-layer split is a type-system invariant by the dependency-direction invariant in [DECISIONS.md §"Standards layer split into `specify-standards` and `specify-schema"](./DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema) (lint carries no lifecycle authority). `specify-validate` mirrors that invariant for artifact validation: it depends on `specify-model` only, never on `specify-workflow`, so a rule cannot transition a slice or stamp a plan. `specify-model` is the lifecycle-free leaf holding the artifact types and parsers both higher layers read. Both standards and workflow depend on `specify-schema` so the embedded JSON Schemas live in one place. The neutral `Diagnostic` / `DiagnosticReport` substrate lives in the `specify-diagnostics` leaf (depends only on `specify-{error,schema}`), so every check producer — validate and lint alike — emits the same finding currency without `specify-validate` (or any non-lint producer) depending on anything named `lint`. See [DECISIONS.md §"Drained `Error::Validation` and the `Diagnostic` substrate"](./DECISIONS.md#drained-errorvalidation-and-the-diagnostic-substrate).
+`specify-standards` and `specify-workflow` are siblings: neither imports the other. The standards-layer-vs-workflow-layer split is a type-system invariant by the dependency-direction invariant in [DECISIONS.md §"Standards layer split into `specify-standards` and `specify-schema"](./DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema) (lint carries no lifecycle authority). `specify-validate` mirrors that invariant for artifact validation: it depends on `specify-model` only, never on `specify-workflow`, so a rule cannot transition a slice or stamp a plan. `specify-model` is the lifecycle-free leaf holding the artifact types and parsers both higher layers read. Both standards and workflow depend on `specify-schema` so the embedded JSON Schemas live in one place. The neutral `Diagnostic` / `DiagnosticReport` substrate lives in `specify-diagnostics` (depends on `specify-{error,schema,digest}`), so every check producer — validate and lint alike — emits the same finding currency without `specify-validate` (or any non-lint producer) depending on anything named `lint`. See [DECISIONS.md §"Drained `Error::Validation` and the `Diagnostic` substrate"](./DECISIONS.md#drained-errorvalidation-and-the-diagnostic-substrate).
 
 Modules of note across the workspace (workflow + standards layers):
 

@@ -145,13 +145,20 @@ without extra plumbing.
 
 ## Crate layout
 
-Workspace crates: `specify-error` (leaf), `specify-schema` (embedded
-JSON Schemas), `specify-model` (artifact types and parsers, plus the
-shared atomic writer), `specify-validate` (artifact validation rule
-registry), `specify-standards` (standards layer, which also hosts the
-framework authoring checks behind `specdev lint` in its `framework`
+Workspace crates: `specify-error` (leaf), `specify-digest` (leaf —
+SHA-256 hex digest encoding), `specify-schema`
+(embedded JSON Schemas), `specify-model` (artifact types and parsers,
+plus the shared atomic writer), `specify-validate` (artifact validation
+rule registry), `specify-standards` (standards layer, which also hosts
+the framework authoring checks behind `specdev lint` in its `framework`
 module), `specify-workflow` (workflow lifecycle authority),
 `specify-tool` (WASI host, gated), and the root binary package.
+
+`specify-digest` exists so siblings such as `specify-standards` can share
+digest encoding without depending on `specify-tool` (and therefore
+Wasmtime). It depends on no other workspace crate — only `sha2` and
+`base16ct`. `specify-tool` re-exports the hash helpers for backward
+compatibility; new call sites should import `specify_digest` directly.
 
 `specify-model` and `specify-validate` are the two crates that earn a
 new-crate paragraph under the rule below. `specify-model` exists so the
@@ -780,12 +787,15 @@ predicate — lives in its own `specify-diagnostics` leaf (see
 [§"Drained `Error::Validation` and the `Diagnostic`
 substrate"](#drained-errorvalidation-and-the-diagnostic-substrate)).
 `specify-standards` depends on it for the report shape; so do the producer
-crates (`specify-validate`, `specify-model`, `specify-tool`,
-`specify-workflow`). `specify-standards` keeps the lint-specific engine.
+crates (`specify-validate`, `specify-model`, `specify-digest`,
+`specify-tool`, `specify-workflow`). `specify-standards` keeps the
+lint-specific engine.
 
 Dependency direction: `specify-standards` depends on `specify-error`,
-`specify-schema`, `specify-diagnostics`, and `specify-tool` (for the
-`kind: tool` hint). It does **not** depend on `specify-workflow`, and
+`specify-schema`, `specify-diagnostics`, and `specify-digest` (digest
+encoding for framework checks). The `kind: tool` lint evaluator is wired
+through a `ToolRunner` trait at the CLI boundary — not via a
+`specify-tool` dependency. It does **not** depend on `specify-workflow`, and
 `specify-workflow` does **not** depend on `specify-standards`. The sibling
 shape makes the §"Principles" / "No lifecycle authority in review" rule
 a type-system invariant: review code cannot reach for slice or plan
@@ -811,8 +821,8 @@ other directly. The dependency-direction rationale is captured in this topic and
 Every check surface — `specrun lint`, `specdev lint`, `specrun slice
 validate`, plan validation, and the library-level validators — speaks
 one currency: `Diagnostic` / `DiagnosticReport`, housed in the
-`specify-diagnostics` leaf. The leaf depends only on `specify-error` and
-`specify-schema` (and `serde`/`serde_json`/`sha2`); it must never depend
+`specify-diagnostics` leaf. The leaf depends only on `specify-error`,
+`specify-schema`, and `specify-digest`; it must never depend
 on `specify-standards`, `specify-model`, or `specify-workflow`, so it stays
 cycle-free and importable by every producer.
 

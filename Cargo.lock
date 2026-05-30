@@ -4566,6 +4566,7 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-diagnostics",
+ "specify-digest",
  "specify-error",
  "specify-model",
  "specify-schema",
@@ -4582,14 +4583,21 @@ dependencies = [
 name = "specify-diagnostics"
 version = "0.3.0"
 dependencies = [
- "base16ct",
  "jsonschema",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "specify-digest",
  "specify-error",
  "specify-schema",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "specify-digest"
+version = "0.3.0"
+dependencies = [
+ "base16ct",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -4644,9 +4652,9 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "specify-diagnostics",
+ "specify-digest",
  "specify-error",
  "specify-schema",
- "specify-tool",
  "tempfile",
  "thiserror 2.0.18",
  "walkdir",
@@ -4666,6 +4674,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "specify-diagnostics",
+ "specify-digest",
  "specify-error",
  "strum 0.28.0",
  "tempfile",
@@ -4708,6 +4717,7 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-diagnostics",
+ "specify-digest",
  "specify-error",
  "specify-model",
  "specify-schema",

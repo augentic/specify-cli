@@ -3,7 +3,7 @@
 //! Hint `value` is the declared tool name. The runner trait the
 //! evaluator is plumbed with — [`ToolRunner`] — defers WASI host
 //! wiring to the CLI layer so the standards crate stays free of a
-//! `wasmtime` / `specify-tool` dependency. The CLI implementation
+//! `wasmtime` / `specify-tool` crate dependency. The CLI implementation
 //! lives in `specrun lint` (S9); this module only consumes the
 //! abstract trait surface.
 //!

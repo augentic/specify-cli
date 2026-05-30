@@ -26,7 +26,7 @@ sha2.workspace = true
 specify-diagnostics.workspace = true
 specify-error.workspace = true
 specify-schema.workspace = true
-specify-tool.workspace = true
+specify-digest.workspace = true
 thiserror.workspace = true
 walkdir.workspace = true
 

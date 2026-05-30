@@ -8,13 +8,14 @@ Binary crate (`name = "specify"`) at the repo root. `src/bin/specrun.rs` and `sr
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
+specify-digest                   # leaf — sha2 + base16ct only (SHA-256 hex digest encoding)
 specify-schema                   # depends on specify-error (embedded JSON Schemas + jsonschema plumbing)
-specify-diagnostics              # leaf — depends on specify-{error,schema} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
+specify-diagnostics              # depends on specify-{error,schema,digest} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
 specify-model                    # depends on specify-{error,diagnostics} (artifact types + parsers: spec, task, evidence, discovery; shared atomic writer)
-specify-tool                     # depends on specify-{error,diagnostics} (WASI tool runner; wasmtime, gated)
+specify-tool                     # depends on specify-{error,diagnostics,digest} (WASI tool runner; wasmtime, gated)
 specify-validate                 # depends on specify-{model,error,diagnostics} — artifact rule registry; NOT on specify-workflow or anything named lint
-specify-standards                # standards layer — depends on specify-{error,schema,tool,diagnostics}; NOT on specify-workflow
-specify-workflow                 # workflow layer — depends on specify-{error,schema,tool,model,diagnostics}; NOT on specify-standards / specify-validate
+specify-standards                # standards layer — depends on specify-{error,schema,digest,diagnostics}; NOT on specify-workflow or specify-tool
+specify-workflow                 # workflow layer — depends on specify-{error,schema,digest,tool,model,diagnostics}; NOT on specify-standards / specify-validate
 specify (root crate)             # wires runtime + framework crates into specrun/specdev
 ```
 

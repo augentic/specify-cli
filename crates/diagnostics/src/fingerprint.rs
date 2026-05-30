@@ -38,18 +38,12 @@
 //! underlying issue.
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
+use specify_digest::sha256_hex;
 
 use crate::diagnostic::{Diagnostic, FindingEvidence, FindingLocation};
 
 /// Wire-format version embedded into every fingerprint preimage.
 const FINGERPRINT_VERSION: &str = "v1";
-
-/// Lowercase hex SHA-256 of `bytes`.
-#[must_use]
-fn sha256_hex(bytes: &[u8]) -> String {
-    base16ct::lower::encode_string(&Sha256::digest(bytes))
-}
 
 /// Compute the diagnostic fingerprint for `diagnostic`.
 ///

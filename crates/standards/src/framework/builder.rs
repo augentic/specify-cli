@@ -29,7 +29,7 @@ use specify_diagnostics::{
     Artifact, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
     Severity,
 };
-use specify_tool::sha256_hex;
+use specify_digest::sha256_hex;
 
 /// Mapping from each still-active imperative authoring rule id to its
 /// closed codex `CORE-NNN` id.
