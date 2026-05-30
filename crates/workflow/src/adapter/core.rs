@@ -146,10 +146,10 @@ pub enum CacheMode {
 /// Closed adapter execution mode (RFC-29 D9).
 ///
 /// Declared by the required `execution:` field on `adapter.yaml`.
-/// Source and target adapters share the enum; this milestone (RFC-29a
-/// M1) lands the source-side dispatch — the target-side `build` /
-/// `merge` dispatch follows in M3, so target manifests carry `agent`
-/// as a placeholder until then.
+/// Source and target adapters share the enum; RFC-29 M1 (D9) landed the
+/// source-side dispatch — the target-side `build` / `merge` dispatch
+/// follows in M3, so target manifests carry `agent` as a placeholder
+/// until then. See DECISIONS.md §"Adapter execution mode (D9)".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -386,7 +386,7 @@ impl SourceAdapter {
     /// `execution: agent` forced opt-out (RFC-29 D9). When
     /// `execution: agent` the cache is always bypassed regardless of
     /// the declared `cache:` field; otherwise the declared mode (or its
-    /// absence) applies. The source-operation runner (RFC-29a C6/C7)
+    /// absence) applies. The source-operation runner (RFC-29 D1)
     /// consumes this rather than the raw [`Self::cache`] field.
     #[must_use]
     pub const fn effective_cache_mode(&self) -> Option<CacheMode> {

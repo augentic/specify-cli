@@ -10,7 +10,7 @@
 //! Preview is the workflow-free dry run: it consumes [`prep`] but adds
 //! none of the workflow-integrated behaviour (sandbox dispatch, cache,
 //! journal events, `discovery.md` merge / Evidence persist) the
-//! RFC-29a C6/C7 `survey` / `extract` runners layer on the same seam.
+//! RFC-29 D1 `survey` / `extract` runners layer on the same seam.
 //! No `.specify/` writes, no journal events; output lives entirely
 //! under `--out` (default `.specify-preview/`). Because preview is
 //! slice-less, it preps under the [`prep::SourceOp::Survey`] keying;

@@ -1,9 +1,9 @@
-//! Shared source-operation prep seam (RFC-29a §"Relationship to
-//! `specrun source preview`").
+//! Shared source-operation prep seam (RFC-29 D1; DECISIONS.md
+//! §"Source operations (D1)").
 //!
 //! [`prepare`] factors the environment prep that `source preview`
 //! (workflow-free) and the `source survey` / `source extract` runners
-//! (workflow-integrated; RFC-29a C6/C7) all build on:
+//! (workflow-integrated; RFC-29 D1) all build on:
 //!
 //! 1. adapter resolution via [`SourceAdapter::resolve`];
 //! 2. brief-directory resolution (the C1 `briefs-dir` = adapter root
@@ -47,7 +47,7 @@ const SCRATCH_DIR_VAR: &str = "SCRATCH_DIR";
 const PROJECT_DIR_VAR: &str = "PROJECT_DIR";
 
 /// Which source operation a prep targets, carrying the data needed to
-/// key its `$SCRATCH_DIR` (RFC-29a §`survey`; preflight §1).
+/// key its `$SCRATCH_DIR` (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
 ///
 /// `survey` runs at plan time with no slice and keys scratch under the
 /// literal `survey/` segment; `extract` runs at slice time and keys
@@ -57,7 +57,7 @@ pub enum SourceOp {
     /// Plan-time lead discovery — scratch under `…/survey/scratch/`.
     Survey,
     /// Slice-time evidence extraction — scratch under
-    /// `…/<slice>/scratch/`. Constructed by the RFC-29a C7 `extract`
+    /// `…/<slice>/scratch/`. Constructed by the RFC-29 D1 `extract`
     /// runner ([`crate::runtime::commands::source::extract`]).
     Extract {
         /// Slice name keying the scratch directory.
@@ -78,8 +78,9 @@ impl SourceOp {
 }
 
 /// Access mode for a source-adapter sandbox preopen root
-/// (RFC-29a §`survey`). The data side of the WASI `DirPerms` /
-/// `FilePerms` the runner (C6/C7) will mount each root with.
+/// (RFC-29 D1; DECISIONS.md §"Source operations (D1)"). The data side
+/// of the WASI `DirPerms` / `FilePerms` the runner will mount each
+/// root with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreopenAccess {
     /// Mounted read-only.
@@ -106,7 +107,7 @@ pub struct Preopen {
 }
 
 /// The four-root source-adapter sandbox preopen layout
-/// (RFC-29a §`survey`).
+/// (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
 ///
 /// Data only: C5 computes the roots and their modes. The actual WASI
 /// preopen wiring, the `tool` / `agent` dispatch, the cache, and the

@@ -10,8 +10,9 @@ use clap::{Subcommand, ValueEnum};
 ///
 /// `tool`-execution adapters ignore the flag — a single call runs the
 /// whole operation. `agent`-execution adapters are two-phase
-/// (RFC-29a §"Agent dispatch is two-phase"): `prepare` builds the
-/// sandbox and prints the handoff envelope, then the agent runs the
+/// (RFC-29 D9; DECISIONS.md §"Adapter execution mode (D9)"):
+/// `prepare` builds the sandbox and prints the handoff envelope, then
+/// the agent runs the
 /// brief and calls back with `finalize`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
 #[clap(rename_all = "kebab-case")]

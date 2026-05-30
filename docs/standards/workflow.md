@@ -14,6 +14,8 @@ Per-adapter `adapter.yaml` carries `name`, `version`, `axis`, the required close
 
 `axis: source`; `briefs.keys() ⊆ {extract, survey}`. `survey` writes `## Lead inventory` blocks under `discovery.md` at plan time; `extract` writes one Evidence document per `(source-key, lead-id)` pair at slice time. See [`schemas/source.schema.json`](../../schemas/source.schema.json) and [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json).
 
+`specrun source survey <source-key> [--plan <name>] [--phase prepare|finalize]` and `specrun source extract <source-key> <lead-id> --slice <slice> [--phase prepare|finalize]` are the CLI-owned runners (RFC-29 D1). `<source-key>` resolves against `plan.yaml.sources.<key>`, then the adapter from `SourceBinding.adapter`. Both validate before the write becomes visible (lead set against `schemas/discovery/lead.schema.json` then `discovery.md` merge; Evidence against `schemas/evidence.schema.json` then persist to `.specify/slices/<slice>/evidence/<source-key>.yaml`). Under `execution: agent` dispatch is two-phase (`prepare` builds the sandbox + prints the handoff envelope; `finalize` validates / persists / caches / journals); under `execution: tool` a single call runs the whole operation. Value-bound sources (`intent`) carry `value-inline`; path bindings carry `source-path`. See [`DECISIONS.md` §"Source operations (D1)"](../../DECISIONS.md#source-operations-d1) and [`DECISIONS.md` §"Adapter execution mode (D9)"](../../DECISIONS.md#adapter-execution-mode-d9).
+
 ## Target adapter contract
 
 `axis: target`; `briefs.keys() ⊆ {shape, build, merge}`. `shape` is read by core synthesis; `build` and `merge` are agent-driven. See [`schemas/target.schema.json`](../../schemas/target.schema.json).
@@ -26,6 +28,8 @@ Per-adapter `adapter.yaml` carries `name`, `version`, `axis`, the required close
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo manifest.
 
 The `{sources,targets}` segment is keyed by `Axis`. See [`DECISIONS.md` §"Adapter loader axis routing"](../../DECISIONS.md#adapter-loader-axis-routing) and [`DECISIONS.md` §"Cache layout"](../../DECISIONS.md#cache-layout).
+
+The `source resolve` / `target resolve` JSON envelope carries `briefs-dir` — the absolute path to the resolved adapter's `briefs/` directory — alongside `resolved-path`, `operations`, and `description`. The source-operation prep seam consumes it for brief-directory resolution.
 
 ## Adapter name uniqueness
 
@@ -81,9 +85,11 @@ Kebab-case discriminants on the JSON envelope; `snake_case` Rust variants bridge
 
 WASI tool runner pre-opens `$PROJECT_DIR` always, `$CAPABILITY_DIR` only for plugin-scope tools. No host environment leaks. See [`DECISIONS.md` §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`"](../../DECISIONS.md#capability_dir-replaces-adapter_dir).
 
+Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$SOURCE_DIR` read-only (absent for value-bound sources), `$CAPABILITY_DIR` read-only (manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR` **not visible**. Scratch nests disjoint from the result cache — `extract` under `.specify/.cache/extractions/<adapter>/<slice>/scratch/`, `survey` under `.specify/.cache/extractions/<adapter>/survey/scratch/`. See [`DECISIONS.md` §"Source operations (D1)"](../../DECISIONS.md#source-operations-d1).
+
 ## CLI surface
 
-Headline verbs: `init`, `source resolve`, `target resolve`, `slice {create, transition, validate, merge}`, `plan {create, add, amend, transition, next, finalize}`, `workspace {sync, push, prepare}`, `tool run`. See [`specify --help`](../init.md) and the parent repo's [`AGENTS.md` §"Skill / CLI responsibility split"](https://github.com/augentic/specify/blob/main/AGENTS.md#skill--cli-responsibility-split).
+Headline verbs: `init`, `source {resolve, survey, extract, preview}`, `target resolve`, `slice {create, transition, validate, merge}`, `plan {create, add, amend, transition, next, finalize}`, `workspace {sync, push, prepare}`, `tool run`, `journal emit`. See [`specify --help`](../init.md) and the parent repo's [`AGENTS.md` §"Skill / CLI responsibility split"](https://github.com/augentic/specify/blob/main/AGENTS.md#skill--cli-responsibility-split).
 
 ## Writer ownership
 
@@ -91,7 +97,7 @@ Per-entry status writes route to exactly one CLI verb each — `plan add` / `pla
 
 ## Observability
 
-Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names).
+Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names). Source operations add `source.survey.cache-hit` / `.cache-miss` and `source.execution.agent`. Agent-orchestrated phases that lack a deterministic emit command write through `specrun journal emit <event-id> [--payload <json>]` — a guarded front door onto the same closed taxonomy, errors `journal-emit-unknown-event` / `journal-emit-payload-schema` (exit 2). See [`DECISIONS.md` §"`specrun journal emit` — guarded front door (D12)"](../../DECISIONS.md#specrun-journal-emit--guarded-front-door-d12).
 
 ## Operations typed at parse boundary
 

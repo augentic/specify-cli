@@ -471,7 +471,7 @@ fn agent_emit_one_event_per_line() {
 
 #[test]
 fn journal_emit_appends_one_line_per_new_event() {
-    // The three RFC-29a source events round-trip through the
+    // The three RFC-29 D1 source events round-trip through the
     // `journal emit` front door: id + --payload deserialise into the
     // closed taxonomy, the CLI stamps the timestamp, and exactly one
     // line lands per call.

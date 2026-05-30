@@ -469,7 +469,11 @@ byte-stable cache hits; CI observing any of the five
 `slice.extract.cache-miss` reasons knows exactly which input
 drifted. Adapter authors opt out with `cache: opt-out` on
 `adapter.yaml`; the matching journal event carries `reason:
-adapter-opt-out`.
+adapter-opt-out`. `lead id` is the one input that distinguishes the
+two source operations: `specrun source survey` keys the fingerprint
+**without** a lead id (it runs at plan time and carries no slice),
+while `specrun source extract` keys it **with** the lead id. See
+§"Source operations (D1)".
 
 ## Journal event names
 
@@ -489,6 +493,8 @@ variants are `snake_case` and bridge to the wire via
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
+| `source.survey.cache-hit` / `.cache-miss` | The `specrun source survey` runner's cache probe; payloads carry `source-key`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`). |
+| `source.execution.agent` | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source-key`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`). |
 | `slice.provenance.written` | `/spec:refine`'s atomic `provenance.yaml` writer (Change 2.6). `provenance.yaml` audit semantics. |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
@@ -499,6 +505,25 @@ Events persist as newline-delimited JSON at
 enum on the divergence events is
 `none | likely | accepted | rejected`. Refer to workflow §"Observability"
 and the per-event row table.
+
+### `specrun journal emit` — guarded front door (D12)
+
+Deterministic commands emit their own events. Agent-orchestrated
+phases that have no deterministic emit command (e.g. the `execution:
+agent` source operations) write through `specrun journal emit
+<event-id> [--payload <json>] [--format json]`
+([`src/runtime/commands/journal/emit.rs`](./src/runtime/commands/journal/emit.rs)).
+The verb mints **no event kinds of its own** — it is a guarded front
+door onto the same closed `EventKind` taxonomy, preserving "one closed
+taxonomy, one writer". The closed enum is itself the per-kind payload
+schema (there is no parallel JSON-schema registry), so the guard is a
+single serde round-trip: the handler reassembles the adjacently-tagged
+`{ event, payload }` shape and deserialises it into `EventKind`. An
+unknown tag fails `journal-emit-unknown-event`; a payload that misses a
+variant's required field fails `journal-emit-payload-schema`. Both are
+`Error::Validation`, exit 2. The CLI — never the agent — stamps the
+second-precision UTC `timestamp` and appends exactly one line via
+`journal::append_batch`.
 
 ## `$CAPABILITY_DIR` replaces `$ADAPTER_DIR`
 
@@ -514,6 +539,10 @@ segment that pairs with it is `plugin--<axis>--<slug>` — e.g.
 `plugin--target--contracts` for the `contracts` target adapter's
 tools. Project-scope tools keep `project--<project-name>`
 unchanged. Refer to workflow §"Sandboxing".
+
+`$CAPABILITY_DIR` is also the read-only manifest-cache root of the
+four-root source-operation sandbox (`$SOURCE_DIR` / `$CAPABILITY_DIR` /
+`$SCRATCH_DIR` / `$PROJECT_DIR`); see §"Source operations (D1)".
 
 ## Lifecycle write-ownership
 
@@ -675,6 +704,113 @@ finishes; string operation names never survive past the manifest loader.
   `["build", "merge", "shape"]`). Derived `Ord` on
   `{Source,Target}Operation` is intentional because enum variants are
   declared in kebab-alphabetical wire order.
+
+## Adapter execution mode (D9)
+
+Every adapter manifest declares a closed `execution` enum — `agent |
+tool` — `required` at the top level of both `source.schema.json` and
+`target.schema.json` (RFC-29 D9). The loader rejects a manifest that
+omits the field with `adapter-execution-mode-required` rather than
+defaulting silently, and rejects `execution: agent` declared alongside
+any cache mode other than `opt-out` with
+`adapter-execution-agent-cache-conflict`
+(`check_execution` in [`crates/workflow/src/adapter/core.rs`](./crates/workflow/src/adapter/core.rs)).
+Both are `Error::Validation`, exit 2. The conflict check is a
+**forward-guard**: `CacheMode` is a single-variant enum (`OptOut`) and
+`source.schema.json#/properties/cache` enumerates only `["opt-out"]`,
+so no legal manifest can trigger it today — it exists to catch a
+future-widened `CacheMode`. The `Execution` enum lives on
+`SourceAdapter` / `TargetAdapter`; `execution: agent` forces the
+effective cache mode to `opt-out` regardless of the declared `cache:`
+field, which `SourceAdapter::effective_cache_mode` (consumed by the
+source-operation runner, not the raw `cache` field) returns.
+
+The two values branch dispatch:
+
+- **`agent`** — the brief is run by an agent against the sandbox
+  preopens. The CLI orchestrates inputs, validates outputs against the
+  same schemas, never caches the result, and emits a `*.execution.agent`
+  journal event per invocation. Dispatch is **two-phase** (prepare /
+  finalize; see §"Source operations (D1)").
+- **`tool`** — `survey` / `extract` (sources) or `build` / `merge`
+  (targets) dispatch through a declared WASI tool or built-in
+  deterministic Rust path, **single-phase** within one process, with the
+  result cached under the extraction fingerprint.
+
+All eight first-party manifests (five sources, three targets) ship
+`execution: agent` — none owns a deterministic tool yet, so `agent` is
+the truthful value and the `tool` branch is wired and schema-valid but
+unexercised by first-party adapters until a source or target gains a
+real tool. A `suggestion`-severity `adapter.execution-agent` standards
+finding (CORE-051) flags first-party `agent` adapters only (never
+third-party), nudging toward a future `tool` path. M1 lands the source
+side; the target side (`build` / `merge` dispatch) follows with
+RFC-29 M3, which is why target manifests carry `agent` as a placeholder
+until then. Refer to workflow §"Adapter implementation shape".
+
+## Source operations (D1)
+
+`specrun source survey <source-key> [--plan <name>] [--phase
+prepare|finalize]` and `specrun source extract <source-key> <lead-id>
+--slice <slice> [--phase prepare|finalize]` are the CLI-owned source
+adapter operations (RFC-29 D1; handlers under
+[`src/runtime/commands/source/`](./src/runtime/commands/source)).
+`<source-key>` resolves against `plan.yaml.sources.<key>` — **not** the
+adapter name — and the adapter is then resolved from
+`SourceBinding.adapter`. `survey` validates the lead set against
+`schemas/discovery/lead.schema.json` and merges it into `discovery.md`;
+`extract` validates the Evidence against `schemas/evidence.schema.json`
+and persists it to `.specify/slices/<slice>/evidence/<source-key>.yaml`.
+Both gates are **validate-before-visible**: an invalid lead set leaves
+`discovery.md` untouched, and a failed Evidence validation leaves the
+slice in `refining` (see [`crates/workflow/src/schema.rs`](./crates/workflow/src/schema.rs)).
+
+**Four-root sandbox.** Each operation runs under four preopen roots:
+`$SOURCE_DIR` read-only (the bound source path; **absent** for
+value-bound sources such as `intent`), `$CAPABILITY_DIR` read-only (the
+resolved manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR`
+**not visible** — lifecycle state stays off-limits to the adapter.
+`$SCRATCH_DIR` nests under the per-adapter extraction tree but disjoint
+from the fingerprint result cache so a scratch write never pollutes a
+cache artifact: `extract` uses
+`.specify/.cache/extractions/<adapter>/<slice>/scratch/`; `survey`
+(plan-time, no slice) uses
+`.specify/.cache/extractions/<adapter>/survey/scratch/`. A 64-char-hex
+digest dir can never equal a `<slice>`/`survey` segment, so the two
+trees provably never collide. See §"Cache layout" and
+§"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`".
+
+**Shared prep seam.** The adapter resolution, brief-directory
+resolution (the `briefs-dir` resolve field), four-root sandbox layout,
+and `evidence/` scaffolding are a single internal helper
+([`src/runtime/commands/source/prep.rs`](./src/runtime/commands/source/prep.rs))
+shared by the workflow-free `specrun source preview` (§"`specrun source
+preview`") and the workflow-integrated `survey` / `extract` runners.
+The runners add the `execution`-branched dispatch, the extraction-cache
+fingerprint, the journal events, validate-before-visible, and the
+`discovery.md` merge / Evidence persist on top of that seam — none of
+which is re-implemented in `preview`.
+
+**Agent dispatch is two-phase.** Under `execution: agent` the operation
+splits: `--phase prepare` (the default) resolves the adapter, builds the
+four-root sandbox, scaffolds the output target, emits
+`source.execution.agent`, and prints a handoff envelope on stdout, then
+returns control. `--phase finalize` runs after the agent has executed
+the brief against the prepared sandbox: it validates, persists, caches,
+and journals. The CLI never blocks waiting on agent work. The handoff
+envelope is kebab-case JSON: `survey` prints `{ adapter, version,
+briefs-dir, source-dir?, scratch-dir, leads[], execution: "agent" }`
+(no `evidence-dir`; survey produces a lead set, not Evidence);
+`extract` prints the same plus `evidence-dir` and a single-element
+`leads` array. `tool`-execution adapters ignore the phase flag — a
+single call runs the whole operation and never prints the envelope.
+
+**Value-binding envelope.** For value-bound sources (`intent`),
+`$SOURCE_DIR` is absent and the source request carries `value-inline:
+<string>`; path bindings carry `source-path`. This reuses the existing
+`FingerprintSource::{Path, Value}` (the value variant keys on the
+sha256 of the literal body), so no new cache machinery — and no
+RFC-29d build-request schema — is introduced.
 
 ## Tool-owned schemas
 

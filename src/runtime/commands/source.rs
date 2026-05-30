@@ -10,7 +10,7 @@
 //! `specrun source preview` contract workflow-free source adapter scaffolding verb.
 //! [`prep`] is the internal prep seam (adapter resolution, brief
 //! directory, the four-root sandbox layout, and `evidence/`
-//! scaffolding) shared by `preview` today and the RFC-29a C6/C7
+//! scaffolding) shared by `preview` today and the RFC-29 D1
 //! `survey` / `extract` runners.
 
 pub mod cache;

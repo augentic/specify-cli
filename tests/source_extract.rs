@@ -1,4 +1,5 @@
-//! Integration tests for `specrun source extract` (RFC-29a §`extract`).
+//! Integration tests for `specrun source extract` (RFC-29 D1;
+//! DECISIONS.md §"Source operations (D1)").
 //!
 //! Covers source-key resolution against `plan.yaml.sources`, the agent
 //! two-phase dispatch (prepare prints the extract handoff envelope —
@@ -7,7 +8,9 @@
 //! validates-before-visible, persists the Evidence, and emits
 //! `slice.extract.cache-miss` under the forced opt-out), the
 //! validate-before-visible guarantee that an invalid Evidence document
-//! persists no file, and the value-bound `intent` path.
+//! persists no file, the value-bound `intent` path, and the sandbox
+//! path-denied acceptance scenario `5j` (`$PROJECT_DIR` invisible to
+//! the adapter; out-of-sandbox Evidence denied).
 
 use std::fs;
 use std::path::PathBuf;
@@ -15,7 +18,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 mod common;
-use common::{Project, parse_stderr, parse_stdout, repo_root, specrun};
+use common::{Project, TEMPDIR_PLACEHOLDER, parse_stderr, parse_stdout, repo_root, specrun};
 
 /// Stage the path-bound `code-typescript` source adapter (the in-repo
 /// fixture ships only `adapter.yaml`; author the `extract` brief the
@@ -311,6 +314,96 @@ fn agent_finalize_invalid_evidence_persists_no_file() {
                 e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
             }),
         "invalid Evidence must not emit a cache event"
+    );
+}
+
+/// Scenario `5j` — source-adapter sandbox path-denied (the parent
+/// `augentic/specify` repo's `docs/contributing/acceptance.md`
+/// §Scenario IDs, stub `05j-source-sandbox-denied.md`).
+///
+/// Proves the two halves of the four-root sandbox the C5 prep seam
+/// lays out (`$SOURCE_DIR` read-only, `$CAPABILITY_DIR` read-only,
+/// `$SCRATCH_DIR` write-only, `$PROJECT_DIR` none):
+///
+/// (a) `$PROJECT_DIR` is invisible to the adapter operation — the agent
+///     handoff envelope carries no `project-dir`, and never grants the
+///     project root itself (the directory holding `plan.yaml` and the
+///     `.specify/` lifecycle state). Only descendant subpaths are
+///     handed over.
+/// (b) An out-of-sandbox path is denied — the runner reads the
+///     agent-produced Evidence *only* from the granted `$SCRATCH_DIR`.
+///     Evidence the adapter stages outside its sandbox roots (here at
+///     the project root, which `$PROJECT_DIR: none` makes unreachable)
+///     is not honoured: finalize fails closed with
+///     `extract-evidence-missing`, persists no Evidence, and leaves the
+///     slice `refining`.
+///
+/// M1 ships the first-party sources as `execution: agent`, so the
+/// denial is structural — the runner never mounts or hands over
+/// `$PROJECT_DIR` — rather than a live WASI preopen rejection; the
+/// `tool` WASI-dispatch seam that would surface a kernel-level denial
+/// is wired but unexercised (see `dispatch_extract_tool`).
+#[test]
+fn sandbox_hides_project_dir_and_denies_out_of_scope_evidence() {
+    let project = Project::init();
+    stage_code_typescript(&project);
+    seed_plan_with_legacy_source(&project);
+    // The fingerprint canonicalises the bound source path, so it must exist.
+    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
+
+    // (a) prepare: the handoff envelope must not expose $PROJECT_DIR.
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "source", "extract", "legacy", "user-registration"])
+        .args(["--slice", "identity"])
+        .assert()
+        .success();
+    let body = parse_stdout(&assert.get_output().stdout, project.root());
+    assert!(
+        body.get("project-dir").is_none(),
+        "the sandbox must not hand $PROJECT_DIR to the adapter, got:\n{body}"
+    );
+    // Every granted root is a strict descendant of the project root; the
+    // project root itself (= $PROJECT_DIR, holding plan.yaml and the
+    // .specify/ lifecycle state) is never a grant. parse_stdout has
+    // rewritten the project root to the TEMPDIR placeholder.
+    for key in ["briefs-dir", "source-dir", "scratch-dir", "evidence-dir"] {
+        let value = body[key].as_str().unwrap_or_else(|| panic!("{key} str in:\n{body}"));
+        assert_ne!(value, TEMPDIR_PLACEHOLDER, "{key} must not grant the project root itself");
+        assert!(
+            value.starts_with(&format!("{TEMPDIR_PLACEHOLDER}/")),
+            "{key} {value} must sit under the project root, not escape it"
+        );
+    }
+
+    // (b) finalize: stage the Evidence OUTSIDE the granted $SCRATCH_DIR,
+    // at the project root that $PROJECT_DIR: none makes unreachable. The
+    // runner reads only $SCRATCH_DIR/evidence.yaml, so an out-of-sandbox
+    // document is denied — never read, never persisted.
+    fs::write(project.root().join("evidence.yaml"), VALID_EVIDENCE)
+        .expect("stage out-of-sandbox evidence");
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "source", "extract", "legacy", "user-registration"])
+        .args(["--slice", "identity", "--phase", "finalize"])
+        .assert()
+        .failure();
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "extract-evidence-missing");
+    assert_eq!(stderr["exit-code"], 1);
+
+    // No Evidence lands on the slice path; the slice stays refining.
+    assert!(
+        !slice_evidence_path(&project, "identity", "legacy").exists(),
+        "out-of-sandbox Evidence must not be persisted"
+    );
+    // A denied finalize fails before any cache event is emitted.
+    assert!(
+        !journal_events(&project).iter().any(|e| {
+            e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
+        }),
+        "a denied out-of-sandbox extract must not emit a cache event"
     );
 }
 

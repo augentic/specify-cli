@@ -1,4 +1,5 @@
-//! Integration tests for `specrun source survey` (RFC-29a §`survey`).
+//! Integration tests for `specrun source survey` (RFC-29 D1;
+//! DECISIONS.md §"Source operations (D1)").
 //!
 //! Covers source-key resolution against `plan.yaml.sources`, the agent
 //! two-phase dispatch (prepare prints the handoff envelope + emits

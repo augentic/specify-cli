@@ -121,8 +121,9 @@ impl Discovery {
     /// Borrow the parsed lead inventory in document order.
     ///
     /// Read-only view used by the `survey` runner to echo the existing
-    /// lead set for a source into the agent handoff envelope (RFC-29a §2)
-    /// without taking ownership of the document.
+    /// lead set for a source into the agent handoff envelope (RFC-29 D1;
+    /// DECISIONS.md §"Source operations (D1)") without taking ownership
+    /// of the document.
     #[must_use]
     pub fn leads(&self) -> &[Lead] {
         &self.leads

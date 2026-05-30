@@ -1,5 +1,5 @@
 //! `specrun source extract` handler — slice-time Evidence extraction
-//! (RFC-29a §`extract`, step 6).
+//! (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
 //!
 //! Resolves `<source-key>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Extract`]) for adapter
@@ -12,8 +12,8 @@
 //!   the cached `evidence.yaml`, on a miss dispatch the declared tool
 //!   (an M1 seam — no first-party source declares an `extract` tool
 //!   yet). Either way validate the Evidence and persist it.
-//! - `agent`: two-phase (RFC-29a §"Agent dispatch is two-phase"). The
-//!   CLI never blocks on agent work.
+//! - `agent`: two-phase (RFC-29 D9; DECISIONS.md §"Adapter execution
+//!   mode (D9)"). The CLI never blocks on agent work.
 //!   - `--phase prepare` (default): build scratch + the `evidence/`
 //!     target, emit `source.execution.agent`, and print the extract
 //!     handoff envelope (`{ adapter, version, briefs-dir, source-dir? |
@@ -283,7 +283,7 @@ fn complete(cx: &ExtractCtx<'_>, raw: &str, source: &Path) -> Result<()> {
 /// Dispatch the declared `extract` WASI tool / built-in Rust path.
 ///
 /// M1 ships no first-party extract tool; the WASI extract dispatch
-/// protocol is out of scope for RFC-29a C7. The control flow above is
+/// protocol is out of scope for RFC-29 M1. The control flow above is
 /// wired correctly (cache probe, Evidence read, validate-before-visible
 /// persist) so the only seam left is the actual tool invocation.
 fn dispatch_extract_tool(prepared: &prep::SourcePrep) -> Result<()> {

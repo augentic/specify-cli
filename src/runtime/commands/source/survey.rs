@@ -1,5 +1,5 @@
 //! `specrun source survey` handler — plan-time lead discovery
-//! (RFC-29a §`survey`, step 5).
+//! (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
 //!
 //! Resolves `<source-key>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Survey`]) for adapter
@@ -11,8 +11,8 @@
 //!   cached `lead-set.md`, on a miss dispatch the declared tool (an M1
 //!   seam — no first-party source declares a survey tool yet). Either
 //!   way validate the lead set and merge it into `discovery.md`.
-//! - `agent`: two-phase (RFC-29a §"Agent dispatch is two-phase"). The
-//!   CLI never blocks on agent work.
+//! - `agent`: two-phase (RFC-29 D9; DECISIONS.md §"Adapter execution
+//!   mode (D9)"). The CLI never blocks on agent work.
 //!   - `--phase prepare` (default): build scratch, emit
 //!     `source.execution.agent`, and print the survey handoff envelope
 //!     (`{ adapter, version, briefs-dir, source-dir?, scratch-dir,
@@ -270,7 +270,7 @@ fn run_tool(
 /// Dispatch the declared `survey` WASI tool / built-in Rust path.
 ///
 /// M1 ships no first-party survey tool; the WASI survey dispatch
-/// protocol is out of scope for RFC-29a C6. The control flow above is
+/// protocol is out of scope for RFC-29 M1. The control flow above is
 /// wired correctly (cache probe, lead-set read, validate-before-visible
 /// merge) so the only seam left is the actual tool invocation.
 fn dispatch_survey_tool(prepared: &prep::SourcePrep) -> Result<()> {
@@ -286,7 +286,7 @@ fn dispatch_survey_tool(prepared: &prep::SourcePrep) -> Result<()> {
 
 /// Parse, schema-validate, and merge a lead set into `discovery.md`.
 /// Returns the merged lead ids. The schema check gates the merge, so an
-/// invalid lead set leaves `discovery.md` untouched (RFC-29a §5).
+/// invalid lead set leaves `discovery.md` untouched (RFC-29 D1).
 fn validate_and_merge(ctx: &Ctx, source_key: &str, raw: &str) -> Result<Vec<String>> {
     let leads = Discovery::parse(raw)?.into_leads();
     schema::validate_leads(&leads)?;
