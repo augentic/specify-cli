@@ -1635,7 +1635,7 @@ fn plan_validate_healthy_exits_zero() {
 //
 // The reshape replaces 1.x's bare `--sources <key>` repeater with the
 // `<key>=<lead-id>` wire form, accepting the bare `<key>`
-// shorthand only as sugar for `{ key, lead: <slice.name> }`
+// shorthand only as sugar for `{ source-key, lead-id: <slice.name> }`
 // per workflow §`Slice.sources`.
 
 const W11_PLAN: &str = "\
@@ -1673,7 +1673,8 @@ fn plan_add_structured_sources_round_trips() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("key: identity-design-notes") && saved.contains("lead: user-registration"),
+        saved.contains("source-key: identity-design-notes")
+            && saved.contains("lead-id: user-registration"),
         "structured form must round-trip to disk:\n{saved}"
     );
 }
@@ -1684,7 +1685,7 @@ fn plan_add_bare_source_round_trips() {
     project.seed_plan(W11_PLAN);
 
     // Slice name `add-search-filter`; bare `--sources intent` is
-    // sugar for `{ key: intent, lead: add-search-filter }`.
+    // sugar for `{ source-key: intent, lead-id: add-search-filter }`.
     specrun()
         .current_dir(project.root())
         .args([
@@ -1703,14 +1704,14 @@ fn plan_add_bare_source_round_trips() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     // Bare form must appear on disk as the YAML scalar `intent`,
-    // not the structured `{ key, lead }` mapping.
+    // not the structured `{ source-key, lead-id }` mapping.
     assert!(
         saved.contains("  - intent"),
         "bare shorthand must round-trip to the unquoted scalar form:\n{saved}"
     );
     assert!(
-        !saved.contains("lead: add-search-filter"),
-        "lead=slice.name must collapse to bare form:\n{saved}"
+        !saved.contains("lead-id: add-search-filter"),
+        "lead-id=slice.name must collapse to bare form:\n{saved}"
     );
 }
 
@@ -1737,8 +1738,8 @@ fn plan_add_structured_lead_differs() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("lead: different-candidate"),
-        "structured form must stay structured when lead != slice.name:\n{saved}"
+        saved.contains("lead-id: different-candidate"),
+        "structured form must stay structured when lead-id != slice.name:\n{saved}"
     );
 }
 
@@ -1785,7 +1786,7 @@ fn plan_amend_add_source_appends_binding() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("key: identity-design-notes"),
+        saved.contains("source-key: identity-design-notes"),
         "amend --add-source must append the binding:\n{saved}"
     );
 }
@@ -1956,10 +1957,10 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - key: legacy
-        lead: user-registration
-      - key: runtime
-        lead: user-registration
+      - source-key: legacy
+        lead-id: user-registration
+      - source-key: runtime
+        lead-id: user-registration
 ";
 
 fn read_journal_lines(project: &Project) -> Vec<String> {

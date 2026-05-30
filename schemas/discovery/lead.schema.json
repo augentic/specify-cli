@@ -2,36 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/discovery/lead.schema.json",
   "title": "Specify discovery lead",
-  "description": "Validates a single `Lead` block under `## Lead inventory` in `discovery.md` per workflow §Discovery handshake. Each block has a kebab-case `id`, a non-empty `sources[]` list of source keys, a one-line `summary`, an optional `tentative` boolean flag set by `/spec:plan`'s `propose` sub-step when the agent merged the lead across sources with low confidence, and an optional `aliases[]` list of kebab-case aliases. `slices[].sources[].lead` resolves first against `id`, then against any `aliases[]` entry; aliases are stable across re-survey. An alias MUST NOT collide with another lead's `id` or `aliases[]` in the same `discovery.md` (`discovery-alias-collision` from `specrun slice validate`).",
+  "description": "Validates a single raw, unmerged `Lead` block under `## Lead inventory` in `discovery.md` per workflow §Discovery handshake. Each block is one lead as surfaced by one source: a `source-key` naming the binding that produced it, a kebab-case `lead-id` (unique only within that `source-key`), a one-line per-source `summary`, an optional `tentative` boolean flag, and an optional `aliases[]` list of kebab-case aliases. Identity is the `(source-key, lead-id)` pair; the same `lead-id` MAY appear under different source keys, and cross-source unification is deferred to `/spec:plan`'s plan-time `propose` sub-step. `slices[].sources[].lead-id` resolves first against `lead-id`, then against any `aliases[]` entry, within the binding's `source-key`; aliases are stable across re-survey. An alias MUST NOT collide with another lead's `lead-id` or `aliases[]` under the same `source-key` (`discovery-alias-collision` from `specrun slice validate`).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "sources", "summary"],
+  "required": ["lead-id", "source-key", "summary"],
   "properties": {
-    "id": {
+    "lead-id": {
       "$ref": "#/$defs/kebabName",
-      "description": "Stable kebab-case lead identifier. Re-survey replaces by id."
+      "description": "Stable kebab-case lead identifier, unique only within its `source-key`. Re-survey of that source replaces the block by `(source-key, lead-id)`."
     },
-    "sources": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": { "$ref": "#/$defs/kebabName" },
-      "description": "Non-empty list of source keys that surfaced this lead (each entry matches a top-level `plan.yaml.sources.<key>` binding)."
+    "source-key": {
+      "$ref": "#/$defs/kebabName",
+      "description": "Source binding key that surfaced this lead (matches a top-level `plan.yaml.sources.<key>` binding). A `survey` attributes every lead it produces to its own source key."
     },
     "summary": {
       "type": "string",
       "minLength": 1,
-      "description": "One-line human-readable summary."
+      "description": "One-line human-readable summary of the lead as this source surfaced it."
     },
     "tentative": {
       "type": "boolean",
-      "description": "Optional. Set to `true` by `/spec:plan`'s `propose` sub-step when the cross-source merge that produced this lead is uncertain; the operator reconciles at Gate 1."
+      "description": "Optional. Set to `true` by `/spec:plan`'s `propose` sub-step when the cross-source unification that referenced this lead is uncertain; the operator reconciles at Gate 1."
     },
     "aliases": {
       "type": "array",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/kebabName" },
-      "description": "Optional kebab-case aliases for cross-source merge. `slices[].sources[].lead` resolves a binding's lead against the lead's `id` or any `alias`. Authored by the source adapter at `survey` time or by `/spec:plan` at `propose` time when merging differently-named leads across sources. Stable across re-survey; operator additions through `specrun plan amend --add-alias` survive re-survey. Empty `aliases: []` and a missing field are equivalent."
+      "description": "Optional kebab-case aliases for cross-source unification. `slices[].sources[].lead-id` resolves a binding's lead against the lead's `lead-id` or any `alias` under the same `source-key`. Authored by the source adapter at `survey` time or by `/spec:plan` at `propose` time when unifying differently-named leads across sources. Stable across re-survey; operator additions through `specrun plan amend --add-alias` survive re-survey. Empty `aliases: []` and a missing field are equivalent."
     }
   },
   "$defs": {

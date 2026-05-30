@@ -1,12 +1,13 @@
-//! Discovery surface — `## Lead inventory` blocks in
-//! `discovery.md` and the lead shape source adapters emit at
-//! `survey` time. Validated against
-//! `schemas/discovery/lead.schema.json`.
+//! Discovery surface — the `## Lead inventory` blocks in `discovery.md`.
+//!
+//! Each block is a raw, unmerged per-source lead a source adapter emits
+//! at `survey` time, identified by its `(source-key, lead-id)` pair and
+//! validated against `schemas/discovery/lead.schema.json`.
 //!
 //! The whole-document model lives in [`document`] (discovery alias contract); it
 //! parses `discovery.md`, exposes [`Discovery::resolve_lead`]
-//! for the `--sources <key>=<id-or-alias>` rewrite path, and gates
-//! the cross-lead `id` ↔ `aliases[]` collision check shared
+//! for the `--sources <key>=<lead-id-or-alias>` rewrite path, and gates
+//! the per-`source-key` `lead-id` ↔ `aliases[]` collision check shared
 //! between `specrun plan amend --add-alias` and
 //! `specrun slice validate`.
 

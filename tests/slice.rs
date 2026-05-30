@@ -471,7 +471,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { key: legacy-monolith, lead: my-slice }
+      - { source-key: legacy-monolith, lead-id: my-slice }
 ";
 
 #[test]
@@ -810,7 +810,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { key: ui-screens, lead: my-slice }
+      - { source-key: ui-screens, lead-id: my-slice }
 ";
 
 /// Stage a slice with Evidence containing `component:` directives

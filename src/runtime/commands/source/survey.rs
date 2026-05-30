@@ -288,9 +288,15 @@ fn dispatch_survey_tool(prepared: &prep::SourcePrep) -> Result<()> {
 /// Returns the merged lead ids. The schema check gates the merge, so an
 /// invalid lead set leaves `discovery.md` untouched (RFC-29 D1).
 fn validate_and_merge(ctx: &Ctx, source_key: &str, raw: &str) -> Result<Vec<String>> {
-    let leads = Discovery::parse(raw)?.into_leads();
+    let mut leads = Discovery::parse(raw)?.into_leads();
+    // Attribution is CLI-owned: a `survey` for `source_key` produces
+    // `source_key`'s leads, so stamp every lead before the schema check
+    // (which requires `source-key`) and the merge.
+    for lead in &mut leads {
+        lead.source_key = source_key.to_string();
+    }
     schema::validate_leads(&leads)?;
-    let lead_ids: Vec<String> = leads.iter().map(|lead| lead.id.clone()).collect();
+    let lead_ids: Vec<String> = leads.iter().map(|lead| lead.lead_id.clone()).collect();
 
     let discovery_path = ctx.layout().discovery_path();
     let mut discovery = load_or_empty_discovery(&discovery_path)?;
@@ -422,8 +428,8 @@ fn existing_lead_ids(ctx: &Ctx, source_key: &str) -> Result<Vec<String>> {
     Ok(discovery
         .leads()
         .iter()
-        .filter(|lead| lead.sources.iter().any(|source| source == source_key))
-        .map(|lead| lead.id.clone())
+        .filter(|lead| lead.source_key == source_key)
+        .map(|lead| lead.lead_id.clone())
         .collect())
 }
 

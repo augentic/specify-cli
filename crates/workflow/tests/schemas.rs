@@ -325,33 +325,32 @@ fn evidence_rejects_bad_authority_and_kinds() {
 // --- discovery/lead.schema.json --------------------------------
 
 const LEAD_VALID: &str = r"
-id: user-registration
-sources: [legacy-monolith]
+lead-id: user-registration
+source-key: legacy-monolith
 summary: Registration endpoint accepting email + password with RFC 5322 validation.
 ";
 
 const LEAD_VALID_TENTATIVE: &str = r"
-id: password-reset
-sources: [identity-design-notes, legacy-monolith]
+lead-id: password-reset
+source-key: legacy-monolith
 summary: Operator-initiated password reset via email link.
 tentative: true
 ";
 
-const LEAD_INVALID_NO_SOURCES: &str = r"
-id: user-registration
-sources: []
-summary: bad — sources must be non-empty.
+const LEAD_INVALID_MISSING_SOURCE_KEY: &str = r"
+lead-id: user-registration
+summary: bad — source-key is required.
 ";
 
 const LEAD_INVALID_BAD_ID: &str = r"
-id: User_Registration
-sources: [legacy-monolith]
+lead-id: User_Registration
+source-key: legacy-monolith
 summary: Bad id.
 ";
 
 const LEAD_INVALID_TENTATIVE_WRONG_TYPE: &str = r"
-id: user-registration
-sources: [legacy-monolith]
+lead-id: user-registration
+source-key: legacy-monolith
 summary: Bad tentative.
 tentative: maybe
 ";
@@ -364,9 +363,9 @@ fn lead_accepts_minimal_and_tentative_shapes() {
 }
 
 #[test]
-fn lead_rejects_bad_sources_id_and_tentative() {
+fn lead_rejects_missing_source_key_bad_id_and_tentative() {
     let v = load("discovery/lead.schema.json");
-    assert_invalid(&v, &yaml(LEAD_INVALID_NO_SOURCES), "lead/no-sources");
+    assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source-key");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
     assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_WRONG_TYPE), "lead/wrong-tentative-type");
 }
@@ -422,7 +421,7 @@ slices:
   - name: only
     target: omnia@v1
     sources:
-      - key: docs
+      - source-key: docs
     status: pending
 ";
     assert_invalid(&v, &yaml(bad), "plan/v2/source-missing-lead");

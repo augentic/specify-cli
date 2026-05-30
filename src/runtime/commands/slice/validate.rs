@@ -454,7 +454,7 @@ fn resolve_slice_source_keys(ctx: &Ctx, name: &str) -> Result<BTreeSet<String>> 
         // against any key spelt correctly.
         return Ok(plan.sources.keys().cloned().collect());
     };
-    Ok(entry.sources.iter().map(|b| b.key().to_string()).collect())
+    Ok(entry.sources.iter().map(|b| b.source_key().to_string()).collect())
 }
 
 /// One-line text rendering of a diagnostic for the PASS/FAIL banner.

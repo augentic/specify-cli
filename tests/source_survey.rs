@@ -57,13 +57,15 @@ fn journal_events(project: &Project) -> Vec<Value> {
         .collect()
 }
 
+// A `survey` lead-set omits `source-key`: attribution is CLI-owned,
+// so the runner stamps `legacy` onto every lead before the schema
+// check and the merge.
 const VALID_LEAD_SET: &str = "\
 ## Lead inventory
 
 ### user-registration
 
-- id: user-registration
-- sources: [legacy]
+- lead-id: user-registration
 - summary: Registration endpoint accepting email + password.
 ";
 
@@ -145,8 +147,11 @@ fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
 
     // The lead is now visible in discovery.md.
     let discovery = fs::read_to_string(project.root().join("discovery.md")).expect("discovery.md");
-    assert!(discovery.contains("### user-registration"), "merged lead must appear:\n{discovery}");
-    assert!(discovery.contains("- sources: [legacy]"), "merged lead records its source");
+    assert!(
+        discovery.contains("### legacy:user-registration"),
+        "merged lead must appear:\n{discovery}"
+    );
+    assert!(discovery.contains("- source-key: legacy"), "merged lead records its source");
 
     let events = journal_events(&project);
     let miss = events
@@ -171,7 +176,7 @@ fn agent_finalize_invalid_lead_set_leaves_discovery_untouched() {
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(
         scratch.join("lead-set.md"),
-        "## Lead inventory\n\n### bad_id\n\n- id: bad_id\n- sources: [legacy]\n- summary: Bad id.\n",
+        "## Lead inventory\n\n### bad_id\n\n- lead-id: bad_id\n- summary: Bad id.\n",
     )
     .expect("write invalid lead-set.md");
 

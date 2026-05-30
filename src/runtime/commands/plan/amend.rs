@@ -178,7 +178,7 @@ fn apply_source_edits(
     let entry = entry_mut(plan, plan_name, slice)?;
     for key in remove_source {
         let before = entry.sources.len();
-        entry.sources.retain(|b| b.key() != key.as_str());
+        entry.sources.retain(|b| b.source_key() != key.as_str());
         if entry.sources.len() == before {
             return Err(Error::Diag {
                 code: "plan-binding-not-found",

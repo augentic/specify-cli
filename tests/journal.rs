@@ -351,7 +351,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { key: legacy-monolith, lead: my-slice }
+      - { source-key: legacy-monolith, lead-id: my-slice }
 ";
 
 const TAGGED_SPEC_UNKNOWN: &str = "# Login Specification

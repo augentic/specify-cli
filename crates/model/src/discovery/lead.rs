@@ -1,36 +1,42 @@
 //! In-memory representation of one `## Lead inventory` block.
 //!
-//! Mirrors `schemas/discovery/lead.schema.json` — the kebab-case
-//! `id`, the non-empty `sources[]` keys that surfaced the lead,
-//! the one-line `summary`, the optional `tentative` flag set by
-//! `/spec:plan`'s `propose` sub-step on low-confidence cross-source
-//! merges, and (discovery alias contract) the optional `aliases[]` list. Operator
-//! additions through `specrun plan amend --add-alias` survive
-//! re-survey.
+//! Mirrors `schemas/discovery/lead.schema.json` — one raw, unmerged
+//! lead as surfaced by one source: the `source-key` that produced
+//! it, the kebab-case `lead-id` (unique only within that
+//! `source-key`), the one-line per-source `summary`, the optional
+//! `tentative` flag set by `/spec:plan`'s `propose` sub-step, and
+//! (discovery alias contract) the optional `aliases[]` list. Identity
+//! is the `(source-key, lead-id)` pair; cross-source unification is
+//! deferred to plan time. Operator additions through `specrun plan
+//! amend --add-alias` survive re-survey.
 
 use serde::{Deserialize, Serialize};
 
-/// One block under `## Lead inventory` in `discovery.md`.
+/// One raw, unmerged block under `## Lead inventory` in `discovery.md`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Lead {
-    /// Stable kebab-case identifier. Re-survey replaces by `id`.
-    pub id: String,
-    /// Non-empty list of source keys that surfaced this lead.
-    /// Each entry matches a top-level `plan.yaml.sources.<key>`
-    /// binding; the on-disk schema rejects empty lists.
-    pub sources: Vec<String>,
-    /// One-line human-readable summary.
+    /// Stable kebab-case identifier, unique only within this lead's
+    /// `source-key`. Re-survey of that source replaces the block by
+    /// `(source-key, lead-id)`.
+    pub lead_id: String,
+    /// Source binding key that surfaced this lead. Matches a
+    /// top-level `plan.yaml.sources.<key>` binding; a `survey`
+    /// attributes every lead it produces to its own source key.
+    pub source_key: String,
+    /// One-line human-readable summary of the lead as this source
+    /// surfaced it.
     pub summary: String,
     /// Optional uncertainty flag — set when `/spec:plan`'s `propose`
     /// sub-step merged this lead across sources with low
     /// confidence; the operator reconciles at Gate 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tentative: Option<bool>,
-    /// Optional alias list (discovery alias contract). `slices[].sources[].lead`
-    /// resolves first against `id`, then against any entry in
-    /// `aliases`. Empty list and missing field are equivalent on the
-    /// wire.
+    /// Optional alias list (discovery alias contract).
+    /// `slices[].sources[].lead-id` resolves first against `lead-id`,
+    /// then against any entry in `aliases`, within this lead's
+    /// `source-key`. Empty list and missing field are equivalent on
+    /// the wire.
     #[serde(default, skip_serializing_if = "LeadAliases::is_empty")]
     pub aliases: LeadAliases,
 }
@@ -78,14 +84,16 @@ where
 }
 
 impl Lead {
-    /// `true` when `token` equals this lead's `id` or any entry
+    /// `true` when `token` equals this lead's `lead-id` or any entry
     /// in `aliases[]`.
     ///
-    /// discovery alias contract — `slices[].sources[].lead` resolves first
-    /// against `id`, then against `aliases[]`; case-sensitive.
+    /// discovery alias contract — `slices[].sources[].lead-id`
+    /// resolves first against `lead-id`, then against `aliases[]`;
+    /// case-sensitive. Resolution is scoped to this lead's
+    /// `source-key` by the caller.
     #[must_use]
     pub fn resolves(&self, token: &str) -> bool {
-        self.id == token || self.aliases.contains(token)
+        self.lead_id == token || self.aliases.contains(token)
     }
 
     /// Append `alias` to this lead's `aliases[]`. Refuses when
@@ -111,11 +119,11 @@ impl Lead {
     /// # Errors
     ///
     /// Returns [`AliasCollision::EqualsOwnId`] when `alias` equals
-    /// `self.id`.
+    /// `self.lead_id`.
     pub fn add_alias(&mut self, alias: String) -> Result<(), AliasCollision> {
-        if alias == self.id {
+        if alias == self.lead_id {
             return Err(AliasCollision::EqualsOwnId {
-                lead: self.id.clone(),
+                lead: self.lead_id.clone(),
                 alias,
             });
         }
@@ -144,12 +152,12 @@ impl Lead {
 /// shape whether the conflict was self-shadow or cross-lead.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AliasCollision {
-    /// The supplied alias equals the lead's own `id`. No-op
+    /// The supplied alias equals the lead's own `lead-id`. No-op
     /// edit; the operator likely typed the wrong target.
     EqualsOwnId {
         /// Lead whose `add_alias` refused.
         lead: String,
-        /// Alias value that collided with the lead's id.
+        /// Alias value that collided with the lead's `lead-id`.
         alias: String,
     },
 }
@@ -159,7 +167,7 @@ impl std::fmt::Display for AliasCollision {
         match self {
             Self::EqualsOwnId { lead, alias } => write!(
                 f,
-                "alias `{alias}` equals lead `{lead}`'s own id; aliases must name a \
+                "alias `{alias}` equals lead `{lead}`'s own lead-id; aliases must name a \
                  different surface form"
             ),
         }
@@ -174,12 +182,13 @@ mod tests {
 
     #[test]
     fn round_trips_minimal_block() {
-        let yaml = r"id: user-registration
-sources: [legacy]
+        let yaml = r"lead-id: user-registration
+source-key: legacy
 summary: Registration endpoint accepting email + password.
 ";
         let parsed: Lead = serde_saphyr::from_str(yaml).expect("parse");
-        assert_eq!(parsed.id, "user-registration");
+        assert_eq!(parsed.lead_id, "user-registration");
+        assert_eq!(parsed.source_key, "legacy");
         assert!(parsed.aliases.is_empty(), "missing aliases must default to empty");
         assert_eq!(parsed.tentative, None);
 
@@ -190,8 +199,8 @@ summary: Registration endpoint accepting email + password.
 
     #[test]
     fn round_trips_with_aliases() {
-        let yaml = r"id: user-registration
-sources: [legacy, runtime]
+        let yaml = r"lead-id: user-registration
+source-key: legacy
 summary: Registration endpoint accepting email + password.
 aliases:
   - account-registration
@@ -208,8 +217,8 @@ aliases:
     #[test]
     fn resolves_id_then_aliases() {
         let lead = Lead {
-            id: "user-registration".to_string(),
-            sources: vec!["legacy".to_string()],
+            lead_id: "user-registration".to_string(),
+            source_key: "legacy".to_string(),
             summary: "Registration.".to_string(),
             tentative: None,
             aliases: LeadAliases::from_iter(["account-registration", "user-signup"]),
@@ -266,8 +275,8 @@ aliases:
 
     fn sample() -> Lead {
         Lead {
-            id: "user-registration".to_string(),
-            sources: vec!["legacy".to_string()],
+            lead_id: "user-registration".to_string(),
+            source_key: "legacy".to_string(),
             summary: "Registration.".to_string(),
             tentative: None,
             aliases: LeadAliases::default(),
@@ -276,8 +285,8 @@ aliases:
 
     #[test]
     fn rejects_unknown_fields() {
-        let yaml = r"id: user-registration
-sources: [legacy]
+        let yaml = r"lead-id: user-registration
+source-key: legacy
 summary: Registration.
 rogue: true
 ";

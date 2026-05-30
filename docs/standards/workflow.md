@@ -37,7 +37,7 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Discovery handshake
 
-`survey` writes `## Lead inventory` blocks; the operator stamps `approved`; `extract` resolves `slices[].sources[].lead` against `id`-then-`aliases[]`. Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
+`survey` writes `## Lead inventory` blocks — one **raw, unmerged** lead per source, each identified by its `(source-key, lead-id)` pair (`survey` stamps `source-key` from the surveyed source). A re-survey of one source replaces only that source's blocks by `(source-key, lead-id)`; the same `lead-id` may appear under different source keys, and the lead-id/alias namespace is scoped per `source-key`. The operator stamps `approved`; `extract` resolves `slices[].sources[].lead-id` against `lead-id`-then-`aliases[]` within the binding's `source-key`. Cross-source unification is deferred to plan-time reconciliation (D2). Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
 
 ## The Plan
 
@@ -55,7 +55,7 @@ Core synthesis reconciles leads across sources at plan time and writes one `slic
 
 `plan.yaml.sources.<key>` is the structured `{ adapter, path?, value? }` object with exactly one of `path` / `value`. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
 
-`Slice.sources` (a slice's per-source binding list) accepts the bare-string shorthand on parse and serialises as the structured `{ key, lead }`. See [`DECISIONS.md` §"`SliceSourceBinding`: bare shorthand plus structured form"](../../DECISIONS.md#slicesourcebinding-bare-shorthand-plus-structured-form).
+`Slice.sources` (a slice's per-source binding list) accepts the bare-string shorthand on parse and serialises as the structured `{ source-key, lead-id }`. See [`DECISIONS.md` §"`SliceSourceBinding`: bare shorthand plus structured form"](../../DECISIONS.md#slicesourcebinding-bare-shorthand-plus-structured-form).
 
 ## Authority hierarchy
 

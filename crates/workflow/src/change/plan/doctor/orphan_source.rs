@@ -14,7 +14,7 @@ pub(super) fn detect(plan: &Plan) -> Vec<Diagnostic> {
     let mut referenced: HashSet<&str> = HashSet::new();
     for entry in &plan.entries {
         for binding in &entry.sources {
-            referenced.insert(binding.key());
+            referenced.insert(binding.source_key());
         }
     }
     let mut orphans: Vec<&str> = plan

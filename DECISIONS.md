@@ -388,26 +388,28 @@ state.
 ## `SliceSourceBinding`: bare shorthand plus structured form
 
 `plan.yaml.slices[].sources` is a single in-memory struct
-(`{ key: String, lead: Option<String> }`) with a custom
+(`{ source_key: String, lead_id: Option<String> }`) with a custom
 `Deserialize` impl that accepts two wire shapes and a custom
 `Serialize` impl that emits whichever shape produced the value:
 
-- **Bare string shorthand** — `legacy` parses to `key = "legacy"`,
-  `lead = None`; serialises back as the bare string. The lead
-  falls back to the owning slice's name at lookup time via
-  `SliceSourceBinding::lead(slice_name)`, preserving the
-  one-source-per-slice degenerate case (predominantly `intent`).
-- **Structured form** — `{ key: legacy, lead: legacy-monolith }`
-  parses to `key = "legacy"`, `lead = Some("legacy-monolith")`;
-  serialises back as the same `{ key, lead }` map. Required
-  whenever the key and the lead id differ.
+- **Bare string shorthand** — `legacy` parses to
+  `source_key = "legacy"`, `lead_id = None`; serialises back as the
+  bare string. The lead-id falls back to the owning slice's name at
+  lookup time via `SliceSourceBinding::lead_id(slice_name)`,
+  preserving the one-source-per-slice degenerate case (predominantly
+  `intent`).
+- **Structured form** — `{ source-key: legacy, lead-id: legacy-monolith }`
+  parses to `source_key = "legacy"`,
+  `lead_id = Some("legacy-monolith")`; serialises back as the same
+  `{ source-key, lead-id }` map. Required whenever the source key and
+  the lead id differ.
 
 Collapsing the two variants into one struct means every consumer
 (`validate`, `doctor`, `provenance`, CLI handlers) goes through the same
-`key()` / `lead()` accessors instead of `match`-ing the
+`source_key()` / `lead_id()` accessors instead of `match`-ing the
 discriminator — the shorthand stays a pure parser concern. Construct in
-tests via `SliceSourceBinding::bare(key)` or
-`SliceSourceBinding::structured(key, lead)` so the discipline
+tests via `SliceSourceBinding::bare(source_key)` or
+`SliceSourceBinding::structured(source_key, lead_id)` so the discipline
 stays consistent. `plan amend --add-source <key>` and `plan create`
 share the same shorthand on the wire. Refer to workflow §`Slice.sources`.
 
@@ -761,6 +763,19 @@ adapter name — and the adapter is then resolved from
 `schemas/discovery/lead.schema.json` and merges it into `discovery.md`;
 `extract` validates the Evidence against `schemas/evidence.schema.json`
 and persists it to `.specify/slices/<slice>/evidence/<source-key>.yaml`.
+
+`discovery.md` stores **raw, unmerged, per-source leads**: each block is
+one lead as surfaced by one source, identified by its `(source-key,
+lead-id)` pair (the runner stamps `source-key` from the surveyed source,
+so attribution is CLI-owned and a lead-set need not repeat it). "Merges
+it into `discovery.md`" is a per-source re-survey fold, **not** a
+cross-source collapse: a re-survey of one source replaces only that
+source's blocks by `(source-key, lead-id)` and leaves every other
+source's blocks untouched, so the same `lead-id` may legally appear under
+different source keys. Alias-collision scoping is therefore per
+`source-key`. Cross-source unification of leads is deferred to plan time
+(D2 reconciliation), where the umbrella RFC places fan-in; `survey` never
+unifies across sources.
 Both gates are **validate-before-visible**: an invalid lead set leaves
 `discovery.md` untouched, and a failed Evidence validation leaves the
 slice in `refining` (see [`crates/workflow/src/schema.rs`](./crates/workflow/src/schema.rs)).

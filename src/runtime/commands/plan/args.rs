@@ -90,7 +90,7 @@ fn resolve_lead_token(token: &str, discovery: Option<&Discovery>) -> Result<Stri
         return Ok(token.to_string());
     };
     match discovery.resolve_lead(token) {
-        Ok(lead) => Ok(lead.id.clone()),
+        Ok(lead) => Ok(lead.lead_id.clone()),
         Err(DiscoveryResolveError::Unknown { token }) => Err(Error::validation_failed(
             "discovery-lead-unknown",
             "--sources <key>=<value> must resolve to a lead in discovery.md",

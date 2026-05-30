@@ -2,16 +2,18 @@
 //! `## Lead inventory` section plus the surrounding operator
 //! prose.
 //!
-//! discovery alias contract — `slices[].sources[].lead` resolves first against
-//! a lead's `id`, then against any entry in `aliases[]`. The
-//! `## Lead inventory` section uses the block grammar
+//! discovery alias contract — `slices[].sources[].lead-id` resolves
+//! first against a lead's `lead-id`, then against any entry in
+//! `aliases[]`, within that binding's `source-key`. Each block is a
+//! raw, unmerged lead identified by the `(source-key, lead-id)` pair.
+//! The `## Lead inventory` section uses the block grammar
 //!
 //! ```markdown
-//! ### <id>
+//! ### <source-key>:<lead-id>
 //!
-//! - id: <id>
+//! - lead-id: <lead-id>
+//! - source-key: <source-key>
 //! - aliases: [<alias>, <alias>]
-//! - sources: [<key>, <key>]
 //! - summary: <one-line summary>
 //! ```
 //!
@@ -148,7 +150,7 @@ impl Discovery {
     /// to accept either form.
     #[must_use]
     pub fn lead_mut(&mut self, id: &str) -> Option<&mut Lead> {
-        self.leads.iter_mut().find(|c| c.id == id)
+        self.leads.iter_mut().find(|c| c.lead_id == id)
     }
 
     /// Convenience wrapper around [`Self::lead_mut`] that
@@ -188,7 +190,7 @@ impl Discovery {
             }),
             1 => Ok(hits[0]),
             _ => {
-                let mut owners: Vec<String> = hits.iter().map(|c| c.id.clone()).collect();
+                let mut owners: Vec<String> = hits.iter().map(|c| c.lead_id.clone()).collect();
                 owners.sort();
                 Err(ResolveError::Collision {
                     token: token.to_string(),
@@ -198,27 +200,37 @@ impl Discovery {
         }
     }
 
-    /// Walk every `id` and every `aliases[]` entry across all
+    /// Walk every `lead-id` and every `aliases[]` entry across all
     /// leads, returning every namespace collision sorted
     /// deterministically.
     ///
-    /// The single-namespace rule per discovery alias contract: an alias MUST NOT
-    /// collide with ANY other lead's `id` or `aliases[]` in the
-    /// same `discovery.md`. Findings sort lexicographically on the
-    /// colliding name, then by the bearing lead id list so
-    /// repeat runs produce byte-identical error envelopes.
+    /// The single-namespace rule per discovery alias contract is
+    /// scoped **per `source-key`**: an alias MUST NOT collide with
+    /// another lead's `lead-id` or `aliases[]` under the *same*
+    /// `source-key`. The same `lead-id` under a different
+    /// `source-key` is legal — leads are raw and per-source, and
+    /// cross-source unification happens at plan time. Findings sort
+    /// by `source-key`, then lexicographically on the colliding name,
+    /// then by the bearing lead-id list so repeat runs produce
+    /// byte-identical error envelopes.
     #[must_use]
     pub fn check_alias_collisions(&self) -> Vec<DiscoveryAliasCollision> {
-        let mut owners_by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut owners_by_key: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
         for lead in &self.leads {
-            owners_by_name.entry(lead.id.clone()).or_default().push(lead.id.clone());
+            owners_by_key
+                .entry((lead.source_key.clone(), lead.lead_id.clone()))
+                .or_default()
+                .push(lead.lead_id.clone());
             for alias in &lead.aliases.names {
-                owners_by_name.entry(alias.clone()).or_default().push(lead.id.clone());
+                owners_by_key
+                    .entry((lead.source_key.clone(), alias.clone()))
+                    .or_default()
+                    .push(lead.lead_id.clone());
             }
         }
 
         let mut findings: Vec<DiscoveryAliasCollision> = Vec::new();
-        for (name, owners) in owners_by_name {
+        for ((source_key, name), owners) in owners_by_key {
             if owners.len() <= 1 {
                 continue;
             }
@@ -226,12 +238,16 @@ impl Discovery {
             bearing.sort();
             bearing.dedup();
             findings.push(DiscoveryAliasCollision {
+                source_key,
                 name,
                 bearing_leads: bearing,
             });
         }
         findings.sort_by(|a, b| {
-            a.name.cmp(&b.name).then_with(|| a.bearing_leads.cmp(&b.bearing_leads))
+            a.source_key
+                .cmp(&b.source_key)
+                .then_with(|| a.name.cmp(&b.name))
+                .then_with(|| a.bearing_leads.cmp(&b.bearing_leads))
         });
         findings
     }
@@ -296,17 +312,20 @@ impl Discovery {
     ///
     /// `leads` is the lead set the source's `survey` produced (already
     /// validated against `schemas/discovery/lead.schema.json` by the
-    /// caller). Each incoming lead replaces the prior block sharing its
-    /// `id` **in place**, so a surviving lead keeps its document
-    /// position and the file re-renders byte-stably when nothing moved.
-    /// Operator-authored `aliases[]` on a surviving id are carried
-    /// forward (unioned with any alias the re-survey itself emits) per
-    /// discovery alias contract. Incoming leads with no prior block are
-    /// appended in survey order. Prior blocks whose `id` is absent from
-    /// the incoming set are left untouched — re-survey replaces by id,
-    /// it does not prune. Each incoming lead is attributed to
-    /// `source_key` so the merged `sources[]` always records the survey
-    /// that produced it.
+    /// caller). The surveying source owns attribution: every incoming
+    /// lead's `source-key` is force-set to `source_key`, so a survey
+    /// for one source only ever writes that source's blocks. Each
+    /// incoming lead replaces the prior block sharing its
+    /// `(source-key, lead-id)` pair **in place**, so a surviving lead
+    /// keeps its document position and the file re-renders byte-stably
+    /// when nothing moved. Operator-authored `aliases[]` on a
+    /// surviving pair are carried forward (unioned with any alias the
+    /// re-survey itself emits) per discovery alias contract. Incoming
+    /// leads with no prior block are appended in survey order. Prior
+    /// blocks from *other* source keys, and prior blocks of this
+    /// source whose `lead-id` is absent from the incoming set, are left
+    /// untouched — re-survey replaces by `(source-key, lead-id)`, it
+    /// does not prune and never collapses across sources.
     ///
     /// The whole-document collision gate runs against the post-merge
     /// state *before* any byte is written: on a
@@ -324,28 +343,37 @@ impl Discovery {
         let mut slots: Vec<Option<Lead>> = leads
             .into_iter()
             .map(|mut lead| {
-                // Leads produced by this source's survey must record it.
-                if !lead.sources.iter().any(|source| source == source_key) {
-                    lead.sources.push(source_key.to_string());
-                }
+                // The surveying source owns attribution: a survey for
+                // `source_key` produces `source_key`'s leads, period.
+                lead.source_key = source_key.to_string();
                 Some(lead)
             })
             .collect();
-        // First incoming slot per id (a valid lead set has unique ids).
-        let mut slot_by_id: BTreeMap<String, usize> = BTreeMap::new();
+        // First incoming slot per lead-id (a valid lead set has unique
+        // lead-ids within a single source).
+        let mut slot_by_lead_id: BTreeMap<String, usize> = BTreeMap::new();
         for (idx, slot) in slots.iter().enumerate() {
             if let Some(lead) = slot {
-                slot_by_id.entry(lead.id.clone()).or_insert(idx);
+                slot_by_lead_id.entry(lead.lead_id.clone()).or_insert(idx);
             }
         }
 
         let mut merged: Vec<Lead> = Vec::with_capacity(self.leads.len() + slots.len());
         for prior in &self.leads {
-            match slot_by_id.get(&prior.id).and_then(|&idx| slots[idx].take()) {
+            // Only this source's prior blocks are eligible for
+            // replacement; other source keys pass through untouched so
+            // a survey never collapses leads across sources.
+            let replacement = if prior.source_key == source_key {
+                slot_by_lead_id.get(&prior.lead_id).and_then(|&idx| slots[idx].take())
+            } else {
+                None
+            };
+            match replacement {
                 Some(mut next) => {
-                    // Surviving id: carry operator-authored aliases forward,
-                    // unioning any the re-survey itself emits so the
-                    // namespace never silently narrows.
+                    // Surviving (source-key, lead-id): carry
+                    // operator-authored aliases forward, unioning any
+                    // the re-survey itself emits so the namespace never
+                    // silently narrows.
                     let mut names = prior.aliases.names.clone();
                     for alias in &next.aliases.names {
                         if !names.contains(alias) {
@@ -424,24 +452,27 @@ impl Discovery {
     }
 }
 
-/// Render a single `### <id>` block onto `out`. Bullet order mirrors
-/// discovery alias contract: `id`, optional `aliases`, `sources`, `summary`, plus
-/// the optional `tentative` flag.
+/// Render a single `### <source-key>:<lead-id>` block onto `out`.
+/// Bullet order mirrors discovery alias contract: `lead-id`,
+/// `source-key`, optional `aliases`, `summary`, plus the optional
+/// `tentative` flag.
 fn render_lead(out: &mut String, lead: &Lead) {
     out.push_str("### ");
-    out.push_str(&lead.id);
+    out.push_str(&lead.source_key);
+    out.push(':');
+    out.push_str(&lead.lead_id);
     out.push_str("\n\n");
-    out.push_str("- id: ");
-    out.push_str(&lead.id);
+    out.push_str("- lead-id: ");
+    out.push_str(&lead.lead_id);
+    out.push('\n');
+    out.push_str("- source-key: ");
+    out.push_str(&lead.source_key);
     out.push('\n');
     if !lead.aliases.is_empty() {
         out.push_str("- aliases: [");
         out.push_str(&lead.aliases.names.join(", "));
         out.push_str("]\n");
     }
-    out.push_str("- sources: [");
-    out.push_str(&lead.sources.join(", "));
-    out.push_str("]\n");
     out.push_str("- summary: ");
     out.push_str(&lead.summary);
     out.push('\n');
@@ -456,20 +487,25 @@ fn render_lead(out: &mut String, lead: &Lead) {
 /// [`Discovery::check_alias_collisions`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoveryAliasCollision {
-    /// Namespace entry that resolves to more than one lead.
+    /// Source key whose per-source namespace the collision occurs in.
+    pub source_key: String,
+    /// Namespace entry that resolves to more than one lead under
+    /// `source_key`.
     pub name: String,
-    /// Sorted, de-duplicated list of lead ids that own the
-    /// colliding name (either as `id` or as a member of `aliases[]`).
+    /// Sorted, de-duplicated list of lead-ids that own the colliding
+    /// name (either as `lead-id` or as a member of `aliases[]`).
     pub bearing_leads: Vec<String>,
 }
 
 impl DiscoveryAliasCollision {
-    /// Human-readable detail naming the colliding name and bearing leads.
+    /// Human-readable detail naming the colliding name, its
+    /// `source-key`, and the bearing leads.
     #[must_use]
     pub fn detail(&self) -> String {
         format!(
-            "name `{}` resolves to multiple leads: {}",
+            "name `{}` resolves to multiple leads under source-key `{}`: {}",
             self.name,
+            self.source_key,
             self.bearing_leads.join(", ")
         )
     }
@@ -613,11 +649,11 @@ impl<'a> Parser<'a> {
 
     fn parse_lead_block(&mut self) -> Result<Lead> {
         let heading = self.lines[self.cursor];
-        let id_from_heading = lead_heading_id(heading).unwrap_or("").trim().to_string();
+        let heading_label = lead_heading_id(heading).unwrap_or("").trim().to_string();
         self.cursor += 1;
 
-        let mut id: Option<String> = None;
-        let mut sources: Option<Vec<String>> = None;
+        let mut lead_id: Option<String> = None;
+        let mut source_key: Option<String> = None;
         let mut summary: Option<String> = None;
         let mut aliases: Option<Vec<String>> = None;
         let mut tentative: Option<bool> = None;
@@ -631,16 +667,16 @@ impl<'a> Parser<'a> {
             if let Some(bullet_body) = bullet_body(trimmed) {
                 let (key, value) = split_bullet(bullet_body)?;
                 match key {
-                    "id" => {
-                        if id.is_some() {
+                    "lead-id" => {
+                        if lead_id.is_some() {
                             return Err(parse_err(format!(
-                                "lead `{id_from_heading}`: duplicate `id:` bullet"
+                                "lead `{heading_label}`: duplicate `lead-id:` bullet"
                             )));
                         }
-                        id = Some(value.to_string());
+                        lead_id = Some(value.to_string());
                     }
-                    "sources" => {
-                        sources = Some(parse_inline_list(value, "sources")?);
+                    "source-key" => {
+                        source_key = Some(value.to_string());
                     }
                     "summary" => {
                         summary = Some(value.to_string());
@@ -653,14 +689,14 @@ impl<'a> Parser<'a> {
                         "false" => tentative = Some(false),
                         other => {
                             return Err(parse_err(format!(
-                                "lead `{id_from_heading}`: tentative must be true or false, \
+                                "lead `{heading_label}`: tentative must be true or false, \
                                  got `{other}`"
                             )));
                         }
                     },
                     other => {
                         return Err(parse_err(format!(
-                            "lead `{id_from_heading}`: unknown bullet `{other}`"
+                            "lead `{heading_label}`: unknown bullet `{other}`"
                         )));
                     }
                 }
@@ -668,15 +704,22 @@ impl<'a> Parser<'a> {
             self.cursor += 1;
         }
 
-        let id = id.unwrap_or_else(|| id_from_heading.clone());
-        let sources = sources
-            .ok_or_else(|| parse_err(format!("lead `{id}` is missing the `sources:` bullet")))?;
-        let summary = summary
-            .ok_or_else(|| parse_err(format!("lead `{id}` is missing the `summary:` bullet")))?;
+        let lead_id = lead_id.ok_or_else(|| {
+            parse_err(format!("lead `{heading_label}` is missing the `lead-id:` bullet"))
+        })?;
+        // `source-key` is optional on parse: a `survey` lead-set omits
+        // it (attribution is CLI-owned via `merge_survey`), while a
+        // persisted `discovery.md` always carries it. The schema
+        // (`required: [lead-id, source-key, summary]`) enforces presence
+        // on the merged document.
+        let source_key = source_key.unwrap_or_default();
+        let summary = summary.ok_or_else(|| {
+            parse_err(format!("lead `{lead_id}` is missing the `summary:` bullet"))
+        })?;
         let aliases = aliases.unwrap_or_default();
         Ok(Lead {
-            id,
-            sources,
+            lead_id,
+            source_key,
             summary,
             tentative,
             aliases: LeadAliases { names: aliases },
@@ -753,18 +796,18 @@ Some prose before the inventory.
 
 ## Lead inventory
 
-### user-registration
+### legacy:user-registration
 
-- id: user-registration
+- lead-id: user-registration
+- source-key: legacy
 - aliases: [account-registration, user-signup]
-- sources: [legacy, runtime]
 - summary: Registration endpoint accepting email + password.
 
-### password-reset-request
+### legacy:password-reset-request
 
-- id: password-reset-request
+- lead-id: password-reset-request
+- source-key: legacy
 - aliases: [password-reset]
-- sources: [legacy]
 - summary: Reset endpoint.
 
 ## Notes
@@ -776,9 +819,10 @@ Some trailing prose.
     fn parses_canonical_layout() {
         let doc = Discovery::parse(SAMPLE).expect("parse ok");
         assert_eq!(doc.leads.len(), 2);
-        assert_eq!(doc.leads[0].id, "user-registration");
+        assert_eq!(doc.leads[0].lead_id, "user-registration");
+        assert_eq!(doc.leads[0].source_key, "legacy");
         assert_eq!(doc.leads[0].aliases.names, vec!["account-registration", "user-signup"]);
-        assert_eq!(doc.leads[1].id, "password-reset-request");
+        assert_eq!(doc.leads[1].lead_id, "password-reset-request");
         assert_eq!(doc.leads[1].aliases.names, vec!["password-reset"]);
     }
 
@@ -794,14 +838,14 @@ Some trailing prose.
     fn resolve_lead_matches_id() {
         let doc = Discovery::parse(SAMPLE).expect("parse ok");
         let hit = doc.resolve_lead("user-registration").expect("resolves");
-        assert_eq!(hit.id, "user-registration");
+        assert_eq!(hit.lead_id, "user-registration");
     }
 
     #[test]
     fn resolve_lead_matches_alias() {
         let doc = Discovery::parse(SAMPLE).expect("parse ok");
         let hit = doc.resolve_lead("password-reset").expect("resolves via alias");
-        assert_eq!(hit.id, "password-reset-request");
+        assert_eq!(hit.lead_id, "password-reset-request");
     }
 
     #[test]
@@ -819,18 +863,18 @@ Some trailing prose.
         let yaml = "\
 ## Lead inventory
 
-### a
+### legacy:a
 
-- id: a
+- lead-id: a
+- source-key: legacy
 - aliases: [shared]
-- sources: [legacy]
 - summary: A.
 
-### b
+### legacy:b
 
-- id: b
+- lead-id: b
+- source-key: legacy
 - aliases: [shared]
-- sources: [legacy]
 - summary: B.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
@@ -856,15 +900,15 @@ Some trailing prose.
             suffix: String::new(),
             leads: vec![
                 Lead {
-                    id: "a".to_string(),
-                    sources: vec!["legacy".to_string()],
+                    lead_id: "a".to_string(),
+                    source_key: "legacy".to_string(),
                     summary: "A.".to_string(),
                     tentative: None,
                     aliases: LeadAliases::default(),
                 },
                 Lead {
-                    id: "a".to_string(),
-                    sources: vec!["legacy".to_string()],
+                    lead_id: "a".to_string(),
+                    source_key: "legacy".to_string(),
                     summary: "Duplicate id.".to_string(),
                     tentative: None,
                     aliases: LeadAliases::default(),
@@ -873,8 +917,40 @@ Some trailing prose.
         };
         let findings = doc.check_alias_collisions();
         assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].source_key, "legacy");
         assert_eq!(findings[0].name, "a");
         assert_eq!(findings[0].bearing_leads, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn same_lead_id_across_source_keys_is_legal() {
+        // Raw, unmerged leads: the same `lead-id` surfaced by two
+        // different sources is two distinct blocks, not a collision.
+        let doc = Discovery {
+            prefix: String::new(),
+            has_inventory_heading: true,
+            suffix: String::new(),
+            leads: vec![
+                Lead {
+                    lead_id: "user-registration".to_string(),
+                    source_key: "legacy".to_string(),
+                    summary: "From legacy.".to_string(),
+                    tentative: None,
+                    aliases: LeadAliases::default(),
+                },
+                Lead {
+                    lead_id: "user-registration".to_string(),
+                    source_key: "runtime".to_string(),
+                    summary: "From runtime.".to_string(),
+                    tentative: None,
+                    aliases: LeadAliases::default(),
+                },
+            ],
+        };
+        assert!(
+            doc.check_alias_collisions().is_empty(),
+            "same lead-id under different source keys must not collide"
+        );
     }
 
     #[test]
@@ -882,17 +958,17 @@ Some trailing prose.
         let yaml = "\
 ## Lead inventory
 
-### a
+### legacy:a
 
-- id: a
-- sources: [legacy]
+- lead-id: a
+- source-key: legacy
 - summary: A.
 
-### b
+### legacy:b
 
-- id: b
+- lead-id: b
+- source-key: legacy
 - aliases: [a]
-- sources: [legacy]
 - summary: B aliases a's id.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
@@ -907,18 +983,18 @@ Some trailing prose.
         let yaml = "\
 ## Lead inventory
 
-### a
+### legacy:a
 
-- id: a
+- lead-id: a
+- source-key: legacy
 - aliases: [shared]
-- sources: [legacy]
 - summary: A.
 
-### b
+### legacy:b
 
-- id: b
+- lead-id: b
+- source-key: legacy
 - aliases: [shared]
-- sources: [legacy]
 - summary: B.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
@@ -942,7 +1018,7 @@ Some trailing prose.
         let rendered = doc.render();
         let reparsed = Discovery::parse(&rendered).expect("reparse ok");
         let lead =
-            reparsed.leads.iter().find(|c| c.id == "password-reset-request").expect("present");
+            reparsed.leads.iter().find(|c| c.lead_id == "password-reset-request").expect("present");
         assert!(lead.aliases.contains("pwd-reset"));
         assert!(lead.aliases.contains("password-reset"), "preserves existing aliases");
     }
@@ -960,7 +1036,8 @@ Some trailing prose.
         }
         // Ensure the mutation rolled back so subsequent edits start
         // from the same state the operator saw on disk.
-        let lead = doc.leads.iter().find(|c| c.id == "password-reset-request").expect("present");
+        let lead =
+            doc.leads.iter().find(|c| c.lead_id == "password-reset-request").expect("present");
         assert!(!lead.aliases.contains("user-registration"));
     }
 
@@ -978,7 +1055,8 @@ Some trailing prose.
     fn remove_alias_idempotent_when_absent() {
         let mut doc = Discovery::parse(SAMPLE).expect("parse ok");
         doc.remove_alias("password-reset-request", "never-set").expect("no-op ok");
-        let lead = doc.leads.iter().find(|c| c.id == "password-reset-request").expect("present");
+        let lead =
+            doc.leads.iter().find(|c| c.lead_id == "password-reset-request").expect("present");
         assert!(lead.aliases.contains("password-reset"));
     }
 
@@ -986,7 +1064,8 @@ Some trailing prose.
     fn remove_alias_drops_named_entry() {
         let mut doc = Discovery::parse(SAMPLE).expect("parse ok");
         doc.remove_alias("password-reset-request", "password-reset").expect("removed");
-        let lead = doc.leads.iter().find(|c| c.id == "password-reset-request").expect("present");
+        let lead =
+            doc.leads.iter().find(|c| c.lead_id == "password-reset-request").expect("present");
         assert!(!lead.aliases.contains("password-reset"));
     }
 
@@ -995,20 +1074,20 @@ Some trailing prose.
         let yaml = "\
 ## Lead inventory
 
-### a
+### legacy:a
 
-- id: a
-- sources: [legacy]
+- lead-id: a
+- source-key: legacy
 - summary: A.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
         assert!(doc.leads[0].aliases.is_empty());
     }
 
-    fn lead(id: &str, sources: &[&str], summary: &str) -> Lead {
+    fn lead(lead_id: &str, source_key: &str, summary: &str) -> Lead {
         Lead {
-            id: id.to_string(),
-            sources: sources.iter().map(|s| (*s).to_string()).collect(),
+            lead_id: lead_id.to_string(),
+            source_key: source_key.to_string(),
             summary: summary.to_string(),
             tentative: None,
             aliases: LeadAliases::default(),
@@ -1024,19 +1103,20 @@ Some trailing prose.
         let mut doc = Discovery::parse(SAMPLE).expect("parse ok");
 
         let incoming =
-            vec![lead("user-registration", &["legacy"], "Registration endpoint (re-surveyed).")];
+            vec![lead("user-registration", "legacy", "Registration endpoint (re-surveyed).")];
         doc.merge_survey("legacy", incoming, &path).expect("merge ok");
 
         let reloaded = Discovery::load(&path).expect("reload ok");
-        let hit = reloaded.leads.iter().find(|c| c.id == "user-registration").expect("present");
+        let hit =
+            reloaded.leads.iter().find(|c| c.lead_id == "user-registration").expect("present");
         assert_eq!(hit.summary, "Registration endpoint (re-surveyed).");
         assert_eq!(
-            reloaded.leads.iter().filter(|c| c.id == "user-registration").count(),
+            reloaded.leads.iter().filter(|c| c.lead_id == "user-registration").count(),
             1,
             "replaced in place, not duplicated"
         );
         assert!(
-            reloaded.leads.iter().any(|c| c.id == "password-reset-request"),
+            reloaded.leads.iter().any(|c| c.lead_id == "password-reset-request"),
             "leads absent from the incoming set survive untouched"
         );
     }
@@ -1052,14 +1132,13 @@ Some trailing prose.
 
         // The re-survey re-emits the adapter alias `password-reset`; the
         // operator's `pwd-reset` must survive the union.
-        let mut reset =
-            lead("password-reset-request", &["legacy"], "Reset endpoint (re-surveyed).");
+        let mut reset = lead("password-reset-request", "legacy", "Reset endpoint (re-surveyed).");
         reset.aliases = LeadAliases::from_iter(["password-reset"]);
         doc.merge_survey("legacy", vec![reset], &path).expect("merge ok");
 
         let reloaded = Discovery::load(&path).expect("reload ok");
         let hit =
-            reloaded.leads.iter().find(|c| c.id == "password-reset-request").expect("present");
+            reloaded.leads.iter().find(|c| c.lead_id == "password-reset-request").expect("present");
         assert_eq!(hit.summary, "Reset endpoint (re-surveyed).");
         assert_eq!(
             hit.aliases.names,
@@ -1077,32 +1156,32 @@ Some trailing prose.
         let doc_md = "\
 ## Lead inventory
 
-### x
+### legacy:x
 
-- id: x
-- sources: [legacy]
+- lead-id: x
+- source-key: legacy
 - summary: X.
 
-### y
+### legacy:y
 
-- id: y
-- sources: [legacy]
+- lead-id: y
+- source-key: legacy
 - summary: Y.
 
-### z
+### legacy:z
 
-- id: z
-- sources: [legacy]
+- lead-id: z
+- source-key: legacy
 - summary: Z.
 ";
         let mut doc = Discovery::parse(doc_md).expect("parse ok");
 
         let incoming =
-            vec![lead("y", &["legacy"], "Y (re-surveyed)."), lead("w", &["legacy"], "W (new).")];
+            vec![lead("y", "legacy", "Y (re-surveyed)."), lead("w", "legacy", "W (new).")];
         doc.merge_survey("legacy", incoming, &path).expect("merge ok");
 
         let reloaded = Discovery::load(&path).expect("reload ok");
-        let ids: Vec<&str> = reloaded.leads.iter().map(|c| c.id.as_str()).collect();
+        let ids: Vec<&str> = reloaded.leads.iter().map(|c| c.lead_id.as_str()).collect();
         assert_eq!(ids, vec!["x", "y", "z", "w"]);
     }
 
@@ -1116,7 +1195,7 @@ Some trailing prose.
         let before = doc.clone();
 
         // Incoming lead aliases another lead's canonical id → collision.
-        let mut rogue = lead("new-lead", &["legacy"], "Rogue.");
+        let mut rogue = lead("new-lead", "legacy", "Rogue.");
         rogue.aliases = LeadAliases::from_iter(["user-registration"]);
         let err = doc.merge_survey("legacy", vec![rogue], &path).expect_err("collision");
         match err {

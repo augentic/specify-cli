@@ -27,17 +27,17 @@ const DISCOVERY_MD: &str = "\
 
 ## Lead inventory
 
-### user-registration
+### legacy:user-registration
 
-- id: user-registration
-- sources: [legacy, runtime]
+- lead-id: user-registration
+- source-key: legacy
 - summary: Registration endpoint accepting email + password.
 
-### password-reset-request
+### legacy:password-reset-request
 
-- id: password-reset-request
+- lead-id: password-reset-request
+- source-key: legacy
 - aliases: [password-reset]
-- sources: [legacy]
 - summary: Reset endpoint.
 ";
 
@@ -120,7 +120,7 @@ fn plan_add_persists_canonical_id() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("lead: password-reset-request"),
+        saved.contains("lead-id: password-reset-request"),
         "expected canonical lead id on disk, got:\n{saved}"
     );
     assert!(!saved.contains("password-reset\n"), "alias must not survive on disk:\n{saved}");
@@ -183,7 +183,7 @@ fn plan_add_without_discovery_skips_alias() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("lead: opaque-candidate-id"),
+        saved.contains("lead-id: opaque-candidate-id"),
         "expected verbatim lead value without discovery.md, got:\n{saved}"
     );
 }
@@ -364,18 +364,18 @@ fn slice_validate_alias_collision() {
         "\
 ## Lead inventory
 
-### a
+### legacy:a
 
-- id: a
+- lead-id: a
+- source-key: legacy
 - aliases: [shared]
-- sources: [legacy]
 - summary: A.
 
-### b
+### legacy:b
 
-- id: b
+- lead-id: b
+- source-key: legacy
 - aliases: [shared]
-- sources: [legacy]
 - summary: B.
 ",
     );
@@ -449,11 +449,11 @@ fn plan_amend_alias_survives_reapplied_discovery() {
         "\
 ## Lead inventory
 
-### password-reset-request
+### legacy:password-reset-request
 
-- id: password-reset-request
+- lead-id: password-reset-request
+- source-key: legacy
 - aliases: [password-reset, pwd-reset]
-- sources: [legacy]
 - summary: Reset endpoint (re-emitted).
 ",
     );

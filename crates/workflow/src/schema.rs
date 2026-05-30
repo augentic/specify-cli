@@ -268,7 +268,7 @@ pub fn validate_evidence(content: &str, source_path: &Path) -> Result<()> {
 ///
 /// Findings across every lead are aggregated into a single
 /// [`Error::Validation`] (exit code 2) keyed on `discovery-lead-schema`,
-/// each labelled with the offending lead's `id`.
+/// each labelled with the offending lead's `lead-id`.
 ///
 /// # Errors
 ///
@@ -282,11 +282,14 @@ pub fn validate_leads(leads: &[Lead]) -> Result<()> {
     for lead in leads {
         let instance = serde_json::to_value(lead).map_err(|err| Error::Diag {
             code: "discovery-lead-serialise",
-            detail: format!("failed to serialise lead `{}` for schema validation: {err}", lead.id),
+            detail: format!(
+                "failed to serialise lead `{}` for schema validation: {err}",
+                lead.lead_id
+            ),
         })?;
         for summary in validate_value(&instance, LEAD_JSON_SCHEMA, "discovery-lead-schema", rule) {
             if summary.status == ValidationStatus::Fail {
-                summaries.push(relabel_with_lead(summary, &lead.id));
+                summaries.push(relabel_with_lead(summary, &lead.lead_id));
             }
         }
     }
