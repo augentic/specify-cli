@@ -16,7 +16,7 @@ use specify_workflow::config::Layout;
 use specify_workflow::journal::{self, Event, EventKind};
 
 mod common;
-use common::{Project, assert_golden_at, repo_root, specrun};
+use common::{Project, assert_golden_at, parse_stderr, repo_root, specrun};
 
 /// Pinned RFC 3339 timestamp used by every golden snapshot. CLI-driven
 /// emits use `Timestamp::now()`; tests normalise the value to this
@@ -465,6 +465,107 @@ fn agent_emit_one_event_per_line() {
 
     let values: Vec<Value> = lines.iter().map(|l| serde_json::from_str(l).unwrap()).collect();
     assert_journal_golden("agent-emit-helper.json", values);
+}
+
+// -- journal emit (source.* M1 events) -------------------------------
+
+#[test]
+fn journal_emit_appends_one_line_per_new_event() {
+    // The three RFC-29a source events round-trip through the
+    // `journal emit` front door: id + --payload deserialise into the
+    // closed taxonomy, the CLI stamps the timestamp, and exactly one
+    // line lands per call.
+    let project = Project::init();
+    let cases: [(&str, &str, &str); 3] = [
+        (
+            "source.survey.cache-hit",
+            r#"{"source-key":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}"#,
+            "fingerprint",
+        ),
+        (
+            "source.survey.cache-miss",
+            r#"{"source-key":"runtime","adapter":"captures","fingerprint":"sha256:beef","reason":"adapter-opt-out"}"#,
+            "reason",
+        ),
+        (
+            "source.execution.agent",
+            r#"{"source-key":"runtime","adapter":"captures","operation":"survey"}"#,
+            "operation",
+        ),
+    ];
+
+    for (event_id, payload, _) in cases {
+        specrun()
+            .current_dir(project.root())
+            .args(["journal", "emit", event_id, "--payload", payload])
+            .assert()
+            .success();
+    }
+
+    let events = read_journal(project.root());
+    assert_eq!(events.len(), 3, "expected one line per emit, got {}", events.len());
+
+    assert_eq!(events[0]["event"], "source.survey.cache-hit");
+    assert_eq!(events[0]["payload"]["source-key"], "runtime");
+    assert_eq!(events[0]["payload"]["adapter"], "captures");
+    assert_eq!(events[0]["payload"]["fingerprint"], "sha256:cafef00d");
+
+    assert_eq!(events[1]["event"], "source.survey.cache-miss");
+    assert_eq!(events[1]["payload"]["reason"], "adapter-opt-out");
+
+    assert_eq!(events[2]["event"], "source.execution.agent");
+    assert_eq!(events[2]["payload"]["operation"], "survey");
+
+    for event in &events {
+        assert!(
+            event["timestamp"].as_str().is_some(),
+            "emit must stamp a timestamp, got:\n{event}"
+        );
+    }
+}
+
+#[test]
+fn journal_emit_unknown_event_is_rejected() {
+    let project = Project::init();
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "journal", "emit", "not.a.real.event", "--payload", "{}"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let actual = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(actual["error"], "journal-emit-unknown-event");
+    assert!(
+        !journal_path(project.root()).exists(),
+        "a rejected emit must not append to the journal"
+    );
+}
+
+#[test]
+fn journal_emit_incomplete_payload_is_rejected() {
+    // A known event id whose payload omits a required field fails the
+    // single serde round-trip as `journal-emit-payload-schema`.
+    let project = Project::init();
+    let assert = specrun()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "journal",
+            "emit",
+            "source.survey.cache-hit",
+            "--payload",
+            r#"{"source-key":"runtime"}"#,
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let actual = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(actual["error"], "journal-emit-payload-schema");
+    assert!(
+        !journal_path(project.root()).exists(),
+        "a rejected emit must not append to the journal"
+    );
 }
 
 #[test]

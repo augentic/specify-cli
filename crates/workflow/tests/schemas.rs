@@ -50,6 +50,7 @@ const PLUGIN_VALID_SOURCE: &str = r"
 name: code-typescript
 version: 1
 axis: source
+execution: agent
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
@@ -60,6 +61,7 @@ const PLUGIN_VALID_TARGET: &str = r"
 name: omnia
 version: 1
 axis: target
+execution: agent
 briefs:
   shape: briefs/shape.md
   build: briefs/build.md

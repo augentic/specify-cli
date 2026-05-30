@@ -111,7 +111,7 @@ pub fn scaffold_tool_project(
     .expect("write project.yaml");
     fs::write(
         adapter.join("adapter.yaml"),
-        "name: test-adp\nversion: 1\naxis: target\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test adapter\n",
+        "name: test-adp\nversion: 1\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test adapter\n",
     )
     .expect("write adapter.yaml");
     for op in ["shape", "build", "merge"] {

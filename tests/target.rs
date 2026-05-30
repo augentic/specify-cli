@@ -68,6 +68,12 @@ fn resolve_local_returns_manifest() {
         resolved.ends_with("adapters/targets/omnia"),
         "resolved-path {resolved} must end with targets/omnia"
     );
+    let briefs_dir = actual["briefs-dir"].as_str().expect("briefs-dir str");
+    assert_eq!(
+        briefs_dir,
+        format!("{resolved}/briefs"),
+        "briefs-dir must be the resolved adapter root joined with briefs/"
+    );
 }
 
 #[test]

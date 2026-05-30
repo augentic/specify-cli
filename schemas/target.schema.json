@@ -5,7 +5,7 @@
   "description": "Refines `adapter.schema.json` for target adapters per workflow §Target adapter contract. Locks `axis` to the literal `target` and requires `briefs.shape`, `briefs.build`, and `briefs.merge` — together these close the operation set to `{shape, build, merge}` (the canonical iterator is `briefs.keys()`). The `kebabName` and `toolDeclaration` `$defs` are intentionally inlined (rather than `$ref`-resolved against `adapter.schema.json`) so the schema compiles without a registry lookup; keep the embedded `name` pattern byte-identical to `adapter.schema.json#/$defs/kebabName.pattern`.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "version", "axis", "description", "briefs"],
+  "required": ["name", "version", "axis", "description", "briefs", "execution"],
   "properties": {
     "name": { "$ref": "#/$defs/kebabName" },
     "version": {
@@ -52,6 +52,11 @@
       "type": "string",
       "enum": ["opt-out"],
       "description": "workflow \u00a7D8 \u2014 optional cache opt-out switch (mirrors `adapter.schema.json#/properties/cache`). Absence \u2261 cache on; `opt-out` makes every cache lookup a miss with `reason: adapter-opt-out`."
+    },
+    "execution": {
+      "type": "string",
+      "enum": ["agent", "tool"],
+      "description": "Closed adapter execution mode per RFC-29 D9."
     }
   },
   "$defs": {

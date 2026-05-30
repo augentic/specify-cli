@@ -179,6 +179,7 @@ fn cache_wins_over_local() {
         r"name: code-typescript
 version: 7
 axis: source
+execution: agent
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
@@ -255,6 +256,7 @@ fn resolves_captures_with_tools() {
         r"name: captures
 version: 1
 axis: source
+execution: agent
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md

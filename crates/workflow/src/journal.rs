@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use specify_diagnostics::{Diagnostic, FindingStatus, count_status};
 use specify_error::Error;
 
+use crate::adapter::operation::SourceOperation;
 use crate::change::Divergence;
 use crate::config::Layout;
 
@@ -197,6 +198,50 @@ pub enum EventKind {
         /// first sight; `adapter-opt-out` when the adapter declared
         /// `cache: opt-out`).
         reason: CacheMissReason,
+    },
+    /// `survey` cache lookup matched and the operation was *not*
+    /// re-run. The plan-time peer of [`Self::SliceExtractCacheHit`];
+    /// keyed by the same five-input [`crate::adapter::cache::CacheFingerprint`].
+    #[serde(rename = "source.survey.cache-hit", rename_all = "kebab-case")]
+    SourceSurveyCacheHit {
+        /// Source key from `plan.yaml.sources.<key>`.
+        source_key: String,
+        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
+        adapter: String,
+        /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
+        /// inputs the cache layer keyed against.
+        fingerprint: String,
+    },
+    /// `survey` cache lookup missed and the operation ran. The
+    /// plan-time peer of [`Self::SliceExtractCacheMiss`]; `reason` is
+    /// one of the closed [`CacheMissReason`] values (`adapter-opt-out`
+    /// when the adapter ran under forced opt-out).
+    #[serde(rename = "source.survey.cache-miss", rename_all = "kebab-case")]
+    SourceSurveyCacheMiss {
+        /// Source key from `plan.yaml.sources.<key>`.
+        source_key: String,
+        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
+        adapter: String,
+        /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
+        /// inputs the cache layer computed for this run.
+        fingerprint: String,
+        /// Which fingerprint input drifted (or `no-prior-entry` on
+        /// first sight; `adapter-opt-out` under forced opt-out).
+        reason: CacheMissReason,
+    },
+    /// A source adapter ran one operation under agent execution
+    /// (`execution: agent`). One event per `(source-key, operation)`
+    /// pair; `operation` is the closed [`SourceOperation`] enum
+    /// (`survey | extract`).
+    #[serde(rename = "source.execution.agent", rename_all = "kebab-case")]
+    SourceExecutionAgent {
+        /// Source key from `plan.yaml.sources.<key>`.
+        source_key: String,
+        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
+        adapter: String,
+        /// Which operation ran (`survey` at plan time, `extract` at
+        /// slice time).
+        operation: SourceOperation,
     },
     /// `provenance.yaml` audit index — `/spec:refine` wrote `provenance.yaml` for a slice.
     /// Agent-driven from `/spec:refine` step 5.
@@ -562,6 +607,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Single table pins every payload-bearing variant's wire shape; splitting hides the contract."
+    )]
     fn event_wire_shapes_match_contract() {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
@@ -632,6 +681,43 @@ mod tests {
                     r#""action":"set""#,
                     r#""claim-kind":"criterion""#,
                     r#""source-key":"runtime""#,
+                ],
+            ),
+            (
+                EventKind::SourceSurveyCacheHit {
+                    source_key: "runtime".to_string(),
+                    adapter: "captures".to_string(),
+                    fingerprint: "sha256:cafef00d".to_string(),
+                },
+                &[
+                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.cache-hit","payload":{"source-key":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
+                ],
+            ),
+            (
+                EventKind::SourceSurveyCacheMiss {
+                    source_key: "runtime".to_string(),
+                    adapter: "captures".to_string(),
+                    fingerprint: "sha256:beef".to_string(),
+                    reason: CacheMissReason::AdapterOptOut,
+                },
+                &[
+                    r#""event":"source.survey.cache-miss""#,
+                    r#""reason":"adapter-opt-out""#,
+                    r#""source-key":"runtime""#,
+                    r#""fingerprint":"sha256:beef""#,
+                ],
+            ),
+            (
+                EventKind::SourceExecutionAgent {
+                    source_key: "runtime".to_string(),
+                    adapter: "captures".to_string(),
+                    operation: SourceOperation::Survey,
+                },
+                &[
+                    r#""event":"source.execution.agent""#,
+                    r#""operation":"survey""#,
+                    r#""source-key":"runtime""#,
+                    r#""adapter":"captures""#,
                 ],
             ),
         ];
@@ -749,6 +835,22 @@ mod tests {
             EventKind::SliceExtractCompleted {
                 slice_name: "s".to_string(),
                 source_key: "k".to_string(),
+            },
+            EventKind::SourceSurveyCacheHit {
+                source_key: "k".to_string(),
+                adapter: "captures".to_string(),
+                fingerprint: "sha256:beef".to_string(),
+            },
+            EventKind::SourceSurveyCacheMiss {
+                source_key: "k".to_string(),
+                adapter: "captures".to_string(),
+                fingerprint: "sha256:beef".to_string(),
+                reason: CacheMissReason::AdapterOptOut,
+            },
+            EventKind::SourceExecutionAgent {
+                source_key: "k".to_string(),
+                adapter: "captures".to_string(),
+                operation: SourceOperation::Extract,
             },
         ] {
             append_batch(

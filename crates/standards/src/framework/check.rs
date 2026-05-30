@@ -14,7 +14,7 @@ pub mod tools;
 
 use std::path::Path;
 
-pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, run_adapter_check};
+pub use adapter::{AdapterCheck, RULE_EXECUTION_AGENT, RULE_MISSING_MANIFEST, run_adapter_check};
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
 pub use docs_quality::{HistoryCitation, MissingDiagramAsset, TextPipelineDiagram};

@@ -19,10 +19,11 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
+use specify_model::discovery::Lead;
 pub use specify_schema::{
-    COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA,
-    PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, compile_schema,
-    read_yaml_as_json, validate_serialisable, validate_value,
+    COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA,
+    PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
+    compile_schema, read_yaml_as_json, validate_serialisable, validate_value,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -217,6 +218,95 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
             "components.yaml conforms to schemas/design-system/components.schema.json",
         ),
     )
+}
+
+/// Validate a single Evidence document (already read into `content`)
+/// against the embedded `schemas/evidence.schema.json`.
+///
+/// This is the `extract` validate-before-visible gate (RFC-29a
+/// §`extract`): the runner reads the agent- or tool-produced Evidence,
+/// runs it through this check, and only persists it to
+/// `.specify/slices/<slice>/evidence/<source-key>.yaml` on success — a
+/// schema failure writes no Evidence file. `source_path` labels error
+/// messages with the originating file so an operator can find the
+/// offending document.
+///
+/// Validating the already-read `content` (rather than re-reading the
+/// path) pins validation to the exact bytes the caller persists.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] (`evidence-schema`, exit code 2) when
+/// YAML parsing or schema validation fails.
+pub fn validate_evidence(content: &str, source_path: &Path) -> Result<()> {
+    let rule = "evidence file conforms to schemas/evidence.schema.json";
+    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed(
+            "evidence-schema",
+            rule,
+            format!("{}: YAML parse failed: {err}", source_path.display()),
+        )
+    })?;
+    let failures: Vec<ValidationSummary> =
+        validation_failures(&instance, EVIDENCE_JSON_SCHEMA, "evidence-schema", rule)
+            .into_iter()
+            .map(|summary| relabel_with_path(summary, source_path))
+            .collect();
+    err_from_failures("evidence-schema", &failures)
+}
+
+/// Validate every lead in `leads` against the embedded
+/// `schemas/discovery/lead.schema.json`.
+///
+/// This is the `survey` validate-before-visible gate (RFC-29a §5): the
+/// `survey` runner parses the agent- or tool-produced lead set, runs it
+/// through this check, and only calls
+/// [`crate::change`]-side [`specify_model::discovery::Discovery::merge_survey`]
+/// on success — a schema failure leaves `discovery.md` untouched.
+///
+/// Findings across every lead are aggregated into a single
+/// [`Error::Validation`] (exit code 2) keyed on `discovery-lead-schema`,
+/// each labelled with the offending lead's `id`.
+///
+/// # Errors
+///
+/// - [`Error::Diag`] (`discovery-lead-serialise`) when a lead is not
+///   JSON-serialisable (unreachable for the closed `Lead` derive).
+/// - [`Error::Validation`] (`discovery-lead-schema`) when any lead
+///   fails the schema.
+pub fn validate_leads(leads: &[Lead]) -> Result<()> {
+    let rule = "lead conforms to schemas/discovery/lead.schema.json";
+    let mut summaries: Vec<ValidationSummary> = Vec::new();
+    for lead in leads {
+        let instance = serde_json::to_value(lead).map_err(|err| Error::Diag {
+            code: "discovery-lead-serialise",
+            detail: format!("failed to serialise lead `{}` for schema validation: {err}", lead.id),
+        })?;
+        for summary in validate_value(&instance, LEAD_JSON_SCHEMA, "discovery-lead-schema", rule) {
+            if summary.status == ValidationStatus::Fail {
+                summaries.push(relabel_with_lead(summary, &lead.id));
+            }
+        }
+    }
+
+    if summaries.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            code: "discovery-lead-schema".to_string(),
+            detail: join_details(&summaries),
+        })
+    }
+}
+
+fn relabel_with_lead(mut summary: ValidationSummary, lead_id: &str) -> ValidationSummary {
+    let detail = summary.detail.take().unwrap_or_default();
+    summary.detail = Some(if detail.is_empty() {
+        format!("lead `{lead_id}`")
+    } else {
+        format!("lead `{lead_id}`: {detail}")
+    });
+    summary
 }
 
 fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationSummary {

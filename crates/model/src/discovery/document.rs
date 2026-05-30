@@ -118,6 +118,28 @@ impl Discovery {
         atomic::bytes_write(path, body.as_bytes())
     }
 
+    /// Borrow the parsed lead inventory in document order.
+    ///
+    /// Read-only view used by the `survey` runner to echo the existing
+    /// lead set for a source into the agent handoff envelope (RFC-29a §2)
+    /// without taking ownership of the document.
+    #[must_use]
+    pub fn leads(&self) -> &[Lead] {
+        &self.leads
+    }
+
+    /// Consume the document and return its lead inventory in document
+    /// order.
+    ///
+    /// The `survey` finalize path parses the agent- / tool-produced
+    /// `lead-set.md` into a [`Discovery`] and lifts the leads out for
+    /// schema validation and [`Self::merge_survey`]; the surrounding
+    /// prose of a lead-set artifact is discarded.
+    #[must_use]
+    pub fn into_leads(self) -> Vec<Lead> {
+        self.leads
+    }
+
     /// Locate a lead by its `id` for mutation. discovery alias contract calls
     /// out `id`-only addressing for amend-style operations (aliases
     /// are *resolved* against, not *addressed* by, on the amend
@@ -266,6 +288,92 @@ impl Discovery {
         let lead = self.lead_mut_or_unknown(lead_id, "--remove-alias")?;
         lead.remove_alias(alias);
         Ok(())
+    }
+
+    /// Merge a re-survey of `source_key` into the inventory and
+    /// atomically persist the result at `path`.
+    ///
+    /// `leads` is the lead set the source's `survey` produced (already
+    /// validated against `schemas/discovery/lead.schema.json` by the
+    /// caller). Each incoming lead replaces the prior block sharing its
+    /// `id` **in place**, so a surviving lead keeps its document
+    /// position and the file re-renders byte-stably when nothing moved.
+    /// Operator-authored `aliases[]` on a surviving id are carried
+    /// forward (unioned with any alias the re-survey itself emits) per
+    /// discovery alias contract. Incoming leads with no prior block are
+    /// appended in survey order. Prior blocks whose `id` is absent from
+    /// the incoming set are left untouched — re-survey replaces by id,
+    /// it does not prune. Each incoming lead is attributed to
+    /// `source_key` so the merged `sources[]` always records the survey
+    /// that produced it.
+    ///
+    /// The whole-document collision gate runs against the post-merge
+    /// state *before* any byte is written: on a
+    /// [`Self::check_alias_collisions`] hit the in-memory model is rolled
+    /// back and the file is left untouched, so a failed merge never lands
+    /// partial state on disk.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Validation`] (`discovery-alias-collision`) when the
+    ///   post-merge inventory contains any namespace collision; nothing
+    ///   is written and `self` is restored to its pre-merge state.
+    /// - [`Error::Io`] when the atomic re-render fails.
+    pub fn merge_survey(&mut self, source_key: &str, leads: Vec<Lead>, path: &Path) -> Result<()> {
+        let mut slots: Vec<Option<Lead>> = leads
+            .into_iter()
+            .map(|mut lead| {
+                // Leads produced by this source's survey must record it.
+                if !lead.sources.iter().any(|source| source == source_key) {
+                    lead.sources.push(source_key.to_string());
+                }
+                Some(lead)
+            })
+            .collect();
+        // First incoming slot per id (a valid lead set has unique ids).
+        let mut slot_by_id: BTreeMap<String, usize> = BTreeMap::new();
+        for (idx, slot) in slots.iter().enumerate() {
+            if let Some(lead) = slot {
+                slot_by_id.entry(lead.id.clone()).or_insert(idx);
+            }
+        }
+
+        let mut merged: Vec<Lead> = Vec::with_capacity(self.leads.len() + slots.len());
+        for prior in &self.leads {
+            match slot_by_id.get(&prior.id).and_then(|&idx| slots[idx].take()) {
+                Some(mut next) => {
+                    // Surviving id: carry operator-authored aliases forward,
+                    // unioning any the re-survey itself emits so the
+                    // namespace never silently narrows.
+                    let mut names = prior.aliases.names.clone();
+                    for alias in &next.aliases.names {
+                        if !names.contains(alias) {
+                            names.push(alias.clone());
+                        }
+                    }
+                    next.aliases.names = names;
+                    merged.push(next);
+                }
+                None => merged.push(prior.clone()),
+            }
+        }
+        // Append incoming leads with no prior block, in survey order.
+        for slot in &mut slots {
+            if let Some(lead) = slot.take() {
+                merged.push(lead);
+            }
+        }
+
+        // Validate-before-write: stage the merge, gate on the whole-
+        // document collision check, and roll back the in-memory model on
+        // any hit so the file (and `self`) reflect the pre-merge state.
+        let prior_leads = std::mem::replace(&mut self.leads, merged);
+        let collisions = self.check_alias_collisions();
+        if !collisions.is_empty() {
+            self.leads = prior_leads;
+            return Err(Self::collision_error(&collisions));
+        }
+        self.write_atomic(path)
     }
 
     /// Convert a non-empty list of collision findings into the
@@ -894,5 +1002,128 @@ Some trailing prose.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
         assert!(doc.leads[0].aliases.is_empty());
+    }
+
+    fn lead(id: &str, sources: &[&str], summary: &str) -> Lead {
+        Lead {
+            id: id.to_string(),
+            sources: sources.iter().map(|s| (*s).to_string()).collect(),
+            summary: summary.to_string(),
+            tentative: None,
+            aliases: LeadAliases::default(),
+        }
+    }
+
+    #[test]
+    fn merge_survey_replaces_same_id_block() {
+        // Re-survey survival — re-running `survey` for a source replaces
+        // its leads by canonical `id` in place; untouched leads survive.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("discovery.md");
+        let mut doc = Discovery::parse(SAMPLE).expect("parse ok");
+
+        let incoming =
+            vec![lead("user-registration", &["legacy"], "Registration endpoint (re-surveyed).")];
+        doc.merge_survey("legacy", incoming, &path).expect("merge ok");
+
+        let reloaded = Discovery::load(&path).expect("reload ok");
+        let hit = reloaded.leads.iter().find(|c| c.id == "user-registration").expect("present");
+        assert_eq!(hit.summary, "Registration endpoint (re-surveyed).");
+        assert_eq!(
+            reloaded.leads.iter().filter(|c| c.id == "user-registration").count(),
+            1,
+            "replaced in place, not duplicated"
+        );
+        assert!(
+            reloaded.leads.iter().any(|c| c.id == "password-reset-request"),
+            "leads absent from the incoming set survive untouched"
+        );
+    }
+
+    #[test]
+    fn merge_survey_preserves_operator_aliases() {
+        // discovery alias contract §re-survey survival — operator-authored
+        // aliases on a surviving id are unioned with the adapter's re-emit.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("discovery.md");
+        let mut doc = Discovery::parse(SAMPLE).expect("parse ok");
+        doc.add_alias("password-reset-request", "pwd-reset").expect("operator alias ok");
+
+        // The re-survey re-emits the adapter alias `password-reset`; the
+        // operator's `pwd-reset` must survive the union.
+        let mut reset =
+            lead("password-reset-request", &["legacy"], "Reset endpoint (re-surveyed).");
+        reset.aliases = LeadAliases::from_iter(["password-reset"]);
+        doc.merge_survey("legacy", vec![reset], &path).expect("merge ok");
+
+        let reloaded = Discovery::load(&path).expect("reload ok");
+        let hit =
+            reloaded.leads.iter().find(|c| c.id == "password-reset-request").expect("present");
+        assert_eq!(hit.summary, "Reset endpoint (re-surveyed).");
+        assert_eq!(
+            hit.aliases.names,
+            vec!["password-reset", "pwd-reset"],
+            "operator + adapter aliases union without duplication"
+        );
+    }
+
+    #[test]
+    fn merge_survey_preserves_deterministic_ordering() {
+        // Replaced leads keep their document slot; brand-new leads append
+        // in survey order, so re-survey re-renders deterministically.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("discovery.md");
+        let doc_md = "\
+## Lead inventory
+
+### x
+
+- id: x
+- sources: [legacy]
+- summary: X.
+
+### y
+
+- id: y
+- sources: [legacy]
+- summary: Y.
+
+### z
+
+- id: z
+- sources: [legacy]
+- summary: Z.
+";
+        let mut doc = Discovery::parse(doc_md).expect("parse ok");
+
+        let incoming =
+            vec![lead("y", &["legacy"], "Y (re-surveyed)."), lead("w", &["legacy"], "W (new).")];
+        doc.merge_survey("legacy", incoming, &path).expect("merge ok");
+
+        let reloaded = Discovery::load(&path).expect("reload ok");
+        let ids: Vec<&str> = reloaded.leads.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["x", "y", "z", "w"]);
+    }
+
+    #[test]
+    fn merge_survey_collision_fails_without_writing() {
+        // A post-merge collision fails the whole merge: nothing lands on
+        // disk and the in-memory model rolls back to its pre-merge state.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("discovery.md");
+        let mut doc = Discovery::parse(SAMPLE).expect("parse ok");
+        let before = doc.clone();
+
+        // Incoming lead aliases another lead's canonical id → collision.
+        let mut rogue = lead("new-lead", &["legacy"], "Rogue.");
+        rogue.aliases = LeadAliases::from_iter(["user-registration"]);
+        let err = doc.merge_survey("legacy", vec![rogue], &path).expect_err("collision");
+        match err {
+            Error::Validation { code, .. } => assert_eq!(code, "discovery-alias-collision"),
+            other => panic!("expected Validation, got: {other:?}"),
+        }
+
+        assert!(!path.exists(), "failed merge must not write the file");
+        assert_eq!(doc, before, "failed merge must roll the in-memory model back");
     }
 }

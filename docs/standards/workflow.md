@@ -8,7 +8,7 @@ Two adapter roles — `source` (operations: `survey`, `extract`) and `target` (o
 
 ## Adapter implementation shape
 
-Per-adapter `adapter.yaml` carries `name`, `version`, `axis`, `description`, the `briefs.<operation>` map, and an optional `tools[]` array. The closed operation set is determined by the manifest's `axis`. Implementation: [`crates/workflow/src/adapter/`](../../crates/workflow/src/adapter); per-axis schemas at [`schemas/adapter.schema.json`](../../schemas/adapter.schema.json), [`source.schema.json`](../../schemas/source.schema.json), [`target.schema.json`](../../schemas/target.schema.json).
+Per-adapter `adapter.yaml` carries `name`, `version`, `axis`, the required closed `execution` mode (`agent` | `tool`, RFC-29 D9), `description`, the `briefs.<operation>` map, an optional `cache` opt-out, and an optional `tools[]` array. The closed operation set is determined by the manifest's `axis`. `execution: agent` forces `cache: opt-out`; the loader rejects a manifest that omits `execution` (`adapter-execution-mode-required`) or declares `execution: agent` alongside a non-opt-out cache mode (`adapter-execution-agent-cache-conflict`). Implementation: [`crates/workflow/src/adapter/`](../../crates/workflow/src/adapter); per-axis schemas at [`schemas/adapter.schema.json`](../../schemas/adapter.schema.json), [`source.schema.json`](../../schemas/source.schema.json), [`target.schema.json`](../../schemas/target.schema.json).
 
 ## Source adapter contract
 

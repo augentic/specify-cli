@@ -14,6 +14,11 @@ pub const PLAN_JSON_SCHEMA: &str = include_str!("../../../schemas/plan/plan.sche
 /// `.specify/slices/<name>/evidence/`.
 pub const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.schema.json");
 
+/// Schema for a single `Lead` block under `## Lead inventory` in
+/// `discovery.md`. The `survey` operation validates each produced lead
+/// against this shape before `Discovery::merge_survey` makes it visible.
+pub const LEAD_JSON_SCHEMA: &str = include_str!("../../../schemas/discovery/lead.schema.json");
+
 /// Schema for `provenance.yaml`, the audit-only provenance
 /// index emitted by slice synthesis.
 pub const PROVENANCE_JSON_SCHEMA: &str =

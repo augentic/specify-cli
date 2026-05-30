@@ -9,6 +9,7 @@ use clap_complete::Shell;
 use specify_model::evidence::ClaimKind;
 
 pub use crate::output::Format;
+use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
@@ -122,6 +123,15 @@ pub enum Commands {
     Plan {
         #[command(subcommand)]
         action: PlanAction,
+    },
+
+    /// Workflow journal at `.specify/journal.jsonl`. `emit` is a
+    /// guarded front door onto the closed §Observability event
+    /// taxonomy — it appends one well-formed line, minting no event
+    /// kinds of its own.
+    Journal {
+        #[command(subcommand)]
+        action: JournalAction,
     },
 
     /// Platform registry at `registry.yaml` (repo root)
