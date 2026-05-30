@@ -4,11 +4,12 @@
 //! lead as surfaced by one source: the `source-key` that produced
 //! it, the kebab-case `lead-id` (unique only within that
 //! `source-key`), the one-line per-source `summary`, the optional
-//! `tentative` flag set by `/spec:plan`'s `propose` sub-step, and
-//! (discovery alias contract) the optional `aliases[]` list. Identity
-//! is the `(source-key, lead-id)` pair; cross-source unification is
-//! deferred to plan time. Operator additions through `specrun plan
-//! amend --add-alias` survive re-survey.
+//! survey-time `tentative` flag, and (discovery alias contract) the
+//! optional `aliases[]` list. Identity is the `(source-key, lead-id)`
+//! pair; cross-source unification is deferred to plan time, where
+//! `/spec:plan`'s `propose` sub-step reads these leads but never edits
+//! `discovery.md`. Operator additions through `specrun plan amend
+//! --add-alias` survive re-survey.
 
 use serde::{Deserialize, Serialize};
 
@@ -27,9 +28,9 @@ pub struct Lead {
     /// One-line human-readable summary of the lead as this source
     /// surfaced it.
     pub summary: String,
-    /// Optional uncertainty flag — set when `/spec:plan`'s `propose`
-    /// sub-step merged this lead across sources with low
-    /// confidence; the operator reconciles at Gate 1.
+    /// Optional survey-time uncertainty flag a source adapter may set
+    /// on its own lead; the operator reconciles at Gate 1. `propose`
+    /// reads leads but never edits `discovery.md`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tentative: Option<bool>,
     /// Optional alias list (discovery alias contract).

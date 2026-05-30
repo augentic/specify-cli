@@ -22,13 +22,13 @@
     },
     "tentative": {
       "type": "boolean",
-      "description": "Optional. Set to `true` by `/spec:plan`'s `propose` sub-step when the cross-source unification that referenced this lead is uncertain; the operator reconciles at Gate 1."
+      "description": "Optional survey-time uncertainty flag a source adapter may set on its own lead; the operator reconciles at Gate 1. `/spec:plan`'s `propose` sub-step reads these leads but never edits `discovery.md`."
     },
     "aliases": {
       "type": "array",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/kebabName" },
-      "description": "Optional kebab-case aliases for cross-source unification. `slices[].sources[].lead-id` resolves a binding's lead against the lead's `lead-id` or any `alias` under the same `source-key`. Authored by the source adapter at `survey` time or by `/spec:plan` at `propose` time when unifying differently-named leads across sources. Stable across re-survey; operator additions through `specrun plan amend --add-alias` survive re-survey. Empty `aliases: []` and a missing field are equivalent."
+      "description": "Optional kebab-case aliases for cross-source unification. `slices[].sources[].lead-id` resolves a binding's lead against the lead's `lead-id` or any `alias` under the same `source-key`. Authored by the source adapter at `survey` time, or added by the operator through `specrun plan amend --add-alias`; `/spec:plan` never hand-edits `discovery.md`. Stable across re-survey; operator additions survive re-survey. Empty `aliases: []` and a missing field are equivalent."
     }
   },
   "$defs": {
