@@ -29,7 +29,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 /// Scaffold a minimal framework tree that passes
-/// `specify_lints::framework::context::Context::from_framework_root` and
+/// `specify_standards::framework::context::Context::from_framework_root` and
 /// supplies the marketplace + canonical-doc files the imperative
 /// `Check` predicates expect. Intentionally identical in shape to
 /// the scaffold used by `tests/specdev_check_json.rs` so both

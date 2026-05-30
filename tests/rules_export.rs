@@ -2,7 +2,7 @@
 //!
 //! Exercises the runtime rules export contract — `ResolvedRules` export
 //! rules export" and §"Codex root resolution (v1)" — via the
-//! [`specify_lints::build_resolved_rules`] library entrypoint
+//! [`specify_standards::build_resolved_rules`] library entrypoint
 //! for the positive scenarios and `assert_cmd` for the negative
 //! `rules-root-required` scenario (the latter end-to-end proof that
 //! the CH-17 CLI plumbing wires through to `Exit::ValidationFailed`).
@@ -40,7 +40,7 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::Value;
-use specify_lints::{ResolveInputs, ResolvedRules, build_resolved_rules};
+use specify_standards::{ResolveInputs, ResolvedRules, build_resolved_rules};
 use tempfile::tempdir;
 
 /// Locate the `augentic/specify` plugin-repo checkout. Returns
@@ -169,7 +169,11 @@ fn omnia_with_documentation_source_overlay() {
         .iter()
         .find(|r| r.rule_id == "SRC-001")
         .expect("SRC-001 must appear when documentation source is bound");
-    assert_eq!(src_001.origin, specify_lints::Origin::Source, "SRC-001 must carry origin=source");
+    assert_eq!(
+        src_001.origin,
+        specify_standards::Origin::Source,
+        "SRC-001 must carry origin=source"
+    );
 
     let value = serde_json::to_value(&resolved).expect("to_value");
     assert_golden(&value, "omnia-with-documentation");
@@ -328,7 +332,7 @@ fn include_core_flag_toggles_core_rules() {
 
 /// Write a minimal rule fixture that satisfies the CH-11 parser and
 /// the codex-rule schema. Mirrors the helper used by the resolver's
-/// unit tests in `crates/lints/src/rules/resolve.rs`.
+/// unit tests in `crates/standards/src/rules/resolve.rs`.
 fn write_rule_fixture(path: &Path, id: &str, title: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("create parent dir");

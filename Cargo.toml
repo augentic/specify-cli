@@ -27,7 +27,7 @@ serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
 specify-diagnostics.workspace = true
-specify-lints.workspace = true
+specify-standards.workspace = true
 specify-workflow.workspace = true
 specify-model.workspace = true
 specify-validate.workspace = true
@@ -49,7 +49,7 @@ workspace = true
 [workspace]
 members = [
     "crates/diagnostics",
-    "crates/lints",
+    "crates/standards",
     "crates/error",
     "crates/model",
     "crates/schema",
@@ -174,7 +174,7 @@ serde-saphyr = "0.0.26"
 serde_json = "1"
 sha2 = "0.11"
 specify-diagnostics = { path = "crates/diagnostics" }
-specify-lints = { path = "crates/lints" }
+specify-standards = { path = "crates/standards" }
 specify-model = { path = "crates/model" }
 specify-validate = { path = "crates/validate" }
 specify-workflow = { path = "crates/workflow" }

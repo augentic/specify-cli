@@ -26,7 +26,7 @@ fn step(...) { ... }
 fn step(...) { ... }
 
 // GOOD — module-root waiver that legitimately covers every item below
-// crates/lints/src/rules.rs
+// crates/standards/src/rules.rs
 #![allow(
     clippy::module_name_repetitions,
     reason = "The public wire contract uses the names Rule and ResolvedRules; renaming to avoid the codex prefix would obscure the schema mapping."

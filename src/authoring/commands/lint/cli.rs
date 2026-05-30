@@ -96,7 +96,7 @@ pub struct LintAction {
 /// Clap presentation enum shared with `specrun lint`. Re-exported
 /// from the runtime tree rather than redefined: it is a clap-facing
 /// presentation type (kept out of the runtime-agnostic
-/// `specify-lints` crate), and both copies compile into the same
+/// `specify-standards` crate), and both copies compile into the same
 /// `specify` binary, so the canonical definition — together with its
 /// `From<LintFormat> for DiagnosticsFormat` adapter — lives once in
 /// `crate::runtime::commands::lint::cli`.

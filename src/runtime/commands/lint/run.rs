@@ -3,7 +3,7 @@
 //! Composes the standards-layer pipeline:
 //!
 //! 1. Resolve `--slice` / `--artifact` scope per lint scope resolution.
-//! 2. Build the resolved codex (`specify_lints::build_resolved_rules`)
+//! 2. Build the resolved codex (`specify_standards::build_resolved_rules`)
 //!    using the same artifact / language filters as the indexer so
 //!    the resolved rule set and the scan set agree.
 //! 3. Build the consumer `WorkspaceModel` (`lint::index::build`).
@@ -29,12 +29,12 @@ use specify_diagnostics::{
     Diagnostic, DiagnosticReport, FindingStatus, Format as DiagnosticsFormat, count_status, render,
 };
 use specify_error::{Error, Result};
-use specify_lints::ResolveInputs;
-use specify_lints::lint::ScanProfile;
-use specify_lints::lint::diagnostics::map_render_error;
-use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_lints::lint::ignore::blocking_findings_present;
-use specify_lints::lint::runner::{
+use specify_standards::ResolveInputs;
+use specify_standards::lint::ScanProfile;
+use specify_standards::lint::diagnostics::map_render_error;
+use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
+use specify_standards::lint::ignore::blocking_findings_present;
+use specify_standards::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
 use specify_tool::host::{RunContext, WasiRunner};
@@ -241,7 +241,7 @@ fn decide_exit(result: &DiagnosticReport) -> Result<()> {
     ))
 }
 
-/// `ToolRunner` impl bridging `specify-lints`'s standards-layer
+/// `ToolRunner` impl bridging `specify-standards`'s standards-layer
 /// trait to the runtime's declared WASI tool inventory.
 ///
 /// Owns the inventory built from `project.yaml` + the active target

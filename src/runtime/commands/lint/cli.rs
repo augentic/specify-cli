@@ -102,7 +102,7 @@ pub struct RunArgs {
 
 /// Clap-derivable mirror of [`DiagnosticsFormat`] per the diagnostics formatter set.
 ///
-/// Kept distinct from the `specify-lints` enum so the standards crate
+/// Kept distinct from the `specify-standards` enum so the standards crate
 /// stays runtime-agnostic; the [`From`] impl below is the single
 /// adapter. The wire spelling matches the closed diagnostics formatter set
 /// (`compact`, `github`, `json`, `pretty`).

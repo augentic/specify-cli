@@ -2,7 +2,7 @@
 //! `Check` predicates with the declarative deterministic-hint
 //! interpreter into a single [`DiagnosticReport`] envelope.
 //!
-//! The shared pipeline lives in [`specify_lints::lint::runner`]; this
+//! The shared pipeline lives in [`specify_standards::lint::runner`]; this
 //! handler is thin:
 //!
 //! 1. Resolve the framework root and load the imperative
@@ -26,17 +26,17 @@ use specify_diagnostics::{
     Format as DiagnosticsFormat, count_status, render,
 };
 use specify_error::{Error, Result};
-use specify_lints::ResolveInputs;
-use specify_lints::framework::check;
-use specify_lints::framework::context::Context as AuthoringContext;
-use specify_lints::lint::diagnostics::map_render_error;
-use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_lints::lint::ignore::blocking_findings_present;
-use specify_lints::lint::producer::DiagnosticProducer;
-use specify_lints::lint::runner::{
+use specify_standards::ResolveInputs;
+use specify_standards::framework::check;
+use specify_standards::framework::context::Context as AuthoringContext;
+use specify_standards::lint::diagnostics::map_render_error;
+use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
+use specify_standards::lint::ignore::blocking_findings_present;
+use specify_standards::lint::producer::DiagnosticProducer;
+use specify_standards::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
-use specify_lints::lint::{ScanProfile, WorkspaceModel};
+use specify_standards::lint::{ScanProfile, WorkspaceModel};
 use specify_workflow::config::Layout;
 use specify_workflow::journal::{
     self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
@@ -201,7 +201,7 @@ fn emit_fallback_envelope(format: DiagnosticsFormat) {
 /// the runner threads in (the imperative predicates index their own
 /// inputs from the context). [`check::run`] now finalises the batch
 /// itself — building each [`Diagnostic`] via
-/// [`specify_lints::framework::framework_finding`], rebasing locations
+/// [`specify_standards::framework::framework_finding`], rebasing locations
 /// to project-relative form, and stamping fingerprints and ids — so
 /// this producer is a thin pass-through that satisfies the
 /// [`DiagnosticProducer`] contract directly.

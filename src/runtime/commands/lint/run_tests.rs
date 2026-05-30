@@ -4,10 +4,10 @@ use specify_diagnostics::{
     Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticReportVersion, DiagnosticSource,
     DiagnosticSummary, FindingEvidence, FindingLocation, FindingStatus, RenderError, Severity,
 };
-use specify_lints::lint::diagnostics::{map_hint_error, map_index_error};
-use specify_lints::lint::eval::HintError;
-use specify_lints::lint::index::IndexError;
-use specify_lints::rules::{HintKind, Origin, PathRoot, ResolvedRule};
+use specify_standards::lint::diagnostics::{map_hint_error, map_index_error};
+use specify_standards::lint::eval::HintError;
+use specify_standards::lint::index::IndexError;
+use specify_standards::rules::{HintKind, Origin, PathRoot, ResolvedRule};
 
 use super::*;
 

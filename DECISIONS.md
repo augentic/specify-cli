@@ -148,7 +148,7 @@ without extra plumbing.
 Workspace crates: `specify-error` (leaf), `specify-schema` (embedded
 JSON Schemas), `specify-model` (artifact types and parsers, plus the
 shared atomic writer), `specify-validate` (artifact validation rule
-registry), `specify-lints` (standards layer, which also hosts the
+registry), `specify-standards` (standards layer, which also hosts the
 framework authoring checks behind `specdev lint` in its `framework`
 module), `specify-workflow` (workflow lifecycle authority),
 `specify-tool` (WASI host, gated), and the root binary package.
@@ -161,7 +161,7 @@ preserves the `specify-error -> specify-model` edge. `specify-validate`
 holds the artifact rule registry and depends on `specify-model` only —
 never on `specify-workflow`. That dependency direction is the whole
 point: a validation rule physically cannot reach a slice transition or
-plan stamp, the same no-lifecycle-authority invariant `specify-lints`
+plan stamp, the same no-lifecycle-authority invariant `specify-standards`
 already enforces. `specify-workflow` depends on `specify-model` but
 **not** on `specify-validate` (only the root binary orchestrates
 validation), so no cycle forms.
@@ -183,7 +183,7 @@ instead. Adapter-specific logic never lands as a workspace crate
 
 The framework authoring checks behind `specdev lint` (originally the
 plugin repo's retired `tooling/` crate, then the publish-disabled
-`specify-authoring` crate) were dissolved into the `specify_lints::framework`
+`specify-authoring` crate) were dissolved into the `specify_standards::framework`
 module. The imperative `Check` predicates are retained as-is; only their
 output type was unified — every predicate now emits the canonical
 `Diagnostic` directly (via the `framework::builder` `framework_finding()`
@@ -704,7 +704,7 @@ convention settles the prior disagreement between
 framework schemas (e.g. the component catalog) use
 `https://schemas.specify.dev/specify/<path>`. The
 `links.brief-schema-link-resolve` predicate in
-[`crates/lints/src/framework/check/schema_links.rs`](./crates/lints/src/framework/check/schema_links.rs)
+[`crates/standards/src/framework/check/schema_links.rs`](./crates/standards/src/framework/check/schema_links.rs)
 enforces that every `schemas.specify.dev` URL cited in adapter briefs
 resolves to a known schema in the hardcoded registry.
 
@@ -757,11 +757,11 @@ least one reference (unreferenced = warning). Catalog discovery uses
 to locate the file from the project root. When the catalog is absent,
 the check is silently skipped.
 
-## Standards layer split into `specify-lints` and `specify-schema`
+## Standards layer split into `specify-standards` and `specify-schema`
 
 The standards surface (rules parser / resolver, `WorkspaceModel`,
 indexer, deterministic hint interpreter, the `DiagnosticProducer`
-trait, and `specrun lint` runner) lives in `specify-lints`, a sibling
+trait, and `specrun lint` runner) lives in `specify-standards`, a sibling
 of `specify-workflow` rather than a module inside it. `specify-schema`
 is the shared leaf: it owns every embedded JSON Schema constant
 (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
@@ -779,14 +779,14 @@ The neutral diagnostic substrate — the `Diagnostic` / `DiagnosticReport`
 predicate — lives in its own `specify-diagnostics` leaf (see
 [§"Drained `Error::Validation` and the `Diagnostic`
 substrate"](#drained-errorvalidation-and-the-diagnostic-substrate)).
-`specify-lints` depends on it for the report shape; so do the producer
+`specify-standards` depends on it for the report shape; so do the producer
 crates (`specify-validate`, `specify-model`, `specify-tool`,
-`specify-workflow`). `specify-lints` keeps the lint-specific engine.
+`specify-workflow`). `specify-standards` keeps the lint-specific engine.
 
-Dependency direction: `specify-lints` depends on `specify-error`,
+Dependency direction: `specify-standards` depends on `specify-error`,
 `specify-schema`, `specify-diagnostics`, and `specify-tool` (for the
 `kind: tool` hint). It does **not** depend on `specify-workflow`, and
-`specify-workflow` does **not** depend on `specify-lints`. The sibling
+`specify-workflow` does **not** depend on `specify-standards`. The sibling
 shape makes the §"Principles" / "No lifecycle authority in review" rule
 a type-system invariant: review code cannot reach for slice or plan
 lifecycle transitions because the workflow types are not visible from
@@ -796,8 +796,8 @@ ever depending on anything named `lint` — the litmus test that keeps
 the lint-vs-validate concept split from re-appearing at the crate
 graph.
 
-The `specdev` predicate library (`specify_lints::framework`) sits inside
-`specify-lints` itself, so codex predicates consume `RULE_JSON_SCHEMA`
+The `specdev` predicate library (`specify_standards::framework`) sits inside
+`specify-standards` itself, so codex predicates consume `RULE_JSON_SCHEMA`
 and the typed `Rule` DTO without re-vendoring the schema. The root
 `specify` binary wires both halves
 together at the dispatcher boundary — `specrun lint` consumes the
@@ -813,7 +813,7 @@ validate`, plan validation, and the library-level validators — speaks
 one currency: `Diagnostic` / `DiagnosticReport`, housed in the
 `specify-diagnostics` leaf. The leaf depends only on `specify-error` and
 `specify-schema` (and `serde`/`serde_json`/`sha2`); it must never depend
-on `specify-lints`, `specify-model`, or `specify-workflow`, so it stays
+on `specify-standards`, `specify-model`, or `specify-workflow`, so it stays
 cycle-free and importable by every producer.
 
 **Lint and validate stay conceptually distinct surfaces.** They share
@@ -886,9 +886,9 @@ artefacts are gone:
 - The `codex.schema-drift` rule-id registration in the `specdev` check
   registry
 
-The `specify_lints::framework` predicates now consume the canonical schema directly via
+The `specify_standards::framework` predicates now consume the canonical schema directly via
 `specify_schema::RULE_JSON_SCHEMA` (paired with the typed
-`Rule` DTO from `specify_lints::rules`). One source of truth replaces the
+`Rule` DTO from `specify_standards::rules`). One source of truth replaces the
 prior vendored / canonical pair, so no drift check is required — the
 predicate the vendored copy existed to support no longer has a class of
 failures to catch. The canonical schema lives at
@@ -923,7 +923,7 @@ disposition: { source, directive?, since? }
 
 `disposition.source` is itself a closed enum. Today the only value is
 `directive` (set by the directive-validation pass in
-[`crates/lints/src/lint/ignore.rs`](./crates/lints/src/lint/ignore.rs)).
+[`crates/standards/src/lint/ignore.rs`](./crates/standards/src/lint/ignore.rs)).
 A future cross-run baseline producer can add `baseline` additively
 without churning callers — every consumer that exhausts the enum is
 already required to tolerate unknown values under the additive
@@ -982,7 +982,7 @@ cache, **pinned to the same adapter source/ref**.
   `.specify/cache/rules/` fallback (now removed) and standardises on the
   dotted `.specify/.cache/` tree the manifest cache already uses.
 - **Probe order.** `probe_rules_root` in
-  [`crates/lints/src/rules/resolve.rs`](./crates/lints/src/rules/resolve.rs)
+  [`crates/standards/src/rules/resolve.rs`](./crates/standards/src/rules/resolve.rs)
   is the closed precedence: (1) explicit `--rules-root`; (2) monorepo
   `{project_dir}/adapters/shared/rules/universal/`; (3) **new** codex
   cache `{project_dir}/.specify/.cache/codex/...`; (4)
