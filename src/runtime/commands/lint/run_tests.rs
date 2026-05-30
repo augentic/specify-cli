@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
 use specify_diagnostics::{
-    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticReportVersion, DiagnosticSource,
-    DiagnosticSummary, FindingEvidence, FindingLocation, FindingStatus, RenderError, Severity,
+    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticReport, DiagnosticReportVersion,
+    DiagnosticSource, DiagnosticSummary, FindingEvidence, FindingLocation, FindingStatus,
+    RenderError, Severity,
 };
 use specify_standards::lint::diagnostics::{map_hint_error, map_index_error};
 use specify_standards::lint::eval::HintError;
+use specify_standards::lint::ignore::deny_blocking_findings;
 use specify_standards::lint::index::IndexError;
 use specify_standards::rules::{HintKind, Origin, PathRoot, ResolvedRule};
 
@@ -232,29 +234,31 @@ fn exit_result(findings: Vec<Diagnostic>) -> DiagnosticReport {
 /// critical or important. Ignored / false-positive findings stay in
 /// the envelope but do not block.
 #[test]
-fn decide_exit_is_status_aware() {
+fn deny_blocking_findings_is_status_aware() {
     // Empty envelope → exit 0.
-    decide_exit(&exit_result(vec![])).expect("empty envelope must exit 0");
+    deny_blocking_findings(&exit_result(vec![])).expect("empty envelope must exit 0");
 
     // Critical but ignored → exit 0.
     let critical_ignored = exit_fixture_finding(Severity::Critical, Some(FindingStatus::Ignored));
-    decide_exit(&exit_result(vec![critical_ignored.clone()]))
+    deny_blocking_findings(&exit_result(vec![critical_ignored.clone()]))
         .expect("ignored critical must not block");
 
     // Important but false-positive → exit 0.
     let important_fp =
         exit_fixture_finding(Severity::Important, Some(FindingStatus::FalsePositive));
-    decide_exit(&exit_result(vec![important_fp.clone()]))
+    deny_blocking_findings(&exit_result(vec![important_fp.clone()]))
         .expect("false-positive important must not block");
 
     // Suggestion + Open → exit 0 (severity below the blocking
     // threshold).
     let open_suggestion = exit_fixture_finding(Severity::Suggestion, Some(FindingStatus::Open));
-    decide_exit(&exit_result(vec![open_suggestion])).expect("suggestion severity must not block");
+    deny_blocking_findings(&exit_result(vec![open_suggestion]))
+        .expect("suggestion severity must not block");
 
     // Critical + Open → exit 2.
     let critical_open = exit_fixture_finding(Severity::Critical, Some(FindingStatus::Open));
-    let err = decide_exit(&exit_result(vec![critical_open])).expect_err("open critical blocks");
+    let err = deny_blocking_findings(&exit_result(vec![critical_open]))
+        .expect_err("open critical blocks");
     match err {
         Error::Validation { code, .. } => {
             assert_eq!(code, "review-findings-present");
@@ -264,8 +268,8 @@ fn decide_exit_is_status_aware() {
 
     // Unset status + Important → exit 2 (raw scanner output).
     let important_unset = exit_fixture_finding(Severity::Important, None);
-    let err =
-        decide_exit(&exit_result(vec![important_unset])).expect_err("unset status treated as open");
+    let err = deny_blocking_findings(&exit_result(vec![important_unset]))
+        .expect_err("unset status treated as open");
     assert!(matches!(err, Error::Validation { .. }));
 
     // Mixed: one ignored critical + one open important → blocks.
@@ -274,6 +278,7 @@ fn decide_exit_is_status_aware() {
         important_fp,
         exit_fixture_finding(Severity::Important, Some(FindingStatus::Open)),
     ];
-    let err = decide_exit(&exit_result(mixed)).expect_err("any open critical/important blocks");
+    let err = deny_blocking_findings(&exit_result(mixed))
+        .expect_err("any open critical/important blocks");
     assert!(matches!(err, Error::Validation { .. }));
 }

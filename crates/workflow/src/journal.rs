@@ -19,6 +19,7 @@ use std::path::PathBuf;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
+use specify_diagnostics::{Diagnostic, FindingStatus, count_status};
 use specify_error::Error;
 
 use crate::change::Divergence;
@@ -442,6 +443,32 @@ pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
     file.write_all(payload.as_bytes())?;
     file.sync_all()?;
     Ok(())
+}
+
+/// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`.
+///
+/// Best-effort: serialise/IO failures log to stderr with the supplied
+/// `command_label` prefix and never override the scan's exit code.
+pub fn emit_lint_completed(
+    layout: Layout<'_>, scope: LintScope, findings: &[Diagnostic], duration_ms: u128,
+    exit_code: i32, command_label: &str,
+) {
+    let counts = LintCounts {
+        open: count_status(findings, None),
+        ignored: count_status(findings, Some(FindingStatus::Ignored)),
+        false_positive: count_status(findings, Some(FindingStatus::FalsePositive)),
+    };
+    let payload = LintCompletedPayload {
+        scope,
+        duration_ms: u64::try_from(duration_ms).unwrap_or(u64::MAX),
+        counts,
+        baseline_present: false,
+        exit_code,
+    };
+    let event = Event::new(Timestamp::now(), EventKind::LintCompleted(payload));
+    if let Err(err) = append_batch(layout, std::slice::from_ref(&event)) {
+        eprintln!("{command_label}: failed to append lint-completed journal event: {err}");
+    }
 }
 
 /// Parses a fixed RFC3339 timestamp for test fixtures.

@@ -20,10 +20,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use jiff::Timestamp;
 use specify_diagnostics::{
-    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, FindingStatus,
-    Format as DiagnosticsFormat, count_status, render,
+    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary,
+    Format as DiagnosticsFormat, render,
 };
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
@@ -38,9 +37,7 @@ use specify_standards::lint::runner::{
 };
 use specify_standards::lint::{ScanProfile, WorkspaceModel};
 use specify_workflow::config::Layout;
-use specify_workflow::journal::{
-    self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
-};
+use specify_workflow::journal::{self, LintScope};
 
 use crate::authoring::commands::lint::cli::{LintAction, LintFormat};
 use crate::authoring::exit::Exit;
@@ -68,19 +65,22 @@ pub fn run(format: Format, action: &LintAction) -> Exit {
                 }
             };
             print!("{rendered}");
-            let exit_code: i32 = if blocking_findings_present(&result.findings) { 2 } else { 0 };
-            emit_lint_completed(
-                &project_dir,
-                action.artifacts.first().map(PathBuf::as_path),
+            let blocking = blocking_findings_present(&result.findings);
+            let exit_code: i32 = if blocking { 2 } else { 0 };
+            let scope = LintScope {
+                target: None,
+                slice: None,
+                artifact: action.artifacts.first().map(|p| p.display().to_string()),
+            };
+            journal::emit_lint_completed(
+                Layout::new(&project_dir),
+                scope,
                 &result.findings,
                 started_at.elapsed().as_millis(),
                 exit_code,
+                "specdev lint",
             );
-            if blocking_findings_present(&result.findings) {
-                Exit::ValidationFailed
-            } else {
-                Exit::Success
-            }
+            if blocking { Exit::ValidationFailed } else { Exit::Success }
         }
         Ok(BuildOutcome::DumpedModel) => Exit::Success,
         Err(err) => {
@@ -212,37 +212,6 @@ struct AuthoringProducer<'a> {
 impl DiagnosticProducer for AuthoringProducer<'_> {
     fn produce(&self, _model: &WorkspaceModel, _project_dir: &Path) -> Vec<Diagnostic> {
         check::run(self.ctx)
-    }
-}
-
-/// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`.
-/// Best-effort: telemetry I/O failures log to stderr and never
-/// override the scan's exit code.
-fn emit_lint_completed(
-    project_dir: &Path, single_artifact: Option<&Path>, findings: &[Diagnostic], duration_ms: u128,
-    exit_code: i32,
-) {
-    let scope = LintScope {
-        target: None,
-        slice: None,
-        artifact: single_artifact.map(|p| p.display().to_string()),
-    };
-    let counts = LintCounts {
-        open: count_status(findings, None),
-        ignored: count_status(findings, Some(FindingStatus::Ignored)),
-        false_positive: count_status(findings, Some(FindingStatus::FalsePositive)),
-    };
-    let payload = LintCompletedPayload {
-        scope,
-        duration_ms: u64::try_from(duration_ms).unwrap_or(u64::MAX),
-        counts,
-        baseline_present: false,
-        exit_code,
-    };
-    let event = Event::new(Timestamp::now(), EventKind::LintCompleted(payload));
-    let layout = Layout::new(project_dir);
-    if let Err(err) = journal::append_batch(layout, std::slice::from_ref(&event)) {
-        eprintln!("specdev lint: failed to append lint-completed journal event: {err}");
     }
 }
 

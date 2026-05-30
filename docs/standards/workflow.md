@@ -33,7 +33,7 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Discovery handshake
 
-`survey` writes `## Lead inventory` blocks; the operator stamps `reviewed`; `extract` resolves `slices[].sources[].lead` against `id`-then-`aliases[]`. Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
+`survey` writes `## Lead inventory` blocks; the operator stamps `approved`; `extract` resolves `slices[].sources[].lead` against `id`-then-`aliases[]`. Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
 
 ## The Plan
 
@@ -59,7 +59,7 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Execution model
 
-`pending → reviewed` plan-level (Gate 1; operator-only). Per-entry: `pending → in-progress → done`. `done` is absorbing in v1; the operator-reversed flow lives behind `specrun plan transition --undo` (added Phase 6 — see [`DECISIONS.md` §"Plan lifecycle: two stored states"](../../DECISIONS.md#plan-lifecycle-two-stored-states)).
+`pending → approved` plan-level (Gate 1; operator-only). Per-entry: `pending → in-progress → done`. `done` is absorbing in v1; the operator-reversed flow lives behind `specrun plan transition --undo` (added Phase 6 — see [`DECISIONS.md` §"Plan lifecycle: two stored states"](../../DECISIONS.md#plan-lifecycle-two-stored-states)).
 
 ## Refinement
 
@@ -87,7 +87,7 @@ Headline verbs: `init`, `source resolve`, `target resolve`, `slice {create, tran
 
 ## Writer ownership
 
-Per-entry status writes route to exactly one CLI verb each — `plan add` / `plan amend` write `pending`, `plan next` writes `in-progress`, `slice merge` (via `plan transition <entry> done`) writes `done`. Plan-level `reviewed` is operator-only. See [`DECISIONS.md` §"Lifecycle write-ownership"](../../DECISIONS.md#lifecycle-write-ownership).
+Per-entry status writes route to exactly one CLI verb each — `plan add` / `plan amend` write `pending`, `plan next` writes `in-progress`, `slice merge` (via `plan transition <entry> done`) writes `done`. Plan-level `approved` is operator-only. See [`DECISIONS.md` §"Lifecycle write-ownership"](../../DECISIONS.md#lifecycle-write-ownership).
 
 ## Observability
 

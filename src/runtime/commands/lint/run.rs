@@ -25,23 +25,19 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_diagnostics::{
-    Diagnostic, DiagnosticReport, FindingStatus, Format as DiagnosticsFormat, count_status, render,
-};
+use specify_diagnostics::{Format as DiagnosticsFormat, render};
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::diagnostics::map_render_error;
 use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_standards::lint::ignore::blocking_findings_present;
+use specify_standards::lint::ignore::{blocking_findings_present, deny_blocking_findings};
 use specify_standards::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
-use specify_workflow::journal::{
-    self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
-};
+use specify_workflow::journal::{self, LintScope};
 
 use crate::runtime::commands::lint::cli::RunArgs;
 use crate::runtime::commands::tool::{Inventory, ScopedTool, build_inventory};
@@ -100,16 +96,23 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
     println!("{rendered}");
 
     let exit_code: i32 = if blocking_findings_present(&result.findings) { 2 } else { 0 };
-    emit_lint_completed(
-        ctx,
-        target,
-        slice,
-        artifacts,
+    let scope = LintScope {
+        target: (!target.is_empty()).then(|| target.to_string()),
+        slice: slice.map(str::to_string),
+        // Populate `artifact` only when the scan was narrowed to
+        // exactly one path; multi-artifact and full scans leave the
+        // field `null` per the variant doc.
+        artifact: (artifacts.len() == 1).then(|| artifacts[0].display().to_string()),
+    };
+    journal::emit_lint_completed(
+        ctx.layout(),
+        scope,
         &result.findings,
         started_at.elapsed().as_millis(),
         exit_code,
+        "specrun lint",
     );
-    decide_exit(&result)
+    deny_blocking_findings(&result)
 }
 
 /// Compose the `artifact_paths` vector handed to both the resolver
@@ -178,67 +181,6 @@ fn parse_slice_tasks_paths(text: &str) -> Vec<PathBuf> {
         }
     }
     out
-}
-
-/// Build a [`LintCompletedPayload`] from the final finding set and
-/// append it to the project journal. Best-effort: serialise/IO
-/// failures are logged to stderr and swallowed so a telemetry hiccup
-/// never overrides the scan's exit code (mirrors the safety stance
-/// documented on the variant itself).
-///
-/// `baseline_present` is hard-coded `false`; RFC-33b makes it
-/// scan-derived when it lands.
-fn emit_lint_completed(
-    ctx: &Ctx, target: &str, slice: Option<&str>, artifacts: &[PathBuf], findings: &[Diagnostic],
-    duration_ms: u128, exit_code: i32,
-) {
-    let scope = LintScope {
-        target: (!target.is_empty()).then(|| target.to_string()),
-        slice: slice.map(str::to_string),
-        // Populate `artifact` only when the scan was narrowed to
-        // exactly one path; multi-artifact and full scans leave the
-        // field `null` per the variant doc.
-        artifact: (artifacts.len() == 1).then(|| artifacts[0].display().to_string()),
-    };
-    let counts = LintCounts {
-        open: count_status(findings, None),
-        ignored: count_status(findings, Some(FindingStatus::Ignored)),
-        false_positive: count_status(findings, Some(FindingStatus::FalsePositive)),
-    };
-    let payload = LintCompletedPayload {
-        scope,
-        duration_ms: u64::try_from(duration_ms).unwrap_or(u64::MAX),
-        counts,
-        baseline_present: false,
-        exit_code,
-    };
-    let event = Event::new(Timestamp::now(), EventKind::LintCompleted(payload));
-    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
-        eprintln!("specrun lint: failed to append lint-completed journal event: {err}");
-    }
-}
-
-/// Decide exit per the exit and presentation semantics: exit 2
-/// only when at least one finding carries `status: open` AND
-/// `severity ∈ {critical, important}`. Findings demoted to `ignored`
-/// or `false-positive` by the directive pass remain in the envelope
-/// but do not block.
-fn decide_exit(result: &DiagnosticReport) -> Result<()> {
-    if !blocking_findings_present(&result.findings) {
-        return Ok(());
-    }
-    let detail = format!(
-        "critical={} important={} suggestion={} optional={}",
-        result.summary.critical,
-        result.summary.important,
-        result.summary.suggestion,
-        result.summary.optional,
-    );
-    Err(Error::validation_failed(
-        "review-findings-present",
-        "deterministic review surfaced open critical/important findings",
-        detail,
-    ))
 }
 
 /// `ToolRunner` impl bridging `specify-standards`'s standards-layer

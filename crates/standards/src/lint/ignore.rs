@@ -38,9 +38,10 @@
 use std::collections::HashMap;
 
 use specify_diagnostics::{
-    Diagnostic, DirectiveDisposition, DispositionSource, FindingDisposition, FindingEvidence,
-    FindingLocation, FindingStatus,
+    Diagnostic, DiagnosticReport, DirectiveDisposition, DispositionSource, FindingDisposition,
+    FindingEvidence, FindingLocation, FindingStatus,
 };
+use specify_error::{Error, Result};
 
 use crate::lint::IgnoreDirective;
 use crate::lint::eval::{SyntheticFinding, make_synthetic_finding};
@@ -201,6 +202,35 @@ pub fn apply(
 #[must_use]
 pub fn blocking_findings_present(findings: &[Diagnostic]) -> bool {
     specify_diagnostics::blocking_present(findings)
+}
+
+/// Status-aware exit gate.
+///
+/// Returns `Ok(())` when no open `critical | important` findings
+/// remain; otherwise returns [`Error::validation_failed`] with the
+/// report summary counts in the detail string.
+///
+/// # Errors
+///
+/// Returns [`Error::validation_failed`] with code
+/// `review-findings-present` when [`blocking_findings_present`]
+/// is true for `report.findings`.
+pub fn deny_blocking_findings(report: &DiagnosticReport) -> Result<()> {
+    if !blocking_findings_present(&report.findings) {
+        return Ok(());
+    }
+    let detail = format!(
+        "critical={} important={} suggestion={} optional={}",
+        report.summary.critical,
+        report.summary.important,
+        report.summary.suggestion,
+        report.summary.optional,
+    );
+    Err(Error::validation_failed(
+        "review-findings-present",
+        "deterministic review surfaced open critical/important findings",
+        detail,
+    ))
 }
 
 fn finding_matches_directive(finding: &Diagnostic, directive: &IgnoreDirective) -> bool {
