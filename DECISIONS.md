@@ -489,8 +489,7 @@ variants are `snake_case` and bridge to the wire via
 |---|---|
 | `plan.transition.approved` | `specrun plan transition <plan> approved` (Gate 1 stamp). |
 | `plan.transition.undone` | `specrun plan transition <entry> --undo` (per-entry reverse rung; one event per rung). |
-| `plan.propose.divergence` | `/spec:plan` `propose` sub-step when it flips a slice to `divergence: likely`. |
-| `plan.amend.divergence` | `specrun plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
+| `plan.amend.divergence` | `specrun plan amend --divergence likely\|accepted\|rejected` on any change to a slice's `divergence` field (the `/spec:plan` agent stages `likely`; the operator flips `accepted`/`rejected`). |
 | `slice.transition.refined` | `specrun slice transition <slice> refined`. |
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |

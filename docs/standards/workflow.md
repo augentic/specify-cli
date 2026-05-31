@@ -129,7 +129,7 @@ Provenance index at `.specify/slices/<slice>/provenance.yaml`; `spec.md` is the 
 
 ## D5 — Operator-driven `divergence`
 
-The CLI is the single writer of every `Divergence` variant. Operators flip `accepted | rejected` via `specrun plan amend --divergence`; `likely` is staged by `specrun plan create --divergence-likely <slice>`. See [`crates/workflow/src/change/plan/core/model.rs`](../../crates/workflow/src/change/plan/core/model.rs).
+The CLI is the single writer of every `Divergence` variant, all through `specrun plan amend --divergence`. Operators flip `accepted | rejected`; the `/spec:plan` agent stages `likely` after `specrun plan propose --from`. `plan create` scaffolds an empty plan and never stamps divergence. See [`crates/workflow/src/change/plan/core/model.rs`](../../crates/workflow/src/change/plan/core/model.rs).
 
 ## D6 — Discovery aliases
 

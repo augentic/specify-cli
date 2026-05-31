@@ -22,17 +22,9 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
         PlanAction::Create {
             name,
             sources,
-            divergence_likely,
             auto_approve,
             authority_override,
-        } => create::create(
-            ctx,
-            name,
-            sources,
-            &divergence_likely,
-            auto_approve,
-            &authority_override,
-        ),
+        } => create::create(ctx, name, sources, auto_approve, &authority_override),
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
         PlanAction::Add(args) => add::add(ctx, args),

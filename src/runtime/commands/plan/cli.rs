@@ -22,14 +22,6 @@ pub enum PlanAction {
         /// `{ adapter, path?, value? }` shape per workflow §Source.
         #[arg(long = "source")]
         sources: Vec<SourceArg>,
-        /// Pre-stage `slices[].divergence: likely` on the named slice
-        /// (repeatable; divergence and writer-ownership contract). Each occurrence fires one
-        /// `plan.propose.divergence` journal event. Refuses with
-        /// `plan-divergence-likely-unknown-slice` when the slice is
-        /// not present in the plan; the CLI is the single writer of
-        /// this field — do not edit `plan.yaml` directly.
-        #[arg(long = "divergence-likely", value_name = "SLICE", action = ArgAction::Append)]
-        divergence_likely: Vec<String>,
         /// Stamp `lifecycle: approved` atomically with create
         /// (auto-approve Gate-1 contract). Typing this flag *is* the operator's
         /// Gate-1 consent — the CLI runs the same validation it
@@ -53,7 +45,7 @@ pub enum PlanAction {
         /// orphan-key check. One
         /// `plan.amend.authority-override` journal event fires per
         /// resolved entry in the same batched append as
-        /// `--auto-approve` / `--divergence-likely`.
+        /// `--auto-approve`.
         #[arg(
             long = "authority-override",
             value_names = ["SLICE", "KIND=KEY"],

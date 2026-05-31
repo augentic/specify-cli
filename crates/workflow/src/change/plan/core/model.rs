@@ -200,12 +200,14 @@ pub struct Entry {
 ///
 /// divergence and writer-ownership contract — the CLI is the single writer of every variant of
 /// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
-/// disk via `specrun plan create --divergence-likely <slice>` (the
-/// post-`propose` staging site) and `specrun plan amend --divergence
-/// likely` (the bare-skill fallback); `Accepted` / `Rejected` reach
-/// disk via `specrun plan amend --divergence`. `none` is the
-/// implicit-absent default and is never serialised explicitly into
-/// a slice record.
+/// disk in the `propose`-driven `/spec:plan` flow (RFC-29b) when the
+/// agent runs `specrun plan amend --divergence likely` *after*
+/// `specrun plan propose --from` (the slice writer), because slices
+/// do not exist until projection runs. `Accepted` / `Rejected` reach
+/// disk via `specrun plan amend --divergence`. `plan amend` is the
+/// only writer of the field — `plan create` scaffolds an empty plan
+/// and never stamps divergence. `none` is the implicit-absent
+/// default and is never serialised explicitly into a slice record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -215,7 +217,8 @@ pub enum Divergence {
     /// `plan.amend.divergence` `from` field on the first transition.
     #[serde(rename = "none")]
     None,
-    /// Synthesised by `/spec:plan`'s `propose` sub-step on
+    /// Staged by the `/spec:plan` agent after `propose --from`, via
+    /// `specrun plan amend --divergence likely`, on
     /// materially-disagreeing lead summaries.
     Likely,
     /// Operator-stamped at Gate 1 — divergence acknowledged and

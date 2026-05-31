@@ -8,7 +8,7 @@ use std::io::Write;
 use serde::Serialize;
 use specify_error::{Error, Result, is_kebab};
 use specify_workflow::change::{
-    Divergence, Lifecycle, Plan, mutate_authority_overrides, reject_orphan_overrides,
+    Lifecycle, Plan, mutate_authority_overrides, reject_orphan_overrides,
 };
 use specify_workflow::journal;
 
@@ -16,29 +16,24 @@ use super::args::{build_source_map, parse_override_assigns};
 use crate::runtime::cli::SourceArg;
 use crate::runtime::context::Ctx;
 
-/// `specrun plan create <name> [--source ...] [--divergence-likely <slice>]... [--auto-approve]`.
+/// `specrun plan create <name> [--source ...] [--auto-approve]`.
 ///
-/// Scaffolds `plan.yaml` (workflow §The Plan), then stages every
-/// `--divergence-likely <slice>` value onto the named slice's
-/// `slices[].divergence` field (divergence and writer-ownership contract). The slice MUST already
-/// exist in the plan being created — an unknown name short-circuits
-/// with `plan-divergence-likely-unknown-slice` (`Error::Validation`,
-/// exit 2). One `plan.propose.divergence` journal event fires per
-/// applied slice, matching the post-`propose` happy path the
-/// `/spec:plan` skill drives.
+/// Scaffolds an empty `plan.yaml` (workflow §The Plan); slices are
+/// authored later by `specrun plan propose --from` or `specrun plan
+/// add`.
 ///
 /// When `--auto-approve` is set (auto-approve Gate-1 contract), the plan is constructed
 /// with `lifecycle: approved` *before* the single atomic
 /// `plan.save` — there is never a transient `lifecycle: pending`
 /// file on disk. The matching `plan.transition.approved` journal
 /// event is appended in the same batched write as any
-/// `plan.propose.divergence` events the same invocation produced;
-/// validation failures (kebab-case name, orphan source key,
-/// unknown `--divergence-likely` slice) refuse the create with or
-/// without the flag and leave the journal untouched.
+/// `plan.amend.authority-override` events the same invocation
+/// produced; validation failures (kebab-case name, orphan source
+/// key) refuse the create with or without the flag and leave the
+/// journal untouched.
 pub(super) fn create(
-    ctx: &Ctx, name: String, sources: Vec<SourceArg>, divergence_likely: &[String],
-    auto_approve: bool, authority_override: &[String],
+    ctx: &Ctx, name: String, sources: Vec<SourceArg>, auto_approve: bool,
+    authority_override: &[String],
 ) -> Result<()> {
     if !is_kebab(&name) {
         return Err(Error::Diag {
@@ -61,7 +56,6 @@ pub(super) fn create(
     let override_assigns = parse_override_assigns(authority_override)?;
 
     let mut plan = Plan::init(&name, source_map)?;
-    apply_divergence_likely(&mut plan, divergence_likely)?;
     // Route `--authority-override` through the shared mutation
     // helper used by `plan amend` so create and amend produce
     // byte-identical `plan.amend.authority-override` journal events
@@ -85,21 +79,9 @@ pub(super) fn create(
     // Collect every journal event the invocation produced, then
     // hand the slice to `append_batch` so the post-save log write is
     // a single fsynced append. Either every event lands or none
-    // does — `--auto-approve`, `--divergence-likely`, and
-    // `--authority-override` compose without a partial-state window
-    // in the journal.
-    let mut events: Vec<journal::Event> = divergence_likely
-        .iter()
-        .map(|slice| {
-            journal::Event::new(
-                now,
-                journal::EventKind::PlanProposeDivergence {
-                    plan_name: plan_name.clone(),
-                    slice_name: slice.clone(),
-                },
-            )
-        })
-        .collect();
+    // does — `--auto-approve` and `--authority-override` compose
+    // without a partial-state window in the journal.
+    let mut events: Vec<journal::Event> = Vec::new();
     if auto_approve {
         events.push(journal::Event::new(
             now,
@@ -119,29 +101,6 @@ pub(super) fn create(
         },
         write_create_text,
     )?;
-    Ok(())
-}
-
-/// Stamp `divergence: likely` on every named slice in `plan`.
-/// Rejects unknown slice names with `Error::validation_failed` —
-/// `plan-divergence-likely-unknown-slice` (exit 2). Duplicate
-/// occurrences of the same slice are idempotent (the field re-sets
-/// to `Likely`).
-fn apply_divergence_likely(plan: &mut Plan, slices: &[String]) -> Result<()> {
-    for slice in slices {
-        let entry = plan.entries.iter_mut().find(|e| &e.name == slice).ok_or_else(|| {
-            Error::validation_failed(
-                "plan-divergence-likely-unknown-slice",
-                "--divergence-likely must reference a slice present in the plan",
-                format!(
-                    "no slice named '{slice}' in plan '{}'; add the slice (e.g. specrun plan \
-                     add {slice}) before staging divergence: likely",
-                    plan.name
-                ),
-            )
-        })?;
-        entry.divergence = Some(Divergence::Likely);
-    }
     Ok(())
 }
 

@@ -83,26 +83,13 @@ pub enum EventKind {
         /// Status the entry holds after the undo.
         to: crate::change::Status,
     },
-    /// `/spec:plan`'s `propose` sub-step flagged a materially-
-    /// disagreeing slice (`slices[].divergence: likely`).
-    /// divergence and writer-ownership contract — emitted from the CLI when the operator (or the
-    /// `plan` skill body) runs `specrun plan create
-    /// --divergence-likely <slice>` or `specrun plan amend
-    /// --divergence likely`; the skill is no longer the writer.
-    #[serde(rename = "plan.propose.divergence", rename_all = "kebab-case")]
-    PlanProposeDivergence {
-        /// Plan name from `plan.yaml.name`.
-        plan_name: String,
-        /// Slice id under `plan.yaml.slices[].name`.
-        slice_name: String,
-    },
-    /// Operator stamped `slices[].divergence` via
+    /// Stamped `slices[].divergence` via
     /// `specrun plan amend --divergence <likely|accepted|rejected>`.
-    /// divergence and writer-ownership contract — the CLI is the single writer; `likely` reaches
-    /// this event from skill-body fallbacks against existing
-    /// `plan.yaml` entries (the post-`propose` happy path stages
-    /// `likely` via `specrun plan create --divergence-likely`, which
-    /// emits [`Self::PlanProposeDivergence`] instead).
+    /// divergence and writer-ownership contract — the CLI is the single writer. In the
+    /// RFC-29b propose flow the `/spec:plan` agent stages `likely`
+    /// through this event after `propose --from`; the operator later
+    /// flips `accepted` / `rejected` the same way. This is the only
+    /// path that writes the `divergence` field.
     #[serde(rename = "plan.amend.divergence", rename_all = "kebab-case")]
     PlanAmendDivergence {
         /// Plan name from `plan.yaml.name`.
@@ -453,9 +440,9 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 /// invocation, well below the limit.
 ///
 /// Used by CLI verbs that own more than one journal emit per
-/// invocation (e.g. `specrun plan create --auto-review`, which
-/// stages both `plan.propose.divergence` and
-/// `plan.transition.approved` in the same Gate-1 consent), and
+/// invocation (e.g. `specrun plan create --auto-approve
+/// --authority-override`, which stages both `plan.transition.approved`
+/// and `plan.amend.authority-override` in the same Gate-1 consent), and
 /// equally by single-event callers via
 /// `append_batch(layout, std::slice::from_ref(&event))`.
 ///
@@ -553,24 +540,27 @@ mod tests {
 
     #[test]
     fn append_batch_writes_in_order() {
-        // auto-approve Gate-1 contract: `specrun plan create --auto-review` may emit
-        // both `plan.propose.divergence` and
-        // `plan.transition.approved` in a single fsynced append.
-        // Exercise the batched helper to lock that contract.
+        // auto-approve Gate-1 contract: `specrun plan create --auto-approve
+        // --authority-override` may emit both `plan.transition.approved`
+        // and `plan.amend.authority-override` in a single fsynced append.
+        // Exercise the batched helper to lock ordering.
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         let events = vec![
             Event::new(
                 test_timestamp("2026-05-22T13:30:00Z"),
-                EventKind::PlanProposeDivergence {
+                EventKind::PlanTransitionApproved {
                     plan_name: "fresh".to_string(),
-                    slice_name: "checkout".to_string(),
                 },
             ),
             Event::new(
                 test_timestamp("2026-05-22T13:30:00Z"),
-                EventKind::PlanTransitionApproved {
+                EventKind::PlanAmendAuthorityOverride {
                     plan_name: "fresh".to_string(),
+                    slice_name: "checkout".to_string(),
+                    action: AuthorityOverrideAction::Set,
+                    claim_kind: Some("criterion".to_string()),
+                    source_key: Some("runtime".to_string()),
                 },
             ),
         ];
@@ -579,21 +569,21 @@ mod tests {
         let lines = read_lines(layout);
         assert_eq!(lines.len(), 2, "expected two journal lines, got {}", lines.len());
         assert!(
-            lines[0].contains(r#""event":"plan.propose.divergence""#),
-            "first line must be plan.propose.divergence, got:\n{}",
+            lines[0].contains(r#""event":"plan.transition.approved""#),
+            "first line must be plan.transition.approved, got:\n{}",
             lines[0]
         );
         assert!(
-            lines[1].contains(r#""event":"plan.transition.approved""#),
-            "second line must be plan.transition.approved, got:\n{}",
+            lines[1].contains(r#""event":"plan.amend.authority-override""#),
+            "second line must be plan.amend.authority-override, got:\n{}",
             lines[1]
         );
     }
 
     #[test]
     fn append_batch_empty_slice_is_no_op() {
-        // Callers (e.g. `plan create` without `--auto-review` and
-        // without `--divergence-likely`) build the batch
+        // Callers (e.g. `plan create` without `--auto-approve` and
+        // without `--authority-override`) build the batch
         // unconditionally; an empty input must not create the
         // journal file on disk.
         let dir = tempdir().expect("tempdir");
@@ -818,10 +808,6 @@ mod tests {
         for kind in [
             EventKind::PlanTransitionApproved {
                 plan_name: "p".to_string(),
-            },
-            EventKind::PlanProposeDivergence {
-                plan_name: "p".to_string(),
-                slice_name: "s".to_string(),
             },
             EventKind::PlanAmendDivergence {
                 plan_name: "p".to_string(),

@@ -812,29 +812,6 @@ fn create_scaffolds_matches_golden() {
 }
 
 #[test]
-fn create_divergence_unknown_slice_refused() {
-    // divergence and writer-ownership contract: `--divergence-likely` on `plan create` must
-    // reference a slice already present in the plan. A fresh
-    // `plan create` scaffolds an empty plan, so any slice name is
-    // unknown and must short-circuit before plan.yaml is written.
-    let project = Project::init();
-
-    let assert = specrun()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "create", "fresh", "--divergence-likely", "ghost-slice"])
-        .assert()
-        .failure();
-    let code = assert.get_output().status.code().expect("exit code");
-    assert_eq!(code, 2, "unknown --divergence-likely slice must exit 2 (validation_failed)");
-    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    assert_eq!(stderr["error"], "plan-divergence-likely-unknown-slice");
-    assert!(
-        !project.plan_path().exists(),
-        "plan.yaml must not be written when --divergence-likely fails validation"
-    );
-}
-
-#[test]
 fn create_refuses_overwrite() {
     let project = Project::init();
     specrun().current_dir(project.root()).args(["plan", "create", "first"]).assert().success();
@@ -992,23 +969,31 @@ fn plan_create_auto_approve_invalid_name() {
 fn create_auto_approve_no_partial_events() {
     // auto-approve Gate-1 contract: validation failure under --auto-approve must not
     // surface a partial-state event sequence — no orphan
-    // `plan.propose.divergence` without the matching
+    // `plan.amend.authority-override` without the matching
     // `plan.transition.approved`, no half-written plan.yaml. An
-    // unknown `--divergence-likely` slice (the cheapest validation
+    // unknown `--authority-override` slice (the cheapest validation
     // gate to trip on a fresh plan) must refuse the create and
     // leave the journal untouched.
     let project = Project::init();
 
     let assert = specrun()
         .current_dir(project.root())
-        .args(["plan", "create", "fresh", "--auto-approve", "--divergence-likely", "ghost-slice"])
+        .args([
+            "plan",
+            "create",
+            "fresh",
+            "--auto-approve",
+            "--authority-override",
+            "ghost-slice",
+            "criterion=runtime",
+        ])
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
 
     assert!(
         !project.plan_path().exists(),
-        "plan.yaml must not be written when --auto-approve + --divergence-likely fails"
+        "plan.yaml must not be written when --auto-approve + --authority-override fails"
     );
     let journal = project.root().join(".specify").join("journal.jsonl");
     assert!(
@@ -2311,8 +2296,7 @@ fn add_authority_override_seeds_map() {
 #[test]
 fn amend_authority_override_unknown_slice_refused() {
     // per-slice authority override: unknown `--authority-override <slice>` must
-    // refuse at exit 2 before any plan.yaml write happens. Mirror
-    // the existing `--divergence-likely` guard.
+    // refuse at exit 2 before any plan.yaml write happens.
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
     let before = fs::read_to_string(project.plan_path()).expect("read plan");

@@ -419,7 +419,7 @@ fn slice_validate_provenance_no_journal() {
     );
 }
 
-// -- agent-emit helper (slice.extract.completed, plan.propose.divergence)
+// -- agent-emit helper (slice.extract.completed, plan.amend.divergence)
 
 #[test]
 fn agent_emit_one_event_per_line() {
@@ -436,9 +436,11 @@ fn agent_emit_one_event_per_line() {
     let events = [
         Event::new(
             fixed,
-            EventKind::PlanProposeDivergence {
+            EventKind::PlanAmendDivergence {
                 plan_name: "platform-v2".to_string(),
                 slice_name: "checkout".to_string(),
+                from: Divergence::None,
+                to: Divergence::Likely,
             },
         ),
         Event::new(
