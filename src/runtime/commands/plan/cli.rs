@@ -136,7 +136,7 @@ pub enum PlanAction {
 /// handler threads a single owned value instead of a positional list.
 #[derive(Args)]
 pub struct AddArgs {
-    /// Kebab-case change name
+    /// Kebab-case plan entry (slice) name for the new row under `plan.yaml.slices[]`.
     pub name: String,
     /// Ordering dependencies (repeatable). Every value is a change name in the plan.
     /// Pass `--depends-on` (with no value) to clear the field; omit the flag to
@@ -178,7 +178,8 @@ pub struct AddArgs {
 /// handler threads a single owned value instead of a positional list.
 #[derive(Args)]
 pub struct AmendArgs {
-    /// Kebab-case change name
+    /// Kebab-case plan entry (slice) name — the row under `plan.yaml.slices[]`
+    /// being edited. There is one active plan file; this is not the plan name.
     pub name: String,
     /// Replace depends-on. Pass `--depends-on` (with no value) to clear the
     /// field; omit the flag to leave it unchanged. Repeat or comma-separate
