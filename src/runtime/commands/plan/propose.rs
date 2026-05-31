@@ -1,5 +1,5 @@
 //! `specrun plan propose` handler — plan-time lead reconciliation
-//! (RFC-29b D2).
+//! (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
 //!
 //! Two mutually exclusive modes wrap the agent-led reconciliation kernel
 //! that lives in `crates/workflow/src/change/plan/core/propose.rs`:

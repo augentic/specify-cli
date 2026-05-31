@@ -83,7 +83,7 @@ pub enum PlanAction {
     /// so wholesale replacement plus targeted edits can be combined
     /// in a single invocation when needed.
     Amend(AmendArgs),
-    /// Reconcile surveyed leads into `plan.yaml.slices[]` (RFC-29b D2).
+    /// Reconcile surveyed leads into `plan.yaml.slices[]` (RFC-29 D2).
     ///
     /// Exactly one mode is required — the parser rejects passing both:
     ///

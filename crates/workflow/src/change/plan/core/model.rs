@@ -200,7 +200,7 @@ pub struct Entry {
 ///
 /// divergence and writer-ownership contract — the CLI is the single writer of every variant of
 /// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
-/// disk in the `propose`-driven `/spec:plan` flow (RFC-29b) when the
+/// disk in the `propose`-driven `/spec:plan` flow (RFC-29 D2) when the
 /// agent runs `specrun plan amend --divergence likely` *after*
 /// `specrun plan propose --from` (the slice writer), because slices
 /// do not exist until projection runs. `Accepted` / `Rejected` reach

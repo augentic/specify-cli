@@ -2418,8 +2418,8 @@ fn plan_amend_override_bad_kind_refused() {
 }
 
 // ===================================================================
-// `specrun plan propose` — RFC-29b D2 lead reconciliation (CH-6
-// end-to-end coverage of the shipped command surface).
+// `specrun plan propose` — RFC-29 D2 lead reconciliation
+// (end-to-end coverage of the shipped command surface).
 //
 // `--dry-run` emits the `kind: request` envelope (flat lead catalog +
 // project topology) and writes nothing; `--from` schema-gates the
@@ -2478,7 +2478,7 @@ projects:
 ";
 
 /// Hub surveyed inventory: four leads across `docs` + `legacy` (the
-/// RFC-29b §Envelope example, in document order).
+/// proposal-schema envelope example, in document order).
 const PROPOSE_DISCOVERY_HUB: &str = "\
 ## Lead inventory
 
@@ -2520,8 +2520,8 @@ sources:
 slices: []
 ";
 
-/// Multi-source fan-out response, transcribed verbatim from RFC-29b
-/// §Envelope: `identity-api` fans out to two projects (shared `scope`,
+/// Multi-source fan-out response (the proposal-schema envelope
+/// example): `identity-api` fans out to two projects (shared `scope`,
 /// identical `sources`); `password-reset` is a 1:1 scope matched across
 /// sources by summary, with a `depends-on` edge into the contracts
 /// crate.
@@ -2866,7 +2866,7 @@ fn propose_response_schema_rejected() {
 // -- negative: propagated `plan-reconcile-*` codes -------------------
 //
 // Each fixture isolates one invariant by keeping every earlier check in
-// the firing order satisfied (RFC-29b §"Partition invariants").
+// the firing order satisfied (RFC-29 D2 partition invariants).
 
 #[test]
 fn propose_reconcile_lead_orphan() {

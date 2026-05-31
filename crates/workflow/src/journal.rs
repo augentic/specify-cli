@@ -86,7 +86,7 @@ pub enum EventKind {
     /// Stamped `slices[].divergence` via
     /// `specrun plan amend --divergence <likely|accepted|rejected>`.
     /// divergence and writer-ownership contract — the CLI is the single writer. In the
-    /// RFC-29b propose flow the `/spec:plan` agent stages `likely`
+    /// RFC-29 D2 propose flow the `/spec:plan` agent stages `likely`
     /// through this event after `propose --from`; the operator later
     /// flips `accepted` / `rejected` the same way. This is the only
     /// path that writes the `divergence` field.

@@ -505,7 +505,7 @@ mod tests {
         compile_schema(PROPOSAL_JSON_SCHEMA).expect("proposal schema compiles");
     }
 
-    /// The RFC-29b multi-source `kind: request` example validates.
+    /// The multi-source `kind: request` envelope example validates.
     #[test]
     fn proposal_accepts_rfc_request() {
         let request = r#"
@@ -535,7 +535,7 @@ leads:
         validate_proposal_json(request).expect("RFC request example validates");
     }
 
-    /// The RFC-29b N=1 degenerate `kind: response` example validates.
+    /// The N=1 degenerate `kind: response` envelope example validates.
     #[test]
     fn proposal_accepts_rfc_n1_response() {
         let response = r"
@@ -550,7 +550,7 @@ slices:
         validate_proposal_json(response).expect("RFC N=1 response example validates");
     }
 
-    /// The RFC-29b multi-source fan-out `kind: response` example validates.
+    /// The multi-source fan-out `kind: response` envelope example validates.
     #[test]
     fn proposal_accepts_rfc_fanout_response() {
         let response = r#"

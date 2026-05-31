@@ -110,7 +110,7 @@ pub struct ProjectRef {
 /// across rows when multiple sources surface the same slug. Mirrors a
 /// single `discovery.md` [`specify_model::discovery::Lead`] minus the
 /// survey-time `tentative` flag, which is deliberately kept off the
-/// request wire (RFC-29b §"Cross-Source Matching").
+/// request wire (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LeadCatalogEntry {
@@ -373,7 +373,8 @@ pub struct ProposeOutcome {
 
 impl Plan {
     /// Project a validated agent reconciliation response onto
-    /// `plan.yaml.slices[]` (RFC-29b D2 projection kernel).
+    /// `plan.yaml.slices[]` (RFC-29 D2 projection kernel;
+    /// DECISIONS.md §"Lead reconciliation (D2)").
     ///
     /// `response` is assumed to have already passed JSON-Schema
     /// validation (`validate_proposal_json`) at the CLI boundary, so this
@@ -613,7 +614,7 @@ fn derive_targets(bound: &[&ProjectRef]) -> Result<Vec<TargetRef>> {
         .collect()
 }
 
-/// Derive each slice name (RFC-29b §"Slice Names"): an explicit name, else
+/// Derive each slice name (RFC-29 D2 slice-name derivation): an explicit name, else
 /// `scope` for a 1:1 scope, else `<scope>-<project>` across a fan-out
 /// group. Every derived or explicit name must be kebab-case.
 fn derive_names(slices: &[ResponseSlice], bound: &[&ProjectRef]) -> Result<Vec<String>> {
@@ -833,7 +834,7 @@ mod tests {
 
     #[test]
     fn response_round_trips_rfc_multi_source_example() {
-        // Transcribed from RFC-29b §"Envelope" (multi-source response).
+        // Multi-source fan-out response (the proposal-schema envelope example).
         let yaml = "\
 version: 1
 kind: response
@@ -1189,7 +1190,7 @@ slices:
         ];
         let mut plan = plan_with_sources(Lifecycle::Pending, &["docs", "legacy"]);
 
-        // Transcribed from RFC-29b §"Envelope" (multi-source response).
+        // Multi-source fan-out response (the proposal-schema envelope example).
         let yaml = "\
 version: 1
 kind: response
