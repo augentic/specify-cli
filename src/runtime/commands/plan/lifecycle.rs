@@ -5,7 +5,7 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::{
     Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, detect,
-    plan_doctor,
+    plan_doctor, resolve_target, resolve_topology,
 };
 use specify_workflow::config::{ProjectConfig, with_state};
 use specify_workflow::registry::Registry;
@@ -106,6 +106,19 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 /// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let slices_dir = ctx.layout().slices_dir();
+    // The slice's target adapter is no longer stored in `plan.yaml`; it
+    // is resolved on demand from the bound project's topology. Capture
+    // the topology inputs so the advanced entry's `$TARGET` can be
+    // resolved inside the state closure (lazily — only when an entry is
+    // actually selected, so a drained / stuck plan never needs them).
+    // Resolution is best-effort: when the topology cannot be resolved
+    // (no resolvable target adapter, or an unbindable project) the
+    // entry's `target` reports `null` rather than failing `plan next`,
+    // mirroring the pre-removal behaviour for entries that carried no
+    // target. The build phase re-resolves the target before use.
+    let config = ctx.config.clone();
+    let registry = Registry::load(&ctx.project_dir).ok().flatten();
+    let project_dir = ctx.project_dir.clone();
 
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
         let validate_results = plan.validate(Some(&slices_dir), None);
@@ -143,14 +156,20 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
                 active: Some(entry.name.clone()),
                 ..NextBody::default()
             },
-            Some(entry) => NextBody {
-                next: Some(entry.name.clone()),
-                project: entry.project.clone(),
-                target: entry.target.as_ref().map(ToString::to_string),
-                description: entry.description.clone(),
-                sources: Some(entry.sources.clone()),
-                ..NextBody::default()
-            },
+            Some(entry) => {
+                let target = resolve_topology(&config, registry.as_ref(), &project_dir)
+                    .and_then(|topology| resolve_target(entry, &topology))
+                    .ok()
+                    .map(|t| t.to_string());
+                NextBody {
+                    next: Some(entry.name.clone()),
+                    project: entry.project.clone(),
+                    target,
+                    description: entry.description.clone(),
+                    sources: Some(entry.sources.clone()),
+                    ..NextBody::default()
+                }
+            }
         })
     })?;
     ctx.write(&body, write_next_text)?;

@@ -25,7 +25,8 @@ pub use model::{
 };
 pub use propose::{
     LeadCatalog, LeadCatalogEntry, ProjectRef, ProposalKind, ProposalRequest, ProposalResponse,
-    ProposeOutcome, ResponseMember, ResponseSlice, build_catalog, build_request, resolve_topology,
+    ProposeOutcome, ResponseMember, ResponseSlice, build_catalog, build_request, resolve_target,
+    resolve_topology,
 };
 #[cfg(test)]
 pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
@@ -120,7 +121,6 @@ slices:
         Entry {
             name: name.into(),
             project: Some("default".into()),
-            target: None,
             status,
             depends_on: vec![],
             sources: vec![],

@@ -121,31 +121,18 @@ pub struct Plan {
 pub struct Entry {
     /// Stable identifier (kebab-case) unique within the plan.
     pub name: String,
-    /// Target registry project. Required for multi-project registries.
+    /// Target registry project. Optional on disk: an omitted value
+    /// resolves to the sole project in the topology (a single regular
+    /// project synthesised from `project.yaml`), so single-project
+    /// plans need not repeat the project name; multi-project hub
+    /// registries require an explicit value.
+    ///
+    /// The target adapter (`name@vN`) is **not** stored on the slice —
+    /// it is resolved on demand from this project via the topology
+    /// (`registry.yaml` for a hub, `project.yaml.adapter` for a single
+    /// regular project) by [`crate::change::plan::core::resolve_target`].
     #[serde(default)]
     pub project: Option<String>,
-    /// Target-adapter identifier (workflow §Adapter vocabulary) for the
-    /// slice (e.g. `omnia@v1`, `contracts@v1`). Required when
-    /// `project` is `None`; optional override when `project` is
-    /// `Some`. Mutually enriching with `project`: `project` identifies
-    /// the target codebase; `target` identifies the target adapter
-    /// directly. The cross-field "at least one of `project` /
-    /// `target`" rule is enforced by `plan.schema.json` (see
-    /// [DECISIONS.md §"Target adapter suffix policy"]).
-    ///
-    /// On the wire the value is the kebab `name@vN` form — the
-    /// integer suffix is parsed at deserialisation time into the
-    /// [`TargetRef`] newtype and reconciled at plan-validation time
-    /// against the resolved target adapter's `version` field.
-    ///
-    /// Renamed from `adapter` in Wave 0.2 — the on-disk and
-    /// in-memory field is now `target`. The pre-2.0 `adapter`
-    /// alias was dropped together with the schema tightening that
-    /// shipped in the same change.
-    ///
-    /// [DECISIONS.md §"Target adapter suffix policy"]: ../../../../../DECISIONS.md#target-adapter-suffix-policy
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<TargetRef>,
     /// Current lifecycle state of this entry.
     pub status: Status,
     /// Names of other plan entries that must reach `done` before this
@@ -306,28 +293,25 @@ impl SourceBinding {
 }
 
 /// Parsed `<name>@v<version>` target-adapter identifier (workflow §Adapter
-/// vocabulary) used by [`Entry::target`].
+/// vocabulary).
+///
+/// This is the *resolved* target form, produced by
+/// [`crate::change::plan::core::resolve_target`] from a slice's bound
+/// project topology and surfaced by `specrun plan next`, the slice
+/// `.metadata.yaml`, and the build request. It is no longer a stored
+/// `plan.yaml` field — a slice binds only a `project`, and the target
+/// adapter is resolved on demand.
 ///
 /// Wire form is the single kebab string `name@vN` (e.g. `omnia@v1`),
 /// with `name` matching `^[a-z][a-z0-9-]*$` and `N` a non-negative
 /// integer. Deserialisation goes through [`TargetRef::parse`] so any
 /// payload that survives serde already has the `@vN` suffix in valid
-/// form; the `plan.schema.json` regex is the primary defence, and
-/// `FromStr` is the in-process belt-and-braces re-check.
-///
-/// The integer version is reconciled against the
-/// resolved target adapter's `version: u32` field at plan-validation
-/// time; mismatches surface as the kebab discriminant
-/// `plan-target-version-mismatch`. See
-/// [DECISIONS.md §"Target adapter suffix policy"] for the policy
-/// rationale.
+/// form; `FromStr` is the in-process belt-and-braces re-check.
 ///
 /// Construct in-process via [`TargetRef::new`] (already-validated
 /// components, infallible) or via [`FromStr`] / serde
 /// [`Deserialize`] (string parse, fallible). Components are private so
 /// every `TargetRef` value satisfies the wire regex by construction.
-///
-/// [DECISIONS.md §"Target adapter suffix policy"]: ../../../../../DECISIONS.md#target-adapter-suffix-policy
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TargetRef {
     name: String,
@@ -645,11 +629,6 @@ pub struct EntryPatch {
     pub sources: Option<Vec<SliceSourceBinding>>,
     /// Three-way patch over `project`.
     pub project: Patch<String>,
-    /// Three-way patch over `target` (the target-adapter
-    /// identifier — renamed from `adapter`). The CLI parses the
-    /// raw `--target name@vN` flag into [`TargetRef`] before
-    /// materialising the patch.
-    pub target: Patch<TargetRef>,
     /// Three-way patch over `description`.
     pub description: Patch<String>,
     /// Replace `context` wholesale when `Some`.

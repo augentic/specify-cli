@@ -301,7 +301,7 @@ crate project-scope and adapter-scope tool declarations.
 
 The output-role domain types are spelled `Target*`
 (`Target`, `Slice.target`, the `slice-create-target-missing` /
-`plan.entry-needs-project-or-target` / `init-requires-adapter-or-hub`
+`init-requires-adapter-or-hub`
 discriminants, plus every fixture, JSON envelope, and call site). The
 shared manifest *shape* is loaded by the axis-aware module
 `crates/workflow/src/adapter/` (`SourceAdapter` / `TargetAdapter` /
@@ -659,26 +659,42 @@ level. Refer to §"Extraction cache fingerprint inputs" for the extraction-cache
 
 ## Target adapter suffix policy
 
-`plan.yaml.slices[].target` carries the `name@vN` form (e.g.
-`omnia@v1`) and the integer `N` is a load-bearing wire field, not
-decorative metadata:
+A plan slice no longer stores its target adapter. `plan.yaml.slices[]`
+carries only a `project`; the target adapter (`name@vN`, e.g.
+`omnia@v1`) is a denormalised copy of `project → adapter` and is
+**resolved on demand** from the bound project's topology rather than
+persisted. The integer `N` remains a load-bearing wire field wherever a
+resolved target *does* appear (`specrun plan next`, the slice
+`.metadata.yaml`, the build request):
 
-- `schemas/plan/plan.schema.json` pins the wire shape with the regex
-  `^[a-z][a-z0-9-]*@v\d+$`; bare names and non-kebab variants are
-  rejected at schema-validation time.
-- `crates/workflow/src/change/plan/core/model.rs::TargetRef` is the
-  parsed in-memory representation. Serde routes
-  `Option<TargetRef>` through `TargetRef::parse`, so any value that
-  reaches the validator already carries a typed `(name, version)`
-  pair.
-- The cross-field "at least one of `project` / `target`" rule lives
-  inside the schema as a per-slice `anyOf`, so external consumers
-  (Cursor IDE renderers, CI linters) get the same gate as the Rust
-  loader without having to mirror the Rust-only
-  `plan.entry-needs-project-or-target` finding.
-- `plan-target-malformed` is the discriminant reserved for the
-  CLI-flag parser (`--target <raw>`); the schema regex prevents it
-  from being reachable through on-disk YAML.
+- The slice's `project` is optional on disk. An omitted `project`
+  resolves to the sole project in the topology (a single regular
+  project synthesised from `project.yaml`); a multi-project hub
+  requires an explicit `project`. `schemas/plan/plan.schema.json` no
+  longer carries a `target` property or the old "at least one of
+  `project` / `target`" `anyOf` — a slice may legitimately carry
+  neither field.
+- `crates/workflow/src/change/plan/core/propose.rs::resolve_target` is
+  the single read-time resolver. It binds the slice's `project` against
+  the `resolve_topology` output and parses that project's `name@vN`
+  target into `TargetRef`. Binding mirrors the propose kernel:
+  `plan-reconcile-project-orphan` when a named project is absent,
+  `plan-reconcile-project-binding-required` when an omitted project is
+  ambiguous (more than one project), and `plan-target-malformed` when a
+  topology target does not parse.
+- `crates/workflow/src/change/plan/core/model.rs::TargetRef` remains the
+  parsed in-memory representation of a resolved target; it is
+  constructed by `resolve_target`, not deserialised from `plan.yaml`.
+- `specrun plan validate` flags an omitted `project` only when a
+  multi-project `registry.yaml` makes it ambiguous
+  (`plan-reconcile-project-binding-required`); the single-project and
+  no-registry cases auto-resolve. `specrun plan next` resolves the
+  target best-effort and reports `target: null` when the topology
+  cannot be resolved, rather than failing the lifecycle query — the
+  build phase re-resolves before use.
+- The 1:1 `project → target` invariant ("one target per project" in the
+  plugin repo's `adapter-anatomy.md`) is what makes this denormalisation
+  removal safe.
 
 ## Operations typed at parse boundary
 
@@ -839,7 +855,7 @@ RFC-29d build-request schema — is introduced.
 
 **Slice-name derivation.** Names key on the `(scope, project)` pair the partition already proves unique (`plan-reconcile-slice-duplicate`): an explicit agent `name` wins; else a 1:1 scope uses `scope`; else (fan-out) every row uses `<scope>-<project>`. `depends-on` resolves against the derived names and a cyclic graph fails `plan-reconcile-depends-on-cycle`. Derived names are collision-free by construction, so `plan-reconcile-slice-name-collision` can only fire on clashing agent-supplied explicit `name` values.
 
-**Project binding and target derivation.** The agent binds each slice's `project` from the request's `projects[]`; an omitted `project` auto-binds only when exactly one project exists, otherwise `plan-reconcile-project-binding-required`. A named project absent from the topology fails `plan-reconcile-project-orphan`. The kernel writes `project` verbatim and derives `target` from that project's `projects[].target` entry — it never chooses among multiple projects.
+**Project binding and target derivation.** The agent binds each slice's `project` from the request's `projects[]`; an omitted `project` auto-binds only when exactly one project exists, otherwise `plan-reconcile-project-binding-required`. A named project absent from the topology fails `plan-reconcile-project-orphan`. The kernel writes `project` verbatim — it never chooses among multiple projects. The target adapter is **not** written to `plan.yaml`; it is resolved on demand from the bound project via `resolve_target` (the propose kernel still eagerly validates that each bound project's `projects[].target` parses, so a corrupt topology fails at propose time).
 
 **Closed validation vocabulary.** The reconciliation codes are a closed, documented vocabulary of `Error::Validation` outcomes raised via `Error::validation_failed` — **not** new `Error` enum arms — and all land on the existing `EXIT_VALIDATION_FAILED = 2`: `plan-reconcile-empty-catalog`, `plan-reconcile-lead-orphan`, `plan-reconcile-partition`, `plan-reconcile-slice-source-collision`, `plan-reconcile-fanout-source-mismatch`, `plan-reconcile-slice-duplicate`, `plan-reconcile-slice-name-collision`, `plan-reconcile-depends-on-cycle`, `plan-reconcile-project-binding-required`, `plan-reconcile-project-orphan`, `plan-reconcile-plan-not-replaceable`, plus `plan-propose-mode-required` (neither mode selected).
 

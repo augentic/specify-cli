@@ -10,7 +10,6 @@ slices:
   description: null
 - name: registration-duplicate-email-crash
   project: null
-  target: contracts@v1
   status: done
   depends-on: []
   sources: []

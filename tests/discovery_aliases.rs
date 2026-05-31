@@ -68,15 +68,7 @@ fn plan_add_resolves_alias_to_canonical_id() {
 
     specrun()
         .current_dir(project.root())
-        .args([
-            "plan",
-            "add",
-            "password-reset-request",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "legacy=password-reset",
-        ])
+        .args(["plan", "add", "password-reset-request", "--sources", "legacy=password-reset"])
         .assert()
         .success();
 
@@ -110,8 +102,6 @@ fn plan_add_persists_canonical_id() {
             "plan",
             "add",
             "password-reset-flow", // slice name differs from lead id
-            "--target",
-            "omnia@v1",
             "--sources",
             "legacy=password-reset",
         ])
@@ -137,17 +127,7 @@ fn plan_add_unknown_lead_refused() {
 
     let assert = specrun()
         .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "plan",
-            "add",
-            "ghost",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "legacy=never-heard-of-it",
-        ])
+        .args(["--format", "json", "plan", "add", "ghost", "--sources", "legacy=never-heard-of-it"])
         .assert()
         .failure();
     let code = assert.get_output().status.code().expect("exit code");
@@ -169,15 +149,7 @@ fn plan_add_without_discovery_skips_alias() {
 
     specrun()
         .current_dir(project.root())
-        .args([
-            "plan",
-            "add",
-            "wholly-unrelated-slice",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "legacy=opaque-candidate-id",
-        ])
+        .args(["plan", "add", "wholly-unrelated-slice", "--sources", "legacy=opaque-candidate-id"])
         .assert()
         .success();
 
@@ -201,7 +173,7 @@ fn plan_amend_alias_mutates_discovery() {
     // the plan; create one so the orthogonal alias edits land.
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
+        .args(["plan", "add", "user-registration"])
         .assert()
         .success();
 
@@ -239,7 +211,7 @@ fn plan_amend_alias_refused_on_collision() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
+        .args(["plan", "add", "user-registration"])
         .assert()
         .success();
 
@@ -277,7 +249,7 @@ fn plan_amend_remove_alias_is_idempotent() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "password-reset-request", "--target", "omnia@v1"])
+        .args(["plan", "add", "password-reset-request"])
         .assert()
         .success();
 
@@ -325,7 +297,7 @@ fn plan_amend_alias_resolves_same_invocation() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
+        .args(["plan", "add", "user-registration"])
         .assert()
         .success();
 
@@ -420,7 +392,7 @@ fn plan_amend_alias_survives_reapplied_discovery() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "password-reset-request", "--target", "omnia@v1"])
+        .args(["plan", "add", "password-reset-request"])
         .assert()
         .success();
 

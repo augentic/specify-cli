@@ -413,7 +413,7 @@ fn plan_rejects_slice_missing_lead() {
 name: bad
 slices:
   - name: only
-    target: omnia@v1
+    project: app
     sources:
       - source: docs
     status: pending

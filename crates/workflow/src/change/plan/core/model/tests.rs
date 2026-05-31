@@ -84,7 +84,6 @@ fn serializes_kebab_case() {
         entries: vec![Entry {
             name: "entry-one".to_string(),
             project: Some("default".into()),
-            target: None,
             status: Status::InProgress,
             depends_on: vec!["entry-zero".to_string()],
             sources: vec![],
@@ -138,29 +137,30 @@ status: pending
 }
 
 #[test]
-fn target_field_round_trips() {
+fn project_only_round_trips() {
+    // The target adapter is no longer stored on the slice; a slice
+    // carries only its `project` (or omits it to resolve the sole
+    // topology project). The bound project survives a YAML round-trip.
     let yaml = r"name: test
 slices:
   - name: define-contracts
-    target: contracts@v1
+    project: identity-contracts
     status: pending
   - name: impl-auth
     project: auth-service
-    target: omnia@v1
     status: pending
 ";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
-    assert!(plan.entries[0].target.is_some());
-    assert_eq!(plan.entries[0].project, None);
-    assert!(plan.entries[1].target.is_some());
+    assert_eq!(plan.entries[0].project.as_deref(), Some("identity-contracts"));
     assert_eq!(plan.entries[1].project.as_deref(), Some("auth-service"));
 
     let rendered = serde_saphyr::to_string(&plan).expect("serialize");
     let reparsed: Plan = serde_saphyr::from_str(&rendered).expect("reparse");
     assert_eq!(plan, reparsed, "plan must survive a YAML round-trip");
     assert!(
-        rendered.contains("target: contracts@v1") && rendered.contains("target: omnia@v1"),
-        "TargetRef must serialise back to the `name@vN` wire form, got:\n{rendered}",
+        rendered.contains("project: identity-contracts")
+            && rendered.contains("project: auth-service"),
+        "the bound project must serialise back, got:\n{rendered}",
     );
 }
 
@@ -204,7 +204,6 @@ fn patch_omits_status() {
     assert!(patch.depends_on.is_none());
     assert!(patch.sources.is_none());
     assert_eq!(patch.project, Patch::Keep);
-    assert_eq!(patch.target, Patch::Keep);
     assert_eq!(patch.description, Patch::Keep);
     assert!(patch.context.is_none());
 }
@@ -215,11 +214,11 @@ fn binding_round_trips_both_shapes() {
 name: bindings
 slices:
   - name: pure-intent
-    target: omnia@v1
+    project: app
     sources: [intent]
     status: pending
   - name: combined
-    target: omnia@v1
+    project: app
     sources:
       - source: docs
         lead: account-pwd-reset
@@ -263,7 +262,6 @@ fn is_drained_only_when_all_done() {
             Entry {
                 name: "a".into(),
                 project: Some("default".into()),
-                target: None,
                 status: Status::Done,
                 depends_on: vec![],
                 sources: vec![],
@@ -275,7 +273,6 @@ fn is_drained_only_when_all_done() {
             Entry {
                 name: "b".into(),
                 project: Some("default".into()),
-                target: None,
                 status: Status::Done,
                 depends_on: vec![],
                 sources: vec![],
@@ -300,7 +297,6 @@ fn is_executing_when_any_in_progress() {
             Entry {
                 name: "a".into(),
                 project: Some("default".into()),
-                target: None,
                 status: Status::Done,
                 depends_on: vec![],
                 sources: vec![],
@@ -312,7 +308,6 @@ fn is_executing_when_any_in_progress() {
             Entry {
                 name: "b".into(),
                 project: Some("default".into()),
-                target: None,
                 status: Status::InProgress,
                 depends_on: vec![],
                 sources: vec![],
@@ -332,7 +327,6 @@ fn authority_override_round_trips() {
     let yaml = r"name: synthesis-plan
 slices:
   - name: identity-user-registration
-    target: omnia@v1
     project: identity-svc
     status: pending
     sources:
@@ -367,7 +361,7 @@ fn empty_authority_override_elides() {
     let yaml = r"name: tiny
 slices:
   - name: x
-    target: omnia@v1
+    project: app
     status: pending
 ";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");

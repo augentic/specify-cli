@@ -10,9 +10,7 @@ use std::str::FromStr;
 use specify_error::{Error, Result};
 use specify_model::discovery::{Discovery, DiscoveryResolveError};
 use specify_model::evidence::ClaimKind;
-use specify_workflow::change::{
-    Divergence, SliceSourceBinding, SourceBinding, TargetRef, TargetRefParseError,
-};
+use specify_workflow::change::{Divergence, SliceSourceBinding, SourceBinding};
 use specify_workflow::config::Layout;
 
 use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
@@ -121,24 +119,6 @@ pub fn load_discovery(layout: Layout<'_>) -> Result<Option<Discovery>> {
         return Ok(None);
     }
     Ok(Some(Discovery::load(&path)?))
-}
-
-/// Parse a CLI `--target <name@vN>` flag into a [`TargetRef`].
-///
-/// The schema regex on `plan.yaml.slices[].target` is the primary
-/// gate; this helper is the matching gate at the CLI boundary so an
-/// `Error::Argument` surfaces ahead of any plan I/O. The kebab
-/// discriminant on the resulting argument-error is
-/// `plan-target-malformed` per
-/// `DECISIONS.md §"Target adapter suffix policy"`.
-pub fn parse_target_flag(raw: &str) -> Result<TargetRef> {
-    TargetRef::from_str(raw).map_err(|err: TargetRefParseError| Error::Argument {
-        flag: "--target",
-        detail: format!(
-            "{err}. Expected `<name>@v<version>` with kebab `<name>` and a non-negative integer \
-             `<version>` (e.g. `omnia@v1`). Discriminant: plan-target-malformed."
-        ),
-    })
 }
 
 /// Parse the `--divergence` flag value. `likely` / `accepted` /

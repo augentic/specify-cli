@@ -468,7 +468,6 @@ sources:
     path: ./legacy
 slices:
   - name: my-slice
-    target: omnia@v1
     status: pending
     sources:
       - { source: legacy-monolith, lead: my-slice }
@@ -807,7 +806,6 @@ sources:
     path: ./screens
 slices:
   - name: my-slice
-    target: omnia@v1
     status: pending
     sources:
       - { source: ui-screens, lead: my-slice }

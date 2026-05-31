@@ -95,8 +95,9 @@ pub struct ProjectRef {
     /// `plan.yaml.slices[].project`.
     pub name: String,
     /// The project's target adapter in `name@vN` form (e.g.
-    /// `omnia@v1`). Written to `plan.yaml.slices[].target` when a slice
-    /// binds to this project.
+    /// `omnia@v1`). Resolved on demand by [`resolve_target`] for a slice
+    /// bound to this project; it is no longer written to `plan.yaml`
+    /// (a slice stores only its `project`).
     pub target: String,
     /// Single-sentence domain characterisation used by the agent when
     /// more than one project shares a target. Absent stays off the wire.
@@ -409,12 +410,17 @@ impl Plan {
         check_partition(&scope_sets, &catalog)?;
         let bound = bind_projects(slices, topology)?;
         check_slice_duplicates(slices, &bound)?;
-        let targets = derive_targets(&bound)?;
+        // Eagerly validate that every bound project's target parses as
+        // `name@vN` so a corrupt topology fails at propose time, even
+        // though the resolved target is no longer written to disk.
+        for project in &bound {
+            parse_project_target(project)?;
+        }
         let names = derive_names(slices, &bound)?;
         check_name_collisions(&names)?;
 
         let scopes = dedup_scopes(&response);
-        let new_entries = build_entries(response.slices, &names, &bound, &targets);
+        let new_entries = build_entries(response.slices, &names, &bound);
 
         if has_dependency_cycle(&new_entries) {
             return Err(Error::validation_failed(
@@ -596,22 +602,65 @@ fn check_slice_duplicates(slices: &[ResponseSlice], bound: &[&ProjectRef]) -> Re
     Ok(())
 }
 
-/// Derive each slice's `target` from its bound project. Topology targets
-/// are pre-validated, so a parse failure is an internal inconsistency
-/// surfaced as `plan-target-malformed`.
-fn derive_targets(bound: &[&ProjectRef]) -> Result<Vec<TargetRef>> {
-    bound
-        .iter()
-        .map(|project| {
-            TargetRef::parse(&project.target).map_err(|err| {
-                Error::validation_failed(
-                    "plan-target-malformed",
-                    "a project target must parse as name@vN",
-                    err.to_string(),
-                )
-            })
-        })
-        .collect()
+/// Resolve a single slice [`Entry`]'s target adapter from the project
+/// topology.
+///
+/// A slice binds only a `project`; the target adapter (`name@vN`) is
+/// derived here from the bound project's [`ProjectRef::target`]. This is
+/// the single read-time resolver every consumer (`specrun plan next`,
+/// slice `.metadata.yaml` population, the build request) routes through,
+/// so `plan.yaml` never needs to store the denormalised target.
+///
+/// Binding mirrors the propose kernel's project binding: an explicit
+/// [`Entry::project`] must exist in `topology`; an omitted project
+/// auto-binds the sole topology project.
+///
+/// # Errors
+///
+/// - `plan-reconcile-project-orphan` when the named project is absent
+///   from `topology`.
+/// - `plan-reconcile-project-binding-required` when `project` is omitted
+///   but more than one project exists.
+/// - `plan-target-malformed` when the bound project's target does not
+///   parse as `name@vN` (an internal inconsistency — topology targets
+///   are pre-validated).
+pub fn resolve_target(entry: &Entry, topology: &[ProjectRef]) -> Result<TargetRef> {
+    let project = match &entry.project {
+        Some(name) => topology.iter().find(|p| &p.name == name).ok_or_else(|| {
+            Error::validation_failed(
+                "plan-reconcile-project-orphan",
+                "a bound project must exist in the topology",
+                format!("slice '{}' binds unknown project '{name}'", entry.name),
+            )
+        })?,
+        None if topology.len() == 1 => &topology[0],
+        None => {
+            return Err(Error::validation_failed(
+                "plan-reconcile-project-binding-required",
+                "a slice may omit project only when exactly one project exists",
+                format!(
+                    "slice '{}' omits project but {} projects are available",
+                    entry.name,
+                    topology.len()
+                ),
+            ));
+        }
+    };
+    parse_project_target(project)
+}
+
+/// Parse a [`ProjectRef`]'s `name@vN` target into a [`TargetRef`].
+///
+/// Topology targets are pre-validated, so a parse failure is an internal
+/// inconsistency surfaced as `plan-target-malformed`.
+fn parse_project_target(project: &ProjectRef) -> Result<TargetRef> {
+    TargetRef::parse(&project.target).map_err(|err| {
+        Error::validation_failed(
+            "plan-target-malformed",
+            "a project target must parse as name@vN",
+            err.to_string(),
+        )
+    })
 }
 
 /// Derive each slice name (RFC-29 D2 slice-name derivation): an explicit name, else
@@ -660,8 +709,12 @@ fn check_name_collisions(names: &[String]) -> Result<()> {
 
 /// Project the validated response into `plan.yaml.slices[]` entries in
 /// response order, consuming the response's slices.
+///
+/// Each entry binds only its `project`; the target adapter is resolved
+/// on demand from the topology via [`resolve_target`] and is not written
+/// to disk.
 fn build_entries(
-    slices: Vec<ResponseSlice>, names: &[String], bound: &[&ProjectRef], targets: &[TargetRef],
+    slices: Vec<ResponseSlice>, names: &[String], bound: &[&ProjectRef],
 ) -> Vec<Entry> {
     slices
         .into_iter()
@@ -669,7 +722,6 @@ fn build_entries(
         .map(|(idx, slice)| Entry {
             name: names[idx].clone(),
             project: Some(bound[idx].name.clone()),
-            target: Some(targets[idx].clone()),
             status: Status::Pending,
             depends_on: slice.depends_on,
             sources: slice
@@ -1170,7 +1222,8 @@ slices:
         let entry = &plan.entries[0];
         assert_eq!(entry.name, "fix-typo");
         assert_eq!(entry.project.as_deref(), Some("my-app"));
-        assert_eq!(entry.target.as_ref().map(ToString::to_string), Some("omnia@v1".to_string()));
+        // Target is no longer stored; it resolves from the bound project.
+        assert_eq!(resolve_target(entry, &topo).unwrap().to_string(), "omnia@v1");
         assert_eq!(entry.status, Status::Pending);
         assert!(entry.depends_on.is_empty());
         assert_eq!(entry.sources, vec![SliceSourceBinding::structured("intent", "fix-typo")]);
@@ -1254,15 +1307,12 @@ slices:
             vec![Some("identity-contracts"), Some("identity-service"), Some("identity-service")]
         );
 
-        let targets: Vec<Option<String>> =
-            plan.entries.iter().map(|e| e.target.as_ref().map(ToString::to_string)).collect();
+        // Targets are no longer stored; each resolves from its bound project.
+        let targets: Vec<String> =
+            plan.entries.iter().map(|e| resolve_target(e, &topo).unwrap().to_string()).collect();
         assert_eq!(
             targets,
-            vec![
-                Some("contracts@v1".to_string()),
-                Some("omnia@v1".to_string()),
-                Some("omnia@v1".to_string()),
-            ]
+            vec!["contracts@v1".to_string(), "omnia@v1".to_string(), "omnia@v1".to_string()]
         );
 
         assert_eq!(

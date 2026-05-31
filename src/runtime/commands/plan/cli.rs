@@ -190,9 +190,6 @@ pub struct AddArgs {
     /// Target registry project name
     #[arg(long)]
     pub project: Option<String>,
-    /// Plan-entry target-adapter identifier for project-less entries (e.g. `contracts@v1`)
-    #[arg(long)]
-    pub target: Option<String>,
     /// Baseline paths relevant to this change, relative to `.specify/` (repeatable)
     #[arg(long)]
     pub context: Vec<String>,
@@ -254,10 +251,6 @@ pub struct AmendArgs {
     /// Replace project. Pass `--project ""` to clear; omit the flag to leave it unchanged.
     #[arg(long)]
     pub project: Option<String>,
-    /// Replace the plan-entry target-adapter identifier. Pass `--target ""` to clear;
-    /// omit the flag to leave it unchanged.
-    #[arg(long)]
-    pub target: Option<String>,
     /// Replace context paths. Pass `--context` (with no value) to clear; omit the
     /// flag to leave it unchanged.
     #[arg(long, num_args = 0.., value_delimiter = ',')]

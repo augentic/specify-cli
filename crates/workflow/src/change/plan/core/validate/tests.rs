@@ -4,7 +4,7 @@ use specify_model::evidence::ClaimKind;
 use tempfile::tempdir;
 
 use super::super::model::{
-    Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
+    Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
 };
 use super::super::{PLAN_EXAMPLE_YAML, change, plan_with_changes};
 use crate::change::{CYCLE, detect};
@@ -228,42 +228,73 @@ fn project_matches_registry() {
 }
 
 #[test]
-fn neither_project_nor_target_error() {
+fn omitted_project_passes_without_registry() {
+    // A single regular project (no registry) synthesises the sole
+    // topology project, so an omitted `project` resolves and must not
+    // produce a finding.
     let mut e = change("orphan", Status::Pending);
     e.project = None;
     let plan = plan_with_changes(vec![e]);
     let results = plan.validate(None, None);
     assert!(
+        !results.iter().any(|r| r.level == Severity::Error),
+        "an omitted project must validate cleanly without a registry, got: {results:#?}"
+    );
+}
+
+#[test]
+fn omitted_project_flagged_in_multi_project_registry() {
+    let mut e = change("ambiguous", Status::Pending);
+    e.project = None;
+    let plan = plan_with_changes(vec![e]);
+    let registry = Registry {
+        version: 1,
+        projects: vec![
+            RegistryProject {
+                name: "alpha".to_string(),
+                url: ".".to_string(),
+                adapter: "omnia@v1".to_string(),
+                description: None,
+                contracts: None,
+            },
+            RegistryProject {
+                name: "beta".to_string(),
+                url: "git@github.com:org/beta.git".to_string(),
+                adapter: "contracts@v1".to_string(),
+                description: None,
+                contracts: None,
+            },
+        ],
+    };
+    let results = plan.validate(None, Some(&registry));
+    assert!(
         results
             .iter()
-            .any(|r| r.code == "plan.entry-needs-project-or-target" && r.level == Severity::Error),
-        "expected entry-needs-project-or-target error, got: {results:#?}"
+            .any(|r| r.code == "plan-reconcile-project-binding-required"
+                && r.level == Severity::Error),
+        "a multi-project registry must flag an omitted project, got: {results:#?}"
     );
 }
 
 #[test]
-fn target_only_passes() {
-    let mut e = change("contracts", Status::Pending);
+fn omitted_project_ok_in_single_project_registry() {
+    let mut e = change("solo", Status::Pending);
     e.project = None;
-    e.target = Some(TargetRef::new("contracts", 1));
     let plan = plan_with_changes(vec![e]);
-    let results = plan.validate(None, None);
+    let registry = Registry {
+        version: 1,
+        projects: vec![RegistryProject {
+            name: "only".to_string(),
+            url: ".".to_string(),
+            adapter: "omnia@v1".to_string(),
+            description: None,
+            contracts: None,
+        }],
+    };
+    let results = plan.validate(None, Some(&registry));
     assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-target"),
-        "target-only entry must not trigger project-or-target error"
-    );
-}
-
-#[test]
-fn project_and_target_passes() {
-    let mut e = change("impl", Status::Pending);
-    e.project = Some("auth-service".into());
-    e.target = Some(TargetRef::new("omnia", 1));
-    let plan = plan_with_changes(vec![e]);
-    let results = plan.validate(None, None);
-    assert!(
-        !results.iter().any(|r| r.code == "plan.entry-needs-project-or-target"),
-        "entry with both project and target must pass"
+        !results.iter().any(|r| r.code == "plan-reconcile-project-binding-required"),
+        "a single-project registry must auto-resolve an omitted project, got: {results:#?}"
     );
 }
 

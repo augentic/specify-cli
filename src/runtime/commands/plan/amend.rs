@@ -16,7 +16,7 @@ use specify_workflow::schema::validate_plan;
 
 use super::args::{
     bindings_from_args, load_discovery, parse_divergence, parse_override_assigns,
-    parse_slice_pair_args, parse_target_flag,
+    parse_slice_pair_args,
 };
 use super::cli::AmendArgs;
 use super::entry::{Action, EntryBody, write_entry_text};
@@ -34,7 +34,6 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
         divergence,
         description,
         project,
-        target,
         context,
         authority_override,
         clear_authority_override,
@@ -89,11 +88,6 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
                 depends_on: depends_on.clone(),
                 sources: sources_replace,
                 project: Patch::from_string_option(project.clone()),
-                target: match target.clone() {
-                    None => Patch::Keep,
-                    Some(s) if s.is_empty() => Patch::Clear,
-                    Some(s) => Patch::Set(parse_target_flag(&s)?),
-                },
                 description: Patch::from_string_option(description.clone()),
                 context: context.clone(),
                 divergence,

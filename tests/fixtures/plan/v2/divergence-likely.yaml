@@ -10,7 +10,6 @@ sources:
 
 slices:
   - name: identity-password-reset
-    target: omnia@v1
     project: identity-svc
     sources:
       - source: identity-design-notes

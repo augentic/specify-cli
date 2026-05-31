@@ -47,7 +47,6 @@ impl Plan {
                 entry.sources = v;
             }
             patch.project.apply(&mut entry.project);
-            patch.target.apply(&mut entry.target);
             patch.description.apply(&mut entry.description);
             if let Some(v) = patch.context {
                 entry.context = v;
@@ -81,7 +80,6 @@ mod tests {
 
     use super::super::model::{
         Entry, Lifecycle, Patch, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
-        TargetRef,
     };
     use super::super::{change, plan_with_changes};
     use super::*;
@@ -107,7 +105,6 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -166,7 +163,6 @@ mod tests {
                 Entry {
                     name: "foo".into(),
                     project: Some("default".into()),
-                    target: None,
                     status: Status::Pending,
                     depends_on: vec![],
                     sources: vec![SliceSourceBinding::bare("a")],
@@ -255,7 +251,6 @@ mod tests {
         let mut plan = plan_with_changes(vec![Entry {
             name: "foo".into(),
             project: Some("alpha".into()),
-            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -290,59 +285,11 @@ mod tests {
             "foo",
             EntryPatch {
                 project: Patch::Clear,
-                target: Patch::Set(TargetRef::new("contracts", 1)),
                 ..EntryPatch::default()
             },
         )
         .expect("amend clear ok");
         assert_eq!(plan.entries[0].project, None, "Patch::Clear must clear project");
-    }
-
-    #[test]
-    fn amend_target_three_way() {
-        let mut plan = plan_with_changes(vec![Entry {
-            name: "foo".into(),
-            project: Some("default".into()),
-            target: Some(TargetRef::new("omnia", 1)),
-            status: Status::Pending,
-            depends_on: vec![],
-            sources: vec![],
-            context: vec![],
-            description: None,
-            divergence: None,
-            authority_override: SliceAuthorityOverride::default(),
-        }]);
-
-        plan.amend("foo", EntryPatch::default()).expect("amend none ok");
-        assert_eq!(
-            plan.entries[0].target.as_ref().map(ToString::to_string).as_deref(),
-            Some("omnia@v1"),
-            "None must leave target unchanged"
-        );
-
-        plan.amend(
-            "foo",
-            EntryPatch {
-                target: Patch::Set(TargetRef::new("contracts", 1)),
-                ..EntryPatch::default()
-            },
-        )
-        .expect("amend replace ok");
-        assert_eq!(
-            plan.entries[0].target.as_ref().map(ToString::to_string).as_deref(),
-            Some("contracts@v1"),
-            "Patch::Set(s) must replace target"
-        );
-
-        plan.amend(
-            "foo",
-            EntryPatch {
-                target: Patch::Clear,
-                ..EntryPatch::default()
-            },
-        )
-        .expect("amend clear ok");
-        assert_eq!(plan.entries[0].target, None, "Patch::Clear must clear target");
     }
 
     #[test]

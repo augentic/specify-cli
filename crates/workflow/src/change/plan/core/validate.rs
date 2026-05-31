@@ -34,11 +34,11 @@ impl Plan {
         results.extend(check_unknown_depends_on(&self.entries));
         results.extend(check_unknown_sources(self));
         results.extend(check_single_in_progress(&self.entries));
-        results.extend(missing_project_or_target(&self.entries));
         results.extend(check_context_paths(&self.entries));
         results.extend(orphan_authority_override_keys(&self.entries));
         if let Some(reg) = registry {
             results.extend(check_project_in_registry(&self.entries, reg));
+            results.extend(check_project_binding_required(&self.entries, reg));
         }
         if let Some(dir) = slices_dir.filter(|d| d.is_dir()) {
             results.extend(slices_dir_consistency(self, dir));
@@ -160,16 +160,30 @@ fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Find
     out
 }
 
-fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
+/// A slice may omit `project` only when the topology offers exactly one
+/// project (the kernel and [`super::resolve_target`] auto-bind it). When
+/// the registry declares more than one project an omitted `project` is
+/// ambiguous, so flag it early rather than waiting for `plan next` to
+/// fail with `plan-reconcile-project-binding-required`.
+///
+/// The single-regular-project case (no registry) is not reached here —
+/// an omitted `project` there always resolves to the sole synthesised
+/// project.
+fn check_project_binding_required(changes: &[Entry], registry: &Registry) -> Vec<Finding> {
+    if registry.projects.len() <= 1 {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     for entry in changes {
-        if entry.project.is_none() && entry.target.is_none() {
+        if entry.project.is_none() {
             out.push(Finding {
                 level: Severity::Error,
-                code: "plan.entry-needs-project-or-target",
+                code: "plan-reconcile-project-binding-required",
                 message: format!(
-                    "entry '{}' has neither 'project' nor 'target'; at least one is required",
-                    entry.name
+                    "entry '{}' omits 'project' but the registry declares {} projects; \
+                     bind one explicitly",
+                    entry.name,
+                    registry.projects.len()
                 ),
                 entry: Some(entry.name.clone()),
             });

@@ -345,7 +345,7 @@ fn plan_add_appends_pending_entry_json() {
 
     let assert = specrun()
         .current_dir(project.root())
-        .args(["--format", "json", "plan", "add", "foo", "--target", "contracts@v1"])
+        .args(["--format", "json", "plan", "add", "foo"])
         .assert()
         .success();
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
@@ -368,17 +368,10 @@ fn plan_add_rejects_duplicate_name_text() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    specrun()
-        .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "contracts@v1"])
-        .assert()
-        .success();
+    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
-    let assert = specrun()
-        .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "contracts@v1"])
-        .assert()
-        .failure();
+    let assert =
+        specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -392,11 +385,8 @@ fn plan_add_rejects_invalid_name() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    let assert = specrun()
-        .current_dir(project.root())
-        .args(["plan", "add", "NotKebab", "--target", "contracts@v1"])
-        .assert()
-        .failure();
+    let assert =
+        specrun().current_dir(project.root()).args(["plan", "add", "NotKebab"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
@@ -413,10 +403,10 @@ fn plan_remove_drops_pending_entry() {
 name: demo
 slices:
   - name: a
-    target: contracts@v1
+    project: default
     status: pending
   - name: b
-    target: contracts@v1
+    project: default
     status: pending
 ",
     );
@@ -443,10 +433,10 @@ fn plan_remove_refuses_when_depended_on() {
 name: demo
 slices:
   - name: a
-    target: contracts@v1
+    project: default
     status: pending
   - name: b
-    target: contracts@v1
+    project: default
     status: pending
     depends-on: [a]
 ",
@@ -796,8 +786,6 @@ slices:
             "plan",
             "add",
             "registration-duplicate-email-crash",
-            "--target",
-            "contracts@v1",
             "--description",
             "Duplicate email submission returns 500 instead of 409. Modifies user-registration.",
         ])
@@ -1481,15 +1469,15 @@ fn validate_reports_all_health_diagnostics() {
              \x20\x20\x20\x20path: /tmp/elsewhere\n\
              slices:\n\
              \x20\x20- name: cyclic-a\n\
-             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20project: alpha\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyclic-b]\n\
              \x20\x20- name: cyclic-b\n\
-             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20project: alpha\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyclic-a]\n\
              \x20\x20- name: orphaned-source-user\n\
-             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20project: alpha\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20sources: [monolith]\n",
     )
@@ -1556,7 +1544,6 @@ fn validate_reports_adapter_mismatch() {
         "name: demo\n\
              slices:\n\
              \x20\x20- name: alpha-slice\n\
-             \x20\x20\x20\x20target: omnia@v1\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20project: alpha\n",
     )
@@ -1613,11 +1600,11 @@ fn plan_validate_payloads_round_trip_typed() {
              \x20\x20\x20\x20path: /tmp/somewhere\n\
              slices:\n\
              \x20\x20- name: cyc-a\n\
-             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20project: default\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyc-b]\n\
              \x20\x20- name: cyc-b\n\
-             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20project: default\n\
              \x20\x20\x20\x20status: pending\n\
              \x20\x20\x20\x20depends-on: [cyc-a]\n",
     )
@@ -1709,8 +1696,6 @@ fn plan_add_structured_sources_round_trips() {
             "plan",
             "add",
             "foo",
-            "--target",
-            "omnia@v1",
             "--sources",
             "identity-design-notes=user-registration",
         ])
@@ -1734,17 +1719,7 @@ fn plan_add_bare_source_round_trips() {
     // sugar for `{ source: intent, lead: add-search-filter }`.
     specrun()
         .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "plan",
-            "add",
-            "add-search-filter",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "intent",
-        ])
+        .args(["--format", "json", "plan", "add", "add-search-filter", "--sources", "intent"])
         .assert()
         .success();
 
@@ -1768,17 +1743,7 @@ fn plan_add_structured_lead_differs() {
 
     specrun()
         .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "plan",
-            "add",
-            "foo",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "intent=different-candidate",
-        ])
+        .args(["--format", "json", "plan", "add", "foo", "--sources", "intent=different-candidate"])
         .assert()
         .success();
 
@@ -1796,17 +1761,7 @@ fn add_rejects_dangling_equals() {
 
     let assert = specrun()
         .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "plan",
-            "add",
-            "foo",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "intent=",
-        ])
+        .args(["--format", "json", "plan", "add", "foo", "--sources", "intent="])
         .assert()
         .failure();
     let code = assert.get_output().status.code().expect("exit code");
@@ -1820,7 +1775,7 @@ fn plan_amend_add_source_appends_binding() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia@v1", "--sources", "intent"])
+        .args(["plan", "add", "foo", "--sources", "intent"])
         .assert()
         .success();
 
@@ -1848,8 +1803,6 @@ fn plan_amend_remove_source_drops_binding() {
             "plan",
             "add",
             "foo",
-            "--target",
-            "omnia@v1",
             "--sources",
             "intent",
             "--sources",
@@ -1876,7 +1829,7 @@ fn amend_remove_source_unknown_key_errors() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia@v1", "--sources", "intent"])
+        .args(["plan", "add", "foo", "--sources", "intent"])
         .assert()
         .success();
 
@@ -1894,11 +1847,7 @@ fn amend_divergence_accepted_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
-        .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia@v1"])
-        .assert()
-        .success();
+    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
     specrun()
         .current_dir(project.root())
@@ -1918,11 +1867,7 @@ fn amend_divergence_rejected_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
-        .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia@v1"])
-        .assert()
-        .success();
+    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
     specrun()
         .current_dir(project.root())
@@ -1945,11 +1890,7 @@ fn amend_divergence_likely_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
-        .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia@v1"])
-        .assert()
-        .success();
+    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
     specrun()
         .current_dir(project.root())
@@ -1969,11 +1910,7 @@ fn plan_amend_divergence_none_refused() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
-        .current_dir(project.root())
-        .args(["plan", "add", "foo", "--target", "omnia@v1"])
-        .assert()
-        .success();
+    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
     let assert = specrun()
         .current_dir(project.root())
@@ -2000,7 +1937,6 @@ sources:
 slices:
   - name: identity-user-registration
     project: default
-    target: omnia@v1
     status: pending
     sources:
       - source: legacy
@@ -2327,8 +2263,6 @@ fn add_authority_override_seeds_map() {
             "plan",
             "add",
             "identity-user-registration",
-            "--target",
-            "omnia@v1",
             "--sources",
             "legacy=user-registration",
             "--sources",
@@ -2712,8 +2646,9 @@ fn propose_from_n1_auto_bind_golden() {
     assert_eq!(plan.entries.len(), 1);
     let entry = &plan.entries[0];
     assert_eq!(entry.name, "fix-typo");
+    // Target is no longer stored on the slice; the bound project is the
+    // sole binding and the target resolves from it on demand.
     assert_eq!(entry.project.as_deref(), Some("test-proj"));
-    assert_eq!(entry.target.as_ref().map(ToString::to_string), Some("omnia@v1".to_string()));
     assert_eq!(entry.sources.len(), 1);
     assert_eq!(entry.sources[0].source(), "intent");
     assert_eq!(entry.sources[0].lead("fix-typo"), "fix-typo");
@@ -2743,16 +2678,8 @@ fn propose_from_fan_out_golden() {
         [Some("identity-contracts"), Some("identity-service"), Some("identity-service")]
     );
 
-    let targets: Vec<Option<String>> =
-        plan.entries.iter().map(|e| e.target.as_ref().map(ToString::to_string)).collect();
-    assert_eq!(
-        targets,
-        [
-            Some("contracts@v1".to_string()),
-            Some("omnia@v1".to_string()),
-            Some("omnia@v1".to_string())
-        ]
-    );
+    // Targets are no longer stored on slices; the bound projects above
+    // are the sole bindings and resolve to their adapters on demand.
 
     // The fan-out slice carries both matched sources, structured.
     assert_eq!(plan.entries[0].sources.len(), 2);
