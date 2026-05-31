@@ -31,14 +31,14 @@ const DISCOVERY_MD: &str = "\
 
 - lead: user-registration
 - source: legacy
-- summary: Registration endpoint accepting email + password.
+- synopsis: Registration endpoint accepting email + password.
 
 ### legacy:password-reset-request
 
 - lead: password-reset-request
 - source: legacy
 - aliases: [password-reset]
-- summary: Reset endpoint.
+- synopsis: Reset endpoint.
 ";
 
 const PLAN_WITH_SOURCES: &str = "\
@@ -369,14 +369,14 @@ fn slice_validate_alias_collision() {
 - lead: a
 - source: legacy
 - aliases: [shared]
-- summary: A.
+- synopsis: A.
 
 ### legacy:b
 
 - lead: b
 - source: legacy
 - aliases: [shared]
-- summary: B.
+- synopsis: B.
 ",
     );
 
@@ -454,7 +454,7 @@ fn plan_amend_alias_survives_reapplied_discovery() {
 - lead: password-reset-request
 - source: legacy
 - aliases: [password-reset, pwd-reset]
-- summary: Reset endpoint (re-emitted).
+- synopsis: Reset endpoint (re-emitted).
 ",
     );
 

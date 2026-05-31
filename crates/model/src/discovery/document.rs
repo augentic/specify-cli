@@ -14,7 +14,7 @@
 //! - lead: <lead>
 //! - source: <source>
 //! - aliases: [<alias>, <alias>]
-//! - summary: <one-line summary>
+//! - synopsis: <reconciliation-grade headline>
 //! ```
 //!
 //! [`Discovery::load`] parses the file faithfully (preserving prose
@@ -454,7 +454,7 @@ impl Discovery {
 
 /// Render a single `### <source>:<lead>` block onto `out`.
 /// Bullet order mirrors discovery alias contract: `lead`,
-/// `source`, optional `aliases`, `summary`.
+/// `source`, optional `aliases`, `synopsis`.
 fn render_lead(out: &mut String, lead: &Lead) {
     out.push_str("### ");
     out.push_str(&lead.source);
@@ -472,8 +472,8 @@ fn render_lead(out: &mut String, lead: &Lead) {
         out.push_str(&lead.aliases.names.join(", "));
         out.push_str("]\n");
     }
-    out.push_str("- summary: ");
-    out.push_str(&lead.summary);
+    out.push_str("- synopsis: ");
+    out.push_str(&lead.synopsis);
     out.push('\n');
 }
 
@@ -648,7 +648,7 @@ impl<'a> Parser<'a> {
 
         let mut lead: Option<String> = None;
         let mut source: Option<String> = None;
-        let mut summary: Option<String> = None;
+        let mut synopsis: Option<String> = None;
         let mut aliases: Option<Vec<String>> = None;
 
         while self.cursor < self.lines.len() {
@@ -671,8 +671,8 @@ impl<'a> Parser<'a> {
                     "source" => {
                         source = Some(value.to_string());
                     }
-                    "summary" => {
-                        summary = Some(value.to_string());
+                    "synopsis" => {
+                        synopsis = Some(value.to_string());
                     }
                     "aliases" => {
                         aliases = Some(parse_inline_list(value, "aliases")?);
@@ -693,16 +693,16 @@ impl<'a> Parser<'a> {
         // `source` is optional on parse: a `survey` lead-set omits
         // it (attribution is CLI-owned via `merge_survey`), while a
         // persisted `discovery.md` always carries it. The schema
-        // (`required: [lead, source, summary]`) enforces presence
+        // (`required: [lead, source, synopsis]`) enforces presence
         // on the merged document.
         let source = source.unwrap_or_default();
-        let summary = summary
-            .ok_or_else(|| parse_err(format!("lead `{lead}` is missing the `summary:` bullet")))?;
+        let synopsis = synopsis
+            .ok_or_else(|| parse_err(format!("lead `{lead}` is missing the `synopsis:` bullet")))?;
         let aliases = aliases.unwrap_or_default();
         Ok(Lead {
             lead,
             source,
-            summary,
+            synopsis,
             aliases: LeadAliases { names: aliases },
         })
     }
@@ -782,14 +782,14 @@ Some prose before the inventory.
 - lead: user-registration
 - source: legacy
 - aliases: [account-registration, user-signup]
-- summary: Registration endpoint accepting email + password.
+- synopsis: Registration endpoint accepting email + password.
 
 ### legacy:password-reset-request
 
 - lead: password-reset-request
 - source: legacy
 - aliases: [password-reset]
-- summary: Reset endpoint.
+- synopsis: Reset endpoint.
 
 ## Notes
 
@@ -849,14 +849,14 @@ Some trailing prose.
 - lead: a
 - source: legacy
 - aliases: [shared]
-- summary: A.
+- synopsis: A.
 
 ### legacy:b
 
 - lead: b
 - source: legacy
 - aliases: [shared]
-- summary: B.
+- synopsis: B.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
         let err = doc.resolve_lead("shared").expect_err("collision errs");
@@ -883,13 +883,13 @@ Some trailing prose.
                 Lead {
                     lead: "a".to_string(),
                     source: "legacy".to_string(),
-                    summary: "A.".to_string(),
+                    synopsis: "A.".to_string(),
                     aliases: LeadAliases::default(),
                 },
                 Lead {
                     lead: "a".to_string(),
                     source: "legacy".to_string(),
-                    summary: "Duplicate id.".to_string(),
+                    synopsis: "Duplicate id.".to_string(),
                     aliases: LeadAliases::default(),
                 },
             ],
@@ -913,13 +913,13 @@ Some trailing prose.
                 Lead {
                     lead: "user-registration".to_string(),
                     source: "legacy".to_string(),
-                    summary: "From legacy.".to_string(),
+                    synopsis: "From legacy.".to_string(),
                     aliases: LeadAliases::default(),
                 },
                 Lead {
                     lead: "user-registration".to_string(),
                     source: "runtime".to_string(),
-                    summary: "From runtime.".to_string(),
+                    synopsis: "From runtime.".to_string(),
                     aliases: LeadAliases::default(),
                 },
             ],
@@ -939,14 +939,14 @@ Some trailing prose.
 
 - lead: a
 - source: legacy
-- summary: A.
+- synopsis: A.
 
 ### legacy:b
 
 - lead: b
 - source: legacy
 - aliases: [a]
-- summary: B aliases a's id.
+- synopsis: B aliases a's id.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
         let findings = doc.check_alias_collisions();
@@ -965,14 +965,14 @@ Some trailing prose.
 - lead: a
 - source: legacy
 - aliases: [shared]
-- summary: A.
+- synopsis: A.
 
 ### legacy:b
 
 - lead: b
 - source: legacy
 - aliases: [shared]
-- summary: B.
+- synopsis: B.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
         let findings = doc.check_alias_collisions();
@@ -1052,17 +1052,17 @@ Some trailing prose.
 
 - lead: a
 - source: legacy
-- summary: A.
+- synopsis: A.
 ";
         let doc = Discovery::parse(yaml).expect("parse ok");
         assert!(doc.leads[0].aliases.is_empty());
     }
 
-    fn lead(lead: &str, source: &str, summary: &str) -> Lead {
+    fn lead(lead: &str, source: &str, synopsis: &str) -> Lead {
         Lead {
             lead: lead.to_string(),
             source: source.to_string(),
-            summary: summary.to_string(),
+            synopsis: synopsis.to_string(),
             aliases: LeadAliases::default(),
         }
     }
@@ -1081,7 +1081,7 @@ Some trailing prose.
 
         let reloaded = Discovery::load(&path).expect("reload ok");
         let hit = reloaded.leads.iter().find(|c| c.lead == "user-registration").expect("present");
-        assert_eq!(hit.summary, "Registration endpoint (re-surveyed).");
+        assert_eq!(hit.synopsis, "Registration endpoint (re-surveyed).");
         assert_eq!(
             reloaded.leads.iter().filter(|c| c.lead == "user-registration").count(),
             1,
@@ -1111,7 +1111,7 @@ Some trailing prose.
         let reloaded = Discovery::load(&path).expect("reload ok");
         let hit =
             reloaded.leads.iter().find(|c| c.lead == "password-reset-request").expect("present");
-        assert_eq!(hit.summary, "Reset endpoint (re-surveyed).");
+        assert_eq!(hit.synopsis, "Reset endpoint (re-surveyed).");
         assert_eq!(
             hit.aliases.names,
             vec!["password-reset", "pwd-reset"],
@@ -1132,19 +1132,19 @@ Some trailing prose.
 
 - lead: x
 - source: legacy
-- summary: X.
+- synopsis: X.
 
 ### legacy:y
 
 - lead: y
 - source: legacy
-- summary: Y.
+- synopsis: Y.
 
 ### legacy:z
 
 - lead: z
 - source: legacy
-- summary: Z.
+- synopsis: Z.
 ";
         let mut doc = Discovery::parse(doc_md).expect("parse ok");
 

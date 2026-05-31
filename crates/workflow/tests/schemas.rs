@@ -327,24 +327,24 @@ fn evidence_rejects_bad_authority_and_kinds() {
 const LEAD_VALID: &str = r"
 lead: user-registration
 source: legacy-monolith
-summary: Registration endpoint accepting email + password with RFC 5322 validation.
+synopsis: Registration endpoint accepting email + password with RFC 5322 validation.
 ";
 
 const LEAD_INVALID_MISSING_SOURCE_KEY: &str = r"
 lead: user-registration
-summary: bad — source is required.
+synopsis: bad — source is required.
 ";
 
 const LEAD_INVALID_BAD_ID: &str = r"
 lead: User_Registration
 source: legacy-monolith
-summary: Bad id.
+synopsis: Bad id.
 ";
 
 const LEAD_INVALID_TENTATIVE_REMOVED: &str = r"
 lead: user-registration
 source: legacy-monolith
-summary: A lead carrying the retired tentative field.
+synopsis: A lead carrying the retired tentative field.
 tentative: true
 ";
 

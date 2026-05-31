@@ -67,12 +67,12 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // diagnostic per deferred semantic rule. The report is rendered
     // on stdout either way; only a blocking diagnostic gates exit.
     //
-    // The `discovery-lead-summary-thin` content-floor advisory
+    // The `discovery-lead-synopsis-thin` content-floor advisory
     // (RFC-29b-signal D2.1) rides this non-blocking surface — never
     // the pre-adapter gate above, which hard-fails on any finding —
-    // so a thin `summary` nudges without ever parking the slice.
+    // so a thin `synopsis` nudges without ever parking the slice.
     let mut findings = validate_slice(&slice_dir)?;
-    findings.extend(summary_thin(ctx)?);
+    findings.extend(synopsis_thin(ctx)?);
     let blocking = blocking_present(&findings);
     render_report(ctx, findings)?;
 
@@ -266,20 +266,20 @@ fn alias_collisions(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
         .collect())
 }
 
-/// summary content-floor advisory (RFC-29b-signal D2.1). Loads
+/// Synopsis content-floor advisory (RFC-29b-signal D2.1). Loads
 /// `<project_dir>/discovery.md` when present and emits one
-/// non-blocking `discovery-lead-summary-thin` finding per lead whose
-/// `summary` falls below a contentfulness heuristic. Absent
+/// non-blocking `discovery-lead-synopsis-thin` finding per lead whose
+/// `synopsis` falls below a contentfulness heuristic. Absent
 /// `discovery.md` skips the check silently.
 ///
 /// **Non-blocking by design** — surfaced at `suggestion` severity
 /// (`Diagnostic::review`), it never parks planning or transitions a
-/// plan. A thin summary is a nudge to improve the source adapter's
+/// plan. A thin synopsis is a nudge to improve the source adapter's
 /// `survey` brief output, not a gate: cross-source reconciliation is
 /// only ever as good as the discriminating power of each lead's
-/// `summary`, so the floor catches summaries the agent cannot match
+/// `synopsis`, so the floor catches synopses the agent cannot match
 /// or split on at `propose` time.
-fn summary_thin(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
+fn synopsis_thin(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
     let path = ctx.layout().discovery_path();
     if !path.exists() {
         return Ok(Vec::new());
@@ -288,19 +288,19 @@ fn summary_thin(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
     Ok(discovery
         .leads()
         .iter()
-        .filter(|lead| summary_is_thin(&lead.summary))
+        .filter(|lead| synopsis_is_thin(&lead.synopsis))
         .map(|lead| {
             Diagnostic::review(
-                "discovery-lead-summary-thin",
-                "lead summaries should name behaviour distinctly enough to match or split on \
+                "discovery-lead-synopsis-thin",
+                "lead synopses should name behaviour distinctly enough to match or split on \
                  content, not just the slug",
                 format!(
-                    "lead `{}:{}` has a thin summary (`{}`); name the operation/surface and its \
+                    "lead `{}:{}` has a thin synopsis (`{}`); name the operation/surface and its \
                      salient constraint so a same-slug lead from another source can be \
                      reconciled on content",
                     lead.source,
                     lead.lead,
-                    lead.summary.trim()
+                    lead.synopsis.trim()
                 ),
                 Artifact::Plan,
                 None,
@@ -309,27 +309,27 @@ fn summary_thin(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
         .collect())
 }
 
-/// Contentfulness heuristic for a lead `summary` (RFC-29b-signal
-/// D2.1). A summary is "thin" when it carries fewer than
-/// [`SUMMARY_MIN_WORDS`] whitespace-delimited words OR fewer than
-/// [`SUMMARY_MIN_CHARS`] non-whitespace characters once trimmed — too
+/// Contentfulness heuristic for a lead `synopsis` (RFC-29b-signal
+/// D2.1). A synopsis is "thin" when it carries fewer than
+/// [`SYNOPSIS_MIN_WORDS`] whitespace-delimited words OR fewer than
+/// [`SYNOPSIS_MIN_CHARS`] non-whitespace characters once trimmed — too
 /// little for the agent to distinguish it from a same-slug lead in
 /// another source. Deliberately coarse: the finding is advisory, so a
 /// false positive costs the operator nothing.
-fn summary_is_thin(summary: &str) -> bool {
-    let trimmed = summary.trim();
+fn synopsis_is_thin(synopsis: &str) -> bool {
+    let trimmed = synopsis.trim();
     let words = trimmed.split_whitespace().filter(|word| !word.is_empty()).count();
     let chars = trimmed.chars().filter(|character| !character.is_whitespace()).count();
-    words < SUMMARY_MIN_WORDS || chars < SUMMARY_MIN_CHARS
+    words < SYNOPSIS_MIN_WORDS || chars < SYNOPSIS_MIN_CHARS
 }
 
-/// Minimum whitespace-delimited word count below which a `summary` is
+/// Minimum whitespace-delimited word count below which a `synopsis` is
 /// flagged as thin.
-const SUMMARY_MIN_WORDS: usize = 4;
+const SYNOPSIS_MIN_WORDS: usize = 4;
 
-/// Minimum non-whitespace character count below which a `summary` is
+/// Minimum non-whitespace character count below which a `synopsis` is
 /// flagged as thin.
-const SUMMARY_MIN_CHARS: usize = 20;
+const SYNOPSIS_MIN_CHARS: usize = 20;
 
 /// `provenance.yaml` audit index drift gate. Loads `<slice>/provenance.yaml` when present,
 /// gathers `REQ-*` ids from every `<slice>/specs/**/*.md` file and

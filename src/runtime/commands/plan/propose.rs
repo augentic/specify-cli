@@ -208,7 +208,7 @@ fn write_request_text(w: &mut dyn Write, body: &ProposalRequest) -> std::io::Res
     }
     writeln!(w, "leads:")?;
     for lead in &body.leads {
-        writeln!(w, "  - {}/{}: {}", lead.source, lead.lead, lead.summary)?;
+        writeln!(w, "  - {}/{}: {}", lead.source, lead.lead, lead.synopsis)?;
     }
     Ok(())
 }

@@ -2449,7 +2449,7 @@ const PROPOSE_DISCOVERY_N1: &str = "\
 
 - lead: fix-typo
 - source: intent
-- summary: Fix a typo in user.rs.
+- synopsis: Fix a typo in user.rs.
 ";
 
 /// N=1 agent response: omits `project` (kernel auto-binds the sole
@@ -2486,25 +2486,25 @@ const PROPOSE_DISCOVERY_HUB: &str = "\
 
 - lead: identity-api
 - source: docs
-- summary: Identity API contract for authentication and account access.
+- synopsis: Identity API contract for authentication and account access.
 
 ### legacy:identity-api
 
 - lead: identity-api
 - source: legacy
-- summary: Legacy identity endpoints.
+- synopsis: Legacy identity endpoints.
 
 ### docs:password-reset
 
 - lead: password-reset
 - source: docs
-- summary: Users can request a password reset email.
+- synopsis: Users can request a password reset email.
 
 ### legacy:reset-password
 
 - lead: reset-password
 - source: legacy
-- summary: Legacy reset-password flow.
+- synopsis: Legacy reset-password flow.
 ";
 
 /// Hub plan declaring the two surveyed source keys, no slices yet.
@@ -2557,7 +2557,7 @@ const PROPOSE_RESPONSE_FANOUT: &str = r#"{
         { "source": "legacy", "lead": "reset-password" }
       ],
       "project": "identity-service",
-      "rationale": "password-reset (docs) and reset-password (legacy) are the same flow by summary judgment"
+      "rationale": "password-reset (docs) and reset-password (legacy) are the same flow by synopsis judgment"
     }
   ]
 }"#;
@@ -2576,7 +2576,7 @@ fn discovery_doc(leads: &[(&str, &str)]) -> String {
             "### {source}:{lead}\n\n\
              - lead: {lead}\n\
              - source: {source}\n\
-             - summary: {lead} summary.\n\n",
+             - synopsis: {lead} synopsis.\n\n",
         );
     }
     body

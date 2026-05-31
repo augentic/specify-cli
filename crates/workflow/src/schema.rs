@@ -521,16 +521,16 @@ projects:
 leads:
   - source: docs
     lead: identity-api
-    summary: "Identity API contract for authentication and account access."
+    synopsis: "Identity API contract for authentication and account access."
   - source: legacy
     lead: identity-api
-    summary: "Legacy identity endpoints."
+    synopsis: "Legacy identity endpoints."
   - source: docs
     lead: password-reset
-    summary: "Users can request a password reset email."
+    synopsis: "Users can request a password reset email."
   - source: legacy
     lead: reset-password
-    summary: "Legacy reset-password flow."
+    synopsis: "Legacy reset-password flow."
 "#;
         validate_proposal_json(request).expect("RFC request example validates");
     }

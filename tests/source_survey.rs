@@ -66,7 +66,7 @@ const VALID_LEAD_SET: &str = "\
 ### user-registration
 
 - lead: user-registration
-- summary: Registration endpoint accepting email + password.
+- synopsis: Registration endpoint accepting email + password.
 ";
 
 #[test]
@@ -176,7 +176,7 @@ fn agent_finalize_invalid_lead_set_leaves_discovery_untouched() {
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(
         scratch.join("lead-set.md"),
-        "## Lead inventory\n\n### bad_id\n\n- lead: bad_id\n- summary: Bad id.\n",
+        "## Lead inventory\n\n### bad_id\n\n- lead: bad_id\n- synopsis: Bad id.\n",
     )
     .expect("write invalid lead-set.md");
 

@@ -171,7 +171,7 @@ pub struct Entry {
     /// workflow §Plan-time reconciliation — closed enum capturing slice-level
     /// reconciliation outcome. Absent on disk (the default) is semantic `none`.
     /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
-    /// materially-disagreeing lead summaries; `Accepted` /
+    /// materially-disagreeing lead synopses; `Accepted` /
     /// `Rejected` are written by the operator at Gate 1 via
     /// `specrun plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -219,7 +219,7 @@ pub enum Divergence {
     None,
     /// Staged by the `/spec:plan` agent after `propose --from`, via
     /// `specrun plan amend --divergence likely`, on
-    /// materially-disagreeing lead summaries.
+    /// materially-disagreeing lead synopses.
     Likely,
     /// Operator-stamped at Gate 1 — divergence acknowledged and
     /// accepted into the plan.

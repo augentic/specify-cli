@@ -3,7 +3,7 @@
 //! Mirrors `schemas/discovery/lead.schema.json` — one raw, unmerged
 //! lead as surfaced by one source: the `source` that produced
 //! it, the kebab-case `lead` (unique only within that
-//! `source`), the content-bearing per-source `summary`, and
+//! `source`), the content-bearing per-source `synopsis`, and
 //! (discovery alias contract) the optional `aliases[]` list. Identity
 //! is the `(source, lead)`
 //! pair; cross-source unification is deferred to plan time, where
@@ -25,13 +25,13 @@ pub struct Lead {
     /// top-level `plan.yaml.sources.<key>` binding; a `survey`
     /// attributes every lead it produces to its own source key.
     pub source: String,
-    /// Content-bearing per-source summary of the lead as this source
+    /// Content-bearing per-source synopsis of the lead as this source
     /// surfaced it. SHOULD name the operation/surface and its salient
     /// constraint so a same-slug lead from another source can be
     /// matched or distinguished on content; MAY span more than one
     /// line. Plan-time headline material only — never slice-time
     /// `Evidence`.
-    pub summary: String,
+    pub synopsis: String,
     /// Optional alias list (discovery alias contract).
     /// `slices[].sources[].lead` resolves first against `lead`,
     /// then against any entry in `aliases`, within this lead's
@@ -184,7 +184,7 @@ mod tests {
     fn round_trips_minimal_block() {
         let yaml = r"lead: user-registration
 source: legacy
-summary: Registration endpoint accepting email + password.
+synopsis: Registration endpoint accepting email + password.
 ";
         let parsed: Lead = serde_saphyr::from_str(yaml).expect("parse");
         assert_eq!(parsed.lead, "user-registration");
@@ -199,7 +199,7 @@ summary: Registration endpoint accepting email + password.
     fn round_trips_with_aliases() {
         let yaml = r"lead: user-registration
 source: legacy
-summary: Registration endpoint accepting email + password.
+synopsis: Registration endpoint accepting email + password.
 aliases:
   - account-registration
   - user-signup
@@ -217,7 +217,7 @@ aliases:
         let lead = Lead {
             lead: "user-registration".to_string(),
             source: "legacy".to_string(),
-            summary: "Registration.".to_string(),
+            synopsis: "Registration.".to_string(),
             aliases: LeadAliases::from_iter(["account-registration", "user-signup"]),
         };
         assert!(lead.resolves("user-registration"));
@@ -274,7 +274,7 @@ aliases:
         Lead {
             lead: "user-registration".to_string(),
             source: "legacy".to_string(),
-            summary: "Registration.".to_string(),
+            synopsis: "Registration.".to_string(),
             aliases: LeadAliases::default(),
         }
     }
@@ -283,7 +283,7 @@ aliases:
     fn rejects_unknown_fields() {
         let yaml = r"lead: user-registration
 source: legacy
-summary: Registration.
+synopsis: Registration.
 rogue: true
 ";
         let err =

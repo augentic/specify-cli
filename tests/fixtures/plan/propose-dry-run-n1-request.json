@@ -4,7 +4,7 @@
     {
       "lead": "fix-typo",
       "source": "intent",
-      "summary": "Fix a typo in user.rs."
+      "synopsis": "Fix a typo in user.rs."
     }
   ],
   "projects": [

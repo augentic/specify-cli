@@ -4,22 +4,22 @@
     {
       "lead": "identity-api",
       "source": "docs",
-      "summary": "Identity API contract for authentication and account access."
+      "synopsis": "Identity API contract for authentication and account access."
     },
     {
       "lead": "identity-api",
       "source": "legacy",
-      "summary": "Legacy identity endpoints."
+      "synopsis": "Legacy identity endpoints."
     },
     {
       "lead": "password-reset",
       "source": "docs",
-      "summary": "Users can request a password reset email."
+      "synopsis": "Users can request a password reset email."
     },
     {
       "lead": "reset-password",
       "source": "legacy",
-      "summary": "Legacy reset-password flow."
+      "synopsis": "Legacy reset-password flow."
     }
   ],
   "projects": [

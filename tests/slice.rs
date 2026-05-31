@@ -972,12 +972,12 @@ fn validate_skips_provenance_without_metadata() {
 }
 
 // ---------------------------------------------------------------------------
-// slice validate — `discovery-lead-summary-thin` advisory (RFC-29b-signal D2.1)
+// slice validate — `discovery-lead-synopsis-thin` advisory (RFC-29b-signal D2.1)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn validate_flags_thin_summary_non_blocking() {
-    // A thin same-slug summary the agent cannot match or split on,
+fn validate_flags_thin_synopsis_non_blocking() {
+    // A thin same-slug synopsis the agent cannot match or split on,
     // alongside a content-bearing one. The advisory must surface at
     // `suggestion` severity (non-blocking by the shared
     // `blocking_present` predicate — only `critical`/`important`
@@ -999,13 +999,13 @@ fn validate_flags_thin_summary_non_blocking() {
 
 - lead: identity-api
 - source: docs
-- summary: Identity API.
+- synopsis: Identity API.
 
 ### legacy:identity-api
 
 - lead: identity-api
 - source: legacy
-- summary: Authentication and account-access API covering login, token refresh, and profile reads.
+- synopsis: Authentication and account-access API covering login, token refresh, and profile reads.
 ";
     fs::write(project.root().join("discovery.md"), discovery).expect("write discovery.md");
 
@@ -1016,11 +1016,11 @@ fn validate_flags_thin_summary_non_blocking() {
     let report = parse_json(&assert.get_output().stdout);
     let findings = report["findings"].as_array().expect("findings array");
     let thin: Vec<_> =
-        findings.iter().filter(|f| f["rule-id"] == "discovery-lead-summary-thin").collect();
+        findings.iter().filter(|f| f["rule-id"] == "discovery-lead-synopsis-thin").collect();
     assert_eq!(
         thin.len(),
         1,
-        "exactly one thin-summary finding expected (only the `docs:identity-api` lead), got: \
+        "exactly one thin-synopsis finding expected (only the `docs:identity-api` lead), got: \
          {findings:#?}"
     );
     let impact = thin[0]["impact"].as_str().unwrap_or_default();

@@ -117,11 +117,11 @@ pub struct LeadCatalogEntry {
     pub source: String,
     /// Discovery lead id surfaced by this source binding.
     pub lead: String,
-    /// Content-bearing per-source summary — the primary signal for
+    /// Reconciliation-grade per-source headline — the primary signal for
     /// agent cross-source grouping. SHOULD name the operation/surface
     /// and its salient constraint so a same-slug lead from another
     /// source can be matched or distinguished on content.
-    pub summary: String,
+    pub synopsis: String,
     /// Optional alias hints from `discovery.md`. Empty list stays off
     /// the wire and is equivalent to absent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -244,7 +244,7 @@ pub fn build_catalog(discovery: &Discovery) -> LeadCatalog {
 /// and an already-resolved project topology.
 ///
 /// `leads[]` is one [`LeadCatalogEntry`] per `discovery.leads()` row,
-/// carrying `source`, `lead`, `summary`, and any alias hints.
+/// carrying `source`, `lead`, `synopsis`, and any alias hints.
 /// `projects` (produced by [`resolve_topology`]) is embedded verbatim.
 ///
 /// # Errors
@@ -259,7 +259,7 @@ pub fn build_request(discovery: &Discovery, projects: &[ProjectRef]) -> Result<P
         .map(|lead| LeadCatalogEntry {
             source: lead.source.clone(),
             lead: lead.lead.clone(),
-            summary: lead.summary.clone(),
+            synopsis: lead.synopsis.clone(),
             aliases: lead.aliases.names.clone(),
         })
         .collect();
@@ -746,7 +746,7 @@ mod tests {
              ### intent:fix-typo\n\n\
              - lead: fix-typo\n\
              - source: intent\n\
-             - summary: fix typo in user.rs\n",
+             - synopsis: fix typo in user.rs\n",
         );
         let topology =
             vec![project("my-app", "omnia@v1", "Single Omnia service for this repository.")];
@@ -773,15 +773,15 @@ mod tests {
              - lead: identity-api\n\
              - source: docs\n\
              - aliases: [auth-api]\n\
-             - summary: Identity API contract.\n\n\
+             - synopsis: Identity API contract.\n\n\
              ### legacy:identity-api\n\n\
              - lead: identity-api\n\
              - source: legacy\n\
-             - summary: Legacy identity endpoints.\n\n\
+             - synopsis: Legacy identity endpoints.\n\n\
              ### docs:password-reset\n\n\
              - lead: password-reset\n\
              - source: docs\n\
-             - summary: Users can request a password reset email.\n",
+             - synopsis: Users can request a password reset email.\n",
         );
         let topology = vec![
             project("identity-contracts", "contracts@v1", "Versioned API contracts crate."),
@@ -816,11 +816,11 @@ mod tests {
              ### docs:identity-api\n\n\
              - lead: identity-api\n\
              - source: docs\n\
-             - summary: Identity API.\n\n\
+             - synopsis: Identity API.\n\n\
              ### legacy:identity-api\n\n\
              - lead: identity-api\n\
              - source: legacy\n\
-             - summary: Legacy identity.\n",
+             - synopsis: Legacy identity.\n",
         );
         let catalog = build_catalog(&doc);
 
@@ -859,7 +859,7 @@ slices:
       - { source: docs, lead: password-reset }
       - { source: legacy, lead: reset-password }
     project: identity-service
-    rationale: \"password-reset (docs) and reset-password (legacy) are the same flow by summary judgment\"
+    rationale: \"password-reset (docs) and reset-password (legacy) are the same flow by synopsis judgment\"
 ";
         let response: ProposalResponse =
             serde_saphyr::from_str(yaml).expect("response deserialises");
@@ -996,7 +996,7 @@ slices:
                     "### {source}:{lead}\n\n\
                      - lead: {lead}\n\
                      - source: {source}\n\
-                     - summary: {lead} summary\n\n",
+                     - synopsis: {lead} synopsis\n\n",
                 )
             }))
             .collect();
@@ -1215,7 +1215,7 @@ slices:
       - { source: docs, lead: password-reset }
       - { source: legacy, lead: reset-password }
     project: identity-service
-    rationale: \"password-reset (docs) and reset-password (legacy) are the same flow by summary judgment\"
+    rationale: \"password-reset (docs) and reset-password (legacy) are the same flow by synopsis judgment\"
 ";
         let resp: ProposalResponse =
             serde_saphyr::from_str(yaml).expect("multi-source response deserialises");
@@ -1238,7 +1238,7 @@ slices:
         assert_eq!(
             out.scopes[1].rationale.as_deref(),
             Some(
-                "password-reset (docs) and reset-password (legacy) are the same flow by summary judgment"
+                "password-reset (docs) and reset-password (legacy) are the same flow by synopsis judgment"
             )
         );
 

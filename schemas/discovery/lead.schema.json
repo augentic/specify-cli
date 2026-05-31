@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/discovery/lead.schema.json",
   "title": "Specify discovery lead",
-  "description": "Validates a single raw, unmerged `Lead` block under `## Lead inventory` in `discovery.md` per workflow §Discovery handshake. Each block is one lead as surfaced by one source: a `source` naming the binding that produced it, a kebab-case `lead` (unique only within that `source`), a content-bearing per-source `summary`, and an optional `aliases[]` list of kebab-case aliases. Identity is the `(source, lead)` pair; the same `lead` MAY appear under different source keys, and cross-source unification is deferred to `/spec:plan`'s plan-time `propose` sub-step. `slices[].sources[].lead` resolves first against `lead`, then against any `aliases[]` entry, within the binding's `source`; aliases are stable across re-survey. An alias MUST NOT collide with another lead's `lead` or `aliases[]` under the same `source` (`discovery-alias-collision` from `specrun slice validate`).",
+  "description": "Validates a single raw, unmerged `Lead` block under `## Lead inventory` in `discovery.md` per workflow §Discovery handshake. Each block is one lead as surfaced by one source: a `source` naming the binding that produced it, a kebab-case `lead` (unique only within that `source`), a content-bearing per-source `synopsis`, and an optional `aliases[]` list of kebab-case aliases. Identity is the `(source, lead)` pair; the same `lead` MAY appear under different source keys, and cross-source unification is deferred to `/spec:plan`'s plan-time `propose` sub-step. `slices[].sources[].lead` resolves first against `lead`, then against any `aliases[]` entry, within the binding's `source`; aliases are stable across re-survey. An alias MUST NOT collide with another lead's `lead` or `aliases[]` under the same `source` (`discovery-alias-collision` from `specrun slice validate`).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["lead", "source", "summary"],
+  "required": ["lead", "source", "synopsis"],
   "properties": {
     "lead": {
       "$ref": "#/$defs/kebabName",
@@ -15,10 +15,10 @@
       "$ref": "#/$defs/kebabName",
       "description": "Source binding key that surfaced this lead (matches a top-level `plan.yaml.sources.<key>` binding). A `survey` attributes every lead it produces to its own source key."
     },
-    "summary": {
+    "synopsis": {
       "type": "string",
       "minLength": 1,
-      "description": "Content-bearing per-source summary of the lead as this source surfaced it. SHOULD identify the lead's behaviour distinctly enough — name the operation/surface and its salient constraint — that a same-slug lead from another source can be matched or distinguished on content, not just the slug. MAY span more than one line when one is too thin. Plan-time headline material only — never a back-door for slice-time `Evidence`, which remains the job of `extract`."
+      "description": "Reconciliation-grade per-source headline of the lead as this source surfaced it. SHOULD name the operation/surface and its salient constraint distinctly enough that a same-slug lead from another source can be matched or distinguished on content, not just the slug. MAY span more than one line when one is too thin. Plan-time headline material only — never a back-door for slice-time `Evidence`, which remains the job of `extract`."
     },
     "aliases": {
       "type": "array",
