@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/discovery/lead.schema.json",
   "title": "Specify discovery lead",
-  "description": "Validates a single raw, unmerged `Lead` block under `## Lead inventory` in `discovery.md` per workflow §Discovery handshake. Each block is one lead as surfaced by one source: a `source-key` naming the binding that produced it, a kebab-case `lead-id` (unique only within that `source-key`), a one-line per-source `summary`, an optional `tentative` boolean flag, and an optional `aliases[]` list of kebab-case aliases. Identity is the `(source-key, lead-id)` pair; the same `lead-id` MAY appear under different source keys, and cross-source unification is deferred to `/spec:plan`'s plan-time `propose` sub-step. `slices[].sources[].lead-id` resolves first against `lead-id`, then against any `aliases[]` entry, within the binding's `source-key`; aliases are stable across re-survey. An alias MUST NOT collide with another lead's `lead-id` or `aliases[]` under the same `source-key` (`discovery-alias-collision` from `specrun slice validate`).",
+  "description": "Validates a single raw, unmerged `Lead` block under `## Lead inventory` in `discovery.md` per workflow §Discovery handshake. Each block is one lead as surfaced by one source: a `source-key` naming the binding that produced it, a kebab-case `lead-id` (unique only within that `source-key`), a content-bearing per-source `summary`, and an optional `aliases[]` list of kebab-case aliases. Identity is the `(source-key, lead-id)` pair; the same `lead-id` MAY appear under different source keys, and cross-source unification is deferred to `/spec:plan`'s plan-time `propose` sub-step. `slices[].sources[].lead-id` resolves first against `lead-id`, then against any `aliases[]` entry, within the binding's `source-key`; aliases are stable across re-survey. An alias MUST NOT collide with another lead's `lead-id` or `aliases[]` under the same `source-key` (`discovery-alias-collision` from `specrun slice validate`).",
   "type": "object",
   "additionalProperties": false,
   "required": ["lead-id", "source-key", "summary"],
@@ -18,11 +18,7 @@
     "summary": {
       "type": "string",
       "minLength": 1,
-      "description": "One-line human-readable summary of the lead as this source surfaced it."
-    },
-    "tentative": {
-      "type": "boolean",
-      "description": "Optional survey-time uncertainty flag a source adapter may set on its own lead; the operator reconciles at Gate 1. `/spec:plan`'s `propose` sub-step reads these leads but never edits `discovery.md`."
+      "description": "Content-bearing per-source summary of the lead as this source surfaced it. SHOULD identify the lead's behaviour distinctly enough — name the operation/surface and its salient constraint — that a same-slug lead from another source can be matched or distinguished on content, not just the slug. MAY span more than one line when one is too thin. Plan-time headline material only — never a back-door for slice-time `Evidence`, which remains the job of `extract`."
     },
     "aliases": {
       "type": "array",

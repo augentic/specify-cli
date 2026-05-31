@@ -454,8 +454,7 @@ impl Discovery {
 
 /// Render a single `### <source-key>:<lead-id>` block onto `out`.
 /// Bullet order mirrors discovery alias contract: `lead-id`,
-/// `source-key`, optional `aliases`, `summary`, plus the optional
-/// `tentative` flag.
+/// `source-key`, optional `aliases`, `summary`.
 fn render_lead(out: &mut String, lead: &Lead) {
     out.push_str("### ");
     out.push_str(&lead.source_key);
@@ -476,11 +475,6 @@ fn render_lead(out: &mut String, lead: &Lead) {
     out.push_str("- summary: ");
     out.push_str(&lead.summary);
     out.push('\n');
-    if let Some(tentative) = lead.tentative
-        && tentative
-    {
-        out.push_str("- tentative: true\n");
-    }
 }
 
 /// One alias-collision finding emitted by
@@ -656,7 +650,6 @@ impl<'a> Parser<'a> {
         let mut source_key: Option<String> = None;
         let mut summary: Option<String> = None;
         let mut aliases: Option<Vec<String>> = None;
-        let mut tentative: Option<bool> = None;
 
         while self.cursor < self.lines.len() {
             let raw = self.lines[self.cursor];
@@ -684,16 +677,6 @@ impl<'a> Parser<'a> {
                     "aliases" => {
                         aliases = Some(parse_inline_list(value, "aliases")?);
                     }
-                    "tentative" => match value {
-                        "true" => tentative = Some(true),
-                        "false" => tentative = Some(false),
-                        other => {
-                            return Err(parse_err(format!(
-                                "lead `{heading_label}`: tentative must be true or false, \
-                                 got `{other}`"
-                            )));
-                        }
-                    },
                     other => {
                         return Err(parse_err(format!(
                             "lead `{heading_label}`: unknown bullet `{other}`"
@@ -721,7 +704,6 @@ impl<'a> Parser<'a> {
             lead_id,
             source_key,
             summary,
-            tentative,
             aliases: LeadAliases { names: aliases },
         })
     }
@@ -903,14 +885,12 @@ Some trailing prose.
                     lead_id: "a".to_string(),
                     source_key: "legacy".to_string(),
                     summary: "A.".to_string(),
-                    tentative: None,
                     aliases: LeadAliases::default(),
                 },
                 Lead {
                     lead_id: "a".to_string(),
                     source_key: "legacy".to_string(),
                     summary: "Duplicate id.".to_string(),
-                    tentative: None,
                     aliases: LeadAliases::default(),
                 },
             ],
@@ -935,14 +915,12 @@ Some trailing prose.
                     lead_id: "user-registration".to_string(),
                     source_key: "legacy".to_string(),
                     summary: "From legacy.".to_string(),
-                    tentative: None,
                     aliases: LeadAliases::default(),
                 },
                 Lead {
                     lead_id: "user-registration".to_string(),
                     source_key: "runtime".to_string(),
                     summary: "From runtime.".to_string(),
-                    tentative: None,
                     aliases: LeadAliases::default(),
                 },
             ],
@@ -1089,7 +1067,6 @@ Some trailing prose.
             lead_id: lead_id.to_string(),
             source_key: source_key.to_string(),
             summary: summary.to_string(),
-            tentative: None,
             aliases: LeadAliases::default(),
         }
     }

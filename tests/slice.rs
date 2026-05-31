@@ -970,3 +970,64 @@ fn validate_skips_provenance_without_metadata() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// slice validate — `discovery-lead-summary-thin` advisory (RFC-29b-signal D2.1)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_flags_thin_summary_non_blocking() {
+    // A thin same-slug summary the agent cannot match or split on,
+    // alongside a content-bearing one. The advisory must surface at
+    // `suggestion` severity (non-blocking by the shared
+    // `blocking_present` predicate — only `critical`/`important`
+    // violations gate exit), nudging without parking the slice. Only
+    // the thin `docs:identity-api` lead is flagged; the content-bearing
+    // `legacy:identity-api` lead is not. (Adapter validation still
+    // surfaces unrelated findings on this synthetic slice, so the test
+    // asserts on the advisory finding itself rather than the overall
+    // exit code — matching the suite's `assert_no_finding` convention.)
+    let project = Project::init();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+
+    let discovery = "\
+# Discovery — identity
+
+## Lead inventory
+
+### docs:identity-api
+
+- lead-id: identity-api
+- source-key: docs
+- summary: Identity API.
+
+### legacy:identity-api
+
+- lead-id: identity-api
+- source-key: legacy
+- summary: Authentication and account-access API covering login, token refresh, and profile reads.
+";
+    fs::write(project.root().join("discovery.md"), discovery).expect("write discovery.md");
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let report = parse_json(&assert.get_output().stdout);
+    let findings = report["findings"].as_array().expect("findings array");
+    let thin: Vec<_> =
+        findings.iter().filter(|f| f["rule-id"] == "discovery-lead-summary-thin").collect();
+    assert_eq!(
+        thin.len(),
+        1,
+        "exactly one thin-summary finding expected (only the `docs:identity-api` lead), got: \
+         {findings:#?}"
+    );
+    let impact = thin[0]["impact"].as_str().unwrap_or_default();
+    assert!(impact.contains("docs:identity-api"), "finding must name the thin lead, got: {impact}");
+    let severity = thin[0]["severity"].as_str().unwrap_or_default();
+    assert_eq!(
+        severity, "suggestion",
+        "advisory finding must be `suggestion` severity so it never blocks"
+    );
+}

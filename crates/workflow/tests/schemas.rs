@@ -330,13 +330,6 @@ source-key: legacy-monolith
 summary: Registration endpoint accepting email + password with RFC 5322 validation.
 ";
 
-const LEAD_VALID_TENTATIVE: &str = r"
-lead-id: password-reset
-source-key: legacy-monolith
-summary: Operator-initiated password reset via email link.
-tentative: true
-";
-
 const LEAD_INVALID_MISSING_SOURCE_KEY: &str = r"
 lead-id: user-registration
 summary: bad — source-key is required.
@@ -348,26 +341,27 @@ source-key: legacy-monolith
 summary: Bad id.
 ";
 
-const LEAD_INVALID_TENTATIVE_WRONG_TYPE: &str = r"
+const LEAD_INVALID_TENTATIVE_REMOVED: &str = r"
 lead-id: user-registration
 source-key: legacy-monolith
-summary: Bad tentative.
-tentative: maybe
+summary: A lead carrying the retired tentative field.
+tentative: true
 ";
 
 #[test]
-fn lead_accepts_minimal_and_tentative_shapes() {
+fn lead_accepts_minimal_shape() {
     let v = load("discovery/lead.schema.json");
     assert_valid(&v, &yaml(LEAD_VALID), "lead/minimal");
-    assert_valid(&v, &yaml(LEAD_VALID_TENTATIVE), "lead/tentative");
 }
 
 #[test]
-fn lead_rejects_missing_source_key_bad_id_and_tentative() {
+fn lead_rejects_missing_source_key_bad_id_and_retired_tentative() {
     let v = load("discovery/lead.schema.json");
     assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source-key");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
-    assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_WRONG_TYPE), "lead/wrong-tentative-type");
+    // `tentative` was retired (RFC-29b-signal D2.3); the schema is
+    // `additionalProperties: false`, so a lead carrying it now fails.
+    assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_REMOVED), "lead/retired-tentative");
 }
 
 // --- plan/plan.schema.json (source/target adapter split deltas) -------------------------

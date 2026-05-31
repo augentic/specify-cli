@@ -108,9 +108,8 @@ pub struct ProjectRef {
 ///
 /// Identity is the `(source-key, lead-id)` pair; `lead-id` repeats
 /// across rows when multiple sources surface the same slug. Mirrors a
-/// single `discovery.md` [`specify_model::discovery::Lead`] minus the
-/// survey-time `tentative` flag, which is deliberately kept off the
-/// request wire (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
+/// single `discovery.md` [`specify_model::discovery::Lead`]
+/// (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LeadCatalogEntry {
@@ -118,8 +117,10 @@ pub struct LeadCatalogEntry {
     pub source_key: String,
     /// Discovery lead id surfaced by this source binding.
     pub lead_id: String,
-    /// One-line per-source summary — the primary signal for agent
-    /// cross-source grouping.
+    /// Content-bearing per-source summary — the primary signal for
+    /// agent cross-source grouping. SHOULD name the operation/surface
+    /// and its salient constraint so a same-slug lead from another
+    /// source can be matched or distinguished on content.
     pub summary: String,
     /// Optional alias hints from `discovery.md`. Empty list stays off
     /// the wire and is equivalent to absent.
@@ -243,9 +244,8 @@ pub fn build_catalog(discovery: &Discovery) -> LeadCatalog {
 /// and an already-resolved project topology.
 ///
 /// `leads[]` is one [`LeadCatalogEntry`] per `discovery.leads()` row,
-/// carrying `source-key`, `lead-id`, `summary`, and any alias hints. The
-/// survey-time `tentative` flag is deliberately not surfaced. `projects`
-/// (produced by [`resolve_topology`]) is embedded verbatim.
+/// carrying `source-key`, `lead-id`, `summary`, and any alias hints.
+/// `projects` (produced by [`resolve_topology`]) is embedded verbatim.
 ///
 /// # Errors
 ///

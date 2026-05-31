@@ -3,9 +3,9 @@
 //! Mirrors `schemas/discovery/lead.schema.json` — one raw, unmerged
 //! lead as surfaced by one source: the `source-key` that produced
 //! it, the kebab-case `lead-id` (unique only within that
-//! `source-key`), the one-line per-source `summary`, the optional
-//! survey-time `tentative` flag, and (discovery alias contract) the
-//! optional `aliases[]` list. Identity is the `(source-key, lead-id)`
+//! `source-key`), the content-bearing per-source `summary`, and
+//! (discovery alias contract) the optional `aliases[]` list. Identity
+//! is the `(source-key, lead-id)`
 //! pair; cross-source unification is deferred to plan time, where
 //! `/spec:plan`'s `propose` sub-step reads these leads but never edits
 //! `discovery.md`. Operator additions through `specrun plan amend
@@ -25,14 +25,13 @@ pub struct Lead {
     /// top-level `plan.yaml.sources.<key>` binding; a `survey`
     /// attributes every lead it produces to its own source key.
     pub source_key: String,
-    /// One-line human-readable summary of the lead as this source
-    /// surfaced it.
+    /// Content-bearing per-source summary of the lead as this source
+    /// surfaced it. SHOULD name the operation/surface and its salient
+    /// constraint so a same-slug lead from another source can be
+    /// matched or distinguished on content; MAY span more than one
+    /// line. Plan-time headline material only — never slice-time
+    /// `Evidence`.
     pub summary: String,
-    /// Optional survey-time uncertainty flag a source adapter may set
-    /// on its own lead; the operator reconciles at Gate 1. `propose`
-    /// reads leads but never edits `discovery.md`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tentative: Option<bool>,
     /// Optional alias list (discovery alias contract).
     /// `slices[].sources[].lead-id` resolves first against `lead-id`,
     /// then against any entry in `aliases`, within this lead's
@@ -191,11 +190,9 @@ summary: Registration endpoint accepting email + password.
         assert_eq!(parsed.lead_id, "user-registration");
         assert_eq!(parsed.source_key, "legacy");
         assert!(parsed.aliases.is_empty(), "missing aliases must default to empty");
-        assert_eq!(parsed.tentative, None);
 
         let rendered = serde_saphyr::to_string(&parsed).expect("serialise");
         assert!(!rendered.contains("aliases:"), "empty aliases must elide, got:\n{rendered}");
-        assert!(!rendered.contains("tentative:"), "missing tentative must elide");
     }
 
     #[test]
@@ -221,7 +218,6 @@ aliases:
             lead_id: "user-registration".to_string(),
             source_key: "legacy".to_string(),
             summary: "Registration.".to_string(),
-            tentative: None,
             aliases: LeadAliases::from_iter(["account-registration", "user-signup"]),
         };
         assert!(lead.resolves("user-registration"));
@@ -279,7 +275,6 @@ aliases:
             lead_id: "user-registration".to_string(),
             source_key: "legacy".to_string(),
             summary: "Registration.".to_string(),
-            tentative: None,
             aliases: LeadAliases::default(),
         }
     }
