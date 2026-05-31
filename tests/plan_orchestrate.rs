@@ -401,6 +401,68 @@ fn plan_add_rejects_invalid_name() {
     assert!(!saved.contains("NotKebab"), "invalid name must not land in the plan:\n{saved}");
 }
 
+// -- plan remove ------------------------------------------------------
+
+#[test]
+fn plan_remove_drops_pending_entry() {
+    let project = Project::init();
+    project.seed_plan(
+        "\
+name: demo
+slices:
+  - name: a
+    target: contracts@v1
+    status: pending
+  - name: b
+    target: contracts@v1
+    status: pending
+",
+    );
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "remove", "a"])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(actual["action"], "remove");
+    assert_eq!(actual["entry"]["name"], "a");
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
+    assert!(!saved.contains("name: a"), "removed entry must not remain:\n{saved}");
+    assert!(saved.contains("name: b"), "other entry must remain:\n{saved}");
+}
+
+#[test]
+fn plan_remove_refuses_when_depended_on() {
+    let project = Project::init();
+    project.seed_plan(
+        "\
+name: demo
+slices:
+  - name: a
+    target: contracts@v1
+    status: pending
+  - name: b
+    target: contracts@v1
+    status: pending
+    depends-on: [a]
+",
+    );
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["plan", "remove", "a"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
+    assert!(
+        stderr.contains("plan-remove-entry-referenced"),
+        "stderr should name the validation code, got: {stderr:?}"
+    );
+}
+
 // -- plan amend -------------------------------------------------------
 
 #[test]

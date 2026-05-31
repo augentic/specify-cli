@@ -5,6 +5,7 @@ pub mod cli;
 mod create;
 mod entry;
 mod lifecycle;
+mod remove;
 
 use std::path::{Path, PathBuf};
 
@@ -29,6 +30,7 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
         PlanAction::Next => lifecycle::next(ctx),
         PlanAction::Add(args) => add::add(ctx, args),
         PlanAction::Amend(args) => amend::amend(ctx, args),
+        PlanAction::Remove { name } => remove::remove(ctx, name),
         PlanAction::Transition { name, target, undo } => {
             lifecycle::transition(ctx, name, target, undo)
         }

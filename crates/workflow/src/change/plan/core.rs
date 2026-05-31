@@ -6,6 +6,7 @@ pub mod amend;
 pub mod archive;
 pub mod authority_override;
 pub mod create;
+pub mod remove;
 pub mod io;
 pub mod model;
 pub mod next;

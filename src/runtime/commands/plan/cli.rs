@@ -81,6 +81,13 @@ pub enum PlanAction {
     /// so wholesale replacement plus targeted edits can be combined
     /// in a single invocation when needed.
     Amend(AmendArgs),
+    /// Remove a pending plan entry while the plan is still replaceable
+    /// (`lifecycle: pending` and every entry `pending`). Gate 1 curation
+    /// only — defers a lead without re-surveying `discovery.md`.
+    Remove {
+        /// Kebab-case entry name to remove
+        name: String,
+    },
     /// Apply a validated status transition.
     ///
     /// Two transition shapes share this verb (workflow §CLI surface):
