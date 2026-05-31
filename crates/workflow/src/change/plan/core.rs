@@ -6,10 +6,11 @@ pub mod amend;
 pub mod archive;
 pub mod authority_override;
 pub mod create;
-pub mod remove;
 pub mod io;
 pub mod model;
 pub mod next;
+pub mod propose;
+pub mod remove;
 pub mod transitions;
 pub mod validate;
 
@@ -21,6 +22,10 @@ pub use model::{
     Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, Severity,
     SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
     TargetRefParseError,
+};
+pub use propose::{
+    LeadCatalog, LeadCatalogEntry, ProjectRef, ProposalKind, ProposalRequest, ProposalResponse,
+    ProposeOutcome, ResponseMember, ResponseSlice, build_catalog, build_request, resolve_topology,
 };
 #[cfg(test)]
 pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};

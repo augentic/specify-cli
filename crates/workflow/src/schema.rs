@@ -22,8 +22,8 @@ use specify_error::{Error, Result};
 use specify_model::discovery::Lead;
 pub use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA,
-    PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
-    compile_schema, read_yaml_as_json, validate_serialisable, validate_value,
+    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
+    RULE_JSON_SCHEMA, compile_schema, read_yaml_as_json, validate_serialisable, validate_value,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -93,6 +93,38 @@ pub fn validate_plan_file(path: &Path) -> Result<()> {
         )
     })?;
     validate_plan_yaml(&content)
+}
+
+/// Validate a lead-reconciliation envelope against the embedded
+/// `schemas/discovery/proposal.schema.json`.
+///
+/// Backs `specrun plan propose` (RFC-29 D2): the dry-run request the
+/// CLI emits and the agent grouping response read by `--from` share one
+/// schema, discriminated by the closed `kind: request | response`
+/// `oneOf`. A single call validates either kind — there is no separate
+/// request/response entry point.
+///
+/// Both envelopes arrive as JSON (the request on stdout, the response
+/// from stdin or a `--from <file>` path), so parsing through
+/// [`serde_saphyr::from_str`] — which accepts JSON as a YAML subset —
+/// mirrors [`validate_plan_yaml`] and lets hand-authored YAML responses
+/// validate too. On a clean parse the value is checked against
+/// [`PROPOSAL_JSON_SCHEMA`] and any failures are folded into one
+/// payload-free [`Error::Validation`].
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] keyed on the code `"proposal-schema"`
+/// (exit code 2) when parsing or schema validation fails.
+pub fn validate_proposal_json(content: &str) -> Result<()> {
+    let rule = "proposal envelope conforms to schemas/discovery/proposal.schema.json";
+    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed("proposal-schema", rule, format!("parse failed: {err}"))
+    })?;
+    err_from_failures(
+        "proposal-schema",
+        &validation_failures(&instance, PROPOSAL_JSON_SCHEMA, "proposal-schema", rule),
+    )
 }
 
 /// Sorted paths to `.yaml`/`.yml` files under `<slice_dir>/evidence/`.
@@ -465,5 +497,106 @@ mod tests {
     fn missing_evidence_dir_is_ok() {
         let dir = tempfile::tempdir().expect("tempdir");
         validate_evidence_dir(dir.path()).expect("missing evidence dir is ok");
+    }
+
+    /// The embedded proposal envelope schema compiles.
+    #[test]
+    fn proposal_schema_compiles() {
+        compile_schema(PROPOSAL_JSON_SCHEMA).expect("proposal schema compiles");
+    }
+
+    /// The RFC-29b multi-source `kind: request` example validates.
+    #[test]
+    fn proposal_accepts_rfc_request() {
+        let request = r#"
+version: 1
+kind: request
+projects:
+  - name: identity-contracts
+    target: contracts@v1
+    description: "Versioned API contracts crate for the identity domain."
+  - name: identity-service
+    target: omnia@v1
+    description: "Omnia identity service implementing auth and password flows."
+leads:
+  - source-key: docs
+    lead-id: identity-api
+    summary: "Identity API contract for authentication and account access."
+  - source-key: legacy
+    lead-id: identity-api
+    summary: "Legacy identity endpoints."
+  - source-key: docs
+    lead-id: password-reset
+    summary: "Users can request a password reset email."
+  - source-key: legacy
+    lead-id: reset-password
+    summary: "Legacy reset-password flow."
+"#;
+        validate_proposal_json(request).expect("RFC request example validates");
+    }
+
+    /// The RFC-29b N=1 degenerate `kind: response` example validates.
+    #[test]
+    fn proposal_accepts_rfc_n1_response() {
+        let response = r"
+version: 1
+kind: response
+slices:
+  - name: fix-typo
+    scope: fix-typo
+    sources:
+      - { source-key: intent, lead-id: fix-typo }
+";
+        validate_proposal_json(response).expect("RFC N=1 response example validates");
+    }
+
+    /// The RFC-29b multi-source fan-out `kind: response` example validates.
+    #[test]
+    fn proposal_accepts_rfc_fanout_response() {
+        let response = r#"
+version: 1
+kind: response
+slices:
+  - name: identity-contracts
+    scope: identity-api
+    sources:
+      - { source-key: docs, lead-id: identity-api }
+      - { source-key: legacy, lead-id: identity-api }
+    project: identity-contracts
+    rationale: "identity API surface matched by shared slug across docs + legacy"
+  - name: identity-service
+    scope: identity-api
+    sources:
+      - { source-key: docs, lead-id: identity-api }
+      - { source-key: legacy, lead-id: identity-api }
+    project: identity-service
+    depends-on: [identity-contracts]
+  - name: password-reset
+    scope: password-reset
+    sources:
+      - { source-key: docs, lead-id: password-reset }
+      - { source-key: legacy, lead-id: reset-password }
+    project: identity-service
+    rationale: "password-reset (docs) and reset-password (legacy) are the same flow by summary judgment"
+"#;
+        validate_proposal_json(response).expect("RFC fan-out response example validates");
+    }
+
+    /// A malformed envelope (missing `kind`, which leaves it matching
+    /// neither `oneOf` branch) is rejected with the `proposal-schema`
+    /// code.
+    #[test]
+    fn proposal_rejects_malformed_envelope() {
+        let malformed = r"
+version: 1
+slices:
+  - scope: orphan
+    sources:
+      - { source-key: intent, lead-id: orphan }
+";
+        match validate_proposal_json(malformed) {
+            Err(Error::Validation { code, .. }) => assert_eq!(code, "proposal-schema"),
+            other => panic!("expected proposal-schema validation error, got {other:?}"),
+        }
     }
 }

@@ -8,6 +8,7 @@ use super::model::{Lifecycle, Plan, Status};
 impl Plan {
     /// Whether the plan accepts wholesale slice replacement (`propose
     /// --from`) or per-entry removal (`plan remove`).
+    #[must_use]
     pub fn is_replaceable(&self) -> bool {
         self.lifecycle == Lifecycle::Pending
             && self.entries.iter().all(|e| e.status == Status::Pending)
@@ -46,10 +47,7 @@ impl Plan {
             return Err(Error::validation_failed(
                 "plan-remove-entry-referenced",
                 "plan remove refuses when another entry depends on the target",
-                format!(
-                    "slice '{name}' is listed in depends-on by: {}",
-                    referencers.join(", ")
-                ),
+                format!("slice '{name}' is listed in depends-on by: {}", referencers.join(", ")),
             ));
         }
 
@@ -60,7 +58,9 @@ impl Plan {
 
 #[cfg(test)]
 mod tests {
-    use super::super::model::{Entry, Lifecycle, Plan, Status};
+    use std::collections::BTreeMap;
+
+    use super::super::model::{Lifecycle, Plan, Status};
     use super::super::test_fixtures::{change, change_with_deps};
 
     #[test]
@@ -68,7 +68,7 @@ mod tests {
         let mut plan = Plan {
             name: "p".into(),
             lifecycle: Lifecycle::Pending,
-            sources: Default::default(),
+            sources: BTreeMap::default(),
             entries: vec![change("a", Status::Pending), change("b", Status::Pending)],
         };
         plan.remove("a").unwrap();
@@ -81,7 +81,7 @@ mod tests {
         let mut plan = Plan {
             name: "p".into(),
             lifecycle: Lifecycle::Approved,
-            sources: Default::default(),
+            sources: BTreeMap::default(),
             entries: vec![change("a", Status::Pending)],
         };
         let err = plan.remove("a").unwrap_err();
@@ -98,7 +98,7 @@ mod tests {
         let mut plan = Plan {
             name: "p".into(),
             lifecycle: Lifecycle::Pending,
-            sources: Default::default(),
+            sources: BTreeMap::default(),
             entries: vec![
                 change("a", Status::Pending),
                 change_with_deps("b", Status::Pending, &["a"]),

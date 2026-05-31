@@ -280,6 +280,41 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source_key: Option<String>,
     },
+    /// `specrun plan propose --from` validated the agent reconciliation
+    /// response and is about to write `plan.yaml.slices[]`. Emitted
+    /// atomically with [`Self::PlanReconcileCompleted`] — one of each per
+    /// successful invocation, batched through [`append_batch`] in the same
+    /// fsynced write — so the `/spec:plan` skill never calls
+    /// `specrun journal emit` for D2. The payload echoes the deduped
+    /// per-scope grouping the agent produced.
+    #[serde(rename = "plan.reconcile.agent", rename_all = "kebab-case")]
+    PlanReconcileAgent {
+        /// Plan name from `plan.yaml.name`.
+        plan_name: String,
+        /// Reconciled scopes the agent grouped, deduped by `scope` id (a
+        /// fan-out scope projecting to several slices contributes one
+        /// entry). Each carries the scope id and its optional
+        /// cross-source-match `rationale`.
+        scopes: Vec<ReconcileScope>,
+        /// Count of `plan.yaml.slices[]` rows the kernel is about to write
+        /// (one per `(scope, project)` pair).
+        slice_count: usize,
+    },
+    /// `specrun plan propose --from` finished writing `plan.yaml.slices[]`.
+    /// Emitted atomically with [`Self::PlanReconcileAgent`] — one of each
+    /// per successful invocation, batched through [`append_batch`] in the
+    /// same fsynced write — so the `/spec:plan` skill never calls
+    /// `specrun journal emit` for D2. The payload carries the derived
+    /// slice names in the agent's response order.
+    #[serde(rename = "plan.reconcile.completed", rename_all = "kebab-case")]
+    PlanReconcileCompleted {
+        /// Plan name from `plan.yaml.name`.
+        plan_name: String,
+        /// Count of `plan.yaml.slices[]` rows written.
+        slice_count: usize,
+        /// Derived slice names, in the agent's `slices[]` response order.
+        slice_names: Vec<String>,
+    },
     /// `specrun lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
     /// `baseline_present` flag (hard-coded `false` until RFC-33b
@@ -352,6 +387,24 @@ pub struct LintCounts {
     /// `specify-ignore` directive whose rationale begins with
     /// `false-positive:`.
     pub false_positive: u32,
+}
+
+/// One reconciled scope echoed in [`EventKind::PlanReconcileAgent`].
+///
+/// A scope is the cross-source unit of work the agent grouped — the set
+/// of leads it judged to be the same piece of work. Scopes are deduped by
+/// `scope` id before they reach the journal: a fan-out scope projecting to
+/// several `plan.yaml.slices[]` rows contributes one entry here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ReconcileScope {
+    /// Scope id the agent minted and reused verbatim across any fan-out
+    /// group.
+    pub scope: String,
+    /// Optional cross-source-match rationale; absent when the match is
+    /// obvious (e.g. a shared slug). Skipped on the wire when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
 }
 
 /// Closed `reason` enum on [`EventKind::SliceExtractCacheMiss`].
@@ -710,6 +763,50 @@ mod tests {
                     r#""adapter":"captures""#,
                 ],
             ),
+            (
+                EventKind::PlanReconcileAgent {
+                    plan_name: "identity-revamp".to_string(),
+                    scopes: vec![
+                        ReconcileScope {
+                            scope: "identity-api".to_string(),
+                            rationale: Some(
+                                "identity API surface matched by shared slug across docs + legacy"
+                                    .to_string(),
+                            ),
+                        },
+                        ReconcileScope {
+                            scope: "password-reset".to_string(),
+                            rationale: None,
+                        },
+                    ],
+                    slice_count: 3,
+                },
+                &[
+                    r#""event":"plan.reconcile.agent""#,
+                    r#""plan-name":"identity-revamp""#,
+                    r#""slice-count":3"#,
+                    r#""scope":"identity-api""#,
+                    r#""rationale":"identity API surface matched by shared slug across docs + legacy""#,
+                    r#""scope":"password-reset""#,
+                ],
+            ),
+            (
+                EventKind::PlanReconcileCompleted {
+                    plan_name: "identity-revamp".to_string(),
+                    slice_count: 3,
+                    slice_names: vec![
+                        "identity-contracts".to_string(),
+                        "identity-service".to_string(),
+                        "password-reset".to_string(),
+                    ],
+                },
+                &[
+                    r#""event":"plan.reconcile.completed""#,
+                    r#""plan-name":"identity-revamp""#,
+                    r#""slice-count":3"#,
+                    r#""slice-names":["identity-contracts","identity-service","password-reset"]"#,
+                ],
+            ),
         ];
 
         for (kind, required) in rows {
@@ -738,6 +835,80 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_string(&variant).expect("serialise"), format!("\"{wire}\""));
         }
+    }
+
+    #[test]
+    fn plan_reconcile_events_round_trip() {
+        // `specrun plan propose --from` emits both events atomically; lock
+        // their wire shapes plus the `rationale` skip-when-absent rule.
+        let agent = Event::new(
+            test_timestamp("2026-05-22T13:15:00Z"),
+            EventKind::PlanReconcileAgent {
+                plan_name: "identity-revamp".to_string(),
+                scopes: vec![
+                    ReconcileScope {
+                        scope: "identity-api".to_string(),
+                        rationale: Some("matched by shared slug".to_string()),
+                    },
+                    ReconcileScope {
+                        scope: "password-reset".to_string(),
+                        rationale: None,
+                    },
+                ],
+                slice_count: 3,
+            },
+        );
+        let agent_json = serde_json::to_string(&agent).expect("serialise agent");
+        for needle in [
+            r#""event":"plan.reconcile.agent""#,
+            r#""plan-name":"identity-revamp""#,
+            r#""slice-count":3"#,
+            r#""scope":"identity-api""#,
+            r#""rationale":"matched by shared slug""#,
+            r#""scope":"password-reset""#,
+        ] {
+            assert!(
+                agent_json.contains(needle),
+                "agent wire form must contain `{needle}`; got:\n{agent_json}"
+            );
+        }
+        // The scope without a rationale must not serialise the field, so
+        // `rationale` appears exactly once across the payload.
+        assert_eq!(
+            agent_json.matches(r#""rationale""#).count(),
+            1,
+            "absent rationale must be skipped on the wire; got:\n{agent_json}"
+        );
+        let agent_round: Event = serde_json::from_str(&agent_json).expect("deserialise agent");
+        assert_eq!(agent_round, agent, "agent round-trip must preserve every field");
+
+        let completed = Event::new(
+            test_timestamp("2026-05-22T13:15:00Z"),
+            EventKind::PlanReconcileCompleted {
+                plan_name: "identity-revamp".to_string(),
+                slice_count: 3,
+                slice_names: vec![
+                    "identity-contracts".to_string(),
+                    "identity-service".to_string(),
+                    "password-reset".to_string(),
+                ],
+            },
+        );
+        let completed_json = serde_json::to_string(&completed).expect("serialise completed");
+        for needle in [
+            r#""event":"plan.reconcile.completed""#,
+            r#""plan-name":"identity-revamp""#,
+            r#""slice-count":3"#,
+            r#""slice-names":["identity-contracts","identity-service","password-reset"]"#,
+        ] {
+            assert!(
+                completed_json.contains(needle),
+                "completed wire form must contain `{needle}`; got:\n{completed_json}"
+            );
+        }
+        let completed_round: Event =
+            serde_json::from_str(&completed_json).expect("deserialise completed");
+        assert_eq!(completed_round, completed, "completed round-trip must preserve every field");
     }
 
     #[test]
@@ -838,6 +1009,19 @@ mod tests {
                 adapter: "captures".to_string(),
                 operation: SourceOperation::Extract,
             },
+            EventKind::PlanReconcileAgent {
+                plan_name: "p".to_string(),
+                scopes: vec![ReconcileScope {
+                    scope: "s".to_string(),
+                    rationale: Some("r".to_string()),
+                }],
+                slice_count: 1,
+            },
+            EventKind::PlanReconcileCompleted {
+                plan_name: "p".to_string(),
+                slice_count: 1,
+                slice_names: vec!["s".to_string()],
+            },
         ] {
             append_batch(
                 layout,
@@ -846,7 +1030,15 @@ mod tests {
             .expect("append ok");
         }
         let raw = std::fs::read_to_string(path(layout)).expect("read journal");
-        for needle in ["plan_name", "slice_name", "source_key", "requirement_id", "in_progress"] {
+        for needle in [
+            "plan_name",
+            "slice_name",
+            "slice_count",
+            "slice_names",
+            "source_key",
+            "requirement_id",
+            "in_progress",
+        ] {
             assert!(
                 !raw.contains(needle),
                 "snake_case `{needle}` must not appear on the wire; raw:\n{raw}"

@@ -10,15 +10,17 @@
 //! `REGENERATE_GOLDENS=1 cargo test --test plan_orchestrate`.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 use serde_json::Value;
+use specify_workflow::change::Plan;
 use tempfile::{TempDir, tempdir};
 
 mod common;
 use common::{
-    Project, assert_golden_at, omnia_schema_dir, parse_stderr, parse_stdout, repo_root, specrun,
+    Project, assert_golden_at, init_hub, omnia_schema_dir, parse_stderr, parse_stdout, repo_root,
+    specrun,
 };
 
 fn plan_fixtures() -> PathBuf {
@@ -450,11 +452,8 @@ slices:
 ",
     );
 
-    let assert = specrun()
-        .current_dir(project.root())
-        .args(["plan", "remove", "a"])
-        .assert()
-        .failure();
+    let assert =
+        specrun().current_dir(project.root()).args(["plan", "remove", "a"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -2416,4 +2415,654 @@ fn plan_amend_override_bad_kind_refused() {
         stderr_str.contains("bogus-kind"),
         "expected the bad kind name to appear in stderr, got:\n{stderr_str}"
     );
+}
+
+// ===================================================================
+// `specrun plan propose` — RFC-29b D2 lead reconciliation (CH-6
+// end-to-end coverage of the shipped command surface).
+//
+// `--dry-run` emits the `kind: request` envelope (flat lead catalog +
+// project topology) and writes nothing; `--from` schema-gates the
+// agent response, projects it onto `plan.yaml.slices[]`, and emits the
+// paired `plan.reconcile.{agent,completed}` journal events. JSON shapes
+// are pinned by goldens under `tests/fixtures/plan/`; regenerate with
+// `REGENERATE_GOLDENS=1 cargo test --test plan_orchestrate`.
+// ===================================================================
+
+// -- propose seeds ----------------------------------------------------
+
+/// N=1 plan: a single `intent` source, no slices yet (replaceable).
+const PROPOSE_PLAN_N1: &str = "\
+name: demo
+sources:
+  intent:
+    adapter: intent
+    value: \"Fix a typo in user.rs.\"
+slices: []
+";
+
+/// N=1 surveyed inventory: one `intent` lead.
+const PROPOSE_DISCOVERY_N1: &str = "\
+## Lead inventory
+
+### intent:fix-typo
+
+- lead-id: fix-typo
+- source-key: intent
+- summary: Fix a typo in user.rs.
+";
+
+/// N=1 agent response: omits `project` (kernel auto-binds the sole
+/// project) and `name` (kernel derives it from `scope`).
+const PROPOSE_RESPONSE_N1: &str = r#"{
+  "version": 1,
+  "kind": "response",
+  "slices": [
+    { "scope": "fix-typo", "sources": [{ "source-key": "intent", "lead-id": "fix-typo" }] }
+  ]
+}"#;
+
+/// Hub registry with two projects bound to different target adapters —
+/// the topology the fan-out response binds against.
+const PROPOSE_REGISTRY_HUB: &str = "\
+version: 1
+projects:
+  - name: identity-contracts
+    url: git@github.com:org/identity-contracts.git
+    adapter: contracts@v1
+    description: Versioned API contracts crate for the identity domain.
+  - name: identity-service
+    url: git@github.com:org/identity-service.git
+    adapter: omnia@v1
+    description: Omnia identity service implementing auth and password flows.
+";
+
+/// Hub surveyed inventory: four leads across `docs` + `legacy` (the
+/// RFC-29b §Envelope example, in document order).
+const PROPOSE_DISCOVERY_HUB: &str = "\
+## Lead inventory
+
+### docs:identity-api
+
+- lead-id: identity-api
+- source-key: docs
+- summary: Identity API contract for authentication and account access.
+
+### legacy:identity-api
+
+- lead-id: identity-api
+- source-key: legacy
+- summary: Legacy identity endpoints.
+
+### docs:password-reset
+
+- lead-id: password-reset
+- source-key: docs
+- summary: Users can request a password reset email.
+
+### legacy:reset-password
+
+- lead-id: reset-password
+- source-key: legacy
+- summary: Legacy reset-password flow.
+";
+
+/// Hub plan declaring the two surveyed source keys, no slices yet.
+const PROPOSE_PLAN_HUB: &str = "\
+name: identity-revamp
+sources:
+  docs:
+    adapter: documentation
+    path: ./docs
+  legacy:
+    adapter: code-typescript
+    path: ./legacy
+slices: []
+";
+
+/// Multi-source fan-out response, transcribed verbatim from RFC-29b
+/// §Envelope: `identity-api` fans out to two projects (shared `scope`,
+/// identical `sources`); `password-reset` is a 1:1 scope matched across
+/// sources by summary, with a `depends-on` edge into the contracts
+/// crate.
+const PROPOSE_RESPONSE_FANOUT: &str = r#"{
+  "version": 1,
+  "kind": "response",
+  "slices": [
+    {
+      "name": "identity-contracts",
+      "scope": "identity-api",
+      "sources": [
+        { "source-key": "docs", "lead-id": "identity-api" },
+        { "source-key": "legacy", "lead-id": "identity-api" }
+      ],
+      "project": "identity-contracts",
+      "rationale": "identity API surface matched by shared slug across docs + legacy"
+    },
+    {
+      "name": "identity-service",
+      "scope": "identity-api",
+      "sources": [
+        { "source-key": "docs", "lead-id": "identity-api" },
+        { "source-key": "legacy", "lead-id": "identity-api" }
+      ],
+      "project": "identity-service",
+      "depends-on": ["identity-contracts"]
+    },
+    {
+      "name": "password-reset",
+      "scope": "password-reset",
+      "sources": [
+        { "source-key": "docs", "lead-id": "password-reset" },
+        { "source-key": "legacy", "lead-id": "reset-password" }
+      ],
+      "project": "identity-service",
+      "rationale": "password-reset (docs) and reset-password (legacy) are the same flow by summary judgment"
+    }
+  ]
+}"#;
+
+// -- propose helpers --------------------------------------------------
+
+/// Build a minimal `discovery.md` body with one `### source:lead` block
+/// per `(source-key, lead-id)` pair — mirrors the kernel unit-test
+/// seeding so negative fixtures stay one-liners.
+fn discovery_doc(leads: &[(&str, &str)]) -> String {
+    use std::fmt::Write as _;
+    let mut body = String::from("## Lead inventory\n\n");
+    for (source_key, lead_id) in leads {
+        let _ = write!(
+            body,
+            "### {source_key}:{lead_id}\n\n\
+             - lead-id: {lead_id}\n\
+             - source-key: {source_key}\n\
+             - summary: {lead_id} summary.\n\n",
+        );
+    }
+    body
+}
+
+fn seed_discovery(root: &Path, body: &str) {
+    fs::write(root.join("discovery.md"), body).expect("write discovery.md");
+}
+
+/// Write a `--from` response file under `root`, returning its path.
+fn write_response(root: &Path, body: &str) -> PathBuf {
+    let path = root.join("response.json");
+    fs::write(&path, body).expect("write response.json");
+    path
+}
+
+/// Scaffold a hub-mode project in a fresh tempdir, seeding
+/// `registry.yaml`, `discovery.md`, and `plan.yaml`.
+fn hub_project(registry: &str, discovery: &str, plan: &str) -> TempDir {
+    let tmp = tempdir().expect("tempdir");
+    init_hub(&tmp, "platform-hub");
+    fs::write(tmp.path().join("registry.yaml"), registry).expect("write registry.yaml");
+    seed_discovery(tmp.path(), discovery);
+    fs::write(tmp.path().join("plan.yaml"), plan).expect("write plan.yaml");
+    tmp
+}
+
+/// Run `plan propose --from <body>` expecting an exit-2 abort and
+/// return the parsed `--format json` stderr envelope.
+fn propose_from_stderr(root: &Path, body: &str) -> Value {
+    let response = write_response(root, body);
+    let assert = specrun()
+        .current_dir(root)
+        .args(["--format", "json", "plan", "propose", "--from"])
+        .arg(&response)
+        .assert()
+        .failure();
+    assert_eq!(
+        assert.get_output().status.code(),
+        Some(2),
+        "every propose --from invariant aborts at exit 2"
+    );
+    parse_stderr(&assert.get_output().stderr, root)
+}
+
+/// Run `plan propose --from <body>` expecting success and return the
+/// parsed `--format json` stdout summary.
+fn propose_from_ok(root: &Path, body: &str) -> Value {
+    let response = write_response(root, body);
+    let assert = specrun()
+        .current_dir(root)
+        .args(["--format", "json", "plan", "propose", "--from"])
+        .arg(&response)
+        .assert()
+        .success();
+    parse_stdout(&assert.get_output().stdout, root)
+}
+
+// -- dry-run request envelope goldens --------------------------------
+
+#[test]
+fn propose_dry_run_n1_request_golden() {
+    // N=1: the sole regular project is synthesised from `project.yaml`
+    // (`test-proj` → `omnia@v1`); one `intent` lead surfaces.
+    let project = Project::init();
+    project.seed_plan(PROPOSE_PLAN_N1);
+    seed_discovery(project.root(), PROPOSE_DISCOVERY_N1);
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "propose", "--dry-run"])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+
+    assert_eq!(actual["kind"], "request");
+    assert_eq!(actual["projects"].as_array().expect("projects").len(), 1);
+    assert_eq!(actual["projects"][0]["name"], "test-proj");
+    assert_eq!(actual["projects"][0]["target"], "omnia@v1");
+    assert_eq!(actual["leads"].as_array().expect("leads").len(), 1);
+    assert_eq!(actual["leads"][0]["source-key"], "intent");
+    assert_eq!(actual["leads"][0]["lead-id"], "fix-typo");
+
+    // The plan is untouched by --dry-run.
+    assert_eq!(fs::read_to_string(project.plan_path()).expect("read plan"), PROPOSE_PLAN_N1);
+
+    assert_golden("propose-dry-run-n1-request.json", actual);
+}
+
+#[test]
+fn propose_dry_run_hub_request_golden() {
+    // Hub: the registry's two projects and four leads across two
+    // sources project verbatim into the request envelope.
+    let tmp = hub_project(PROPOSE_REGISTRY_HUB, PROPOSE_DISCOVERY_HUB, PROPOSE_PLAN_HUB);
+
+    let assert = specrun()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "propose", "--dry-run"])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, tmp.path());
+
+    assert_eq!(actual["kind"], "request");
+    let projects = actual["projects"].as_array().expect("projects array");
+    assert_eq!(projects.len(), 2);
+    assert_eq!(projects[0]["name"], "identity-contracts");
+    assert_eq!(projects[0]["target"], "contracts@v1");
+    assert_eq!(projects[1]["name"], "identity-service");
+    let leads = actual["leads"].as_array().expect("leads array");
+    assert_eq!(leads.len(), 4);
+
+    assert_golden("propose-dry-run-hub-request.json", actual);
+}
+
+// -- `--from` happy-path goldens -------------------------------------
+
+#[test]
+fn propose_from_n1_auto_bind_golden() {
+    let project = Project::init();
+    project.seed_plan(PROPOSE_PLAN_N1);
+    seed_discovery(project.root(), PROPOSE_DISCOVERY_N1);
+
+    let actual = propose_from_ok(project.root(), PROPOSE_RESPONSE_N1);
+    assert_eq!(actual["plan"]["name"], "demo");
+    assert_eq!(actual["slice-count"], 1);
+    assert_eq!(actual["scope-count"], 1);
+    assert_eq!(actual["slice-names"], serde_json::json!(["fix-typo"]));
+    assert_golden("propose-from-n1-summary.json", actual);
+
+    // The projected plan: one slice, target derived from the
+    // auto-bound project, structured source binding.
+    let plan = Plan::load(&project.plan_path()).expect("load plan");
+    assert_eq!(plan.entries.len(), 1);
+    let entry = &plan.entries[0];
+    assert_eq!(entry.name, "fix-typo");
+    assert_eq!(entry.project.as_deref(), Some("test-proj"));
+    assert_eq!(entry.target.as_ref().map(ToString::to_string), Some("omnia@v1".to_string()));
+    assert_eq!(entry.sources.len(), 1);
+    assert_eq!(entry.sources[0].source_key(), "intent");
+    assert_eq!(entry.sources[0].lead_id("fix-typo"), "fix-typo");
+}
+
+#[test]
+fn propose_from_fan_out_golden() {
+    let tmp = hub_project(PROPOSE_REGISTRY_HUB, PROPOSE_DISCOVERY_HUB, PROPOSE_PLAN_HUB);
+
+    let actual = propose_from_ok(tmp.path(), PROPOSE_RESPONSE_FANOUT);
+    assert_eq!(actual["plan"]["name"], "identity-revamp");
+    assert_eq!(actual["slice-count"], 3);
+    assert_eq!(actual["scope-count"], 2);
+    assert_eq!(
+        actual["slice-names"],
+        serde_json::json!(["identity-contracts", "identity-service", "password-reset"])
+    );
+    assert_golden("propose-from-fan-out-summary.json", actual);
+
+    let plan = Plan::load(&tmp.path().join("plan.yaml")).expect("load plan");
+    let names: Vec<&str> = plan.entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, ["identity-contracts", "identity-service", "password-reset"]);
+
+    let projects: Vec<Option<&str>> = plan.entries.iter().map(|e| e.project.as_deref()).collect();
+    assert_eq!(
+        projects,
+        [Some("identity-contracts"), Some("identity-service"), Some("identity-service")]
+    );
+
+    let targets: Vec<Option<String>> =
+        plan.entries.iter().map(|e| e.target.as_ref().map(ToString::to_string)).collect();
+    assert_eq!(
+        targets,
+        [
+            Some("contracts@v1".to_string()),
+            Some("omnia@v1".to_string()),
+            Some("omnia@v1".to_string())
+        ]
+    );
+
+    // The fan-out slice carries both matched sources, structured.
+    assert_eq!(plan.entries[0].sources.len(), 2);
+    assert_eq!(plan.entries[0].sources[0].source_key(), "docs");
+    assert_eq!(plan.entries[0].sources[1].source_key(), "legacy");
+    // The 1:1 scope keeps the cross-source lead-ids verbatim.
+    assert_eq!(plan.entries[2].sources[1].source_key(), "legacy");
+    assert_eq!(plan.entries[2].sources[1].lead_id("password-reset"), "reset-password");
+    // depends-on resolves to a derived slice name.
+    assert_eq!(plan.entries[1].depends_on, ["identity-contracts"]);
+    assert!(plan.entries[0].depends_on.is_empty());
+}
+
+// -- journal tail -----------------------------------------------------
+
+#[test]
+fn propose_from_emits_paired_journal_tail() {
+    let tmp = hub_project(PROPOSE_REGISTRY_HUB, PROPOSE_DISCOVERY_HUB, PROPOSE_PLAN_HUB);
+    let response = write_response(tmp.path(), PROPOSE_RESPONSE_FANOUT);
+    specrun()
+        .current_dir(tmp.path())
+        .args(["plan", "propose", "--from"])
+        .arg(&response)
+        .assert()
+        .success();
+
+    let raw = fs::read_to_string(tmp.path().join(".specify/journal.jsonl")).expect("read journal");
+    let events: Vec<Value> = raw
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| serde_json::from_str(l).expect("journal line is JSON"))
+        .collect();
+    assert_eq!(events.len(), 2, "exactly the two reconcile events fire, got:\n{events:#?}");
+
+    // First: plan.reconcile.agent with deduped scopes (the fan-out
+    // scope contributes a single entry that carries its rationale).
+    let agent = &events[0];
+    assert_eq!(agent["event"], "plan.reconcile.agent");
+    assert_eq!(agent["payload"]["plan-name"], "identity-revamp");
+    assert_eq!(agent["payload"]["slice-count"], 3);
+    let scopes = agent["payload"]["scopes"].as_array().expect("scopes array");
+    assert_eq!(scopes.len(), 2, "the identity-api fan-out scope dedupes to one entry: {scopes:#?}");
+    assert_eq!(scopes[0]["scope"], "identity-api");
+    assert_eq!(
+        scopes[0]["rationale"],
+        "identity API surface matched by shared slug across docs + legacy"
+    );
+    assert_eq!(scopes[1]["scope"], "password-reset");
+
+    // Then: plan.reconcile.completed with the derived names in order.
+    let completed = &events[1];
+    assert_eq!(completed["event"], "plan.reconcile.completed");
+    assert_eq!(completed["payload"]["plan-name"], "identity-revamp");
+    assert_eq!(completed["payload"]["slice-count"], 3);
+    assert_eq!(
+        completed["payload"]["slice-names"],
+        serde_json::json!(["identity-contracts", "identity-service", "password-reset"])
+    );
+}
+
+// -- negative: command-mode + response read/parse gates --------------
+
+#[test]
+fn propose_mode_required() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "propose"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let body = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(body["error"], "plan-propose-mode-required");
+}
+
+#[test]
+fn propose_response_not_found() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    let missing = project.root().join("absent.json");
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "propose", "--from"])
+        .arg(&missing)
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let body = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(body["error"], "plan-propose-response-not-found");
+}
+
+#[test]
+fn propose_response_schema_rejected() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "a")]));
+
+    // Drop the required `kind` discriminator: the envelope matches
+    // neither `oneOf` branch and is rejected by the schema gate before
+    // the structural deserialise.
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"slices":[{"scope":"a","sources":[{"source-key":"docs","lead-id":"a"}]}]}"#,
+    );
+    assert_eq!(body["error"], "proposal-schema");
+}
+
+// -- negative: propagated `plan-reconcile-*` codes -------------------
+//
+// Each fixture isolates one invariant by keeping every earlier check in
+// the firing order satisfied (RFC-29b §"Partition invariants").
+
+#[test]
+fn propose_reconcile_lead_orphan() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "real")]));
+
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"ghost"}]}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-lead-orphan");
+}
+
+#[test]
+fn propose_reconcile_slice_source_collision() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
+
+    // One slice names two leads from the same source.
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"},{"source-key":"docs","lead-id":"b"}]}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-slice-source-collision");
+}
+
+#[test]
+fn propose_reconcile_fanout_source_mismatch() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
+
+    // Two slices share `scope: s` but carry differing sources.
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]},{"scope":"s","sources":[{"source-key":"docs","lead-id":"b"}]}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-fanout-source-mismatch");
+}
+
+#[test]
+fn propose_reconcile_partition_gap() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
+
+    // The catalog carries two leads; the response covers only `a`.
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-partition");
+}
+
+#[test]
+fn propose_reconcile_project_orphan() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "a")]));
+
+    // The slice binds a project absent from the (sole-project) topology.
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}],"project":"ghost"}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-project-orphan");
+}
+
+#[test]
+fn propose_reconcile_project_binding_required() {
+    // Two projects offered (hub); the slice omits `project`, so the
+    // kernel cannot auto-bind.
+    let tmp = hub_project(
+        PROPOSE_REGISTRY_HUB,
+        &discovery_doc(&[("docs", "a")]),
+        "name: identity-revamp\nslices: []\n",
+    );
+
+    let body = propose_from_stderr(
+        tmp.path(),
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-project-binding-required");
+}
+
+#[test]
+fn propose_reconcile_slice_duplicate() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "a")]));
+
+    // Two slices collapse to the same (scope, auto-bound project) pair.
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]},{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-slice-duplicate");
+}
+
+#[test]
+fn propose_reconcile_slice_name_collision() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
+
+    // Two distinct scopes, but both supply the explicit name `dup`.
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"name":"dup","scope":"s1","sources":[{"source-key":"docs","lead-id":"a"}]},{"name":"dup","scope":"s2","sources":[{"source-key":"docs","lead-id":"b"}]}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-slice-name-collision");
+}
+
+#[test]
+fn propose_reconcile_depends_on_cycle() {
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
+
+    // alpha ↔ beta depend on each other.
+    let body = propose_from_stderr(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"name":"alpha","scope":"s1","sources":[{"source-key":"docs","lead-id":"a"}],"depends-on":["beta"]},{"name":"beta","scope":"s2","sources":[{"source-key":"docs","lead-id":"b"}],"depends-on":["alpha"]}]}"#,
+    );
+    assert_eq!(body["error"], "plan-reconcile-depends-on-cycle");
+}
+
+#[test]
+fn propose_dry_run_empty_catalog() {
+    // `plan-reconcile-empty-catalog` is reachable via --dry-run (no
+    // surveyed leads). Under --from it is masked by lead-orphan /
+    // partition, since a schema-valid response must cite at least one
+    // lead against the empty catalog.
+    let project = Project::init();
+    project.seed_plan("name: demo\nslices: []\n");
+    // Deliberately no discovery.md.
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "propose", "--dry-run"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let body = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(body["error"], "plan-reconcile-empty-catalog");
+}
+
+// -- re-propose semantics --------------------------------------------
+
+#[test]
+fn propose_re_propose_replaces_all_slices() {
+    // `--from` is a wholesale projection, not a merge: a second run on a
+    // still-pending plan replaces the prior slice set entirely.
+    let project = Project::init();
+    project.seed_plan(PROPOSE_PLAN_N1);
+    seed_discovery(project.root(), PROPOSE_DISCOVERY_N1);
+
+    propose_from_ok(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"name":"first","scope":"first","sources":[{"source-key":"intent","lead-id":"fix-typo"}]}]}"#,
+    );
+    let plan_after_first = Plan::load(&project.plan_path()).expect("load plan");
+    assert_eq!(
+        plan_after_first.entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+        ["first"]
+    );
+
+    propose_from_ok(
+        project.root(),
+        r#"{"version":1,"kind":"response","slices":[{"name":"second","scope":"second","sources":[{"source-key":"intent","lead-id":"fix-typo"}]}]}"#,
+    );
+    let plan_after_second = Plan::load(&project.plan_path()).expect("load plan");
+    assert_eq!(
+        plan_after_second.entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+        ["second"],
+        "the second --from wholesale-replaces the first slice set"
+    );
+}
+
+#[test]
+fn propose_refuses_on_approved_plan() {
+    // Once the operator stamps Gate 1 (`approved`), the plan is no
+    // longer replaceable and `--from` aborts.
+    let project = Project::init();
+    project.seed_plan(PROPOSE_PLAN_N1);
+    seed_discovery(project.root(), PROPOSE_DISCOVERY_N1);
+
+    propose_from_ok(project.root(), PROPOSE_RESPONSE_N1);
+    specrun()
+        .current_dir(project.root())
+        .args(["plan", "transition", "demo", "approved"])
+        .assert()
+        .success();
+
+    let body = propose_from_stderr(project.root(), PROPOSE_RESPONSE_N1);
+    assert_eq!(body["error"], "plan-reconcile-plan-not-replaceable");
 }

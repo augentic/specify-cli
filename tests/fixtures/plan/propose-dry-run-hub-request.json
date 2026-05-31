@@ -1,0 +1,38 @@
+{
+  "kind": "request",
+  "leads": [
+    {
+      "lead-id": "identity-api",
+      "source-key": "docs",
+      "summary": "Identity API contract for authentication and account access."
+    },
+    {
+      "lead-id": "identity-api",
+      "source-key": "legacy",
+      "summary": "Legacy identity endpoints."
+    },
+    {
+      "lead-id": "password-reset",
+      "source-key": "docs",
+      "summary": "Users can request a password reset email."
+    },
+    {
+      "lead-id": "reset-password",
+      "source-key": "legacy",
+      "summary": "Legacy reset-password flow."
+    }
+  ],
+  "projects": [
+    {
+      "description": "Versioned API contracts crate for the identity domain.",
+      "name": "identity-contracts",
+      "target": "contracts@v1"
+    },
+    {
+      "description": "Omnia identity service implementing auth and password flows.",
+      "name": "identity-service",
+      "target": "omnia@v1"
+    }
+  ],
+  "version": 1
+}

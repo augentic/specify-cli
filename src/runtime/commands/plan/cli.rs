@@ -2,6 +2,8 @@
 //! `plan lock *` verbs. The umbrella `cli.rs` re-exports both action
 //! enums.
 
+use std::path::PathBuf;
+
 use clap::{ArgAction, Args, Subcommand};
 
 use crate::runtime::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
@@ -81,6 +83,26 @@ pub enum PlanAction {
     /// so wholesale replacement plus targeted edits can be combined
     /// in a single invocation when needed.
     Amend(AmendArgs),
+    /// Reconcile surveyed leads into `plan.yaml.slices[]` (RFC-29b D2).
+    ///
+    /// Exactly one mode is required — the parser rejects passing both:
+    ///
+    /// - `--dry-run` is read-only. It reads the surveyed `discovery.md`
+    ///   lead inventory and the resolved project topology (`registry.yaml`
+    ///   for a hub, or the sole project synthesised from `project.yaml`)
+    ///   and emits the `kind: request` envelope for the agent to group.
+    ///   Aborts with `plan-reconcile-empty-catalog` when `discovery.md`
+    ///   carries no leads.
+    /// - `--from <response.json>` is the only writer. On every invocation
+    ///   it re-reads `discovery.md`, rebuilds the lead catalog (never
+    ///   trusting a prior dry-run snapshot), validates the agent's
+    ///   grouping response, and replaces `plan.yaml.slices[]` wholesale —
+    ///   in the agent's response order — then emits the paired
+    ///   `plan.reconcile.agent` + `plan.reconcile.completed` events.
+    ///
+    /// Passing neither mode fails with `plan-propose-mode-required`
+    /// (exit 2).
+    Propose(ProposeArgs),
     /// Remove a pending plan entry while the plan is still replaceable
     /// (`lifecycle: pending` and every entry `pending`). Gate 1 curation
     /// only — defers a lead without re-surveying `discovery.md`.
@@ -130,6 +152,19 @@ pub enum PlanAction {
         #[arg(long)]
         force: bool,
     },
+}
+
+/// Flag surface for `specrun plan propose`. The two flags are mutually
+/// exclusive (`--from` `conflicts_with` `--dry-run`); the handler
+/// rejects passing neither with `plan-propose-mode-required`.
+#[derive(Args)]
+pub struct ProposeArgs {
+    /// Emit the reconciliation request envelope (flat lead catalog + project topology) for the agent. Writes nothing.
+    #[arg(long = "dry-run", action = ArgAction::SetTrue)]
+    pub dry_run: bool,
+    /// Apply the agent's grouping response, validate it, and replace plan.yaml.slices[]. The only writer.
+    #[arg(long = "from", value_name = "RESPONSE_JSON", conflicts_with = "dry_run")]
+    pub from: Option<PathBuf>,
 }
 
 /// Flag surface for `specrun plan add`. Grouped into one struct so the

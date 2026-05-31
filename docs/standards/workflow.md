@@ -49,7 +49,9 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Plan-time reconciliation
 
-Core synthesis reconciles leads across sources at plan time and writes one `slices[]` row per reconciliation outcome. The closed `Divergence` enum (`none | likely | accepted | rejected`) records the reconciliation outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/workflow/src/change/plan/core/model.rs`](../../crates/workflow/src/change/plan/core/model.rs).
+`specrun plan propose` reconciles surveyed leads across sources at plan time and writes the `plan.yaml.slices[]` rows (RFC-29 D2). `--dry-run [--format json]` reads `plan.yaml.sources`, the `discovery.md` lead inventory, and the project topology, then emits the `kind: request` envelope (flat `(source-key, lead-id)` lead catalog + `projects[]`) for the agent; it writes nothing. `--from <response.json> [--format json]` is the only slice writer: it schema-gates the response (`PROPOSAL_JSON_SCHEMA` at [`schemas/discovery/proposal.schema.json`](../../schemas/discovery/proposal.schema.json), kebab wire fields, closed `kind: request | response`), re-reads `discovery.md`, validates the partition over scopes (total coverage, at most one lead per source, fan-out `sources[]` consistency), derives slice names, binds each slice's `project` and `target`, and replaces `slices[]` only on a replaceable plan (`lifecycle: pending` and every entry `pending`). Cross-source matching is agent judgment; the operator curates at Gate 1. The closed `plan-reconcile-*` / `plan-propose-mode-required` codes are `Error::Validation` outcomes (exit 2). See [`DECISIONS.md` §"Lead reconciliation (D2)"](../../DECISIONS.md#lead-reconciliation-d2) and [`crates/workflow/src/change/plan/core/propose.rs`](../../crates/workflow/src/change/plan/core/propose.rs).
+
+The closed `Divergence` enum (`none | likely | accepted | rejected`) records a reconciliation outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/workflow/src/change/plan/core/model.rs`](../../crates/workflow/src/change/plan/core/model.rs).
 
 ## Source
 
@@ -89,7 +91,7 @@ Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$S
 
 ## CLI surface
 
-Headline verbs: `init`, `source {resolve, survey, extract, preview}`, `target resolve`, `slice {create, transition, validate, merge}`, `plan {create, add, amend, transition, next, finalize}`, `workspace {sync, push, prepare}`, `tool run`, `journal emit`. See [`specify --help`](../init.md) and the parent repo's [`AGENTS.md` §"Skill / CLI responsibility split"](https://github.com/augentic/specify/blob/main/AGENTS.md#skill--cli-responsibility-split).
+Headline verbs: `init`, `source {resolve, survey, extract, preview}`, `target resolve`, `slice {create, transition, validate, merge}`, `plan {create, propose, add, amend, transition, next, finalize}`, `workspace {sync, push, prepare}`, `tool run`, `journal emit`. See [`specify --help`](../init.md) and the parent repo's [`AGENTS.md` §"Skill / CLI responsibility split"](https://github.com/augentic/specify/blob/main/AGENTS.md#skill--cli-responsibility-split).
 
 ## Writer ownership
 
@@ -97,7 +99,7 @@ Per-entry status writes route to exactly one CLI verb each — `plan add` / `pla
 
 ## Observability
 
-Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names). Source operations add `source.survey.cache-hit` / `.cache-miss` and `source.execution.agent`. Agent-orchestrated phases that lack a deterministic emit command write through `specrun journal emit <event-id> [--payload <json>]` — a guarded front door onto the same closed taxonomy, errors `journal-emit-unknown-event` / `journal-emit-payload-schema` (exit 2). See [`DECISIONS.md` §"`specrun journal emit` — guarded front door (D12)"](../../DECISIONS.md#specrun-journal-emit--guarded-front-door-d12).
+Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names). Source operations add `source.survey.cache-hit` / `.cache-miss` and `source.execution.agent`. `specrun plan propose --from` emits `plan.reconcile.agent` then `plan.reconcile.completed` atomically in one batched append on a successful write. Agent-orchestrated phases that lack a deterministic emit command write through `specrun journal emit <event-id> [--payload <json>]` — a guarded front door onto the same closed taxonomy, errors `journal-emit-unknown-event` / `journal-emit-payload-schema` (exit 2). See [`DECISIONS.md` §"`specrun journal emit` — guarded front door (D12)"](../../DECISIONS.md#specrun-journal-emit--guarded-front-door-d12).
 
 ## Operations typed at parse boundary
 

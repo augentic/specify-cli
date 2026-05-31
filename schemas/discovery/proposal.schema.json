@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/discovery/proposal.schema.json",
+  "title": "Specify lead reconciliation envelope",
+  "description": "Validates the request and response envelopes of the agent-led lead-reconciliation step per RFC-29 D2. `kind: request` is returned by `specrun plan propose --dry-run --format json`: a flat catalog of raw, unmerged `(source-key, lead-id)` leads read 1:1 from `discovery.md`, plus the `projects[]` topology (always at least one project; each entry carries the normalized target adapter the kernel writes to `plan.yaml` at projection time). Optional `aliases[]` on each row are hints from `discovery.md`; the kernel does not lock or auto-merge on them. `kind: response` is the agent's grouping consumed by `specrun plan propose --from`: a single `slices[]` list, each row carrying a `scope` id, its matched `sources[]` (at most one lead per source), and a bound `project` from the request (the kernel auto-binds the sole project when only one exists and derives each slice's `target` from the bound project's `projects[].target`). Slices sharing a `scope` id form a fan-out group and MUST carry an identical `sources[]` set; that per-scope set partitions the surveyed leads exactly once and a scope never names two leads from the same source. The kernel validates this shape, enforces the global partition invariant, rejects same-source fusion, derives unique `plan.yaml.slices[]` names from the optional `name` or a `scope` / `scope`-plus-`project` fallback, and writes the structured `{ source-key, lead-id }` source bindings through the existing plan writers only when the plan is still replaceable; cross-source matching is agent judgment surfaced for Gate 1 review — the kernel never auto-merges leads. Closed top-level shape: unknown fields are rejected.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response"
+    }
+  ],
+  "$defs": {
+    "kebabName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "targetRef": {
+      "type": "string",
+      "description": "Target adapter identifier, e.g. `omnia@v1` or `contracts@v1`. Mirrors `plan.schema.json` slice `target` pattern.",
+      "pattern": "^[a-z][a-z0-9-]*@v\\d+$"
+    },
+    "projectRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One project the agent can bind a response slice to. For a hub this is a `registry.yaml#/projects[]` entry; for a single regular project the CLI synthesizes one entry from `project.yaml` (name + target adapter + domain). The agent matches the slice's scope against the project's `target` and `description`.",
+      "required": [
+        "name",
+        "target"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Registry project name; the value the kernel writes to `plan.yaml.slices[].project`."
+        },
+        "target": {
+          "$ref": "#/$defs/targetRef",
+          "description": "The project's registered target adapter. The kernel writes this value to `plan.yaml.slices[].target` when the agent binds the slice to this project."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Single-sentence domain characterisation used by the agent when more than one project shares a target."
+        }
+      }
+    },
+    "leadCatalogEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source-key",
+        "lead-id",
+        "summary"
+      ],
+      "properties": {
+        "source-key": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Plan source binding key matching `plan.yaml.sources.<key>`."
+        },
+        "lead-id": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Discovery lead id surfaced by this source binding. Identity is the `(source-key, lead-id)` pair; `lead-id` is not unique across `leads[]` when multiple sources surface the same slug."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One-line per-source summary from this source's survey of the lead. Primary signal for agent cross-source grouping."
+        },
+        "aliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/kebabName"
+          },
+          "description": "Optional alias hints from `discovery.md` (survey-time or operator-authored via `specrun plan amend --add-alias`). The agent may use these when grouping; the kernel does not lock on them."
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "kind",
+        "projects",
+        "leads"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "request"
+        },
+        "projects": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Project topology the agent binds slices to — always at least one project, so there is no separate single-repo shape. For a hub this is every entry from `registry.yaml#/projects[]`; for a single regular project the CLI synthesizes one entry from `project.yaml` (name + resolved target adapter + domain). Persisted project configuration is normalized into this envelope-local shape.",
+          "items": {
+            "$ref": "#/$defs/projectRef"
+          }
+        },
+        "leads": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Flat lead catalog: one row per raw `(source-key, lead-id)` lead, read 1:1 from `discovery.md` (no expansion or cross-source merge). The `lead-id` field repeats across rows when multiple sources surface the same slug.",
+          "items": {
+            "$ref": "#/$defs/leadCatalogEntry"
+          }
+        }
+      }
+    },
+    "responseMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source-key",
+        "lead-id"
+      ],
+      "properties": {
+        "source-key": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Plan source binding key; must match a request catalog row."
+        },
+        "lead-id": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Discovery lead id; with `source-key`, must match a request catalog row."
+        }
+      }
+    },
+    "responseSlice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "sources"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Optional explicit plan slice name for this `(scope, project)` row — the slice's identity and the natural top field of a response slice. When omitted, the kernel derives a unique slice name deterministically from `scope` (or `scope`-plus-`project` on fan-out)."
+        },
+        "scope": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Logical id of the reconciled unit of work this slice belongs to. It is the slice-name basis and the fan-out grouping key, not necessarily the derived plan slice name. A `scope` id repeats across response slices only when the same scope fans out to multiple projects; every slice sharing it MUST carry an identical `sources[]` set (the kernel enforces this as `plan-reconcile-fanout-source-mismatch`)."
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/responseMember"
+          },
+          "description": "Matched catalog rows for this slice, each referenced by `{ source-key, lead-id }`. At most one entry per `source-key`: a scope matches leads across sources but never fuses two leads from the same source (the kernel enforces this as `plan-reconcile-slice-source-collision`). Slices sharing a `scope` id repeat this set verbatim. The kernel writes it to `plan.yaml.slices[].sources[]`."
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Agent's reason for the cross-source match in this scope. Scope-level — attach on any one slice in a fan-out group; the kernel dedupes by `scope` for the `plan.reconcile.agent` journal payload and `change.md`. The agent renders it into `change.md` for Gate 1 review. Recommended when the match is not obvious from shared slugs or alias hints."
+        },
+        "depends-on": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/kebabName"
+          },
+          "description": "Derived slice names this row depends on (not scope ids). Each name must resolve to a projected `plan.yaml.slices[]` entry."
+        },
+        "project": {
+          "$ref": "#/$defs/kebabName",
+          "description": "Project this slice binds to, chosen by the agent from the request's `projects[]`. Required on every slice when the request offers more than one project; optional when exactly one project exists, in which case the kernel auto-binds it and derives `target` from that project's entry."
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "kind",
+        "slices"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "response"
+        },
+        "slices": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/responseSlice"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "plan": {
+    "name": "demo",
+    "path": "<TEMPDIR>/plan.yaml"
+  },
+  "scope-count": 1,
+  "slice-count": 1,
+  "slice-names": [
+    "fix-typo"
+  ]
+}

@@ -19,6 +19,12 @@ pub const EVIDENCE_JSON_SCHEMA: &str = include_str!("../../../schemas/evidence.s
 /// against this shape before `Discovery::merge_survey` makes it visible.
 pub const LEAD_JSON_SCHEMA: &str = include_str!("../../../schemas/discovery/lead.schema.json");
 
+/// Schema for the lead-reconciliation request/response envelope
+/// (`specrun plan propose`). A closed `kind: request | response`
+/// `oneOf` discriminates the dry-run catalog from the agent grouping.
+pub const PROPOSAL_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/discovery/proposal.schema.json");
+
 /// Schema for `provenance.yaml`, the audit-only provenance
 /// index emitted by slice synthesis.
 pub const PROVENANCE_JSON_SCHEMA: &str =
