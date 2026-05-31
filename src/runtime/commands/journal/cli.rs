@@ -21,7 +21,7 @@ pub enum JournalAction {
         event: String,
 
         /// JSON object carrying the event's payload fields (e.g.
-        /// `{"source-key":"runtime","adapter":"captures",...}`).
+        /// `{"source":"runtime","adapter":"captures",...}`).
         /// Omit for events with no payload fields.
         #[arg(long)]
         payload: Option<String>,

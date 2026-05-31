@@ -170,7 +170,7 @@ pub struct PrepRequest<'a> {
     pub source: Option<&'a Path>,
     /// Canonical lead selection echoed back for the handoff envelope.
     /// One spelling across the family: `preview --lead <id>…` and
-    /// `extract <lead-id>` both fold into this slice.
+    /// `extract <lead>` both fold into this slice.
     pub leads: &'a [String],
     /// Output target whose `evidence/` subtree is scaffolded — the
     /// `--out` dir for preview, `.specify/slices/<slice>/` for

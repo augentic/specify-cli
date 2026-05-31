@@ -259,7 +259,7 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
 /// DECISIONS.md §"Source operations (D1)"): the runner reads the agent-
 /// or tool-produced Evidence,
 /// runs it through this check, and only persists it to
-/// `.specify/slices/<slice>/evidence/<source-key>.yaml` on success — a
+/// `.specify/slices/<slice>/evidence/<source>.yaml` on success — a
 /// schema failure writes no Evidence file. `source_path` labels error
 /// messages with the originating file so an operator can find the
 /// offending document.
@@ -300,7 +300,7 @@ pub fn validate_evidence(content: &str, source_path: &Path) -> Result<()> {
 ///
 /// Findings across every lead are aggregated into a single
 /// [`Error::Validation`] (exit code 2) keyed on `discovery-lead-schema`,
-/// each labelled with the offending lead's `lead-id`.
+/// each labelled with the offending lead's `lead`.
 ///
 /// # Errors
 ///
@@ -316,12 +316,12 @@ pub fn validate_leads(leads: &[Lead]) -> Result<()> {
             code: "discovery-lead-serialise",
             detail: format!(
                 "failed to serialise lead `{}` for schema validation: {err}",
-                lead.lead_id
+                lead.lead
             ),
         })?;
         for summary in validate_value(&instance, LEAD_JSON_SCHEMA, "discovery-lead-schema", rule) {
             if summary.status == ValidationStatus::Fail {
-                summaries.push(relabel_with_lead(summary, &lead.lead_id));
+                summaries.push(relabel_with_lead(summary, &lead.lead));
             }
         }
     }
@@ -336,12 +336,12 @@ pub fn validate_leads(leads: &[Lead]) -> Result<()> {
     }
 }
 
-fn relabel_with_lead(mut summary: ValidationSummary, lead_id: &str) -> ValidationSummary {
+fn relabel_with_lead(mut summary: ValidationSummary, lead: &str) -> ValidationSummary {
     let detail = summary.detail.take().unwrap_or_default();
     summary.detail = Some(if detail.is_empty() {
-        format!("lead `{lead_id}`")
+        format!("lead `{lead}`")
     } else {
-        format!("lead `{lead_id}`: {detail}")
+        format!("lead `{lead}`: {detail}")
     });
     summary
 }
@@ -519,17 +519,17 @@ projects:
     target: omnia@v1
     description: "Omnia identity service implementing auth and password flows."
 leads:
-  - source-key: docs
-    lead-id: identity-api
+  - source: docs
+    lead: identity-api
     summary: "Identity API contract for authentication and account access."
-  - source-key: legacy
-    lead-id: identity-api
+  - source: legacy
+    lead: identity-api
     summary: "Legacy identity endpoints."
-  - source-key: docs
-    lead-id: password-reset
+  - source: docs
+    lead: password-reset
     summary: "Users can request a password reset email."
-  - source-key: legacy
-    lead-id: reset-password
+  - source: legacy
+    lead: reset-password
     summary: "Legacy reset-password flow."
 "#;
         validate_proposal_json(request).expect("RFC request example validates");
@@ -545,7 +545,7 @@ slices:
   - name: fix-typo
     scope: fix-typo
     sources:
-      - { source-key: intent, lead-id: fix-typo }
+      - { source: intent, lead: fix-typo }
 ";
         validate_proposal_json(response).expect("RFC N=1 response example validates");
     }
@@ -560,22 +560,22 @@ slices:
   - name: identity-contracts
     scope: identity-api
     sources:
-      - { source-key: docs, lead-id: identity-api }
-      - { source-key: legacy, lead-id: identity-api }
+      - { source: docs, lead: identity-api }
+      - { source: legacy, lead: identity-api }
     project: identity-contracts
     rationale: "identity API surface matched by shared slug across docs + legacy"
   - name: identity-service
     scope: identity-api
     sources:
-      - { source-key: docs, lead-id: identity-api }
-      - { source-key: legacy, lead-id: identity-api }
+      - { source: docs, lead: identity-api }
+      - { source: legacy, lead: identity-api }
     project: identity-service
     depends-on: [identity-contracts]
   - name: password-reset
     scope: password-reset
     sources:
-      - { source-key: docs, lead-id: password-reset }
-      - { source-key: legacy, lead-id: reset-password }
+      - { source: docs, lead: password-reset }
+      - { source: legacy, lead: reset-password }
     project: identity-service
     rationale: "password-reset (docs) and reset-password (legacy) are the same flow by summary judgment"
 "#;
@@ -592,7 +592,7 @@ version: 1
 slices:
   - scope: orphan
     sources:
-      - { source-key: intent, lead-id: orphan }
+      - { source: intent, lead: orphan }
 ";
         match validate_proposal_json(malformed) {
             Err(Error::Validation { code, .. }) => assert_eq!(code, "proposal-schema"),

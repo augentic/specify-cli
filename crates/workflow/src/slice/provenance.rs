@@ -2,7 +2,7 @@
 //!
 //! One file per slice at `.specify/slices/<slice>/provenance.yaml`. Lists
 //! every `REQ-*` id in `spec.md` and the contributing
-//! `(source-key, claim-id)` pairs plus the authority outcome.
+//! `(source, id)` pairs plus the authority outcome.
 //! Validated against `schemas/slice/provenance.schema.json`. The file is
 //! audit-only; see [`DECISIONS.md` §"`provenance.yaml` audit index"][provenance-audit] for the rationale (`spec.md` is the
 //! authoritative artifact).
@@ -59,7 +59,7 @@ pub struct ProvenanceRequirement {
     /// Empty when `status` is `unknown` and `resolution` is
     /// `unknown-no-evidence`.
     pub sources: Vec<String>,
-    /// Every `(source, claim-id)` pair synthesis consulted — *not*
+    /// Every `(source, id)` pair synthesis consulted — *not*
     /// only the winning one. Operators auditing a divergence can see
     /// what was dropped.
     pub contributing_claims: Vec<ContributingClaim>,
@@ -83,8 +83,8 @@ pub struct ContributingClaim {
     /// binding) the claim came from.
     pub source: String,
     /// Claim id within the source's Evidence file (matches
-    /// `claims[].claim-id`).
-    pub claim_id: String,
+    /// `claims[].id`).
+    pub id: String,
     /// Claim kind copied from the source Evidence claim — closed
     /// enum (mirrored from
     /// `schemas/evidence.schema.json#/$defs/claimKind`).
@@ -210,13 +210,13 @@ impl ProvenanceIndex {
     /// 1. **Requirement-id drift** — `spec.md` `REQ-*` set ≠
     ///    `provenance.yaml.requirements[].id` set, in either direction.
     /// 2. **Contributing-claim drift** — any
-    ///    `contributing-claims[].(source, claim-id)` pair that does
+    ///    `contributing-claims[].(source, id)` pair that does
     ///    not resolve to a real claim in the corresponding
-    ///    `.specify/slices/<slice>/evidence/<source-key>.yaml`.
-    ///    Comparison is on `(source, claim-id)`; `path` is
+    ///    `.specify/slices/<slice>/evidence/<source>.yaml`.
+    ///    Comparison is on `(source, id)`; `path` is
     ///    informational only.
     ///
-    /// Findings sort by `(req_id, drift-kind, source, claim_id)` so
+    /// Findings sort by `(req_id, drift-kind, source, id)` so
     /// repeated runs produce byte-identical error envelopes.
     #[must_use]
     pub fn detect_drift(
@@ -245,12 +245,12 @@ impl ProvenanceIndex {
             for claim in &req.contributing_claims {
                 let exists = evidence
                     .get(claim.source.as_str())
-                    .is_some_and(|ids| ids.contains(claim.claim_id.as_str()));
+                    .is_some_and(|ids| ids.contains(claim.id.as_str()));
                 if !exists {
                     out.push(ProvenanceDrift::ContributingClaimNotFound {
                         req_id: req.id.clone(),
                         source: claim.source.clone(),
-                        claim_id: claim.claim_id.clone(),
+                        id: claim.id.clone(),
                         path: claim.path.clone(),
                     });
                 }
@@ -284,7 +284,7 @@ pub enum ProvenanceDrift {
         /// `REQ-NNN` id that has no matching `spec.md` heading.
         req_id: String,
     },
-    /// A `contributing-claims[].(source, claim-id)` pair does not
+    /// A `contributing-claims[].(source, id)` pair does not
     /// resolve to a real claim in
     /// `.specify/slices/<slice>/evidence/<source>.yaml`. Either the
     /// evidence file was hand-edited or the provenance entry references
@@ -296,9 +296,9 @@ pub enum ProvenanceDrift {
         /// Source key the claim was attributed to.
         source: String,
         /// Claim id that could not be resolved.
-        claim_id: String,
+        id: String,
         /// Informational path copy from the contributing entry, when
-        /// present; the comparison key is `(source, claim_id)` only.
+        /// present; the comparison key is `(source, id)` only.
         path: Option<String>,
     },
 }
@@ -313,11 +313,8 @@ impl ProvenanceDrift {
                 (req_id.clone(), 1, String::new(), String::new())
             }
             Self::ContributingClaimNotFound {
-                req_id,
-                source,
-                claim_id,
-                ..
-            } => (req_id.clone(), 2, source.clone(), claim_id.clone()),
+                req_id, source, id, ..
+            } => (req_id.clone(), 2, source.clone(), id.clone()),
         }
     }
 
@@ -339,12 +336,12 @@ impl ProvenanceDrift {
             Self::ContributingClaimNotFound {
                 req_id,
                 source,
-                claim_id,
+                id,
                 path,
             } => {
                 let suffix = path.map_or_else(String::new, |p| format!(" (path: {p})"));
                 format!(
-                    "{req_id}: contributing-claim source `{source}` claim-id `{claim_id}` does not resolve to a claim in evidence/{source}.yaml{suffix}"
+                    "{req_id}: contributing-claim source `{source}` id `{id}` does not resolve to a claim in evidence/{source}.yaml{suffix}"
                 )
             }
         };
@@ -358,25 +355,25 @@ impl ProvenanceDrift {
     }
 }
 
-/// Map of source key → set of `claim-id` strings found in that
+/// Map of source key → set of `id` strings found in that
 /// source's evidence file. Built by [`collect_evidence_claim_ids`]
 /// and consumed by [`ProvenanceIndex::detect_drift`].
 pub type EvidenceClaimIds = BTreeMap<String, BTreeSet<String>>;
 
-/// Build the `(source-key → claim-id set)` lookup the drift gate
+/// Build the `(source → id set)` lookup the drift gate
 /// consumes.
 ///
-/// Walks `<slice_dir>/evidence/` and collects every `claim-id` value
+/// Walks `<slice_dir>/evidence/` and collects every `id` value
 /// keyed by the source key inferred from the filename stem
-/// (`<source-key>.yaml` → `<source-key>`). Files without a `claims:`
-/// array or without `claim-id` entries contribute an empty set so
+/// (`<source>.yaml` → `<source>`). Files without a `claims:`
+/// array or without `id` entries contribute an empty set so
 /// drift detection can still report missing claims against the
 /// known source key.
 ///
 /// The evidence schema is `additionalProperties: true` on every
 /// claim, so this helper deliberately uses `serde_json::Value`
 /// rather than the typed [`specify_model::evidence`] surface: drift
-/// detection cares only about the `(source, claim-id)` join keys,
+/// detection cares only about the `(source, id)` join keys,
 /// and tolerating unknown per-kind body fields here keeps the
 /// helper forward-compatible with future claim kinds.
 ///
@@ -394,7 +391,7 @@ pub fn collect_evidence_claim_ids(slice_dir: &Path) -> Result<EvidenceClaimIds> 
 
     for path in paths {
         let Some(stem) = path.file_stem().and_then(OsStr::to_str) else { continue };
-        let source_key = stem.to_string();
+        let source = stem.to_string();
         let raw = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
             op: "read",
             path: path.clone(),
@@ -402,7 +399,7 @@ pub fn collect_evidence_claim_ids(slice_dir: &Path) -> Result<EvidenceClaimIds> 
         })?;
         let value: JsonValue = serde_saphyr::from_str(&raw)?;
         let claim_ids = extract_claim_ids(&value);
-        out.entry(source_key).or_default().extend(claim_ids);
+        out.entry(source).or_default().extend(claim_ids);
     }
     Ok(out)
 }
@@ -413,7 +410,7 @@ fn extract_claim_ids(doc: &JsonValue) -> BTreeSet<String> {
         return ids;
     };
     for claim in claims {
-        if let Some(id) = claim.get("claim-id").and_then(JsonValue::as_str) {
+        if let Some(id) = claim.get("id").and_then(JsonValue::as_str) {
             ids.insert(id.to_string());
         }
     }
@@ -441,7 +438,7 @@ mod tests {
                     contributing_claims: vec![
                         ContributingClaim {
                             source: "identity-design-notes".to_string(),
-                            claim_id: "password-reset.request".to_string(),
+                            id: "password-reset.request".to_string(),
                             kind: ClaimKind::Requirement,
                             value: None,
                             path: None,
@@ -449,7 +446,7 @@ mod tests {
                         },
                         ContributingClaim {
                             source: "runtime".to_string(),
-                            claim_id: "users.register.happy-path".to_string(),
+                            id: "users.register.happy-path".to_string(),
                             kind: ClaimKind::Example,
                             value: None,
                             path: None,
@@ -469,7 +466,7 @@ mod tests {
                     contributing_claims: vec![
                         ContributingClaim {
                             source: "identity-design-notes".to_string(),
-                            claim_id: "password-reset.expiry".to_string(),
+                            id: "password-reset.expiry".to_string(),
                             kind: ClaimKind::Criterion,
                             value: Some("Reset links expire after 30 minutes.".to_string()),
                             path: Some("docs/account.md#L7".to_string()),
@@ -477,7 +474,7 @@ mod tests {
                         },
                         ContributingClaim {
                             source: "legacy-monolith".to_string(),
-                            claim_id: "password-reset.expiry".to_string(),
+                            id: "password-reset.expiry".to_string(),
                             kind: ClaimKind::Criterion,
                             value: Some("expiresAt = createdAt + 24h".to_string()),
                             path: Some("src/users/reset.ts#L42".to_string()),
@@ -618,9 +615,9 @@ authority: behaviour
 lead: user-registration
 claims:
   - kind: example
-    claim-id: users.register.happy-path
+    id: users.register.happy-path
   - kind: example
-    claim-id: users.register.minimal
+    id: users.register.minimal
 ",
         )
         .expect("write runtime");
@@ -632,9 +629,9 @@ authority: behaviour
 lead: user-registration
 claims:
   - kind: excerpt
-    claim-id: users.register.email-validation
+    id: users.register.email-validation
   - kind: requirement
-    claim-id: users.register.requires-email
+    id: users.register.requires-email
 ",
         )
         .expect("write legacy");

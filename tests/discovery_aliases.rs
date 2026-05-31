@@ -29,14 +29,14 @@ const DISCOVERY_MD: &str = "\
 
 ### legacy:user-registration
 
-- lead-id: user-registration
-- source-key: legacy
+- lead: user-registration
+- source: legacy
 - summary: Registration endpoint accepting email + password.
 
 ### legacy:password-reset-request
 
-- lead-id: password-reset-request
-- source-key: legacy
+- lead: password-reset-request
+- source: legacy
 - aliases: [password-reset]
 - summary: Reset endpoint.
 ";
@@ -120,7 +120,7 @@ fn plan_add_persists_canonical_id() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("lead-id: password-reset-request"),
+        saved.contains("lead: password-reset-request"),
         "expected canonical lead id on disk, got:\n{saved}"
     );
     assert!(!saved.contains("password-reset\n"), "alias must not survive on disk:\n{saved}");
@@ -183,7 +183,7 @@ fn plan_add_without_discovery_skips_alias() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("lead-id: opaque-candidate-id"),
+        saved.contains("lead: opaque-candidate-id"),
         "expected verbatim lead value without discovery.md, got:\n{saved}"
     );
 }
@@ -366,15 +366,15 @@ fn slice_validate_alias_collision() {
 
 ### legacy:a
 
-- lead-id: a
-- source-key: legacy
+- lead: a
+- source: legacy
 - aliases: [shared]
 - summary: A.
 
 ### legacy:b
 
-- lead-id: b
-- source-key: legacy
+- lead: b
+- source: legacy
 - aliases: [shared]
 - summary: B.
 ",
@@ -451,8 +451,8 @@ fn plan_amend_alias_survives_reapplied_discovery() {
 
 ### legacy:password-reset-request
 
-- lead-id: password-reset-request
-- source-key: legacy
+- lead: password-reset-request
+- source: legacy
 - aliases: [password-reset, pwd-reset]
 - summary: Reset endpoint (re-emitted).
 ",

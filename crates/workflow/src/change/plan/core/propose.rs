@@ -13,7 +13,7 @@
 //!   plus a resolved project topology into the `kind: request`
 //!   envelope the agent groups.
 //! - [`build_catalog`] distils the same inventory into a
-//!   [`LeadCatalog`] of `(source-key, lead-id)` identities, the
+//!   [`LeadCatalog`] of `(source, lead)` identities, the
 //!   membership oracle the response-validation kernel (a later chunk)
 //!   checks every agent-supplied source binding against.
 //! - [`resolve_topology`] normalises persisted project configuration
@@ -79,7 +79,7 @@ pub struct ProposalRequest {
     /// Project topology — always at least one entry (schema
     /// `minItems: 1`).
     pub projects: Vec<ProjectRef>,
-    /// Flat lead catalog: one row per raw `(source-key, lead-id)` lead.
+    /// Flat lead catalog: one row per raw `(source, lead)` lead.
     pub leads: Vec<LeadCatalogEntry>,
 }
 
@@ -106,7 +106,7 @@ pub struct ProjectRef {
 
 /// One row in the request's flat lead catalog.
 ///
-/// Identity is the `(source-key, lead-id)` pair; `lead-id` repeats
+/// Identity is the `(source, lead)` pair; `lead` repeats
 /// across rows when multiple sources surface the same slug. Mirrors a
 /// single `discovery.md` [`specify_model::discovery::Lead`]
 /// (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
@@ -114,9 +114,9 @@ pub struct ProjectRef {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LeadCatalogEntry {
     /// Plan source binding key matching `plan.yaml.sources.<key>`.
-    pub source_key: String,
+    pub source: String,
     /// Discovery lead id surfaced by this source binding.
-    pub lead_id: String,
+    pub lead: String,
     /// Content-bearing per-source summary — the primary signal for
     /// agent cross-source grouping. SHOULD name the operation/surface
     /// and its salient constraint so a same-slug lead from another
@@ -158,7 +158,7 @@ pub struct ResponseSlice {
     /// and the fan-out grouping key. Propose-time only; never written to
     /// `plan.yaml`.
     pub scope: String,
-    /// Matched catalog rows, each referenced by `{ source-key, lead-id }`
+    /// Matched catalog rows, each referenced by `{ source, lead }`
     /// (at most one per source). Slices sharing a `scope` carry an
     /// identical set.
     pub sources: Vec<ResponseMember>,
@@ -182,19 +182,19 @@ pub struct ResponseSlice {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ResponseMember {
     /// Plan source binding key; must match a request catalog row.
-    pub source_key: String,
-    /// Discovery lead id; with `source-key`, must match a request
+    pub source: String,
+    /// Discovery lead id; with `source`, must match a request
     /// catalog row.
-    pub lead_id: String,
+    pub lead: String,
 }
 
-/// Set of `(source-key, lead-id)` identities surveyed in `discovery.md`.
+/// Set of `(source, lead)` identities surveyed in `discovery.md`.
 ///
 /// The membership oracle the response-validation kernel (a later chunk)
-/// checks every agent-supplied `{ source-key, lead-id }` against to
+/// checks every agent-supplied `{ source, lead }` against to
 /// reject orphan bindings and to prove the scope partition is total.
 /// Identities are deduplicated — a well-formed `discovery.md` carries a
-/// unique `(source-key, lead-id)` per lead (the per-source single
+/// unique `(source, lead)` per lead (the per-source single
 /// namespace is enforced by `Discovery::check_alias_collisions`), so
 /// [`LeadCatalog::len`] equals the surveyed lead count.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -203,10 +203,10 @@ pub struct LeadCatalog {
 }
 
 impl LeadCatalog {
-    /// `true` when the `(source_key, lead_id)` identity was surveyed.
+    /// `true` when the `(source, lead)` identity was surveyed.
     #[must_use]
-    pub fn contains(&self, source_key: &str, lead_id: &str) -> bool {
-        self.identities.contains(&(source_key.to_owned(), lead_id.to_owned()))
+    pub fn contains(&self, source: &str, lead: &str) -> bool {
+        self.identities.contains(&(source.to_owned(), lead.to_owned()))
     }
 
     /// Number of distinct surveyed identities.
@@ -222,12 +222,12 @@ impl LeadCatalog {
     }
 }
 
-/// Build the `(source-key, lead-id)` identity set from a surveyed
+/// Build the `(source, lead)` identity set from a surveyed
 /// `discovery.md`.
 ///
 /// Shared with the response-validation kernel: `propose --from`
 /// re-reads `discovery.md`, calls this to rebuild the catalog, then
-/// checks every response `(source-key, lead-id)` against it. Duplicate
+/// checks every response `(source, lead)` against it. Duplicate
 /// identities collapse into one set entry (see [`LeadCatalog`]).
 #[must_use]
 pub fn build_catalog(discovery: &Discovery) -> LeadCatalog {
@@ -235,7 +235,7 @@ pub fn build_catalog(discovery: &Discovery) -> LeadCatalog {
         identities: discovery
             .leads()
             .iter()
-            .map(|lead| (lead.source_key.clone(), lead.lead_id.clone()))
+            .map(|lead| (lead.source.clone(), lead.lead.clone()))
             .collect(),
     }
 }
@@ -244,7 +244,7 @@ pub fn build_catalog(discovery: &Discovery) -> LeadCatalog {
 /// and an already-resolved project topology.
 ///
 /// `leads[]` is one [`LeadCatalogEntry`] per `discovery.leads()` row,
-/// carrying `source-key`, `lead-id`, `summary`, and any alias hints.
+/// carrying `source`, `lead`, `summary`, and any alias hints.
 /// `projects` (produced by [`resolve_topology`]) is embedded verbatim.
 ///
 /// # Errors
@@ -257,8 +257,8 @@ pub fn build_request(discovery: &Discovery, projects: &[ProjectRef]) -> Result<P
         .leads()
         .iter()
         .map(|lead| LeadCatalogEntry {
-            source_key: lead.source_key.clone(),
-            lead_id: lead.lead_id.clone(),
+            source: lead.source.clone(),
+            lead: lead.lead.clone(),
             summary: lead.summary.clone(),
             aliases: lead.aliases.names.clone(),
         })
@@ -441,24 +441,24 @@ impl Plan {
     }
 }
 
-/// A `(source-key, lead-id)` catalog identity.
+/// A `(source, lead)` catalog identity.
 type LeadPair = (String, String);
 
 /// The order-insensitive `sources[]` membership of one scope.
 type ScopeMembership = BTreeSet<LeadPair>;
 
-/// Lead-orphan: every cited `(source-key, lead-id)` must name a current
+/// Lead-orphan: every cited `(source, lead)` must name a current
 /// catalog row (`plan-reconcile-lead-orphan`).
 fn check_lead_orphans(slices: &[ResponseSlice], catalog: &LeadCatalog) -> Result<()> {
     for slice in slices {
         for member in &slice.sources {
-            if !catalog.contains(&member.source_key, &member.lead_id) {
+            if !catalog.contains(&member.source, &member.lead) {
                 return Err(Error::validation_failed(
                     "plan-reconcile-lead-orphan",
                     "every cited source binding must name a surveyed lead",
                     format!(
                         "({}, {}) is not in the discovery.md lead catalog",
-                        member.source_key, member.lead_id
+                        member.source, member.lead
                     ),
                 ));
             }
@@ -475,17 +475,17 @@ fn slice_source_sets(slices: &[ResponseSlice]) -> Result<Vec<ScopeMembership>> {
         let mut set = BTreeSet::new();
         let mut keys: HashSet<&str> = HashSet::new();
         for member in &slice.sources {
-            if !keys.insert(member.source_key.as_str()) {
+            if !keys.insert(member.source.as_str()) {
                 return Err(Error::validation_failed(
                     "plan-reconcile-slice-source-collision",
                     "a scope names at most one lead per source",
                     format!(
                         "scope '{}' names source '{}' more than once",
-                        slice.scope, member.source_key
+                        slice.scope, member.source
                     ),
                 ));
             }
-            set.insert((member.source_key.clone(), member.lead_id.clone()));
+            set.insert((member.source.clone(), member.lead.clone()));
         }
         out.push(set);
     }
@@ -675,7 +675,7 @@ fn build_entries(
             sources: slice
                 .sources
                 .into_iter()
-                .map(|m| SliceSourceBinding::structured(m.source_key, m.lead_id))
+                .map(|m| SliceSourceBinding::structured(m.source, m.lead))
                 .collect(),
             context: Vec::new(),
             description: None,
@@ -744,8 +744,8 @@ mod tests {
         let doc = discovery(
             "## Lead inventory\n\n\
              ### intent:fix-typo\n\n\
-             - lead-id: fix-typo\n\
-             - source-key: intent\n\
+             - lead: fix-typo\n\
+             - source: intent\n\
              - summary: fix typo in user.rs\n",
         );
         let topology =
@@ -756,8 +756,8 @@ mod tests {
         assert_eq!(request.kind, ProposalKind::Request);
         assert_eq!(request.projects, topology);
         assert_eq!(request.leads.len(), 1);
-        assert_eq!(request.leads[0].source_key, "intent");
-        assert_eq!(request.leads[0].lead_id, "fix-typo");
+        assert_eq!(request.leads[0].source, "intent");
+        assert_eq!(request.leads[0].lead, "fix-typo");
         assert!(request.leads[0].aliases.is_empty());
 
         let json = serde_json::to_string(&request).expect("serialise request");
@@ -770,17 +770,17 @@ mod tests {
         let doc = discovery(
             "## Lead inventory\n\n\
              ### docs:identity-api\n\n\
-             - lead-id: identity-api\n\
-             - source-key: docs\n\
+             - lead: identity-api\n\
+             - source: docs\n\
              - aliases: [auth-api]\n\
              - summary: Identity API contract.\n\n\
              ### legacy:identity-api\n\n\
-             - lead-id: identity-api\n\
-             - source-key: legacy\n\
+             - lead: identity-api\n\
+             - source: legacy\n\
              - summary: Legacy identity endpoints.\n\n\
              ### docs:password-reset\n\n\
-             - lead-id: password-reset\n\
-             - source-key: docs\n\
+             - lead: password-reset\n\
+             - source: docs\n\
              - summary: Users can request a password reset email.\n",
         );
         let topology = vec![
@@ -814,12 +814,12 @@ mod tests {
         let doc = discovery(
             "## Lead inventory\n\n\
              ### docs:identity-api\n\n\
-             - lead-id: identity-api\n\
-             - source-key: docs\n\
+             - lead: identity-api\n\
+             - source: docs\n\
              - summary: Identity API.\n\n\
              ### legacy:identity-api\n\n\
-             - lead-id: identity-api\n\
-             - source-key: legacy\n\
+             - lead: identity-api\n\
+             - source: legacy\n\
              - summary: Legacy identity.\n",
         );
         let catalog = build_catalog(&doc);
@@ -842,22 +842,22 @@ slices:
   - name: identity-contracts
     scope: identity-api
     sources:
-      - { source-key: docs, lead-id: identity-api }
-      - { source-key: legacy, lead-id: identity-api }
+      - { source: docs, lead: identity-api }
+      - { source: legacy, lead: identity-api }
     project: identity-contracts
     rationale: \"identity API surface matched by shared slug across docs + legacy\"
   - name: identity-service
     scope: identity-api
     sources:
-      - { source-key: docs, lead-id: identity-api }
-      - { source-key: legacy, lead-id: identity-api }
+      - { source: docs, lead: identity-api }
+      - { source: legacy, lead: identity-api }
     project: identity-service
     depends-on: [identity-contracts]
   - name: password-reset
     scope: password-reset
     sources:
-      - { source-key: docs, lead-id: password-reset }
-      - { source-key: legacy, lead-id: reset-password }
+      - { source: docs, lead: password-reset }
+      - { source: legacy, lead: reset-password }
     project: identity-service
     rationale: \"password-reset (docs) and reset-password (legacy) are the same flow by summary judgment\"
 ";
@@ -873,8 +873,8 @@ slices:
         assert_eq!(contracts.scope, "identity-api");
         assert_eq!(contracts.project.as_deref(), Some("identity-contracts"));
         assert_eq!(contracts.sources.len(), 2);
-        assert_eq!(contracts.sources[0].source_key, "docs");
-        assert_eq!(contracts.sources[0].lead_id, "identity-api");
+        assert_eq!(contracts.sources[0].source, "docs");
+        assert_eq!(contracts.sources[0].lead, "identity-api");
         assert!(contracts.depends_on.is_empty());
 
         let service = &response.slices[1];
@@ -883,8 +883,8 @@ slices:
 
         let reset = &response.slices[2];
         assert_eq!(reset.scope, "password-reset");
-        assert_eq!(reset.sources[1].source_key, "legacy");
-        assert_eq!(reset.sources[1].lead_id, "reset-password");
+        assert_eq!(reset.sources[1].source, "legacy");
+        assert_eq!(reset.sources[1].lead, "reset-password");
 
         // The DTO re-serialises into a schema-valid response, locking the
         // shape the projection kernel will consume.
@@ -963,10 +963,10 @@ slices:
 
     // --- propose_from projection kernel ---------------------------------
 
-    fn member(source_key: &str, lead_id: &str) -> ResponseMember {
+    fn member(source: &str, lead: &str) -> ResponseMember {
         ResponseMember {
-            source_key: source_key.to_string(),
-            lead_id: lead_id.to_string(),
+            source: source.to_string(),
+            lead: lead.to_string(),
         }
     }
 
@@ -991,12 +991,12 @@ slices:
 
     fn discovery_with(leads: &[(&str, &str)]) -> Discovery {
         let body: String = std::iter::once("## Lead inventory\n\n".to_string())
-            .chain(leads.iter().map(|(source_key, lead_id)| {
+            .chain(leads.iter().map(|(source, lead)| {
                 format!(
-                    "### {source_key}:{lead_id}\n\n\
-                     - lead-id: {lead_id}\n\
-                     - source-key: {source_key}\n\
-                     - summary: {lead_id} summary\n\n",
+                    "### {source}:{lead}\n\n\
+                     - lead: {lead}\n\
+                     - source: {source}\n\
+                     - summary: {lead} summary\n\n",
                 )
             }))
             .collect();
@@ -1198,22 +1198,22 @@ slices:
   - name: identity-contracts
     scope: identity-api
     sources:
-      - { source-key: docs, lead-id: identity-api }
-      - { source-key: legacy, lead-id: identity-api }
+      - { source: docs, lead: identity-api }
+      - { source: legacy, lead: identity-api }
     project: identity-contracts
     rationale: \"identity API surface matched by shared slug across docs + legacy\"
   - name: identity-service
     scope: identity-api
     sources:
-      - { source-key: docs, lead-id: identity-api }
-      - { source-key: legacy, lead-id: identity-api }
+      - { source: docs, lead: identity-api }
+      - { source: legacy, lead: identity-api }
     project: identity-service
     depends-on: [identity-contracts]
   - name: password-reset
     scope: password-reset
     sources:
-      - { source-key: docs, lead-id: password-reset }
-      - { source-key: legacy, lead-id: reset-password }
+      - { source: docs, lead: password-reset }
+      - { source: legacy, lead: reset-password }
     project: identity-service
     rationale: \"password-reset (docs) and reset-password (legacy) are the same flow by summary judgment\"
 ";

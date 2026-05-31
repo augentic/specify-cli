@@ -44,7 +44,7 @@ The same `schema.json` is the source of truth for Rust-side CLI tests (`tests/pl
 The three health diagnostics layer additional codes that carry an optional `data` payload describing the offending shape:
 
 - `cycle-in-depends-on` (error): one or more cycles in the `depends-on` graph; `data.kind` is `cycle` and `data.cycle` is the cycle path with the first node repeated at the end.
-- `orphan-source-key` (warning): a top-level `sources:` key that no entry references; `data.kind` is `orphan-source` and `data.key` is the unreferenced key.
+- `orphan-source` (warning): a top-level `sources:` key that no entry references; `data.kind` is `orphan-source` and `data.key` is the unreferenced key.
 - `stale-workspace-clone` (warning): a registry-backed `.specify/workspace/<project>/` slot whose materialisation no longer matches `registry.yaml`; `data.kind` is `stale-clone` with `data.project`, `data.reason`, and optional `data.expected` / `data.observed` signature snapshots.
 
 ## See also

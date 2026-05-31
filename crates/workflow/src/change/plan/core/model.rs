@@ -152,12 +152,12 @@ pub struct Entry {
     /// entry is eligible.
     #[serde(default)]
     pub depends_on: Vec<String>,
-    /// (source-key, lead-id) bindings (workflow §`Slice.sources`).
-    /// Each entry pairs a `source-key` — referencing a top-level
-    /// [`Plan::sources`] entry — with the `lead-id` from
+    /// (source, lead) bindings (workflow §`Slice.sources`).
+    /// Each entry pairs a `source` — referencing a top-level
+    /// [`Plan::sources`] entry — with the `lead` from
     /// `discovery.md` that contributed to the slice. The bare-string
     /// shorthand `<key>` is accepted on the wire as sugar for
-    /// `{ source-key: <key>, lead-id: <slice.name> }`; in memory we
+    /// `{ source: <key>, lead: <slice.name> }`; in memory we
     /// preserve the on-disk form via [`SliceSourceBinding`].
     #[serde(default)]
     pub sources: Vec<SliceSourceBinding>,
@@ -181,7 +181,7 @@ pub struct Entry {
     /// [`ClaimKind`] enum; values MUST be source keys present in
     /// this slice's own [`Entry::sources`] list — orphan keys are
     /// rejected by `specrun slice validate` with
-    /// `slice-authority-override-orphan-source-key`. Empty map and
+    /// `slice-authority-override-orphan-source`. Empty map and
     /// missing field are equivalent.
     #[serde(default, skip_serializing_if = "slice_authority_override_is_empty")]
     pub authority_override: SliceAuthorityOverride,
@@ -234,10 +234,10 @@ pub enum Divergence {
 ///
 /// The map is scoped to one [`Entry`]; plan-wide and project-wide
 /// overrides are out of scope per authority and reconciliation contract. Keys reuse the closed
-/// [`ClaimKind`] enum; values are bare source-key strings that MUST
+/// [`ClaimKind`] enum; values are bare source strings that MUST
 /// be present in the owning slice's [`Entry::sources`] list —
 /// validation refuses orphan keys with
-/// `slice-authority-override-orphan-source-key`.
+/// `slice-authority-override-orphan-source`.
 ///
 /// `#[serde(transparent)]` over `BTreeMap` so the on-disk shape is
 /// the bare YAML map under `authority-override:`. Empty map and
@@ -455,18 +455,18 @@ impl fmt::Display for TargetRefParseError {
 
 impl std::error::Error for TargetRefParseError {}
 
-/// One `(source-key, lead-id)` binding under [`Entry::sources`].
+/// One `(source, lead)` binding under [`Entry::sources`].
 ///
 /// On the wire (workflow §`Slice.sources`) this is either:
 ///
 /// - a bare string `<key>` — shorthand for the structured form
-///   `{ source-key: <key>, lead-id: <slice.name> }`; used
+///   `{ source: <key>, lead: <slice.name> }`; used
 ///   predominantly in the degenerate `intent` case
 ///   (`sources: [intent]`); or
-/// - a structured `{ source-key, lead-id }` object.
+/// - a structured `{ source, lead }` object.
 ///
 /// Both shapes round-trip byte-identically: the bare shorthand is
-/// normalised at parse time into `lead_id == None`, and `Serialize`
+/// normalised at parse time into `lead == None`, and `Serialize`
 /// emits the same shape the operator authored. Use
 /// [`SliceSourceBinding::bare`] / [`SliceSourceBinding::structured`] in
 /// tests instead of constructing the struct literal directly so the
@@ -475,65 +475,65 @@ impl std::error::Error for TargetRefParseError {}
 pub struct SliceSourceBinding {
     /// Source key matching a top-level [`Plan::sources`] entry. Always
     /// present, regardless of which wire shape produced this value.
-    pub source_key: String,
-    /// Lead id from `discovery.md`, resolved within `source_key`.
-    /// `None` denotes the bare-string shorthand — the lead-id falls
+    pub source: String,
+    /// Lead id from `discovery.md`, resolved within `source`.
+    /// `None` denotes the bare-string shorthand — the lead falls
     /// back to the owning slice's name via
-    /// [`SliceSourceBinding::lead_id`].
-    pub lead_id: Option<String>,
+    /// [`SliceSourceBinding::lead`].
+    pub lead: Option<String>,
 }
 
 impl SliceSourceBinding {
-    /// Construct the bare-string shorthand form: lead-id defaults to
+    /// Construct the bare-string shorthand form: lead defaults to
     /// the owning slice's name at lookup time.
     #[must_use]
-    pub fn bare(source_key: impl Into<String>) -> Self {
+    pub fn bare(source: impl Into<String>) -> Self {
         Self {
-            source_key: source_key.into(),
-            lead_id: None,
+            source: source.into(),
+            lead: None,
         }
     }
 
-    /// Construct the structured form with an explicit lead-id.
+    /// Construct the structured form with an explicit lead.
     #[must_use]
-    pub fn structured(source_key: impl Into<String>, lead_id: impl Into<String>) -> Self {
+    pub fn structured(source: impl Into<String>, lead: impl Into<String>) -> Self {
         Self {
-            source_key: source_key.into(),
-            lead_id: Some(lead_id.into()),
+            source: source.into(),
+            lead: Some(lead.into()),
         }
     }
 
     /// The source key this binding references in [`Plan::sources`].
     #[must_use]
-    pub fn source_key(&self) -> &str {
-        &self.source_key
+    pub fn source(&self) -> &str {
+        &self.source
     }
 
-    /// The lead-id this binding pairs with, falling back to the
+    /// The lead this binding pairs with, falling back to the
     /// owning slice's name for the bare-string shorthand per the
     /// workflow contract §`Slice.sources`.
     #[must_use]
-    pub fn lead_id<'a>(&'a self, slice_name: &'a str) -> &'a str {
-        self.lead_id.as_deref().unwrap_or(slice_name)
+    pub fn lead<'a>(&'a self, slice_name: &'a str) -> &'a str {
+        self.lead.as_deref().unwrap_or(slice_name)
     }
 
     /// `true` when the binding was authored / will be emitted as the
     /// bare-string shorthand.
     #[must_use]
     pub const fn is_bare(&self) -> bool {
-        self.lead_id.is_none()
+        self.lead.is_none()
     }
 }
 
 impl Serialize for SliceSourceBinding {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match &self.lead_id {
-            None => serializer.serialize_str(&self.source_key),
-            Some(lead_id) => {
+        match &self.lead {
+            None => serializer.serialize_str(&self.source),
+            Some(lead) => {
                 use serde::ser::SerializeStruct;
                 let mut state = serializer.serialize_struct("SliceSourceBinding", 2)?;
-                state.serialize_field("source-key", &self.source_key)?;
-                state.serialize_field("lead-id", lead_id)?;
+                state.serialize_field("source", &self.source)?;
+                state.serialize_field("lead", lead)?;
                 state.end()
             }
         }
@@ -547,15 +547,15 @@ impl<'de> Deserialize<'de> for SliceSourceBinding {
         enum Wire {
             Bare(String),
             Structured {
-                #[serde(rename = "source-key")]
-                source_key: String,
-                #[serde(rename = "lead-id")]
-                lead_id: String,
+                #[serde(rename = "source")]
+                source: String,
+                #[serde(rename = "lead")]
+                lead: String,
             },
         }
         Ok(match Wire::deserialize(deserializer)? {
-            Wire::Bare(source_key) => Self::bare(source_key),
-            Wire::Structured { source_key, lead_id } => Self::structured(source_key, lead_id),
+            Wire::Bare(source) => Self::bare(source),
+            Wire::Structured { source, lead } => Self::structured(source, lead),
         })
     }
 }

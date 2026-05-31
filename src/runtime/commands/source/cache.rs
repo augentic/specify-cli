@@ -21,7 +21,7 @@ struct ExplainRow {
     timestamp: Timestamp,
     fingerprint: String,
     slice: String,
-    source_key: String,
+    source: String,
     operation: SourceOperation,
 }
 
@@ -47,7 +47,7 @@ pub fn explain(format: Format, adapter: &str, project_dir: &Path) -> Result<()> 
                 timestamp: e.timestamp,
                 fingerprint: e.fingerprint,
                 slice: e.slice,
-                source_key: e.source_key,
+                source: e.source,
                 operation: e.operation,
             })
             .collect(),
@@ -70,7 +70,7 @@ fn write_explain_text(w: &mut dyn Write, body: &ExplainBody) -> std::io::Result<
             ts = entry.timestamp,
             op = entry.operation,
             slice = entry.slice,
-            key = entry.source_key,
+            key = entry.source,
             fp = entry.fingerprint
         )?;
     }

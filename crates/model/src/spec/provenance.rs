@@ -370,7 +370,7 @@ fn check_sources(req: &Requirement, source_keys: &BTreeSet<String>, out: &mut Ve
     for key in &req.sources {
         if !is_valid_source_key(key) {
             out.push(Finding {
-                rule_id: "spec.requirement-source-key-malformed",
+                rule_id: "spec.requirement-source-malformed",
                 rule: "Each `Sources:` key is kebab-case (`[a-z][a-z0-9-]*`)",
                 detail: format!(
                     "requirement {} has malformed source key `{key}`",
@@ -382,7 +382,7 @@ fn check_sources(req: &Requirement, source_keys: &BTreeSet<String>, out: &mut Ve
         }
         if !source_keys.is_empty() && !source_keys.contains(key) {
             out.push(Finding {
-                rule_id: "spec.requirement-source-key-undefined",
+                rule_id: "spec.requirement-source-undefined",
                 rule: "Each `Sources:` key resolves to a slice-level plan binding",
                 detail: format!(
                     "requirement {} references source key `{key}`, which is not declared on the slice's plan entry",

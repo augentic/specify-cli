@@ -1,5 +1,5 @@
 //! Health diagnostics layered on top of `Plan::validate`:
-//! `cycle-in-depends-on`, `orphan-source-key`,
+//! `cycle-in-depends-on`, `orphan-source`,
 //! and `stale-workspace-clone`. Surfaced through
 //! `specrun plan validate`.
 
@@ -21,9 +21,9 @@ mod tests;
 
 /// Stable code for the cycle-detection diagnostic.
 pub const CYCLE: &str = "cycle-in-depends-on";
-/// Stable code for the orphan-source-key diagnostic — top-level
+/// Stable code for the orphan-source diagnostic — top-level
 /// `sources:` key declared but unreferenced by any entry.
-pub const ORPHAN_SOURCE: &str = "orphan-source-key";
+pub const ORPHAN_SOURCE: &str = "orphan-source";
 /// Stable code for the stale-workspace-clone diagnostic. See
 /// [`StaleReason`] for the two ways a clone is classified stale.
 pub const STALE_CLONE: &str = "stale-workspace-clone";
@@ -156,7 +156,7 @@ impl Diagnostic {
 ///
 ///   1. Every `Plan::validate` finding, in the existing order.
 ///   2. Cycle diagnostics (one per cycle, deduplicated by node-set).
-///   3. Orphan source-key diagnostics (sorted by key).
+///   3. Orphan source diagnostics (sorted by key).
 ///   4. Stale workspace clone diagnostics (sorted by project name).
 #[must_use]
 pub fn doctor(

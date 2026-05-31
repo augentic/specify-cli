@@ -48,7 +48,7 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
     let authority_override_map = SliceAuthorityOverride {
         by_kind: authority_override
             .iter()
-            .map(|a| (a.kind, a.source_key.clone()))
+            .map(|a| (a.kind, a.source.clone()))
             .collect::<BTreeMap<_, _>>(),
     };
     let target = target.map(|raw| parse_target_flag(&raw)).transpose()?;

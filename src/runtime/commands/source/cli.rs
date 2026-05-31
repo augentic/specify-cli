@@ -92,7 +92,7 @@ pub enum SourceAction {
     /// Run a source adapter's `survey` against a plan-bound source and
     /// merge the resulting lead set into `discovery.md`.
     ///
-    /// Resolves `<source-key>` against `plan.yaml.sources.<key>` (not
+    /// Resolves `<source>` against `plan.yaml.sources.<key>` (not
     /// the adapter name), resolves the bound source adapter, and builds
     /// the four-root sandbox under
     /// `.specify/.cache/extractions/<adapter>/survey/scratch/`.
@@ -104,7 +104,7 @@ pub enum SourceAction {
     /// validates the agent-produced `lead-set.md` and merges it.
     Survey {
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Plan name guard. When set, must match `plan.yaml.name`.
         #[arg(long)]
         plan: Option<String>,
@@ -114,11 +114,11 @@ pub enum SourceAction {
         phase: Phase,
     },
 
-    /// Run a source adapter's `extract` for one `(source-key, lead-id)`
+    /// Run a source adapter's `extract` for one `(source, lead)`
     /// pair and persist the resulting Evidence to
-    /// `.specify/slices/<slice>/evidence/<source-key>.yaml`.
+    /// `.specify/slices/<slice>/evidence/<source>.yaml`.
     ///
-    /// Resolves `<source-key>` against `plan.yaml.sources.<key>` (not
+    /// Resolves `<source>` against `plan.yaml.sources.<key>` (not
     /// the adapter name), resolves the bound source adapter, and builds
     /// the four-root sandbox with scratch under
     /// `.specify/.cache/extractions/<adapter>/<slice>/scratch/`.
@@ -131,9 +131,9 @@ pub enum SourceAction {
     /// `schemas/evidence.schema.json` before it is persisted.
     Extract {
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Lead id (from `discovery.md`) the Evidence is bound to.
-        lead_id: String,
+        lead: String,
         /// Slice the Evidence is extracted into; keys the scratch
         /// directory and the `.specify/slices/<slice>/evidence/` target.
         #[arg(long)]

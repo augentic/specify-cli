@@ -158,7 +158,7 @@ pub struct CacheLookup {
 ///    [`CacheMissReason::AdapterOptOut`] (skip every filesystem read).
 /// 2. `<adapter>/<digest>/fingerprint.json` exists → hit.
 /// 3. Otherwise, scan `index.jsonl` for the most recent prior entry on
-///    the same `(slice, source-key, operation)` lane, load that
+///    the same `(slice, source, operation)` lane, load that
 ///    entry's `fingerprint.json`, and diff field-by-field per
 ///    [`CacheFingerprint::diff_reason`].
 /// 4. No prior entry (or unreadable / corrupt prior record) →
@@ -172,7 +172,7 @@ pub struct CacheLookup {
 /// can rebuild the cache.
 pub fn lookup(
     layout: CacheLayout<'_>, fingerprint: &CacheFingerprint, cache_mode: Option<CacheMode>,
-    slice: &str, source_key: &str, operation: SourceOperation,
+    slice: &str, source: &str, operation: SourceOperation,
 ) -> Result<CacheLookup, Error> {
     let digest = fingerprint.digest();
     let cache_dir = layout.fingerprint_dir(&digest);
@@ -196,7 +196,7 @@ pub fn lookup(
         });
     }
 
-    let reason = miss_reason(layout, fingerprint, slice, source_key, operation)?;
+    let reason = miss_reason(layout, fingerprint, slice, source, operation)?;
     Ok(CacheLookup {
         digest,
         cache_dir,
@@ -205,14 +205,14 @@ pub fn lookup(
 }
 
 fn miss_reason(
-    layout: CacheLayout<'_>, fingerprint: &CacheFingerprint, slice: &str, source_key: &str,
+    layout: CacheLayout<'_>, fingerprint: &CacheFingerprint, slice: &str, source: &str,
     operation: SourceOperation,
 ) -> Result<CacheMissReason, Error> {
     let entries = read_index(layout)?;
     let Some(prior) = entries
         .into_iter()
         .rev()
-        .find(|e| e.slice == slice && e.source_key == source_key && e.operation == operation)
+        .find(|e| e.slice == slice && e.source == source && e.operation == operation)
     else {
         return Ok(CacheMissReason::NoPriorEntry);
     };
@@ -356,7 +356,7 @@ mod tests {
             timestamp: test_timestamp("2026-05-22T13:15:00Z"),
             fingerprint: digest.to_string(),
             slice: "identity-user-registration".to_string(),
-            source_key: "legacy".to_string(),
+            source: "legacy".to_string(),
             adapter: layout_adapter.to_string(),
             operation: SourceOperation::Extract,
         }
@@ -371,9 +371,8 @@ mod tests {
         let entry = index_entry("code-typescript", &digest);
 
         // Cold-start: miss with no-prior-entry.
-        let cold =
-            lookup(layout, &fingerprint, None, &entry.slice, &entry.source_key, entry.operation)
-                .expect("cold lookup");
+        let cold = lookup(layout, &fingerprint, None, &entry.slice, &entry.source, entry.operation)
+            .expect("cold lookup");
         assert!(matches!(
             cold.outcome,
             LookupOutcome::Miss {
@@ -384,9 +383,8 @@ mod tests {
         write(layout, &fingerprint, b"---\nclaims: []\n", "evidence.yaml", None, &entry)
             .expect("write");
 
-        let warm =
-            lookup(layout, &fingerprint, None, &entry.slice, &entry.source_key, entry.operation)
-                .expect("warm lookup");
+        let warm = lookup(layout, &fingerprint, None, &entry.slice, &entry.source, entry.operation)
+            .expect("warm lookup");
         match warm.outcome {
             LookupOutcome::Hit { cache_dir } => {
                 assert!(cache_dir.is_dir(), "hit cache_dir must exist: {}", cache_dir.display());
@@ -413,7 +411,7 @@ mod tests {
             &fingerprint,
             Some(CacheMode::OptOut),
             &entry.slice,
-            &entry.source_key,
+            &entry.source,
             entry.operation,
         )
         .expect("opt-out lookup");
@@ -445,7 +443,7 @@ mod tests {
         write(layout, &v1, b"e1", "evidence.yaml", None, &entry_v1).expect("write v1");
 
         let outcome =
-            lookup(layout, &v2, None, &entry_v1.slice, &entry_v1.source_key, entry_v1.operation)
+            lookup(layout, &v2, None, &entry_v1.slice, &entry_v1.source, entry_v1.operation)
                 .expect("v2 lookup");
         match outcome.outcome {
             LookupOutcome::Miss { reason } => {
@@ -470,7 +468,7 @@ mod tests {
         std::fs::write(&record_path, "{not json").expect("clobber record");
 
         let next = fp("code-typescript@2");
-        let outcome = lookup(layout, &next, None, &entry.slice, &entry.source_key, entry.operation)
+        let outcome = lookup(layout, &next, None, &entry.slice, &entry.source, entry.operation)
             .expect("lookup on corrupt prior");
         assert!(matches!(
             outcome.outcome,
@@ -487,7 +485,7 @@ mod tests {
         std::fs::create_dir_all(layout.adapter_dir()).expect("mkdir");
         std::fs::write(
             layout.index_path(),
-            "{\"timestamp\":\"2026-05-22T13:15:00Z\",\"fingerprint\":\"sha256:a\",\"slice\":\"s\",\"source-key\":\"k\",\"adapter\":\"a\",\"operation\":\"extract\"}\n\n",
+            "{\"timestamp\":\"2026-05-22T13:15:00Z\",\"fingerprint\":\"sha256:a\",\"slice\":\"s\",\"source\":\"k\",\"adapter\":\"a\",\"operation\":\"extract\"}\n\n",
         )
         .expect("write index");
         let rows = read_index(layout).expect("read index");

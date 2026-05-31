@@ -1445,7 +1445,7 @@ fn planning_stage_ab_brief_and_validate() {
 // ---- specrun plan validate health diagnostics (plan validate health diagnostics) ----
 //
 // `plan validate` carries the three surviving health diagnostics
-// (`cycle-in-depends-on`, `orphan-source-key`,
+// (`cycle-in-depends-on`, `orphan-source`,
 // `stale-workspace-clone`) alongside its base shape rules. The
 // `unreachable-entry` diagnostic retired in source/target adapter split alongside the
 // per-entry `failed`/`skipped` states it relied on.
@@ -1533,7 +1533,7 @@ fn validate_reports_all_health_diagnostics() {
     assert!(!results.is_empty(), "validate with broken plan must surface results: {value}");
     let codes: Vec<&str> = results.iter().filter_map(|r| r["code"].as_str()).collect();
 
-    for expected in ["cycle-in-depends-on", "orphan-source-key", "stale-workspace-clone"] {
+    for expected in ["cycle-in-depends-on", "orphan-source", "stale-workspace-clone"] {
         assert!(
             codes.contains(&expected),
             "validate must emit `{expected}` for the synthetic fixture; saw: {codes:?}"
@@ -1645,8 +1645,8 @@ fn plan_validate_payloads_round_trip_typed() {
 
     let orphan = results
         .iter()
-        .find(|d| d["code"] == "orphan-source-key")
-        .expect("expected orphan-source-key diagnostic");
+        .find(|d| d["code"] == "orphan-source")
+        .expect("expected orphan-source diagnostic");
     assert_eq!(orphan["data"]["kind"], "orphan-source");
     assert_eq!(orphan["data"]["key"], "orphan-key");
     assert_eq!(orphan["severity"], "warning");
@@ -1680,8 +1680,8 @@ fn plan_validate_healthy_exits_zero() {
 // ---- Wave 1.1 — per-slice source binding flag reshape ----
 //
 // The reshape replaces 1.x's bare `--sources <key>` repeater with the
-// `<key>=<lead-id>` wire form, accepting the bare `<key>`
-// shorthand only as sugar for `{ source-key, lead-id: <slice.name> }`
+// `<key>=<lead>` wire form, accepting the bare `<key>`
+// shorthand only as sugar for `{ source, lead: <slice.name> }`
 // per workflow §`Slice.sources`.
 
 const W11_PLAN: &str = "\
@@ -1719,8 +1719,8 @@ fn plan_add_structured_sources_round_trips() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("source-key: identity-design-notes")
-            && saved.contains("lead-id: user-registration"),
+        saved.contains("source: identity-design-notes")
+            && saved.contains("lead: user-registration"),
         "structured form must round-trip to disk:\n{saved}"
     );
 }
@@ -1731,7 +1731,7 @@ fn plan_add_bare_source_round_trips() {
     project.seed_plan(W11_PLAN);
 
     // Slice name `add-search-filter`; bare `--sources intent` is
-    // sugar for `{ source-key: intent, lead-id: add-search-filter }`.
+    // sugar for `{ source: intent, lead: add-search-filter }`.
     specrun()
         .current_dir(project.root())
         .args([
@@ -1750,14 +1750,14 @@ fn plan_add_bare_source_round_trips() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     // Bare form must appear on disk as the YAML scalar `intent`,
-    // not the structured `{ source-key, lead-id }` mapping.
+    // not the structured `{ source, lead }` mapping.
     assert!(
         saved.contains("  - intent"),
         "bare shorthand must round-trip to the unquoted scalar form:\n{saved}"
     );
     assert!(
-        !saved.contains("lead-id: add-search-filter"),
-        "lead-id=slice.name must collapse to bare form:\n{saved}"
+        !saved.contains("lead: add-search-filter"),
+        "lead=slice.name must collapse to bare form:\n{saved}"
     );
 }
 
@@ -1784,8 +1784,8 @@ fn plan_add_structured_lead_differs() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("lead-id: different-candidate"),
-        "structured form must stay structured when lead-id != slice.name:\n{saved}"
+        saved.contains("lead: different-candidate"),
+        "structured form must stay structured when lead != slice.name:\n{saved}"
     );
 }
 
@@ -1832,7 +1832,7 @@ fn plan_amend_add_source_appends_binding() {
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan");
     assert!(
-        saved.contains("source-key: identity-design-notes"),
+        saved.contains("source: identity-design-notes"),
         "amend --add-source must append the binding:\n{saved}"
     );
 }
@@ -2003,10 +2003,10 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - source-key: legacy
-        lead-id: user-registration
-      - source-key: runtime
-        lead-id: user-registration
+      - source: legacy
+        lead: user-registration
+      - source: runtime
+        lead: user-registration
 ";
 
 fn read_journal_lines(project: &Project) -> Vec<String> {
@@ -2064,7 +2064,7 @@ fn amend_authority_override_round_trips() {
     assert!(line.contains(r#""event":"plan.amend.authority-override""#));
     assert!(line.contains(r#""action":"set""#));
     assert!(line.contains(r#""claim-kind":"requirement""#));
-    assert!(line.contains(r#""source-key":"runtime""#));
+    assert!(line.contains(r#""source":"runtime""#));
     assert!(line.contains(r#""slice-name":"identity-user-registration""#));
 }
 
@@ -2096,9 +2096,9 @@ fn plan_amend_override_orphan_refused() {
         .assert()
         .failure();
     let code = assert.get_output().status.code().expect("exit code");
-    assert_eq!(code, 2, "orphan source-key must exit 2 (validation_failed)");
+    assert_eq!(code, 2, "orphan source must exit 2 (validation_failed)");
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    assert_eq!(stderr["error"], "slice-authority-override-orphan-source-key");
+    assert_eq!(stderr["error"], "slice-authority-override-orphan-source");
 
     let after = fs::read_to_string(project.plan_path()).expect("read plan");
     assert_eq!(before, after, "plan.yaml must not change on the refused write");
@@ -2148,7 +2148,7 @@ fn slice_validate_authority_override_orphan() {
     let report = parse_stdout(&assert.get_output().stdout, project.root());
     let findings = report["findings"].as_array().expect("findings array");
     assert!(
-        findings.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source-key"),
+        findings.iter().any(|r| r["rule-id"] == "slice-authority-override-orphan-source"),
         "expected orphan finding from slice validate: {findings:#?}"
     );
 }
@@ -2447,8 +2447,8 @@ const PROPOSE_DISCOVERY_N1: &str = "\
 
 ### intent:fix-typo
 
-- lead-id: fix-typo
-- source-key: intent
+- lead: fix-typo
+- source: intent
 - summary: Fix a typo in user.rs.
 ";
 
@@ -2458,7 +2458,7 @@ const PROPOSE_RESPONSE_N1: &str = r#"{
   "version": 1,
   "kind": "response",
   "slices": [
-    { "scope": "fix-typo", "sources": [{ "source-key": "intent", "lead-id": "fix-typo" }] }
+    { "scope": "fix-typo", "sources": [{ "source": "intent", "lead": "fix-typo" }] }
   ]
 }"#;
 
@@ -2484,26 +2484,26 @@ const PROPOSE_DISCOVERY_HUB: &str = "\
 
 ### docs:identity-api
 
-- lead-id: identity-api
-- source-key: docs
+- lead: identity-api
+- source: docs
 - summary: Identity API contract for authentication and account access.
 
 ### legacy:identity-api
 
-- lead-id: identity-api
-- source-key: legacy
+- lead: identity-api
+- source: legacy
 - summary: Legacy identity endpoints.
 
 ### docs:password-reset
 
-- lead-id: password-reset
-- source-key: docs
+- lead: password-reset
+- source: docs
 - summary: Users can request a password reset email.
 
 ### legacy:reset-password
 
-- lead-id: reset-password
-- source-key: legacy
+- lead: reset-password
+- source: legacy
 - summary: Legacy reset-password flow.
 ";
 
@@ -2533,8 +2533,8 @@ const PROPOSE_RESPONSE_FANOUT: &str = r#"{
       "name": "identity-contracts",
       "scope": "identity-api",
       "sources": [
-        { "source-key": "docs", "lead-id": "identity-api" },
-        { "source-key": "legacy", "lead-id": "identity-api" }
+        { "source": "docs", "lead": "identity-api" },
+        { "source": "legacy", "lead": "identity-api" }
       ],
       "project": "identity-contracts",
       "rationale": "identity API surface matched by shared slug across docs + legacy"
@@ -2543,8 +2543,8 @@ const PROPOSE_RESPONSE_FANOUT: &str = r#"{
       "name": "identity-service",
       "scope": "identity-api",
       "sources": [
-        { "source-key": "docs", "lead-id": "identity-api" },
-        { "source-key": "legacy", "lead-id": "identity-api" }
+        { "source": "docs", "lead": "identity-api" },
+        { "source": "legacy", "lead": "identity-api" }
       ],
       "project": "identity-service",
       "depends-on": ["identity-contracts"]
@@ -2553,8 +2553,8 @@ const PROPOSE_RESPONSE_FANOUT: &str = r#"{
       "name": "password-reset",
       "scope": "password-reset",
       "sources": [
-        { "source-key": "docs", "lead-id": "password-reset" },
-        { "source-key": "legacy", "lead-id": "reset-password" }
+        { "source": "docs", "lead": "password-reset" },
+        { "source": "legacy", "lead": "reset-password" }
       ],
       "project": "identity-service",
       "rationale": "password-reset (docs) and reset-password (legacy) are the same flow by summary judgment"
@@ -2565,18 +2565,18 @@ const PROPOSE_RESPONSE_FANOUT: &str = r#"{
 // -- propose helpers --------------------------------------------------
 
 /// Build a minimal `discovery.md` body with one `### source:lead` block
-/// per `(source-key, lead-id)` pair — mirrors the kernel unit-test
+/// per `(source, lead)` pair — mirrors the kernel unit-test
 /// seeding so negative fixtures stay one-liners.
 fn discovery_doc(leads: &[(&str, &str)]) -> String {
     use std::fmt::Write as _;
     let mut body = String::from("## Lead inventory\n\n");
-    for (source_key, lead_id) in leads {
+    for (source, lead) in leads {
         let _ = write!(
             body,
-            "### {source_key}:{lead_id}\n\n\
-             - lead-id: {lead_id}\n\
-             - source-key: {source_key}\n\
-             - summary: {lead_id} summary.\n\n",
+            "### {source}:{lead}\n\n\
+             - lead: {lead}\n\
+             - source: {source}\n\
+             - summary: {lead} summary.\n\n",
         );
     }
     body
@@ -2657,8 +2657,8 @@ fn propose_dry_run_n1_request_golden() {
     assert_eq!(actual["projects"][0]["name"], "test-proj");
     assert_eq!(actual["projects"][0]["target"], "omnia@v1");
     assert_eq!(actual["leads"].as_array().expect("leads").len(), 1);
-    assert_eq!(actual["leads"][0]["source-key"], "intent");
-    assert_eq!(actual["leads"][0]["lead-id"], "fix-typo");
+    assert_eq!(actual["leads"][0]["source"], "intent");
+    assert_eq!(actual["leads"][0]["lead"], "fix-typo");
 
     // The plan is untouched by --dry-run.
     assert_eq!(fs::read_to_string(project.plan_path()).expect("read plan"), PROPOSE_PLAN_N1);
@@ -2715,8 +2715,8 @@ fn propose_from_n1_auto_bind_golden() {
     assert_eq!(entry.project.as_deref(), Some("test-proj"));
     assert_eq!(entry.target.as_ref().map(ToString::to_string), Some("omnia@v1".to_string()));
     assert_eq!(entry.sources.len(), 1);
-    assert_eq!(entry.sources[0].source_key(), "intent");
-    assert_eq!(entry.sources[0].lead_id("fix-typo"), "fix-typo");
+    assert_eq!(entry.sources[0].source(), "intent");
+    assert_eq!(entry.sources[0].lead("fix-typo"), "fix-typo");
 }
 
 #[test]
@@ -2756,11 +2756,11 @@ fn propose_from_fan_out_golden() {
 
     // The fan-out slice carries both matched sources, structured.
     assert_eq!(plan.entries[0].sources.len(), 2);
-    assert_eq!(plan.entries[0].sources[0].source_key(), "docs");
-    assert_eq!(plan.entries[0].sources[1].source_key(), "legacy");
-    // The 1:1 scope keeps the cross-source lead-ids verbatim.
-    assert_eq!(plan.entries[2].sources[1].source_key(), "legacy");
-    assert_eq!(plan.entries[2].sources[1].lead_id("password-reset"), "reset-password");
+    assert_eq!(plan.entries[0].sources[0].source(), "docs");
+    assert_eq!(plan.entries[0].sources[1].source(), "legacy");
+    // The 1:1 scope keeps the cross-source leads verbatim.
+    assert_eq!(plan.entries[2].sources[1].source(), "legacy");
+    assert_eq!(plan.entries[2].sources[1].lead("password-reset"), "reset-password");
     // depends-on resolves to a derived slice name.
     assert_eq!(plan.entries[1].depends_on, ["identity-contracts"]);
     assert!(plan.entries[0].depends_on.is_empty());
@@ -2858,7 +2858,7 @@ fn propose_response_schema_rejected() {
     // the structural deserialise.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"slices":[{"scope":"a","sources":[{"source-key":"docs","lead-id":"a"}]}]}"#,
+        r#"{"version":1,"slices":[{"scope":"a","sources":[{"source":"docs","lead":"a"}]}]}"#,
     );
     assert_eq!(body["error"], "proposal-schema");
 }
@@ -2876,7 +2876,7 @@ fn propose_reconcile_lead_orphan() {
 
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"ghost"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"ghost"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-lead-orphan");
 }
@@ -2890,7 +2890,7 @@ fn propose_reconcile_slice_source_collision() {
     // One slice names two leads from the same source.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"},{"source-key":"docs","lead-id":"b"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"},{"source":"docs","lead":"b"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-slice-source-collision");
 }
@@ -2904,7 +2904,7 @@ fn propose_reconcile_fanout_source_mismatch() {
     // Two slices share `scope: s` but carry differing sources.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]},{"scope":"s","sources":[{"source-key":"docs","lead-id":"b"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}]},{"scope":"s","sources":[{"source":"docs","lead":"b"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-fanout-source-mismatch");
 }
@@ -2918,7 +2918,7 @@ fn propose_reconcile_partition_gap() {
     // The catalog carries two leads; the response covers only `a`.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-partition");
 }
@@ -2932,7 +2932,7 @@ fn propose_reconcile_project_orphan() {
     // The slice binds a project absent from the (sole-project) topology.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}],"project":"ghost"}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}],"project":"ghost"}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-project-orphan");
 }
@@ -2949,7 +2949,7 @@ fn propose_reconcile_project_binding_required() {
 
     let body = propose_from_stderr(
         tmp.path(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-project-binding-required");
 }
@@ -2963,7 +2963,7 @@ fn propose_reconcile_slice_duplicate() {
     // Two slices collapse to the same (scope, auto-bound project) pair.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]},{"scope":"s","sources":[{"source-key":"docs","lead-id":"a"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}]},{"scope":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-slice-duplicate");
 }
@@ -2977,7 +2977,7 @@ fn propose_reconcile_slice_name_collision() {
     // Two distinct scopes, but both supply the explicit name `dup`.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"dup","scope":"s1","sources":[{"source-key":"docs","lead-id":"a"}]},{"name":"dup","scope":"s2","sources":[{"source-key":"docs","lead-id":"b"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"dup","scope":"s1","sources":[{"source":"docs","lead":"a"}]},{"name":"dup","scope":"s2","sources":[{"source":"docs","lead":"b"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-slice-name-collision");
 }
@@ -2991,7 +2991,7 @@ fn propose_reconcile_depends_on_cycle() {
     // alpha ↔ beta depend on each other.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"alpha","scope":"s1","sources":[{"source-key":"docs","lead-id":"a"}],"depends-on":["beta"]},{"name":"beta","scope":"s2","sources":[{"source-key":"docs","lead-id":"b"}],"depends-on":["alpha"]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"alpha","scope":"s1","sources":[{"source":"docs","lead":"a"}],"depends-on":["beta"]},{"name":"beta","scope":"s2","sources":[{"source":"docs","lead":"b"}],"depends-on":["alpha"]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-depends-on-cycle");
 }
@@ -3028,7 +3028,7 @@ fn propose_re_propose_replaces_all_slices() {
 
     propose_from_ok(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"first","scope":"first","sources":[{"source-key":"intent","lead-id":"fix-typo"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"first","scope":"first","sources":[{"source":"intent","lead":"fix-typo"}]}]}"#,
     );
     let plan_after_first = Plan::load(&project.plan_path()).expect("load plan");
     assert_eq!(
@@ -3038,7 +3038,7 @@ fn propose_re_propose_replaces_all_slices() {
 
     propose_from_ok(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"second","scope":"second","sources":[{"source-key":"intent","lead-id":"fix-typo"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"second","scope":"second","sources":[{"source":"intent","lead":"fix-typo"}]}]}"#,
     );
     let plan_after_second = Plan::load(&project.plan_path()).expect("load plan");
     assert_eq!(

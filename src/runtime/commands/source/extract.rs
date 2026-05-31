@@ -1,7 +1,7 @@
 //! `specrun source extract` handler — slice-time Evidence extraction
 //! (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
 //!
-//! Resolves `<source-key>` against `plan.yaml.sources.<key>`, runs the
+//! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Extract`]) for adapter
 //! resolution, brief directory, the four-root sandbox (scratch at
 //! `.specify/.cache/extractions/<adapter>/<slice>/scratch/`), and the
@@ -17,14 +17,14 @@
 //!   - `--phase prepare` (default): build scratch + the `evidence/`
 //!     target, emit `source.execution.agent`, and print the extract
 //!     handoff envelope (`{ adapter, version, briefs-dir, source-dir? |
-//!     value-inline?, scratch-dir, evidence-dir, leads:[<lead-id>],
+//!     value-inline?, scratch-dir, evidence-dir, leads:[<lead>],
 //!     execution }`). For value-bound sources (e.g. `intent`)
 //!     `source-dir` is absent and `value-inline` carries the literal
 //!     binding body (preflight §2). Control returns to the agent.
 //!   - `--phase finalize`: validate the agent-produced Evidence
 //!     against `schemas/evidence.schema.json` *before* it becomes
 //!     visible to synthesis, persist it to
-//!     `.specify/slices/<slice>/evidence/<source-key>.yaml`, run the
+//!     `.specify/slices/<slice>/evidence/<source>.yaml`, run the
 //!     extraction-cache fingerprint (RFC-27, with the `lead` input),
 //!     and emit `slice.extract.cache-hit` / `cache-miss`. Under the
 //!     `execution: agent` forced opt-out this is always a `cache-miss`
@@ -35,7 +35,7 @@
 //! The agent writes its Evidence to `$SCRATCH_DIR/evidence.yaml` (the
 //! write-only sandbox root, mirroring how `survey` writes
 //! `lead-set.md`); the CLI is the only writer of the visible
-//! `.specify/slices/<slice>/evidence/<source-key>.yaml`, so an invalid
+//! `.specify/slices/<slice>/evidence/<source>.yaml`, so an invalid
 //! document never lands on the persisted path.
 
 use std::io::Write;
@@ -79,7 +79,7 @@ struct ExtractHandoff {
     value_inline: Option<String>,
     scratch_dir: PathBuf,
     /// `.specify/slices/<slice>/evidence/` — where the CLI persists
-    /// the validated `<source-key>.yaml` in finalize.
+    /// the validated `<source>.yaml` in finalize.
     evidence_dir: PathBuf,
     /// The single lead being extracted (preflight §2).
     leads: Vec<String>,
@@ -92,7 +92,7 @@ struct ExtractHandoff {
 #[serde(rename_all = "kebab-case")]
 struct ExtractResult {
     adapter: String,
-    source_key: String,
+    source: String,
     slice: String,
     lead: String,
     fingerprint: String,
@@ -101,25 +101,25 @@ struct ExtractResult {
     /// Populated on a miss; the closed cache-miss reason.
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<CacheMissReason>,
-    /// Persisted `.specify/slices/<slice>/evidence/<source-key>.yaml`.
+    /// Persisted `.specify/slices/<slice>/evidence/<source>.yaml`.
     evidence: PathBuf,
 }
 
-/// Run `specrun source extract <source-key> <lead-id> --slice <slice>
+/// Run `specrun source extract <source> <lead> --slice <slice>
 /// [--phase prepare|finalize]`.
 ///
 /// # Errors
 ///
-/// - `source-key-unknown` when `<source-key>` is not a
+/// - `source-unknown` when `<source>` is not a
 ///   `plan.yaml.sources` key.
 /// - propagates adapter-resolution, schema-validation, fingerprint,
 ///   and persist failures.
-pub fn run(ctx: &Ctx, source_key: &str, lead_id: &str, slice: &str, phase: Phase) -> Result<()> {
+pub fn run(ctx: &Ctx, source: &str, lead: &str, slice: &str, phase: Phase) -> Result<()> {
     let plan = Plan::load(&ctx.layout().plan_path())?;
-    let binding = plan.sources.get(source_key).ok_or_else(|| Error::Diag {
-        code: "source-key-unknown",
+    let binding = plan.sources.get(source).ok_or_else(|| Error::Diag {
+        code: "source-unknown",
         detail: format!(
-            "no source `{source_key}` in plan.yaml.sources; `specrun source extract` resolves \
+            "no source `{source}` in plan.yaml.sources; `specrun source extract` resolves \
              its argument against the plan's source keys, not the adapter name"
         ),
     })?;
@@ -128,7 +128,7 @@ pub fn run(ctx: &Ctx, source_key: &str, lead_id: &str, slice: &str, phase: Phase
         binding.path.as_deref().map(|raw| prep::resolve_source_path(&ctx.project_dir, raw));
 
     let slice_dir = ctx.slices_dir().join(slice);
-    let leads = [lead_id.to_string()];
+    let leads = [lead.to_string()];
     let prepared = prep::prepare(&prep::PrepRequest {
         adapter: &binding.adapter,
         project_dir: &ctx.project_dir,
@@ -142,8 +142,8 @@ pub fn run(ctx: &Ctx, source_key: &str, lead_id: &str, slice: &str, phase: Phase
 
     let cx = ExtractCtx {
         ctx,
-        source_key,
-        lead_id,
+        source,
+        lead,
         slice,
         prepared: &prepared,
         source_path: source_path.as_deref(),
@@ -163,8 +163,8 @@ pub fn run(ctx: &Ctx, source_key: &str, lead_id: &str, slice: &str, phase: Phase
 /// phase functions, so each stays under the argument-count budget.
 struct ExtractCtx<'a> {
     ctx: &'a Ctx,
-    source_key: &'a str,
-    lead_id: &'a str,
+    source: &'a str,
+    lead: &'a str,
     slice: &'a str,
     prepared: &'a prep::SourcePrep,
     source_path: Option<&'a Path>,
@@ -181,7 +181,7 @@ fn prepare(cx: &ExtractCtx<'_>) -> Result<()> {
     let event = Event::new(
         Timestamp::now(),
         EventKind::SourceExecutionAgent {
-            source_key: cx.source_key.to_string(),
+            source: cx.source.to_string(),
             adapter: cx.prepared.manifest.name.clone(),
             operation: SourceOperation::Extract,
         },
@@ -199,7 +199,7 @@ fn prepare(cx: &ExtractCtx<'_>) -> Result<()> {
         value_inline,
         scratch_dir: scratch,
         evidence_dir: evidence_dir(cx.prepared),
-        leads: vec![cx.lead_id.to_string()],
+        leads: vec![cx.lead.to_string()],
         execution: "agent",
     };
     cx.ctx.write(&handoff, write_handoff_text)
@@ -228,7 +228,7 @@ fn run_tool(cx: &ExtractCtx<'_>) -> Result<()> {
         &fingerprint,
         cache_mode,
         cx.slice,
-        cx.source_key,
+        cx.source,
         SourceOperation::Extract,
     )?;
 
@@ -266,7 +266,7 @@ fn complete(cx: &ExtractCtx<'_>, raw: &str, source: &Path) -> Result<()> {
         &fingerprint,
         cache_mode,
         cx.slice,
-        cx.source_key,
+        cx.source,
         SourceOperation::Extract,
     )?;
 
@@ -298,16 +298,16 @@ fn dispatch_extract_tool(prepared: &prep::SourcePrep) -> Result<()> {
 }
 
 /// Persist the validated Evidence to
-/// `.specify/slices/<slice>/evidence/<source-key>.yaml` (atomic
+/// `.specify/slices/<slice>/evidence/<source>.yaml` (atomic
 /// tempfile-rename). The directory was scaffolded by [`prep::prepare`].
 fn persist(cx: &ExtractCtx<'_>, bytes: &[u8]) -> Result<()> {
-    let path = evidence_dir(cx.prepared).join(format!("{}.yaml", cx.source_key));
+    let path = evidence_dir(cx.prepared).join(format!("{}.yaml", cx.source));
     bytes_write(&path, bytes)
 }
 
 /// Build the closed extract [`CacheFingerprint`] (RFC-27, with `lead`):
 /// source identity, `<name>@<version>`, the `extract` brief sha256, the
-/// declared tool versions, and the `<lead-id>` being extracted.
+/// declared tool versions, and the `<lead>` being extracted.
 fn extract_fingerprint(cx: &ExtractCtx<'_>) -> Result<CacheFingerprint> {
     let source = match cx.source_path {
         Some(path) => FingerprintSource::from_path(path)?,
@@ -347,7 +347,7 @@ fn extract_fingerprint(cx: &ExtractCtx<'_>) -> Result<CacheFingerprint> {
         adapter,
         cache::sha256_prefixed(&brief_bytes),
         tool_versions,
-        Some(cx.lead_id.to_string()),
+        Some(cx.lead.to_string()),
     ))
 }
 
@@ -358,13 +358,13 @@ fn emit_cache_event(cx: &ExtractCtx<'_>, lookup: &cache::CacheLookup) -> Result<
     let kind = match &lookup.outcome {
         LookupOutcome::Hit { .. } => EventKind::SliceExtractCacheHit {
             slice_name: cx.slice.to_string(),
-            source_key: cx.source_key.to_string(),
+            source: cx.source.to_string(),
             adapter,
             fingerprint: lookup.digest.clone(),
         },
         LookupOutcome::Miss { reason } => EventKind::SliceExtractCacheMiss {
             slice_name: cx.slice.to_string(),
-            source_key: cx.source_key.to_string(),
+            source: cx.source.to_string(),
             adapter,
             fingerprint: lookup.digest.clone(),
             reason: *reason,
@@ -385,7 +385,7 @@ fn write_cache_entry(
         timestamp: Timestamp::now(),
         fingerprint: fingerprint.digest(),
         slice: cx.slice.to_string(),
-        source_key: cx.source_key.to_string(),
+        source: cx.source.to_string(),
         adapter: cx.prepared.manifest.name.clone(),
         operation: SourceOperation::Extract,
     };
@@ -406,13 +406,13 @@ fn extract_result(cx: &ExtractCtx<'_>, lookup: &cache::CacheLookup) -> ExtractRe
     };
     ExtractResult {
         adapter: cx.prepared.manifest.name.clone(),
-        source_key: cx.source_key.to_string(),
+        source: cx.source.to_string(),
         slice: cx.slice.to_string(),
-        lead: cx.lead_id.to_string(),
+        lead: cx.lead.to_string(),
         fingerprint: lookup.digest.clone(),
         cache,
         reason,
-        evidence: evidence_dir(cx.prepared).join(format!("{}.yaml", cx.source_key)),
+        evidence: evidence_dir(cx.prepared).join(format!("{}.yaml", cx.source)),
     }
 }
 
@@ -475,7 +475,7 @@ fn write_handoff_text(w: &mut dyn Write, body: &ExtractHandoff) -> std::io::Resu
 
 fn write_result_text(w: &mut dyn Write, body: &ExtractResult) -> std::io::Result<()> {
     writeln!(w, "adapter: {}", body.adapter)?;
-    writeln!(w, "source-key: {}", body.source_key)?;
+    writeln!(w, "source: {}", body.source)?;
     writeln!(w, "slice: {}", body.slice)?;
     writeln!(w, "lead: {}", body.lead)?;
     write!(w, "cache: {}", body.cache)?;

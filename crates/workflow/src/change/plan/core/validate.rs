@@ -108,7 +108,7 @@ fn check_unknown_sources(plan: &Plan) -> Vec<Finding> {
     let mut out = Vec::new();
     for entry in &plan.entries {
         for binding in &entry.sources {
-            let key = binding.source_key();
+            let key = binding.source();
             if !plan.sources.contains_key(key) {
                 out.push(Finding {
                     level: Severity::Error,
@@ -181,7 +181,7 @@ fn missing_project_or_target(changes: &[Entry]) -> Vec<Finding> {
 /// per-slice authority override — refuse orphan per-slice `authority-override` values.
 ///
 /// For every slice's override map, every value MUST appear in that
-/// slice's `sources[].source-key` list; otherwise the operator has named a
+/// slice's `sources[].source` list; otherwise the operator has named a
 /// source key that does not exist on the slice, and synthesis would
 /// silently fall through to the default authority. Findings sort
 /// deterministically by slice name (declaration order) then by
@@ -198,12 +198,12 @@ pub fn orphan_authority_override_keys(changes: &[Entry]) -> Vec<Finding> {
             continue;
         }
         let known: BTreeSet<&str> =
-            entry.sources.iter().map(super::model::SliceSourceBinding::source_key).collect();
+            entry.sources.iter().map(super::model::SliceSourceBinding::source).collect();
         for (kind, key) in &entry.authority_override.by_kind {
             if !known.contains(key.as_str()) {
                 out.push(Finding {
                     level: Severity::Error,
-                    code: "slice-authority-override-orphan-source-key",
+                    code: "slice-authority-override-orphan-source",
                     message: format!(
                         "slice '{}' override for kind '{kind}' references source key '{key}', \
                          not present in slice sources",

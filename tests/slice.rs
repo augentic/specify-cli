@@ -471,7 +471,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { source-key: legacy-monolith, lead-id: my-slice }
+      - { source: legacy-monolith, lead: my-slice }
 ";
 
 #[test]
@@ -553,7 +553,7 @@ fn validate_rejects_unknown_status() {
 }
 
 #[test]
-fn validate_rejects_source_key_not_in_plan() {
+fn validate_rejects_source_not_in_plan() {
     let spec = "### Requirement: Stray source key\n\n\
                 ID: REQ-001\n\
                 Sources: [phantom]\n\
@@ -565,7 +565,7 @@ fn validate_rejects_source_key_not_in_plan() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-source-key-undefined");
+    assert_provenance_fail_rule(assert.get_output(), "spec.requirement-source-undefined");
 }
 
 #[test]
@@ -602,7 +602,7 @@ requirements:
     sources: [legacy-monolith]
     contributing-claims:
       - source: legacy-monolith
-        claim-id: REQ-001
+        id: password-reset.request
         kind: requirement
         value: \"Password reset request returns a 200 response.\"
         path: src/users/reset.ts#L42
@@ -624,7 +624,7 @@ authority: behaviour
 lead: my-slice
 claims:
   - kind: requirement
-    claim-id: REQ-001
+    id: password-reset.request
     statement: \"Password reset request returns a 200 response.\"
     path: src/users/reset.ts#L42
 ";
@@ -697,7 +697,7 @@ fn validate_claim_drift_on_rename() {
     let project = stage_slice_with_provenance();
     // Rename the evidence claim id; provenance.yaml still cites the old one.
     let evidence_path = project.slices_dir().join("my-slice/evidence/legacy-monolith.yaml");
-    let modified = CLEAN_EVIDENCE_YAML.replace("claim-id: REQ-001", "claim-id: REQ-999-renamed");
+    let modified = CLEAN_EVIDENCE_YAML.replace("id: password-reset.request", "id: renamed-claim");
     fs::write(&evidence_path, modified).expect("rewrite evidence");
 
     let assert = specrun()
@@ -708,8 +708,8 @@ fn validate_claim_drift_on_rename() {
     assert_eq!(assert.get_output().status.code(), Some(2));
     let detail = find_finding_impact(assert.get_output(), "slice-provenance-drift");
     assert!(
-        detail.contains("legacy-monolith") && detail.contains("REQ-001"),
-        "drift detail should name the dangling (source, claim-id) pair, got: {detail}"
+        detail.contains("legacy-monolith") && detail.contains("password-reset.request"),
+        "drift detail should name the dangling (source, id) pair, got: {detail}"
     );
 }
 
@@ -767,7 +767,7 @@ authority: behaviour
 lead: my-slice
 claims:
   - kind: region
-    claim-id: task-list-footer
+    id: task-list-footer
     component: tab-bar
     statement: \"Bottom tab bar with three tabs.\"
 ";
@@ -780,7 +780,7 @@ authority: behaviour
 lead: my-slice
 claims:
   - kind: region
-    claim-id: task-list-header
+    id: task-list-header
     notes:
       candidate_component: hero-banner
     statement: \"Hero banner at top of screen.\"
@@ -810,7 +810,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { source-key: ui-screens, lead-id: my-slice }
+      - { source: ui-screens, lead: my-slice }
 ";
 
 /// Stage a slice with Evidence containing `component:` directives
@@ -925,7 +925,7 @@ authority: behaviour
 lead: my-slice
 claims:
   - kind: region
-    claim-id: task-list-body
+    id: task-list-body
     statement: \"Main task list body.\"
 ";
     let project = stage_slice_with_catalog(
@@ -997,14 +997,14 @@ fn validate_flags_thin_summary_non_blocking() {
 
 ### docs:identity-api
 
-- lead-id: identity-api
-- source-key: docs
+- lead: identity-api
+- source: docs
 - summary: Identity API.
 
 ### legacy:identity-api
 
-- lead-id: identity-api
-- source-key: legacy
+- lead: identity-api
+- source: legacy
 - summary: Authentication and account-access API covering login, token refresh, and profile reads.
 ";
     fs::write(project.root().join("discovery.md"), discovery).expect("write discovery.md");

@@ -113,13 +113,13 @@ pub enum EventKind {
         slice_name: String,
     },
     /// `/spec:refine` finished one source-bound `extract` call. One
-    /// event per `(source-key, slice)` pair. Agent-driven.
+    /// event per `(source, slice)` pair. Agent-driven.
     #[serde(rename = "slice.extract.completed", rename_all = "kebab-case")]
     SliceExtractCompleted {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
     },
     /// `[conflict]` on a requirement in `spec.md` — same-authority
     /// disagreement the operator must reconcile. Emitted by
@@ -160,7 +160,7 @@ pub enum EventKind {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
         adapter: String,
         /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
@@ -175,7 +175,7 @@ pub enum EventKind {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
         adapter: String,
         /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
@@ -192,7 +192,7 @@ pub enum EventKind {
     #[serde(rename = "source.survey.cache-hit", rename_all = "kebab-case")]
     SourceSurveyCacheHit {
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
         adapter: String,
         /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
@@ -206,7 +206,7 @@ pub enum EventKind {
     #[serde(rename = "source.survey.cache-miss", rename_all = "kebab-case")]
     SourceSurveyCacheMiss {
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
         adapter: String,
         /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
@@ -217,13 +217,13 @@ pub enum EventKind {
         reason: CacheMissReason,
     },
     /// A source adapter ran one operation under agent execution
-    /// (`execution: agent`). One event per `(source-key, operation)`
+    /// (`execution: agent`). One event per `(source, operation)`
     /// pair; `operation` is the closed [`SourceOperation`] enum
     /// (`survey | extract`).
     #[serde(rename = "source.execution.agent", rename_all = "kebab-case")]
     SourceExecutionAgent {
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
         adapter: String,
         /// Which operation ran (`survey` at plan time, `extract` at
@@ -278,7 +278,7 @@ pub enum EventKind {
         /// Source key the override now points at, when `action` is
         /// [`AuthorityOverrideAction::Set`]; absent on clear actions.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        source_key: Option<String>,
+        source: Option<String>,
     },
     /// `specrun plan propose --from` validated the agent reconciliation
     /// response and is about to write `plan.yaml.slices[]`. Emitted
@@ -613,7 +613,7 @@ mod tests {
                     slice_name: "checkout".to_string(),
                     action: AuthorityOverrideAction::Set,
                     claim_kind: Some("criterion".to_string()),
-                    source_key: Some("runtime".to_string()),
+                    source: Some("runtime".to_string()),
                 },
             ),
         ];
@@ -661,18 +661,18 @@ mod tests {
             (
                 EventKind::SliceExtractCacheHit {
                     slice_name: "identity-user-registration".to_string(),
-                    source_key: "runtime".to_string(),
+                    source: "runtime".to_string(),
                     adapter: "captures".to_string(),
                     fingerprint: "sha256:cafef00d".to_string(),
                 },
                 &[
-                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source-key":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
+                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
                 ],
             ),
             (
                 EventKind::SliceExtractCacheMiss {
                     slice_name: "identity-user-registration".to_string(),
-                    source_key: "runtime".to_string(),
+                    source: "runtime".to_string(),
                     adapter: "captures".to_string(),
                     fingerprint: "sha256:beef".to_string(),
                     reason: CacheMissReason::AdapterVersionChanged,
@@ -680,7 +680,7 @@ mod tests {
                 &[
                     r#""event":"slice.extract.cache-miss""#,
                     r#""reason":"adapter-version-changed""#,
-                    r#""source-key":"runtime""#,
+                    r#""source":"runtime""#,
                 ],
             ),
             (
@@ -717,28 +717,28 @@ mod tests {
                     slice_name: "identity-user-registration".to_string(),
                     action: AuthorityOverrideAction::Set,
                     claim_kind: Some("criterion".to_string()),
-                    source_key: Some("runtime".to_string()),
+                    source: Some("runtime".to_string()),
                 },
                 &[
                     r#""event":"plan.amend.authority-override""#,
                     r#""action":"set""#,
                     r#""claim-kind":"criterion""#,
-                    r#""source-key":"runtime""#,
+                    r#""source":"runtime""#,
                 ],
             ),
             (
                 EventKind::SourceSurveyCacheHit {
-                    source_key: "runtime".to_string(),
+                    source: "runtime".to_string(),
                     adapter: "captures".to_string(),
                     fingerprint: "sha256:cafef00d".to_string(),
                 },
                 &[
-                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.cache-hit","payload":{"source-key":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
+                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.cache-hit","payload":{"source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
                 ],
             ),
             (
                 EventKind::SourceSurveyCacheMiss {
-                    source_key: "runtime".to_string(),
+                    source: "runtime".to_string(),
                     adapter: "captures".to_string(),
                     fingerprint: "sha256:beef".to_string(),
                     reason: CacheMissReason::AdapterOptOut,
@@ -746,20 +746,20 @@ mod tests {
                 &[
                     r#""event":"source.survey.cache-miss""#,
                     r#""reason":"adapter-opt-out""#,
-                    r#""source-key":"runtime""#,
+                    r#""source":"runtime""#,
                     r#""fingerprint":"sha256:beef""#,
                 ],
             ),
             (
                 EventKind::SourceExecutionAgent {
-                    source_key: "runtime".to_string(),
+                    source: "runtime".to_string(),
                     adapter: "captures".to_string(),
                     operation: SourceOperation::Survey,
                 },
                 &[
                     r#""event":"source.execution.agent""#,
                     r#""operation":"survey""#,
-                    r#""source-key":"runtime""#,
+                    r#""source":"runtime""#,
                     r#""adapter":"captures""#,
                 ],
             ),
@@ -991,21 +991,21 @@ mod tests {
             },
             EventKind::SliceExtractCompleted {
                 slice_name: "s".to_string(),
-                source_key: "k".to_string(),
+                source: "k".to_string(),
             },
             EventKind::SourceSurveyCacheHit {
-                source_key: "k".to_string(),
+                source: "k".to_string(),
                 adapter: "captures".to_string(),
                 fingerprint: "sha256:beef".to_string(),
             },
             EventKind::SourceSurveyCacheMiss {
-                source_key: "k".to_string(),
+                source: "k".to_string(),
                 adapter: "captures".to_string(),
                 fingerprint: "sha256:beef".to_string(),
                 reason: CacheMissReason::AdapterOptOut,
             },
             EventKind::SourceExecutionAgent {
-                source_key: "k".to_string(),
+                source: "k".to_string(),
                 adapter: "captures".to_string(),
                 operation: SourceOperation::Extract,
             },
@@ -1035,7 +1035,6 @@ mod tests {
             "slice_name",
             "slice_count",
             "slice_names",
-            "source_key",
             "requirement_id",
             "in_progress",
         ] {

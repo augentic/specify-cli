@@ -38,7 +38,7 @@ pub enum PlanAction {
         /// Pre-seed a per-slice `authority-override` entry on a
         /// named slice (per-slice authority override). Each occurrence takes two
         /// positional values: the slice name and a
-        /// `<claim-kind>=<source-key>` assignment. Repeatable; later
+        /// `<claim-kind>=<source>` assignment. Repeatable; later
         /// occurrences override earlier ones on the same
         /// `(slice, kind)` tuple. The slice MUST already exist in
         /// the plan being created (unknown names short-circuit with
@@ -59,7 +59,7 @@ pub enum PlanAction {
     /// Validate plan.yaml (structure + plan/change consistency).
     ///
     /// Includes the three health diagnostics — `cycle-in-depends-on`,
-    /// `orphan-source-key`, and `stale-workspace-clone` — alongside
+    /// `orphan-source`, and `stale-workspace-clone` — alongside
     /// the base shape rules.
     Validate,
     /// Return the active in-progress entry, or transition the next eligible
@@ -179,7 +179,7 @@ pub struct AddArgs {
     #[arg(long = "depends-on", action = ArgAction::Append)]
     pub depends_on: Vec<String>,
     /// Per-slice source binding (repeatable). Wire form is
-    /// `<key>=<lead-id>`; bare `<key>` is accepted as
+    /// `<key>=<lead>`; bare `<key>` is accepted as
     /// shorthand for `{ key: <key>, lead: <slice.name> }`
     /// per workflow §`Slice.sources`.
     #[arg(long = "sources", action = ArgAction::Append)]
@@ -198,7 +198,7 @@ pub struct AddArgs {
     pub context: Vec<String>,
     /// Set a per-slice `authority-override` entry on the slice
     /// being added (per-slice authority override). Wire form is
-    /// `<claim-kind>=<source-key>`; both sides are kebab-case
+    /// `<claim-kind>=<source>`; both sides are kebab-case
     /// and the kind is checked against the closed [`ClaimKind`]
     /// enum at parse time. Repeatable; later occurrences win on
     /// the same `(kind)` key. Orphan source keys are caught by
@@ -222,13 +222,13 @@ pub struct AmendArgs {
     #[arg(long = "depends-on", num_args = 0.., value_delimiter = ',')]
     pub depends_on: Option<Vec<String>>,
     /// Replace per-slice source bindings wholesale. Each value
-    /// is `<key>=<lead-id>` (or bare `<key>` shorthand).
+    /// is `<key>=<lead>` (or bare `<key>` shorthand).
     /// Pass `--sources` (no value) to clear; omit to leave
     /// unchanged.
     #[arg(long = "sources", num_args = 0.., value_delimiter = ',')]
     pub sources: Option<Vec<SliceSourceArg>>,
     /// Add a single per-slice source binding (repeatable). Each
-    /// value is `<key>=<lead-id>` or the bare `<key>`
+    /// value is `<key>=<lead>` or the bare `<key>`
     /// shorthand per workflow §`Slice.sources`.
     #[arg(long = "add-source", action = ArgAction::Append)]
     pub add_source: Vec<SliceSourceArg>,
@@ -264,7 +264,7 @@ pub struct AmendArgs {
     pub context: Option<Vec<String>>,
     /// Set a per-slice `authority-override` entry (per-slice authority override).
     /// Two positional values per occurrence: the slice name and
-    /// a `<claim-kind>=<source-key>` assignment. Repeatable;
+    /// a `<claim-kind>=<source>` assignment. Repeatable;
     /// later occurrences override earlier ones on the same
     /// `(slice, kind)` tuple. If the same `(slice, kind)` also
     /// appears in `--clear-authority-override`, the clear
@@ -308,7 +308,7 @@ pub struct AmendArgs {
     )]
     pub clear_authority_overrides: Vec<String>,
     /// Append an alias to a lead in `<project_dir>/discovery.md`
-    /// (discovery alias contract). Wire form is `<lead-id>=<alias>`; both
+    /// (discovery alias contract). Wire form is `<lead>=<alias>`; both
     /// sides are kebab-case. Repeatable. Mutates `discovery.md`
     /// (NOT `plan.yaml`); the whole amend is refused at exit 2
     /// (`discovery-alias-collision`) when the new alias would
@@ -320,7 +320,7 @@ pub struct AmendArgs {
     pub add_alias: Vec<AliasAssign>,
     /// Remove an alias from a lead in
     /// `<project_dir>/discovery.md` (discovery alias contract). Wire form is
-    /// `<lead-id>=<alias>`; idempotent (no-op when the
+    /// `<lead>=<alias>`; idempotent (no-op when the
     /// alias is already absent). Repeatable. The whole amend
     /// fails at exit 2 (`discovery-lead-unknown`) when no
     /// lead has the named id.

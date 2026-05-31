@@ -1,7 +1,7 @@
 //! source-adapter Evidence shapes.
 //!
 //! Per-source `extract` output, persisted at
-//! `.specify/slices/<slice>/evidence/<source-key>.yaml` and validated
+//! `.specify/slices/<slice>/evidence/<source>.yaml` and validated
 //! against `schemas/evidence.schema.json`. The module collects the
 //! claim-kind newtypes (one per closed enum value) and the optional
 //! Evidence authority override per-kind authority override map.

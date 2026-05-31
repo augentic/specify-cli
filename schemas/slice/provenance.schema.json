@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/slice/provenance.schema.json",
   "title": "Specify slice provenance.yaml",
-  "description": "Validates a slice's provenance index per workflow \u00a7D4. `/spec:refine` writes one `provenance.yaml` per slice at `.specify/slices/<slice>/provenance.yaml`, listing every `REQ-*` id in `spec.md` and the `(source-key, claim-id)` pairs that contributed plus the authority outcome. The file is byte-stable across runs given the same inputs and is the operator's audit surface for synthesis decisions; it is regenerated whole on each `/spec:refine` and is not an authoritative input to any downstream verb (see workflow \u00a7Provenance index). Closed top-level shape; closed per-requirement shape; closed per-contributing-claim shape \u2014 unknown fields are rejected. Drift between `spec.md` `REQ-*` ids and this file's `requirements[].id` is reported by `specrun slice validate` as `slice-provenance-drift`.",
+  "description": "Validates a slice's provenance index per workflow \u00a7D4. `/spec:refine` writes one `provenance.yaml` per slice at `.specify/slices/<slice>/provenance.yaml`, listing every `REQ-*` id in `spec.md` and the `(source, id)` pairs that contributed plus the authority outcome. The file is byte-stable across runs given the same inputs and is the operator's audit surface for synthesis decisions; it is regenerated whole on each `/spec:refine` and is not an authoritative input to any downstream verb (see workflow \u00a7Provenance index). Closed top-level shape; closed per-requirement shape; closed per-contributing-claim shape \u2014 unknown fields are rejected. Drift between `spec.md` `REQ-*` ids and this file's `requirements[].id` is reported by `specrun slice validate` as `slice-provenance-drift`.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "slice", "generated-at", "generator", "requirements"],
@@ -88,16 +88,17 @@
     "contributingClaim": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "claim-id", "kind"],
+      "required": ["source", "id", "kind"],
       "properties": {
         "source": {
           "$ref": "#/$defs/kebabName",
           "description": "Source key (matches a top-level `plan.yaml.sources.<key>` binding) the claim came from."
         },
-        "claim-id": {
+        "id": {
           "type": "string",
           "minLength": 1,
-          "description": "Claim id within the source's Evidence file (matches `claims[].claim-id`)."
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)*$",
+          "description": "Claim id within the source's Evidence file (matches `claims[].id`)."
         },
         "kind": {
           "$ref": "#/$defs/claimKind",
@@ -160,7 +161,7 @@
         "contributing-claims": {
           "type": "array",
           "items": { "$ref": "#/$defs/contributingClaim" },
-          "description": "Every `(source, claim-id)` pair synthesis consulted, *not* only the winning one. Operators auditing a divergence can see what was dropped."
+          "description": "Every `(source, id)` pair synthesis consulted, *not* only the winning one. Operators auditing a divergence can see what was dropped."
         },
         "resolution": {
           "$ref": "#/$defs/provenanceResolution",

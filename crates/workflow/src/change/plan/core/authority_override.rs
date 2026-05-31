@@ -2,7 +2,7 @@
 //! `kind: schema` evaluator contract). The CLI handlers ([`crate::change::Plan::amend`] siblings in
 //! the `specrun` runtime binary) parse `--authority-override` /
 //! `--clear-authority-override` / `--clear-authority-overrides`
-//! flags into the typed `(slice, kind, source-key)` tuples this
+//! flags into the typed `(slice, kind, source)` tuples this
 //! module consumes, then drive the in-memory plan through
 //! [`mutate_authority_overrides`] and the post-mutation orphan gate
 //! [`reject_orphan_overrides`].
@@ -40,7 +40,7 @@ fn emit_override_events(
     let mut record = |slice: &str,
                       action: AuthorityOverrideAction,
                       claim_kind: ClaimKind,
-                      source_key: Option<&str>| {
+                      source: Option<&str>| {
         let claim_kind = Some(claim_kind.to_string());
         pending.push((
             (slice.to_string(), claim_kind.clone(), action),
@@ -51,7 +51,7 @@ fn emit_override_events(
                     slice_name: slice.to_string(),
                     action,
                     claim_kind,
-                    source_key: source_key.map(str::to_owned),
+                    source: source.map(str::to_owned),
                 },
             ),
         ));
@@ -171,7 +171,7 @@ pub fn emit_seed_events(
     )
 }
 
-/// Post-mutation orphan-source-key gate.
+/// Post-mutation orphan-source gate.
 ///
 /// Runs [`orphan_authority_override_keys`] on `plan` and
 /// short-circuits the CLI write with a single payload-free
@@ -188,7 +188,7 @@ pub fn emit_seed_events(
 ///
 /// # Errors
 ///
-/// Returns `Error::Validation` when at least one orphan-source-key
+/// Returns `Error::Validation` when at least one orphan-source
 /// finding has `Severity::Error`.
 pub fn reject_orphan_overrides(plan: &Plan) -> Result<()> {
     let findings: Vec<_> = orphan_authority_override_keys(&plan.entries)

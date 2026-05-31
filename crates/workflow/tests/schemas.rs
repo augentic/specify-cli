@@ -230,7 +230,7 @@ authority: behaviour
 lead: user-registration
 claims:
   - kind: requirement
-    claim-id: users.register.email-validation
+    id: users.register.email-validation
     path: src/users/register.ts#L12-L87
     statement: The system accepts registrations with RFC 5322 emails.
 ";
@@ -279,7 +279,7 @@ authority: behaviour
 lead: user-registration
 claims:
   - kind: hunch
-    claim-id: users.register.maybe
+    id: users.register.maybe
 ";
 
 const EVIDENCE_INVALID_REQUIREMENT_NO_CLAIM_ID: &str = r"
@@ -317,7 +317,7 @@ fn evidence_rejects_bad_authority_and_kinds() {
     assert_invalid(
         &v,
         &yaml(EVIDENCE_INVALID_REQUIREMENT_NO_CLAIM_ID),
-        "evidence/requirement-missing-claim-id",
+        "evidence/requirement-missing-id",
     );
     assert_invalid(&v, &yaml(EVIDENCE_INVALID_SOURCE_NOT_KEBAB), "evidence/source-not-kebab");
 }
@@ -325,25 +325,25 @@ fn evidence_rejects_bad_authority_and_kinds() {
 // --- discovery/lead.schema.json --------------------------------
 
 const LEAD_VALID: &str = r"
-lead-id: user-registration
-source-key: legacy-monolith
+lead: user-registration
+source: legacy-monolith
 summary: Registration endpoint accepting email + password with RFC 5322 validation.
 ";
 
 const LEAD_INVALID_MISSING_SOURCE_KEY: &str = r"
-lead-id: user-registration
-summary: bad — source-key is required.
+lead: user-registration
+summary: bad — source is required.
 ";
 
 const LEAD_INVALID_BAD_ID: &str = r"
-lead-id: User_Registration
-source-key: legacy-monolith
+lead: User_Registration
+source: legacy-monolith
 summary: Bad id.
 ";
 
 const LEAD_INVALID_TENTATIVE_REMOVED: &str = r"
-lead-id: user-registration
-source-key: legacy-monolith
+lead: user-registration
+source: legacy-monolith
 summary: A lead carrying the retired tentative field.
 tentative: true
 ";
@@ -355,9 +355,9 @@ fn lead_accepts_minimal_shape() {
 }
 
 #[test]
-fn lead_rejects_missing_source_key_bad_id_and_retired_tentative() {
+fn lead_rejects_missing_source_bad_id_and_retired_tentative() {
     let v = load("discovery/lead.schema.json");
-    assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source-key");
+    assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
     // `tentative` was retired (RFC-29b-signal D2.3); the schema is
     // `additionalProperties: false`, so a lead carrying it now fails.
@@ -415,7 +415,7 @@ slices:
   - name: only
     target: omnia@v1
     sources:
-      - source-key: docs
+      - source: docs
     status: pending
 ";
     assert_invalid(&v, &yaml(bad), "plan/v2/source-missing-lead");

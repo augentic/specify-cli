@@ -13,8 +13,8 @@ slices:
     target: omnia@v1
     project: identity-svc
     sources:
-      - source-key: identity-design-notes
-        lead-id: user-registration
-      - source-key: legacy-monolith
-        lead-id: user-registration
+      - source: identity-design-notes
+        lead: user-registration
+      - source: legacy-monolith
+        lead: user-registration
     status: pending

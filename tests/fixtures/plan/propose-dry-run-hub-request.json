@@ -2,23 +2,23 @@
   "kind": "request",
   "leads": [
     {
-      "lead-id": "identity-api",
-      "source-key": "docs",
+      "lead": "identity-api",
+      "source": "docs",
       "summary": "Identity API contract for authentication and account access."
     },
     {
-      "lead-id": "identity-api",
-      "source-key": "legacy",
+      "lead": "identity-api",
+      "source": "legacy",
       "summary": "Legacy identity endpoints."
     },
     {
-      "lead-id": "password-reset",
-      "source-key": "docs",
+      "lead": "password-reset",
+      "source": "docs",
       "summary": "Users can request a password reset email."
     },
     {
-      "lead-id": "reset-password",
-      "source-key": "legacy",
+      "lead": "reset-password",
+      "source": "legacy",
       "summary": "Legacy reset-password flow."
     }
   ],

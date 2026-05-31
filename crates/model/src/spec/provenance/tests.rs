@@ -169,7 +169,7 @@ fn source_key_undefined_reported() {
     );
     let findings = validate(&parsed, &keys(["a", "b"]));
     assert!(
-        findings.iter().any(|f| f.rule_id == "spec.requirement-source-key-undefined"),
+        findings.iter().any(|f| f.rule_id == "spec.requirement-source-undefined"),
         "{findings:?}"
     );
 }
@@ -181,7 +181,7 @@ fn malformed_source_key_reported() {
     );
     let findings = validate(&parsed, &BTreeSet::new());
     assert!(
-        findings.iter().any(|f| f.rule_id == "spec.requirement-source-key-malformed"),
+        findings.iter().any(|f| f.rule_id == "spec.requirement-source-malformed"),
         "{findings:?}"
     );
 }

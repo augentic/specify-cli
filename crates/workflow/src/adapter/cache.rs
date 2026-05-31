@@ -113,7 +113,7 @@ impl CacheFingerprint {
         if prior.lead != current.lead {
             // No `lead-changed` reason in the closed enum; the
             // cache key crosses leads by design and a lead
-            // delta on the same (slice, source-key) lane reads as a
+            // delta on the same (slice, source) lane reads as a
             // brand-new entry to the operator.
             return Some(CacheMissReason::NoPriorEntry);
         }
@@ -197,7 +197,7 @@ pub struct FingerprintToolVersion {
 /// One row appended to `.specify/.cache/extractions/<adapter>/index.jsonl`
 /// on every cache write (extraction cache fingerprint contract).
 ///
-/// The slot is `(timestamp, fingerprint-sha256, slice, source-key,
+/// The slot is `(timestamp, fingerprint-sha256, slice, source,
 /// adapter, operation)` — together they let `specrun source resolve
 /// --explain` reconstruct the fingerprint chain without re-reading
 /// the underlying `fingerprint.json`. Append-only; writers stream
@@ -215,7 +215,7 @@ pub struct CacheIndexEntry {
     /// `slice.extract.cache-*` journal event).
     pub slice: String,
     /// Source key from `plan.yaml.sources.<key>`.
-    pub source_key: String,
+    pub source: String,
     /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
     pub adapter: String,
     /// Closed source-adapter operation that triggered the cache write.
@@ -292,13 +292,13 @@ mod tests {
             timestamp: test_timestamp("2026-05-22T13:15:00Z"),
             fingerprint: "sha256:cafef00d".to_string(),
             slice: "identity-user-registration".to_string(),
-            source_key: "runtime".to_string(),
+            source: "runtime".to_string(),
             adapter: "captures".to_string(),
             operation: SourceOperation::Extract,
         };
         let json = serde_json::to_string(&entry).expect("serialise");
         assert!(json.contains(r#""timestamp":"2026-05-22T13:15:00Z""#));
-        assert!(json.contains(r#""source-key":"runtime""#));
+        assert!(json.contains(r#""source":"runtime""#));
         assert!(json.contains(r#""operation":"extract""#));
         let reparsed: CacheIndexEntry = serde_json::from_str(&json).expect("reparse");
         assert_eq!(entry, reparsed);
@@ -310,7 +310,7 @@ mod tests {
             "timestamp": "2026-05-22T13:15:00Z",
             "fingerprint": "sha256:a",
             "slice": "s",
-            "source-key": "k",
+            "source": "k",
             "adapter": "a",
             "operation": "extract",
             "unknown": true

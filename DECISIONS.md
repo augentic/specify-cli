@@ -28,7 +28,7 @@ run` WASI passthrough.
 |------|--------------------------|-----------------------------------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, provenance, and discovery kebab discriminants `slice-authority-override-orphan-source-key`, `slice-provenance-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
+| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, provenance, and discovery kebab discriminants `slice-authority-override-orphan-source`, `slice-provenance-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
 The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
@@ -394,14 +394,14 @@ state.
 
 - **Bare string shorthand** — `legacy` parses to
   `source_key = "legacy"`, `lead_id = None`; serialises back as the
-  bare string. The lead-id falls back to the owning slice's name at
+  bare string. The lead falls back to the owning slice's name at
   lookup time via `SliceSourceBinding::lead_id(slice_name)`,
   preserving the one-source-per-slice degenerate case (predominantly
   `intent`).
-- **Structured form** — `{ source-key: legacy, lead-id: legacy-monolith }`
+- **Structured form** — `{ source: legacy, lead: legacy-monolith }`
   parses to `source_key = "legacy"`,
   `lead_id = Some("legacy-monolith")`; serialises back as the same
-  `{ source-key, lead-id }` map. Required whenever the source key and
+  `{ source, lead }` map. Required whenever the source key and
   the lead id differ.
 
 Collapsing the two variants into one struct means every consumer
@@ -444,7 +444,7 @@ optional `authority-override` map keyed by claim kind, valued by
 source key. Keys come from the closed claim-kind enum; values MUST
 be source keys present in the slice's own `sources[]` list. Orphan
 keys are rejected by `specrun slice validate` with the
-`slice-authority-override-orphan-source-key` kebab discriminant. The
+`slice-authority-override-orphan-source` kebab discriminant. The
 map is scoped to one slice — plan-wide and project-wide overrides
 are out of scope.
 
@@ -494,8 +494,8 @@ variants are `snake_case` and bridge to the wire via
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
-| `source.survey.cache-hit` / `.cache-miss` | The `specrun source survey` runner's cache probe; payloads carry `source-key`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`). |
-| `source.execution.agent` | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source-key`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`). |
+| `source.survey.cache-hit` / `.cache-miss` | The `specrun source survey` runner's cache probe; payloads carry `source`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`). |
+| `source.execution.agent` | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`). |
 | `slice.provenance.written` | `/spec:refine`'s atomic `provenance.yaml` writer (Change 2.6). `provenance.yaml` audit semantics. |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
@@ -751,28 +751,28 @@ until then. Refer to workflow §"Adapter implementation shape".
 
 ## Source operations (D1)
 
-`specrun source survey <source-key> [--plan <name>] [--phase
-prepare|finalize]` and `specrun source extract <source-key> <lead-id>
+`specrun source survey <source> [--plan <name>] [--phase
+prepare|finalize]` and `specrun source extract <source> <lead>
 --slice <slice> [--phase prepare|finalize]` are the CLI-owned source
 adapter operations (RFC-29 D1; handlers under
 [`src/runtime/commands/source/`](./src/runtime/commands/source)).
-`<source-key>` resolves against `plan.yaml.sources.<key>` — **not** the
+`<source>` resolves against `plan.yaml.sources.<key>` — **not** the
 adapter name — and the adapter is then resolved from
 `SourceBinding.adapter`. `survey` validates the lead set against
 `schemas/discovery/lead.schema.json` and merges it into `discovery.md`;
 `extract` validates the Evidence against `schemas/evidence.schema.json`
-and persists it to `.specify/slices/<slice>/evidence/<source-key>.yaml`.
+and persists it to `.specify/slices/<slice>/evidence/<source>.yaml`.
 
 `discovery.md` stores **raw, unmerged, per-source leads**: each block is
-one lead as surfaced by one source, identified by its `(source-key,
-lead-id)` pair (the runner stamps `source-key` from the surveyed source,
+one lead as surfaced by one source, identified by its `(source,
+lead)` pair (the runner stamps `source` from the surveyed source,
 so attribution is CLI-owned and a lead-set need not repeat it). "Merges
 it into `discovery.md`" is a per-source re-survey fold, **not** a
 cross-source collapse: a re-survey of one source replaces only that
-source's blocks by `(source-key, lead-id)` and leaves every other
-source's blocks untouched, so the same `lead-id` may legally appear under
+source's blocks by `(source, lead)` and leaves every other
+source's blocks untouched, so the same `lead` may legally appear under
 different source keys. Alias-collision scoping is therefore per
-`source-key`. Cross-source unification of leads is deferred to plan time
+`source`. Cross-source unification of leads is deferred to plan time
 (D2 reconciliation), where the umbrella RFC places fan-in; `survey` never
 unifies across sources.
 Both gates are **validate-before-visible**: an invalid lead set leaves
@@ -830,12 +830,12 @@ RFC-29d build-request schema — is introduced.
 
 `specrun plan propose` wraps agent-led cross-source lead reconciliation in a CLI-owned projection kernel (RFC-29 D2). The envelope DTOs, the deterministic `build_request` / `build_catalog` / `resolve_topology` assembly, and the `Plan::propose_from` kernel live in [`crates/workflow/src/change/plan/core/propose.rs`](./crates/workflow/src/change/plan/core/propose.rs); the CLI handler is [`src/runtime/commands/plan/propose.rs`](./src/runtime/commands/plan/propose.rs). The verb has two mutually-exclusive modes, exactly one of which is required (`propose` with neither fails `plan-propose-mode-required`; the clap layer rejects passing both):
 
-- **`--dry-run [--format json]`** is read-only. It reads `plan.yaml.sources`, the surveyed `discovery.md` lead inventory, and the resolved project topology (a hub's `registry.yaml`, or the sole project synthesised from `project.yaml`), then emits the `kind: request` envelope — a flat `(source-key, lead-id)` lead catalog plus the `projects[]` topology — for the agent to group. It writes nothing and fires no journal event; an empty inventory aborts with `plan-reconcile-empty-catalog`.
+- **`--dry-run [--format json]`** is read-only. It reads `plan.yaml.sources`, the surveyed `discovery.md` lead inventory, and the resolved project topology (a hub's `registry.yaml`, or the sole project synthesised from `project.yaml`), then emits the `kind: request` envelope — a flat `(source, lead)` lead catalog plus the `projects[]` topology — for the agent to group. It writes nothing and fires no journal event; an empty inventory aborts with `plan-reconcile-empty-catalog`.
 - **`--from <response.json> [--format json]`** is the **only** slice writer. It schema-gates the raw response bytes (`validate_proposal_json`, code `proposal-schema`), re-reads `discovery.md` and the topology (never trusting a prior dry-run snapshot), rebuilds the lead catalog, validates the agent's `slices[]` grouping, enforces the partition invariants, derives slice names, binds projects, derives each slice's `target` from the bound project, and replaces `plan.yaml.slices[]` atomically through the existing plan writers — then emits two journal events.
 
 **Replaceable gate.** `--from` may replace slices only while the plan is replaceable — `lifecycle: pending` AND every entry still `pending` (reuses `Plan::is_replaceable`). An approved plan, or any `in-progress` / `done` entry, fails `plan-reconcile-plan-not-replaceable`. Re-propose on a still-pending plan wholesale-replaces all slices: it is a fresh projection, not a merge, so any prior per-slice operator edit (a relabel, a `--divergence likely` stamp) is discarded.
 
-**Partition invariants.** Collapsing `slices[]` by `scope`, the kernel enforces a **total** partition — every surveyed `(source-key, lead-id)` lands in exactly one scope (`plan-reconcile-partition`; an unsurveyed pair is a `plan-reconcile-lead-orphan`) — plus **at most one lead per source** per scope (`plan-reconcile-slice-source-collision`) and **fan-out consistency** (slices sharing a `scope` carry identical `sources[]`; otherwise `plan-reconcile-fanout-source-mismatch`). Same-source fusion is rejected on purpose: each surveyed lead is the source adapter's own sizing judgment, made with full visibility of the legacy code, documentation, or capture, so merging two leads from one source would override that sizing and risk a slice too large to execute. The operator — not the propose-time agent — owns same-source re-sizing, at Gate 1 via `specrun plan amend --sources`, where a human carries the risk. The kernel validates shape only; it never auto-merges, clusters, or forbids cross-source splits.
+**Partition invariants.** Collapsing `slices[]` by `scope`, the kernel enforces a **total** partition — every surveyed `(source, lead)` lands in exactly one scope (`plan-reconcile-partition`; an unsurveyed pair is a `plan-reconcile-lead-orphan`) — plus **at most one lead per source** per scope (`plan-reconcile-slice-source-collision`) and **fan-out consistency** (slices sharing a `scope` carry identical `sources[]`; otherwise `plan-reconcile-fanout-source-mismatch`). Same-source fusion is rejected on purpose: each surveyed lead is the source adapter's own sizing judgment, made with full visibility of the legacy code, documentation, or capture, so merging two leads from one source would override that sizing and risk a slice too large to execute. The operator — not the propose-time agent — owns same-source re-sizing, at Gate 1 via `specrun plan amend --sources`, where a human carries the risk. The kernel validates shape only; it never auto-merges, clusters, or forbids cross-source splits.
 
 **Slice-name derivation.** Names key on the `(scope, project)` pair the partition already proves unique (`plan-reconcile-slice-duplicate`): an explicit agent `name` wins; else a 1:1 scope uses `scope`; else (fan-out) every row uses `<scope>-<project>`. `depends-on` resolves against the derived names and a cyclic graph fails `plan-reconcile-depends-on-cycle`. Derived names are collision-free by construction, so `plan-reconcile-slice-name-collision` can only fire on clashing agent-supplied explicit `name` values.
 
@@ -849,7 +849,7 @@ RFC-29d build-request schema — is introduced.
 
 **Reconciliation signal (RFC-29b-signal D2.1 / D2.2).** Because matching rides on headlines alone — deep `Evidence` is slice-time — the discriminating power of the per-source `summary` is the whole signal. The `summary` carries a contentfulness expectation, not just `minLength: 1`: it SHOULD name the lead's operation/surface and salient constraint so a same-slug lead from another source can be matched or distinguished on content, and MAY span more than one line (`lead.schema.json` relaxes the old "one-line" wording; no second field, and it stays plan-time headline material — never a back-door for slice-time `Evidence`). The floor is taught in each source's `survey` brief and surfaced as the non-blocking advisory `discovery-lead-summary-thin` (`suggestion` severity, `kind: review`) from `specrun slice validate` — a nudge to improve the source adapter that never parks planning. The propose brief states the error-cost asymmetry: an over-**merge** is expensive and downstream-poisoning (two unrelated bodies of work in one slice and one project/target, with synthesis inheriting the bad match as `[conflict]`/divergence), while an over-**split** is cheap and Gate-1-reversible via `specrun plan amend --sources`. So the agent **splits on doubt** — a weakly-supported cross-source match stays as separate scopes with the candidate pairing noted in `change.md` under `## Tentative merges`, never an unrecoverable propose-time over-merge.
 
-**Deferred (rejected for D2).** Three matching mechanisms were considered and intentionally left out, so a future RFC can pick them up without re-litigating the baseline: (1) **kernel-side token-intersection locks** — auto-merging rows when `{lead-id} ∪ aliases[]` intersects across sources — rejected because shared slugs are unattested (collision risk) and Gate 1 is the human curation step after agent propose; (2) **kernel-side advisory clustering of open leads** (facet edges, lexical fallback, connected-component bucketing) — would need per-lead `blocking-keys[]` survey metadata the current `lead.schema.json` does not produce; (3) **optional lead target-axis hints** — `target` stays kernel-derived from the bound project. Grouping uncertainty is the agent's to express through `change.md` prose (`## Tentative merges`), not a per-lead survey input signal — the survey-time `tentative` flag was retired by RFC-29b-signal (D2.3).
+**Deferred (rejected for D2).** Three matching mechanisms were considered and intentionally left out, so a future RFC can pick them up without re-litigating the baseline: (1) **kernel-side token-intersection locks** — auto-merging rows when `{lead} ∪ aliases[]` intersects across sources — rejected because shared slugs are unattested (collision risk) and Gate 1 is the human curation step after agent propose; (2) **kernel-side advisory clustering of open leads** (facet edges, lexical fallback, connected-component bucketing) — would need per-lead `blocking-keys[]` survey metadata the current `lead.schema.json` does not produce; (3) **optional lead target-axis hints** — `target` stays kernel-derived from the bound project. Grouping uncertainty is the agent's to express through `change.md` prose (`## Tentative merges`), not a per-lead survey input signal — the survey-time `tentative` flag was retired by RFC-29b-signal (D2.3).
 
 ## Tool-owned schemas
 

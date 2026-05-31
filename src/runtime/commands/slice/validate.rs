@@ -298,8 +298,8 @@ fn summary_thin(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
                     "lead `{}:{}` has a thin summary (`{}`); name the operation/surface and its \
                      salient constraint so a same-slug lead from another source can be \
                      reconciled on content",
-                    lead.source_key,
-                    lead.lead_id,
+                    lead.source,
+                    lead.lead,
                     lead.summary.trim()
                 ),
                 Artifact::Plan,
@@ -355,9 +355,9 @@ fn collect_provenance_drift_findings(
     Ok(drift.into_iter().map(slice_provenance::ProvenanceDrift::into_diagnostic).collect())
 }
 
-/// per-slice authority override orphan-source-key gate. Loads `plan.yaml` (when
+/// per-slice authority override orphan-source gate. Loads `plan.yaml` (when
 /// present) and reports one finding per `(slice, kind)` pair
-/// whose source-key value is not in the slice's own `sources[]`
+/// whose source value is not in the slice's own `sources[]`
 /// list. Absent `plan.yaml` (e.g. ad-hoc slice without a plan)
 /// skips the check silently; the structural issue would already
 /// have surfaced earlier in workflow.
@@ -525,7 +525,7 @@ fn resolve_slice_source_keys(ctx: &Ctx, name: &str) -> Result<BTreeSet<String>> 
         // against any key spelt correctly.
         return Ok(plan.sources.keys().cloned().collect());
     };
-    Ok(entry.sources.iter().map(|b| b.source_key().to_string()).collect())
+    Ok(entry.sources.iter().map(|b| b.source().to_string()).collect())
 }
 
 /// One-line text rendering of a diagnostic for the PASS/FAIL banner.

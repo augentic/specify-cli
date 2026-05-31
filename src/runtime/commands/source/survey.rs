@@ -1,7 +1,7 @@
 //! `specrun source survey` handler — plan-time lead discovery
 //! (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
 //!
-//! Resolves `<source-key>` against `plan.yaml.sources.<key>`, runs the
+//! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Survey`]) for adapter
 //! resolution, brief directory, and the four-root sandbox (scratch at
 //! `.specify/.cache/extractions/<adapter>/survey/scratch/`), then
@@ -76,7 +76,7 @@ struct SurveyHandoff {
 #[serde(rename_all = "kebab-case")]
 struct SurveyResult {
     adapter: String,
-    source_key: String,
+    source: String,
     fingerprint: String,
     /// `hit` | `miss`.
     cache: &'static str,
@@ -88,21 +88,21 @@ struct SurveyResult {
     discovery: PathBuf,
 }
 
-/// Run `specrun source survey <source-key> [--plan <name>]
+/// Run `specrun source survey <source> [--plan <name>]
 /// [--phase prepare|finalize]`.
 ///
 /// # Errors
 ///
-/// - `source-key-unknown` when `<source-key>` is not a
+/// - `source-unknown` when `<source>` is not a
 ///   `plan.yaml.sources` key.
 /// - propagates adapter-resolution, schema-validation, fingerprint,
 ///   and merge failures.
-pub fn run(ctx: &Ctx, source_key: &str, plan_name: Option<&str>, phase: Phase) -> Result<()> {
+pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Result<()> {
     let plan = load_plan(ctx, plan_name)?;
-    let binding = plan.sources.get(source_key).ok_or_else(|| Error::Diag {
-        code: "source-key-unknown",
+    let binding = plan.sources.get(source).ok_or_else(|| Error::Diag {
+        code: "source-unknown",
         detail: format!(
-            "no source `{source_key}` in plan.yaml.sources; `specrun source survey` resolves \
+            "no source `{source}` in plan.yaml.sources; `specrun source survey` resolves \
              its argument against the plan's source keys, not the adapter name"
         ),
     })?;
@@ -120,14 +120,10 @@ pub fn run(ctx: &Ctx, source_key: &str, plan_name: Option<&str>, phase: Phase) -
     })?;
 
     match prepared.manifest.execution {
-        Some(Execution::Tool) => {
-            run_tool(ctx, source_key, &prepared, source_path.as_deref(), binding)
-        }
+        Some(Execution::Tool) => run_tool(ctx, source, &prepared, source_path.as_deref(), binding),
         _ => match phase {
-            Phase::Prepare => prepare(ctx, source_key, &prepared, source_path.as_deref()),
-            Phase::Finalize => {
-                finalize(ctx, source_key, &prepared, source_path.as_deref(), binding)
-            }
+            Phase::Prepare => prepare(ctx, source, &prepared, source_path.as_deref()),
+            Phase::Finalize => finalize(ctx, source, &prepared, source_path.as_deref(), binding),
         },
     }
 }
@@ -136,7 +132,7 @@ pub fn run(ctx: &Ctx, source_key: &str, plan_name: Option<&str>, phase: Phase) -
 /// and print the survey handoff envelope. The CLI returns control to
 /// the agent and does not block.
 fn prepare(
-    ctx: &Ctx, source_key: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
+    ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
 ) -> Result<()> {
     let scratch = scratch_path(prepared);
     std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
@@ -144,7 +140,7 @@ fn prepare(
     let event = Event::new(
         Timestamp::now(),
         EventKind::SourceExecutionAgent {
-            source_key: source_key.to_string(),
+            source: source.to_string(),
             adapter: prepared.manifest.name.clone(),
             operation: SourceOperation::Survey,
         },
@@ -157,7 +153,7 @@ fn prepare(
         briefs_dir: prepared.briefs_dir.clone(),
         source_dir: source_path.map(Path::to_path_buf),
         scratch_dir: scratch,
-        leads: existing_lead_ids(ctx, source_key)?,
+        leads: existing_lead_ids(ctx, source)?,
         execution: "agent",
     };
     ctx.write(&handoff, write_handoff_text)
@@ -166,7 +162,7 @@ fn prepare(
 /// Agent `finalize` phase: validate the agent-produced lead set, merge
 /// it into `discovery.md`, then record the cache outcome.
 fn finalize(
-    ctx: &Ctx, source_key: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
+    ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
     binding: &SourceBinding,
 ) -> Result<()> {
     let scratch = scratch_path(prepared);
@@ -182,27 +178,27 @@ fn finalize(
         &fingerprint,
         cache_mode,
         SURVEY_LANE,
-        source_key,
+        source,
         SourceOperation::Survey,
     )?;
 
     // Validate-before-visible: a schema failure returns here, before the
     // cache event is emitted and before discovery.md is touched.
-    let lead_ids = validate_and_merge(ctx, source_key, &raw)?;
+    let lead_ids = validate_and_merge(ctx, source, &raw)?;
 
-    emit_cache_event(ctx, source_key, &prepared.manifest.name, &lookup)?;
+    emit_cache_event(ctx, source, &prepared.manifest.name, &lookup)?;
     write_cache_entry(
         layout,
         &fingerprint,
         raw.as_bytes(),
         cache_mode,
-        source_key,
+        source,
         &prepared.manifest.name,
     )?;
 
     ctx.write(
         &survey_result(
-            source_key,
+            source,
             &prepared.manifest.name,
             &lookup,
             lead_ids,
@@ -215,7 +211,7 @@ fn finalize(
 /// Single-phase `tool` execution: probe the cache, produce the lead set
 /// (cached hit or freshly dispatched), validate, and merge.
 fn run_tool(
-    ctx: &Ctx, source_key: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
+    ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
     binding: &SourceBinding,
 ) -> Result<()> {
     let scratch = scratch_path(prepared);
@@ -229,7 +225,7 @@ fn run_tool(
         &fingerprint,
         cache_mode,
         SURVEY_LANE,
-        source_key,
+        source,
         SourceOperation::Survey,
     )?;
 
@@ -242,22 +238,22 @@ fn run_tool(
         }
     };
 
-    let lead_ids = validate_and_merge(ctx, source_key, &raw)?;
-    emit_cache_event(ctx, source_key, &prepared.manifest.name, &lookup)?;
+    let lead_ids = validate_and_merge(ctx, source, &raw)?;
+    emit_cache_event(ctx, source, &prepared.manifest.name, &lookup)?;
     if matches!(lookup.outcome, LookupOutcome::Miss { .. }) {
         write_cache_entry(
             layout,
             &fingerprint,
             raw.as_bytes(),
             cache_mode,
-            source_key,
+            source,
             &prepared.manifest.name,
         )?;
     }
 
     ctx.write(
         &survey_result(
-            source_key,
+            source,
             &prepared.manifest.name,
             &lookup,
             lead_ids,
@@ -287,20 +283,20 @@ fn dispatch_survey_tool(prepared: &prep::SourcePrep) -> Result<()> {
 /// Parse, schema-validate, and merge a lead set into `discovery.md`.
 /// Returns the merged lead ids. The schema check gates the merge, so an
 /// invalid lead set leaves `discovery.md` untouched (RFC-29 D1).
-fn validate_and_merge(ctx: &Ctx, source_key: &str, raw: &str) -> Result<Vec<String>> {
+fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>> {
     let mut leads = Discovery::parse(raw)?.into_leads();
-    // Attribution is CLI-owned: a `survey` for `source_key` produces
-    // `source_key`'s leads, so stamp every lead before the schema check
-    // (which requires `source-key`) and the merge.
+    // Attribution is CLI-owned: a `survey` for `source` produces
+    // `source`'s leads, so stamp every lead before the schema check
+    // (which requires `source`) and the merge.
     for lead in &mut leads {
-        lead.source_key = source_key.to_string();
+        lead.source = source.to_string();
     }
     schema::validate_leads(&leads)?;
-    let lead_ids: Vec<String> = leads.iter().map(|lead| lead.lead_id.clone()).collect();
+    let lead_ids: Vec<String> = leads.iter().map(|lead| lead.lead.clone()).collect();
 
     let discovery_path = ctx.layout().discovery_path();
     let mut discovery = load_or_empty_discovery(&discovery_path)?;
-    discovery.merge_survey(source_key, leads, &discovery_path)?;
+    discovery.merge_survey(source, leads, &discovery_path)?;
     Ok(lead_ids)
 }
 
@@ -354,16 +350,16 @@ fn survey_fingerprint(
 /// Emit the `source.survey.cache-hit` / `cache-miss` journal event for
 /// `lookup`.
 fn emit_cache_event(
-    ctx: &Ctx, source_key: &str, adapter: &str, lookup: &cache::CacheLookup,
+    ctx: &Ctx, source: &str, adapter: &str, lookup: &cache::CacheLookup,
 ) -> Result<()> {
     let kind = match &lookup.outcome {
         LookupOutcome::Hit { .. } => EventKind::SourceSurveyCacheHit {
-            source_key: source_key.to_string(),
+            source: source.to_string(),
             adapter: adapter.to_string(),
             fingerprint: lookup.digest.clone(),
         },
         LookupOutcome::Miss { reason } => EventKind::SourceSurveyCacheMiss {
-            source_key: source_key.to_string(),
+            source: source.to_string(),
             adapter: adapter.to_string(),
             fingerprint: lookup.digest.clone(),
             reason: *reason,
@@ -378,13 +374,13 @@ fn emit_cache_event(
 /// only the audit index row.
 fn write_cache_entry(
     layout: CacheLayout<'_>, fingerprint: &CacheFingerprint, artifact_bytes: &[u8],
-    cache_mode: Option<specify_workflow::adapter::CacheMode>, source_key: &str, adapter: &str,
+    cache_mode: Option<specify_workflow::adapter::CacheMode>, source: &str, adapter: &str,
 ) -> Result<()> {
     let entry = CacheIndexEntry {
         timestamp: Timestamp::now(),
         fingerprint: fingerprint.digest(),
         slice: SURVEY_LANE.to_string(),
-        source_key: source_key.to_string(),
+        source: source.to_string(),
         adapter: adapter.to_string(),
         operation: SourceOperation::Survey,
     };
@@ -399,7 +395,7 @@ fn write_cache_entry(
 }
 
 fn survey_result(
-    source_key: &str, adapter: &str, lookup: &cache::CacheLookup, leads: Vec<String>,
+    source: &str, adapter: &str, lookup: &cache::CacheLookup, leads: Vec<String>,
     discovery: PathBuf,
 ) -> SurveyResult {
     let (cache, reason) = match &lookup.outcome {
@@ -408,7 +404,7 @@ fn survey_result(
     };
     SurveyResult {
         adapter: adapter.to_string(),
-        source_key: source_key.to_string(),
+        source: source.to_string(),
         fingerprint: lookup.digest.clone(),
         cache,
         reason,
@@ -417,9 +413,9 @@ fn survey_result(
     }
 }
 
-/// Existing lead ids for `source_key`, read from `discovery.md` when
+/// Existing lead ids for `source`, read from `discovery.md` when
 /// present — the re-survey baseline echoed into the handoff envelope.
-fn existing_lead_ids(ctx: &Ctx, source_key: &str) -> Result<Vec<String>> {
+fn existing_lead_ids(ctx: &Ctx, source: &str) -> Result<Vec<String>> {
     let discovery_path = ctx.layout().discovery_path();
     if !discovery_path.exists() {
         return Ok(Vec::new());
@@ -428,8 +424,8 @@ fn existing_lead_ids(ctx: &Ctx, source_key: &str) -> Result<Vec<String>> {
     Ok(discovery
         .leads()
         .iter()
-        .filter(|lead| lead.source_key == source_key)
-        .map(|lead| lead.lead_id.clone())
+        .filter(|lead| lead.source == source)
+        .map(|lead| lead.lead.clone())
         .collect())
 }
 
@@ -504,7 +500,7 @@ fn write_handoff_text(w: &mut dyn Write, body: &SurveyHandoff) -> std::io::Resul
 
 fn write_result_text(w: &mut dyn Write, body: &SurveyResult) -> std::io::Result<()> {
     writeln!(w, "adapter: {}", body.adapter)?;
-    writeln!(w, "source-key: {}", body.source_key)?;
+    writeln!(w, "source: {}", body.source)?;
     write!(w, "cache: {}", body.cache)?;
     if let Some(reason) = body.reason {
         write!(w, " ({reason})")?;

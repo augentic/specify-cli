@@ -65,7 +65,7 @@ pub(super) fn create(
     let plan_name = plan.name.clone();
     let override_events =
         mutate_authority_overrides(&mut plan, &plan_name, &override_assigns, &[], &[], now)?;
-    // Re-run the orphan-source-key gate after the override
+    // Re-run the orphan-source gate after the override
     // pre-seeding: `Plan::init` ran no validation against the
     // override map (it didn't exist yet) and `validate_plan` only
     // checks JSON Schema. The orphan check is the only per-slice authority override

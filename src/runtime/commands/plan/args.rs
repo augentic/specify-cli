@@ -90,7 +90,7 @@ fn resolve_lead_token(token: &str, discovery: Option<&Discovery>) -> Result<Stri
         return Ok(token.to_string());
     };
     match discovery.resolve_lead(token) {
-        Ok(lead) => Ok(lead.lead_id.clone()),
+        Ok(lead) => Ok(lead.lead.clone()),
         Err(DiscoveryResolveError::Unknown { token }) => Err(Error::validation_failed(
             "discovery-lead-unknown",
             "--sources <key>=<value> must resolve to a lead in discovery.md",
@@ -188,12 +188,12 @@ where
     Ok(out)
 }
 
-/// Parse `--authority-override <slice> <kind>=<source-key>` repeats
-/// into the typed `(slice, kind, source-key)` tuple
+/// Parse `--authority-override <slice> <kind>=<source>` repeats
+/// into the typed `(slice, kind, source)` tuple
 /// [`specify_workflow::change::mutate_authority_overrides`] expects.
 pub fn parse_override_assigns(raw: &[String]) -> Result<Vec<(String, ClaimKind, String)>> {
     Ok(parse_slice_pair_args::<AuthorityOverrideKindAssign>(raw, "--authority-override")?
         .into_iter()
-        .map(|(slice, a)| (slice, a.kind, a.source_key))
+        .map(|(slice, a)| (slice, a.kind, a.source))
         .collect())
 }

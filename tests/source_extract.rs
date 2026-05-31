@@ -1,7 +1,7 @@
 //! Integration tests for `specrun source extract` (RFC-29 D1;
 //! DECISIONS.md §"Source operations (D1)").
 //!
-//! Covers source-key resolution against `plan.yaml.sources`, the agent
+//! Covers source resolution against `plan.yaml.sources`, the agent
 //! two-phase dispatch (prepare prints the extract handoff envelope —
 //! with `evidence-dir`, a single lead, and either `source-dir` or
 //! `value-inline` — and emits `source.execution.agent`; finalize
@@ -89,8 +89,8 @@ fn extract_scratch_dir(project: &Project, adapter: &str, slice: &str) -> PathBuf
     project.root().join(format!(".specify/.cache/extractions/{adapter}/{slice}/scratch"))
 }
 
-fn slice_evidence_path(project: &Project, slice: &str, source_key: &str) -> PathBuf {
-    project.root().join(format!(".specify/slices/{slice}/evidence/{source_key}.yaml"))
+fn slice_evidence_path(project: &Project, slice: &str, source: &str) -> PathBuf {
+    project.root().join(format!(".specify/slices/{slice}/evidence/{source}.yaml"))
 }
 
 fn journal_events(project: &Project) -> Vec<Value> {
@@ -147,7 +147,7 @@ fn agent_prepare_prints_envelope_and_emits_execution_event() {
     );
     let leads: Vec<&str> =
         body["leads"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
-    assert_eq!(leads, vec!["user-registration"], "extract carries the single lead-id");
+    assert_eq!(leads, vec!["user-registration"], "extract carries the single lead");
 
     // prepare builds scratch up front and scaffolds the evidence target.
     assert!(
@@ -162,7 +162,7 @@ fn agent_prepare_prints_envelope_and_emits_execution_event() {
     let events = journal_events(&project);
     assert_eq!(events.len(), 1, "prepare emits exactly one event");
     assert_eq!(events[0]["event"], "source.execution.agent");
-    assert_eq!(events[0]["payload"]["source-key"], "legacy");
+    assert_eq!(events[0]["payload"]["source"], "legacy");
     assert_eq!(events[0]["payload"]["adapter"], "code-typescript");
     assert_eq!(events[0]["payload"]["operation"], "extract");
 }
@@ -218,7 +218,7 @@ fn agent_finalize_persists_evidence_and_emits_cache_miss() {
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(body["adapter"], "code-typescript");
-    assert_eq!(body["source-key"], "legacy");
+    assert_eq!(body["source"], "legacy");
     assert_eq!(body["slice"], "identity");
     assert_eq!(body["lead"], "user-registration");
     assert_eq!(body["cache"], "miss", "agent execution forces a cache miss");
@@ -237,7 +237,7 @@ fn agent_finalize_persists_evidence_and_emits_cache_miss() {
         .find(|e| e["event"] == "slice.extract.cache-miss")
         .expect("a slice.extract.cache-miss event");
     assert_eq!(miss["payload"]["slice-name"], "identity");
-    assert_eq!(miss["payload"]["source-key"], "legacy");
+    assert_eq!(miss["payload"]["source"], "legacy");
     assert_eq!(miss["payload"]["adapter"], "code-typescript");
     assert_eq!(miss["payload"]["reason"], "adapter-opt-out");
     assert_eq!(miss["payload"]["fingerprint"], fingerprint);
@@ -408,7 +408,7 @@ fn sandbox_hides_project_dir_and_denies_out_of_scope_evidence() {
 }
 
 #[test]
-fn unknown_source_key_errors() {
+fn unknown_source_errors() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -421,6 +421,6 @@ fn unknown_source_key_errors() {
         .failure();
 
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    assert_eq!(stderr["error"], "source-key-unknown");
+    assert_eq!(stderr["error"], "source-unknown");
     assert_eq!(stderr["exit-code"], 1);
 }

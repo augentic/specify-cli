@@ -132,17 +132,15 @@ fn dispatch_source(format: Format, action: SourceAction) -> Exit {
         } => dispatch(format, || {
             source::preview::preview(format, &adapter, &source, &lead, out.as_deref(), &project_dir)
         }),
-        SourceAction::Survey {
-            source_key,
-            plan,
-            phase,
-        } => scoped(format, |ctx| source::survey::run(ctx, &source_key, plan.as_deref(), phase)),
+        SourceAction::Survey { source, plan, phase } => {
+            scoped(format, |ctx| source::survey::run(ctx, &source, plan.as_deref(), phase))
+        }
         SourceAction::Extract {
-            source_key,
-            lead_id,
+            source,
+            lead,
             slice,
             phase,
-        } => scoped(format, |ctx| source::extract::run(ctx, &source_key, &lead_id, &slice, phase)),
+        } => scoped(format, |ctx| source::extract::run(ctx, &source, &lead, &slice, phase)),
     }
 }
 

@@ -310,7 +310,7 @@ fn override_orphan_key_rejected() {
     let hits: Vec<_> = plan
         .validate(None, None)
         .into_iter()
-        .filter(|r| r.code == "slice-authority-override-orphan-source-key")
+        .filter(|r| r.code == "slice-authority-override-orphan-source")
         .collect();
     assert_eq!(hits.len(), 1, "expected one orphan finding, got: {hits:#?}");
     assert_eq!(hits[0].entry.as_deref(), Some("identity-user-registration"));
@@ -331,7 +331,7 @@ fn authority_override_empty_passes() {
         !plan
             .validate(None, None)
             .iter()
-            .any(|r| r.code == "slice-authority-override-orphan-source-key"),
+            .any(|r| r.code == "slice-authority-override-orphan-source"),
         "empty override map must not trip orphan check"
     );
 }
@@ -353,7 +353,7 @@ fn authority_override_valid_keys_pass() {
         !plan
             .validate(None, None)
             .iter()
-            .any(|r| r.code == "slice-authority-override-orphan-source-key"),
+            .any(|r| r.code == "slice-authority-override-orphan-source"),
         "all-valid overrides must pass"
     );
 }
@@ -375,7 +375,7 @@ fn authority_overrides_sort() {
     let codes: Vec<&str> = plan
         .validate(None, None)
         .iter()
-        .filter(|r| r.code == "slice-authority-override-orphan-source-key")
+        .filter(|r| r.code == "slice-authority-override-orphan-source")
         .map(|r| {
             // Pull the kind out of the message (between "kind '" and "'").
             let msg = &r.message;

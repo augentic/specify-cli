@@ -1,7 +1,7 @@
 //! Integration tests for `specrun source survey` (RFC-29 D1;
 //! DECISIONS.md §"Source operations (D1)").
 //!
-//! Covers source-key resolution against `plan.yaml.sources`, the agent
+//! Covers source resolution against `plan.yaml.sources`, the agent
 //! two-phase dispatch (prepare prints the handoff envelope + emits
 //! `source.execution.agent`; finalize validates-before-visible and
 //! emits `source.survey.cache-miss` under the forced opt-out), and the
@@ -57,7 +57,7 @@ fn journal_events(project: &Project) -> Vec<Value> {
         .collect()
 }
 
-// A `survey` lead-set omits `source-key`: attribution is CLI-owned,
+// A `survey` lead-set omits `source`: attribution is CLI-owned,
 // so the runner stamps `legacy` onto every lead before the schema
 // check and the merge.
 const VALID_LEAD_SET: &str = "\
@@ -65,7 +65,7 @@ const VALID_LEAD_SET: &str = "\
 
 ### user-registration
 
-- lead-id: user-registration
+- lead: user-registration
 - summary: Registration endpoint accepting email + password.
 ";
 
@@ -110,7 +110,7 @@ fn agent_prepare_prints_envelope_and_emits_execution_event() {
     let events = journal_events(&project);
     assert_eq!(events.len(), 1, "prepare emits exactly one event");
     assert_eq!(events[0]["event"], "source.execution.agent");
-    assert_eq!(events[0]["payload"]["source-key"], "legacy");
+    assert_eq!(events[0]["payload"]["source"], "legacy");
     assert_eq!(events[0]["payload"]["adapter"], "code-typescript");
     assert_eq!(events[0]["payload"]["operation"], "survey");
 }
@@ -136,7 +136,7 @@ fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(body["adapter"], "code-typescript");
-    assert_eq!(body["source-key"], "legacy");
+    assert_eq!(body["source"], "legacy");
     assert_eq!(body["cache"], "miss", "agent execution forces a cache miss");
     assert_eq!(body["reason"], "adapter-opt-out");
     let fingerprint = body["fingerprint"].as_str().expect("fingerprint str");
@@ -151,14 +151,14 @@ fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
         discovery.contains("### legacy:user-registration"),
         "merged lead must appear:\n{discovery}"
     );
-    assert!(discovery.contains("- source-key: legacy"), "merged lead records its source");
+    assert!(discovery.contains("- source: legacy"), "merged lead records its source");
 
     let events = journal_events(&project);
     let miss = events
         .iter()
         .find(|e| e["event"] == "source.survey.cache-miss")
         .expect("a cache-miss event");
-    assert_eq!(miss["payload"]["source-key"], "legacy");
+    assert_eq!(miss["payload"]["source"], "legacy");
     assert_eq!(miss["payload"]["adapter"], "code-typescript");
     assert_eq!(miss["payload"]["reason"], "adapter-opt-out");
     assert_eq!(miss["payload"]["fingerprint"], fingerprint);
@@ -176,7 +176,7 @@ fn agent_finalize_invalid_lead_set_leaves_discovery_untouched() {
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(
         scratch.join("lead-set.md"),
-        "## Lead inventory\n\n### bad_id\n\n- lead-id: bad_id\n- summary: Bad id.\n",
+        "## Lead inventory\n\n### bad_id\n\n- lead: bad_id\n- summary: Bad id.\n",
     )
     .expect("write invalid lead-set.md");
 
@@ -206,7 +206,7 @@ fn agent_finalize_invalid_lead_set_leaves_discovery_untouched() {
 }
 
 #[test]
-fn unknown_source_key_errors() {
+fn unknown_source_errors() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -218,7 +218,7 @@ fn unknown_source_key_errors() {
         .failure();
 
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    assert_eq!(stderr["error"], "source-key-unknown");
+    assert_eq!(stderr["error"], "source-unknown");
     assert_eq!(stderr["exit-code"], 1);
 }
 

@@ -351,7 +351,7 @@ slices:
     target: omnia@v1
     status: pending
     sources:
-      - { source-key: legacy-monolith, lead-id: my-slice }
+      - { source: legacy-monolith, lead: my-slice }
 ";
 
 const TAGGED_SPEC_UNKNOWN: &str = "# Login Specification
@@ -447,7 +447,7 @@ fn agent_emit_one_event_per_line() {
             fixed,
             EventKind::SliceExtractCompleted {
                 slice_name: "checkout".to_string(),
-                source_key: "monolith".to_string(),
+                source: "monolith".to_string(),
             },
         ),
     ];
@@ -481,17 +481,17 @@ fn journal_emit_appends_one_line_per_new_event() {
     let cases: [(&str, &str, &str); 3] = [
         (
             "source.survey.cache-hit",
-            r#"{"source-key":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}"#,
+            r#"{"source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}"#,
             "fingerprint",
         ),
         (
             "source.survey.cache-miss",
-            r#"{"source-key":"runtime","adapter":"captures","fingerprint":"sha256:beef","reason":"adapter-opt-out"}"#,
+            r#"{"source":"runtime","adapter":"captures","fingerprint":"sha256:beef","reason":"adapter-opt-out"}"#,
             "reason",
         ),
         (
             "source.execution.agent",
-            r#"{"source-key":"runtime","adapter":"captures","operation":"survey"}"#,
+            r#"{"source":"runtime","adapter":"captures","operation":"survey"}"#,
             "operation",
         ),
     ];
@@ -508,7 +508,7 @@ fn journal_emit_appends_one_line_per_new_event() {
     assert_eq!(events.len(), 3, "expected one line per emit, got {}", events.len());
 
     assert_eq!(events[0]["event"], "source.survey.cache-hit");
-    assert_eq!(events[0]["payload"]["source-key"], "runtime");
+    assert_eq!(events[0]["payload"]["source"], "runtime");
     assert_eq!(events[0]["payload"]["adapter"], "captures");
     assert_eq!(events[0]["payload"]["fingerprint"], "sha256:cafef00d");
 
@@ -557,7 +557,7 @@ fn journal_emit_incomplete_payload_is_rejected() {
             "emit",
             "source.survey.cache-hit",
             "--payload",
-            r#"{"source-key":"runtime"}"#,
+            r#"{"source":"runtime"}"#,
         ])
         .assert()
         .failure();

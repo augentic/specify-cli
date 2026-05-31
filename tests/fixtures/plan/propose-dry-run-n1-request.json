@@ -2,8 +2,8 @@
   "kind": "request",
   "leads": [
     {
-      "lead-id": "fix-typo",
-      "source-key": "intent",
+      "lead": "fix-typo",
+      "source": "intent",
       "summary": "Fix a typo in user.rs."
     }
   ],
