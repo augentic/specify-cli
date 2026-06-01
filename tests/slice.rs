@@ -713,6 +713,80 @@ fn model_show_fails_without_model() {
 }
 
 // ---------------------------------------------------------------------------
+// RFC-35 D8 — `slice validate` spec file-location gate
+// ---------------------------------------------------------------------------
+
+#[test]
+fn validate_emits_file_location_when_root_spec_md_exists_but_no_canonical_specs() {
+    let project = Project::init().with_schemas();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("spec.md"), CLEAN_SPEC_MD).expect("write root spec.md");
+    fs::remove_dir_all(slice_dir.join("specs")).expect("remove specs dir created by slice create");
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let value = parse_json(&assert.get_output().stderr);
+    assert_eq!(value["error"], "slice-pre-adapter-gate");
+    let detail = find_finding_impact(assert.get_output(), "specs.file-location");
+    assert!(
+        detail.contains("specs/<unit>/spec.md"),
+        "detail must name the canonical layout, got: {detail}"
+    );
+    assert!(detail.contains("slice root"), "detail must mention the slice root, got: {detail}");
+}
+
+#[test]
+fn validate_does_not_emit_file_location_when_canonical_specs_exist() {
+    let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("spec.md"), "stale root copy").expect("write root spec.md");
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "specs.file-location",
+                "file-location gate must not fire when canonical specs exist"
+            );
+        }
+    }
+}
+
+#[test]
+fn validate_does_not_emit_file_location_when_no_root_spec_md() {
+    let project = Project::init().with_schemas();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let stderr = assert.get_output().stderr.clone();
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&stderr)
+        && let Some(results) = value["results"].as_array()
+    {
+        for r in results {
+            let rule_id = r["rule-id"].as_str().unwrap_or("");
+            assert_ne!(
+                rule_id, "specs.file-location",
+                "file-location gate must not fire when no root spec.md exists"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // component catalog contract — `slice validate` catalog drift gate
 // ---------------------------------------------------------------------------
 

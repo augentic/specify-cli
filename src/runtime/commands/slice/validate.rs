@@ -213,18 +213,22 @@ fn scan_slice_specs(
     Ok((req_ids, synthesis_tags, provenance_findings))
 }
 
-/// Bundle the three pre-adapter gates that fire on a single slice:
+/// Bundle the pre-adapter gates that fire on a single slice:
 ///
-/// 1. per-slice authority override — orphan source keys on the slice's
+/// 1. RFC-35 D8 — spec file-location check: root `spec.md` exists
+///    but no canonical `specs/<unit>/spec.md` files found. Fires
+///    first so the operator sees the structural cause before
+///    downstream drift noise.
+/// 2. per-slice authority override — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
-/// 2. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
+/// 3. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
 ///    `<project_dir>/discovery.md`. A discovery-level check (not
 ///    per-slice) but evaluated here because `specrun slice validate`
 ///    is the single CLI surface skills shell out to between
 ///    `/spec:refine` and `/spec:build`.
-/// 3. component catalog contract — catalog drift between Evidence `component:`
+/// 4. component catalog contract — catalog drift between Evidence `component:`
 ///    directives and `.specify/design-system/components.yaml`.
-/// 4. typed-model drift — the seven RFC-29c §"Drift validation"
+/// 5. typed-model drift — the seven RFC-29c §"Drift validation"
 ///    findings over `<slice>/model.yaml` (skipped when absent).
 ///
 /// Provenance no longer has a file-drift gate: it is carried inline in
@@ -232,11 +236,12 @@ fn scan_slice_specs(
 /// so there is no second representation to drift against. Spec-level
 /// `Sources:` / `Status:` coherence still runs in [`scan_slice_specs`].
 ///
-/// All four checks can fail independently; we collect every finding
+/// All checks can fail independently; we collect every finding
 /// into one [`Diagnostic`] vector so the caller can render the full
 /// surface in one pass instead of one error per re-run.
 fn collect_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<Vec<Diagnostic>> {
     let mut findings: Vec<Diagnostic> = Vec::new();
+    findings.extend(collect_spec_file_location_findings(slice_dir));
     findings.extend(override_orphans(ctx, name)?);
     findings.extend(alias_collisions(ctx)?);
     findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
@@ -262,6 +267,33 @@ fn alias_collisions(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
         .iter()
         .map(specify_model::discovery::DiscoveryAliasCollision::to_diagnostic)
         .collect())
+}
+
+/// RFC-35 D8 file-location gate. Emits a `specs.file-location`
+/// finding when the slice has no spec files under the canonical
+/// `specs/<unit>/spec.md` layout but does have a root-level
+/// `spec.md`. This fires first among the pre-adapter gates so the
+/// operator sees the structural cause before downstream drift noise.
+fn collect_spec_file_location_findings(slice_dir: &Path) -> Vec<Diagnostic> {
+    let specs_dir = slice_dir.join("specs");
+    let has_canonical_specs =
+        specs_dir.is_dir() && collect_spec_files(&specs_dir).is_ok_and(|files| !files.is_empty());
+    if has_canonical_specs {
+        return Vec::new();
+    }
+    let root_spec = slice_dir.join("spec.md");
+    if !root_spec.is_file() {
+        return Vec::new();
+    }
+    vec![Diagnostic::violation(
+        "specs.file-location",
+        "Spec files live under specs/<unit>/spec.md, not at the slice root",
+        "No spec files found under `specs/`. Found `spec.md` at the slice root — \
+         move it to `specs/<unit>/spec.md` (one file per `proposal.md ## Units` entry). \
+         The Specify workflow requires spec files under `specs/` for every target.",
+        Artifact::Specs,
+        None,
+    )]
 }
 
 /// Synopsis content-floor advisory (RFC-29b-signal D2.1). Loads

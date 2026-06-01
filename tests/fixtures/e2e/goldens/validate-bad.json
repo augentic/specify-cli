@@ -139,17 +139,17 @@
       "artifact": "specs",
       "evidence": {
         "kind": "snippet",
-        "value": "one or more crates listed in the proposal have no matching spec file"
+        "value": "one or more units listed in the proposal have no matching spec file"
       },
-      "fingerprint": "sha256:555d55fb0cf636461d423096f3e1071d5c83345b341072e5af750fc973fc6e15",
+      "fingerprint": "sha256:910e2c6eb4aa4f7894698df1901d8fa3e895945d94ff51b6bb411cfa9c28ce94",
       "id": "DIAG-0008",
-      "impact": "one or more crates listed in the proposal have no matching spec file",
+      "impact": "one or more units listed in the proposal have no matching spec file",
       "kind": "violation",
-      "remediation": "Every crate listed in the proposal has a matching spec file",
-      "rule-id": "cross.proposal-crates-have-specs",
+      "remediation": "Every unit listed in the proposal has a matching spec file",
+      "rule-id": "cross.proposal-units-have-specs",
       "severity": "important",
       "source": "deterministic",
-      "title": "Every crate listed in the proposal has a matching spec file"
+      "title": "Every unit listed in the proposal has a matching spec file"
     },
     {
       "artifact": "specs",
