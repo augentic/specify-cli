@@ -103,3 +103,21 @@ pub const SCENARIO_JSON_SCHEMA: &str =
 /// Schema for `.cursor-plugin/marketplace.json` (framework authoring).
 pub const MARKETPLACE_JSON_SCHEMA: &str =
     include_str!("../../../schemas/authoring/marketplace.schema.json");
+
+/// Schema for the per-slice target build request (RFC-29d D6).
+///
+/// The closed-shape request `specrun slice build` hands to a target
+/// adapter. Keyed on `(slice, target)`, but the payload omits `target`,
+/// `execution`, brief paths, and `model.yaml`; target-specific inputs
+/// grow through the explicit `inputs.artifacts.additional` list.
+pub const BUILD_REQUEST_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/target/build-request.schema.json");
+
+/// Schema for the per-slice target build report (RFC-29d D6).
+///
+/// The closed-shape report a target adapter returns to `specrun slice
+/// build`. Its `findings[]` element shape lives in
+/// [`DIAGNOSTIC_JSON_SCHEMA`] and is wired via a relative
+/// `../diagnostics/diagnostic.schema.json` `$ref`.
+pub const BUILD_REPORT_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/target/build-report.schema.json");

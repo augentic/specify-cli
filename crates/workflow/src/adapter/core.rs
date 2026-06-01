@@ -131,6 +131,23 @@ pub struct AdapterToolDeclaration {
     pub permissions: Vec<String>,
 }
 
+/// One adapter-declared build input inside a target manifest (RFC-29d).
+///
+/// Each entry names a path the target's `build` operation consumes,
+/// relative to the build request's `inputs.root` (the slice tree). The
+/// CLI assembles the request's `inputs.artifacts.additional[]` from
+/// this list and (in a later change) raises `target-build-input-missing`
+/// when a `required` path is absent. v1 keeps the declaration a flat
+/// path list — globs and conditional inputs are deferred.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BuildInputDeclaration {
+    /// Path relative to the build request's `inputs.root`.
+    pub path: String,
+    /// Whether `build` requires this input; a missing `required` path
+    /// is a build-time abort once the matching check lands.
+    pub required: bool,
+}
+
 /// Closed enum for the optional `cache:` field on an adapter manifest
 /// (extraction cache fingerprint contract). Single variant in v1; widened only behind an accepted design change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
@@ -306,6 +323,12 @@ pub struct TargetAdapter {
     /// Optional declared WASI tools for declared WASI tools.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<AdapterToolDeclaration>,
+    /// Optional adapter-declared build inputs (RFC-29d). Each entry is
+    /// a path relative to the build request's `inputs.root`, flagged
+    /// `required`; the CLI assembles `inputs.artifacts.additional[]`
+    /// from this list. Defaults to an empty list when omitted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<BuildInputDeclaration>,
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,

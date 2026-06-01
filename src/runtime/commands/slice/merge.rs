@@ -20,6 +20,50 @@ use crate::runtime::context::Ctx;
 const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
 pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
+    // RFC-29d: the `slice.merge.*` pair fires on the validator outcome.
+    // `started` brackets entry; the fallible body runs the validator +
+    // apply and (on success) the durable `slice.archive.created` ledger
+    // entry; `succeeded` brackets a fully completed run. Ordering is
+    // started → … → archive.created → succeeded, so the lifecycle pair
+    // wraps the ledger entry rather than racing it.
+    emit_merge_event(
+        ctx,
+        EventKind::SliceMergeStarted {
+            slice_name: name.to_string(),
+        },
+    );
+    match commit_run(ctx, name) {
+        Ok(()) => {
+            emit_merge_event(
+                ctx,
+                EventKind::SliceMergeSucceeded {
+                    slice_name: name.to_string(),
+                },
+            );
+            Ok(())
+        }
+        Err(err) => {
+            // `reason` is the error's stable kebab discriminant. The
+            // failed event is best-effort like the rest, but the
+            // original error still propagates so the exit code is
+            // unchanged.
+            emit_merge_event(
+                ctx,
+                EventKind::SliceMergeFailed {
+                    slice_name: name.to_string(),
+                    reason: err.variant_str().into_owned(),
+                },
+            );
+            Err(err)
+        }
+    }
+}
+
+/// Validator + apply core of `slice merge run`: commit the deltas,
+/// auto-commit the workspace clone, append the outcome-ledger entry,
+/// stamp the plan entry `done`, and write the run output. Wrapped by
+/// [`run`] so the `slice.merge.*` lifecycle pair can bracket it.
+fn commit_run(ctx: &Ctx, name: &str) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
@@ -53,6 +97,18 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         write_run_text,
     )?;
     Ok(())
+}
+
+/// Best-effort append of a single `slice.merge.*` lifecycle event.
+/// Mirrors [`emit_archive_created`]'s posture: a journal-write failure
+/// is logged and swallowed so it can never change the merge's exit
+/// code. The `failed` variant's emit is equally best-effort, but the
+/// caller still propagates the original merge error afterwards.
+fn emit_merge_event(ctx: &Ctx, kind: EventKind) {
+    let event = Event::new(Timestamp::now(), kind);
+    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
+        eprintln!("warning: slice.merge journal append: {err}");
+    }
 }
 
 /// Append the `slice.archive.created` outcome-ledger event. Captures

@@ -44,6 +44,11 @@
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/toolDeclaration" }
     },
+    "inputs": {
+      "type": "array",
+      "description": "RFC-29d \u2014 adapter-declared build inputs. Each entry is a path (relative to the build request's `inputs.root`, i.e. the slice tree) that the `build` operation consumes, flagged `required`. The CLI assembles `inputs.artifacts.additional[]` from this list and raises `target-build-input-missing` when a `required` path is absent. v1 keeps the declaration a flat path list; globs / conditional inputs are deferred.",
+      "items": { "$ref": "#/$defs/buildInputDeclaration" }
+    },
     "description": {
       "type": "string",
       "minLength": 1
@@ -63,6 +68,21 @@
     "kebabName": {
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "buildInputDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "required"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://).+$"
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
     },
     "toolDeclaration": {
       "type": "object",

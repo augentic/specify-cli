@@ -526,6 +526,81 @@ fn journal_emit_appends_one_line_per_new_event() {
 }
 
 #[test]
+fn journal_emit_appends_m3_build_merge_events() {
+    // The RFC-29d M3 build/merge lifecycle events and
+    // `target.execution.agent` round-trip through the `journal emit`
+    // front door with no new wiring — the closed taxonomy is the
+    // payload schema, so id + --payload deserialise straight into the
+    // existing variants.
+    let project = Project::init();
+    let cases: [(&str, Option<&str>); 7] = [
+        ("slice.build.started", Some(r#"{"slice-name":"checkout"}"#)),
+        ("slice.build.succeeded", Some(r#"{"slice-name":"checkout"}"#)),
+        ("slice.build.failed", Some(r#"{"slice-name":"checkout","reason":"cargo-check-failed"}"#)),
+        ("slice.merge.started", Some(r#"{"slice-name":"checkout"}"#)),
+        ("slice.merge.succeeded", Some(r#"{"slice-name":"checkout"}"#)),
+        ("slice.merge.failed", Some(r#"{"slice-name":"checkout","reason":"baseline-conflict"}"#)),
+        ("target.execution.agent", Some(r#"{"slice":"checkout","target":"omnia"}"#)),
+    ];
+
+    for (event_id, payload) in cases {
+        let mut cmd = specrun();
+        cmd.current_dir(project.root()).args(["journal", "emit", event_id]);
+        if let Some(payload) = payload {
+            cmd.args(["--payload", payload]);
+        }
+        cmd.assert().success();
+    }
+
+    let events = read_journal(project.root());
+    assert_eq!(events.len(), 7, "expected one line per emit, got {}", events.len());
+    let ids: Vec<&str> = events.iter().map(|e| e["event"].as_str().expect("event id")).collect();
+    assert_eq!(
+        ids,
+        [
+            "slice.build.started",
+            "slice.build.succeeded",
+            "slice.build.failed",
+            "slice.merge.started",
+            "slice.merge.succeeded",
+            "slice.merge.failed",
+            "target.execution.agent",
+        ]
+    );
+    assert_eq!(events[2]["payload"]["reason"], "cargo-check-failed");
+    assert_eq!(events[5]["payload"]["reason"], "baseline-conflict");
+    assert_eq!(events[6]["payload"]["slice"], "checkout");
+    assert_eq!(events[6]["payload"]["target"], "omnia");
+}
+
+#[test]
+fn journal_emit_m3_failed_event_requires_reason() {
+    // A `*.failed` variant without its `reason` field fails the single
+    // serde round-trip as `journal-emit-payload-schema`.
+    let project = Project::init();
+    let assert = specrun()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "journal",
+            "emit",
+            "slice.build.failed",
+            "--payload",
+            r#"{"slice-name":"checkout"}"#,
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let actual = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(actual["error"], "journal-emit-payload-schema");
+    assert!(
+        !journal_path(project.root()).exists(),
+        "a rejected emit must not append to the journal"
+    );
+}
+
+#[test]
 fn journal_emit_unknown_event_is_rejected() {
     let project = Project::init();
     let assert = specrun()

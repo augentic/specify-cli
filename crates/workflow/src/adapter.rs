@@ -34,8 +34,8 @@ mod core;
 pub(crate) mod operation;
 
 pub use core::{
-    ADAPTER_FILENAME, AdapterLocation, Axis, CacheMode, Execution, ResolvedTargetAdapter,
-    SourceAdapter, TargetAdapter, cache_dir, check_axis_unique_for_name,
+    ADAPTER_FILENAME, AdapterLocation, Axis, BuildInputDeclaration, CacheMode, Execution,
+    ResolvedTargetAdapter, SourceAdapter, TargetAdapter, cache_dir, check_axis_unique_for_name,
 };
 
 pub use cache::{CacheLayout, SourceOperation, read_index as cache_read_index};

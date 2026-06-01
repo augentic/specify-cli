@@ -9,6 +9,7 @@ use specify_workflow::config::Layout;
 use specify_workflow::merge::{ArtifactClass, MergeStrategy};
 use specify_workflow::slice::LifecycleStatus;
 
+mod build;
 pub mod cli;
 mod lifecycle;
 mod merge;
@@ -59,6 +60,7 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
         SliceAction::Synthesize { name, dry_run, from } => {
             synthesize::run(ctx, &name, dry_run, from.as_deref())
         }
+        SliceAction::Build { name, phase } => build::run(ctx, &name, phase),
         SliceAction::Merge { action } => match action {
             SliceMergeAction::Run { name } => merge::run(ctx, &name),
             SliceMergeAction::Preview { name } => merge::preview(ctx, &name),

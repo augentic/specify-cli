@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use clap::{ArgAction, Subcommand};
 use specify_workflow::slice::{CreateIfExists, LifecycleStatus};
 
+use crate::runtime::commands::source::cli::Phase;
+
 #[derive(Subcommand)]
 pub enum SliceAction {
     /// Create a new slice directory with an initial `.metadata.yaml`
@@ -69,6 +71,33 @@ pub enum SliceAction {
         /// Apply the agent's synthesis response, project it, and persist the artifacts. The only writer.
         #[arg(long = "from", value_name = "RESPONSE_JSON", conflicts_with = "dry_run")]
         from: Option<PathBuf>,
+    },
+    /// Build a slice through its bound target adapter's `build`
+    /// operation and gate the `built` transition (RFC-29d M3).
+    ///
+    /// Resolves the target from the slice's `.metadata.yaml`, then
+    /// owns the build envelopes: request assembly, report validation,
+    /// the `target-build-*` aborts, the `slice.build.*` events, and the
+    /// `built` transition gate. The target brief owns only code
+    /// generation.
+    ///
+    /// For `execution: tool` adapters the single call runs the whole
+    /// operation. For `execution: agent` adapters the operation is
+    /// two-phase: `--phase prepare` (the default) assembles and
+    /// schema-validates the request, writes
+    /// `.specify/slices/<slice>/build/request.yaml`, emits
+    /// `target.execution.agent`, prints the handoff envelope, and
+    /// returns control to the agent; `--phase finalize` validates the
+    /// agent-produced `build/report.yaml`, gates the `built`
+    /// transition, and journals `slice.build.succeeded` /
+    /// `slice.build.failed`.
+    Build {
+        /// Slice name (under `.specify/slices/`)
+        name: String,
+        /// Phase to run (`prepare` | `finalize`); `tool` adapters run
+        /// the whole operation regardless.
+        #[arg(long, value_enum, default_value_t = Phase::Prepare)]
+        phase: Phase,
     },
     /// Spec-merge operations for a slice
     Merge {

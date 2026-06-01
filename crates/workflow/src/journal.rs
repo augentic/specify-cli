@@ -194,6 +194,62 @@ pub enum EventKind {
         /// Short human reason / finding code for the failure.
         reason: String,
     },
+    /// `/spec:build` started implementing the slice — the target
+    /// adapter's `build` brief began running against the refined
+    /// artifacts (RFC-29d §"Journal events"). One event per slice.
+    #[serde(rename = "slice.build.started", rename_all = "kebab-case")]
+    SliceBuildStarted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// `/spec:build` finished implementing the slice — the target
+    /// adapter's `build` brief completed and the slice is ready for
+    /// `/spec:merge` (RFC-29d §"Journal events"). One event per slice.
+    #[serde(rename = "slice.build.succeeded", rename_all = "kebab-case")]
+    SliceBuildSucceeded {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// `/spec:build` stopped before the slice was implemented
+    /// (RFC-29d §"Journal events"). `reason` carries a short human
+    /// reason or finding code so the journal records why the build
+    /// stalled.
+    #[serde(rename = "slice.build.failed", rename_all = "kebab-case")]
+    SliceBuildFailed {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Short human reason / finding code for the failure.
+        reason: String,
+    },
+    /// `specrun slice merge` began folding the slice's deltas into the
+    /// baseline (RFC-29d §"Journal events"). The `slice.merge.*` pair
+    /// fires on the `specrun slice merge` validator outcome, not on a
+    /// merge report. One event per slice.
+    #[serde(rename = "slice.merge.started", rename_all = "kebab-case")]
+    SliceMergeStarted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// `specrun slice merge` validated and applied the slice's deltas
+    /// to the baseline (RFC-29d §"Journal events"). Fires on the
+    /// validator outcome, not on a merge report. One event per slice.
+    #[serde(rename = "slice.merge.succeeded", rename_all = "kebab-case")]
+    SliceMergeSucceeded {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// `specrun slice merge` refused to fold the slice into the
+    /// baseline (RFC-29d §"Journal events"). Fires on the validator
+    /// outcome, not on a merge report. `reason` carries a short human
+    /// reason or finding code so the journal records why the merge
+    /// stalled.
+    #[serde(rename = "slice.merge.failed", rename_all = "kebab-case")]
+    SliceMergeFailed {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Short human reason / finding code for the failure.
+        reason: String,
+    },
     /// extraction cache fingerprint contract — cache lookup matched and `extract` was *not*
     /// re-run. CI pinning the five fingerprint inputs at a known set
     /// can re-run any prior `/spec:execute` and expect byte-stable
@@ -272,6 +328,20 @@ pub enum EventKind {
         /// Which operation ran (`survey` at plan time, `extract` at
         /// slice time).
         operation: SourceOperation,
+    },
+    /// A target adapter ran one operation under agent execution. The
+    /// `build` verb emits this per agent invocation (RFC-29d
+    /// §"Journal events"). Unlike [`Self::SourceExecutionAgent`], which
+    /// fans out over the `(source, operation)` pair, the build verb
+    /// derives `(slice, target)` from the bound project — `build` is
+    /// the only agent-dispatched target operation that emits this event
+    /// in v1, so the payload stays minimal at `{ slice, target }`.
+    #[serde(rename = "target.execution.agent", rename_all = "kebab-case")]
+    TargetExecutionAgent {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice: String,
+        /// Target name (`omnia`, `vectis`, …) the build dispatched to.
+        target: String,
     },
     /// runtime capture claim — target's `build` finished replay.
     /// Payload mirrors the `replay:` block written into the
@@ -935,6 +1005,97 @@ mod tests {
     }
 
     #[test]
+    fn slice_build_merge_events_round_trip() {
+        // RFC-29d §"Journal events": the M3 build/merge lifecycle
+        // events and `target.execution.agent` serialise to their
+        // dotted-kebab ids with kebab-case payload fields, and
+        // round-trip back preserving every field. The `*.failed`
+        // variants carry a `reason`; `target.execution.agent` carries
+        // the minimal `{ slice, target }` derived at build time.
+        let rows: &[(EventKind, &[&str])] = &[
+            (
+                EventKind::SliceBuildStarted {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.build.started""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceBuildSucceeded {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.build.succeeded""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceBuildFailed {
+                    slice_name: "identity-user-registration".to_string(),
+                    reason: "cargo-check-failed".to_string(),
+                },
+                &[
+                    r#""event":"slice.build.failed""#,
+                    r#""slice-name":"identity-user-registration""#,
+                    r#""reason":"cargo-check-failed""#,
+                ],
+            ),
+            (
+                EventKind::SliceMergeStarted {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.merge.started""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceMergeSucceeded {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.merge.succeeded""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceMergeFailed {
+                    slice_name: "identity-user-registration".to_string(),
+                    reason: "baseline-conflict".to_string(),
+                },
+                &[
+                    r#""event":"slice.merge.failed""#,
+                    r#""slice-name":"identity-user-registration""#,
+                    r#""reason":"baseline-conflict""#,
+                ],
+            ),
+            (
+                EventKind::TargetExecutionAgent {
+                    slice: "identity-user-registration".to_string(),
+                    target: "omnia".to_string(),
+                },
+                &[
+                    r#""event":"target.execution.agent""#,
+                    r#""slice":"identity-user-registration""#,
+                    r#""target":"omnia""#,
+                ],
+            ),
+        ];
+
+        for (kind, required) in rows {
+            let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
+            let json = serde_json::to_string(&event).expect("serialise build/merge event");
+            for needle in *required {
+                assert!(json.contains(needle), "wire form must contain `{needle}`; got:\n{json}");
+            }
+            let round: Event = serde_json::from_str(&json).expect("deserialise build/merge event");
+            assert_eq!(round, event, "build/merge round-trip must preserve every field");
+        }
+    }
+
+    #[test]
     fn slice_synthesize_completed_omits_empty_artifacts() {
         // `artifacts` carries `skip_serializing_if = "Vec::is_empty"`
         // so an empty list does not reach the wire at all.
@@ -1013,6 +1174,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Single sweep covers every payload-bearing variant; splitting hides the wire-format coverage discipline."
+    )]
     fn no_snake_case_leaks_to_wire() {
         // workflow §Wire format: snake_case lifecycle values are never
         // produced on disk. Exercise every variant that carries an
@@ -1045,6 +1210,30 @@ mod tests {
             EventKind::SliceSynthesizeFailed {
                 slice_name: "s".to_string(),
                 reason: "spec-requirement-missing-sources".to_string(),
+            },
+            EventKind::SliceBuildStarted {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceBuildSucceeded {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceBuildFailed {
+                slice_name: "s".to_string(),
+                reason: "cargo-check-failed".to_string(),
+            },
+            EventKind::SliceMergeStarted {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceMergeSucceeded {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceMergeFailed {
+                slice_name: "s".to_string(),
+                reason: "baseline-conflict".to_string(),
+            },
+            EventKind::TargetExecutionAgent {
+                slice: "s".to_string(),
+                target: "omnia".to_string(),
             },
             EventKind::SliceExtractCompleted {
                 slice_name: "s".to_string(),

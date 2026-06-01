@@ -22,10 +22,11 @@ use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
 use specify_model::discovery::Lead;
 pub use specify_schema::{
-    COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA,
-    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA,
-    compile_schema, read_yaml_as_json, validate_serialisable, validate_value,
+    BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA,
+    DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, PLAN_JSON_SCHEMA,
+    PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
+    SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, compile_schema,
+    read_yaml_as_json, validate_serialisable, validate_value,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -202,6 +203,122 @@ fn compile_synthesis_validator(rule: &str) -> Result<jsonschema::Validator> {
         })?;
     jsonschema::options().with_registry(&registry).build(&synthesis).map_err(|err| {
         Error::validation_failed("synthesis-schema", rule, format!("schema compile failed: {err}"))
+    })
+}
+
+/// Validate a target build request against the embedded
+/// `schemas/target/build-request.schema.json` (RFC-29d D6).
+///
+/// Backs `specrun slice build`: the request the CLI assembles
+/// ([`crate::slice::build_request`]) and writes to
+/// `.specify/slices/<slice>/build/request.yaml` is gated against this
+/// shape before handoff. The request carries no `$ref`, so the simple
+/// [`validate_value`] path (as in [`validate_plan_yaml`]) suffices.
+/// Parsing through [`serde_saphyr::from_str`] accepts both the YAML the
+/// CLI persists and a JSON instance.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] keyed on `target-build-request-schema`
+/// (exit code 2) when parsing or schema validation fails.
+pub fn validate_build_request_json(content: &str) -> Result<()> {
+    let rule = "build request conforms to schemas/target/build-request.schema.json";
+    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed(
+            "target-build-request-schema",
+            rule,
+            format!("parse failed: {err}"),
+        )
+    })?;
+    err_from_failures(
+        "target-build-request-schema",
+        &validation_failures(
+            &instance,
+            BUILD_REQUEST_JSON_SCHEMA,
+            "target-build-request-schema",
+            rule,
+        ),
+    )
+}
+
+/// `$id` the build-report schema's relative `findings[]` `$ref` resolves
+/// to.
+const DIAGNOSTIC_SCHEMA_URL: &str =
+    "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json";
+
+/// Validate a target build report against the embedded
+/// `schemas/target/build-report.schema.json` (RFC-29d D6).
+///
+/// Backs `specrun slice build`: the report a target writes to
+/// `.specify/slices/<slice>/build/report.yaml` is gated against this
+/// shape before the `built` transition. Its `findings[]` `$ref`s
+/// `diagnostic.schema.json` by a relative URI, so the validator is built
+/// through a [`Registry`] that pins [`DIAGNOSTIC_JSON_SCHEMA`] under its
+/// `$id` (`DIAGNOSTIC_SCHEMA_URL`) — the same registry pattern
+/// `compile_synthesis_validator` uses for the relative `model` `$ref`.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] keyed on `target-build-report-schema`
+/// (exit code 2) when parsing or schema validation fails.
+pub fn validate_build_report_json(content: &str) -> Result<()> {
+    let rule = "build report conforms to schemas/target/build-report.schema.json";
+    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed("target-build-report-schema", rule, format!("parse failed: {err}"))
+    })?;
+    let validator = compile_build_report_validator(rule)?;
+    let failures: Vec<String> =
+        validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            code: "target-build-report-schema".to_string(),
+            detail: failures.join("; "),
+        })
+    }
+}
+
+/// Build the build-report validator with the diagnostic schema pinned
+/// so the relative `findings[]` `$ref` resolves.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] (`target-build-report-schema`) when
+/// either embedded schema is unparseable or the registry/validator
+/// fails to build — unreachable in production, surfacing only a
+/// corrupted binary.
+fn compile_build_report_validator(rule: &str) -> Result<jsonschema::Validator> {
+    let report: JsonValue = serde_json::from_str(BUILD_REPORT_JSON_SCHEMA).map_err(|err| {
+        Error::validation_failed(
+            "target-build-report-schema",
+            rule,
+            format!("schema parse failed: {err}"),
+        )
+    })?;
+    let diagnostic: JsonValue = serde_json::from_str(DIAGNOSTIC_JSON_SCHEMA).map_err(|err| {
+        Error::validation_failed(
+            "target-build-report-schema",
+            rule,
+            format!("diagnostic schema parse failed: {err}"),
+        )
+    })?;
+    let registry = Registry::new()
+        .add(DIAGNOSTIC_SCHEMA_URL, Resource::from_contents(diagnostic))
+        .and_then(jsonschema::RegistryBuilder::prepare)
+        .map_err(|err| {
+            Error::validation_failed(
+                "target-build-report-schema",
+                rule,
+                format!("registry build failed: {err}"),
+            )
+        })?;
+    jsonschema::options().with_registry(&registry).build(&report).map_err(|err| {
+        Error::validation_failed(
+            "target-build-report-schema",
+            rule,
+            format!("schema compile failed: {err}"),
+        )
     })
 }
 
@@ -677,6 +794,87 @@ slices:
     rationale: "password-reset (docs) and reset-password (legacy) are the same flow by summary judgment"
 "#;
         validate_proposal_json(response).expect("RFC fan-out response example validates");
+    }
+
+    /// The RFC-29d build request example validates.
+    #[test]
+    fn build_request_accepts_rfc_example() {
+        let request = r#"{
+            "version": 1,
+            "slice": "identity-service",
+            "project-dir": "/workspace/.specify/workspace/identity-service",
+            "inputs": {
+                "root": "/workspace/.specify/slices/identity-service",
+                "artifacts": {
+                    "proposal": "proposal.md",
+                    "design": "design.md",
+                    "tasks": "tasks.md",
+                    "specs": ["specs/identity/spec.md"],
+                    "additional": ["tokens.yaml"]
+                }
+            }
+        }"#;
+        validate_build_request_json(request).expect("RFC build request validates");
+    }
+
+    /// A request missing the required `inputs` block is rejected.
+    #[test]
+    fn build_request_rejects_malformed() {
+        let request = r#"{"version": 1, "slice": "identity-service", "project-dir": "/w"}"#;
+        match validate_build_request_json(request) {
+            Err(Error::Validation { code, .. }) => assert_eq!(code, "target-build-request-schema"),
+            other => panic!("expected target-build-request-schema, got {other:?}"),
+        }
+    }
+
+    /// A failure report carrying a full RFC-28 finding validates,
+    /// proving the relative diagnostic `$ref` resolves through the
+    /// registry.
+    #[test]
+    fn build_report_accepts_failure_with_finding() {
+        let report = r#"{
+            "version": 1,
+            "slice": "identity-contracts",
+            "target": "contracts@v1",
+            "status": "failure",
+            "findings": [{
+                "id": "DIAG-0001",
+                "rule-id": "contract.id-unique",
+                "title": "Duplicate info.x-specify-id across baseline",
+                "severity": "critical",
+                "source": "tool",
+                "kind": "violation",
+                "target-adapter": "contracts",
+                "slice": "identity-contracts",
+                "artifact": "contracts",
+                "location": { "path": "contracts/http/user-api.yaml" },
+                "evidence": {
+                    "kind": "structured",
+                    "summary": "x-specify-id user-api collides with legacy-api.yaml",
+                    "data": { "detail": "duplicate id" }
+                },
+                "impact": "Downstream consumers cannot resolve a unique contract id.",
+                "remediation": "Rename or remove the duplicate id before merge.",
+                "fingerprint": "sha256:a2e95674f838eb042eba78e16239f32199def3ca976e29499f8275beb30225e4"
+            }]
+        }"#;
+        validate_build_report_json(report).expect("failure-with-finding report validates");
+    }
+
+    /// A report with an out-of-enum `status` is rejected.
+    #[test]
+    fn build_report_rejects_malformed() {
+        let report = r#"{
+            "version": 1,
+            "slice": "identity-service",
+            "target": "omnia@v1",
+            "status": "partial",
+            "findings": []
+        }"#;
+        match validate_build_report_json(report) {
+            Err(Error::Validation { code, .. }) => assert_eq!(code, "target-build-report-schema"),
+            other => panic!("expected target-build-report-schema, got {other:?}"),
+        }
     }
 
     /// A malformed envelope (missing `kind`, which leaves it matching
