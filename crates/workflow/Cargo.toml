@@ -17,6 +17,7 @@ workspace = true
 clap.workspace = true
 glob.workspace = true
 jiff.workspace = true
+jsonschema.workspace = true
 petgraph.workspace = true
 regex.workspace = true
 semver.workspace = true
@@ -36,7 +37,6 @@ tempfile.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
-jsonschema.workspace = true
 regex.workspace = true
 serde_json.workspace = true
 specify-validate.workspace = true

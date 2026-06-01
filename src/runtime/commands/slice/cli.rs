@@ -1,7 +1,9 @@
 //! Clap derive surface for `specrun slice *` and its nested verbs.
 //! The umbrella `cli.rs` re-exports the action enums.
 
-use clap::Subcommand;
+use std::path::PathBuf;
+
+use clap::{ArgAction, Subcommand};
 use specify_workflow::slice::{CreateIfExists, LifecycleStatus};
 
 #[derive(Subcommand)]
@@ -29,6 +31,44 @@ pub enum SliceAction {
     Provenance {
         /// Slice name (under `.specify/slices/`)
         name: String,
+    },
+    /// Read-only viewer over a slice's `model.yaml`
+    Model {
+        #[command(subcommand)]
+        action: SliceModelAction,
+    },
+    /// Synthesise a slice — assemble the agent INPUTS envelope, or
+    /// project an agent response into `model.yaml` + Markdown artifacts
+    /// (RFC-29c M2b).
+    ///
+    /// Exactly one mode is required — the parser rejects passing both:
+    ///
+    /// - `--dry-run` is read-only. It reads the slice's bound
+    ///   `evidence/<source>.yaml` and the target `shape` brief and
+    ///   emits the `kind: inputs` envelope for the agent synthesis
+    ///   step. Writes nothing; emits the `slice.synthesize.agent`
+    ///   journal event (synthesis is always agent-dispatched and
+    ///   `cache: opt-out`).
+    /// - `--from <response.json>` is the only writer. It schema-gates
+    ///   the agent response, resolves authority from the on-disk
+    ///   Evidence and any per-slice override, projects the kernel-owned
+    ///   fields into `model.yaml`, renders provenance into
+    ///   `specs/<unit>/spec.md`, and persists the staged artifacts
+    ///   atomically — emitting `slice.synthesize.started` then
+    ///   `slice.synthesize.completed` (or `slice.synthesize.failed` on
+    ///   error).
+    ///
+    /// Passing neither mode fails with `slice-synthesize-mode-required`
+    /// (exit 2).
+    Synthesize {
+        /// Slice name (under `.specify/slices/`)
+        name: String,
+        /// Assemble and emit the agent INPUTS envelope. Writes nothing.
+        #[arg(long = "dry-run", action = ArgAction::SetTrue)]
+        dry_run: bool,
+        /// Apply the agent's synthesis response, project it, and persist the artifacts. The only writer.
+        #[arg(long = "from", value_name = "RESPONSE_JSON", conflicts_with = "dry_run")]
+        from: Option<PathBuf>,
     },
     /// Spec-merge operations for a slice
     Merge {
@@ -76,6 +116,17 @@ pub enum SliceAction {
         /// Free-text reason; surfaced in `.metadata.yaml.drop_reason` and the archive path
         #[arg(long)]
         reason: Option<String>,
+    },
+}
+
+/// Read-only model-viewer subcommands grouped under `slice model`.
+#[derive(Subcommand)]
+pub enum SliceModelAction {
+    /// Render the persisted `model.yaml` — concise text view, or the
+    /// model serialised verbatim under `--format json`
+    Show {
+        /// Slice name (under `.specify/slices/`)
+        name: String,
     },
 }
 

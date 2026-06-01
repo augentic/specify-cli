@@ -9,8 +9,8 @@ use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA,
     EVIDENCE_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA,
     RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
-    SLICE_MODEL_JSON_SCHEMA, ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
-    validate_value,
+    SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA,
+    compile_schema, validate_value,
 };
 
 #[test]
@@ -48,11 +48,6 @@ fn slice_model_schema_accepts_agent_response_without_kernel_fields() {
             ],
             "statement": "The system lets a user request a reset link."
         }],
-        "domain": { "types": [] },
-        "apis": { "surfaces": [] },
-        "configuration": [],
-        "technical-logic": { "decisions": [] },
-        "observability": [],
         "tasks": []
     });
     let summaries = validate_value(
@@ -65,6 +60,74 @@ fn slice_model_schema_accepts_agent_response_without_kernel_fields() {
         summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
         "agent response without kernel fields must validate; got {summaries:?}"
     );
+}
+
+/// Compile the synthesis schema through a registry that pins the model
+/// schema under its `$id`, so the response's relative `model` `$ref`
+/// resolves (mirrors `lint_result_schema_compiles`).
+fn synthesis_validator() -> jsonschema::Validator {
+    let synthesis: Value =
+        serde_json::from_str(SYNTHESIS_JSON_SCHEMA).expect("synthesis schema parses");
+    let model: Value = serde_json::from_str(SLICE_MODEL_JSON_SCHEMA).expect("model schema parses");
+    let registry = Registry::new()
+        .add(
+            "https://github.com/augentic/specify-cli/schemas/slice/model.schema.json",
+            Resource::from_contents(model),
+        )
+        .and_then(jsonschema::RegistryBuilder::prepare)
+        .expect("registry prepares");
+    jsonschema::options()
+        .with_registry(&registry)
+        .build(&synthesis)
+        .expect("synthesis schema compiles with model $ref resolved")
+}
+
+#[test]
+fn synthesis_schema_compiles() {
+    let _validator = synthesis_validator();
+}
+
+/// The RFC-29c §"Synthesis response" worked example validates against
+/// the synthesis schema with the model `$ref` resolved.
+#[test]
+fn synthesis_schema_accepts_rfc_response_example() {
+    let validator = synthesis_validator();
+    let instance = json!({
+        "kind": "response",
+        "version": 1,
+        "slice": "identity-service",
+        "model": {
+            "requirements": [{
+                "title": "Request password reset",
+                "unit": "password-reset",
+                "agreement": "agreed",
+                "claims": [
+                    { "source": "docs", "id": "password-reset.request", "kind": "requirement" },
+                    { "source": "legacy", "id": "users.password-reset.request", "kind": "example" }
+                ],
+                "statement": "The system lets a registered user request a password reset link by email.",
+                "scenarios": [
+                    "Given a registered email, when the user requests a reset, then the system accepts it."
+                ]
+            }],
+            "tasks": [{
+                "id": "TASK-001",
+                "text": "Implement password reset request handling.",
+                "satisfies": ["REQ-001"]
+            }]
+        },
+        "artifacts": {
+            "proposal": "# Password reset\n…",
+            "design": "# Design\n…",
+            "tasks": "# Tasks\n- [ ] TASK-001 …",
+            "specs": [{
+                "unit": "password-reset",
+                "content": "## Request password reset\nThe system lets a registered user…"
+            }]
+        }
+    });
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    assert!(errors.is_empty(), "RFC synthesis response must validate; errors: {errors:?}");
 }
 
 #[test]

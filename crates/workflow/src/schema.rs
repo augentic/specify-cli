@@ -17,14 +17,15 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use jsonschema::{Registry, Resource};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
 use specify_model::discovery::Lead;
 pub use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA,
     PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, compile_schema,
-    read_yaml_as_json, validate_serialisable, validate_value,
+    RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA,
+    compile_schema, read_yaml_as_json, validate_serialisable, validate_value,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -126,6 +127,82 @@ pub fn validate_proposal_json(content: &str) -> Result<()> {
         "proposal-schema",
         &validation_failures(&instance, PROPOSAL_JSON_SCHEMA, "proposal-schema", rule),
     )
+}
+
+/// `$id` the synthesis schema's relative `model` `$ref` resolves to.
+const MODEL_SCHEMA_URL: &str =
+    "https://github.com/augentic/specify-cli/schemas/slice/model.schema.json";
+
+/// Validate an agent synthesis response against the embedded
+/// `schemas/slice/synthesis.schema.json`.
+///
+/// Backs `specrun slice synthesize` (RFC-29 D3 / D10): synthesis is
+/// always agent-dispatched, so the only schema-validated wire is the
+/// returned `kind: response`. Its `model` property `$ref`s
+/// `model.schema.json` by a relative URI, so the validator is built
+/// through a [`Registry`] that pins [`SLICE_MODEL_JSON_SCHEMA`] under
+/// its `$id` (`MODEL_SCHEMA_URL`) — the same registry pattern the
+/// diagnostic-report renderer uses to resolve its relative finding
+/// `$ref`.
+///
+/// The response arrives as JSON (a YAML subset), so parsing through
+/// [`serde_saphyr::from_str`] mirrors [`validate_proposal_json`] and
+/// lets hand-authored YAML responses validate too.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] keyed on the code `"synthesis-schema"`
+/// (exit code 2) when parsing or schema validation fails.
+pub fn validate_synthesis_json(content: &str) -> Result<()> {
+    let rule = "synthesis response conforms to schemas/slice/synthesis.schema.json";
+    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed("synthesis-schema", rule, format!("parse failed: {err}"))
+    })?;
+    let validator = compile_synthesis_validator(rule)?;
+    let failures: Vec<String> =
+        validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            code: "synthesis-schema".to_string(),
+            detail: failures.join("; "),
+        })
+    }
+}
+
+/// Build the synthesis validator with the model schema pinned so the
+/// relative `model` `$ref` resolves.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] (`synthesis-schema`) when either
+/// embedded schema is unparseable or the registry/validator fails to
+/// build — unreachable in production, surfacing only a corrupted binary.
+fn compile_synthesis_validator(rule: &str) -> Result<jsonschema::Validator> {
+    let synthesis: JsonValue = serde_json::from_str(SYNTHESIS_JSON_SCHEMA).map_err(|err| {
+        Error::validation_failed("synthesis-schema", rule, format!("schema parse failed: {err}"))
+    })?;
+    let model: JsonValue = serde_json::from_str(SLICE_MODEL_JSON_SCHEMA).map_err(|err| {
+        Error::validation_failed(
+            "synthesis-schema",
+            rule,
+            format!("model schema parse failed: {err}"),
+        )
+    })?;
+    let registry = Registry::new()
+        .add(MODEL_SCHEMA_URL, Resource::from_contents(model))
+        .and_then(jsonschema::RegistryBuilder::prepare)
+        .map_err(|err| {
+            Error::validation_failed(
+                "synthesis-schema",
+                rule,
+                format!("registry build failed: {err}"),
+            )
+        })?;
+    jsonschema::options().with_registry(&registry).build(&synthesis).map_err(|err| {
+        Error::validation_failed("synthesis-schema", rule, format!("schema compile failed: {err}"))
+    })
 }
 
 /// Validate a [`crate::registry::TopologyLock`] against the embedded

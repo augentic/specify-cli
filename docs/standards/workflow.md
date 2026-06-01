@@ -61,7 +61,7 @@ The closed `Divergence` enum (`none | likely | accepted | rejected`) records a r
 
 ## Authority hierarchy
 
-Closed enum `intent > documentation > behaviour`. Resolution order: per-slice override (D3) → per-Evidence per-kind override (D2) → Evidence document-level `authority:` → conflict. Implementation: [`crates/model/src/evidence/authority.rs`](../../crates/model/src/evidence/authority.rs).
+Closed enum `intent > documentation > behaviour`. v1 resolution order per `(source, kind)`: per-slice `authority-override` → Evidence document-level `authority:` → tie at the top class is a `conflict` (the per-Evidence per-kind override is deferred — see §"D2 — Per-kind authority on Evidence (deferred)"). The kernel resolves authority **after** the synthesis response returns and projects winners/`status` from it (§"Slice synthesis (RFC-29 M2b)"). Closed enums at [`crates/model/src/evidence/authority.rs`](../../crates/model/src/evidence/authority.rs); the production resolver at [`crates/workflow/src/slice/synthesis/authority.rs`](../../crates/workflow/src/slice/synthesis/authority.rs).
 
 ## Execution model
 
@@ -69,7 +69,28 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Refinement
 
-`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md` (provenance is carried inline in the single `model.yaml` artifact, projected on demand by `specrun slice provenance`), and transitions the slice to `refined`. Validators live in [`crates/validate/src/`](../../crates/validate/src/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
+`/spec:refine` runs `extract` per bound source, drives `specrun slice synthesize` (§"Slice synthesis (RFC-29 M2b)") to produce `proposal.md` / `spec.md` / `design.md` / `tasks.md` / `model.yaml` (provenance is carried inline in the single `model.yaml` artifact, projected on demand by `specrun slice provenance`), and transitions the slice to `refined`. Validators live in [`crates/validate/src/`](../../crates/validate/src/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
+
+## Slice synthesis (RFC-29 M2b)
+
+`specrun slice synthesize <slice>` turns a slice's `Evidence[]` into its requirement set, the single `model.yaml`, and the rendered Markdown artifacts (RFC-29 D3/D8/D10/D13). It mirrors `plan propose`'s two mutually-exclusive modes, exactly one of which is required (neither fails `slice-synthesize-mode-required`; the parser rejects both):
+
+- `--dry-run [--format json]` is read-only: it reads each bound source's inline `lead` + `claims` from `evidence/<source>.yaml` and the resolved target `shape` brief body, then emits the agent **inputs** envelope (`kind: inputs`). Authority is **not** included. It writes nothing and emits `slice.synthesize.agent` (synthesis is always agent-dispatched, `cache: opt-out` — no tool path, no closed *request* wire shape).
+- `--from <response.json> [--format json]` is the only writer: it schema-gates the response against `synthesis.schema.json` (`kind: response`, code `synthesis-schema`), resolves authority from on-disk Evidence + per-slice `authority-override`, runs the projection kernel, renders provenance lines into `specs/<unit>/spec.md`, drift-validates, then atomically/staged-persists `proposal.md` / `specs/<unit>/spec.md` / `design.md` / `tasks.md` / `model.yaml` (prior artifacts intact on failure). It emits `slice.synthesize.started` then `slice.synthesize.completed` (or `slice.synthesize.failed`). No `provenance.yaml` is ever written.
+
+**Kernel ownership (normalize, never reject).** The agent authors per-requirement `claims[]` `(source, id, kind)`, an `agreement` verdict, prose (`title` / `statement` / `scenarios` / `notes`), the owning `unit`, the agent-authored `tasks[]` with `TASK` ids, and prose-only spec bodies (no `ID:` / `Sources:` / `Status:` lines). The kernel owns and re-derives the `version` / `slice` / `project` header, `REQ-NNN` ids (declaration order, no holes), `status`, per-claim `winner` markers, the rendered `sources` lists (highest authority first), and the inline provenance; any agent-supplied `id` / `status` / `winner` / `sources` is ignored and recomputed. Modules at [`crates/workflow/src/slice/synthesis/`](../../crates/workflow/src/slice/synthesis). Schema gate at [`crates/workflow/src/schema.rs`](../../crates/workflow/src/schema.rs) (`validate_synthesis_json`); `model.schema.json` and `synthesis.schema.json` are registered together through a `jsonschema::Registry` so the relative `model` `$ref` resolves. `specrun slice model show <slice> [--format json]` is the read-only model viewer. See [`DECISIONS.md` §"Slice synthesis engine (RFC-29 M2b)"](../../DECISIONS.md#slice-synthesis-engine-rfc-29-m2b).
+
+**Drift validators.** `specrun slice validate` adds seven blocking typed-model findings (exit 2), emitted as `Diagnostic` findings on the `DiagnosticReport` surface:
+
+| Finding | Meaning |
+|---|---|
+| `slice-model-schema` | `model.yaml` does not match `schemas/slice/model.schema.json`. |
+| `slice-spec-provenance-stale` | Kernel-rendered provenance lines in `spec.md` disagree with `model.yaml`. |
+| `slice-model-target-drift` | `model.yaml.project` disagrees with `plan.yaml.slices[<slice>].project`. (`target` is not persisted, so there is no target half.) |
+| `slice-model-source-orphan` | A claim references an absent source key or Evidence claim id. |
+| `slice-model-cross-ref-orphan` | A `satisfies[]` `REQ-*` reference is missing from `requirements[].id`. |
+| `slice-model-claim-kind-mismatch` | A claim `kind` (D13) disagrees with the Evidence kind for that `(source, id)`. |
+| `slice-model-id-grammar` | A `REQ` or `TASK` id does not match its closed three-digit grammar. |
 
 ## Extraction
 
@@ -91,7 +112,7 @@ Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$S
 
 ## CLI surface
 
-Headline verbs: `init`, `source {resolve, survey, extract, preview}`, `target resolve`, `slice {create, transition, validate, merge}`, `plan {create, propose, add, amend, transition, next, finalize}`, `workspace {sync, push, prepare}`, `tool run`, `journal emit`. See [`specify --help`](../init.md) and the parent repo's [`AGENTS.md` §"Skill / CLI responsibility split"](https://github.com/augentic/specify/blob/main/AGENTS.md#skill--cli-responsibility-split).
+Headline verbs: `init`, `source {resolve, survey, extract, preview}`, `target resolve`, `slice {create, synthesize, model show, transition, validate, provenance, merge}`, `plan {create, propose, add, amend, transition, next, finalize}`, `workspace {sync, push, prepare}`, `tool run`, `journal emit`. See [`specify --help`](../init.md) and the parent repo's [`AGENTS.md` §"Skill / CLI responsibility split"](https://github.com/augentic/specify/blob/main/AGENTS.md#skill--cli-responsibility-split).
 
 ## Writer ownership
 
@@ -99,7 +120,7 @@ Per-entry status writes route to exactly one CLI verb each — `plan add` / `pla
 
 ## Observability
 
-Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names). Source operations add `source.survey.cache-hit` / `.cache-miss` and `source.execution.agent`. `specrun plan propose --from` emits a single `plan.reconcile.completed` event on a successful write (RFC-29 review F8 folded the former `plan.reconcile.agent` + `plan.reconcile.completed` pair into one indivisible event). Agent-orchestrated phases that lack a deterministic emit command write through `specrun journal emit <event-id> [--payload <json>]` — a guarded front door onto the same closed taxonomy, errors `journal-emit-unknown-event` / `journal-emit-payload-schema` (exit 2). See [`DECISIONS.md` §"`specrun journal emit` — guarded front door (D12)"](../../DECISIONS.md#specrun-journal-emit--guarded-front-door-d12).
+Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names). Source operations add `source.survey.cache-hit` / `.cache-miss` and `source.execution.agent`. `specrun slice synthesize` adds `slice.synthesize.{started,agent,completed,failed}` (§"Slice synthesis (RFC-29 M2b)"), distinct from the per-requirement `slice.synthesis.{conflict,divergence,unknown}` tag events. `specrun plan propose --from` emits a single `plan.reconcile.completed` event on a successful write (RFC-29 review F8 folded the former `plan.reconcile.agent` + `plan.reconcile.completed` pair into one indivisible event). Agent-orchestrated phases that lack a deterministic emit command write through `specrun journal emit <event-id> [--payload <json>]` — a guarded front door onto the same closed taxonomy, errors `journal-emit-unknown-event` / `journal-emit-payload-schema` (exit 2). See [`DECISIONS.md` §"`specrun journal emit` — guarded front door (D12)"](../../DECISIONS.md#specrun-journal-emit--guarded-front-door-d12).
 
 ## Operations typed at parse boundary
 

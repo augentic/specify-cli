@@ -12,12 +12,14 @@ use specify_workflow::slice::LifecycleStatus;
 pub mod cli;
 mod lifecycle;
 mod merge;
+mod model;
 mod provenance;
+mod synthesize;
 mod task;
 mod touched;
 mod validate;
 
-use cli::{SliceAction, SliceMergeAction, SliceTaskAction};
+use cli::{SliceAction, SliceMergeAction, SliceModelAction, SliceTaskAction};
 
 use crate::runtime::context::Ctx;
 
@@ -51,6 +53,12 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
         } => lifecycle::create(ctx, &name, target, if_exists),
         SliceAction::Validate { name } => validate::run(ctx, &name),
         SliceAction::Provenance { name } => provenance::run(ctx, &name),
+        SliceAction::Model { action } => match action {
+            SliceModelAction::Show { name } => model::show(ctx, &name),
+        },
+        SliceAction::Synthesize { name, dry_run, from } => {
+            synthesize::run(ctx, &name, dry_run, from.as_deref())
+        }
         SliceAction::Merge { action } => match action {
             SliceMergeAction::Run { name } => merge::run(ctx, &name),
             SliceMergeAction::Preview { name } => merge::preview(ctx, &name),

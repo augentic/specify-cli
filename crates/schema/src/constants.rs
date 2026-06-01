@@ -33,6 +33,15 @@ pub const PROPOSAL_JSON_SCHEMA: &str =
 /// carried inline; the provenance view is projected on demand.
 pub const SLICE_MODEL_JSON_SCHEMA: &str = include_str!("../../../schemas/slice/model.schema.json");
 
+/// Schema for the agent synthesis-response envelope (RFC-29 M2b).
+///
+/// Validates the `kind: response` wire the agent-led synthesis step
+/// returns. Its `model` property `$ref`s `model.schema.json` by a
+/// relative URI, so the two schemas are registered together (the model
+/// schema pinned under its `$id`) for the ref to resolve.
+pub const SYNTHESIS_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/slice/synthesis.schema.json");
+
 /// Schema for the provenance projection emitted on demand by
 /// `specrun slice provenance`. Audit-only and projected from
 /// `model.yaml`; not a persisted file.

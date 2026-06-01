@@ -501,7 +501,11 @@ variants are `snake_case` and bridge to the wire via
 | `plan.amend.divergence` | `specrun plan amend --divergence likely\|accepted\|rejected` on any change to a slice's `divergence` field (the `/spec:plan` agent stages `likely`; the operator flips `accepted`/`rejected`). |
 | `slice.transition.refined` | `specrun slice transition <slice> refined`. |
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
-| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |
+| `slice.synthesize.started` | `specrun slice synthesize --from` at the start of the projecting/persisting pass. Payload carries `slice-name`. |
+| `slice.synthesize.agent` | `specrun slice synthesize --dry-run` after assembling the agent inputs envelope. One event per invocation; payload carries `slice-name`. |
+| `slice.synthesize.completed` | `specrun slice synthesize --from` once every artifact validated and persisted. Payload carries `slice-name` and the persisted `artifacts[]`. |
+| `slice.synthesize.failed` | `specrun slice synthesize --from` aborted before all artifacts were persisted. Payload carries `slice-name` and a short `reason` / finding code. |
+| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. (Distinct from the `slice.synthesize.*` lifecycle quartet above — see §"Slice synthesis engine (RFC-29 M2b)".) |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
 | `source.survey.cache-hit` / `.cache-miss` | The `specrun source survey` runner's cache probe; payloads carry `source`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`). |
 | `source.execution.agent` | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`). |
@@ -1262,6 +1266,114 @@ The `AuthorityOverrides` type in
 [`crates/model/src/evidence/authority.rs`](./crates/model/src/evidence/authority.rs)
 is deleted accordingly; the closed `AuthorityClass` / `ClaimKind` enums
 stay (the latter keys the surviving per-slice override).
+
+## Slice synthesis engine (RFC-29 M2b)
+
+Implements RFC-29c D3/D8/D10/D13 — the durable, as-shipped contract for
+`specrun slice synthesize`, its projection kernel, and the schema/event
+additions. Complements §"Single slice-model artifact (RFC-29 M2b
+simplification)" (the one-artifact/one-schema posture) and §"Authority:
+document-level plus one override (v1)" (the resolution surface); this
+section pins the command and kernel around them.
+
+**Two-phase command (mirrors `specrun plan propose`).** The CLI cannot
+run an agent, so `specrun slice synthesize <slice>` splits into the same
+two mutually-exclusive modes as D2's `plan propose`, exactly one of
+which is required (neither fails `slice-synthesize-mode-required`; the
+clap layer rejects passing both via `conflicts_with`). The handler is
+[`src/runtime/commands/slice/synthesize.rs`](./src/runtime/commands/slice/synthesize.rs);
+the clap surface is [`src/runtime/commands/slice/cli.rs`](./src/runtime/commands/slice/cli.rs).
+
+- **`--dry-run [--format json]`** is read-only. It reads the slice's
+  bound `evidence/<source>.yaml` (each source's inline `lead` + `claims`)
+  and the resolved target `shape` brief body (via `TargetAdapter::resolve`),
+  then emits the agent **inputs** envelope (`kind: inputs`) for the
+  synthesis step. Authority is **not** included — the kernel resolves it
+  after the response returns. It writes nothing and emits one
+  `slice.synthesize.agent` journal event (synthesis is always
+  agent-dispatched and `cache: opt-out`, D10 — there is no WASI tool
+  path and no closed *request* wire shape).
+- **`--from <response.json> [--format json]`** is the **only** writer.
+  It schema-gates the raw response bytes against `synthesis.schema.json`
+  (`kind: response`, code `synthesis-schema`), resolves authority from
+  the on-disk Evidence and any per-slice `authority-override`, runs the
+  CLI-owned projection kernel, renders provenance lines into
+  `specs/<unit>/spec.md`, drift-validates, then atomically/staged-persists
+  `proposal.md` / `specs/<unit>/spec.md` / `design.md` / `tasks.md` /
+  `model.yaml` (prior artifacts left intact on failure). It emits
+  `slice.synthesize.started` then `slice.synthesize.completed` (payload
+  carries the persisted `artifacts[]`) or `slice.synthesize.failed`
+  (payload carries a short `reason` / finding code). No `provenance.yaml`
+  is ever written (§"Single slice-model artifact").
+
+**Kernel ownership (normalize, never reject).** The agent authors only
+the requirement set and prose: per requirement, the contributing
+`claims[]` `(source, id, kind)`, an `agreement` verdict, the behavioral
+prose (`title` / `statement` / `scenarios` / `notes`), the owning
+`unit`, the agent-authored `tasks[]` with `TASK` ids, and the prose-only
+Markdown artifacts (spec bodies **without** `ID:` / `Sources:` /
+`Status:` lines). The kernel owns and re-derives everything
+deterministic: the `version` / `slice` / `project` header (stamped from
+the slice's bound project, never persisting `target`), `REQ-NNN` ids in
+declaration order with no holes, per-claim `winner` markers, the
+rendered `sources` lists (highest authority first), `status`, and the
+inline provenance. Any kernel-owned field the agent happened to set
+(`id` / `status` / `winner` / `sources`) is ignored and recomputed. The
+pure-function modules live under
+[`crates/workflow/src/slice/synthesis/`](./crates/workflow/src/slice/synthesis):
+`authority.rs` (the promoted real resolver `resolve` — resolution order
+per `(source, kind)`: per-slice override → document `authority` →
+default `intent > documentation > behaviour`; tie at the top class →
+`conflict`; mixed-kind requirements resolve each claim independently and
+pick the strictly-greatest effective class), `project.rs` (the
+`project(response) -> SliceModel` kernel), `render.rs` (the `spec.md`
+provenance-line renderer, reused by the stale-drift check), and
+`wire.rs` (the `SynthesisResponse` DTO).
+
+**Schema registration and the earned-core trim.** The embedded
+`model.schema.json` was trimmed to the **earned core** — `required:
+[requirements, tasks]`, dropping `target`, the deferred `domain` /
+`apis` / `configuration` / `technical-logic` / `observability` sub-trees
+and their `DEC` / `TYP` / `OP` / `CFG` / `OBS` id grammars, `value` /
+`path` from `modelClaim`, and `resolution` / `resolution-trace` from
+`modelRequirement`. One `SLICE_MODEL_JSON_SCHEMA` validates both the
+agent response `model` and the persisted `model.yaml` (kernel-owned and
+header fields optional). The new `synthesis.schema.json` is embedded as
+`SYNTHESIS_JSON_SCHEMA` in
+[`crates/schema/src/constants.rs`](./crates/schema/src/constants.rs)
+(re-exported from `lib.rs`); its `model` property `$ref`s the model
+schema by a relative URI, so the two are compiled **together** through a
+`jsonschema::Registry` that pins the model schema under `MODEL_SCHEMA_URL`
+(the same discipline the diagnostic-report renderer uses). The
+`validate_synthesis_json` gate in
+[`crates/workflow/src/schema.rs`](./crates/workflow/src/schema.rs) runs
+on the raw bytes before structural deserialize; failures raise
+`Error::Validation { code: "synthesis-schema" }` (exit 2).
+
+**`to_provenance_index` recompute.** With `value` / `path` /
+`resolution` gone from the model, `ProvenanceIndex` recomputes
+`resolution` (and the optional `resolution-trace`) via the authority
+kernel from the claim count, inline `winner` markers, and re-resolved
+authority, and reads each claim's `value` / `path` from on-disk
+`evidence/<source>.yaml` keyed by `(source, id)`. `specrun slice
+provenance` projects the audit view on demand; `specrun slice model
+show <slice> [--format json]` is the read-only model viewer
+([`src/runtime/commands/slice/model.rs`](./src/runtime/commands/slice/model.rs)).
+
+**Drift validators.** `specrun slice validate` loads `model.yaml` and
+emits seven blocking typed-model findings (exit 2):
+`slice-model-schema`, `slice-spec-provenance-stale`,
+`slice-model-target-drift`, `slice-model-source-orphan`,
+`slice-model-cross-ref-orphan`, `slice-model-claim-kind-mismatch`,
+`slice-model-id-grammar`. They are `Diagnostic` findings on the
+`DiagnosticReport` surface ([`src/runtime/commands/slice/validate.rs`](./src/runtime/commands/slice/validate.rs)).
+
+**Journal events.** `EventKind::SliceSynthesize{Started,Agent,Completed,Failed}`
+in [`crates/workflow/src/journal.rs`](./crates/workflow/src/journal.rs)
+carry the wire ids `slice.synthesize.{started|agent|completed|failed}`
+(kebab via `#[serde(rename)]`, `snake_case` Rust variants). They are
+distinct from the per-requirement `slice.synthesis.{conflict,divergence,unknown}`
+tag events. See §"Journal event names".
 
 ## History via git plus an outcome ledger
 

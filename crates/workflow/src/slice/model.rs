@@ -12,30 +12,34 @@
 //!
 //! [model-artifact]: ../../../../DECISIONS.md#single-slice-model-artifact-rfc-29-m2b-simplification
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
-use specify_model::evidence::ClaimKind;
+use specify_model::evidence::{AuthorityClass, ClaimKind};
 use specify_model::spec::provenance::RequirementStatus;
 use specify_schema::{ValidationStatus, join_details};
 
-use crate::schema::{SLICE_MODEL_JSON_SCHEMA, validate_value};
+use crate::schema::{SLICE_MODEL_JSON_SCHEMA, evidence_yaml_paths, validate_value};
 use crate::slice::provenance::{
     ContributingClaim, ProvenanceIndex, ProvenanceRequirement, ProvenanceResolution,
     ResolutionTrace,
 };
+use crate::slice::synthesis::authority::{Agreement, ClaimRef, resolve};
 
-/// In-memory view of `model.yaml`, holding the header and the
-/// requirement set with inline provenance.
+/// In-memory view of `model.yaml`, holding the header, the requirement
+/// set with inline provenance, and the task list (RFC-29c §"Slice model
+/// (D4)").
 ///
-/// Non-requirements sections (`domain`, `apis`, …) are validated by the
-/// schema but not modelled here — the provenance projection draws only
-/// on `requirements[]`, so unknown fields are ignored on deserialise
-/// (the schema enforces the closed top-level shape during
-/// [`SliceModel::load`]).
+/// The model carries only the earned core today — `requirements[]` and
+/// `tasks[]`; the deferred non-requirements sections (`domain`, `apis`,
+/// …) are not part of the schema yet. The top-level shape is closed
+/// (`additionalProperties: false`), enforced by the embedded schema
+/// during [`SliceModel::load`]. `target` is not persisted — it is
+/// resolved on demand from the bound `project`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct SliceModel {
@@ -46,45 +50,70 @@ pub struct SliceModel {
     /// Slice name. Kernel-stamped on the persisted file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slice: Option<String>,
-    /// Bound target `name@vN`. Kernel-stamped on the persisted file.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
     /// Bound project, optional.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
     /// The requirement set with inline provenance.
     #[serde(default)]
     pub requirements: Vec<ModelRequirement>,
+    /// Requirement→task tracing list (RFC-29c §"Slice model (D4)").
+    #[serde(default)]
+    pub tasks: Vec<ModelTask>,
 }
 
-/// One `requirements[]` entry. Kernel-owned fields (`id`, `status`,
-/// `sources`, `resolution`, `resolution-trace`) are optional: the
-/// agent omits them and the kernel re-derives them on projection.
+/// One `requirements[]` entry.
+///
+/// The agent authors the behavioral prose (`title`, `statement`,
+/// `scenarios`, `notes`, `unit`), the `agreement` verdict, and the
+/// contributing `claims`; the kernel-owned fields (`id`, `status`,
+/// `sources`, claim `winner`) are optional because the agent omits them
+/// and the kernel re-derives them on projection (RFC-29c §"Synthesis
+/// response"). The `resolution` label is not stored here — the
+/// provenance projection recomputes it (RFC-29c §"Provenance
+/// projection").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ModelRequirement {
     /// Kernel-projected `REQ-NNN` id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// Agent-authored requirement title.
+    pub title: String,
     /// Kernel-projected status.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<RequirementStatus>,
+    /// Agent-authored agreement verdict over the contributing claims.
+    /// Present only when more than one claim contributes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agreement: Option<Agreement>,
+    /// Agent-authored owning unit (kebab-case spec group).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
     /// Kernel-projected rendered source list (highest authority first).
     #[serde(default)]
     pub sources: Vec<String>,
     /// Agent-authored contributing claims with kernel-projected
-    /// `value` / `path` / `winner`.
+    /// `winner` markers. The claim `value` / `path` payload is read
+    /// from on-disk Evidence by the provenance projection, not persisted
+    /// here.
     #[serde(default)]
     pub claims: Vec<ModelClaim>,
-    /// Kernel-projected resolution.
+    /// Agent-authored behavioral statement.
+    pub statement: String,
+    /// Agent-authored scenario lines.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenarios: Vec<String>,
+    /// Agent-authored free-form notes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resolution: Option<ProvenanceResolution>,
-    /// Kernel-projected resolution trace.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resolution_trace: Option<ResolutionTrace>,
+    pub notes: Option<String>,
 }
 
 /// One inline claim under [`ModelRequirement::claims`].
+///
+/// The stable `(source, id, kind)` triple traces the claim to its
+/// Evidence (RFC-29c §"Claim contract"). The single-line `value` and
+/// `path` anchor are read from `evidence/<source>.yaml` by the
+/// provenance projection rather than copied here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ModelClaim {
@@ -94,15 +123,27 @@ pub struct ModelClaim {
     pub id: String,
     /// Claim kind (D13).
     pub kind: ClaimKind,
-    /// Kernel-projected single-line claim payload.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-    /// Kernel-projected `<path>#L<n>` anchor.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
     /// Kernel-projected winner marker (divergence only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub winner: Option<bool>,
+}
+
+/// One `tasks[]` entry (RFC-29c §"Slice model (D4)"). Ids follow the
+/// `TASK-NNN` / `REQ-NNN` grammars; grammar validation lives in the
+/// drift validators, so these are plain strings here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ModelTask {
+    /// Agent-authored `TASK-NNN` id.
+    pub id: String,
+    /// Agent-authored task text.
+    pub text: String,
+    /// `TASK-NNN` ids that must complete before this task.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub depends_on: Vec<String>,
+    /// `REQ-NNN` ids this task satisfies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub satisfies: Vec<String>,
 }
 
 /// Validate a raw `model.yaml` document (parsed to JSON) against the
@@ -170,50 +211,77 @@ impl SliceModel {
         Self::parse_yaml(&raw)
     }
 
-    /// Project the audit-only provenance view from this model
-    /// (RFC-29c §"Provenance projection"). The reshape is mechanical:
-    /// provenance is already inline on each requirement, so the model
-    /// and its projection can never drift.
+    /// Project the audit-only provenance view from this model plus the
+    /// slice's on-disk Evidence (RFC-29c §"Provenance projection").
+    ///
+    /// The persisted model carries the load-bearing provenance inline
+    /// (`status`, claim `winner` markers, rendered `sources`); the two
+    /// derived fields are **recomputed** rather than read from the
+    /// model:
+    ///
+    /// - `resolution` (and `resolution-trace`) is re-derived by re-running
+    ///   the authority kernel ([`resolve`]) over the requirement's
+    ///   `ClaimRef`s, the per-source document `authority` read from
+    ///   `evidence/<source>.yaml`, the per-slice `overrides` map, and the
+    ///   requirement's persisted `agreement` verdict.
+    /// - each contributing claim's `value` (single-line payload) and
+    ///   `path` anchor are read from `evidence/<source>.yaml`, keyed by
+    ///   the `(source, id)` the claim already carries.
     ///
     /// `generated_at` and `generator` stamp the projection's header so
-    /// it round-trips against `schemas/slice/provenance.schema.json`;
-    /// the per-requirement body is byte-stable given the same model.
+    /// it round-trips against `schemas/slice/provenance.schema.json`.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Validation`] keyed on `"slice-model-incomplete"`
-    /// when a persisted requirement is missing the kernel-owned
-    /// `id` / `status` / `resolution` fields the projection requires
-    /// (i.e. the model was a pre-projection agent draft, not a
-    /// persisted artifact).
+    /// - [`Error::Validation`] keyed on `"slice-model-incomplete"` when a
+    ///   persisted requirement is missing the kernel-owned `id` /
+    ///   `status` fields the projection requires (i.e. the model was a
+    ///   pre-projection agent draft, not a persisted artifact).
+    /// - [`Error::Filesystem`] / [`Error::YamlDe`] when an
+    ///   `evidence/*.yaml` cannot be read or parsed.
     pub fn to_provenance_index(
-        &self, generated_at: Timestamp, generator: String,
+        &self, slice_dir: &Path, overrides: &BTreeMap<ClaimKind, String>, generated_at: Timestamp,
+        generator: String,
     ) -> Result<ProvenanceIndex> {
+        let evidence = EvidenceIndex::read(slice_dir)?;
         let mut requirements = Vec::with_capacity(self.requirements.len());
         for req in &self.requirements {
             let id = req.id.clone().ok_or_else(|| missing_field("requirements[].id"))?;
             let status = req.status.ok_or_else(|| missing_field("requirements[].status"))?;
-            let resolution =
-                req.resolution.ok_or_else(|| missing_field("requirements[].resolution"))?;
-            let contributing_claims = req
+            let claim_refs: Vec<ClaimRef> = req
                 .claims
                 .iter()
-                .map(|c| ContributingClaim {
+                .map(|c| ClaimRef {
                     source: c.source.clone(),
                     id: c.id.clone(),
                     kind: c.kind,
-                    value: c.value.clone(),
-                    path: c.path.clone(),
-                    winner: c.winner,
                 })
                 .collect();
+            let resolved =
+                resolve(&claim_refs, &evidence.authority, overrides, req.agreement).resolution;
+            let contributing_claims: Vec<ContributingClaim> = req
+                .claims
+                .iter()
+                .map(|c| {
+                    let body = evidence.claim(&c.source, &c.id);
+                    ContributingClaim {
+                        source: c.source.clone(),
+                        id: c.id.clone(),
+                        kind: c.kind,
+                        value: body.and_then(|b| b.value.clone()),
+                        path: body.and_then(|b| b.path.clone()),
+                        winner: c.winner,
+                    }
+                })
+                .collect();
+            let resolution_trace = resolution_trace(resolved, req);
             requirements.push(ProvenanceRequirement {
                 id,
                 status,
                 sources: req.sources.clone(),
                 contributing_claims,
-                resolution,
-                resolution_trace: req.resolution_trace.clone(),
+                resolution: resolved,
+                resolution_trace,
             });
         }
         let index = ProvenanceIndex {
@@ -226,6 +294,128 @@ impl SliceModel {
         index.validate()?;
         Ok(index)
     }
+}
+
+/// Build the optional [`ResolutionTrace`] for a projected requirement.
+///
+/// A trace is emitted only for the two authority-decided resolutions
+/// ([`ProvenanceResolution::AuthorityResolved`] /
+/// [`ProvenanceResolution::PerSliceOverride`]); the agreement, single,
+/// unknown, and tied-conflict cases have no tie to narrate. The winner
+/// source is the claim the kernel marked `winner: true` inline.
+fn resolution_trace(
+    resolution: ProvenanceResolution, req: &ModelRequirement,
+) -> Option<ResolutionTrace> {
+    let step = match resolution {
+        ProvenanceResolution::AuthorityResolved => "default-authority-ordering",
+        ProvenanceResolution::PerSliceOverride => "per-slice-authority-override",
+        _ => return None,
+    };
+    let winner = req.claims.iter().find(|c| c.winner == Some(true)).map(|c| c.source.clone());
+    Some(ResolutionTrace {
+        step: step.to_string(),
+        r#override: None,
+        winner,
+    })
+}
+
+/// The single-line payload and `<path>#L<n>` anchor of one Evidence
+/// claim, read from `evidence/<source>.yaml` for the provenance
+/// projection.
+#[derive(Debug, Default)]
+struct ClaimBody {
+    /// First-line claim payload (`statement` / `criterion` / … body).
+    value: Option<String>,
+    /// `<path>#L<n>` anchor.
+    path: Option<String>,
+}
+
+/// Per-slice Evidence index keyed for provenance projection: the
+/// document-level `authority` per source and the `(source, id)` →
+/// [`ClaimBody`] lookup.
+#[derive(Debug, Default)]
+struct EvidenceIndex {
+    /// Source key → document-level [`AuthorityClass`].
+    authority: BTreeMap<String, AuthorityClass>,
+    /// `(source, id)` → claim body payload.
+    claims: BTreeMap<(String, String), ClaimBody>,
+}
+
+impl EvidenceIndex {
+    /// Read every `evidence/*.yaml` under `slice_dir` into the index.
+    /// Source key is each file stem; the document-level `authority`
+    /// and per-claim `value` / `path` are pulled from the parsed JSON.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Filesystem`] when an Evidence file cannot be read.
+    /// - [`Error::YamlDe`] when an Evidence file is not valid YAML.
+    fn read(slice_dir: &Path) -> Result<Self> {
+        let mut index = Self::default();
+        for path in evidence_yaml_paths(slice_dir)? {
+            let raw = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
+                op: "read",
+                path: path.clone(),
+                source,
+            })?;
+            let doc: JsonValue = serde_saphyr::from_str(&raw)?;
+            let source = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
+            if let Some(class) = doc
+                .get("authority")
+                .and_then(JsonValue::as_str)
+                .and_then(|s| serde_json::from_value(JsonValue::String(s.to_string())).ok())
+            {
+                index.authority.insert(source.clone(), class);
+            }
+            let Some(claims) = doc.get("claims").and_then(JsonValue::as_array) else {
+                continue;
+            };
+            for claim in claims {
+                let Some(id) = claim.get("id").and_then(JsonValue::as_str) else {
+                    continue;
+                };
+                index.claims.insert((source.clone(), id.to_string()), claim_body(claim));
+            }
+        }
+        Ok(index)
+    }
+
+    /// Look up one claim body by `(source, id)`.
+    fn claim(&self, source: &str, id: &str) -> Option<&ClaimBody> {
+        self.claims.get(&(source.to_string(), id.to_string()))
+    }
+}
+
+/// Closed list of preferred single-line `value` body fields, in
+/// precedence order (RFC-29c §"Provenance projection"). A `requirement`
+/// carries `statement`, a `criterion` carries `criterion`, a `decision`
+/// carries `decision`, an `example` carries `output`.
+const VALUE_FIELDS: [&str; 4] = ["statement", "criterion", "decision", "output"];
+
+/// Extract one claim's `value` and `path` from its parsed JSON object.
+///
+/// `value` prefers the well-known body fields in [`VALUE_FIELDS`] order,
+/// then falls back to the first scalar string body field that is not the
+/// `id` / `kind` / `path` structural keys. `path` is read verbatim.
+fn claim_body(claim: &JsonValue) -> ClaimBody {
+    let value = VALUE_FIELDS
+        .iter()
+        .find_map(|field| claim.get(*field).and_then(JsonValue::as_str))
+        .or_else(|| first_scalar_body(claim))
+        .map(str::to_string);
+    let path = claim.get("path").and_then(JsonValue::as_str).map(str::to_string);
+    ClaimBody { value, path }
+}
+
+/// First scalar string body field of a claim object, skipping the
+/// `id` / `kind` / `path` structural keys. Deterministic — the parsed
+/// object iterates in key order.
+fn first_scalar_body(claim: &JsonValue) -> Option<&str> {
+    claim
+        .as_object()?
+        .iter()
+        .filter(|(key, _)| !matches!(key.as_str(), "id" | "kind" | "path"))
+        .find_map(|(_, v)| v.as_str())
 }
 
 fn missing_field(field: &str) -> Error {
@@ -241,82 +431,176 @@ fn missing_field(field: &str) -> Error {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    use tempfile::TempDir;
+
     use super::*;
     use crate::journal::test_timestamp;
 
-    /// A fully-projected `model.yaml` (kernel-owned fields present) with
-    /// the seven required sections so it validates against the schema.
+    /// A fully-projected `model.yaml` (kernel-owned fields present) on
+    /// the earned core (`requirements` + `tasks`), so it validates
+    /// against the trimmed `model.schema.json`. REQ-001 is a multi-claim
+    /// agreement; REQ-002 is an authority-resolved divergence.
     const PROJECTED_MODEL: &str = "version: 1
 slice: identity-service
-target: omnia@v1
 project: identity-service
 requirements:
   - id: REQ-001
     title: Request password reset
     status: agreed
+    unit: password-reset
+    agreement: agreed
     sources: [docs, legacy]
     claims:
       - source: docs
         id: password-reset.request
         kind: requirement
-        value: \"The system lets a user request a reset link.\"
-        path: docs/identity/reset.md#L4
-    resolution: single-value-agreement
+      - source: legacy
+        id: password-reset.request
+        kind: example
     statement: The system lets a user request a reset link.
-domain:
-  types: []
-apis:
-  surfaces: []
-configuration: []
-technical-logic:
-  decisions: []
-observability: []
-tasks: []
+  - id: REQ-002
+    title: Reset link expiry
+    status: divergence
+    unit: password-reset
+    agreement: disagreed
+    sources: [docs, legacy]
+    claims:
+      - source: docs
+        id: password-reset.expiry
+        kind: criterion
+        winner: true
+      - source: legacy
+        id: password-reset.expiry
+        kind: example
+        winner: false
+    statement: Reset links expire after 30 minutes.
+tasks:
+  - id: TASK-001
+    text: Implement password reset request handling.
+    satisfies: [REQ-001]
 ";
+
+    /// `evidence/docs.yaml` — documentation-authority claims the
+    /// projection reads `value` / `path` from.
+    const EVIDENCE_DOCS: &str = "authority: documentation
+lead: password-reset
+claims:
+  - id: password-reset.request
+    kind: requirement
+    statement: The system lets a user request a reset link.
+    path: docs/identity/reset.md#L4
+  - id: password-reset.expiry
+    kind: criterion
+    criterion: Reset links expire after 30 minutes.
+    path: docs/identity/reset.md#L7
+";
+
+    /// `evidence/legacy.yaml` — behaviour-authority claims (loses the
+    /// `password-reset.expiry` divergence to the documentation claim).
+    const EVIDENCE_LEGACY: &str = "authority: behaviour
+lead: password-reset
+claims:
+  - id: password-reset.request
+    kind: example
+    output: \"POST /password-reset returns 202.\"
+    path: src/users/reset.ts#L42
+  - id: password-reset.expiry
+    kind: example
+    output: \"expiresAt = createdAt + 24h\"
+    path: src/users/reset.ts#L88
+";
+
+    /// Stage a slice dir with the two Evidence documents so
+    /// [`SliceModel::to_provenance_index`] can read `value` / `path` and
+    /// re-resolve authority.
+    fn stage_slice_dir() -> TempDir {
+        let dir = TempDir::new().expect("tempdir");
+        let evidence = dir.path().join("evidence");
+        std::fs::create_dir_all(&evidence).expect("mkdir evidence");
+        std::fs::write(evidence.join("docs.yaml"), EVIDENCE_DOCS).expect("write docs.yaml");
+        std::fs::write(evidence.join("legacy.yaml"), EVIDENCE_LEGACY).expect("write legacy.yaml");
+        dir
+    }
+
+    fn project(model: &SliceModel, slice_dir: &Path) -> Result<ProvenanceIndex> {
+        model.to_provenance_index(
+            slice_dir,
+            &BTreeMap::new(),
+            test_timestamp("2026-05-28T05:45:00Z"),
+            "specify@2.1.0".to_string(),
+        )
+    }
 
     #[test]
     fn parses_and_validates_projected_model() {
         let model = SliceModel::parse_yaml(PROJECTED_MODEL).expect("projected model must validate");
         assert_eq!(model.slice.as_deref(), Some("identity-service"));
-        assert_eq!(model.requirements.len(), 1);
+        assert_eq!(model.requirements.len(), 2);
+        assert_eq!(model.tasks.len(), 1);
+        assert_eq!(model.requirements[0].title, "Request password reset");
     }
 
     #[test]
-    fn projects_provenance_from_inline_data() {
+    fn projects_single_value_agreement_and_reads_evidence_value() {
+        let dir = stage_slice_dir();
         let model = SliceModel::parse_yaml(PROJECTED_MODEL).expect("parse");
-        let index = model
-            .to_provenance_index(
-                test_timestamp("2026-05-28T05:45:00Z"),
-                "specify@2.1.0".to_string(),
-            )
-            .expect("projection succeeds");
+        let index = project(&model, dir.path()).expect("projection succeeds");
         assert_eq!(index.slice, "identity-service");
-        assert_eq!(index.requirements.len(), 1);
+        assert_eq!(index.requirements.len(), 2);
+
         let req = &index.requirements[0];
         assert_eq!(req.id, "REQ-001");
+        // Two agreeing claims → recomputed `single-value-agreement`.
         assert_eq!(req.resolution, ProvenanceResolution::SingleValueAgreement);
-        assert_eq!(req.contributing_claims.len(), 1);
+        assert!(req.resolution_trace.is_none());
+        assert_eq!(req.contributing_claims.len(), 2);
+        // `value` / `path` are read from Evidence, not the model.
+        let docs_claim = &req.contributing_claims[0];
+        assert_eq!(
+            docs_claim.value.as_deref(),
+            Some("The system lets a user request a reset link.")
+        );
+        assert_eq!(docs_claim.path.as_deref(), Some("docs/identity/reset.md#L4"));
+        index.validate().expect("projected index must validate");
+    }
+
+    #[test]
+    fn projects_authority_resolved_divergence() {
+        let dir = stage_slice_dir();
+        let model = SliceModel::parse_yaml(PROJECTED_MODEL).expect("parse");
+        let index = project(&model, dir.path()).expect("projection succeeds");
+
+        let req = &index.requirements[1];
+        assert_eq!(req.id, "REQ-002");
+        // documentation `criterion` beats behaviour `example` →
+        // recomputed `authority-resolved`, with a default-ordering trace.
+        assert_eq!(req.resolution, ProvenanceResolution::AuthorityResolved);
+        let trace = req.resolution_trace.as_ref().expect("divergence carries a trace");
+        assert_eq!(trace.step, "default-authority-ordering");
+        assert_eq!(trace.winner.as_deref(), Some("docs"));
+        // The losing claim still reads its Evidence `value`.
+        let legacy_claim = &req.contributing_claims[1];
+        assert_eq!(legacy_claim.value.as_deref(), Some("expiresAt = createdAt + 24h"));
         index.validate().expect("projected index must validate");
     }
 
     #[test]
     fn projection_rejects_pre_projection_draft() {
+        let dir = stage_slice_dir();
         let mut model = SliceModel::parse_yaml(PROJECTED_MODEL).expect("parse");
         model.requirements[0].id = None;
-        let err = model
-            .to_provenance_index(
-                test_timestamp("2026-05-28T05:45:00Z"),
-                "specify@2.1.0".to_string(),
-            )
-            .expect_err("a draft without projected ids cannot project provenance");
+        let err =
+            project(&model, dir.path()).expect_err("a draft without projected ids cannot project");
         assert!(matches!(err, Error::Validation { .. }));
     }
 
     #[test]
     fn rejects_document_missing_required_sections() {
-        let err =
-            SliceModel::parse_yaml("version: 1\nslice: x\ntarget: omnia@v1\nrequirements: []\n")
-                .expect_err("a document missing the required sections must fail the schema");
+        let err = SliceModel::parse_yaml("version: 1\nslice: x\nrequirements: []\n")
+            .expect_err("a document missing the required `tasks` section must fail the schema");
         assert!(matches!(err, Error::Validation { .. }));
     }
 }

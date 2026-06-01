@@ -151,6 +151,49 @@ pub enum EventKind {
         /// `ID:` value on the tagged requirement block.
         requirement_id: String,
     },
+    /// Slice synthesis began — `/spec:refine` started folding the
+    /// extracted evidence into `proposal.md` / `spec.md` / `design.md`
+    /// / `tasks.md` / `model.yaml`. One event per slice (RFC-29c
+    /// §"Wire contracts"). Distinct from the per-requirement
+    /// `slice.synthesis.*` tag events above — `synthesize` is the
+    /// lifecycle verb, `synthesis` is the requirement-tag noun.
+    #[serde(rename = "slice.synthesize.started", rename_all = "kebab-case")]
+    SliceSynthesizeStarted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// Synthesis dispatched to the agent. Synthesis is always
+    /// agent-driven and `cache: opt-out` (RFC-29c §"Synthesis dispatch
+    /// (D10)"); this signal fires on the dry-run inputs phase so the
+    /// journal records that no cache short-circuit was attempted.
+    #[serde(rename = "slice.synthesize.agent", rename_all = "kebab-case")]
+    SliceSynthesizeAgent {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// Slice synthesis finished and the artifacts were persisted
+    /// (RFC-29c §"Wire contracts"). `artifacts` lists the persisted
+    /// relative paths (`proposal.md`, `specs/<unit>/spec.md`,
+    /// `design.md`, `tasks.md`, `model.yaml`).
+    #[serde(rename = "slice.synthesize.completed", rename_all = "kebab-case")]
+    SliceSynthesizeCompleted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Persisted artifact relative paths, in write order.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        artifacts: Vec<String>,
+    },
+    /// Slice synthesis failed before all artifacts were persisted
+    /// (RFC-29c §"Wire contracts"). `reason` carries a short human
+    /// reason or finding code so the journal records why the slice
+    /// stalled.
+    #[serde(rename = "slice.synthesize.failed", rename_all = "kebab-case")]
+    SliceSynthesizeFailed {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Short human reason / finding code for the failure.
+        reason: String,
+    },
     /// extraction cache fingerprint contract — cache lookup matched and `extract` was *not*
     /// re-run. CI pinning the five fingerprint inputs at a known set
     /// can re-run any prior `/spec:execute` and expect byte-stable
@@ -826,6 +869,92 @@ mod tests {
     }
 
     #[test]
+    fn slice_synthesize_events_round_trip() {
+        // RFC-29c §"Wire contracts": the four M2b lifecycle events
+        // serialise to their dotted-kebab ids with kebab-case payload
+        // fields, and round-trip back preserving every field. Distinct
+        // from the per-requirement `slice.synthesis.*` tag events.
+        let rows: &[(EventKind, &[&str])] = &[
+            (
+                EventKind::SliceSynthesizeStarted {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.synthesize.started""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceSynthesizeAgent {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.synthesize.agent""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceSynthesizeCompleted {
+                    slice_name: "identity-user-registration".to_string(),
+                    artifacts: vec![
+                        "proposal.md".to_string(),
+                        "specs/identity/spec.md".to_string(),
+                        "design.md".to_string(),
+                        "tasks.md".to_string(),
+                        "model.yaml".to_string(),
+                    ],
+                },
+                &[
+                    r#""event":"slice.synthesize.completed""#,
+                    r#""slice-name":"identity-user-registration""#,
+                    r#""artifacts":["proposal.md","specs/identity/spec.md","design.md","tasks.md","model.yaml"]"#,
+                ],
+            ),
+            (
+                EventKind::SliceSynthesizeFailed {
+                    slice_name: "identity-user-registration".to_string(),
+                    reason: "spec-requirement-missing-sources".to_string(),
+                },
+                &[
+                    r#""event":"slice.synthesize.failed""#,
+                    r#""slice-name":"identity-user-registration""#,
+                    r#""reason":"spec-requirement-missing-sources""#,
+                ],
+            ),
+        ];
+
+        for (kind, required) in rows {
+            let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
+            let json = serde_json::to_string(&event).expect("serialise synthesize event");
+            for needle in *required {
+                assert!(json.contains(needle), "wire form must contain `{needle}`; got:\n{json}");
+            }
+            let round: Event = serde_json::from_str(&json).expect("deserialise synthesize event");
+            assert_eq!(round, event, "synthesize round-trip must preserve every field");
+        }
+    }
+
+    #[test]
+    fn slice_synthesize_completed_omits_empty_artifacts() {
+        // `artifacts` carries `skip_serializing_if = "Vec::is_empty"`
+        // so an empty list does not reach the wire at all.
+        let event = Event::new(
+            test_timestamp("2026-05-22T13:15:00Z"),
+            EventKind::SliceSynthesizeCompleted {
+                slice_name: "identity-user-registration".to_string(),
+                artifacts: vec![],
+            },
+        );
+        let json = serde_json::to_string(&event).expect("serialise");
+        assert!(
+            !json.contains("artifacts"),
+            "empty artifacts must not reach the wire; got:\n{json}"
+        );
+        let round: Event = serde_json::from_str(&json).expect("deserialise");
+        assert_eq!(round, event, "round-trip must preserve the empty artifacts list");
+    }
+
+    #[test]
     fn lint_completed_round_trips() {
         // The lint-completed payload uses snake_case wire fields
         // (`duration_ms`, `baseline_present`, `false_positive`,
@@ -902,6 +1031,20 @@ mod tests {
             },
             EventKind::SliceTransitionRefined {
                 slice_name: "s".to_string(),
+            },
+            EventKind::SliceSynthesizeStarted {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceSynthesizeAgent {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceSynthesizeCompleted {
+                slice_name: "s".to_string(),
+                artifacts: vec!["proposal.md".to_string()],
+            },
+            EventKind::SliceSynthesizeFailed {
+                slice_name: "s".to_string(),
+                reason: "spec-requirement-missing-sources".to_string(),
             },
             EventKind::SliceExtractCompleted {
                 slice_name: "s".to_string(),

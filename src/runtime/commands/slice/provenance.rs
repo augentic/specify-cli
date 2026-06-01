@@ -6,8 +6,12 @@
 //! persisted `provenance.yaml`, so the projection cannot drift from the
 //! model.
 
+use std::collections::BTreeMap;
+
 use jiff::Timestamp;
 use specify_error::{Error, Result};
+use specify_model::evidence::ClaimKind;
+use specify_workflow::change::Plan;
 use specify_workflow::slice::SliceModel;
 
 use crate::runtime::context::Ctx;
@@ -17,8 +21,29 @@ fn generator() -> String {
     format!("specify@{}", env!("CARGO_PKG_VERSION"))
 }
 
+/// Resolve the per-slice `authority-override` map from `plan.yaml`.
+///
+/// Mirrors the slice-entry lookup in `slice validate`: when no plan
+/// exists, or the plan carries no entry for `name`, the override map is
+/// empty and the provenance projection falls back to the default
+/// authority ordering (RFC-29c §"Authority resolution").
+fn slice_overrides(ctx: &Ctx, name: &str) -> Result<BTreeMap<ClaimKind, String>> {
+    let plan_path = ctx.layout().plan_path();
+    if !plan_path.exists() {
+        return Ok(BTreeMap::new());
+    }
+    let plan = Plan::load(&plan_path)?;
+    Ok(plan
+        .entries
+        .iter()
+        .find(|e| e.name == name)
+        .map(|e| e.authority_override.by_kind.clone())
+        .unwrap_or_default())
+}
+
 pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
-    let model_path = ctx.slices_dir().join(name).join("model.yaml");
+    let slice_dir = ctx.slices_dir().join(name);
+    let model_path = slice_dir.join("model.yaml");
     if !model_path.is_file() {
         return Err(Error::validation_failed(
             "slice-model-missing",
@@ -30,7 +55,8 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         ));
     }
     let model = SliceModel::load(&model_path)?;
-    let index = model.to_provenance_index(Timestamp::now(), generator())?;
+    let overrides = slice_overrides(ctx, name)?;
+    let index = model.to_provenance_index(&slice_dir, &overrides, Timestamp::now(), generator())?;
 
     ctx.write(&index, |w, index| {
         writeln!(w, "slice: {}", index.slice)?;
