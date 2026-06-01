@@ -1,10 +1,13 @@
 //! `.specify/topology.lock` — the committed projection of each member
-//! project's `project.yaml` topology facets (RFC-36).
+//! project's identity (RFC-36).
 //!
-//! `registry.yaml` carries membership + location only. Project-describing
-//! facets (`adapter`, `description`, `capabilities`, `keywords`) are
-//! authored in each project's `.specify/project.yaml`; `specrun workspace
-//! sync` resolves them into this committed lockfile so hub plan-time
+//! `registry.yaml` carries membership + location only. A project's
+//! authored intent (`adapter`, `description`) lives in its
+//! `.specify/project.yaml`; its derived identity — the `surface[]` of
+//! owned units and a `recent[]` tail of merge outcomes — is a
+//! deterministic structural projection of its baseline
+//! (`.specify/specs/` + `.specify/journal.jsonl`). `specrun workspace
+//! sync` resolves both into this committed lockfile so hub plan-time
 //! topology (`hub_topology`) reads a single derived source offline. The
 //! lockfile is machine-written (write-if-changed, mirroring
 //! `.specify/context.lock`); operators never hand-edit it.
@@ -35,7 +38,8 @@ pub struct TopologyLock {
     pub projects: Vec<TopologyProject>,
 }
 
-/// One resolved member project — the projection of its `project.yaml`.
+/// One resolved member project — its authored intent plus the
+/// deterministic projection of its baseline (RFC-36).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TopologyProject {
@@ -49,12 +53,34 @@ pub struct TopologyProject {
     /// `project.yaml`. Absent stays off the wire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Capability tags authored in the project's `project.yaml`.
+    /// Deterministic baseline surface: one entry per
+    /// `.specify/specs/<unit>/spec.md`, projected from the slot's
+    /// merged baseline. Empty stays off the wire (greenfield).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capabilities: Vec<String>,
-    /// Free-form keyword tags authored in the project's `project.yaml`.
+    pub surface: Vec<Surface>,
+    /// The last `M` `slice.archive.created` outcome summaries from the
+    /// slot's journal ledger, in append order. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub keywords: Vec<String>,
+    pub recent: Vec<String>,
+}
+
+/// One baseline unit's projected surface (RFC-36 §"Projection contract").
+///
+/// The unit slug and a bounded sample of its requirement titles. Shared
+/// by [`TopologyProject`] and the reconciliation envelope's `ProjectRef`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Surface {
+    /// Unit directory slug under `.specify/specs/`.
+    pub unit: String,
+    /// Requirement-block headings (`Requirement.name`, inline tag
+    /// stripped) in `REQ-NNN` id order, capped at
+    /// [`super::identity::SURFACE_TITLE_CAP`].
+    pub requirements: Vec<String>,
+    /// Count of requirement titles elided past the cap. Absent when
+    /// the unit fits within the cap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub more: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,10 +156,14 @@ impl TopologyLock {
 }
 
 impl TopologyProject {
-    /// Project one materialised slot's [`ProjectConfig`] into a resolved
-    /// topology entry. `registry_name` is the slot/registry name (the
-    /// binding key); `slot_dir` is the slot's project directory, used to
-    /// resolve the adapter to its canonical `name@vN` ref.
+    /// Project one materialised slot into a resolved topology entry:
+    /// the slot [`ProjectConfig`]'s authored intent (`description`) and
+    /// resolved `target`, plus the deterministic baseline projection
+    /// (`surface[]` / `recent[]`) read from `slot_dir` (RFC-36).
+    /// `registry_name` is the slot/registry name (the binding key);
+    /// `slot_dir` is the slot's project directory, used both to resolve
+    /// the adapter to its canonical `name@vN` ref and as the baseline
+    /// projection root.
     ///
     /// # Errors
     ///
@@ -153,12 +183,13 @@ impl TopologyProject {
         })?;
         let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter_value), slot_dir)?;
         let target = format!("{}@v{}", resolved.manifest.name, resolved.manifest.version);
+        let (surface, recent) = super::identity::project_baseline(slot_dir)?;
         Ok(Self {
             name: registry_name.to_string(),
             target,
             description: config.description.clone(),
-            capabilities: config.capabilities.clone(),
-            keywords: config.keywords.clone(),
+            surface,
+            recent,
         })
     }
 }
@@ -182,21 +213,25 @@ mod tests {
                 name: "identity-contracts".to_string(),
                 target: "contracts@v1".to_string(),
                 description: Some("Contracts crate.".to_string()),
-                capabilities: vec!["contracts".to_string()],
-                keywords: Vec::new(),
+                surface: vec![Surface {
+                    unit: "identity-api".to_string(),
+                    requirements: vec!["Authenticate user".to_string()],
+                    more: None,
+                }],
+                recent: Vec::new(),
             },
             TopologyProject {
                 name: "identity-service".to_string(),
                 target: "omnia@v1".to_string(),
                 description: None,
-                capabilities: Vec::new(),
-                keywords: Vec::new(),
+                surface: Vec::new(),
+                recent: Vec::new(),
             },
         ]);
 
         let yaml = serde_saphyr::to_string(&lock).expect("serialize lock");
         assert!(yaml.contains("name: identity-contracts"), "{yaml}");
-        assert!(!yaml.contains("keywords:"), "empty keywords elided: {yaml}");
+        assert!(!yaml.contains("recent:"), "empty recent elided: {yaml}");
 
         let parsed: TopologyLock = serde_saphyr::from_str(&yaml).expect("round-trip");
         assert_eq!(parsed, lock);
@@ -210,8 +245,8 @@ mod tests {
             name: "svc".to_string(),
             target: "omnia@v1".to_string(),
             description: None,
-            capabilities: Vec::new(),
-            keywords: Vec::new(),
+            surface: Vec::new(),
+            recent: Vec::new(),
         }]);
 
         lock.save(&path).expect("save");

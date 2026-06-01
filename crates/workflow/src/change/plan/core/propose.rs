@@ -41,7 +41,7 @@ use super::validate::entry_dependency_graph;
 use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
 use crate::init::adapter_name_from_value;
-use crate::registry::topology::TopologyLock;
+use crate::registry::topology::{Surface, TopologyLock};
 
 /// Wire version pinned by `schemas/discovery/proposal.schema.json`
 /// (`const: 1` on both envelope kinds).
@@ -85,9 +85,11 @@ pub struct ProposalRequest {
 
 /// One project the agent may bind a response slice to.
 ///
-/// For a platform hub this mirrors a `registry.yaml#/projects[]` entry;
-/// for a single regular project the CLI synthesises one entry from
-/// `project.yaml` (name + resolved target adapter + description).
+/// For a platform hub this is projected from the committed
+/// `.specify/topology.lock` (RFC-36); for a single regular project the
+/// CLI synthesises one entry from `project.yaml` (name + resolved
+/// target adapter + description) plus the project's own baseline
+/// projection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ProjectRef {
@@ -103,16 +105,17 @@ pub struct ProjectRef {
     /// more than one project shares a target. Absent stays off the wire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Capability tags this project owns (RFC-36), authored in its
-    /// `project.yaml` and projected through `.specify/topology.lock`.
-    /// The agent matches a slice's scope against these. Empty stays off
-    /// the wire.
+    /// Deterministic baseline surface (RFC-36): the units this project
+    /// owns and a sample of each unit's requirement titles, projected
+    /// from `.specify/specs/` through `.specify/topology.lock`. The
+    /// agent binds a slice on actual owned behaviour. Empty stays off
+    /// the wire (greenfield routes on `description` alone).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capabilities: Vec<String>,
-    /// Free-form keyword tags supplementing `capabilities` (RFC-36).
-    /// Empty stays off the wire.
+    pub surface: Vec<Surface>,
+    /// Recent per-merge outcome summaries from the project's journal
+    /// ledger (RFC-36), newest activity last. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub keywords: Vec<String>,
+    pub recent: Vec<String>,
 }
 
 /// One row in the request's flat lead catalog.
@@ -355,8 +358,8 @@ fn hub_topology(project_dir: &Path) -> Result<Vec<ProjectRef>> {
             name: project.name,
             target: project.target,
             description: project.description,
-            capabilities: project.capabilities,
-            keywords: project.keywords,
+            surface: project.surface,
+            recent: project.recent,
         })
         .collect())
 }
@@ -372,12 +375,13 @@ fn regular_topology(config: &ProjectConfig, project_dir: &Path) -> Result<Projec
     })?;
     let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter_value), project_dir)?;
     let target = format!("{}@v{}", resolved.manifest.name, resolved.manifest.version);
+    let (surface, recent) = crate::registry::identity::project_baseline(project_dir)?;
     Ok(ProjectRef {
         name: config.name.clone(),
         target,
         description: config.description.clone(),
-        capabilities: config.capabilities.clone(),
-        keywords: config.keywords.clone(),
+        surface,
+        recent,
     })
 }
 
@@ -732,8 +736,8 @@ mod tests {
             name: name.to_string(),
             target: target.to_string(),
             description: Some(description.to_string()),
-            capabilities: Vec::new(),
-            keywords: Vec::new(),
+            surface: Vec::new(),
+            recent: Vec::new(),
         }
     }
 
@@ -893,8 +897,6 @@ slices:
         ProjectConfig {
             name: "platform".to_string(),
             description: None,
-            capabilities: Vec::new(),
-            keywords: Vec::new(),
             adapter: None,
             specify_version: None,
             rules: std::collections::BTreeMap::new(),
@@ -917,8 +919,10 @@ slices:
                - name: identity-contracts\n    \
                  target: contracts@v1\n    \
                  description: Contracts crate.\n    \
-                 capabilities:\n      \
-                   - contracts\n  \
+                 surface:\n      \
+                   - unit: identity-api\n        \
+                     requirements:\n          \
+                       - Authenticate user\n  \
                - name: identity-service\n    \
                  target: omnia@v1\n",
         )
@@ -932,15 +936,19 @@ slices:
                     name: "identity-contracts".to_string(),
                     target: "contracts@v1".to_string(),
                     description: Some("Contracts crate.".to_string()),
-                    capabilities: vec!["contracts".to_string()],
-                    keywords: Vec::new(),
+                    surface: vec![Surface {
+                        unit: "identity-api".to_string(),
+                        requirements: vec!["Authenticate user".to_string()],
+                        more: None,
+                    }],
+                    recent: Vec::new(),
                 },
                 ProjectRef {
                     name: "identity-service".to_string(),
                     target: "omnia@v1".to_string(),
                     description: None,
-                    capabilities: Vec::new(),
-                    keywords: Vec::new(),
+                    surface: Vec::new(),
+                    recent: Vec::new(),
                 },
             ]
         );
@@ -960,8 +968,6 @@ slices:
         let config = ProjectConfig {
             name: "demo".to_string(),
             description: None,
-            capabilities: Vec::new(),
-            keywords: Vec::new(),
             adapter: None,
             specify_version: None,
             rules: std::collections::BTreeMap::new(),
