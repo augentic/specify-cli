@@ -114,7 +114,7 @@ fn schema_undeclared_tool_exits_two() {
 
     assert_eq!(assert.get_output().status.code(), Some(2));
     let value = parse_json(&assert.get_output().stderr);
-    assert_eq!(value["error"], "validation");
+    assert_eq!(value["error"], "tool-not-declared");
 }
 
 #[test]

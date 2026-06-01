@@ -1,0 +1,369 @@
+//! Synthesis response wire DTO + input-envelope assembly (RFC-29c M2b).
+//!
+//! Synthesis is always agent-dispatched (RFC-29c §"Synthesis dispatch
+//! (D10)"): there is no tool consumer, so there is no closed *request*
+//! wire shape. The single schema-validated wire is the **response**
+//! ([`SynthesisResponse`], `kind: response`), validated against
+//! `schemas/slice/synthesis.schema.json` by
+//! [`crate::schema::validate_synthesis_json`] before C8 deserialises it
+//! here. The response carries the agent's [`crate::slice::model::SliceModel`]
+//! (kernel-owned and header fields omitted) plus the prose-only Markdown
+//! [`SynthesisArtifacts`].
+//!
+//! The synthesis **inputs** the CLI hands the agent step are not
+//! schema-validated (RFC-29c §"Synthesis response": no closed request
+//! shape). [`build_synthesis_inputs`] assembles them — each bound
+//! source's inline `lead` and `claims` plus the resolved target shape
+//! brief body — into the plain serialisable [`SynthesisInputs`] that
+//! `specrun slice synthesize --dry-run --format json` prints. Authority
+//! is **not** included: the kernel resolves it from the on-disk Evidence
+//! after the response returns (RFC-29c §"Authority resolution").
+//!
+//! The assembly is pure over already-read inputs so it unit-tests
+//! without a temp project; [`SynthesisSourceInput::from_evidence_file`]
+//! is the only filesystem hook, kept off the core path and free of
+//! adapter resolution (C8 resolves the [`crate::adapter::TargetAdapter`]
+//! and reads the shape brief).
+
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use specify_error::{Error, Result};
+
+use crate::slice::model::SliceModel;
+
+/// Wire version pinned by `schemas/slice/synthesis.schema.json`
+/// (`version` `const: 1`) and echoed onto the input envelope.
+const SYNTHESIS_VERSION: u32 = 1;
+
+/// Closed `kind` discriminator for the synthesis response.
+///
+/// Serialises to the literal `"response"` the schema's `const`
+/// constraint requires. Mirrors `change::plan::core::propose`'s
+/// `ProposalKind`, but synthesis has only the response kind — there is
+/// no request wire (RFC-29c §"Synthesis dispatch (D10)").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SynthesisKind {
+    /// `kind: response` — the agent's synthesis result the CLI reads
+    /// back.
+    Response,
+}
+
+/// `kind: response` envelope — the agent's synthesis result.
+///
+/// Round-trips `schemas/slice/synthesis.schema.json`. The DTO is
+/// shape-only; C8 schema-gates the raw bytes via
+/// [`crate::schema::validate_synthesis_json`] before deserialising here,
+/// and the projection kernel re-derives every kernel-owned field
+/// (RFC-29c §"Synthesis response").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct SynthesisResponse {
+    /// Wire version; always `1` per the schema `const`.
+    pub version: u32,
+    /// Discriminator; always [`SynthesisKind::Response`].
+    pub kind: SynthesisKind,
+    /// Slice name (kebab-case).
+    pub slice: String,
+    /// The agent's structured model — the kernel-owned and header
+    /// fields are optional in [`SliceModel`], so the agent's
+    /// kernel-omitted model deserialises cleanly.
+    pub model: SliceModel,
+    /// Prose-only Markdown artifacts (no `ID:` / `Sources:` / `Status:`
+    /// lines — the render step injects those).
+    pub artifacts: SynthesisArtifacts,
+}
+
+/// The prose-only Markdown artifacts under a [`SynthesisResponse`].
+///
+/// Each is authored by the agent; the render step later injects
+/// provenance lines into the spec bodies (RFC-29c §"Rendering").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct SynthesisArtifacts {
+    /// `proposal.md` body.
+    pub proposal: String,
+    /// `design.md` body.
+    pub design: String,
+    /// `tasks.md` body.
+    pub tasks: String,
+    /// Per-unit spec bodies (`specs/<unit>/spec.md`).
+    pub specs: Vec<SynthesisSpec>,
+}
+
+/// One per-unit spec body under [`SynthesisArtifacts::specs`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct SynthesisSpec {
+    /// Owning unit (kebab-case spec group).
+    pub unit: String,
+    /// The spec body, without `ID:` / `Sources:` / `Status:` lines.
+    pub content: String,
+}
+
+/// Closed `kind` discriminator for the synthesis input envelope.
+///
+/// The inputs are not schema-validated (RFC-29c §"Synthesis response":
+/// there is no closed request shape), but the envelope still carries a
+/// closed discriminator for symmetry with the response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SynthesisInputsKind {
+    /// `kind: inputs` — the agent synthesis step's input envelope.
+    Inputs,
+}
+
+/// The agent synthesis step's input envelope (RFC-29c §"Synthesis
+/// response", §"Evidence input").
+///
+/// Assembled by [`build_synthesis_inputs`] and printed by `specrun
+/// slice synthesize --dry-run --format json`. Not schema-validated —
+/// synthesis is always agent-dispatched, so there is no tool consumer
+/// and no closed request schema. Authority is deliberately absent: the
+/// kernel resolves it post-response from on-disk Evidence (RFC-29c
+/// §"Authority resolution").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct SynthesisInputs {
+    /// Envelope version, mirroring the response.
+    pub version: u32,
+    /// Discriminator; always [`SynthesisInputsKind::Inputs`].
+    pub kind: SynthesisInputsKind,
+    /// Slice name the step synthesises.
+    pub slice: String,
+    /// One entry per bound source, carrying its inline `lead` and
+    /// `claims`.
+    pub sources: Vec<SynthesisSourceInput>,
+    /// The resolved target `shape` brief body (RFC-29c §"Shape-brief
+    /// scope (D8)"). Resolved and read by C8 — never by this module.
+    pub shape_brief: String,
+}
+
+/// One bound source's contribution to the synthesis inputs.
+///
+/// Carries the source's inline `lead` and its `claims` passed through
+/// verbatim from the parsed `evidence/<source>.yaml` so no body field
+/// is lost — the agent reconciles over the full claim bodies. The
+/// document-level `authority` is intentionally not carried (RFC-29c
+/// §"Synthesis response").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct SynthesisSourceInput {
+    /// Plan source binding key matching `plan.yaml.sources.<key>`.
+    pub source: String,
+    /// The source's discovery lead id (from `evidence/<source>.yaml`).
+    pub lead: String,
+    /// The source's claims, passed through verbatim from the parsed
+    /// Evidence document so every per-kind body field survives.
+    pub claims: Vec<JsonValue>,
+}
+
+impl SynthesisSourceInput {
+    /// Shape one already-read Evidence document into a
+    /// [`SynthesisSourceInput`], pulling its `lead` and `claims` and
+    /// dropping everything else (notably the document-level
+    /// `authority`, which the kernel resolves post-response).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::YamlDe`] when `raw` is not valid YAML.
+    pub fn from_evidence_yaml(source: &str, raw: &str) -> Result<Self> {
+        let doc: JsonValue = serde_saphyr::from_str(raw)?;
+        let lead = doc.get("lead").and_then(JsonValue::as_str).unwrap_or_default().to_string();
+        let claims = doc.get("claims").and_then(JsonValue::as_array).cloned().unwrap_or_default();
+        Ok(Self {
+            source: source.to_string(),
+            lead,
+            claims,
+        })
+    }
+
+    /// Read and shape one `evidence/<source>.yaml` into a
+    /// [`SynthesisSourceInput`].
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Filesystem`] when `path` cannot be read.
+    /// - [`Error::YamlDe`] when the file is not valid YAML.
+    pub fn from_evidence_file(source: &str, path: &Path) -> Result<Self> {
+        let raw = std::fs::read_to_string(path).map_err(|err| Error::Filesystem {
+            op: "read",
+            path: path.to_path_buf(),
+            source: err,
+        })?;
+        Self::from_evidence_yaml(source, &raw)
+    }
+}
+
+/// Assemble the agent synthesis step's input envelope from
+/// already-read inputs (RFC-29c §"Synthesis response").
+///
+/// `sources` is one [`SynthesisSourceInput`] per bound source — the
+/// caller builds the vec by reading each `evidence/<source>.yaml`
+/// (e.g. via [`SynthesisSourceInput::from_evidence_file`]).
+/// `shape_brief` is the bound target's resolved `shape` brief body,
+/// provided by C8 (which resolves the [`crate::adapter::TargetAdapter`]
+/// and reads the brief) so this function stays pure and adapter-free.
+#[must_use]
+pub fn build_synthesis_inputs(
+    slice: &str, sources: &[SynthesisSourceInput], shape_brief: &str,
+) -> SynthesisInputs {
+    SynthesisInputs {
+        version: SYNTHESIS_VERSION,
+        kind: SynthesisInputsKind::Inputs,
+        slice: slice.to_string(),
+        sources: sources.to_vec(),
+        shape_brief: shape_brief.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::slice::synthesis::authority::Agreement;
+
+    /// The RFC-29c §"Synthesis response" worked example — the agent's
+    /// `kind: response` with kernel-owned and header model fields
+    /// omitted.
+    const RFC_RESPONSE: &str = "\
+kind: response
+version: 1
+slice: identity-service
+model:
+  requirements:
+    - title: Request password reset
+      unit: password-reset
+      agreement: agreed
+      claims:
+        - { source: docs,   id: password-reset.request,       kind: requirement }
+        - { source: legacy, id: users.password-reset.request, kind: example }
+      statement: The system lets a registered user request a password reset link by email.
+      scenarios:
+        - Given a registered email, when the user requests a reset, then the system accepts it.
+  tasks:
+    - id: TASK-001
+      text: Implement password reset request handling.
+      satisfies: [REQ-001]
+artifacts:
+  proposal: \"# Password reset\\n…\"
+  design: \"# Design\\n…\"
+  tasks: \"# Tasks\\n- [ ] TASK-001 …\"
+  specs:
+    - unit: password-reset
+      content: \"## Request password reset\\nThe system lets a registered user…\"
+";
+
+    #[test]
+    fn response_round_trips_rfc_example() {
+        let response: SynthesisResponse =
+            serde_saphyr::from_str(RFC_RESPONSE).expect("response deserialises");
+
+        assert_eq!(response.version, SYNTHESIS_VERSION);
+        assert_eq!(response.kind, SynthesisKind::Response);
+        assert_eq!(response.slice, "identity-service");
+
+        // The kernel-omitted header/per-requirement fields deserialise
+        // cleanly as `None` against the optional `SliceModel` shape.
+        assert!(response.model.version.is_none());
+        assert!(response.model.slice.is_none());
+        assert_eq!(response.model.requirements.len(), 1);
+        let req = &response.model.requirements[0];
+        assert_eq!(req.title, "Request password reset");
+        assert_eq!(req.unit.as_deref(), Some("password-reset"));
+        assert_eq!(req.agreement, Some(Agreement::Agreed));
+        assert!(req.id.is_none());
+        assert!(req.status.is_none());
+        assert_eq!(req.claims.len(), 2);
+        assert_eq!(req.claims[0].source, "docs");
+        assert!(req.claims[0].winner.is_none());
+        assert_eq!(response.model.tasks.len(), 1);
+        assert_eq!(response.model.tasks[0].id, "TASK-001");
+
+        assert_eq!(response.artifacts.specs.len(), 1);
+        assert_eq!(response.artifacts.specs[0].unit, "password-reset");
+        assert!(response.artifacts.proposal.starts_with("# Password reset"));
+
+        // Re-serialise into JSON and back; the shape is stable.
+        let json = serde_json::to_string(&response).expect("serialise response");
+        let reparsed: SynthesisResponse =
+            serde_json::from_str(&json).expect("re-deserialise response");
+        assert_eq!(response, reparsed);
+    }
+
+    #[test]
+    fn response_rejects_unknown_field() {
+        let bogus = format!("{RFC_RESPONSE}stray-field: true\n");
+        serde_saphyr::from_str::<SynthesisResponse>(&bogus)
+            .expect_err("deny_unknown_fields rejects stray top-level keys");
+    }
+
+    /// `evidence/docs.yaml` fixture carrying a document-level
+    /// `authority` the inputs builder must drop.
+    const EVIDENCE_DOCS: &str = "authority: documentation
+lead: password-reset
+claims:
+  - id: password-reset.request
+    kind: requirement
+    statement: The system lets a user request a reset link.
+    path: docs/identity/reset.md#L4
+  - id: password-reset.expiry
+    kind: criterion
+    criterion: Reset links expire after 30 minutes.
+    path: docs/identity/reset.md#L7
+";
+
+    #[test]
+    fn build_inputs_carries_lead_and_claims_without_authority() {
+        let docs = SynthesisSourceInput::from_evidence_yaml("docs", EVIDENCE_DOCS)
+            .expect("docs evidence shapes");
+        let legacy = SynthesisSourceInput {
+            source: "legacy".to_string(),
+            lead: "password-reset".to_string(),
+            claims: vec![json!({
+                "id": "password-reset.expiry",
+                "kind": "example",
+                "output": "expiresAt = createdAt + 24h",
+                "path": "src/users/reset.ts#L88",
+            })],
+        };
+
+        let inputs =
+            build_synthesis_inputs("identity-service", &[docs, legacy], "# Shape brief\nbody");
+
+        assert_eq!(inputs.version, SYNTHESIS_VERSION);
+        assert_eq!(inputs.kind, SynthesisInputsKind::Inputs);
+        assert_eq!(inputs.slice, "identity-service");
+        assert_eq!(inputs.shape_brief, "# Shape brief\nbody");
+
+        assert_eq!(inputs.sources.len(), 2);
+        let docs = &inputs.sources[0];
+        assert_eq!(docs.source, "docs");
+        assert_eq!(docs.lead, "password-reset");
+        assert_eq!(docs.claims.len(), 2);
+        // Body fields pass through verbatim.
+        assert_eq!(docs.claims[0]["id"], json!("password-reset.request"));
+        assert_eq!(docs.claims[1]["criterion"], json!("Reset links expire after 30 minutes."));
+
+        // Authority is resolved post-response by the kernel; it must
+        // never reach the agent step.
+        let serialised = serde_json::to_string(&inputs).expect("serialise inputs");
+        assert!(!serialised.contains("authority"), "authority must be absent: {serialised}");
+        assert!(serialised.contains("shape-brief"), "shape-brief renders kebab-case");
+    }
+
+    #[test]
+    fn from_evidence_file_reads_and_shapes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("docs.yaml");
+        std::fs::write(&path, EVIDENCE_DOCS).expect("write evidence");
+
+        let shaped = SynthesisSourceInput::from_evidence_file("docs", &path).expect("file shapes");
+        assert_eq!(shaped.source, "docs");
+        assert_eq!(shaped.lead, "password-reset");
+        assert_eq!(shaped.claims.len(), 2);
+    }
+}

@@ -1,18 +1,18 @@
-//! End-to-end test for the RFC-34 §F2 `specdev lint` extension.
+//! End-to-end test for the `specdev lint` extension.
 //!
-//! Exercises the binary surface added by RFC-34 chassis change C6:
+//! Exercises the binary surface added for framework convergence:
 //!
 //! - `specdev lint --output-format json` against a small
-//!   framework-shaped scaffold emits a `LintResult` envelope on
+//!   framework-shaped scaffold emits a `DiagnosticReport` envelope on
 //!   stdout that validates against
-//!   `schemas/lint/lint-result.schema.json`.
+//!   `schemas/diagnostics/diagnostic-report.schema.json`.
 //! - The same run lands exactly one `lint-completed` journal event
-//!   in `<framework-root>/.specify/journal.jsonl` per RFC-34 §F7,
-//!   with the §F7-mandated `scope.target = null`,
+//!   in `<framework-root>/.specify/journal.jsonl`,
+//!   with the mandated `scope.target = null`,
 //!   `scope.slice = null`, `baseline_present = false` shape.
 //! - The pretty formatter (`--output-format pretty`) produces a
 //!   non-empty human summary, confirming the four-formatter set
-//!   from `specify_lints::lint::diagnostics` round-trips through
+//!   from [`specify_diagnostics`] round-trips through
 //!   the new verb.
 //!
 //! The scaffold mirrors `tests/specdev_check_json.rs::write_scaffold`
@@ -29,7 +29,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 /// Scaffold a minimal framework tree that passes
-/// [`specify_authoring::context::Context::from_framework_root`] and
+/// `specify_standards::framework::context::Context::from_framework_root` and
 /// supplies the marketplace + canonical-doc files the imperative
 /// `Check` predicates expect. Intentionally identical in shape to
 /// the scaffold used by `tests/specdev_check_json.rs` so both
@@ -134,7 +134,7 @@ fn run_specdev_lint(root: &Path, args: &[&str]) -> (Option<i32>, Vec<u8>, Vec<u8
 /// `specdev lint --output-format json` emits a wire envelope that
 /// passes the binary's own pre-emit schema validation (the
 /// diagnostics JSON formatter validates against
-/// `LINT_RESULT_JSON_SCHEMA` before it returns; a validation
+/// `DIAGNOSTIC_REPORT_JSON_SCHEMA` before it returns; a validation
 /// failure would have exited 1 with `review-envelope-schema` on
 /// stderr instead of producing parseable stdout). The test reads
 /// stdout, asserts it parses, and pins the closed top-level shape.
@@ -176,7 +176,7 @@ fn json_envelope_validates_against_schema() {
 }
 
 /// One `lint-completed` event lands in
-/// `<framework_root>/.specify/journal.jsonl` per run per RFC-34 §F7.
+/// `<framework_root>/.specify/journal.jsonl` per run.
 /// The payload shape (`scope.target: None`, `scope.slice: None`,
 /// `baseline_present: false`) is pinned alongside the existence
 /// check.
@@ -226,7 +226,7 @@ fn lint_completed_event_lands_in_journal() {
 
 /// `--output-format pretty` produces a non-empty stdout body that
 /// includes the diagnostics-formatter header — confirms the four
-/// formatters from `specify_lints::lint::diagnostics` are wired
+/// formatters from [`specify_diagnostics`] are wired
 /// into the `specdev lint` verb.
 #[test]
 fn pretty_format_emits_diagnostics_summary() {

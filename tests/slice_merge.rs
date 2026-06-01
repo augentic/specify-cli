@@ -295,6 +295,206 @@ fn conflict_check_no_drift_without_contracts() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// slice merge run — outcome-ledger event + archive prune
+// ---------------------------------------------------------------------------
+
+#[test]
+fn run_archives_and_emits_ledger_event() {
+    let project = Project::init().with_schemas();
+    project.stage_slice("merge-two-spec-slice");
+
+    specrun()
+        .current_dir(project.root())
+        .args(["slice", "merge", "run", "my-slice"])
+        .assert()
+        .success();
+
+    // Slice folder archived under .specify/archive/YYYY-MM-DD-my-slice.
+    let archive = project.root().join(".specify/archive");
+    let entries: Vec<_> = fs::read_dir(&archive)
+        .expect("archive dir exists after merge")
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(entries.len(), 1, "expected one archived slice, got {entries:?}");
+    assert!(entries[0].ends_with("-my-slice"), "archive name carries slice, got {entries:?}");
+
+    // Outcome ledger: journal carries one slice.archive.created line.
+    let journal = fs::read_to_string(project.root().join(".specify/journal.jsonl"))
+        .expect("journal.jsonl written");
+    let ledger: Vec<&str> =
+        journal.lines().filter(|l| l.contains(r#""event":"slice.archive.created""#)).collect();
+    assert_eq!(ledger.len(), 1, "expected one ledger event, got:\n{journal}");
+    let line = ledger[0];
+    assert!(line.contains(r#""slice-name":"my-slice""#), "ledger names the slice: {line}");
+    assert!(line.contains(r#""touched-specs":"#), "ledger lists touched specs: {line}");
+    assert!(line.contains(r#""outcome-summary":"#), "ledger carries a summary: {line}");
+}
+
+#[test]
+fn run_emits_merge_started_then_succeeded() {
+    // RFC-29d: a successful `slice merge run` brackets the validator
+    // outcome with `slice.merge.started` then `slice.merge.succeeded`,
+    // with the durable `slice.archive.created` ledger entry in between.
+    let project = Project::init().with_schemas();
+    project.stage_slice("merge-two-spec-slice");
+
+    specrun()
+        .current_dir(project.root())
+        .args(["slice", "merge", "run", "my-slice"])
+        .assert()
+        .success();
+
+    let journal = fs::read_to_string(project.root().join(".specify/journal.jsonl"))
+        .expect("journal.jsonl written");
+    let merge_events: Vec<&str> =
+        journal.lines().filter(|l| l.contains(r#""event":"slice.merge."#)).collect();
+    assert_eq!(
+        merge_events.len(),
+        2,
+        "expected slice.merge.started + slice.merge.succeeded, got:\n{journal}"
+    );
+    assert!(
+        merge_events[0].contains(r#""event":"slice.merge.started""#),
+        "first merge event must be slice.merge.started, got: {}",
+        merge_events[0]
+    );
+    assert!(
+        merge_events[0].contains(r#""slice-name":"my-slice""#),
+        "started names the slice: {}",
+        merge_events[0]
+    );
+    assert!(
+        merge_events[1].contains(r#""event":"slice.merge.succeeded""#),
+        "second merge event must be slice.merge.succeeded, got: {}",
+        merge_events[1]
+    );
+    assert!(
+        merge_events[1].contains(r#""slice-name":"my-slice""#),
+        "succeeded names the slice: {}",
+        merge_events[1]
+    );
+
+    // The ledger entry still lands and sits between started and
+    // succeeded.
+    let ordered_ids: Vec<&str> = journal
+        .lines()
+        .filter(|l| {
+            l.contains(r#""event":"slice.merge."#)
+                || l.contains(r#""event":"slice.archive.created""#)
+        })
+        .collect();
+    assert_eq!(
+        ordered_ids.len(),
+        3,
+        "expected started, archive.created, succeeded, got:\n{journal}"
+    );
+    assert!(ordered_ids[0].contains("slice.merge.started"));
+    assert!(ordered_ids[1].contains("slice.archive.created"));
+    assert!(ordered_ids[2].contains("slice.merge.succeeded"));
+}
+
+#[test]
+fn run_emits_merge_started_then_failed_on_validator_failure() {
+    // RFC-29d: a forced validator/commit failure brackets the run with
+    // `slice.merge.started` then `slice.merge.failed` (non-empty
+    // `reason`), exits non-zero, and emits neither `slice.merge.succeeded`
+    // nor the `slice.archive.created` ledger entry. Downgrading the
+    // slice to `refined` makes `slice::commit` reject the non-`Built`
+    // status with the `lifecycle` diagnostic.
+    let project = Project::init().with_schemas();
+    let slice_dir = project.stage_slice("merge-two-spec-slice");
+    let metadata_path = slice_dir.join(".metadata.yaml");
+    let original = fs::read_to_string(&metadata_path).unwrap();
+    fs::write(&metadata_path, original.replace("status: built", "status: refined")).unwrap();
+
+    specrun()
+        .current_dir(project.root())
+        .args(["slice", "merge", "run", "my-slice"])
+        .assert()
+        .failure();
+
+    let journal = fs::read_to_string(project.root().join(".specify/journal.jsonl"))
+        .expect("journal.jsonl written");
+    let merge_events: Vec<&str> =
+        journal.lines().filter(|l| l.contains(r#""event":"slice.merge."#)).collect();
+    assert_eq!(
+        merge_events.len(),
+        2,
+        "expected slice.merge.started + slice.merge.failed, got:\n{journal}"
+    );
+    assert!(
+        merge_events[0].contains(r#""event":"slice.merge.started""#),
+        "first merge event must be slice.merge.started, got: {}",
+        merge_events[0]
+    );
+    let failed = merge_events[1];
+    assert!(
+        failed.contains(r#""event":"slice.merge.failed""#),
+        "second merge event must be slice.merge.failed, got: {failed}"
+    );
+    assert!(failed.contains(r#""slice-name":"my-slice""#), "failed names the slice: {failed}");
+    let value: serde_json::Value =
+        serde_json::from_str(failed).expect("slice.merge.failed line is JSON");
+    let reason = value["payload"]["reason"].as_str().expect("reason field present");
+    assert!(!reason.is_empty(), "failed event must carry a non-empty reason, got: {failed}");
+
+    assert!(
+        !journal.contains(r#""event":"slice.merge.succeeded""#),
+        "a failed merge must not emit slice.merge.succeeded:\n{journal}"
+    );
+    assert!(
+        !journal.contains(r#""event":"slice.archive.created""#),
+        "a failed merge must not emit the slice.archive.created ledger entry:\n{journal}"
+    );
+}
+
+#[test]
+fn archive_prune_keeps_recent_by_count() {
+    let project = Project::init();
+    let archive = project.root().join(".specify/archive");
+    fs::create_dir_all(&archive).unwrap();
+    for name in ["2026-01-01-alpha", "2026-03-01-beta", "2026-05-01-gamma"] {
+        fs::create_dir_all(archive.join(name)).unwrap();
+    }
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "archive", "prune", "--keep", "2"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+    let pruned = value["pruned"].as_array().unwrap();
+    assert_eq!(pruned.len(), 1, "keep 2 of 3 prunes the oldest, got {pruned:?}");
+    assert_eq!(pruned[0], "2026-01-01-alpha");
+
+    assert!(!archive.join("2026-01-01-alpha").exists(), "oldest must be removed");
+    assert!(archive.join("2026-05-01-gamma").exists(), "newest must remain");
+}
+
+#[test]
+fn archive_prune_dry_run_removes_nothing() {
+    let project = Project::init();
+    let archive = project.root().join(".specify/archive");
+    fs::create_dir_all(archive.join("2026-01-01-alpha")).unwrap();
+
+    specrun()
+        .current_dir(project.root())
+        .args(["archive", "prune", "--keep", "0", "--dry-run"])
+        .assert()
+        .success();
+
+    assert!(archive.join("2026-01-01-alpha").exists(), "dry-run must not remove folders");
+}
+
+#[test]
+fn archive_prune_requires_a_bound() {
+    let project = Project::init();
+    fs::create_dir_all(project.root().join(".specify/archive")).unwrap();
+
+    specrun().current_dir(project.root()).args(["archive", "prune"]).assert().failure();
+}
+
 #[test]
 fn conflict_check_ignores_new_entries() {
     // `type: new` baselines are "we're creating this adapter" — even

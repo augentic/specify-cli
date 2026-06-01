@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use specify_error::ValidationStatus;
+use specify_diagnostics::DiagnosticKind;
 use specify_validate::validate_slice;
 use specify_workflow::slice::SLICES_DIR_NAME;
 use tempfile::TempDir;
@@ -42,38 +42,41 @@ fn missing_artifact_produces_synth_failure() {
     fs::create_dir_all(&slice_dir).unwrap();
     // Deliberately leave out every canonical artifact.
 
-    let report = validate_slice(&slice_dir).expect("validate_slice ok");
+    let findings = validate_slice(&slice_dir).expect("validate_slice ok");
 
-    // Every literal canonical artifact should have synthesised an
-    // `artifact-exists` failure (and nothing else for that brief).
-    // `specs` is glob-expanded; an empty slice has no `specs/**/*.md`
-    // matches and is silently skipped — the operator-facing failure
-    // there comes from the cross-validation rules instead.
+    // Every literal canonical artifact should have synthesised exactly
+    // one `<brief>.artifact-exists` violation. `specs` is glob-expanded;
+    // an empty slice has no `specs/**/*.md` matches and is silently
+    // skipped — the operator-facing failure there comes from the
+    // cross-validation rules instead.
     for brief in &["proposal", "design", "tasks"] {
-        let results = report
-            .brief_results
-            .get(*brief)
-            .unwrap_or_else(|| panic!("missing entry for `{brief}`"));
-        assert_eq!(results.len(), 1, "{brief} should have exactly one result");
-        let first = &results[0];
-        assert_eq!(first.status, ValidationStatus::Fail, "expected Fail for `{brief}`: {first:?}");
-        assert!(
-            first.rule_id.ends_with(".artifact-exists"),
-            "unexpected rule_id for `{brief}`: {}",
-            first.rule_id
+        let rule_id = format!("{brief}.artifact-exists");
+        let matches: Vec<_> =
+            findings.iter().filter(|d| d.rule_id.as_deref() == Some(rule_id.as_str())).collect();
+        assert_eq!(matches.len(), 1, "{brief} should have exactly one artifact-exists violation");
+        let first = matches[0];
+        assert_eq!(
+            first.kind,
+            DiagnosticKind::Violation,
+            "expected violation for `{brief}`: {first:?}"
         );
-        let detail = first.detail.as_deref().unwrap_or("");
-        assert!(detail.contains("not found"), "unexpected detail for `{brief}`: {detail}");
+        assert!(
+            first.impact.contains("not found"),
+            "unexpected impact for `{brief}`: {}",
+            first.impact
+        );
     }
 
     // `contracts` and `specs` are globs — empty expansion is silently
     // skipped per workflow §"Refinement" (slices need not populate every
     // overlay; the cross-validation rules surface the operator-facing
     // failure for the missing slice spec separately).
-    assert!(!report.brief_results.contains_key("contracts"));
-    assert!(!report.brief_results.contains_key("specs"));
+    assert!(!findings.iter().any(|d| d.rule_id.as_deref() == Some("contracts.artifact-exists")));
+    assert!(!findings.iter().any(|d| d.rule_id.as_deref() == Some("specs.artifact-exists")));
 
-    assert!(!report.passed);
+    // A literal-artifact slice with no populated overlays must surface
+    // at least one blocking violation.
+    assert!(findings.iter().any(|d| d.kind == DiagnosticKind::Violation));
 }
 
 #[test]
@@ -87,16 +90,16 @@ fn validate_slice_passes_all_rules() {
     let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join("change-good");
     copy_dir_recursive(&fixture, &slice_dir);
 
-    let report = validate_slice(&slice_dir).expect("validate_slice ok");
-    assert!(report.passed);
+    let findings = validate_slice(&slice_dir).expect("validate_slice ok");
 
-    // Confirm every Semantic rule surfaced as Deferred.
-    let deferred_count: usize = report
-        .brief_results
-        .values()
-        .flatten()
-        .chain(report.cross_checks.iter())
-        .filter(|r| r.status == ValidationStatus::Deferred)
-        .count();
+    // The good fixture has no structural breaches: every diagnostic
+    // must be a non-blocking `review` (the deferred semantic rules).
+    assert!(
+        findings.iter().all(|d| d.kind == DiagnosticKind::Review),
+        "good fixture must surface only review-kind diagnostics: {findings:?}"
+    );
+
+    // Confirm every Semantic rule surfaced as a deferred review.
+    let deferred_count = findings.iter().filter(|d| d.kind == DiagnosticKind::Review).count();
     assert!(deferred_count >= 2, "expected at least two deferred rules");
 }

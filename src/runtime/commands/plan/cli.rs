@@ -2,6 +2,8 @@
 //! `plan lock *` verbs. The umbrella `cli.rs` re-exports both action
 //! enums.
 
+use std::path::PathBuf;
+
 use clap::{ArgAction, Args, Subcommand};
 
 use crate::runtime::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
@@ -22,14 +24,6 @@ pub enum PlanAction {
         /// `{ adapter, path?, value? }` shape per workflow §Source.
         #[arg(long = "source")]
         sources: Vec<SourceArg>,
-        /// Pre-stage `slices[].divergence: likely` on the named slice
-        /// (repeatable; divergence and writer-ownership contract). Each occurrence fires one
-        /// `plan.propose.divergence` journal event. Refuses with
-        /// `plan-divergence-likely-unknown-slice` when the slice is
-        /// not present in the plan; the CLI is the single writer of
-        /// this field — do not edit `plan.yaml` directly.
-        #[arg(long = "divergence-likely", value_name = "SLICE", action = ArgAction::Append)]
-        divergence_likely: Vec<String>,
         /// Stamp `lifecycle: approved` atomically with create
         /// (auto-approve Gate-1 contract). Typing this flag *is* the operator's
         /// Gate-1 consent — the CLI runs the same validation it
@@ -44,7 +38,7 @@ pub enum PlanAction {
         /// Pre-seed a per-slice `authority-override` entry on a
         /// named slice (per-slice authority override). Each occurrence takes two
         /// positional values: the slice name and a
-        /// `<claim-kind>=<source-key>` assignment. Repeatable; later
+        /// `<claim-kind>=<source>` assignment. Repeatable; later
         /// occurrences override earlier ones on the same
         /// `(slice, kind)` tuple. The slice MUST already exist in
         /// the plan being created (unknown names short-circuit with
@@ -53,7 +47,7 @@ pub enum PlanAction {
         /// orphan-key check. One
         /// `plan.amend.authority-override` journal event fires per
         /// resolved entry in the same batched append as
-        /// `--auto-approve` / `--divergence-likely`.
+        /// `--auto-approve`.
         #[arg(
             long = "authority-override",
             value_names = ["SLICE", "KIND=KEY"],
@@ -65,7 +59,7 @@ pub enum PlanAction {
     /// Validate plan.yaml (structure + plan/change consistency).
     ///
     /// Includes the three health diagnostics — `cycle-in-depends-on`,
-    /// `orphan-source-key`, and `stale-workspace-clone` — alongside
+    /// `orphan-source`, and `stale-workspace-clone` — alongside
     /// the base shape rules.
     Validate,
     /// Return the active in-progress entry, or transition the next eligible
@@ -89,6 +83,33 @@ pub enum PlanAction {
     /// so wholesale replacement plus targeted edits can be combined
     /// in a single invocation when needed.
     Amend(AmendArgs),
+    /// Reconcile surveyed leads into `plan.yaml.slices[]` (RFC-29 D2).
+    ///
+    /// Exactly one mode is required — the parser rejects passing both:
+    ///
+    /// - `--dry-run` is read-only. It reads the surveyed `discovery.md`
+    ///   lead inventory and the resolved project topology (`registry.yaml`
+    ///   for a hub, or the sole project synthesised from `project.yaml`)
+    ///   and emits the `kind: request` envelope for the agent to group.
+    ///   Aborts with `plan-reconcile-empty-catalog` when `discovery.md`
+    ///   carries no leads.
+    /// - `--from <response.json>` is the only writer. On every invocation
+    ///   it re-reads `discovery.md`, rebuilds the lead catalog (never
+    ///   trusting a prior dry-run snapshot), validates the agent's
+    ///   grouping response, and replaces `plan.yaml.slices[]` wholesale —
+    ///   in the agent's response order — then emits the single
+    ///   `plan.reconcile.completed` event.
+    ///
+    /// Passing neither mode fails with `plan-propose-mode-required`
+    /// (exit 2).
+    Propose(ProposeArgs),
+    /// Remove a pending plan entry while the plan is still replaceable
+    /// (`lifecycle: pending` and every entry `pending`). Gate 1 curation
+    /// only — defers a lead without re-surveying `discovery.md`.
+    Remove {
+        /// Kebab-case entry name to remove
+        name: String,
+    },
     /// Apply a validated status transition.
     ///
     /// Two transition shapes share this verb (workflow §CLI surface):
@@ -133,11 +154,24 @@ pub enum PlanAction {
     },
 }
 
+/// Flag surface for `specrun plan propose`. The two flags are mutually
+/// exclusive (`--from` `conflicts_with` `--dry-run`); the handler
+/// rejects passing neither with `plan-propose-mode-required`.
+#[derive(Args)]
+pub struct ProposeArgs {
+    /// Emit the reconciliation request envelope (flat lead catalog + project topology) for the agent. Writes nothing.
+    #[arg(long = "dry-run", action = ArgAction::SetTrue)]
+    pub dry_run: bool,
+    /// Apply the agent's grouping response, validate it, and replace plan.yaml.slices[]. The only writer.
+    #[arg(long = "from", value_name = "RESPONSE_JSON", conflicts_with = "dry_run")]
+    pub from: Option<PathBuf>,
+}
+
 /// Flag surface for `specrun plan add`. Grouped into one struct so the
 /// handler threads a single owned value instead of a positional list.
 #[derive(Args)]
 pub struct AddArgs {
-    /// Kebab-case change name
+    /// Kebab-case plan entry (slice) name for the new row under `plan.yaml.slices[]`.
     pub name: String,
     /// Ordering dependencies (repeatable). Every value is a change name in the plan.
     /// Pass `--depends-on` (with no value) to clear the field; omit the flag to
@@ -145,7 +179,7 @@ pub struct AddArgs {
     #[arg(long = "depends-on", action = ArgAction::Append)]
     pub depends_on: Vec<String>,
     /// Per-slice source binding (repeatable). Wire form is
-    /// `<key>=<lead-id>`; bare `<key>` is accepted as
+    /// `<key>=<lead>`; bare `<key>` is accepted as
     /// shorthand for `{ key: <key>, lead: <slice.name> }`
     /// per workflow §`Slice.sources`.
     #[arg(long = "sources", action = ArgAction::Append)]
@@ -156,15 +190,12 @@ pub struct AddArgs {
     /// Target registry project name
     #[arg(long)]
     pub project: Option<String>,
-    /// Plan-entry target-adapter identifier for project-less entries (e.g. `contracts@v1`)
-    #[arg(long)]
-    pub target: Option<String>,
     /// Baseline paths relevant to this change, relative to `.specify/` (repeatable)
     #[arg(long)]
     pub context: Vec<String>,
     /// Set a per-slice `authority-override` entry on the slice
     /// being added (per-slice authority override). Wire form is
-    /// `<claim-kind>=<source-key>`; both sides are kebab-case
+    /// `<claim-kind>=<source>`; both sides are kebab-case
     /// and the kind is checked against the closed [`ClaimKind`]
     /// enum at parse time. Repeatable; later occurrences win on
     /// the same `(kind)` key. Orphan source keys are caught by
@@ -179,7 +210,8 @@ pub struct AddArgs {
 /// handler threads a single owned value instead of a positional list.
 #[derive(Args)]
 pub struct AmendArgs {
-    /// Kebab-case change name
+    /// Kebab-case plan entry (slice) name — the row under `plan.yaml.slices[]`
+    /// being edited. There is one active plan file; this is not the plan name.
     pub name: String,
     /// Replace depends-on. Pass `--depends-on` (with no value) to clear the
     /// field; omit the flag to leave it unchanged. Repeat or comma-separate
@@ -187,13 +219,13 @@ pub struct AmendArgs {
     #[arg(long = "depends-on", num_args = 0.., value_delimiter = ',')]
     pub depends_on: Option<Vec<String>>,
     /// Replace per-slice source bindings wholesale. Each value
-    /// is `<key>=<lead-id>` (or bare `<key>` shorthand).
+    /// is `<key>=<lead>` (or bare `<key>` shorthand).
     /// Pass `--sources` (no value) to clear; omit to leave
     /// unchanged.
     #[arg(long = "sources", num_args = 0.., value_delimiter = ',')]
     pub sources: Option<Vec<SliceSourceArg>>,
     /// Add a single per-slice source binding (repeatable). Each
-    /// value is `<key>=<lead-id>` or the bare `<key>`
+    /// value is `<key>=<lead>` or the bare `<key>`
     /// shorthand per workflow §`Slice.sources`.
     #[arg(long = "add-source", action = ArgAction::Append)]
     pub add_source: Vec<SliceSourceArg>,
@@ -219,17 +251,13 @@ pub struct AmendArgs {
     /// Replace project. Pass `--project ""` to clear; omit the flag to leave it unchanged.
     #[arg(long)]
     pub project: Option<String>,
-    /// Replace the plan-entry target-adapter identifier. Pass `--target ""` to clear;
-    /// omit the flag to leave it unchanged.
-    #[arg(long)]
-    pub target: Option<String>,
     /// Replace context paths. Pass `--context` (with no value) to clear; omit the
     /// flag to leave it unchanged.
     #[arg(long, num_args = 0.., value_delimiter = ',')]
     pub context: Option<Vec<String>>,
     /// Set a per-slice `authority-override` entry (per-slice authority override).
     /// Two positional values per occurrence: the slice name and
-    /// a `<claim-kind>=<source-key>` assignment. Repeatable;
+    /// a `<claim-kind>=<source>` assignment. Repeatable;
     /// later occurrences override earlier ones on the same
     /// `(slice, kind)` tuple. If the same `(slice, kind)` also
     /// appears in `--clear-authority-override`, the clear
@@ -273,7 +301,7 @@ pub struct AmendArgs {
     )]
     pub clear_authority_overrides: Vec<String>,
     /// Append an alias to a lead in `<project_dir>/discovery.md`
-    /// (discovery alias contract). Wire form is `<lead-id>=<alias>`; both
+    /// (discovery alias contract). Wire form is `<lead>=<alias>`; both
     /// sides are kebab-case. Repeatable. Mutates `discovery.md`
     /// (NOT `plan.yaml`); the whole amend is refused at exit 2
     /// (`discovery-alias-collision`) when the new alias would
@@ -285,7 +313,7 @@ pub struct AmendArgs {
     pub add_alias: Vec<AliasAssign>,
     /// Remove an alias from a lead in
     /// `<project_dir>/discovery.md` (discovery alias contract). Wire form is
-    /// `<lead-id>=<alias>`; idempotent (no-op when the
+    /// `<lead>=<alias>`; idempotent (no-op when the
     /// alias is already absent). Repeatable. The whole amend
     /// fails at exit 2 (`discovery-lead-unknown`) when no
     /// lead has the named id.

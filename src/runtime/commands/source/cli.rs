@@ -3,7 +3,30 @@
 
 use std::path::PathBuf;
 
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
+
+/// Which phase of a two-phase `specrun source` operation
+/// (`survey` / `extract`) to run.
+///
+/// `tool`-execution adapters ignore the flag — a single call runs the
+/// whole operation. `agent`-execution adapters are two-phase
+/// (RFC-29 D9; DECISIONS.md §"Adapter execution mode (D9)"):
+/// `prepare` builds the sandbox and prints the handoff envelope, then
+/// the agent runs the
+/// brief and calls back with `finalize`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum Phase {
+    /// Build the sandbox + scratch + output target, emit
+    /// `source.execution.agent`, and print the handoff envelope. The
+    /// default.
+    #[default]
+    Prepare,
+    /// Validate the agent-produced output, run the cache fingerprint,
+    /// and merge it into `discovery.md` (`survey`) / persist the
+    /// Evidence (`extract`).
+    Finalize,
+}
 
 #[derive(Subcommand)]
 pub enum SourceAction {
@@ -64,5 +87,60 @@ pub enum SourceAction {
         /// `.specify/` directory.
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
+    },
+
+    /// Run a source adapter's `survey` against a plan-bound source and
+    /// merge the resulting lead set into `discovery.md`.
+    ///
+    /// Resolves `<source>` against `plan.yaml.sources.<key>` (not
+    /// the adapter name), resolves the bound source adapter, and builds
+    /// the four-root sandbox under
+    /// `.specify/.cache/extractions/<adapter>/survey/scratch/`.
+    ///
+    /// For `execution: tool` adapters the single call runs the whole
+    /// operation. For `execution: agent` adapters the operation is
+    /// two-phase: `--phase prepare` (the default) prints the handoff
+    /// envelope and returns control to the agent; `--phase finalize`
+    /// validates the agent-produced `lead-set.md` and merges it.
+    Survey {
+        /// Source key from `plan.yaml.sources.<key>`.
+        source: String,
+        /// Plan name guard. When set, must match `plan.yaml.name`.
+        #[arg(long)]
+        plan: Option<String>,
+        /// Phase to run (`prepare` | `finalize`); `tool` adapters run
+        /// the whole operation regardless.
+        #[arg(long, value_enum, default_value_t = Phase::Prepare)]
+        phase: Phase,
+    },
+
+    /// Run a source adapter's `extract` for one `(source, lead)`
+    /// pair and persist the resulting Evidence to
+    /// `.specify/slices/<slice>/evidence/<source>.yaml`.
+    ///
+    /// Resolves `<source>` against `plan.yaml.sources.<key>` (not
+    /// the adapter name), resolves the bound source adapter, and builds
+    /// the four-root sandbox with scratch under
+    /// `.specify/.cache/extractions/<adapter>/<slice>/scratch/`.
+    ///
+    /// For `execution: tool` adapters the single call runs the whole
+    /// operation. For `execution: agent` adapters the operation is
+    /// two-phase: `--phase prepare` (the default) prints the handoff
+    /// envelope and returns control to the agent; `--phase finalize`
+    /// validates the agent-produced Evidence against
+    /// `schemas/evidence.schema.json` before it is persisted.
+    Extract {
+        /// Source key from `plan.yaml.sources.<key>`.
+        source: String,
+        /// Lead id (from `discovery.md`) the Evidence is bound to.
+        lead: String,
+        /// Slice the Evidence is extracted into; keys the scratch
+        /// directory and the `.specify/slices/<slice>/evidence/` target.
+        #[arg(long)]
+        slice: String,
+        /// Phase to run (`prepare` | `finalize`); `tool` adapters run
+        /// the whole operation regardless.
+        #[arg(long, value_enum, default_value_t = Phase::Prepare)]
+        phase: Phase,
     },
 }

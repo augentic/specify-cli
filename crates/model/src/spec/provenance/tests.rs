@@ -169,7 +169,7 @@ fn source_key_undefined_reported() {
     );
     let findings = validate(&parsed, &keys(["a", "b"]));
     assert!(
-        findings.iter().any(|f| f.rule_id == "spec.requirement-source-key-undefined"),
+        findings.iter().any(|f| f.rule_id == "spec.requirement-source-undefined"),
         "{findings:?}"
     );
 }
@@ -181,7 +181,7 @@ fn malformed_source_key_reported() {
     );
     let findings = validate(&parsed, &BTreeSet::new());
     assert!(
-        findings.iter().any(|f| f.rule_id == "spec.requirement-source-key-malformed"),
+        findings.iter().any(|f| f.rule_id == "spec.requirement-source-malformed"),
         "{findings:?}"
     );
 }
@@ -253,12 +253,13 @@ fn body_preserves_interior_blank_lines() {
 }
 
 #[test]
-fn into_summary_prefixes_path_hint() {
+fn into_diagnostic_prefixes_path_hint() {
     let parsed = parse_spec_md("### Requirement: No id\n\nSources: [a]\nStatus: agreed\n");
     let mut findings = validate(&parsed, &keys(["a"]));
-    let summary = findings.pop().expect("at least one finding").into_summary("specs/login/spec.md");
-    let detail = summary.detail.unwrap_or_default();
-    assert!(detail.starts_with("specs/login/spec.md:"), "{detail}");
+    let diagnostic =
+        findings.pop().expect("at least one finding").into_diagnostic("specs/login/spec.md");
+    assert!(diagnostic.impact.starts_with("specs/login/spec.md:"), "{}", diagnostic.impact);
+    assert_eq!(diagnostic.location.as_ref().map(|l| l.path.as_str()), Some("specs/login/spec.md"));
 }
 
 // ---------------------------------------------------------------------------

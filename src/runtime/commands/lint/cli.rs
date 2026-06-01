@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use clap::{Args, Subcommand, ValueEnum};
-use specify_lints::lint::diagnostics::Format as DiagnosticsFormat;
+use specify_diagnostics::Format as DiagnosticsFormat;
 
 #[derive(Subcommand)]
 pub enum LintAction {
@@ -28,9 +28,11 @@ pub enum LintAction {
 #[derive(Args)]
 pub struct RunArgs {
     /// Codex root supplying shared `UNI-*` rules. Resolution
-    /// order (rules-root resolution): this flag → `$RULES_ROOT` env →
-    /// project's `.specify/cache/rules/` → bundled tree.
-    /// Validation failure exits 2 with `rules-root-required`.
+    /// order (rules-root resolution): this flag / `$RULES_ROOT` env →
+    /// monorepo `adapters/shared/rules/universal/` under the project →
+    /// distributed codex cache `.specify/.cache/codex/` (populated by
+    /// `specrun init` / `specrun rules sync`). Missing every rung exits
+    /// 2 with `rules-root-required`.
     #[arg(long, env = "RULES_ROOT")]
     pub rules_root: Option<PathBuf>,
 
@@ -72,7 +74,7 @@ pub struct RunArgs {
     pub strict_hints: bool,
 
     /// Include `CORE-*` rules resolved from
-    /// `adapters/shared/rules/core/` (RFC-34 §A3 / §F3).
+    /// `adapters/shared/rules/core/`.
     /// Default off — consumer-project review runs never evaluate
     /// `CORE-*` hints unless the caller opts in.
     #[arg(long)]
@@ -100,7 +102,7 @@ pub struct RunArgs {
 
 /// Clap-derivable mirror of [`DiagnosticsFormat`] per the diagnostics formatter set.
 ///
-/// Kept distinct from the `specify-lints` enum so the standards crate
+/// Kept distinct from the `specify-standards` enum so the standards crate
 /// stays runtime-agnostic; the [`From`] impl below is the single
 /// adapter. The wire spelling matches the closed diagnostics formatter set
 /// (`compact`, `github`, `json`, `pretty`).
@@ -110,7 +112,7 @@ pub enum LintFormat {
     Compact,
     /// GitHub Actions workflow-annotation lines.
     Github,
-    /// `LintResult` wire envelope; schema-validated before emit.
+    /// `DiagnosticReport` wire envelope; schema-validated before emit.
     Json,
     /// Terminal output with severity colour and source location.
     Pretty,

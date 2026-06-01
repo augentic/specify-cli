@@ -3,7 +3,7 @@ use std::io::Write;
 use serde::Serialize;
 use specify_error::Result;
 use specify_workflow::registry::Registry;
-use specify_workflow::registry::workspace::sync_projects;
+use specify_workflow::registry::workspace::{regenerate_topology_lock, sync_projects};
 
 use super::registry_missing;
 use crate::runtime::context::Ctx;
@@ -13,6 +13,9 @@ pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
     let synced = if let Some(reg) = registry.as_ref() {
         let selected = reg.select(projects)?;
         sync_projects(&ctx.project_dir, &selected)?;
+        // RFC-36: project the materialised slots' `project.yaml` topology
+        // facets into the committed `.specify/topology.lock`.
+        regenerate_topology_lock(&ctx.project_dir, reg)?;
         true
     } else if !projects.is_empty() {
         return Err(registry_missing());

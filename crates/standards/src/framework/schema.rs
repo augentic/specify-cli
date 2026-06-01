@@ -1,0 +1,162 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use jsonschema::Validator;
+use serde_json::Value as JsonValue;
+use specify_schema::{
+    MARKETPLACE_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
+};
+
+use crate::framework::context::Context;
+use crate::framework::error::ToolingError;
+use crate::framework::helpers::skill_frontmatter;
+
+/// Framework authoring JSON Schema identifiers.
+///
+/// Each variant resolves to an embedded constant under
+/// `specify-cli/schemas/authoring/` (or `schemas/rules/` for
+/// [`SchemaId::Rule`]) compiled into the binary via
+/// [`specify_schema`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SchemaId {
+    Skill,
+    Rule,
+    Scenario,
+    Marketplace,
+}
+
+impl SchemaId {
+    /// Synthetic cache key and embedded schema source for `schema_id`.
+    const fn embedded(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Skill => ("<embedded>/authoring/skill.schema.json", SKILL_JSON_SCHEMA),
+            Self::Rule => ("<embedded>/rules/rule.schema.json", RULE_JSON_SCHEMA),
+            Self::Scenario => ("<embedded>/authoring/scenario.schema.json", SCENARIO_JSON_SCHEMA),
+            Self::Marketplace => {
+                ("<embedded>/authoring/marketplace.schema.json", MARKETPLACE_JSON_SCHEMA)
+            }
+        }
+    }
+}
+
+/// Schema validation failure: infrastructure problem or one or more constraint violations.
+#[derive(Debug)]
+pub enum SchemaError {
+    Infrastructure(ToolingError),
+    Validation(Vec<ValidationError>),
+}
+
+impl From<ToolingError> for SchemaError {
+    fn from(error: ToolingError) -> Self {
+        Self::Infrastructure(error)
+    }
+}
+
+/// One JSON Schema validation error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationError {
+    pub instance_path: String,
+    pub message: String,
+}
+
+/// Lazily compile a framework schema via the shared context cache.
+pub fn validator(
+    ctx: &Context, schema_id: SchemaId,
+) -> Result<std::sync::Arc<Validator>, ToolingError> {
+    let (key, source) = schema_id.embedded();
+    ctx.schema_from_source(PathBuf::from(key), source)
+}
+
+/// Validate a parsed JSON/YAML value against a framework schema.
+pub fn validate_value(
+    ctx: &Context, value: &JsonValue, schema_id: SchemaId,
+) -> Result<(), SchemaError> {
+    let compiled = validator(ctx, schema_id)?;
+    collect_errors(&compiled, value).map_err(SchemaError::Validation)
+}
+
+/// Extract YAML frontmatter from a Markdown file and validate it against `schema_id`.
+pub fn validate_frontmatter(
+    ctx: &Context, path: impl AsRef<Path>, schema_id: SchemaId,
+) -> Result<(), SchemaError> {
+    let path = path.as_ref();
+    let content = fs::read_to_string(path).map_err(|source| {
+        SchemaError::Infrastructure(ToolingError::Infrastructure(format!(
+            "read {}: {source}",
+            path.display()
+        )))
+    })?;
+
+    let Some(frontmatter) = skill_frontmatter(&content) else {
+        return Err(SchemaError::Validation(vec![ValidationError {
+            instance_path: "/".into(),
+            message: "missing leading YAML frontmatter delimited by ---".into(),
+        }]));
+    };
+
+    let value = JsonValue::Object(frontmatter.into_iter().collect());
+    validate_value(ctx, &value, schema_id)
+}
+
+/// Shared validation error collection for checks and acceptance tests.
+pub fn collect_errors(compiled: &Validator, value: &JsonValue) -> Result<(), Vec<ValidationError>> {
+    if compiled.is_valid(value) {
+        return Ok(());
+    }
+
+    let errors = compiled
+        .iter_errors(value)
+        .map(|error| ValidationError {
+            instance_path: error.instance_path().to_string(),
+            message: error.to_string(),
+        })
+        .collect();
+
+    Err(errors)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+
+    #[test]
+    fn validate_rejects_invalid_description() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(tempdir.path().join("plugins")).expect("plugins");
+        std::fs::create_dir_all(tempdir.path().join("adapters")).expect("adapters");
+        let ctx = Context::from_framework_root(tempdir.path()).expect("framework root resolves");
+        let mut temp = tempfile::NamedTempFile::new().expect("temp file");
+        write!(temp, "---\nname: spec-test-skill\ndescription: Too short.\n---\n")
+            .expect("write temp frontmatter");
+
+        let result = validate_frontmatter(&ctx, temp.path(), SchemaId::Skill);
+        let SchemaError::Validation(errors) = result.expect_err("invalid frontmatter should fail")
+        else {
+            panic!("expected validation errors");
+        };
+        assert!(
+            errors.iter().any(|error| {
+                error.instance_path.contains("description") || error.message.contains("Use when")
+            }),
+            "expected description validation error, got {errors:?}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_minimal_skill() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(tempdir.path().join("plugins")).expect("plugins");
+        std::fs::create_dir_all(tempdir.path().join("adapters")).expect("adapters");
+        let ctx = Context::from_framework_root(tempdir.path()).expect("framework root resolves");
+        let mut temp = tempfile::NamedTempFile::new().expect("temp file");
+        write!(
+            temp,
+            "---\nname: spec-test-skill\ndescription: Test specification skill behavior. Use when validating schema tests.\n---\n"
+        )
+        .expect("write temp frontmatter");
+        validate_frontmatter(&ctx, temp.path(), SchemaId::Skill)
+            .unwrap_or_else(|error| panic!("valid frontmatter should validate: {error:?}"));
+    }
+}

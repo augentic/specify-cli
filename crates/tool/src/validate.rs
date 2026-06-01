@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use specify_error::{ValidationStatus, ValidationSummary};
+use specify_diagnostics::{Artifact, Diagnostic};
 
 use crate::manifest::{
     Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions, looks_like_sha256_hex,
@@ -28,9 +28,13 @@ const RULE_SOURCE_CAPABILITY_DIR_SCOPE: &str = "tool.source-capability-dir-out-o
 const RULE_NAME_UNIQUE: &str = "tool.name-unique";
 
 impl Tool {
-    /// Validate the tool declaration against the structural rules (`name`, `version`, `source`, `sha256`, permission shape).
+    /// Validate the tool declaration against the structural rules
+    /// (`name`, `version`, `source`, `sha256`, permission shape).
+    /// Returns one deterministic `violation` [`Diagnostic`] per failing
+    /// rule; passing rules emit nothing, so an empty vector means the
+    /// tool is structurally valid.
     #[must_use]
-    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationSummary> {
+    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<Diagnostic> {
         let package = if let ToolSource::Package(p) = &self.source { Some(p) } else { None };
 
         let name_valid = !self.name.is_empty()
@@ -84,7 +88,7 @@ impl Tool {
             .filter(|v| !looks_like_sha256_hex(v))
             .map(|_| "`sha256` must be exactly 64 lowercase hex characters".to_string());
 
-        vec![
+        [
             check(
                 RULE_NAME_FORMAT,
                 "tool names are lowercase kebab-case and at most 64 characters",
@@ -130,13 +134,18 @@ impl Tool {
             validate_lifecycle_writes(&self.permissions.write),
             validate_capability_dir_scope(scope, &self.permissions.read, &self.permissions.write),
         ]
+        .into_iter()
+        .flatten()
+        .collect()
     }
 }
 
 impl ToolManifest {
-    /// Validate a manifest and all of its contained tools.
+    /// Validate a manifest and all of its contained tools. Returns one
+    /// deterministic `violation` [`Diagnostic`] per failing rule; an
+    /// empty vector means the manifest is structurally valid.
     #[must_use]
-    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<ValidationSummary> {
+    pub fn validate_structure(&self, scope: &ToolScope) -> Vec<Diagnostic> {
         let mut results = Vec::with_capacity(1 + self.tools.len() * 12);
 
         let mut seen: HashSet<&str> = HashSet::new();
@@ -146,12 +155,14 @@ impl ToolManifest {
                 duplicates.push(tool.name.as_str());
             }
         }
-        results.push(check(
+        if let Some(diagnostic) = check(
             RULE_NAME_UNIQUE,
             "tool names are unique within a single declaration site",
             (!duplicates.is_empty())
                 .then(|| format!("duplicate tool name(s): {}", duplicates.join(", "))),
-        ));
+        ) {
+            results.push(diagnostic);
+        }
 
         for tool in &self.tools {
             results.extend(tool.validate_structure(scope));
@@ -160,14 +171,10 @@ impl ToolManifest {
     }
 }
 
-fn check(rule_id: &'static str, rule: &'static str, detail: Option<String>) -> ValidationSummary {
-    let status = if detail.is_none() { ValidationStatus::Pass } else { ValidationStatus::Fail };
-    ValidationSummary {
-        status,
-        rule_id: rule_id.to_string(),
-        rule: rule.to_string(),
-        detail,
-    }
+/// Build a deterministic `violation` diagnostic for a failing rule, or
+/// `None` when `detail` is absent (the rule passed).
+fn check(rule_id: &'static str, rule: &'static str, detail: Option<String>) -> Option<Diagnostic> {
+    detail.map(|detail| Diagnostic::violation(rule_id, rule, detail, Artifact::Plan, None))
 }
 
 fn validate_source(source: &ToolSource, scope: &ToolScope) -> (Option<String>, Option<String>) {
@@ -195,7 +202,7 @@ fn validate_source(source: &ToolSource, scope: &ToolScope) -> (Option<String>, O
     (detail, scope_detail)
 }
 
-fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationSummary {
+fn validate_permission_paths(read: &[String], write: &[String]) -> Option<Diagnostic> {
     const RULE: &str = "permission paths are absolute or start with $PROJECT_DIR/$CAPABILITY_DIR, with no glob or parent segments";
     let failures: Vec<String> = read
         .iter()
@@ -208,7 +215,7 @@ fn validate_permission_paths(read: &[String], write: &[String]) -> ValidationSum
     check(RULE_PERMISSION_PATH_FORM, RULE, (!failures.is_empty()).then(|| failures.join("; ")))
 }
 
-fn validate_lifecycle_writes(write: &[String]) -> ValidationSummary {
+fn validate_lifecycle_writes(write: &[String]) -> Option<Diagnostic> {
     const RULE: &str = "tool write permissions do not target Specify lifecycle state";
     let failures: Vec<String> = write
         .iter()
@@ -220,7 +227,7 @@ fn validate_lifecycle_writes(write: &[String]) -> ValidationSummary {
 
 fn validate_capability_dir_scope(
     scope: &ToolScope, read: &[String], write: &[String],
-) -> ValidationSummary {
+) -> Option<Diagnostic> {
     const RULE: &str = "$CAPABILITY_DIR is only available to plugin-scope tools";
     let failures: Vec<String> = if matches!(scope, ToolScope::Plugin { .. }) {
         Vec::new()
@@ -318,12 +325,8 @@ mod tests {
         }
     }
 
-    fn fail_rule_ids(results: &[ValidationSummary]) -> Vec<&str> {
-        results
-            .iter()
-            .filter(|s| s.status == ValidationStatus::Fail)
-            .map(|s| s.rule_id.as_str())
-            .collect()
+    fn fail_rule_ids(results: &[Diagnostic]) -> Vec<&str> {
+        results.iter().filter_map(|d| d.rule_id.as_deref()).collect()
     }
 
     #[test]
@@ -381,7 +384,7 @@ mod tests {
             serde_saphyr::from_str("tools:\n  - \"specify:contract@1.2.3\"\n")
                 .expect("parse scalar package");
         let results = manifest.validate_structure(&project_scope());
-        assert!(results.iter().all(|s| s.status == ValidationStatus::Pass));
+        assert!(results.is_empty(), "{results:?}");
     }
 
     #[test]
@@ -390,7 +393,7 @@ mod tests {
         tool.permissions.write = vec!["$PROJECT_DIR".to_string()];
 
         let results = tool.validate_structure(&project_scope());
-        assert!(results.iter().all(|s| s.status == ValidationStatus::Pass));
+        assert!(results.is_empty(), "{results:?}");
     }
 
     #[test]
@@ -414,7 +417,7 @@ mod tests {
     #[test]
     fn valid_tool_passes_structure_validation() {
         let results = valid_tool("contract").validate_structure(&project_scope());
-        assert!(results.iter().all(|s| s.status == ValidationStatus::Pass));
+        assert!(results.is_empty(), "{results:?}");
     }
 
     #[test]
@@ -502,7 +505,7 @@ mod tests {
             },
         };
         let results = tool.validate_structure(&project_scope());
-        assert!(results.iter().all(|s| s.status == ValidationStatus::Pass), "{results:?}");
+        assert!(results.is_empty(), "{results:?}");
     }
 
     #[test]

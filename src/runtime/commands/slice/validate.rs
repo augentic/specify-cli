@@ -3,20 +3,26 @@
 //! files and workflow §Requirement block contract validation of
 //! `spec.md` provenance metadata.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde_json::Value as JsonValue;
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_diagnostics::{
+    Artifact, Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary,
+    blocking_present, renumber,
+};
+use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
-use specify_model::spec::provenance::{self, ParsedSpec, RequirementTag};
+use specify_model::evidence::ClaimKind;
+use specify_model::spec::provenance::{self, ParsedSpec, RequirementStatus, RequirementTag};
 use specify_validate::validate_slice;
 use specify_workflow::change::{Plan, orphan_authority_override_keys};
 use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
 use specify_workflow::journal::{Event, EventKind, append_batch};
 use specify_workflow::schema::{evidence_yaml_paths, validate_evidence_dir};
-use specify_workflow::slice::reconciliation::{self, ReconciliationIndex};
+use specify_workflow::slice::model::validate_model_doc;
+use specify_workflow::slice::{SliceModel, expected_provenance_lines};
 
 use crate::runtime::context::Ctx;
 
@@ -31,64 +37,88 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     validate_evidence_dir(&slice_dir)?;
 
     // Single walk of `<slice>/specs/**/*.md` feeds provenance
-    // validation, reconciliation-drift REQ-id gathering, and post-pass
+    // validation, provenance-drift REQ-id gathering, and post-pass
     // synthesis journal emission.
     let source_keys = resolve_slice_source_keys(ctx, name)?;
-    let (spec_req_ids, synthesis_tags, provenance_summaries) =
+    let (_spec_req_ids, synthesis_tags, provenance_findings) =
         scan_slice_specs(&slice_dir, &source_keys)?;
-    if !provenance_summaries.is_empty() {
-        return Err(Error::Validation {
-            results: provenance_summaries,
-        });
+    if !provenance_findings.is_empty() {
+        return fail_with(ctx, "slice-provenance-invalid", provenance_findings);
     }
 
-    // `reconciliation.yaml` audit index — when `reconciliation.yaml` exists, cross-check it against
-    // `spec.md` REQ ids and per-source evidence claim ids. Absence
-    // of `reconciliation.yaml` is *not* drift: older slices and pre-refine
-    // slices skip the check silently. The slice-reconciliation-drift error
-    // body bundles every finding so the operator sees the full
-    // re-refine surface in one pass.
-    //
     // per-slice authority override — refuse a per-slice `authority-override` map that
     // names a source key absent from the slice's own `sources[]`
     // list. Runs before `validate_slice` so the operator sees the
     // structural issue before adapter rules surface downstream
     // breakage. Both checks share an error envelope when they
     // both fire so the operator can see every issue in one pass.
-    validate_pre_adapter_gates(ctx, &slice_dir, name, &spec_req_ids)?;
+    let gate_findings = collect_pre_adapter_gates(ctx, &slice_dir, name)?;
+    if !gate_findings.is_empty() {
+        return fail_with(ctx, "slice-pre-adapter-gate", gate_findings);
+    }
 
-    let report = validate_slice(&slice_dir)?;
-    let passed = report.passed;
+    // Adapter validation findings — `validate_slice` returns one
+    // `violation` diagnostic per structural Fail and one `review`
+    // diagnostic per deferred semantic rule. The report is rendered
+    // on stdout either way; only a blocking diagnostic gates exit.
+    //
+    // The `discovery-lead-synopsis-thin` content-floor advisory
+    // (RFC-29b-signal D2.1) rides this non-blocking surface — never
+    // the pre-adapter gate above, which hard-fails on any finding —
+    // so a thin `synopsis` nudges without ever parking the slice.
+    let mut findings = validate_slice(&slice_dir)?;
+    findings.extend(synopsis_thin(ctx)?);
+    let blocking = blocking_present(&findings);
+    render_report(ctx, findings)?;
 
-    ctx.write(&report, |w, _| {
-        writeln!(w, "{}", if report.passed { "PASS" } else { "FAIL" })?;
-        for (key, results) in &report.brief_results {
-            writeln!(w, "{key}:")?;
-            for r in results {
-                writeln!(w, "  {}", format_result_line(r))?;
-            }
-        }
-        if !report.cross_checks.is_empty() {
-            writeln!(w, "cross_checks:")?;
-            for r in &report.cross_checks {
-                writeln!(w, "  {}", format_result_line(r))?;
-            }
-        }
-        Ok(())
-    })?;
-    if passed {
-        // DECISIONS.md — `slice.synthesis.{conflict,divergence,unknown}`
-        // emit once per tagged requirement after a successful validate
-        // (same posture as `slice.transition.refined` on transition).
-        append_synthesis_journal(ctx, name, synthesis_tags)?;
-        Ok(())
-    } else {
+    if blocking {
         Err(Error::validation_failed(
             "slice-validation-failed",
             "slice must satisfy adapter validation",
             format!("slice `{name}` failed validation"),
         ))
+    } else {
+        // DECISIONS.md — `slice.synthesis.{conflict,divergence,unknown}`
+        // emit once per tagged requirement after a successful validate
+        // (same posture as `slice.transition.refined` on transition).
+        append_synthesis_journal(ctx, name, synthesis_tags)?;
+        Ok(())
     }
+}
+
+/// Render `findings` as a [`DiagnosticReport`] on stdout in the active
+/// `Ctx` format. JSON serialises the wire envelope; text renders a
+/// PASS/FAIL banner plus one line per diagnostic. Ids are assigned
+/// sequentially at render time.
+fn render_report(ctx: &Ctx, mut findings: Vec<Diagnostic>) -> Result<()> {
+    renumber(&mut findings);
+    let blocking = blocking_present(&findings);
+    let report = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
+        findings,
+    };
+    ctx.write(&report, move |w, report| {
+        writeln!(w, "{}", if blocking { "FAIL" } else { "PASS" })?;
+        for finding in &report.findings {
+            writeln!(w, "  {}", format_finding_line(finding))?;
+        }
+        Ok(())
+    })
+}
+
+/// Render `findings` on stdout and return the payload-free
+/// [`Error::Validation`] keyed on `code`. Used by every pre-adapter
+/// gate so the operator sees the full diagnostic surface before the
+/// gate fails the command.
+fn fail_with(ctx: &Ctx, code: &'static str, findings: Vec<Diagnostic>) -> Result<()> {
+    let count = findings.len();
+    render_report(ctx, findings)?;
+    Err(Error::validation_failed(
+        code,
+        "slice must satisfy structural invariants",
+        format!("{count} blocking finding(s)"),
+    ))
 }
 
 /// Append one `slice.synthesis.*` journal line per `(requirement-id,
@@ -130,12 +160,11 @@ struct ScannedSpec {
     parsed: ParsedSpec,
 }
 
-type ScanSliceSpecsResult =
-    (BTreeSet<String>, Vec<(String, RequirementTag)>, Vec<ValidationSummary>);
+type ScanSliceSpecsResult = (BTreeSet<String>, Vec<(String, RequirementTag)>, Vec<Diagnostic>);
 
 /// Walk `<slice>/specs/**/*.md` once, parse each file, and fan out
 /// REQ ids (all files), synthesis tags (annotated files only), and
-/// provenance validation summaries (annotated files only).
+/// provenance diagnostics (annotated files only).
 fn scan_slice_specs(
     slice_dir: &Path, source_keys: &BTreeSet<String>,
 ) -> Result<ScanSliceSpecsResult> {
@@ -150,7 +179,7 @@ fn scan_slice_specs(
 
     let mut req_ids = BTreeSet::new();
     let mut synthesis_tags = Vec::new();
-    let mut provenance_summaries = Vec::new();
+    let mut provenance_findings = Vec::new();
 
     for path in spec_files {
         let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
@@ -177,45 +206,47 @@ fn scan_slice_specs(
         let path_hint = path_hint(&scanned.path, slice_dir);
         let validation_findings = provenance::validate(&scanned.parsed, source_keys);
         for f in scanned.parsed.findings.into_iter().chain(validation_findings) {
-            provenance_summaries.push(f.into_summary(&path_hint));
+            provenance_findings.push(f.into_diagnostic(&path_hint));
         }
     }
 
-    Ok((req_ids, synthesis_tags, provenance_summaries))
+    Ok((req_ids, synthesis_tags, provenance_findings))
 }
 
-/// Bundle the five pre-adapter gates that fire on a single slice:
+/// Bundle the pre-adapter gates that fire on a single slice:
 ///
 /// 1. RFC-35 D8 — spec file-location check: root `spec.md` exists
 ///    but no canonical `specs/<unit>/spec.md` files found. Fires
 ///    first so the operator sees the structural cause before
 ///    downstream drift noise.
-/// 2. `reconciliation.yaml` audit index — reconciliation-drift detection between
-///    `specs/<unit>/spec.md` requirement blocks, the per-slice `reconciliation.yaml`,
-///    and per-source `evidence/<key>.yaml`.
-/// 3. per-slice authority override — orphan source keys on the slice's
+/// 2. per-slice authority override — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
-/// 4. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
+/// 3. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
 ///    `<project_dir>/discovery.md`. A discovery-level check (not
 ///    per-slice) but evaluated here because `specrun slice validate`
 ///    is the single CLI surface skills shell out to between
 ///    `/spec:refine` and `/spec:build`.
-/// 5. component catalog contract — catalog drift between Evidence `component:`
+/// 4. component catalog contract — catalog drift between Evidence `component:`
 ///    directives and `.specify/design-system/components.yaml`.
+/// 5. typed-model drift — the seven RFC-29c §"Drift validation"
+///    findings over `<slice>/model.yaml` (skipped when absent).
 ///
-/// All five checks can fail independently; we collect every finding
-/// into a single [`Error::Validation`] so the operator sees the
-/// full surface in one pass instead of one error per re-run.
-fn validate_pre_adapter_gates(
-    ctx: &Ctx, slice_dir: &Path, name: &str, spec_req_ids: &BTreeSet<String>,
-) -> Result<()> {
-    let mut findings: Vec<ValidationSummary> = Vec::new();
+/// Provenance no longer has a file-drift gate: it is carried inline in
+/// `model.yaml` and projected on demand (`specrun slice provenance`),
+/// so there is no second representation to drift against. Spec-level
+/// `Sources:` / `Status:` coherence still runs in [`scan_slice_specs`].
+///
+/// All checks can fail independently; we collect every finding
+/// into one [`Diagnostic`] vector so the caller can render the full
+/// surface in one pass instead of one error per re-run.
+fn collect_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<Vec<Diagnostic>> {
+    let mut findings: Vec<Diagnostic> = Vec::new();
     findings.extend(collect_spec_file_location_findings(slice_dir));
-    findings.extend(collect_reconciliation_drift_findings(slice_dir, spec_req_ids)?);
     findings.extend(override_orphans(ctx, name)?);
     findings.extend(alias_collisions(ctx)?);
     findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
-    if findings.is_empty() { Ok(()) } else { Err(Error::Validation { results: findings }) }
+    findings.extend(collect_model_drift_findings(ctx, slice_dir, name)?);
+    Ok(findings)
 }
 
 /// discovery alias contract alias-collision gate. Loads
@@ -225,7 +256,7 @@ fn validate_pre_adapter_gates(
 /// silently — older slices and projects without an authored
 /// inventory remain valid (this is the read-only counterpart to
 /// the per-amend gate in `specrun plan amend --add-alias`).
-fn alias_collisions(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
+fn alias_collisions(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
     let path = ctx.layout().discovery_path();
     if !path.exists() {
         return Ok(Vec::new());
@@ -234,16 +265,16 @@ fn alias_collisions(ctx: &Ctx) -> Result<Vec<ValidationSummary>> {
     Ok(discovery
         .check_alias_collisions()
         .iter()
-        .map(specify_model::discovery::DiscoveryAliasCollision::to_summary)
+        .map(specify_model::discovery::DiscoveryAliasCollision::to_diagnostic)
         .collect())
 }
 
 /// RFC-35 D8 file-location gate. Emits a `specs.file-location`
 /// finding when the slice has no spec files under the canonical
 /// `specs/<unit>/spec.md` layout but does have a root-level
-/// `spec.md`. This fires before the reconciliation-drift gate so the
+/// `spec.md`. This fires first among the pre-adapter gates so the
 /// operator sees the structural cause before downstream drift noise.
-fn collect_spec_file_location_findings(slice_dir: &Path) -> Vec<ValidationSummary> {
+fn collect_spec_file_location_findings(slice_dir: &Path) -> Vec<Diagnostic> {
     let specs_dir = slice_dir.join("specs");
     let has_canonical_specs =
         specs_dir.is_dir() && collect_spec_files(&specs_dir).is_ok_and(|files| !files.is_empty());
@@ -254,50 +285,89 @@ fn collect_spec_file_location_findings(slice_dir: &Path) -> Vec<ValidationSummar
     if !root_spec.is_file() {
         return Vec::new();
     }
-    vec![ValidationSummary {
-        status: ValidationStatus::Fail,
-        rule_id: "specs.file-location".into(),
-        rule: "Spec files live under specs/<unit>/spec.md, not at the slice root".into(),
-        detail: Some(
-            "No spec files found under `specs/`. Found `spec.md` at the slice root — \
-             move it to `specs/<unit>/spec.md` (one file per `proposal.md ## Units` entry). \
-             The Specify workflow requires spec files under `specs/` for every target."
-                .into(),
-        ),
-    }]
+    vec![Diagnostic::violation(
+        "specs.file-location",
+        "Spec files live under specs/<unit>/spec.md, not at the slice root",
+        "No spec files found under `specs/`. Found `spec.md` at the slice root — \
+         move it to `specs/<unit>/spec.md` (one file per `proposal.md ## Units` entry). \
+         The Specify workflow requires spec files under `specs/` for every target.",
+        Artifact::Specs,
+        None,
+    )]
 }
 
-/// `reconciliation.yaml` audit index drift gate. Loads `<slice>/reconciliation.yaml` when present,
-/// gathers `REQ-*` ids from every `<slice>/specs/**/*.md` file and
-/// claim ids from every `<slice>/evidence/<source>.yaml` file, and
-/// emits one `slice-reconciliation-drift` finding per drift entry. The
-/// reconciliation file's own schema validation runs first
-/// ([`ReconciliationIndex::load`]) so structural errors surface as
-/// `reconciliation-schema` failures rather than bare drift noise.
+/// Synopsis content-floor advisory (RFC-29b-signal D2.1). Loads
+/// `<project_dir>/discovery.md` when present and emits one
+/// non-blocking `discovery-lead-synopsis-thin` finding per lead whose
+/// `synopsis` falls below a contentfulness heuristic. Absent
+/// `discovery.md` skips the check silently.
 ///
-/// Absence of `reconciliation.yaml` is a legal state — older slices and
-/// `refining` slices that haven't yet been driven through
-/// `/spec:refine` skip the check silently.
-fn collect_reconciliation_drift_findings(
-    slice_dir: &Path, spec_req_ids: &BTreeSet<String>,
-) -> Result<Vec<ValidationSummary>> {
-    let index_path = slice_dir.join("reconciliation.yaml");
-    if !index_path.is_file() {
+/// **Non-blocking by design** — surfaced at `suggestion` severity
+/// (`Diagnostic::review`), it never parks planning or transitions a
+/// plan. A thin synopsis is a nudge to improve the source adapter's
+/// `survey` brief output, not a gate: cross-source reconciliation is
+/// only ever as good as the discriminating power of each lead's
+/// `synopsis`, so the floor catches synopses the agent cannot match
+/// or split on at `propose` time.
+fn synopsis_thin(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
+    let path = ctx.layout().discovery_path();
+    if !path.exists() {
         return Ok(Vec::new());
     }
-    let reconciliation_index = ReconciliationIndex::load(&index_path)?;
-    let evidence = reconciliation::collect_evidence_claim_ids(slice_dir)?;
-    let drift = reconciliation_index.detect_drift(spec_req_ids, &evidence);
-    Ok(drift.into_iter().map(reconciliation::ReconciliationDrift::into_summary).collect())
+    let discovery = Discovery::load(&path)?;
+    Ok(discovery
+        .leads()
+        .iter()
+        .filter(|lead| synopsis_is_thin(&lead.synopsis))
+        .map(|lead| {
+            Diagnostic::review(
+                "discovery-lead-synopsis-thin",
+                "lead synopses should name behaviour distinctly enough to match or split on \
+                 content, not just the slug",
+                format!(
+                    "lead `{}:{}` has a thin synopsis (`{}`); name the operation/surface and its \
+                     salient constraint so a same-slug lead from another source can be \
+                     reconciled on content",
+                    lead.source,
+                    lead.lead,
+                    lead.synopsis.trim()
+                ),
+                Artifact::Plan,
+                None,
+            )
+        })
+        .collect())
 }
 
-/// per-slice authority override orphan-source-key gate. Loads `plan.yaml` (when
+/// Contentfulness heuristic for a lead `synopsis` (RFC-29b-signal
+/// D2.1). A synopsis is "thin" when it carries fewer than
+/// [`SYNOPSIS_MIN_WORDS`] whitespace-delimited words OR fewer than
+/// [`SYNOPSIS_MIN_CHARS`] non-whitespace characters once trimmed — too
+/// little for the agent to distinguish it from a same-slug lead in
+/// another source. Deliberately coarse: the finding is advisory, so a
+/// false positive costs the operator nothing.
+fn synopsis_is_thin(synopsis: &str) -> bool {
+    let trimmed = synopsis.trim();
+    let words = trimmed.split_whitespace().filter(|word| !word.is_empty()).count();
+    let chars = trimmed.chars().filter(|character| !character.is_whitespace()).count();
+    words < SYNOPSIS_MIN_WORDS || chars < SYNOPSIS_MIN_CHARS
+}
+
+/// Minimum whitespace-delimited word count below which a `synopsis` is
+/// flagged as thin.
+const SYNOPSIS_MIN_WORDS: usize = 4;
+
+/// Minimum non-whitespace character count below which a `synopsis` is
+/// flagged as thin.
+const SYNOPSIS_MIN_CHARS: usize = 20;
+
+/// per-slice authority override orphan-source gate. Loads `plan.yaml` (when
 /// present) and reports one finding per `(slice, kind)` pair
-/// whose source-key value is not in the slice's own `sources[]`
+/// whose source value is not in the slice's own `sources[]`
 /// list. Absent `plan.yaml` (e.g. ad-hoc slice without a plan)
 /// skips the check silently; the structural issue would already
 /// have surfaced earlier in workflow.
-fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<ValidationSummary>> {
+fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<Diagnostic>> {
     let plan_path = ctx.layout().plan_path();
     if !plan_path.exists() {
         return Ok(Vec::new());
@@ -310,13 +380,15 @@ fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<ValidationSummary>> {
     let findings = orphan_authority_override_keys(&slice_entries);
     Ok(findings
         .into_iter()
-        .map(|f| ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: f.code.to_string(),
-            rule: "Per-slice `authority-override` source key must appear in the slice's \
-                   `sources[]` list"
-                .to_string(),
-            detail: Some(f.message),
+        .map(|f| {
+            Diagnostic::violation(
+                f.code,
+                "Per-slice `authority-override` source key must appear in the slice's \
+                 `sources[]` list",
+                f.message,
+                Artifact::Plan,
+                None,
+            )
         })
         .collect())
 }
@@ -336,13 +408,13 @@ fn override_orphans(ctx: &Ctx, name: &str) -> Result<Vec<ValidationSummary>> {
 ///
 /// When no catalog exists the check returns empty — the catalog is
 /// opt-in.
-fn collect_catalog_drift_findings(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<ValidationSummary>> {
+fn collect_catalog_drift_findings(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<Diagnostic>> {
     let Some(catalog) = ComponentsCatalog::load(&ctx.project_dir)? else {
         return Ok(Vec::new());
     };
 
     let paths = evidence_yaml_paths(slice_dir)?;
-    let mut findings: Vec<ValidationSummary> = Vec::new();
+    let mut findings: Vec<Diagnostic> = Vec::new();
 
     for path in &paths {
         let raw = std::fs::read_to_string(path).map_err(|source| Error::Filesystem {
@@ -385,16 +457,389 @@ fn collect_catalog_drift_findings(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<Val
         }
     }
 
-    findings.sort_by(|a, b| a.detail.cmp(&b.detail));
+    findings.sort_by(|a, b| a.impact.cmp(&b.impact));
     Ok(findings)
 }
 
-fn catalog_drift_summary(detail: &str) -> ValidationSummary {
-    ValidationSummary {
-        status: ValidationStatus::Fail,
-        rule_id: "slice-catalog-drift".into(),
-        rule: "Evidence `component:` directives resolve to confirmed catalog entries".into(),
-        detail: Some(detail.to_string()),
+fn catalog_drift_summary(detail: &str) -> Diagnostic {
+    Diagnostic::violation(
+        "slice-catalog-drift",
+        "Evidence `component:` directives resolve to confirmed catalog entries",
+        detail,
+        Artifact::Specs,
+        None,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// RFC-29c §"Drift validation" — typed-model drift gate
+// ---------------------------------------------------------------------------
+
+/// Emit the seven RFC-29c §"Drift validation" findings over the slice's
+/// `model.yaml`. Skipped silently when the file is absent — every
+/// synthesized slice carries it, but `slice validate` runs on
+/// pre-synthesis (`refining`) slices too, so absence is not a defect
+/// here (it is enforced at synthesize time and by
+/// `slice provenance` / `slice model show`).
+///
+/// The schema gate (`slice-model-schema`) and the typed model-derived
+/// gates are evaluated independently from the same raw document: the
+/// embedded `model.schema.json` overlaps several of the structural
+/// checks (e.g. it pins the `REQ` / `TASK` id patterns), so collecting
+/// both surfaces every disagreement in one pass. The model-derived
+/// checks short-circuit only when the document cannot deserialise into
+/// the typed view at all — then the schema finding already explains
+/// why, and there is nothing typed left to inspect (mirroring the
+/// Evidence-schema short-circuit at the top of [`run`]).
+fn collect_model_drift_findings(
+    ctx: &Ctx, slice_dir: &Path, name: &str,
+) -> Result<Vec<Diagnostic>> {
+    let model_path = slice_dir.join("model.yaml");
+    if !model_path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = std::fs::read_to_string(&model_path).map_err(|source| Error::Filesystem {
+        op: "read",
+        path: model_path.clone(),
+        source,
+    })?;
+    let value: JsonValue = serde_saphyr::from_str(&raw)?;
+
+    let mut findings = Vec::new();
+    if let Err(Error::Validation { detail, .. }) = validate_model_doc(&value) {
+        findings.push(model_schema_finding(detail));
+    }
+    let Ok(model) = serde_saphyr::from_str::<SliceModel>(&raw) else {
+        return Ok(findings);
+    };
+
+    let evidence = EvidenceFacts::read(slice_dir)?;
+    findings.extend(provenance_stale_findings(slice_dir, &model)?);
+    findings.extend(target_drift_findings(ctx, &model, name)?);
+    findings.extend(source_orphan_findings(&model, &evidence));
+    findings.extend(cross_ref_orphan_findings(&model));
+    findings.extend(claim_kind_mismatch_findings(&model, &evidence));
+    findings.extend(id_grammar_findings(&model));
+    Ok(findings)
+}
+
+fn model_drift(code: &'static str, rule: &'static str, detail: String) -> Diagnostic {
+    Diagnostic::violation(code, rule, detail, Artifact::Specs, None)
+}
+
+fn model_schema_finding(detail: String) -> Diagnostic {
+    model_drift(
+        "slice-model-schema",
+        "model.yaml conforms to schemas/slice/model.schema.json",
+        detail,
+    )
+}
+
+/// `slice-spec-provenance-stale` — compare each model requirement's
+/// kernel-owned `id` / `sources` / `status` against the matching
+/// requirement parsed from the on-disk `specs/<unit>/spec.md`. A
+/// disagreement (or an absent rendered requirement) means an operator
+/// hand-edited a kernel-rendered provenance line without
+/// re-synthesising.
+fn provenance_stale_findings(slice_dir: &Path, model: &SliceModel) -> Result<Vec<Diagnostic>> {
+    const RULE: &str = "spec.md provenance lines agree with model.yaml";
+    let mut parsed_units: BTreeMap<String, Option<ParsedSpec>> = BTreeMap::new();
+    let mut findings = Vec::new();
+    for exp in expected_provenance_lines(model) {
+        if exp.id.is_empty() {
+            continue;
+        }
+        if !parsed_units.contains_key(&exp.unit) {
+            let path = slice_dir.join("specs").join(&exp.unit).join("spec.md");
+            let parsed = match std::fs::read_to_string(&path) {
+                Ok(text) => Some(provenance::parse_spec_md(&text)),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
+                Err(source) => {
+                    return Err(Error::Filesystem {
+                        op: "read",
+                        path,
+                        source,
+                    });
+                }
+            };
+            parsed_units.insert(exp.unit.clone(), parsed);
+        }
+        let Some(parsed) = parsed_units.get(&exp.unit).and_then(Option::as_ref) else {
+            findings.push(model_drift(
+                "slice-spec-provenance-stale",
+                RULE,
+                format!(
+                    "model requirement `{}` has no rendered `specs/{}/spec.md`",
+                    exp.id, exp.unit
+                ),
+            ));
+            continue;
+        };
+        let Some(req) = parsed.requirements.iter().find(|r| r.id == exp.id) else {
+            findings.push(model_drift(
+                "slice-spec-provenance-stale",
+                RULE,
+                format!(
+                    "model requirement `{}` is absent from `specs/{}/spec.md`",
+                    exp.id, exp.unit
+                ),
+            ));
+            continue;
+        };
+        if req.sources != exp.sources {
+            findings.push(model_drift(
+                "slice-spec-provenance-stale",
+                RULE,
+                format!(
+                    "requirement `{}` `Sources:` in `specs/{}/spec.md` ({}) disagrees with \
+                     model.yaml ({})",
+                    exp.id,
+                    exp.unit,
+                    render_sources(&req.sources),
+                    render_sources(&exp.sources),
+                ),
+            ));
+        }
+        if req.status != exp.status {
+            findings.push(model_drift(
+                "slice-spec-provenance-stale",
+                RULE,
+                format!(
+                    "requirement `{}` `Status:` in `specs/{}/spec.md` ({}) disagrees with \
+                     model.yaml ({})",
+                    exp.id,
+                    exp.unit,
+                    render_status(req.status),
+                    render_status(exp.status),
+                ),
+            ));
+        }
+    }
+    Ok(findings)
+}
+
+fn render_sources(sources: &[String]) -> String {
+    if sources.is_empty() { "<none>".to_string() } else { sources.join(", ") }
+}
+
+fn render_status(status: Option<RequirementStatus>) -> String {
+    status.map_or_else(|| "<none>".to_string(), |s| s.to_string())
+}
+
+/// `slice-model-target-drift` — the persisted `model.yaml.project` must
+/// agree with the slice's `plan.yaml` entry `project`. Only flagged
+/// when both carry an explicit value and they differ; an omitted plan
+/// `project` resolves to the sole topology project, so it cannot
+/// disagree. Skipped when no `plan.yaml` exists or the slice has no
+/// matching entry. `target` is never persisted, so there is no
+/// target-vs-resolved-target half.
+fn target_drift_findings(ctx: &Ctx, model: &SliceModel, name: &str) -> Result<Vec<Diagnostic>> {
+    let plan_path = ctx.layout().plan_path();
+    if !plan_path.exists() {
+        return Ok(Vec::new());
+    }
+    let plan = Plan::load(&plan_path)?;
+    let Some(entry) = plan.entries.iter().find(|e| e.name == name) else {
+        return Ok(Vec::new());
+    };
+    match (model.project.as_deref(), entry.project.as_deref()) {
+        (Some(model_project), Some(plan_project)) if model_project != plan_project => {
+            Ok(vec![Diagnostic::violation(
+                "slice-model-target-drift",
+                "model.yaml `project` agrees with the slice's plan entry",
+                format!(
+                    "model.yaml `project: {model_project}` disagrees with plan.yaml slice \
+                     `{name}` `project: {plan_project}`"
+                ),
+                Artifact::Plan,
+                None,
+            )])
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+/// `slice-model-source-orphan` — every contributing claim must trace to
+/// a real `(source, id)` in the slice's Evidence: the `source` key must
+/// own an `evidence/<source>.yaml`, and that file must carry a claim
+/// with the cited `id`.
+fn source_orphan_findings(model: &SliceModel, evidence: &EvidenceFacts) -> Vec<Diagnostic> {
+    const RULE: &str = "every claim traces to a real Evidence `(source, id)`";
+    let mut findings = Vec::new();
+    for claim in model.requirements.iter().flat_map(|req| &req.claims) {
+        if !evidence.sources.contains(&claim.source) {
+            findings.push(model_drift(
+                "slice-model-source-orphan",
+                RULE,
+                format!(
+                    "claim `{}:{}` references source key `{}`, which has no `evidence/{}.yaml`",
+                    claim.source, claim.id, claim.source, claim.source
+                ),
+            ));
+        } else if !evidence.claim_kinds.contains_key(&(claim.source.clone(), claim.id.clone())) {
+            findings.push(model_drift(
+                "slice-model-source-orphan",
+                RULE,
+                format!(
+                    "claim `{}:{}` references an Evidence claim id absent from `evidence/{}.yaml`",
+                    claim.source, claim.id, claim.source
+                ),
+            ));
+        }
+    }
+    findings
+}
+
+/// `slice-model-cross-ref-orphan` — every `tasks[].satisfies[]`
+/// reference must name an existing `requirements[].id`.
+fn cross_ref_orphan_findings(model: &SliceModel) -> Vec<Diagnostic> {
+    const RULE: &str = "every `satisfies[]` reference names an existing requirement";
+    let req_ids: BTreeSet<&str> =
+        model.requirements.iter().filter_map(|req| req.id.as_deref()).collect();
+    let mut findings = Vec::new();
+    for task in &model.tasks {
+        for req_ref in &task.satisfies {
+            if !req_ids.contains(req_ref.as_str()) {
+                findings.push(model_drift(
+                    "slice-model-cross-ref-orphan",
+                    RULE,
+                    format!(
+                        "task `{}` `satisfies` references `{}`, which is not a `requirements[].id`",
+                        task.id, req_ref
+                    ),
+                ));
+            }
+        }
+    }
+    findings
+}
+
+/// `slice-model-claim-kind-mismatch` (D13) — a claim's `kind` in
+/// `model.yaml` must equal the `kind` recorded on the matching Evidence
+/// claim. Claims with no matching Evidence `(source, id)` are left to
+/// [`source_orphan_findings`].
+fn claim_kind_mismatch_findings(model: &SliceModel, evidence: &EvidenceFacts) -> Vec<Diagnostic> {
+    const RULE: &str = "claim `kind` agrees with the Evidence claim it traces to";
+    let mut findings = Vec::new();
+    for claim in model.requirements.iter().flat_map(|req| &req.claims) {
+        let key = (claim.source.clone(), claim.id.clone());
+        if let Some(evidence_kind) = evidence.claim_kinds.get(&key)
+            && *evidence_kind != claim.kind
+        {
+            findings.push(model_drift(
+                "slice-model-claim-kind-mismatch",
+                RULE,
+                format!(
+                    "claim `{}:{}` has `kind: {}` in model.yaml but `kind: {}` in \
+                     `evidence/{}.yaml`",
+                    claim.source, claim.id, claim.kind, evidence_kind, claim.source
+                ),
+            ));
+        }
+    }
+    findings
+}
+
+/// `slice-model-id-grammar` — `requirements[].id` matches `^REQ-[0-9]{3}$`,
+/// `tasks[].id` and `depends-on[]` match `^TASK-[0-9]{3}$`, and
+/// `satisfies[]` references match `^REQ-[0-9]{3}$` (RFC-29c §"ID grammar").
+fn id_grammar_findings(model: &SliceModel) -> Vec<Diagnostic> {
+    let mut findings = Vec::new();
+    for id in model.requirements.iter().filter_map(|req| req.id.as_deref()) {
+        if !is_req_id(id) {
+            findings.push(id_grammar_finding(format!(
+                "requirement id `{id}` does not match `^REQ-[0-9]{{3}}$`"
+            )));
+        }
+    }
+    for task in &model.tasks {
+        if !is_task_id(&task.id) {
+            findings.push(id_grammar_finding(format!(
+                "task id `{}` does not match `^TASK-[0-9]{{3}}$`",
+                task.id
+            )));
+        }
+        for dep in &task.depends_on {
+            if !is_task_id(dep) {
+                findings.push(id_grammar_finding(format!(
+                    "task `{}` `depends-on` entry `{}` does not match `^TASK-[0-9]{{3}}$`",
+                    task.id, dep
+                )));
+            }
+        }
+        for req_ref in &task.satisfies {
+            if !is_req_id(req_ref) {
+                findings.push(id_grammar_finding(format!(
+                    "task `{}` `satisfies` entry `{}` does not match `^REQ-[0-9]{{3}}$`",
+                    task.id, req_ref
+                )));
+            }
+        }
+    }
+    findings
+}
+
+fn id_grammar_finding(detail: String) -> Diagnostic {
+    model_drift(
+        "slice-model-id-grammar",
+        "`REQ` / `TASK` ids match their closed three-digit grammar",
+        detail,
+    )
+}
+
+fn is_req_id(id: &str) -> bool {
+    is_three_digit_id(id, "REQ-")
+}
+
+fn is_task_id(id: &str) -> bool {
+    is_three_digit_id(id, "TASK-")
+}
+
+fn is_three_digit_id(id: &str, prefix: &str) -> bool {
+    id.strip_prefix(prefix)
+        .is_some_and(|tail| tail.len() == 3 && tail.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Per-slice Evidence facts the model-drift checks read: the set of
+/// source keys (one per `evidence/*.yaml`) and the `(source, id)` →
+/// [`ClaimKind`] map for the source-orphan and kind-mismatch checks.
+/// Mirrors the local Evidence read in [`collect_catalog_drift_findings`].
+struct EvidenceFacts {
+    sources: BTreeSet<String>,
+    claim_kinds: BTreeMap<(String, String), ClaimKind>,
+}
+
+impl EvidenceFacts {
+    fn read(slice_dir: &Path) -> Result<Self> {
+        let mut sources = BTreeSet::new();
+        let mut claim_kinds = BTreeMap::new();
+        for path in evidence_yaml_paths(slice_dir)? {
+            let raw = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
+                op: "read",
+                path: path.clone(),
+                source,
+            })?;
+            let doc: JsonValue = serde_saphyr::from_str(&raw)?;
+            let source = path.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_string();
+            sources.insert(source.clone());
+            let Some(claims) = doc.get("claims").and_then(JsonValue::as_array) else {
+                continue;
+            };
+            for claim in claims {
+                let Some(id) = claim.get("id").and_then(JsonValue::as_str) else {
+                    continue;
+                };
+                let Some(kind) = claim
+                    .get("kind")
+                    .and_then(JsonValue::as_str)
+                    .and_then(|raw| raw.parse::<ClaimKind>().ok())
+                else {
+                    continue;
+                };
+                claim_kinds.insert((source.clone(), id.to_string()), kind);
+            }
+        }
+        Ok(Self { sources, claim_kinds })
     }
 }
 
@@ -458,17 +903,20 @@ fn resolve_slice_source_keys(ctx: &Ctx, name: &str) -> Result<BTreeSet<String>> 
         // against any key spelt correctly.
         return Ok(plan.sources.keys().cloned().collect());
     };
-    Ok(entry.sources.iter().map(|b| b.key().to_string()).collect())
+    Ok(entry.sources.iter().map(|b| b.source().to_string()).collect())
 }
 
-fn format_result_line(r: &ValidationSummary) -> String {
-    match r.status {
-        ValidationStatus::Pass => format!("[ok] {}", r.rule_id),
-        ValidationStatus::Fail => {
-            format!("[fail] {}: {}", r.rule_id, r.detail.as_deref().unwrap_or(""))
+/// One-line text rendering of a diagnostic for the PASS/FAIL banner.
+/// `violation` findings are blocking defects (`[fail]`); `review`
+/// findings are deferred requests for judgment (`[review]`).
+fn format_finding_line(d: &Diagnostic) -> String {
+    let rule = d.rule_id.as_deref().unwrap_or("<unknown>");
+    match d.kind {
+        specify_diagnostics::DiagnosticKind::Violation => {
+            format!("[fail] {}: {}", rule, d.impact)
         }
-        ValidationStatus::Deferred => {
-            format!("[defer] {} ({})", r.rule_id, r.detail.as_deref().unwrap_or(""))
+        specify_diagnostics::DiagnosticKind::Review => {
+            format!("[review] {} ({})", rule, d.impact)
         }
     }
 }

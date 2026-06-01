@@ -1,6 +1,5 @@
 //! Clap derive surface for `specdev lint`. Mirrors
-//! `src/runtime/commands/lint/cli.rs` modulo the defaults pinned by
-//! RFC-34 §F2:
+//! `src/runtime/commands/lint/cli.rs` modulo these pinned defaults:
 //!
 //! - `--rules-root` defaults to `.` (the framework repo itself
 //!   carries the codex tree); also reachable as the legacy
@@ -11,7 +10,7 @@
 //! - `--target` is optional and defaults to the sentinel `none`
 //!   string (framework scans don't have a single target adapter).
 //! - `--include-core` does not exist — `CORE-*` rules are always
-//!   visible to the framework run per RFC-34 §A3 / §F3.
+//!   visible to the framework run.
 //!
 //! The per-subcommand `--output-format` flag is intentionally
 //! distinct from the global `Cli::format` flag (`text` / `json`):
@@ -29,8 +28,8 @@ use clap::Parser;
 
 /// Flat argument set for `specdev lint`. Modelled as a `Parser`
 /// derive so it can be embedded under the top-level `Command::Lint`
-/// variant without introducing a `run` sub-verb (RFC-34 §F2's
-/// examples hit the flags directly: `specdev lint --rule CORE-001`).
+/// variant without introducing a `run` sub-verb (the examples hit
+/// the flags directly: `specdev lint --rule CORE-001`).
 #[derive(Debug, Parser)]
 pub struct LintAction {
     /// Framework repo root used as both rules-root and scan-root.
@@ -52,7 +51,7 @@ pub struct LintAction {
     pub sources: Vec<String>,
 
     /// Restrict the declarative pass to specific rule ids (debug
-    /// surface from RFC-34 §F2 `specdev lint --rule CORE-001`).
+    /// surface: `specdev lint --rule CORE-001`).
     /// Repeatable; empty means "evaluate every applicable rule".
     /// Does not filter the imperative pass — authoring rule ids
     /// (`rules.schema-violation`, `skill.unknown-tool`, …) do not
@@ -97,7 +96,7 @@ pub struct LintAction {
 /// Clap presentation enum shared with `specrun lint`. Re-exported
 /// from the runtime tree rather than redefined: it is a clap-facing
 /// presentation type (kept out of the runtime-agnostic
-/// `specify-lints` crate), and both copies compile into the same
+/// `specify-standards` crate), and both copies compile into the same
 /// `specify` binary, so the canonical definition — together with its
 /// `From<LintFormat> for DiagnosticsFormat` adapter — lives once in
 /// `crate::runtime::commands::lint::cli`.

@@ -103,12 +103,10 @@ fn axis_collision_rejected_at_resolve_time() {
         TargetAdapter::resolve("foo", &project)
             .expect_err("target-axis resolve must reject the collision"),
     ] {
-        let Error::Validation { results } = err else {
+        let Error::Validation { code, detail } = err else {
             panic!("expected Error::Validation, got: {err:?}");
         };
-        assert_eq!(results.len(), 1, "single-finding payload");
-        assert_eq!(results[0].rule_id, "adapter-name-axis-collision");
-        let detail = results[0].detail.as_deref().unwrap_or_default();
+        assert_eq!(code, "adapter-name-axis-collision");
         assert!(
             detail.contains("adapters/sources/") && detail.contains("adapters/targets/"),
             "error body must name both axes, got: {detail}"
@@ -142,11 +140,10 @@ fn axis_unique_rejects_opposite_axis() {
     for axis in [Axis::Source, Axis::Target] {
         let err = check_axis_unique_for_name(axis, "foo", &project)
             .expect_err("colliding adapter name must fail");
-        let Error::Validation { results } = err else {
+        let Error::Validation { code, detail } = err else {
             panic!("expected Error::Validation, got: {err:?}");
         };
-        assert_eq!(results[0].rule_id, "adapter-name-axis-collision");
-        let detail = results[0].detail.as_deref().unwrap_or_default();
+        assert_eq!(code, "adapter-name-axis-collision");
         assert!(
             detail.contains("adapters/sources/") && detail.contains("adapters/targets/"),
             "error body must name both axes, got: {detail}"
@@ -182,6 +179,7 @@ fn cache_wins_over_local() {
         r"name: code-typescript
 version: 7
 axis: source
+execution: agent
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
@@ -248,7 +246,7 @@ fn resolves_captures_with_tools() {
     // This test is the cli-side complement to the deno harness
     // assertions in `augentic/specify` at
     // `tests/cross_repo/sources_test.ts` — the harness pins the
-    // golden-fixture data shape (Evidence + reconciliation.yaml +
+    // golden-fixture data shape (Evidence + provenance.yaml +
     // discovery.md) while this test pins the loader behaviour.
     let (_tmp, project) = local_project();
     let manifest_dir = project.join("adapters").join("sources").join("captures");
@@ -258,6 +256,7 @@ fn resolves_captures_with_tools() {
         r"name: captures
 version: 1
 axis: source
+execution: agent
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
@@ -294,6 +293,92 @@ description: >-
         resolved.location.path().ends_with("adapters/sources/captures"),
         "resolver root must land on the plg-tree adapter directory, got: {}",
         resolved.location.path().display()
+    );
+}
+
+#[test]
+fn resolves_target_adapter_with_inputs() {
+    // RFC-29d C2: a target manifest declares the extra `build` inputs
+    // its operation consumes (paths relative to `inputs.root`, each
+    // flagged `required`). The flat list must round-trip through
+    // `TargetAdapter::resolve` with fields populated.
+    let (_tmp, project) = local_project();
+    let manifest_dir = project.join("adapters").join("targets").join("with-inputs");
+    fs::create_dir_all(&manifest_dir).expect("create target adapter dir");
+    fs::write(
+        manifest_dir.join("adapter.yaml"),
+        r"name: with-inputs
+version: 1
+axis: target
+execution: tool
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+inputs:
+  - path: tokens.yaml
+    required: true
+  - path: assets.yaml
+    required: false
+description: Target adapter declaring build inputs.
+",
+    )
+    .expect("write manifest with inputs");
+
+    let resolved = TargetAdapter::resolve("with-inputs", &project)
+        .expect("target adapter declaring inputs resolves");
+    assert_eq!(resolved.manifest.inputs.len(), 2, "both declared inputs survive the round-trip");
+    assert_eq!(resolved.manifest.inputs[0].path, "tokens.yaml");
+    assert!(resolved.manifest.inputs[0].required, "first input is required");
+    assert_eq!(resolved.manifest.inputs[1].path, "assets.yaml");
+    assert!(!resolved.manifest.inputs[1].required, "second input is optional");
+}
+
+#[test]
+fn target_adapter_inputs_default_empty() {
+    // The `inputs` field is optional; the in-tree `omnia` fixture omits
+    // it, so a resolved manifest must default to an empty list.
+    let (_tmp, project) = local_project();
+    let resolved =
+        TargetAdapter::resolve("omnia", &project).expect("resolve target adapter without inputs");
+    assert!(
+        resolved.manifest.inputs.is_empty(),
+        "a manifest that omits `inputs` defaults to an empty list"
+    );
+}
+
+#[test]
+fn malformed_input_entry_rejected_at_load_time() {
+    // An `inputs` entry missing the required `required` flag must fail
+    // the target-axis schema before the typed manifest materialises —
+    // confirming the new field flows through `TargetAdapter::resolve`.
+    let (_tmp, project) = local_project();
+    let manifest_dir = project.join("adapters").join("targets").join("bad-inputs");
+    fs::create_dir_all(&manifest_dir).expect("create target adapter dir");
+    fs::write(
+        manifest_dir.join("adapter.yaml"),
+        r"name: bad-inputs
+version: 1
+axis: target
+execution: tool
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+inputs:
+  - path: tokens.yaml
+description: Target adapter with a malformed input entry.
+",
+    )
+    .expect("write manifest with malformed input entry");
+
+    let err = TargetAdapter::resolve("bad-inputs", &project)
+        .expect_err("input entry omitting `required` must fail");
+    let detail = err.to_string();
+    assert!(
+        detail.contains("adapter-schema-violation")
+            || detail.contains("adapter-manifest-malformed"),
+        "expected schema violation, got: {detail}"
     );
 }
 

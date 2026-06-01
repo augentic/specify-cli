@@ -16,6 +16,7 @@ use super::Ref;
 pub(super) enum Action {
     Create,
     Amend,
+    Remove,
 }
 
 #[derive(Serialize)]
@@ -31,5 +32,6 @@ pub(super) fn write_entry_text(w: &mut dyn Write, body: &EntryBody) -> std::io::
     match body.action {
         Action::Create => writeln!(w, "Created plan entry '{name}' with status 'pending'."),
         Action::Amend => writeln!(w, "Amended plan entry '{name}'."),
+        Action::Remove => writeln!(w, "Removed plan entry '{name}'."),
     }
 }

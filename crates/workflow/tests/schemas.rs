@@ -50,6 +50,7 @@ const PLUGIN_VALID_SOURCE: &str = r"
 name: code-typescript
 version: 1
 axis: source
+execution: agent
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
@@ -60,6 +61,7 @@ const PLUGIN_VALID_TARGET: &str = r"
 name: omnia
 version: 1
 axis: target
+execution: agent
 briefs:
   shape: briefs/shape.md
   build: briefs/build.md
@@ -222,20 +224,16 @@ fn target_rejects_axis_and_brief_violations() {
 // --- evidence.schema.json ------------------------------------------
 
 const EVIDENCE_VALID_REQUIREMENT: &str = r"
-source: legacy-monolith
-adapter: code-typescript
 authority: behaviour
 lead: user-registration
 claims:
   - kind: requirement
-    claim-id: users.register.email-validation
+    id: users.register.email-validation
     path: src/users/register.ts#L12-L87
     statement: The system accepts registrations with RFC 5322 emails.
 ";
 
 const EVIDENCE_VALID_SPATIAL: &str = r"
-source: home-screenshot
-adapter: screenshots
 authority: documentation
 lead: home-screen
 claims:
@@ -248,41 +246,31 @@ claims:
 ";
 
 const EVIDENCE_VALID_EMPTY_CLAIMS: &str = r"
-source: intent
-adapter: intent
 authority: intent
 lead: add-search-filter
 claims: []
 ";
 
 const EVIDENCE_INVALID_MISSING_AUTHORITY: &str = r"
-source: legacy-monolith
-adapter: code-typescript
 lead: user-registration
 claims: []
 ";
 
 const EVIDENCE_INVALID_BAD_AUTHORITY: &str = r"
-source: legacy-monolith
-adapter: code-typescript
 authority: unknown
 lead: user-registration
 claims: []
 ";
 
 const EVIDENCE_INVALID_BAD_KIND: &str = r"
-source: legacy-monolith
-adapter: code-typescript
 authority: behaviour
 lead: user-registration
 claims:
   - kind: hunch
-    claim-id: users.register.maybe
+    id: users.register.maybe
 ";
 
 const EVIDENCE_INVALID_REQUIREMENT_NO_CLAIM_ID: &str = r"
-source: notes
-adapter: documentation
 authority: documentation
 lead: password-reset
 claims:
@@ -290,11 +278,9 @@ claims:
     statement: Reset links expire after 30 minutes.
 ";
 
-const EVIDENCE_INVALID_SOURCE_NOT_KEBAB: &str = r"
-source: LegacyMonolith
-adapter: code-typescript
+const EVIDENCE_INVALID_LEAD_NOT_KEBAB: &str = r"
 authority: behaviour
-lead: user-registration
+lead: User_Registration
 claims: []
 ";
 
@@ -315,58 +301,51 @@ fn evidence_rejects_bad_authority_and_kinds() {
     assert_invalid(
         &v,
         &yaml(EVIDENCE_INVALID_REQUIREMENT_NO_CLAIM_ID),
-        "evidence/requirement-missing-claim-id",
+        "evidence/requirement-missing-id",
     );
-    assert_invalid(&v, &yaml(EVIDENCE_INVALID_SOURCE_NOT_KEBAB), "evidence/source-not-kebab");
+    assert_invalid(&v, &yaml(EVIDENCE_INVALID_LEAD_NOT_KEBAB), "evidence/lead-not-kebab");
 }
 
 // --- discovery/lead.schema.json --------------------------------
 
 const LEAD_VALID: &str = r"
-id: user-registration
-sources: [legacy-monolith]
-summary: Registration endpoint accepting email + password with RFC 5322 validation.
+lead: user-registration
+source: legacy-monolith
+synopsis: Registration endpoint accepting email + password with RFC 5322 validation.
 ";
 
-const LEAD_VALID_TENTATIVE: &str = r"
-id: password-reset
-sources: [identity-design-notes, legacy-monolith]
-summary: Operator-initiated password reset via email link.
-tentative: true
-";
-
-const LEAD_INVALID_NO_SOURCES: &str = r"
-id: user-registration
-sources: []
-summary: bad — sources must be non-empty.
+const LEAD_INVALID_MISSING_SOURCE_KEY: &str = r"
+lead: user-registration
+synopsis: bad — source is required.
 ";
 
 const LEAD_INVALID_BAD_ID: &str = r"
-id: User_Registration
-sources: [legacy-monolith]
-summary: Bad id.
+lead: User_Registration
+source: legacy-monolith
+synopsis: Bad id.
 ";
 
-const LEAD_INVALID_TENTATIVE_WRONG_TYPE: &str = r"
-id: user-registration
-sources: [legacy-monolith]
-summary: Bad tentative.
-tentative: maybe
+const LEAD_INVALID_TENTATIVE_REMOVED: &str = r"
+lead: user-registration
+source: legacy-monolith
+synopsis: A lead carrying the retired tentative field.
+tentative: true
 ";
 
 #[test]
-fn lead_accepts_minimal_and_tentative_shapes() {
+fn lead_accepts_minimal_shape() {
     let v = load("discovery/lead.schema.json");
     assert_valid(&v, &yaml(LEAD_VALID), "lead/minimal");
-    assert_valid(&v, &yaml(LEAD_VALID_TENTATIVE), "lead/tentative");
 }
 
 #[test]
-fn lead_rejects_bad_sources_id_and_tentative() {
+fn lead_rejects_missing_source_bad_id_and_retired_tentative() {
     let v = load("discovery/lead.schema.json");
-    assert_invalid(&v, &yaml(LEAD_INVALID_NO_SOURCES), "lead/no-sources");
+    assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
-    assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_WRONG_TYPE), "lead/wrong-tentative-type");
+    // `tentative` was retired (RFC-29b-signal D2.3); the schema is
+    // `additionalProperties: false`, so a lead carrying it now fails.
+    assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_REMOVED), "lead/retired-tentative");
 }
 
 // --- plan/plan.schema.json (source/target adapter split deltas) -------------------------
@@ -418,9 +397,9 @@ fn plan_rejects_slice_missing_lead() {
 name: bad
 slices:
   - name: only
-    target: omnia@v1
+    project: app
     sources:
-      - key: docs
+      - source: docs
     status: pending
 ";
     assert_invalid(&v, &yaml(bad), "plan/v2/source-missing-lead");

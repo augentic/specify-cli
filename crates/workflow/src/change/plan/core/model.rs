@@ -121,43 +121,30 @@ pub struct Plan {
 pub struct Entry {
     /// Stable identifier (kebab-case) unique within the plan.
     pub name: String,
-    /// Target registry project. Required for multi-project registries.
+    /// Target registry project. Optional on disk: an omitted value
+    /// resolves to the sole project in the topology (a single regular
+    /// project synthesised from `project.yaml`), so single-project
+    /// plans need not repeat the project name; multi-project hub
+    /// registries require an explicit value.
+    ///
+    /// The target adapter (`name@vN`) is **not** stored on the slice —
+    /// it is resolved on demand from this project via the topology
+    /// (`registry.yaml` for a hub, `project.yaml.adapter` for a single
+    /// regular project) by [`crate::change::plan::core::resolve_target`].
     #[serde(default)]
     pub project: Option<String>,
-    /// Target-adapter identifier (workflow §Adapter vocabulary) for the
-    /// slice (e.g. `omnia@v1`, `contracts@v1`). Required when
-    /// `project` is `None`; optional override when `project` is
-    /// `Some`. Mutually enriching with `project`: `project` identifies
-    /// the target codebase; `target` identifies the target adapter
-    /// directly. The cross-field "at least one of `project` /
-    /// `target`" rule is enforced by `plan.schema.json` (see
-    /// [DECISIONS.md §"Target adapter suffix policy"]).
-    ///
-    /// On the wire the value is the kebab `name@vN` form — the
-    /// integer suffix is parsed at deserialisation time into the
-    /// [`TargetRef`] newtype and reconciled at plan-validation time
-    /// against the resolved target adapter's `version` field.
-    ///
-    /// Renamed from `adapter` in Wave 0.2 — the on-disk and
-    /// in-memory field is now `target`. The pre-2.0 `adapter`
-    /// alias was dropped together with the schema tightening that
-    /// shipped in the same change.
-    ///
-    /// [DECISIONS.md §"Target adapter suffix policy"]: ../../../../../DECISIONS.md#target-adapter-suffix-policy
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<TargetRef>,
     /// Current lifecycle state of this entry.
     pub status: Status,
     /// Names of other plan entries that must reach `done` before this
     /// entry is eligible.
     #[serde(default)]
     pub depends_on: Vec<String>,
-    /// (source-key, lead-id) bindings (workflow §`Slice.sources`).
-    /// Each entry pairs a source key — referencing a top-level
-    /// [`Plan::sources`] entry — with the `lead` id from
+    /// (source, lead) bindings (workflow §`Slice.sources`).
+    /// Each entry pairs a `source` — referencing a top-level
+    /// [`Plan::sources`] entry — with the `lead` from
     /// `discovery.md` that contributed to the slice. The bare-string
     /// shorthand `<key>` is accepted on the wire as sugar for
-    /// `{ key: <key>, lead: <slice.name> }`; in memory we
+    /// `{ source: <key>, lead: <slice.name> }`; in memory we
     /// preserve the on-disk form via [`SliceSourceBinding`].
     #[serde(default)]
     pub sources: Vec<SliceSourceBinding>,
@@ -171,7 +158,7 @@ pub struct Entry {
     /// workflow §Plan-time reconciliation — closed enum capturing slice-level
     /// reconciliation outcome. Absent on disk (the default) is semantic `none`.
     /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
-    /// materially-disagreeing lead summaries; `Accepted` /
+    /// materially-disagreeing lead synopses; `Accepted` /
     /// `Rejected` are written by the operator at Gate 1 via
     /// `specrun plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -181,7 +168,7 @@ pub struct Entry {
     /// [`ClaimKind`] enum; values MUST be source keys present in
     /// this slice's own [`Entry::sources`] list — orphan keys are
     /// rejected by `specrun slice validate` with
-    /// `slice-authority-override-orphan-source-key`. Empty map and
+    /// `slice-authority-override-orphan-source`. Empty map and
     /// missing field are equivalent.
     #[serde(default, skip_serializing_if = "slice_authority_override_is_empty")]
     pub authority_override: SliceAuthorityOverride,
@@ -200,12 +187,14 @@ pub struct Entry {
 ///
 /// divergence and writer-ownership contract — the CLI is the single writer of every variant of
 /// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
-/// disk via `specrun plan create --divergence-likely <slice>` (the
-/// post-`propose` staging site) and `specrun plan amend --divergence
-/// likely` (the bare-skill fallback); `Accepted` / `Rejected` reach
-/// disk via `specrun plan amend --divergence`. `none` is the
-/// implicit-absent default and is never serialised explicitly into
-/// a slice record.
+/// disk in the `propose`-driven `/spec:plan` flow (RFC-29 D2) when the
+/// agent runs `specrun plan amend --divergence likely` *after*
+/// `specrun plan propose --from` (the slice writer), because slices
+/// do not exist until projection runs. `Accepted` / `Rejected` reach
+/// disk via `specrun plan amend --divergence`. `plan amend` is the
+/// only writer of the field — `plan create` scaffolds an empty plan
+/// and never stamps divergence. `none` is the implicit-absent
+/// default and is never serialised explicitly into a slice record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -215,8 +204,9 @@ pub enum Divergence {
     /// `plan.amend.divergence` `from` field on the first transition.
     #[serde(rename = "none")]
     None,
-    /// Synthesised by `/spec:plan`'s `propose` sub-step on
-    /// materially-disagreeing lead summaries.
+    /// Staged by the `/spec:plan` agent after `propose --from`, via
+    /// `specrun plan amend --divergence likely`, on
+    /// materially-disagreeing lead synopses.
     Likely,
     /// Operator-stamped at Gate 1 — divergence acknowledged and
     /// accepted into the plan.
@@ -231,10 +221,10 @@ pub enum Divergence {
 ///
 /// The map is scoped to one [`Entry`]; plan-wide and project-wide
 /// overrides are out of scope per authority and reconciliation contract. Keys reuse the closed
-/// [`ClaimKind`] enum; values are bare source-key strings that MUST
+/// [`ClaimKind`] enum; values are bare source strings that MUST
 /// be present in the owning slice's [`Entry::sources`] list —
 /// validation refuses orphan keys with
-/// `slice-authority-override-orphan-source-key`.
+/// `slice-authority-override-orphan-source`.
 ///
 /// `#[serde(transparent)]` over `BTreeMap` so the on-disk shape is
 /// the bare YAML map under `authority-override:`. Empty map and
@@ -303,28 +293,25 @@ impl SourceBinding {
 }
 
 /// Parsed `<name>@v<version>` target-adapter identifier (workflow §Adapter
-/// vocabulary) used by [`Entry::target`].
+/// vocabulary).
+///
+/// This is the *resolved* target form, produced by
+/// [`crate::change::plan::core::resolve_target`] from a slice's bound
+/// project topology and surfaced by `specrun plan next`, the slice
+/// `.metadata.yaml`, and the build request. It is no longer a stored
+/// `plan.yaml` field — a slice binds only a `project`, and the target
+/// adapter is resolved on demand.
 ///
 /// Wire form is the single kebab string `name@vN` (e.g. `omnia@v1`),
 /// with `name` matching `^[a-z][a-z0-9-]*$` and `N` a non-negative
 /// integer. Deserialisation goes through [`TargetRef::parse`] so any
 /// payload that survives serde already has the `@vN` suffix in valid
-/// form; the `plan.schema.json` regex is the primary defence, and
-/// `FromStr` is the in-process belt-and-braces re-check.
-///
-/// The integer version is reconciled against the
-/// resolved target adapter's `version: u32` field at plan-validation
-/// time; mismatches surface as the kebab discriminant
-/// `plan-target-version-mismatch`. See
-/// [DECISIONS.md §"Target adapter suffix policy"] for the policy
-/// rationale.
+/// form; `FromStr` is the in-process belt-and-braces re-check.
 ///
 /// Construct in-process via [`TargetRef::new`] (already-validated
 /// components, infallible) or via [`FromStr`] / serde
 /// [`Deserialize`] (string parse, fallible). Components are private so
 /// every `TargetRef` value satisfies the wire regex by construction.
-///
-/// [DECISIONS.md §"Target adapter suffix policy"]: ../../../../../DECISIONS.md#target-adapter-suffix-policy
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TargetRef {
     name: String,
@@ -452,14 +439,15 @@ impl fmt::Display for TargetRefParseError {
 
 impl std::error::Error for TargetRefParseError {}
 
-/// One `(source-key, lead-id)` binding under [`Entry::sources`].
+/// One `(source, lead)` binding under [`Entry::sources`].
 ///
 /// On the wire (workflow §`Slice.sources`) this is either:
 ///
 /// - a bare string `<key>` — shorthand for the structured form
-///   `{ key: <key>, lead: <slice.name> }`; used predominantly in
-///   the degenerate `intent` case (`sources: [intent]`); or
-/// - a structured `{ key, lead }` object.
+///   `{ source: <key>, lead: <slice.name> }`; used
+///   predominantly in the degenerate `intent` case
+///   (`sources: [intent]`); or
+/// - a structured `{ source, lead }` object.
 ///
 /// Both shapes round-trip byte-identically: the bare shorthand is
 /// normalised at parse time into `lead == None`, and `Serialize`
@@ -471,10 +459,11 @@ impl std::error::Error for TargetRefParseError {}
 pub struct SliceSourceBinding {
     /// Source key matching a top-level [`Plan::sources`] entry. Always
     /// present, regardless of which wire shape produced this value.
-    pub key: String,
-    /// Lead id from `discovery.md`. `None` denotes the bare-string
-    /// shorthand — the lead falls back to the owning slice's name
-    /// via [`SliceSourceBinding::lead`].
+    pub source: String,
+    /// Lead id from `discovery.md`, resolved within `source`.
+    /// `None` denotes the bare-string shorthand — the lead falls
+    /// back to the owning slice's name via
+    /// [`SliceSourceBinding::lead`].
     pub lead: Option<String>,
 }
 
@@ -482,29 +471,29 @@ impl SliceSourceBinding {
     /// Construct the bare-string shorthand form: lead defaults to
     /// the owning slice's name at lookup time.
     #[must_use]
-    pub fn bare(key: impl Into<String>) -> Self {
+    pub fn bare(source: impl Into<String>) -> Self {
         Self {
-            key: key.into(),
+            source: source.into(),
             lead: None,
         }
     }
 
-    /// Construct the structured form with an explicit lead id.
+    /// Construct the structured form with an explicit lead.
     #[must_use]
-    pub fn structured(key: impl Into<String>, lead: impl Into<String>) -> Self {
+    pub fn structured(source: impl Into<String>, lead: impl Into<String>) -> Self {
         Self {
-            key: key.into(),
+            source: source.into(),
             lead: Some(lead.into()),
         }
     }
 
     /// The source key this binding references in [`Plan::sources`].
     #[must_use]
-    pub fn key(&self) -> &str {
-        &self.key
+    pub fn source(&self) -> &str {
+        &self.source
     }
 
-    /// The lead id this binding pairs with, falling back to the
+    /// The lead this binding pairs with, falling back to the
     /// owning slice's name for the bare-string shorthand per the
     /// workflow contract §`Slice.sources`.
     #[must_use]
@@ -523,11 +512,11 @@ impl SliceSourceBinding {
 impl Serialize for SliceSourceBinding {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match &self.lead {
-            None => serializer.serialize_str(&self.key),
+            None => serializer.serialize_str(&self.source),
             Some(lead) => {
                 use serde::ser::SerializeStruct;
                 let mut state = serializer.serialize_struct("SliceSourceBinding", 2)?;
-                state.serialize_field("key", &self.key)?;
+                state.serialize_field("source", &self.source)?;
                 state.serialize_field("lead", lead)?;
                 state.end()
             }
@@ -541,11 +530,16 @@ impl<'de> Deserialize<'de> for SliceSourceBinding {
         #[serde(untagged)]
         enum Wire {
             Bare(String),
-            Structured { key: String, lead: String },
+            Structured {
+                #[serde(rename = "source")]
+                source: String,
+                #[serde(rename = "lead")]
+                lead: String,
+            },
         }
         Ok(match Wire::deserialize(deserializer)? {
-            Wire::Bare(key) => Self::bare(key),
-            Wire::Structured { key, lead } => Self::structured(key, lead),
+            Wire::Bare(source) => Self::bare(source),
+            Wire::Structured { source, lead } => Self::structured(source, lead),
         })
     }
 }
@@ -635,11 +629,6 @@ pub struct EntryPatch {
     pub sources: Option<Vec<SliceSourceBinding>>,
     /// Three-way patch over `project`.
     pub project: Patch<String>,
-    /// Three-way patch over `target` (the target-adapter
-    /// identifier — renamed from `adapter`). The CLI parses the
-    /// raw `--target name@vN` flag into [`TargetRef`] before
-    /// materialising the patch.
-    pub target: Patch<TargetRef>,
     /// Three-way patch over `description`.
     pub description: Patch<String>,
     /// Replace `context` wholesale when `Some`.

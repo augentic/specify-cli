@@ -7,12 +7,15 @@ changing error layering, exit codes, atomic writes, or the YAML library.
 
 `specify-error` is the dependency leaf of the workspace. It depends only
 on `thiserror` and `serde-saphyr`; every other `specify-*` crate may
-depend on it, and it depends on none of them. Variants that need to
-carry data from a downstream crate (e.g. `Error::Validation`) take a
-small projection type defined in `specify-error` (`ValidationSummary`)
-rather than re-exporting the rich domain type, so the leaf stays
-cycle-free. The cost is a lossy projection at the boundary; callers that
-need full fidelity reach for the downstream crate's own type directly.
+depend on it, and it depends on none of them. The leaf stays free of
+rich domain payloads: `Error::Validation { code, detail }` is
+payload-free (see [§"Drained `Error::Validation` and the `Diagnostic`
+substrate"](#drained-errorvalidation-and-the-diagnostic-substrate)) — the
+top-level wire `error` is the carried `code` discriminant, and any
+rendered findings travel on stdout as a `DiagnosticReport`, not inside
+the error. Earlier revisions carried a `ValidationSummary` projection
+type here; it was removed when the diagnostic substrate moved to its own
+`specify-diagnostics` leaf.
 
 ## Exit codes
 
@@ -25,7 +28,7 @@ run` WASI passthrough.
 |------|--------------------------|-----------------------------------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, reconciliation, and discovery kebab discriminants `slice-authority-override-orphan-source-key`, `slice-reconciliation-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
+| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, slice-model, and discovery kebab discriminants `slice-authority-override-orphan-source`, `slice-model-source-orphan`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
 The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
@@ -43,9 +46,11 @@ via `Exit::from(&Error)`:
 `Exit::ArgumentError` and `Exit::ValidationFailed` share code `2` so the
 wire contract stays four-slot; the named distinction exists for
 dispatcher-side clarity (`Error::Argument` flags malformed CLI input
-shape; `Error::Validation` carries a `ValidationSummary` payload). The
-two never need separate exit codes — anything actionable by the
-operator is in the JSON envelope's `code` discriminant.
+shape; `Error::Validation` is the payload-free gate-failure signal whose
+`code` is the specific discriminant). The two never need separate exit
+codes — anything actionable by the operator is in the JSON envelope's
+`code` discriminant, and any per-finding detail is on the stdout
+`DiagnosticReport`.
 
 `specrun lint run` is the one finding-driven exit slot in the table.
 Its decision is **status-aware severity**: it returns `2` only when a
@@ -140,13 +145,20 @@ without extra plumbing.
 
 ## Crate layout
 
-Workspace crates: `specify-error` (leaf), `specify-schema` (embedded
-JSON Schemas), `specify-model` (artifact types and parsers, plus the
-shared atomic writer), `specify-validate` (artifact validation rule
-registry), `specify-lints` (standards layer), `specify-workflow`
-(workflow lifecycle authority), `specify-tool` (WASI host, gated),
-`specify-authoring` (publish-disabled framework authoring checks), and
-the root binary package.
+Workspace crates: `specify-error` (leaf), `specify-digest` (leaf —
+SHA-256 hex digest encoding), `specify-schema`
+(embedded JSON Schemas), `specify-model` (artifact types and parsers,
+plus the shared atomic writer), `specify-validate` (artifact validation
+rule registry), `specify-standards` (standards layer, which also hosts
+the framework authoring checks behind `specdev lint` in its `framework`
+module), `specify-workflow` (workflow lifecycle authority),
+`specify-tool` (WASI host, gated), and the root binary package.
+
+`specify-digest` exists so siblings such as `specify-standards` can share
+digest encoding without depending on `specify-tool` (and therefore
+Wasmtime). It depends on no other workspace crate — only `sha2` and
+`base16ct`. `specify-tool` re-exports the hash helpers for backward
+compatibility; new call sites should import `specify_digest` directly.
 
 `specify-model` and `specify-validate` are the two crates that earn a
 new-crate paragraph under the rule below. `specify-model` exists so the
@@ -156,7 +168,7 @@ preserves the `specify-error -> specify-model` edge. `specify-validate`
 holds the artifact rule registry and depends on `specify-model` only —
 never on `specify-workflow`. That dependency direction is the whole
 point: a validation rule physically cannot reach a slice transition or
-plan stamp, the same no-lifecycle-authority invariant `specify-lints`
+plan stamp, the same no-lifecycle-authority invariant `specify-standards`
 already enforces. `specify-workflow` depends on `specify-model` but
 **not** on `specify-validate` (only the root binary orchestrates
 validation), so no cycle forms.
@@ -176,13 +188,24 @@ dependency direction is overhead; refactor within an existing module
 instead. Adapter-specific logic never lands as a workspace crate
 — it lands in the adapter's WASI carve-out.
 
-`specify-authoring` is the exception for framework authoring checks
-moved from the plugin repo's retired `tooling/` crate. It stays
-publish-disabled and depends only on leaf/shared crates; the root
-`specdev` binary calls into it. Keeping the checker as a library crate
-preserves its integration-test shape without making framework-repo
-predicates part of the runtime dispatcher or `specify-workflow`'s
-workflow contract.
+The framework authoring checks behind `specdev lint` (originally the
+plugin repo's retired `tooling/` crate, then the publish-disabled
+`specify-authoring` crate) were dissolved into the `specify_standards::framework`
+module. The imperative `Check` predicates are retained as-is; only their
+output type was unified — every predicate now emits the canonical
+`Diagnostic` directly (via the `framework::builder` `framework_finding()`
+/ `loc()` helpers and the `CORE_ID_TABLE`), and `framework::check::run`
+runs the single finalize pass (rebase locations → fingerprint → assign
+sequential `FIND-NNNN` ids). The lightweight `Finding` / `Location` types
+and the binary-boundary `map_finding.rs` mapper are gone. `specdev`'s
+`AuthoringProducer` stays as the lone `DiagnosticProducer` bridge because
+the predicates need `&Context` (framework root + schema cache), which the
+`DiagnosticProducer::produce(&WorkspaceModel, project_dir)` signature does
+not carry. The dissolution does not change crates.io exposure: the root
+`specify` crate (which builds both `specrun` and `specdev`) already pulled
+the predicates into the published binary's dependency graph. The declarative
+burn-down deletes this imperative code incrementally as each predicate
+migrates to a `CORE-NNN` rule file.
 
 ## Tool architecture
 
@@ -278,7 +301,7 @@ crate project-scope and adapter-scope tool declarations.
 
 The output-role domain types are spelled `Target*`
 (`Target`, `Slice.target`, the `slice-create-target-missing` /
-`plan.entry-needs-project-or-target` / `init-requires-adapter-or-hub`
+`init-requires-adapter-or-hub`
 discriminants, plus every fixture, JSON envelope, and call site). The
 shared manifest *shape* is loaded by the axis-aware module
 `crates/workflow/src/adapter/` (`SourceAdapter` / `TargetAdapter` /
@@ -365,26 +388,28 @@ state.
 ## `SliceSourceBinding`: bare shorthand plus structured form
 
 `plan.yaml.slices[].sources` is a single in-memory struct
-(`{ key: String, lead: Option<String> }`) with a custom
+(`{ source_key: String, lead_id: Option<String> }`) with a custom
 `Deserialize` impl that accepts two wire shapes and a custom
 `Serialize` impl that emits whichever shape produced the value:
 
-- **Bare string shorthand** — `legacy` parses to `key = "legacy"`,
-  `lead = None`; serialises back as the bare string. The lead
-  falls back to the owning slice's name at lookup time via
-  `SliceSourceBinding::lead(slice_name)`, preserving the
-  one-source-per-slice degenerate case (predominantly `intent`).
-- **Structured form** — `{ key: legacy, lead: legacy-monolith }`
-  parses to `key = "legacy"`, `lead = Some("legacy-monolith")`;
-  serialises back as the same `{ key, lead }` map. Required
-  whenever the key and the lead id differ.
+- **Bare string shorthand** — `legacy` parses to
+  `source_key = "legacy"`, `lead_id = None`; serialises back as the
+  bare string. The lead falls back to the owning slice's name at
+  lookup time via `SliceSourceBinding::lead_id(slice_name)`,
+  preserving the one-source-per-slice degenerate case (predominantly
+  `intent`).
+- **Structured form** — `{ source: legacy, lead: legacy-monolith }`
+  parses to `source_key = "legacy"`,
+  `lead_id = Some("legacy-monolith")`; serialises back as the same
+  `{ source, lead }` map. Required whenever the source key and
+  the lead id differ.
 
 Collapsing the two variants into one struct means every consumer
-(`validate`, `doctor`, `reconciliation`, CLI handlers) goes through the same
-`key()` / `lead()` accessors instead of `match`-ing the
+(`validate`, `doctor`, `provenance`, CLI handlers) goes through the same
+`source_key()` / `lead_id()` accessors instead of `match`-ing the
 discriminator — the shorthand stays a pure parser concern. Construct in
-tests via `SliceSourceBinding::bare(key)` or
-`SliceSourceBinding::structured(key, lead)` so the discipline
+tests via `SliceSourceBinding::bare(source_key)` or
+`SliceSourceBinding::structured(source_key, lead_id)` so the discipline
 stays consistent. `plan amend --add-source <key>` and `plan create`
 share the same shorthand on the wire. Refer to workflow §`Slice.sources`.
 
@@ -403,6 +428,8 @@ Refer to workflow §"Plan-time reconciliation".
 
 ## Evidence per-kind authority overrides
 
+> **Superseded by §"Authority: document-level plus one override (v1)".** The per-Evidence `authority-overrides` surface described below is **deferred to a future RFC** and removed from `evidence.schema.json` for v1. The historical design is retained here for context.
+
 `evidence.schema.json` gains an
 optional `authority-overrides` map keyed by claim kind, valued by
 authority class. The document-level `authority:` field stays
@@ -419,21 +446,28 @@ optional `authority-override` map keyed by claim kind, valued by
 source key. Keys come from the closed claim-kind enum; values MUST
 be source keys present in the slice's own `sources[]` list. Orphan
 keys are rejected by `specrun slice validate` with the
-`slice-authority-override-orphan-source-key` kebab discriminant. The
+`slice-authority-override-orphan-source` kebab discriminant. The
 map is scoped to one slice — plan-wide and project-wide overrides
 are out of scope.
 
-## `reconciliation.yaml` audit index
+## `provenance.yaml` audit index
 
-`schemas/slice/reconciliation.schema.json`
-fixes the closed top-level shape (`version`, `slice`,
+> **Superseded** by §"Single slice-model artifact (RFC-29 M2b
+> simplification)". Provenance is no longer a persisted `provenance.yaml`
+> file; it is carried inline in `model.yaml` and projected on demand by
+> `specrun slice provenance`. The `slice-provenance-drift` discriminant
+> and the `slice.provenance.written` event are retired. The historical
+> decision below is kept for the record.
+
+`schemas/slice/provenance.schema.json`
+fixed the closed top-level shape (`version`, `slice`,
 `generated-at`, `generator`, `requirements[]`). `/spec:refine`
-writes the file atomically; downstream verbs read `spec.md` as the
-authoritative artifact and treat `reconciliation.yaml` as an inspection
-surface. `specrun slice validate` enforces id-set parity between
-`spec.md` `REQ-*` ids and `reconciliation.yaml.requirements[].id` and
-catches contributing-claim → Evidence-claim drift, both via the
-`slice-reconciliation-drift` discriminant.
+wrote the file atomically; downstream verbs read `spec.md` as the
+authoritative artifact and treated `provenance.yaml` as an inspection
+surface. `specrun slice validate` enforced id-set parity between
+`spec.md` `REQ-*` ids and `provenance.yaml.requirements[].id` and
+caught contributing-claim → Evidence-claim drift, both via the
+`slice-provenance-drift` discriminant.
 
 ## Extraction cache fingerprint inputs
 
@@ -446,7 +480,11 @@ byte-stable cache hits; CI observing any of the five
 `slice.extract.cache-miss` reasons knows exactly which input
 drifted. Adapter authors opt out with `cache: opt-out` on
 `adapter.yaml`; the matching journal event carries `reason:
-adapter-opt-out`.
+adapter-opt-out`. `lead id` is the one input that distinguishes the
+two source operations: `specrun source survey` keys the fingerprint
+**without** a lead id (it runs at plan time and carries no slice),
+while `specrun source extract` keys it **with** the lead id. See
+§"Source operations (D1)".
 
 ## Journal event names
 
@@ -460,22 +498,49 @@ variants are `snake_case` and bridge to the wire via
 |---|---|
 | `plan.transition.approved` | `specrun plan transition <plan> approved` (Gate 1 stamp). |
 | `plan.transition.undone` | `specrun plan transition <entry> --undo` (per-entry reverse rung; one event per rung). |
-| `plan.propose.divergence` | `/spec:plan` `propose` sub-step when it flips a slice to `divergence: likely`. |
-| `plan.amend.divergence` | `specrun plan amend --divergence accepted\|rejected` on any transition into or out of `accepted`/`rejected`. |
+| `plan.amend.divergence` | `specrun plan amend --divergence likely\|accepted\|rejected` on any change to a slice's `divergence` field (the `/spec:plan` agent stages `likely`; the operator flips `accepted`/`rejected`). |
 | `slice.transition.refined` | `specrun slice transition <slice> refined`. |
 | `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
-| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. |
+| `slice.synthesize.started` | `specrun slice synthesize --from` at the start of the projecting/persisting pass. Payload carries `slice-name`. |
+| `slice.synthesize.agent` | `specrun slice synthesize --dry-run` after assembling the agent inputs envelope. One event per invocation; payload carries `slice-name`. |
+| `slice.synthesize.completed` | `specrun slice synthesize --from` once every artifact validated and persisted. Payload carries `slice-name` and the persisted `artifacts[]`. |
+| `slice.synthesize.failed` | `specrun slice synthesize --from` aborted before all artifacts were persisted. Payload carries `slice-name` and a short `reason` / finding code. |
+| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specrun slice validate`, one per requirement-block tag emitted by the synthesis substep. (Distinct from the `slice.synthesize.*` lifecycle quartet above — see §"Slice synthesis engine (RFC-29 M2b)".) |
+| `slice.build.started` / `.succeeded` / `.failed` | `/spec:build`'s target-adapter build flow (RFC-29d M3); one per slice. Payloads carry `slice-name`; the `.failed` variant adds a short `reason` / finding code. |
+| `slice.merge.started` / `.succeeded` / `.failed` | `specrun slice merge`'s validator outcome (RFC-29d M3) — fires on the validator result, not on a merge report. Payloads carry `slice-name`; the `.failed` variant adds a short `reason` / finding code. |
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
-| `slice.reconciliation.written` | `/spec:refine`'s atomic `reconciliation.yaml` writer (Change 2.6). `reconciliation.yaml` audit semantics. |
+| `source.survey.cache-hit` / `.cache-miss` | The `specrun source survey` runner's cache probe; payloads carry `source`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`). |
+| `source.execution.agent` | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`). |
+| `target.execution.agent` | `/spec:build`'s target-adapter build flow on every agent invocation (RFC-29d M3); payload carries `slice` and `target` derived from the bound project. |
+| `slice.archive.created` | `specrun slice merge`'s archive step (the append-only outcome ledger). Payload carries `slice-name`, `touched-specs`, `outcome-summary`, and the optional `merge-sha`. See §"History via git plus an outcome ledger". |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
-| `lint-completed` | `specrun lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the RFC-33a §"Journal event" (D8) payload verbatim. |
+| `lint-completed` | `specrun lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the journal payload verbatim. |
 
 Events persist as newline-delimited JSON at
 `<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`
 enum on the divergence events is
 `none | likely | accepted | rejected`. Refer to workflow §"Observability"
 and the per-event row table.
+
+### `specrun journal emit` — guarded front door (D12)
+
+Deterministic commands emit their own events. Agent-orchestrated
+phases that have no deterministic emit command (e.g. the `execution:
+agent` source operations) write through `specrun journal emit
+<event-id> [--payload <json>] [--format json]`
+([`src/runtime/commands/journal/emit.rs`](./src/runtime/commands/journal/emit.rs)).
+The verb mints **no event kinds of its own** — it is a guarded front
+door onto the same closed `EventKind` taxonomy, preserving "one closed
+taxonomy, one writer". The closed enum is itself the per-kind payload
+schema (there is no parallel JSON-schema registry), so the guard is a
+single serde round-trip: the handler reassembles the adjacently-tagged
+`{ event, payload }` shape and deserialises it into `EventKind`. An
+unknown tag fails `journal-emit-unknown-event`; a payload that misses a
+variant's required field fails `journal-emit-payload-schema`. Both are
+`Error::Validation`, exit 2. The CLI — never the agent — stamps the
+second-precision UTC `timestamp` and appends exactly one line via
+`journal::append_batch`.
 
 ## `$CAPABILITY_DIR` replaces `$ADAPTER_DIR`
 
@@ -491,6 +556,10 @@ segment that pairs with it is `plugin--<axis>--<slug>` — e.g.
 `plugin--target--contracts` for the `contracts` target adapter's
 tools. Project-scope tools keep `project--<project-name>`
 unchanged. Refer to workflow §"Sandboxing".
+
+`$CAPABILITY_DIR` is also the read-only manifest-cache root of the
+four-root source-operation sandbox (`$SOURCE_DIR` / `$CAPABILITY_DIR` /
+`$SCRATCH_DIR` / `$PROJECT_DIR`); see §"Source operations (D1)".
 
 ## Lifecycle write-ownership
 
@@ -606,26 +675,42 @@ level. Refer to §"Extraction cache fingerprint inputs" for the extraction-cache
 
 ## Target adapter suffix policy
 
-`plan.yaml.slices[].target` carries the `name@vN` form (e.g.
-`omnia@v1`) and the integer `N` is a load-bearing wire field, not
-decorative metadata:
+A plan slice no longer stores its target adapter. `plan.yaml.slices[]`
+carries only a `project`; the target adapter (`name@vN`, e.g.
+`omnia@v1`) is a denormalised copy of `project → adapter` and is
+**resolved on demand** from the bound project's topology rather than
+persisted. The integer `N` remains a load-bearing wire field wherever a
+resolved target *does* appear (`specrun plan next`, the slice
+`.metadata.yaml`, the build request):
 
-- `schemas/plan/plan.schema.json` pins the wire shape with the regex
-  `^[a-z][a-z0-9-]*@v\d+$`; bare names and non-kebab variants are
-  rejected at schema-validation time.
-- `crates/workflow/src/change/plan/core/model.rs::TargetRef` is the
-  parsed in-memory representation. Serde routes
-  `Option<TargetRef>` through `TargetRef::parse`, so any value that
-  reaches the validator already carries a typed `(name, version)`
-  pair.
-- The cross-field "at least one of `project` / `target`" rule lives
-  inside the schema as a per-slice `anyOf`, so external consumers
-  (Cursor IDE renderers, CI linters) get the same gate as the Rust
-  loader without having to mirror the Rust-only
-  `plan.entry-needs-project-or-target` finding.
-- `plan-target-malformed` is the discriminant reserved for the
-  CLI-flag parser (`--target <raw>`); the schema regex prevents it
-  from being reachable through on-disk YAML.
+- The slice's `project` is optional on disk. An omitted `project`
+  resolves to the sole project in the topology (a single regular
+  project synthesised from `project.yaml`); a multi-project hub
+  requires an explicit `project`. `schemas/plan/plan.schema.json` no
+  longer carries a `target` property or the old "at least one of
+  `project` / `target`" `anyOf` — a slice may legitimately carry
+  neither field.
+- `crates/workflow/src/change/plan/core/propose.rs::resolve_target` is
+  the single read-time resolver. It binds the slice's `project` against
+  the `resolve_topology` output and parses that project's `name@vN`
+  target into `TargetRef`. Binding mirrors the propose kernel:
+  `plan-reconcile-project-orphan` when a named project is absent,
+  `plan-reconcile-project-binding-required` when an omitted project is
+  ambiguous (more than one project), and `plan-target-malformed` when a
+  topology target does not parse.
+- `crates/workflow/src/change/plan/core/model.rs::TargetRef` remains the
+  parsed in-memory representation of a resolved target; it is
+  constructed by `resolve_target`, not deserialised from `plan.yaml`.
+- `specrun plan validate` flags an omitted `project` only when a
+  multi-project `registry.yaml` makes it ambiguous
+  (`plan-reconcile-project-binding-required`); the single-project and
+  no-registry cases auto-resolve. `specrun plan next` resolves the
+  target best-effort and reports `target: null` when the topology
+  cannot be resolved, rather than failing the lifecycle query — the
+  build phase re-resolves before use.
+- The 1:1 `project → target` invariant ("one target per project" in the
+  plugin repo's `adapter-anatomy.md`) is what makes this denormalisation
+  removal safe.
 
 ## Operations typed at parse boundary
 
@@ -652,6 +737,181 @@ finishes; string operation names never survive past the manifest loader.
   `["build", "merge", "shape"]`). Derived `Ord` on
   `{Source,Target}Operation` is intentional because enum variants are
   declared in kebab-alphabetical wire order.
+
+## Adapter execution mode (D9)
+
+Every adapter manifest declares a closed `execution` enum — `agent |
+tool` — `required` at the top level of both `source.schema.json` and
+`target.schema.json` (RFC-29 D9). The loader rejects a manifest that
+omits the field with `adapter-execution-mode-required` rather than
+defaulting silently, and rejects `execution: agent` declared alongside
+any cache mode other than `opt-out` with
+`adapter-execution-agent-cache-conflict`
+(`check_execution` in [`crates/workflow/src/adapter/core.rs`](./crates/workflow/src/adapter/core.rs)).
+Both are `Error::Validation`, exit 2. The conflict check is a
+**forward-guard**: `CacheMode` is a single-variant enum (`OptOut`) and
+`source.schema.json#/properties/cache` enumerates only `["opt-out"]`,
+so no legal manifest can trigger it today — it exists to catch a
+future-widened `CacheMode`. The `Execution` enum lives on
+`SourceAdapter` / `TargetAdapter`; `execution: agent` forces the
+effective cache mode to `opt-out` regardless of the declared `cache:`
+field, which `SourceAdapter::effective_cache_mode` (consumed by the
+source-operation runner, not the raw `cache` field) returns.
+
+The two values branch dispatch:
+
+- **`agent`** — the brief is run by an agent against the sandbox
+  preopens. The CLI orchestrates inputs, validates outputs against the
+  same schemas, never caches the result, and emits a `*.execution.agent`
+  journal event per invocation. Dispatch is **two-phase** (prepare /
+  finalize; see §"Source operations (D1)").
+- **`tool`** — `survey` / `extract` (sources) or `build` / `merge`
+  (targets) dispatch through a declared WASI tool or built-in
+  deterministic Rust path, **single-phase** within one process, with the
+  result cached under the extraction fingerprint.
+
+All eight first-party manifests (five sources, three targets) ship
+`execution: agent` — none owns a deterministic tool yet, so `agent` is
+the truthful value and the `tool` branch is wired and schema-valid but
+unexercised by first-party adapters until a source or target gains a
+real tool. A `suggestion`-severity `adapter.execution-agent` standards
+finding (CORE-051) flags first-party `agent` adapters only (never
+third-party), nudging toward a future `tool` path. M1 landed the source
+side; RFC-29d M3 landed the target side (`build` / `merge` dispatch —
+§"Target build envelope (D6, D9 target side, D7 proof)"), and target
+manifests still carry `agent` because no first-party target owns a build
+tool yet. Refer to workflow §"Adapter implementation shape".
+
+## Source operations (D1)
+
+`specrun source survey <source> [--plan <name>] [--phase
+prepare|finalize]` and `specrun source extract <source> <lead>
+--slice <slice> [--phase prepare|finalize]` are the CLI-owned source
+adapter operations (RFC-29 D1; handlers under
+[`src/runtime/commands/source/`](./src/runtime/commands/source)).
+`<source>` resolves against `plan.yaml.sources.<key>` — **not** the
+adapter name — and the adapter is then resolved from
+`SourceBinding.adapter`. `survey` validates the lead set against
+`schemas/discovery/lead.schema.json` and merges it into `discovery.md`;
+`extract` validates the Evidence against `schemas/evidence.schema.json`
+and persists it to `.specify/slices/<slice>/evidence/<source>.yaml`.
+
+`discovery.md` stores **raw, unmerged, per-source leads**: each block is
+one lead as surfaced by one source, identified by its `(source,
+lead)` pair (the runner stamps `source` from the surveyed source,
+so attribution is CLI-owned and a lead-set need not repeat it). "Merges
+it into `discovery.md`" is a per-source re-survey fold, **not** a
+cross-source collapse: a re-survey of one source replaces only that
+source's blocks by `(source, lead)` and leaves every other
+source's blocks untouched, so the same `lead` may legally appear under
+different source keys. Alias-collision scoping is therefore per
+`source`. Cross-source unification of leads is deferred to plan time
+(D2 reconciliation), where the umbrella RFC places fan-in; `survey` never
+unifies across sources.
+Both gates are **validate-before-visible**: an invalid lead set leaves
+`discovery.md` untouched, and a failed Evidence validation leaves the
+slice in `refining` (see [`crates/workflow/src/schema.rs`](./crates/workflow/src/schema.rs)).
+
+**Four-root sandbox.** Each operation runs under four preopen roots:
+`$SOURCE_DIR` read-only (the bound source path; **absent** for
+value-bound sources such as `intent`), `$CAPABILITY_DIR` read-only (the
+resolved manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR`
+**not visible** — lifecycle state stays off-limits to the adapter.
+`$SCRATCH_DIR` nests under the per-adapter extraction tree but disjoint
+from the fingerprint result cache so a scratch write never pollutes a
+cache artifact: `extract` uses
+`.specify/.cache/extractions/<adapter>/<slice>/scratch/`; `survey`
+(plan-time, no slice) uses
+`.specify/.cache/extractions/<adapter>/survey/scratch/`. A 64-char-hex
+digest dir can never equal a `<slice>`/`survey` segment, so the two
+trees provably never collide. See §"Cache layout" and
+§"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`".
+
+**Shared prep seam.** The adapter resolution, brief-directory
+resolution (the `briefs-dir` resolve field), four-root sandbox layout,
+and `evidence/` scaffolding are a single internal helper
+([`src/runtime/commands/source/prep.rs`](./src/runtime/commands/source/prep.rs))
+shared by the workflow-free `specrun source preview` (§"`specrun source
+preview`") and the workflow-integrated `survey` / `extract` runners.
+The runners add the `execution`-branched dispatch, the extraction-cache
+fingerprint, the journal events, validate-before-visible, and the
+`discovery.md` merge / Evidence persist on top of that seam — none of
+which is re-implemented in `preview`.
+
+**Agent dispatch is two-phase.** Under `execution: agent` the operation
+splits: `--phase prepare` (the default) resolves the adapter, builds the
+four-root sandbox, scaffolds the output target, emits
+`source.execution.agent`, and prints a handoff envelope on stdout, then
+returns control. `--phase finalize` runs after the agent has executed
+the brief against the prepared sandbox: it validates, persists, caches,
+and journals. The CLI never blocks waiting on agent work. The handoff
+envelope is kebab-case JSON: `survey` prints `{ adapter, version,
+briefs-dir, source-dir?, scratch-dir, leads[], execution: "agent" }`
+(no `evidence-dir`; survey produces a lead set, not Evidence);
+`extract` prints the same plus `evidence-dir` and a single-element
+`leads` array. `tool`-execution adapters ignore the phase flag — a
+single call runs the whole operation and never prints the envelope.
+
+**Value-binding envelope.** For value-bound sources (`intent`),
+`$SOURCE_DIR` is absent and the source request carries `value-inline:
+<string>`; path bindings carry `source-path`. This reuses the existing
+`FingerprintSource::{Path, Value}` (the value variant keys on the
+sha256 of the literal body), so no new cache machinery — and no
+RFC-29d build-request schema — is introduced.
+
+## Lead reconciliation (D2)
+
+`specrun plan propose` wraps agent-led cross-source lead reconciliation in a CLI-owned projection kernel (RFC-29 D2). The envelope DTOs, the deterministic `build_request` / `build_catalog` / `resolve_topology` assembly, and the `Plan::propose_from` kernel live in [`crates/workflow/src/change/plan/core/propose.rs`](./crates/workflow/src/change/plan/core/propose.rs); the CLI handler is [`src/runtime/commands/plan/propose.rs`](./src/runtime/commands/plan/propose.rs). The verb has two mutually-exclusive modes, exactly one of which is required (`propose` with neither fails `plan-propose-mode-required`; the clap layer rejects passing both):
+
+- **`--dry-run [--format json]`** is read-only. It reads `plan.yaml.sources`, the surveyed `discovery.md` lead inventory, and the resolved project topology (a hub's `registry.yaml`, or the sole project synthesised from `project.yaml`), then emits the `kind: request` envelope — a flat `(source, lead)` lead catalog plus the `projects[]` topology — for the agent to group. It writes nothing and fires no journal event; an empty inventory aborts with `plan-reconcile-empty-catalog`.
+- **`--from <response.json> [--format json]`** is the **only** slice writer. It schema-gates the raw response bytes (`validate_proposal_json`, code `proposal-schema`), re-reads `discovery.md` and the topology (never trusting a prior dry-run snapshot), rebuilds the lead catalog, validates the agent's `slices[]` grouping, enforces total lead coverage, validates the explicit slice names, binds projects, derives each slice's `target` from the bound project, and replaces `plan.yaml.slices[]` atomically through the existing plan writers — then emits one journal event.
+
+**Replaceable gate.** `--from` may replace slices only while the plan is replaceable — `lifecycle: pending` AND every entry still `pending` (reuses `Plan::is_replaceable`). An approved plan, or any `in-progress` / `done` entry, fails `plan-reconcile-plan-not-replaceable`. Re-propose on a still-pending plan wholesale-replaces all slices: it is a fresh projection, not a merge, so any prior per-slice operator edit (a relabel, a `--divergence likely` stamp) is discarded.
+
+**Coverage invariant.** The `scope` noun was removed (RFC-29 review F3): there is no kernel fan-out grouping. The kernel enforces **total lead coverage** — every surveyed `(source, lead)` must be referenced by **at least one** slice (`plan-reconcile-partition`; an unsurveyed pair is a `plan-reconcile-lead-orphan`) — plus **at most one lead per source** per slice (`plan-reconcile-slice-source-collision`, a per-slice shape check independent of any grouping). A lead may legally appear in more than one slice — that is fan-out, expressed as multiple ordinary slices joined by `depends-on`, not a double-count. Same-source fusion is rejected on purpose: each surveyed lead is the source adapter's own sizing judgment, made with full visibility of the legacy code, documentation, or capture, so merging two leads from one source would override that sizing and risk a slice too large to execute. The operator — not the propose-time agent — owns same-source re-sizing, at Gate 1 via `specrun plan amend --sources`, where a human carries the risk. The kernel validates shape only; it never auto-merges, clusters, or forbids cross-source splits.
+
+**Explicit slice names.** With `scope` gone there is no kernel name derivation: every response slice carries an explicit kebab-case `name` (`plan-reconcile-slice-name-invalid` on a malformed name; rejected as `proposal-schema` at the wire gate before the kernel sees it), and the kernel writes it verbatim to `plan.yaml.slices[].name`. `depends-on` resolves against those names and a cyclic graph fails `plan-reconcile-depends-on-cycle`. Name uniqueness is the sole duplicate gate — two slices resolving to the same name fail `plan-reconcile-slice-name-collision` (this subsumes the former `(scope, project)` duplicate check).
+
+**Project binding and target derivation.** The agent binds each slice's `project` from the request's `projects[]`; an omitted `project` auto-binds only when exactly one project exists, otherwise `plan-reconcile-project-binding-required`. A named project absent from the topology fails `plan-reconcile-project-orphan`. The kernel writes `project` verbatim — it never chooses among multiple projects. The target adapter is **not** written to `plan.yaml`; it is resolved on demand from the bound project via `resolve_target` (the propose kernel still eagerly validates that each bound project's `projects[].target` parses, so a corrupt topology fails at propose time).
+
+**Closed validation vocabulary.** The reconciliation codes are a closed, documented vocabulary of `Error::Validation` outcomes raised via `Error::validation_failed` — **not** new `Error` enum arms — and all land on the existing `EXIT_VALIDATION_FAILED = 2`: `plan-reconcile-empty-catalog`, `plan-reconcile-lead-orphan`, `plan-reconcile-partition`, `plan-reconcile-slice-source-collision`, `plan-reconcile-slice-name-invalid`, `plan-reconcile-slice-name-collision`, `plan-reconcile-depends-on-cycle`, `plan-reconcile-project-binding-required`, `plan-reconcile-project-orphan`, `plan-reconcile-plan-not-replaceable`, plus `plan-propose-mode-required` (neither mode selected). (RFC-29 review F3 removed `plan-reconcile-fanout-source-mismatch` and `plan-reconcile-slice-duplicate` with the `scope` grouping they policed.)
+
+**Single-event journal.** Only after the `plan.yaml` write commits, one `journal::append_batch` emits a single `plan.reconcile.completed` event (payload: `plan-name`, `slice-count`, `slice-names[]`). RFC-29 review F8 folded the former `plan.reconcile.agent` + `plan.reconcile.completed` pair into this one indivisible event — they always co-fired atomically with no failure-mode gap between them — and removed the `ReconcileScope` payload struct. The `EventKind::PlanReconcileCompleted` variant lives in [`crates/workflow/src/journal.rs`](./crates/workflow/src/journal.rs); see [§"Journal event names"](#journal-event-names). The `/spec:plan` skill never calls `specrun journal emit` for D2.
+
+**Agent / kernel / operator split.** Cross-source matching — which leads describe the same work — is agent judgment from per-source `synopsis`, optional `aliases[]` hints, and shared slugs; the kernel only validates partition shape and persists; the operator curates at Gate 1 (`change.md` review plus `specrun plan amend` / `plan add` / `plan remove`) before stamping `approved`. The wire envelope is pinned at [`schemas/discovery/proposal.schema.json`](./schemas/discovery/proposal.schema.json) (`PROPOSAL_JSON_SCHEMA`), discriminated by closed `kind: request | response`.
+
+**Reconciliation signal (RFC-29b-signal D2.1 / D2.2).** Because matching rides on headlines alone — deep `Evidence` is slice-time — the discriminating power of the per-source `synopsis` is the whole signal. The `synopsis` carries a contentfulness expectation, not just `minLength: 1`: it SHOULD name the lead's operation/surface and salient constraint so a same-slug lead from another source can be matched or distinguished on content, and MAY span more than one line (`lead.schema.json`; no second field, and it stays plan-time headline material — never a back-door for slice-time `Evidence`). The floor is taught in each source's `survey` brief and surfaced as the non-blocking advisory `discovery-lead-synopsis-thin` (`suggestion` severity, `kind: review`) from `specrun slice validate` — a nudge to improve the source adapter that never parks planning. The propose brief states the error-cost asymmetry: an over-**merge** is expensive and downstream-poisoning (two unrelated bodies of work in one slice and one project/target, with synthesis inheriting the bad match as `[conflict]`/divergence), while an over-**split** is cheap and Gate-1-reversible via `specrun plan amend --sources`. So the agent **splits on doubt** — a weakly-supported cross-source match stays as separate slices with the candidate pairing noted in `change.md` under `## Tentative merges`, never an unrecoverable propose-time over-merge.
+
+**Deferred (rejected for D2).** Three matching mechanisms were considered and intentionally left out, so a future RFC can pick them up without re-litigating the baseline: (1) **kernel-side token-intersection locks** — auto-merging rows when `{lead} ∪ aliases[]` intersects across sources — rejected because shared slugs are unattested (collision risk) and Gate 1 is the human curation step after agent propose; (2) **kernel-side advisory clustering of open leads** (facet edges, lexical fallback, connected-component bucketing) — would need per-lead `blocking-keys[]` survey metadata the current `lead.schema.json` does not produce; (3) **optional lead target-axis hints** — `target` stays kernel-derived from the bound project. Grouping uncertainty is the agent's to express through `change.md` prose (`## Tentative merges`), not a per-lead survey input signal — the survey-time `tentative` flag was retired by RFC-29b-signal (D2.3).
+
+## Target build envelope (D6, D9 target side, D7 proof)
+
+`specrun slice build <slice> [--phase prepare|finalize] [--format json]` owns the per-slice build envelopes (RFC-29d M3; handler [`src/runtime/commands/slice/build.rs`](./src/runtime/commands/slice/build.rs), kernel [`crates/workflow/src/slice/build/`](./crates/workflow/src/slice/build.rs)). It is the symmetric target-side twin of `specrun source survey` / `extract` (§"Source operations (D1)") — the same two-phase agent contract, mirrored verb shape, and best-effort journal posture. The CLI owns request assembly, report validation, the `target-build-*` aborts, the `slice.build.*` events, and the `built` transition gate; the bound target's `build` brief owns only code generation.
+
+**Build envelope (D6).** The request and report are closed-shape YAML, keyed on `(slice, target)`, validated against [`schemas/target/build-request.schema.json`](./schemas/target/build-request.schema.json) (`BUILD_REQUEST_JSON_SCHEMA`) and [`schemas/target/build-report.schema.json`](./schemas/target/build-report.schema.json) (`BUILD_REPORT_JSON_SCHEMA`); the DTOs round-trip in [`crates/workflow/src/slice/build/wire.rs`](./crates/workflow/src/slice/build/wire.rs).
+
+- **Request** — `{ version, slice, project-dir, inputs: { root, artifacts: { proposal, design, tasks, specs[], additional[] } } }`. The payload omits `target` (the recipient adapter *is* the target — the CLI derives `(slice, target)` from the bound project), `execution` (the declared mode picks delivery, then drops out of the payload), brief paths, and `model.yaml` (audit/provenance input to the rendered artifacts, not a build input). `inputs.root` (the slice tree all artifact paths resolve against) and `project-dir` (the working tree the target builds into) are distinct by design — in workspace mode `inputs.root` is `<workspace>/.specify/slices/<slice>` while `project-dir` is `<workspace>/.specify/workspace/<project>`. `inputs.artifacts.additional[]` is assembled from the bound target adapter manifest's declared `inputs` (a flat `{ path, required }` list resolved against the slice tree, in declaration order); a missing `required` path raises `target-build-input-missing`. Cross-slice dependency is plan-level ordering (`depends-on` + `specrun plan next`), not envelope plumbing — there is no per-request cross-slice channel.
+- **Report** — `{ version, slice, target, status: success|failure, findings[] }`, persisted to `.specify/slices/<slice>/build/report.yaml`. `findings[]` `$ref` the RFC-28 diagnostic schema and default to `[]`. `status: success` carrying any blocking finding (`critical` / `important` per the RFC-28 `blocking` predicate) is rejected — partial success is `success` with non-blocking findings only.
+
+**Two-phase verb + `built` gate.** `execution: agent` (every first-party target today) splits the verb. `--phase prepare` (default) resolves the target, assembles + schema-validates the request, writes `build/request.yaml`, emits `target.execution.agent`, prints a kebab-case handoff envelope, and returns without blocking; the agent then runs the `build` brief and writes `build/report.yaml`. `--phase finalize` frames with `slice.build.started`, validates the report, rejects a `success` report with a blocking finding, and is the only legal entry into `Refined → Built`, journaling `slice.build.succeeded` / `slice.build.failed` (§"Journal event names"). `execution: tool` (§"Adapter execution mode (D9)") ignores the phase flag and runs single-phase; RFC-29d M3 ships no first-party build tool, so the request-side aborts fire but the tool dispatch itself is a deliberate unsupported seam.
+
+**Closed validation vocabulary.** The four pinned build-envelope aborts are a closed vocabulary of `Error::Validation` outcomes raised via `Error::validation_failed` — **not** new `Error` enum arms — all landing on the existing `EXIT_VALIDATION_FAILED = 2`: `target-build-request-schema`, `target-build-report-schema`, `target-build-success-with-blocking-finding`, and `target-build-input-missing` (a `required` adapter-declared `inputs` path absent from the slice tree). The handler also raises adjacent operational diagnostics — `target-build-report-missing`, `target-build-report-slice-mismatch`, `target-build-failed`, `target-build-tool-unsupported`, `target-build-brief-missing` — but the pinned four are the headline envelope contract.
+
+**No merge envelope (v1).** `specrun slice merge` stays the merge writer; `slice.merge.started` / `.succeeded` / `.failed` fire on its validator outcome, not on a merge report, and the durable record stays `slice.archive.created` (§"History via git plus an outcome ledger"). v1 adds no merge schema — a future merge-findings need reuses the build-report shape as `build/merge-report.yaml` rather than authoring a second schema.
+
+**Build outputs are not cached** in either execution mode (D9 target side); generated code is reproduced by re-running the build, never served from a fingerprint cache.
+
+**Acceptance proof (D7).** RFC-29 is complete only when one end-to-end fixture proves fan-in twice (Lead sets, then per-source Evidence) and fan-out once (multiple slices from a shared source-claim set) together. The deterministic integration test lives at [`tests/fan_in_fan_out.rs`](./tests/fan_in_fan_out.rs) over `tests/fixtures/rfc-29/fan-in-fan-out/` — it asserts envelope/ordering/determinism (survey → propose → extract → synthesize → build → merge, `depends-on` ordering, byte-identical kernel re-projection). The separate *generated-output-correctness* release gate — each target build passing its replay/golden suite plus `cargo check` / `cargo test` for generated crates — is a manual/CI acceptance step, not part of the deterministic test.
+
+## Registry projection and topology cache (RFC-36)
+
+Project-describing facets are authored in exactly one place. A project's target `adapter`, `description`, `capabilities`, and `keywords` live only in its `.specify/project.yaml`; `registry.yaml` carries membership + location (`name`, `url`), the cross-project `contracts` wiring, and an **optional** `adapter` used solely as a greenfield scaffold seed. The registry no longer authors a project's adapter/description for plan-time topology — the earlier "registry is the topology ledger" framing (and the `registry-project-adapter-empty` / `registry-description-missing-multi-repo` shape invariants) is superseded. `RegistryProject.adapter` is therefore `Option<String>`; pre-RFC-36 registries with an `adapter:` still parse (the value becomes the seed).
+
+**Derived topology cache.** Hub plan-time topology is projected through a committed `.specify/topology.lock` (`TopologyLock` in [`crates/workflow/src/registry/topology.rs`](./crates/workflow/src/registry/topology.rs), schema `schemas/topology-lock.schema.json` / `TOPOLOGY_LOCK_JSON_SCHEMA`). `specrun workspace sync` regenerates it after materialisation by loading each slot's `project.yaml`, resolving its `adapter` to `name@vN`, and recording `{ name, target, description?, capabilities[], keywords[] }`. It is machine-written write-if-changed (mirroring `.specify/context.lock`); operators never hand-edit it. `Layout::topology_lock_path()` resolves `.specify/topology.lock`.
+
+**Read path.** `hub_topology` builds `ProjectRef[]` from `topology.lock`, not `registry.yaml`; an absent cache fails `topology-cache-missing` (directs the operator to `workspace sync`). `ProjectRef` gains `capabilities` / `keywords`, threaded into the reconciliation `projects[]` so the agent binds on capability tags. A single regular (non-hub) project is unchanged: `regular_topology` reads `project.yaml` live as its own single source of truth.
+
+**Staleness, not synchronisation.** `specrun plan validate` emits `topology-cache-stale` (warning) when a slot's `project.yaml` facets diverge from the committed cache, replacing the former registry-authored `adapter-mismatch-workspace`. The fix is `workspace sync`. There is no top-down overwrite of `project.yaml` and no `--check` flag — CI uses the exit-2 gate of `plan validate`, regeneration is `workspace sync`. Both `topology-cache-missing` and `topology-cache-stale` are `Error::Validation` / plan-doctor findings on `EXIT_VALIDATION_FAILED = 2`.
 
 ## Tool-owned schemas
 
@@ -688,7 +948,7 @@ convention settles the prior disagreement between
 framework schemas (e.g. the component catalog) use
 `https://schemas.specify.dev/specify/<path>`. The
 `links.brief-schema-link-resolve` predicate in
-[`crates/authoring/src/check/schema_links.rs`](./crates/authoring/src/check/schema_links.rs)
+[`crates/standards/src/framework/check/schema_links.rs`](./crates/standards/src/framework/check/schema_links.rs)
 enforces that every `schemas.specify.dev` URL cited in adapter briefs
 resolves to a known schema in the hardcoded registry.
 
@@ -722,7 +982,7 @@ file work exactly as before. Slugs are kebab-case
 must resolve to a confirmed catalog entry; absent or rejected entries
 are findings. `notes.candidate_component` annotations are
 informational-only and do not trigger drift. Validation gates at
-position 4 in `validate_pre_adapter_gates` (after reconciliation drift,
+position 4 in `validate_pre_adapter_gates` (after provenance drift,
 authority override, and discovery alias).
 
 ## Vectis catalog consumer
@@ -741,43 +1001,124 @@ least one reference (unreferenced = warning). Catalog discovery uses
 to locate the file from the project root. When the catalog is absent,
 the check is silently skipped.
 
-## Standards layer split into `specify-lints` and `specify-schema`
+## Standards layer split into `specify-standards` and `specify-schema`
 
-The standards surface (rules parser / resolver / finding
-validator, `WorkspaceModel`, indexer, deterministic hint
-interpreter, diagnostic formatters, and `specrun lint` runner) lives
-in `specify-lints`, a sibling of `specify-workflow` rather than a module
-inside it. `specify-schema` is the shared leaf: it owns every embedded
-JSON Schema constant (`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
-`RECONCILIATION_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
-`RESOLVED_RULES_JSON_SCHEMA`, `LINT_FINDING_JSON_SCHEMA`,
-`LINT_RESULT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
+The standards surface (rules parser / resolver, `WorkspaceModel`,
+indexer, deterministic hint interpreter, the `DiagnosticProducer`
+trait, and `specrun lint` runner) lives in `specify-standards`, a sibling
+of `specify-workflow` rather than a module inside it. `specify-schema`
+is the shared leaf: it owns every embedded JSON Schema constant
+(`PLAN_JSON_SCHEMA`, `EVIDENCE_JSON_SCHEMA`,
+`PROVENANCE_JSON_SCHEMA`, `COMPONENTS_JSON_SCHEMA`, `RULE_JSON_SCHEMA`,
+`RESOLVED_RULES_JSON_SCHEMA`, `DIAGNOSTIC_JSON_SCHEMA`,
+`DIAGNOSTIC_REPORT_JSON_SCHEMA`, `WORKSPACE_MODEL_JSON_SCHEMA`) plus the
 `jsonschema` plumbing (`compile_schema`, `validate_value`,
 `validate_serialisable`, `read_yaml_as_json`). `specify-schema` shares
 the leaf layer with `specify-error` and depends on no workspace crate
 other than `specify-error` itself.
 
-Dependency direction: `specify-lints` depends on `specify-error`,
-`specify-schema`, and `specify-tool` (for the `kind: tool` hint). It
-does **not** depend on `specify-workflow`, and `specify-workflow` does
-**not** depend on `specify-lints`. The sibling shape makes the
-§"Principles" / "No lifecycle authority in review" rule a type-system
-invariant: review code cannot reach for slice or plan lifecycle
-transitions because the workflow types are not visible from the
-standards layer. If a future workflow validator needs to mint a
-`LintFinding`, `specify-workflow` gains a dependency on `specify-lints`
-at that point (leaf-→-root still holds); v1 does not need this and the
-sibling shape stays.
+The neutral diagnostic substrate — the `Diagnostic` / `DiagnosticReport`
+/ `DiagnosticSummary` currency, the fingerprint algorithm, the
+`validate_diagnostic` validator, the four renderers, and the `blocking`
+predicate — lives in its own `specify-diagnostics` leaf (see
+[§"Drained `Error::Validation` and the `Diagnostic`
+substrate"](#drained-errorvalidation-and-the-diagnostic-substrate)).
+`specify-standards` depends on it for the report shape; so do the producer
+crates (`specify-validate`, `specify-model`, `specify-digest`,
+`specify-tool`, `specify-workflow`). `specify-standards` keeps the
+lint-specific engine.
 
-The `specdev` predicate library (`crates/authoring/`) picks up
-`specify-lints` and `specify-schema` directly so codex predicates
-consume `RULE_JSON_SCHEMA` and the typed `Rule` DTO without
-re-vendoring the schema. The root `specify` binary wires both halves
+Dependency direction: `specify-standards` depends on `specify-error`,
+`specify-schema`, `specify-diagnostics`, and `specify-digest` (digest
+encoding for framework checks). The `kind: tool` lint evaluator is wired
+through a `ToolRunner` trait at the CLI boundary — not via a
+`specify-tool` dependency. It does **not** depend on `specify-workflow`, and
+`specify-workflow` does **not** depend on `specify-standards`. The sibling
+shape makes the §"Principles" / "No lifecycle authority in review" rule
+a type-system invariant: review code cannot reach for slice or plan
+lifecycle transitions because the workflow types are not visible from
+the standards layer. The substrate split lets `specify-workflow` and
+`specify-validate` mint diagnostics (via `specify-diagnostics`) without
+ever depending on anything named `lint` — the litmus test that keeps
+the lint-vs-validate concept split from re-appearing at the crate
+graph.
+
+The `specdev` predicate library (`specify_standards::framework`) sits inside
+`specify-standards` itself, so codex predicates consume `RULE_JSON_SCHEMA`
+and the typed `Rule` DTO without re-vendoring the schema. The root
+`specify` binary wires both halves
 together at the dispatcher boundary — `specrun lint` consumes the
 standards layer for indexing and evaluation and the workflow layer for
 project / slice context resolution; the two halves never call each
 other directly. The dependency-direction rationale is captured in this topic and
 [`docs/standards/architecture.md`](./docs/standards/architecture.md).
+
+## Drained `Error::Validation` and the `Diagnostic` substrate
+
+Every check surface — `specrun lint`, `specdev lint`, `specrun slice
+validate`, plan validation, and the library-level validators — speaks
+one currency: `Diagnostic` / `DiagnosticReport`, housed in the
+`specify-diagnostics` leaf. The leaf depends only on `specify-error`,
+`specify-schema`, and `specify-digest`; it must never depend
+on `specify-standards`, `specify-model`, or `specify-workflow`, so it stays
+cycle-free and importable by every producer.
+
+**Lint and validate stay conceptually distinct surfaces.** They share
+the substrate, not the authority:
+
+- **validate** gates a lifecycle transition (`refining → refined`). It is
+  workflow-owned, non-negotiable, and non-silenceable — ignore
+  directives are *off* for the lifecycle gate.
+- **lint** is standards/policy compliance. It is codex-owned, versioned,
+  lifecycle-neutral (may block CI, never transitions a slice), and
+  silenceable with an in-source rationale.
+
+Convergence applies to the data type, fingerprint, validator, renderer,
+and blocking predicate — never to the concepts or their gate policies.
+The naming convention encodes the same neutrality one layer down:
+surfaces keep concept names (`lint` / `validate`), the shared machinery
+is neutral (`specify-diagnostics`). The litmus test is that `validate`
+(or any non-lint producer) must not depend on a crate or module named
+`lint`.
+
+**Two orthogonal axes** keep the concepts queryable on the one type:
+
+- `source` — provenance: `deterministic | model-assisted | hybrid |
+  human | tool`.
+- `kind` — nature: `violation` (a defect) vs `review` (a
+  deterministically-raised request for agent/human judgment). The
+  former `Deferred` classification and lint's `lint-mode:
+  model-assisted` rules both surface as `kind: review`, `source:
+  deterministic` (the CLI raised the question; it did not score it).
+
+**Uniform blocking predicate, per-surface application.** `blocking()` in
+`specify-diagnostics` returns true iff `kind == violation && status ==
+open && severity ∈ {critical, important}`. `kind == review` never blocks
+anywhere; the refine surface reads its judgment worklist as
+`diagnostics.filter(kind == review)`. Each surface applies the same
+predicate, differing only in whether ignore directives run first (lint:
+yes; validate: no).
+
+**`Error::Validation` is payload-free.** The variant is
+`Error::Validation { code, detail }`; `variant_str()` returns the
+carried `code`, so the top-level wire `error` is the specific
+discriminant (e.g. `slice-pre-adapter-gate`, `plan-schema`,
+`tool.name-format`) rather than the historical generic `"validation"`.
+Handlers own rendering: a gate failure renders the full
+`DiagnosticReport` on **stdout** and then returns the payload-free error
+purely to carry the exit code (2) and the discriminant on stderr.
+Single operational errors that are not findings (e.g.
+`discovery-lead-unknown`, `adapter-name-axis-collision`,
+`tool-not-declared`, `rules-root-required`) take the same payload-free
+shape via `Error::validation_failed(code, detail)` but render no report.
+
+**Widened `ruleId` namespace.** The diagnostic `ruleId` pattern accepts
+both the closed codex family (`UNI-`/`CORE-`/`FRAME-`/… `-NNN`) and the
+runtime-validation discriminant form (dotted/kebab lowercase, e.g.
+`spec.requirement-id-missing`, `slice-model-source-orphan`), so workflow
+and validate producers can stamp their invariant ids onto the same
+finding shape the codex engine uses. `validate_diagnostic` mirrors the
+widened pattern.
 
 ## Vendored codex-rule schema removed
 
@@ -785,16 +1126,16 @@ The standalone vendored copy of the codex-rule JSON Schema and its
 drift-detection predicate are retired. Specifically, the following
 artefacts are gone:
 
-- `crates/authoring/schemas/rule.schema.json` (the vendored copy)
+- the framework crate's vendored `schemas/rule.schema.json` copy
 - `scripts/sync-codex-schema.sh` (the manual mirroring helper)
-- `crates/authoring/src/check/codex_schema_drift.rs` (the CH-09
+- the framework crate's `check/codex_schema_drift.rs` (the CH-09
   predicate implementation) and its integration test
 - The `codex.schema-drift` rule-id registration in the `specdev` check
   registry
 
-`specify-authoring` now consumes the canonical schema directly via
+The `specify_standards::framework` predicates now consume the canonical schema directly via
 `specify_schema::RULE_JSON_SCHEMA` (paired with the typed
-`Rule` DTO from `specify_lints`). One source of truth replaces the
+`Rule` DTO from `specify_standards::rules`). One source of truth replaces the
 prior vendored / canonical pair, so no drift check is required — the
 predicate the vendored copy existed to support no longer has a class of
 failures to catch. The canonical schema lives at
@@ -806,10 +1147,11 @@ standards schema. Cross-repo prose that named `codex.schema-drift`
 
 ## Lint finding status, disposition, and exit
 
-`LintFinding.status` is a closed kebab-case enum on the wire. The
-RFC-28 fingerprint algorithm excludes both `status` and `disposition`,
-so demoting a finding from `open` to `ignored` (or `false-positive`)
-never changes its identity.
+`Diagnostic.status` (the finding type formerly named `LintFinding`,
+relocated to `specify-diagnostics`) is a closed kebab-case enum on the
+wire. The fingerprint algorithm excludes both `status` and
+`disposition`, so demoting a finding from `open` to `ignored` (or
+`false-positive`) never changes its identity.
 
 | Value            | Set by                | Meaning                                                                                                                                |
 |------------------|-----------------------|----------------------------------------------------------------------------------------------------------------------------------------|
@@ -819,7 +1161,7 @@ never changes its identity.
 | `fixed`          | reserved              | Reserved for the cross-run baseline diff verb. No producer in v1.                                                                      |
 | `accepted`       | reserved              | Reserved for explicit operator acceptance via the baseline file. No producer in v1.                                                    |
 
-`disposition` is an optional sibling object on `LintFinding`, populated
+`disposition` is an optional sibling object on `Diagnostic`, populated
 only when `status != open`:
 
 ```text
@@ -828,7 +1170,7 @@ disposition: { source, directive?, since? }
 
 `disposition.source` is itself a closed enum. Today the only value is
 `directive` (set by the directive-validation pass in
-[`crates/specify-lints/src/lint/ignore.rs`](./crates/specify-lints/src/lint/ignore.rs)).
+[`crates/standards/src/lint/ignore.rs`](./crates/standards/src/lint/ignore.rs)).
 A future cross-run baseline producer can add `baseline` additively
 without churning callers — every consumer that exhausts the enum is
 already required to tolerate unknown values under the additive
@@ -854,8 +1196,13 @@ rules at `important`.
 yet picked up the shared codex tree — the directive pass silently
 skips synthetic emission. Status stamping on matched directives
 continues to run; only the policing of malformed and orphan
-directives degrades. The fix is to pass `--rules-root` or to vendor
-the shared tree under `.specify/cache/rules/`.
+directives degrades. The fix is to pass `--rules-root` or to
+distribute the shared codex into `.specify/.cache/codex/` via
+`specrun init` / `specrun rules sync` (codex distribution, RM-07);
+once the `universal/` pack resolves, `UNI-022` / `UNI-023` policing
+stops degrading and fires on the consumer project. The
+codex-distribution probe rung and pinning are recorded in
+[§"Shared codex distribution"](#shared-codex-distribution).
 
 **Operator-facing reference.** The directive grammar (comment-style
 table, em-dash / `--` separator tolerance, target-line semantics,
@@ -865,3 +1212,202 @@ the operator-facing reference at
 in the parent plugin repo; it is not re-stated here. The journal
 `lint-completed` event payload lives in
 [§"Journal event names"](#journal-event-names).
+
+## Shared codex distribution
+
+Consumer projects resolve shared `UNI-*` rules without a co-located
+framework checkout or a manual `--rules-root` (RM-07). The shared codex
+ships beside the target adapter in its source repo
+(`adapters/shared/rules/{universal,core}/`); `specrun init` and the
+standalone `specrun rules sync` verb mirror it into the project codex
+cache, **pinned to the same adapter source/ref**.
+
+- **Cache location.** `<project_dir>/.specify/.cache/codex/`, mirroring
+  `adapters/shared/rules/{universal,core}/` underneath. The codex
+  resolver joins the same relative path onto its rules root, so the new
+  rung needs no special-casing. This replaces the earlier lint-only
+  `.specify/cache/rules/` fallback (now removed) and standardises on the
+  dotted `.specify/.cache/` tree the manifest cache already uses.
+- **Probe order.** `probe_rules_root` in
+  [`crates/standards/src/rules/resolve.rs`](./crates/standards/src/rules/resolve.rs)
+  is the closed precedence: (1) explicit `--rules-root`; (2) monorepo
+  `{project_dir}/adapters/shared/rules/universal/`; (3) **new** codex
+  cache `{project_dir}/.specify/.cache/codex/...`; (4)
+  `rules-root-required`. Step 3 is a derived (non-explicit) root, so the
+  rules-root fallback overlay step stays skipped, exactly like the
+  monorepo case. The rung lives in the resolver so both `specrun lint`
+  and `specrun rules export` honour it.
+- **Distribution.** `cache_codex` /
+  `sync_codex` in [`crates/workflow/src/init/`](./crates/workflow/src/init)
+  walk up from the resolved adapter `source_dir` to the nearest ancestor
+  carrying the `universal/` pack and copy it (and, under
+  `--include-framework`, `core/`) into the cache. Git sources fetch
+  `adapters/shared/rules/` in the same sparse checkout as the adapter —
+  no second clone. **Fail-soft:** a source tree without the shared pack
+  leaves the cache empty and the consumer falls back to `--rules-root`.
+- **Provenance.** `CodexMeta` (`.specify/.cache/codex/.codex-meta.yaml`)
+  records the pinned adapter `source` value, `include_framework`, and
+  `fetched_at`. Audit-only; the resolver never reads it.
+- **Distribution vs evaluation.** `--include-framework` (init / `rules
+  sync`) controls what lands in the cache; the resolver's `include_core`
+  (on `lint` / `rules export`) controls whether `CORE-*` rules are
+  evaluated/exported. They are independent: consumer projects default to
+  neither distributing nor evaluating the framework `core/` pack.
+
+## Single slice-model artifact (RFC-29 M2b simplification)
+
+Revises RFC-29 D3a/D4 (durable spec in the parent repo's [decision log](https://github.com/augentic/specify/blob/main/docs/explanation/decision-log.md#one-slice-model-artifact-provenance-inline)).
+
+- **One artifact.** A synthesized slice persists exactly one structured
+  file, `model.yaml`, with provenance inline (`requirements[].claims[]`
+  carrying `winner`, plus `resolution`). There is no on-disk
+  `provenance.yaml`.
+- **Provenance is a projection.** `ProvenanceIndex` in
+  [`crates/workflow/src/slice/provenance.rs`](./crates/workflow/src/slice/provenance.rs)
+  is computed from `model.yaml` and emitted on demand by
+  `specrun slice provenance [--format]`; it is never loaded from disk.
+  The `slice-provenance-drift` file-drift gate retires (a projection
+  cannot drift from its source); spec-vs-model staleness
+  (`slice-spec-provenance-stale`) and `(source, id)` orphan checks
+  remain. The `slice.provenance.written` journal kind retires.
+- **One schema.** `SLICE_MODEL_JSON_SCHEMA` validates both the agent's
+  synthesis-response `model` and the persisted file; kernel-owned fields
+  (`requirements[].id`, `.status`, `claims[].winner`) are optional. The
+  kernel re-derives them and ignores any the agent supplied
+  (normalize, never reject), so `DRAFT_MODEL_JSON_SCHEMA` and the
+  `slice-synthesize-kernel-field-usurped` abort both retire.
+
+## Authority: document-level plus one override (v1)
+
+Simplifies the RFC-29c authority resolution surface. v1 resolves
+authority at document level (`intent` > `documentation` > `behaviour`)
+with a single override surface: the per-slice `authority-override` on
+`plan.yaml`, keyed by claim kind, naming the winning source. The
+per-Evidence `authority-overrides` field on `evidence.schema.json` and
+per-kind class-lifting are removed for v1 and deferred to a future RFC.
+The `AuthorityOverrides` type in
+[`crates/model/src/evidence/authority.rs`](./crates/model/src/evidence/authority.rs)
+is deleted accordingly; the closed `AuthorityClass` / `ClaimKind` enums
+stay (the latter keys the surviving per-slice override).
+
+## Slice synthesis engine (RFC-29 M2b)
+
+Implements RFC-29c D3/D8/D10/D13 — the durable, as-shipped contract for
+`specrun slice synthesize`, its projection kernel, and the schema/event
+additions. Complements §"Single slice-model artifact (RFC-29 M2b
+simplification)" (the one-artifact/one-schema posture) and §"Authority:
+document-level plus one override (v1)" (the resolution surface); this
+section pins the command and kernel around them.
+
+**Two-phase command (mirrors `specrun plan propose`).** The CLI cannot
+run an agent, so `specrun slice synthesize <slice>` splits into the same
+two mutually-exclusive modes as D2's `plan propose`, exactly one of
+which is required (neither fails `slice-synthesize-mode-required`; the
+clap layer rejects passing both via `conflicts_with`). The handler is
+[`src/runtime/commands/slice/synthesize.rs`](./src/runtime/commands/slice/synthesize.rs);
+the clap surface is [`src/runtime/commands/slice/cli.rs`](./src/runtime/commands/slice/cli.rs).
+
+- **`--dry-run [--format json]`** is read-only. It reads the slice's
+  bound `evidence/<source>.yaml` (each source's inline `lead` + `claims`)
+  and the resolved target `shape` brief body (via `TargetAdapter::resolve`),
+  then emits the agent **inputs** envelope (`kind: inputs`) for the
+  synthesis step. Authority is **not** included — the kernel resolves it
+  after the response returns. It writes nothing and emits one
+  `slice.synthesize.agent` journal event (synthesis is always
+  agent-dispatched and `cache: opt-out`, D10 — there is no WASI tool
+  path and no closed *request* wire shape).
+- **`--from <response.json> [--format json]`** is the **only** writer.
+  It schema-gates the raw response bytes against `synthesis.schema.json`
+  (`kind: response`, code `synthesis-schema`), resolves authority from
+  the on-disk Evidence and any per-slice `authority-override`, runs the
+  CLI-owned projection kernel, renders provenance lines into
+  `specs/<unit>/spec.md`, drift-validates, then atomically/staged-persists
+  `proposal.md` / `specs/<unit>/spec.md` / `design.md` / `tasks.md` /
+  `model.yaml` (prior artifacts left intact on failure). It emits
+  `slice.synthesize.started` then `slice.synthesize.completed` (payload
+  carries the persisted `artifacts[]`) or `slice.synthesize.failed`
+  (payload carries a short `reason` / finding code). No `provenance.yaml`
+  is ever written (§"Single slice-model artifact").
+
+**Kernel ownership (normalize, never reject).** The agent authors only
+the requirement set and prose: per requirement, the contributing
+`claims[]` `(source, id, kind)`, an `agreement` verdict, the behavioral
+prose (`title` / `statement` / `scenarios` / `notes`), the owning
+`unit`, the agent-authored `tasks[]` with `TASK` ids, and the prose-only
+Markdown artifacts (spec bodies **without** `ID:` / `Sources:` /
+`Status:` lines). The kernel owns and re-derives everything
+deterministic: the `version` / `slice` / `project` header (stamped from
+the slice's bound project, never persisting `target`), `REQ-NNN` ids in
+declaration order with no holes, per-claim `winner` markers, the
+rendered `sources` lists (highest authority first), `status`, and the
+inline provenance. Any kernel-owned field the agent happened to set
+(`id` / `status` / `winner` / `sources`) is ignored and recomputed. The
+pure-function modules live under
+[`crates/workflow/src/slice/synthesis/`](./crates/workflow/src/slice/synthesis):
+`authority.rs` (the promoted real resolver `resolve` — resolution order
+per `(source, kind)`: per-slice override → document `authority` →
+default `intent > documentation > behaviour`; tie at the top class →
+`conflict`; mixed-kind requirements resolve each claim independently and
+pick the strictly-greatest effective class), `project.rs` (the
+`project(response) -> SliceModel` kernel), `render.rs` (the `spec.md`
+provenance-line renderer, reused by the stale-drift check), and
+`wire.rs` (the `SynthesisResponse` DTO).
+
+**Schema registration and the earned-core trim.** The embedded
+`model.schema.json` was trimmed to the **earned core** — `required:
+[requirements, tasks]`, dropping `target`, the deferred `domain` /
+`apis` / `configuration` / `technical-logic` / `observability` sub-trees
+and their `DEC` / `TYP` / `OP` / `CFG` / `OBS` id grammars, `value` /
+`path` from `modelClaim`, and `resolution` / `resolution-trace` from
+`modelRequirement`. One `SLICE_MODEL_JSON_SCHEMA` validates both the
+agent response `model` and the persisted `model.yaml` (kernel-owned and
+header fields optional). The new `synthesis.schema.json` is embedded as
+`SYNTHESIS_JSON_SCHEMA` in
+[`crates/schema/src/constants.rs`](./crates/schema/src/constants.rs)
+(re-exported from `lib.rs`); its `model` property `$ref`s the model
+schema by a relative URI, so the two are compiled **together** through a
+`jsonschema::Registry` that pins the model schema under `MODEL_SCHEMA_URL`
+(the same discipline the diagnostic-report renderer uses). The
+`validate_synthesis_json` gate in
+[`crates/workflow/src/schema.rs`](./crates/workflow/src/schema.rs) runs
+on the raw bytes before structural deserialize; failures raise
+`Error::Validation { code: "synthesis-schema" }` (exit 2).
+
+**`to_provenance_index` recompute.** With `value` / `path` /
+`resolution` gone from the model, `ProvenanceIndex` recomputes
+`resolution` (and the optional `resolution-trace`) via the authority
+kernel from the claim count, inline `winner` markers, and re-resolved
+authority, and reads each claim's `value` / `path` from on-disk
+`evidence/<source>.yaml` keyed by `(source, id)`. `specrun slice
+provenance` projects the audit view on demand; `specrun slice model
+show <slice> [--format json]` is the read-only model viewer
+([`src/runtime/commands/slice/model.rs`](./src/runtime/commands/slice/model.rs)).
+
+**Drift validators.** `specrun slice validate` loads `model.yaml` and
+emits seven blocking typed-model findings (exit 2):
+`slice-model-schema`, `slice-spec-provenance-stale`,
+`slice-model-target-drift`, `slice-model-source-orphan`,
+`slice-model-cross-ref-orphan`, `slice-model-claim-kind-mismatch`,
+`slice-model-id-grammar`. They are `Diagnostic` findings on the
+`DiagnosticReport` surface ([`src/runtime/commands/slice/validate.rs`](./src/runtime/commands/slice/validate.rs)).
+
+**Journal events.** `EventKind::SliceSynthesize{Started,Agent,Completed,Failed}`
+in [`crates/workflow/src/journal.rs`](./crates/workflow/src/journal.rs)
+carry the wire ids `slice.synthesize.{started|agent|completed|failed}`
+(kebab via `#[serde(rename)]`, `snake_case` Rust variants). They are
+distinct from the per-requirement `slice.synthesis.{conflict,divergence,unknown}`
+tag events. See §"Journal event names".
+
+## History via git plus an outcome ledger
+
+Revises the archive posture. The durable record of merged work is git
+history of the committed `.specify/specs/` baseline plus an append-only
+outcome ledger: a `slice.archive.created` journal event (payload: slice,
+touched-specs, outcome summary, merge SHA) emitted from the merge path
+in [`src/runtime/commands/slice/merge.rs`](./src/runtime/commands/slice/merge.rs).
+The archived slice folder under `.specify/archive/YYYY-MM-DD-<slice>/`
+becomes a prunable convenience cache governed by a new `specrun archive
+prune` verb (retention policy mirroring the tool-cache GC in
+[`crates/tool/src/cache/gc.rs`](./crates/tool/src/cache/gc.rs)), not the
+system of record. `.specify/specs/` stays committable (init gitignores
+only `.specify/.cache/` and `.specify/workspace/`).

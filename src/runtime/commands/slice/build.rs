@@ -1,0 +1,354 @@
+//! `specrun slice build <slice> [--phase prepare|finalize]` handler —
+//! target build envelope owner (RFC-29d M3 / D6).
+//!
+//! Mirrors the shipped source two-phase agent contract
+//! (`specrun source survey` / `extract`). The verb resolves the target
+//! from the slice's bound `.metadata.yaml`, then owns request assembly,
+//! report validation, the four `target-build-*` aborts, the
+//! `slice.build.*` events, and the `built` transition gate; the target
+//! `build` brief owns only code generation.
+//!
+//! - `execution: tool`: single-phase. Assemble + schema-validate the
+//!   request, then dispatch the declared build tool. RFC-29d M3 ships no
+//!   first-party build tool, so the dispatch itself is a clear
+//!   unsupported seam ([`dispatch_build_tool`], mirroring source survey's
+//!   `dispatch_survey_tool`); the request-side aborts still fire so a
+//!   future tool slots in behind the same flow.
+//! - `execution: agent` (default): two-phase, and the CLI never blocks
+//!   on agent work.
+//!   - `--phase prepare` (default): assemble + schema-validate the
+//!     request, write `.specify/slices/<slice>/build/request.yaml`, emit
+//!     `target.execution.agent`, and print the handoff envelope. Control
+//!     returns to the agent, which runs the `build` brief and writes
+//!     `build/report.yaml`.
+//!   - `--phase finalize`: frame entry with `slice.build.started`,
+//!     validate the agent-produced report against
+//!     `schemas/target/build-report.schema.json`, reject a `success`
+//!     report carrying a blocking finding, gate the `Refined → Built`
+//!     transition, and journal `slice.build.succeeded` /
+//!     `slice.build.failed`. The `slice.build.*` pair brackets finalize
+//!     (mirroring the `slice merge run` idiom), so a prepare-time abort
+//!     never leaves a dangling `started`.
+//!
+//! Journal posture (RFC-29d, mirroring `slice merge` C5): every
+//! `slice.build.*` / `target.execution.agent` append is best-effort — a
+//! journal-write failure is logged and swallowed so it can never change
+//! the verb's exit code. A genuine build failure (failed report, schema
+//! abort, gate rejection) still propagates so the exit stays non-zero.
+
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use jiff::Timestamp;
+use serde::Serialize;
+use specify_error::{Error, Result};
+use specify_workflow::adapter::{
+    BuildInputDeclaration, Execution, ResolvedTargetAdapter, TargetAdapter, TargetOperation,
+};
+use specify_workflow::init::adapter_name_from_value;
+use specify_workflow::journal::{self, Event, EventKind};
+use specify_workflow::schema::{validate_build_report_json, validate_build_request_json};
+use specify_workflow::slice::{
+    BuildReport, BuildRequest, BuildStatus, LifecycleStatus, SliceMetadata,
+    actions as slice_actions, build_request, enforce_report_no_blocking_on_success,
+};
+
+use crate::runtime::commands::source::cli::Phase;
+use crate::runtime::context::Ctx;
+
+/// Handoff envelope printed by the agent `prepare` phase. The agent
+/// runs the `build` brief against `request`, then writes `report`
+/// before calling back with `--phase finalize`.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct BuildHandoff {
+    slice: String,
+    target: String,
+    /// Assembled, schema-validated build request the brief consumes.
+    request: PathBuf,
+    /// Expected output path the brief writes its build report to.
+    report: PathBuf,
+    /// Directory holding the target adapter's brief markdown.
+    briefs_dir: PathBuf,
+    /// The `build` brief the agent runs.
+    build_brief: PathBuf,
+    execution: &'static str,
+}
+
+/// Result of a completed `finalize` (or a future single-phase tool
+/// run): the validated report's slice / target / status plus the
+/// finding count.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct BuildResult {
+    slice: String,
+    target: String,
+    status: BuildStatus,
+    findings: usize,
+}
+
+/// Run `specrun slice build <slice> [--phase prepare|finalize]`.
+///
+/// # Errors
+///
+/// - propagates `.metadata.yaml` load and `TargetAdapter::resolve`
+///   failures.
+/// - `target-build-input-missing` / `target-build-request-schema` from
+///   request assembly + validation (both phases of the tool path and
+///   the agent `prepare` phase).
+/// - `target-build-report-missing` / `target-build-report-schema` /
+///   `target-build-success-with-blocking-finding` /
+///   `target-build-report-slice-mismatch` / `target-build-failed` and
+///   the `lifecycle` gate error from the agent `finalize` phase.
+/// - `target-build-tool-unsupported` from the `execution: tool` seam.
+pub(super) fn run(ctx: &Ctx, name: &str, phase: Phase) -> Result<()> {
+    let slice_dir = ctx.slices_dir().join(name);
+    let metadata = SliceMetadata::load(&slice_dir)?;
+    let target_name = adapter_name_from_value(&metadata.target);
+    let resolved = TargetAdapter::resolve(target_name, &ctx.project_dir)?;
+
+    match resolved.manifest.execution {
+        Some(Execution::Tool) => run_tool(ctx, name, &slice_dir, &resolved.manifest),
+        _ => match phase {
+            Phase::Prepare => prepare(ctx, name, &slice_dir, &resolved),
+            Phase::Finalize => finalize(ctx, name, &slice_dir),
+        },
+    }
+}
+
+/// Agent `prepare` phase: assemble + validate + persist the request,
+/// emit `target.execution.agent`, and print the handoff envelope.
+/// Returns without blocking on the agent's `build` run. The
+/// `slice.build.started` frame is owned by `finalize`, not prepare, so
+/// a prepare-time abort never leaves a dangling `started`.
+fn prepare(
+    ctx: &Ctx, name: &str, slice_dir: &Path, resolved: &ResolvedTargetAdapter,
+) -> Result<()> {
+    let manifest = &resolved.manifest;
+    let request_path = assemble_and_write_request(ctx, name, slice_dir, &manifest.inputs)?;
+
+    emit_event(
+        ctx,
+        EventKind::TargetExecutionAgent {
+            slice: name.to_string(),
+            target: manifest.name.clone(),
+        },
+    );
+
+    let build_brief = build_brief_path(resolved)?;
+    let briefs_dir =
+        build_brief.parent().map_or_else(|| resolved.location.path().clone(), Path::to_path_buf);
+    let handoff = BuildHandoff {
+        slice: name.to_string(),
+        target: manifest.name.clone(),
+        request: request_path,
+        report: report_path(slice_dir),
+        briefs_dir,
+        build_brief,
+        execution: "agent",
+    };
+    ctx.write(&handoff, write_handoff_text)
+}
+
+/// Agent `finalize` phase: validate the agent-produced report, gate the
+/// `built` transition, and bracket the outcome with
+/// `slice.build.succeeded` / `slice.build.failed`. Mirrors the
+/// `slice merge run` lifecycle-pair idiom (C5).
+fn finalize(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<()> {
+    emit_event(
+        ctx,
+        EventKind::SliceBuildStarted {
+            slice_name: name.to_string(),
+        },
+    );
+    match finalize_report(name, slice_dir) {
+        Ok(body) => {
+            emit_event(
+                ctx,
+                EventKind::SliceBuildSucceeded {
+                    slice_name: name.to_string(),
+                },
+            );
+            ctx.write(&body, write_result_text)
+        }
+        Err(err) => {
+            // `reason` is the error's stable kebab discriminant. The
+            // failed event is best-effort, but the original error still
+            // propagates so the exit code is unchanged.
+            emit_event(
+                ctx,
+                EventKind::SliceBuildFailed {
+                    slice_name: name.to_string(),
+                    reason: err.variant_str().into_owned(),
+                },
+            );
+            Err(err)
+        }
+    }
+}
+
+/// Validate the report, enforce the success-blocking gate, reject a
+/// failed report, and gate the `Refined → Built` transition. Wrapped by
+/// [`finalize`] so the `slice.build.*` pair brackets it.
+fn finalize_report(name: &str, slice_dir: &Path) -> Result<BuildResult> {
+    let raw = read_report(&report_path(slice_dir))?;
+    validate_build_report_json(&raw)?;
+    let report: BuildReport = serde_saphyr::from_str(&raw)?;
+
+    if report.slice != name {
+        return Err(Error::validation_failed(
+            "target-build-report-slice-mismatch",
+            "the build report's slice matches the slice being finalized",
+            format!("report names slice `{}`, but finalize ran for `{name}`", report.slice),
+        ));
+    }
+
+    enforce_report_no_blocking_on_success(&report)?;
+    if report.status == BuildStatus::Failure {
+        return Err(Error::Diag {
+            code: "target-build-failed",
+            detail: format!(
+                "target `{}` reported a failed build for slice `{name}` ({} finding(s))",
+                report.target,
+                report.findings.len()
+            ),
+        });
+    }
+
+    // The gate missing today: a validated `success` report is the only
+    // legal entry into `Built`. An illegal edge (slice not `Refined`)
+    // surfaces as the `lifecycle` diagnostic and routes to the failed
+    // event above.
+    slice_actions::transition(slice_dir, LifecycleStatus::Built, Timestamp::now())?;
+
+    Ok(BuildResult {
+        slice: name.to_string(),
+        target: report.target,
+        status: report.status,
+        findings: report.findings.len(),
+    })
+}
+
+/// Single-phase `tool` execution: assemble + schema-validate the request
+/// (so the request-side aborts still fire), then dispatch the declared
+/// build tool. The dispatch itself is the M3 seam.
+fn run_tool(ctx: &Ctx, name: &str, slice_dir: &Path, manifest: &TargetAdapter) -> Result<()> {
+    assemble_and_write_request(ctx, name, slice_dir, &manifest.inputs)?;
+    dispatch_build_tool(manifest)
+}
+
+/// Dispatch the declared `build` WASI tool / built-in Rust path.
+///
+/// RFC-29d M3 ships no first-party build tool; the WASI build dispatch
+/// protocol is out of scope for this milestone (every first-party target
+/// declares `execution: agent`). The surrounding control flow — request
+/// assembly + schema validation in [`run_tool`], and the
+/// validate / gate finalize tail shared with the agent path — is wired
+/// correctly, so the only seam left is the actual tool invocation.
+fn dispatch_build_tool(manifest: &TargetAdapter) -> Result<()> {
+    Err(Error::Diag {
+        code: "target-build-tool-unsupported",
+        detail: format!(
+            "target adapter `{}` declares `execution: tool`, but RFC-29d M3 ships no `build` \
+             tool dispatch; no first-party target declares a build tool",
+            manifest.name
+        ),
+    })
+}
+
+/// Assemble the build request from the bound adapter's declared inputs,
+/// schema-validate the serialised envelope, and persist it atomically to
+/// `.specify/slices/<slice>/build/request.yaml`. Returns the request
+/// path. `project-dir` is `ctx.project_dir` (the resolved working tree,
+/// the workspace clone in workspace mode); `inputs.root` is the slice
+/// tree — both mirror how `slice synthesize` / `slice merge` derive
+/// paths from a single `ctx.project_dir`.
+fn assemble_and_write_request(
+    ctx: &Ctx, name: &str, slice_dir: &Path, inputs: &[BuildInputDeclaration],
+) -> Result<PathBuf> {
+    let request = build_request(name, inputs, slice_dir, &ctx.project_dir)?;
+    let yaml = serialise_request(&request)?;
+    validate_build_request_json(&yaml)?;
+
+    let build_dir = slice_dir.join("build");
+    std::fs::create_dir_all(&build_dir).map_err(Error::Io)?;
+    let request_path = build_dir.join("request.yaml");
+    specify_model::atomic::bytes_write(&request_path, yaml.as_bytes())?;
+    Ok(request_path)
+}
+
+/// Serialise the request to a trailing-newlined YAML document.
+fn serialise_request(request: &BuildRequest) -> Result<String> {
+    let mut content = serde_saphyr::to_string(request)?;
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
+    Ok(content)
+}
+
+/// `<slice_dir>/build/report.yaml`.
+fn report_path(slice_dir: &Path) -> PathBuf {
+    slice_dir.join("build").join("report.yaml")
+}
+
+/// Resolve the bound target adapter's `build` brief path.
+fn build_brief_path(resolved: &ResolvedTargetAdapter) -> Result<PathBuf> {
+    let brief_rel = resolved.manifest.briefs.get(&TargetOperation::Build).ok_or_else(|| {
+        Error::validation_failed(
+            "target-build-brief-missing",
+            "the bound target adapter declares a build brief",
+            format!("target adapter `{}` declares no `build` brief", resolved.manifest.name),
+        )
+    })?;
+    Ok(resolved.location.path().join(brief_rel))
+}
+
+/// Read the `report.yaml` artifact, mapping a missing file to the
+/// `target-build-report-missing` diagnostic.
+fn read_report(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            Error::Diag {
+                code: "target-build-report-missing",
+                detail: format!(
+                    "no `report.yaml` at {}; the build must write the report into the slice's \
+                     `build/` directory before finalize",
+                    path.display()
+                ),
+            }
+        } else {
+            Error::Io(err)
+        }
+    })
+}
+
+/// Best-effort append of a single `slice.build.*` / `target.execution.agent`
+/// event. A journal-write failure is logged and swallowed so it can
+/// never change the verb's exit code.
+fn emit_event(ctx: &Ctx, kind: EventKind) {
+    let event = Event::new(Timestamp::now(), kind);
+    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
+        eprintln!("warning: slice.build journal append: {err}");
+    }
+}
+
+fn write_handoff_text(w: &mut dyn Write, body: &BuildHandoff) -> std::io::Result<()> {
+    writeln!(w, "slice: {}", body.slice)?;
+    writeln!(w, "target: {}", body.target)?;
+    writeln!(w, "execution: {}", body.execution)?;
+    writeln!(w, "request: {}", body.request.display())?;
+    writeln!(w, "report: {}", body.report.display())?;
+    writeln!(w, "briefs-dir: {}", body.briefs_dir.display())?;
+    writeln!(w, "build-brief: {}", body.build_brief.display())
+}
+
+fn write_result_text(w: &mut dyn Write, body: &BuildResult) -> std::io::Result<()> {
+    let status = match body.status {
+        BuildStatus::Success => "success",
+        BuildStatus::Failure => "failure",
+    };
+    writeln!(w, "slice: {}", body.slice)?;
+    writeln!(w, "target: {}", body.target)?;
+    writeln!(w, "status: {status}")?;
+    writeln!(w, "findings: {}", body.findings)
+}

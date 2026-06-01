@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use adapter_uri::adapter_name_from_value;
+pub use cache::{CodexMeta, codex_cache_root};
 use jiff::Timestamp;
 use specify_error::Error;
 use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
@@ -35,8 +36,9 @@ pub struct InitOptions<'a> {
     pub adapter: Option<&'a str>,
     /// Project name; defaults to the project directory name when `None`.
     pub name: Option<&'a str>,
-    /// Optional project domain description.
-    pub domain: Option<&'a str>,
+    /// Optional free-text project description (tech stack, architecture,
+    /// testing approach).
+    pub description: Option<&'a str>,
     /// When `true`, scaffold a registry-only platform **hub** instead
     /// of a regular project: writes `registry.yaml` at the repo root
     /// and `project.yaml { hub: true }` (with `adapter:` omitted)
@@ -44,6 +46,12 @@ pub struct InitOptions<'a> {
     /// already exists so it never clobbers a regular single-repo
     /// project.
     pub hub: bool,
+    /// When `true`, also distribute the framework `core/` pack
+    /// (`adapters/shared/rules/core/`) into the project codex cache
+    /// alongside the always-distributed `universal/` pack. Default off:
+    /// consumer projects carry only `UNI-*` rules. Ignored for hub init
+    /// (hubs resolve no adapter and so distribute no codex).
+    pub include_framework: bool,
 }
 
 /// Structured summary of what `init` did, returned for downstream
@@ -58,6 +66,12 @@ pub struct InitResult {
     pub adapter_name: String,
     /// Whether `.specify/.cache/cache_meta.yaml` exists.
     pub cache_present: bool,
+    /// Whether the shared codex was distributed into
+    /// `.specify/.cache/codex/` during this run. `false` when the
+    /// adapter source tree carries no `adapters/shared/rules/universal/`
+    /// pack (the consumer then relies on `--rules-root` or a monorepo
+    /// checkout) and for hub init.
+    pub codex_present: bool,
     /// Directories that were newly created (empty on re-init).
     pub directories_created: Vec<PathBuf>,
     /// Brief IDs scaffolded into the `rules:` map.
@@ -96,6 +110,32 @@ pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> 
         return hub::run(opts);
     }
     regular::run(opts, now)
+}
+
+/// Distribute (or refresh) the shared codex for an initialised project.
+///
+/// Pinned to `adapter_value` — the project's recorded `adapter:`
+/// source/ref (or an operator override). Resolves the adapter source
+/// the same way `init` does (local copy or git sparse checkout), then
+/// mirrors `adapters/shared/rules/universal/` (and, when
+/// `include_framework`, `core/`) into `.specify/.cache/codex/`.
+///
+/// This is the engine behind `specrun rules sync`. `init` distributes
+/// the codex inline via the private `cache::cache_codex` path; this
+/// entry point lets a refresh run stand alone without re-running init.
+///
+/// Returns `Ok(true)` when the codex was distributed, `Ok(false)` when
+/// the adapter source carries no `adapters/shared/rules/universal/`
+/// pack (fail-soft). `now` stamps [`CodexMeta::fetched_at`].
+///
+/// # Errors
+///
+/// Bubbles up adapter-resolution (clone/copy) and filesystem errors.
+pub fn sync_codex(
+    project_dir: &Path, adapter_value: &str, include_framework: bool, now: Timestamp,
+) -> Result<bool, Error> {
+    let source = adapter_uri::AdapterUri::parse(adapter_value, project_dir)?;
+    cache::cache_codex(project_dir, &source, include_framework, now)
 }
 
 pub(crate) fn resolved_name(project_dir: &Path, explicit: Option<&str>) -> String {
@@ -162,8 +202,9 @@ mod tests {
                 project_dir: tmp.path(),
                 adapter: None,
                 name: Some("demo"),
-                domain: None,
+                description: None,
                 hub: false,
+                include_framework: false,
             },
             fixed_now(),
         )
@@ -191,8 +232,9 @@ mod tests {
                 project_dir: tmp.path(),
                 adapter: Some("omnia"),
                 name: Some("platform-hub"),
-                domain: None,
+                description: None,
                 hub: true,
+                include_framework: false,
             },
             fixed_now(),
         )

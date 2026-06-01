@@ -18,7 +18,7 @@ pub struct Cli {
 
     /// Failure-envelope shape on infrastructure error. `text` (the
     /// default) emits the human-oriented `error: ...` line on
-    /// stderr; `json` emits the empty `LintResult` envelope on
+    /// stderr; `json` emits the empty `DiagnosticReport` envelope on
     /// stdout alongside the stderr error message so structured
     /// consumers can rely on a stable wire shape. The per-subcommand
     /// `lint --output-format` flag controls the success-body format

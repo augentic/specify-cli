@@ -7,7 +7,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_error::Error;
 use specify_model::atomic::yaml_write;
 
 use super::fingerprint::ContextFingerprint;
@@ -157,14 +157,7 @@ fn inputs_by_path(inputs: &[Input]) -> BTreeMap<String, String> {
 }
 
 fn validation_error(rule_id: &'static str, detail: String) -> Error {
-    Error::Validation {
-        results: vec![ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: rule_id.to_string(),
-            rule: "context.lock must be a supported context lock file".to_string(),
-            detail: Some(detail),
-        }],
-    }
+    Error::validation_failed(rule_id, "context.lock must be a supported context lock file", detail)
 }
 
 #[cfg(test)]

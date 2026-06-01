@@ -16,20 +16,22 @@ use assert_cmd::Command;
 use jsonschema::{Registry, Resource, Validator};
 use serde_json::Value;
 use specify_schema::{
-    LINT_FINDING_JSON_SCHEMA, LINT_RESULT_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA,
+    DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA,
 };
 use tempfile::TempDir;
 
 const FINDING_SCHEMA_URL: &str =
-    "https://github.com/augentic/specify-cli/schemas/lint/finding.schema.json";
+    "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json";
 
-/// Compile the review-result envelope schema with the `finding.schema.json`
-/// child resource wired through a `jsonschema::Registry`. Mirrors the
-/// `specify_lints::lint::diagnostics::json::render_value` setup so the
+/// Compile the diagnostic-report envelope schema with the
+/// `diagnostic.schema.json` child resource wired through a
+/// `jsonschema::Registry`. Mirrors the
+/// `specify_diagnostics::render` with `Format::Json` setup so the
 /// e2e test re-validates the same shape the CLI emits.
 fn compile_review_result_validator() -> Validator {
-    let envelope: Value = serde_json::from_str(LINT_RESULT_JSON_SCHEMA).expect("envelope schema");
-    let finding: Value = serde_json::from_str(LINT_FINDING_JSON_SCHEMA).expect("finding schema");
+    let envelope: Value =
+        serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA).expect("envelope schema");
+    let finding: Value = serde_json::from_str(DIAGNOSTIC_JSON_SCHEMA).expect("finding schema");
     let registry = Registry::new()
         .add(FINDING_SCHEMA_URL, Resource::from_contents(finding))
         .and_then(jsonschema::RegistryBuilder::prepare)
@@ -173,7 +175,7 @@ fn review_emits_important_finding_and_exits_2() {
     assert_eq!(rule_id, "UNI-100", "envelope:\n{envelope:#}");
 }
 
-/// `LintResult` envelope byte-stability: two back-to-back runs against the same fixture
+/// `DiagnosticReport` envelope byte-stability: two back-to-back runs against the same fixture
 /// must emit byte-identical stdout. Pins the deterministic ordering
 /// contract through the CLI boundary.
 #[test]
@@ -206,14 +208,14 @@ fn review_dump_model_exits_0() {
     assert_validates(&validator, stdout, "workspace-model");
 }
 
-/// RFC-33a §"Journal event" (D8): every completed scan appends one
+/// Journal event: every completed scan appends one
 /// `lint-completed` line to `.specify/journal.jsonl` with the closed
 /// `snake_case` payload shape. The fixture wires a Markdown directive
 /// that demotes the UNI-100 TODO finding so the asserted counts
 /// straddle both buckets (`ignored: 1`, `open: 0`) and the scan exits
 /// clean (`exit_code: 0`) — proving the journal `exit_code` mirrors
-/// the status-aware exit decision RFC-33a §"Exit and presentation
-/// semantics" defines.
+/// the status-aware exit decision the exit and presentation
+/// semantics define.
 #[test]
 fn emits_lint_completed_event() {
     use std::path::PathBuf;
@@ -316,8 +318,8 @@ fn emits_lint_completed_event() {
 }
 
 /// rules-root resolution / lint exit mapping negative: with no `--rules-root`, no project-local
-/// `adapters/shared/rules/universal/` rung, and no
-/// `.specify/cache/rules/` cache, the resolver returns
+/// `adapters/shared/rules/universal/` rung, and no distributed
+/// `.specify/.cache/codex/` cache, the resolver returns
 /// `rules-root-required`. The CLI surfaces it on stderr and exits 2.
 #[test]
 fn review_missing_rules_root_exits_2() {

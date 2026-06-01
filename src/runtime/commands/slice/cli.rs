@@ -1,8 +1,12 @@
 //! Clap derive surface for `specrun slice *` and its nested verbs.
 //! The umbrella `cli.rs` re-exports the action enums.
 
-use clap::Subcommand;
+use std::path::PathBuf;
+
+use clap::{ArgAction, Subcommand};
 use specify_workflow::slice::{CreateIfExists, LifecycleStatus};
+
+use crate::runtime::commands::source::cli::Phase;
 
 #[derive(Subcommand)]
 pub enum SliceAction {
@@ -21,6 +25,79 @@ pub enum SliceAction {
     Validate {
         /// Slice name (under `.specify/slices/`)
         name: String,
+    },
+    /// Project the audit-only provenance view from the slice's
+    /// `model.yaml` (RFC-29c §"Provenance projection"). Provenance is
+    /// carried inline in `model.yaml`; this reshapes it on demand and
+    /// never reads or writes a `provenance.yaml` file.
+    Provenance {
+        /// Slice name (under `.specify/slices/`)
+        name: String,
+    },
+    /// Read-only viewer over a slice's `model.yaml`
+    Model {
+        #[command(subcommand)]
+        action: SliceModelAction,
+    },
+    /// Synthesise a slice — assemble the agent INPUTS envelope, or
+    /// project an agent response into `model.yaml` + Markdown artifacts
+    /// (RFC-29c M2b).
+    ///
+    /// Exactly one mode is required — the parser rejects passing both:
+    ///
+    /// - `--dry-run` is read-only. It reads the slice's bound
+    ///   `evidence/<source>.yaml` and the target `shape` brief and
+    ///   emits the `kind: inputs` envelope for the agent synthesis
+    ///   step. Writes nothing; emits the `slice.synthesize.agent`
+    ///   journal event (synthesis is always agent-dispatched and
+    ///   `cache: opt-out`).
+    /// - `--from <response.json>` is the only writer. It schema-gates
+    ///   the agent response, resolves authority from the on-disk
+    ///   Evidence and any per-slice override, projects the kernel-owned
+    ///   fields into `model.yaml`, renders provenance into
+    ///   `specs/<unit>/spec.md`, and persists the staged artifacts
+    ///   atomically — emitting `slice.synthesize.started` then
+    ///   `slice.synthesize.completed` (or `slice.synthesize.failed` on
+    ///   error).
+    ///
+    /// Passing neither mode fails with `slice-synthesize-mode-required`
+    /// (exit 2).
+    Synthesize {
+        /// Slice name (under `.specify/slices/`)
+        name: String,
+        /// Assemble and emit the agent INPUTS envelope. Writes nothing.
+        #[arg(long = "dry-run", action = ArgAction::SetTrue)]
+        dry_run: bool,
+        /// Apply the agent's synthesis response, project it, and persist the artifacts. The only writer.
+        #[arg(long = "from", value_name = "RESPONSE_JSON", conflicts_with = "dry_run")]
+        from: Option<PathBuf>,
+    },
+    /// Build a slice through its bound target adapter's `build`
+    /// operation and gate the `built` transition (RFC-29d M3).
+    ///
+    /// Resolves the target from the slice's `.metadata.yaml`, then
+    /// owns the build envelopes: request assembly, report validation,
+    /// the `target-build-*` aborts, the `slice.build.*` events, and the
+    /// `built` transition gate. The target brief owns only code
+    /// generation.
+    ///
+    /// For `execution: tool` adapters the single call runs the whole
+    /// operation. For `execution: agent` adapters the operation is
+    /// two-phase: `--phase prepare` (the default) assembles and
+    /// schema-validates the request, writes
+    /// `.specify/slices/<slice>/build/request.yaml`, emits
+    /// `target.execution.agent`, prints the handoff envelope, and
+    /// returns control to the agent; `--phase finalize` validates the
+    /// agent-produced `build/report.yaml`, gates the `built`
+    /// transition, and journals `slice.build.succeeded` /
+    /// `slice.build.failed`.
+    Build {
+        /// Slice name (under `.specify/slices/`)
+        name: String,
+        /// Phase to run (`prepare` | `finalize`); `tool` adapters run
+        /// the whole operation regardless.
+        #[arg(long, value_enum, default_value_t = Phase::Prepare)]
+        phase: Phase,
     },
     /// Spec-merge operations for a slice
     Merge {
@@ -68,6 +145,17 @@ pub enum SliceAction {
         /// Free-text reason; surfaced in `.metadata.yaml.drop_reason` and the archive path
         #[arg(long)]
         reason: Option<String>,
+    },
+}
+
+/// Read-only model-viewer subcommands grouped under `slice model`.
+#[derive(Subcommand)]
+pub enum SliceModelAction {
+    /// Render the persisted `model.yaml` — concise text view, or the
+    /// model serialised verbatim under `--format json`
+    Show {
+        /// Slice name (under `.specify/slices/`)
+        name: String,
     },
 }
 

@@ -3,14 +3,14 @@
 //! Composes the standards-layer pipeline:
 //!
 //! 1. Resolve `--slice` / `--artifact` scope per lint scope resolution.
-//! 2. Build the resolved codex (`specify_lints::build_resolved_rules`)
+//! 2. Build the resolved codex (`specify_standards::build_resolved_rules`)
 //!    using the same artifact / language filters as the indexer so
 //!    the resolved rule set and the scan set agree.
 //! 3. Build the consumer `WorkspaceModel` (`lint::index::build`).
 //! 4. Evaluate executable deterministic hints per rule, skipping
 //!    `lint-mode: model-assisted` rules.
 //! 5. Mint the reserved-hint diagnostics reserved-hint summary finding.
-//! 6. Render the `LintResult` envelope via `lint::diagnostics::render`.
+//! 6. Render the `DiagnosticReport` envelope via `specify_diagnostics::render`.
 //! 7. Decide exit: any `critical | important` finding lands the
 //!    process on `Exit::ValidationFailed` (code 2) per lint exit mapping.
 //!
@@ -25,24 +25,19 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
-use specify_lints::lint::ScanProfile;
-use specify_lints::lint::diagnostics::{
-    Format as DiagnosticsFormat, LintResult, LintResultVersion, LintSummary, count_status,
-    emit_dump_model, map_index_error, map_render_error, render,
-};
-use specify_lints::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_lints::lint::eval::{evaluate_rules, reserved_hint_summary};
-use specify_lints::lint::ignore::{apply as apply_directives, blocking_findings_present};
-use specify_lints::lint::index::build as build_model;
-use specify_lints::{
-    FindingStatus, LintFinding, ResolveInputs, build_resolved_rules, map_resolve_error,
+use specify_diagnostics::{Format as DiagnosticsFormat, render};
+use specify_error::{Error, Result};
+use specify_standards::ResolveInputs;
+use specify_standards::lint::ScanProfile;
+use specify_standards::lint::diagnostics::map_render_error;
+use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
+use specify_standards::lint::ignore::{blocking_findings_present, deny_blocking_findings};
+use specify_standards::lint::runner::{
+    PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
-use specify_workflow::journal::{
-    self, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
-};
+use specify_workflow::journal::{self, LintScope};
 
 use crate::runtime::commands::lint::cli::RunArgs;
 use crate::runtime::commands::tool::{Inventory, ScopedTool, build_inventory};
@@ -68,11 +63,10 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
 
     let started_at = Instant::now();
     let artifact_set = compose_artifact_set(&ctx.project_dir, slice, artifacts)?;
-    let resolved_root = resolve_rules_root(ctx, rules_root);
 
     let inputs = ResolveInputs {
         project_dir: &ctx.project_dir,
-        rules_root: resolved_root.as_deref(),
+        rules_root,
         target_adapter: target,
         source_adapters: sources,
         artifact_paths: &artifact_set,
@@ -81,70 +75,44 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
         include_unmatched: false,
         include_core,
     };
-    let resolved = build_resolved_rules(&inputs).map_err(map_resolve_error)?;
 
-    let model = build_model(&ctx.project_dir, ScanProfile::Consumer, &artifact_set, languages)
-        .map_err(map_index_error)?;
-
-    if dump_model {
-        return emit_dump_model(&model);
-    }
-
-    let runner = WasiToolRunner::new(ctx)?;
-    let (mut findings, reserved, mut next_id) =
-        evaluate_rules(&resolved.rules, &model, &ctx.project_dir, &runner, 1, &[])?;
-
-    let outcome =
-        apply_directives(&mut findings, &model.ignore_directives, &resolved.rules, next_id);
-    findings.extend(outcome.synthetics);
-    next_id = outcome.next_id_counter;
-
-    if let Some(summary) = reserved_hint_summary(&reserved, strict_hints) {
-        findings.push(summary);
-    }
-    // `next_id` is intentionally not consumed further in v1; future
-    // post-passes (RFC-33b baseline matching, telemetry IDs) will
-    // continue to thread it.
-    let _ = next_id;
-
-    let result = LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::from_findings(&findings),
-        findings,
+    let tool_runner = WasiToolRunner::new(ctx)?;
+    let config = PipelineConfig {
+        profile: ScanProfile::Consumer,
+        dump_model,
+        strict_hints,
+        apply_ignore_directives: true,
+        rule_filter: &[],
+        resolver_degradation: ResolverDegradation::Fatal,
+        tool_runner: &tool_runner,
+        producers: &[],
+    };
+    let result = match run_pipeline(&inputs, &config)? {
+        RunOutcome::DumpedModel => return Ok(()),
+        RunOutcome::Report(result) => result,
     };
 
     let rendered = render(format, &result).map_err(map_render_error)?;
     println!("{rendered}");
 
     let exit_code: i32 = if blocking_findings_present(&result.findings) { 2 } else { 0 };
-    emit_lint_completed(
-        ctx,
-        target,
-        slice,
-        artifacts,
+    let scope = LintScope {
+        target: (!target.is_empty()).then(|| target.to_string()),
+        slice: slice.map(str::to_string),
+        // Populate `artifact` only when the scan was narrowed to
+        // exactly one path; multi-artifact and full scans leave the
+        // field `null` per the variant doc.
+        artifact: (artifacts.len() == 1).then(|| artifacts[0].display().to_string()),
+    };
+    journal::emit_lint_completed(
+        ctx.layout(),
+        scope,
         &result.findings,
         started_at.elapsed().as_millis(),
         exit_code,
+        "specrun lint",
     );
-    decide_exit(&result)
-}
-
-/// Resolve the rules root per rules-root resolution.
-///
-/// Order: explicit `--rules-root` (clap-bound to `RULES_ROOT` env)
-/// → `<project_dir>/.specify/cache/rules/` when present → defer to
-/// `build_resolved_rules`, which performs the monorepo probe and
-/// surfaces `rules-root-required` when every step misses.
-///
-/// The rules-root resolution step that walks a bundled tree alongside the binary
-/// install is intentionally not implemented in v1; consumer projects
-/// pin a codex via `--rules-root` or the project cache rung.
-fn resolve_rules_root(ctx: &Ctx, flag: Option<&Path>) -> Option<PathBuf> {
-    if let Some(path) = flag {
-        return Some(path.to_path_buf());
-    }
-    let cache = ctx.project_dir.join(".specify").join("cache").join("rules");
-    cache.is_dir().then_some(cache)
+    deny_blocking_findings(&result)
 }
 
 /// Compose the `artifact_paths` vector handed to both the resolver
@@ -166,14 +134,11 @@ fn compose_artifact_set(
         match fs::read_to_string(&tasks_path) {
             Ok(text) => out.extend(parse_slice_tasks_paths(&text)),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                return Err(Error::Validation {
-                    results: vec![ValidationSummary {
-                        status: ValidationStatus::Fail,
-                        rule_id: "review-slice-tasks-missing".to_string(),
-                        rule: format!("slice {slice_name} has no tasks.md"),
-                        detail: Some(tasks_path.display().to_string()),
-                    }],
-                });
+                return Err(Error::validation_failed(
+                    "review-slice-tasks-missing",
+                    format!("slice {slice_name} has no tasks.md"),
+                    tasks_path.display().to_string(),
+                ));
             }
             Err(err) => {
                 return Err(Error::Filesystem {
@@ -218,72 +183,7 @@ fn parse_slice_tasks_paths(text: &str) -> Vec<PathBuf> {
     out
 }
 
-/// Build a [`LintCompletedPayload`] from the final finding set and
-/// append it to the project journal per RFC-33a §"Journal event"
-/// (D8). Best-effort: serialise/IO failures are logged to stderr and
-/// swallowed so a telemetry hiccup never overrides the scan's exit
-/// code (mirrors the safety stance documented on the variant
-/// itself).
-///
-/// `baseline_present` is hard-coded `false`; RFC-33b makes it
-/// scan-derived when it lands.
-fn emit_lint_completed(
-    ctx: &Ctx, target: &str, slice: Option<&str>, artifacts: &[PathBuf], findings: &[LintFinding],
-    duration_ms: u128, exit_code: i32,
-) {
-    let scope = LintScope {
-        target: (!target.is_empty()).then(|| target.to_string()),
-        slice: slice.map(str::to_string),
-        // Populate `artifact` only when the scan was narrowed to
-        // exactly one path; multi-artifact and full scans leave the
-        // field `null` per the variant doc.
-        artifact: (artifacts.len() == 1).then(|| artifacts[0].display().to_string()),
-    };
-    let counts = LintCounts {
-        open: count_status(findings, None),
-        ignored: count_status(findings, Some(FindingStatus::Ignored)),
-        false_positive: count_status(findings, Some(FindingStatus::FalsePositive)),
-    };
-    let payload = LintCompletedPayload {
-        scope,
-        duration_ms: u64::try_from(duration_ms).unwrap_or(u64::MAX),
-        counts,
-        baseline_present: false,
-        exit_code,
-    };
-    let event = Event::new(Timestamp::now(), EventKind::LintCompleted(payload));
-    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
-        eprintln!("specrun lint: failed to append lint-completed journal event: {err}");
-    }
-}
-
-/// Decide exit per RFC-33a §"Exit and presentation semantics": exit 2
-/// only when at least one finding carries `status: open` AND
-/// `severity ∈ {critical, important}`. Findings demoted to `ignored`
-/// or `false-positive` by the directive pass remain in the envelope
-/// but do not block.
-fn decide_exit(result: &LintResult) -> Result<()> {
-    if !blocking_findings_present(&result.findings) {
-        return Ok(());
-    }
-    let detail = format!(
-        "critical={} important={} suggestion={} optional={}",
-        result.summary.critical,
-        result.summary.important,
-        result.summary.suggestion,
-        result.summary.optional,
-    );
-    Err(Error::Validation {
-        results: vec![ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: "review-findings-present".to_string(),
-            rule: "deterministic review surfaced open critical/important findings".to_string(),
-            detail: Some(detail),
-        }],
-    })
-}
-
-/// `ToolRunner` impl bridging `specify-lints`'s standards-layer
+/// `ToolRunner` impl bridging `specify-standards`'s standards-layer
 /// trait to the runtime's declared WASI tool inventory.
 ///
 /// Owns the inventory built from `project.yaml` + the active target
@@ -291,7 +191,7 @@ fn decide_exit(result: &LintResult) -> Result<()> {
 /// contract resolves without re-walking on every hint. `run`
 /// delegates to [`WasiRunner::run_captured`] which mirrors
 /// [`WasiRunner::run`] but redirects stdout / stderr into capped
-/// memory pipes so the host can fold a tool's `LintResult`
+/// memory pipes so the host can fold a tool's `DiagnosticReport`
 /// envelope into the scan output.
 struct WasiToolRunner {
     project_dir: PathBuf,

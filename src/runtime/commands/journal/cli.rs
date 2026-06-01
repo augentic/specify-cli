@@ -1,0 +1,29 @@
+//! Clap derive surface for `specrun journal *`. The umbrella `cli.rs`
+//! re-exports `JournalAction`.
+
+use clap::Subcommand;
+
+#[derive(Subcommand)]
+pub enum JournalAction {
+    /// Append one event to `.specify/journal.jsonl`.
+    ///
+    /// `<event-id>` names a variant in the closed workflow
+    /// §Observability event taxonomy (e.g. `source.execution.agent`);
+    /// `--payload` carries that variant's fields as a JSON object. The
+    /// taxonomy *is* the payload schema — a single serde round-trip
+    /// validates both the id and the fields. An unknown id exits `2`
+    /// with `journal-emit-unknown-event`; a payload that fails the
+    /// variant's field schema exits `2` with
+    /// `journal-emit-payload-schema`. On success the CLI stamps a
+    /// second-precision UTC timestamp and appends exactly one line.
+    Emit {
+        /// Dotted-kebab event id (e.g. `source.survey.cache-miss`).
+        event: String,
+
+        /// JSON object carrying the event's payload fields (e.g.
+        /// `{"source":"runtime","adapter":"captures",...}`).
+        /// Omit for events with no payload fields.
+        #[arg(long)]
+        payload: Option<String>,
+    },
+}

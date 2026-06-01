@@ -5,10 +5,10 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::{
     Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, detect,
-    plan_doctor,
+    plan_doctor, resolve_target, resolve_topology,
 };
 use specify_workflow::config::{ProjectConfig, with_state};
-use specify_workflow::registry::Registry;
+use specify_workflow::registry::{Registry, TopologyLock, TopologyProject};
 
 use super::{Ref, plan_ref, require_file};
 use crate::runtime::context::Ctx;
@@ -36,45 +36,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         });
     }
     if let Some(reg) = &registry {
-        let workspace_base = ctx.layout().specify_dir().join("workspace");
-        for rp in &reg.projects {
-            let slot_project_dir = workspace_base.join(&rp.name);
-            let slot_project_yaml = slot_project_dir.join(".specify").join("project.yaml");
-            if !slot_project_yaml.exists() {
-                continue;
-            }
-            match ProjectConfig::load(&slot_project_dir) {
-                Ok(cfg) => {
-                    if let Some(slot_adapter) = cfg.adapter.as_deref()
-                        && slot_adapter != rp.adapter
-                    {
-                        results.push(PlanDoctorDiagnostic {
-                            severity: Severity::Warning,
-                            code: "adapter-mismatch-workspace".to_string(),
-                            message: format!(
-                                "workspace clone '{}' has adapter '{}' but registry declares '{}'; \
-                                 the clone's project.yaml is authoritative at execution time",
-                                rp.name, slot_adapter, rp.adapter
-                            ),
-                            entry: None,
-                            data: None,
-                        });
-                    }
-                }
-                Err(err) => {
-                    results.push(PlanDoctorDiagnostic {
-                        severity: Severity::Error,
-                        code: "workspace-slot-config-unreadable".to_string(),
-                        message: format!(
-                            "workspace clone '{}' project.yaml could not be loaded: {err}",
-                            rp.name
-                        ),
-                        entry: None,
-                        data: None,
-                    });
-                }
-            }
-        }
+        topology_cache_staleness(ctx, reg, &mut results);
     }
 
     let has_errors = results.iter().any(|r| matches!(r.severity, Severity::Error));
@@ -100,12 +62,80 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     }
 }
 
+/// RFC-36: compare the committed `.specify/topology.lock` against each
+/// materialised slot's current `project.yaml`, emitting
+/// `topology-cache-stale` on divergence (the fix is `specrun workspace
+/// sync`). Replaces the former registry-authored
+/// `adapter-mismatch-workspace` check — the project's `project.yaml` is
+/// now authoritative and the cache is the derived projection of it.
+fn topology_cache_staleness(
+    ctx: &Ctx, registry: &Registry, results: &mut Vec<PlanDoctorDiagnostic>,
+) {
+    let workspace_base = ctx.layout().specify_dir().join("workspace");
+    let lock = TopologyLock::load(&ctx.layout().topology_lock_path()).ok().flatten();
+    let cached: std::collections::HashMap<&str, &TopologyProject> = lock
+        .as_ref()
+        .map(|lock| lock.projects.iter().map(|p| (p.name.as_str(), p)).collect())
+        .unwrap_or_default();
+
+    for rp in &registry.projects {
+        let slot_project_dir = workspace_base.join(&rp.name);
+        if !slot_project_dir.join(".specify").join("project.yaml").exists() {
+            continue;
+        }
+        let fresh = match ProjectConfig::load(&slot_project_dir)
+            .and_then(|cfg| TopologyProject::resolve(&rp.name, &cfg, &slot_project_dir))
+        {
+            Ok(fresh) => fresh,
+            Err(err) => {
+                results.push(PlanDoctorDiagnostic {
+                    severity: Severity::Error,
+                    code: "workspace-slot-config-unreadable".to_string(),
+                    message: format!(
+                        "workspace slot '{}' topology could not be derived: {err}",
+                        rp.name
+                    ),
+                    entry: None,
+                    data: None,
+                });
+                continue;
+            }
+        };
+        let stale = cached.get(rp.name.as_str()).is_none_or(|cached| **cached != fresh);
+        if stale {
+            results.push(PlanDoctorDiagnostic {
+                severity: Severity::Warning,
+                code: "topology-cache-stale".to_string(),
+                message: format!(
+                    "workspace slot '{}' has drifted from .specify/topology.lock; \
+                     run `specrun workspace sync` to regenerate the topology cache",
+                    rp.name
+                ),
+                entry: None,
+                data: None,
+            });
+        }
+    }
+}
+
 /// `specrun plan next` — return the active in-progress entry, or
 /// transition the next eligible `Pending` entry to `InProgress` and
 /// return it. The only writer of per-entry `in-progress` per
 /// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
     let slices_dir = ctx.layout().slices_dir();
+    // The slice's target adapter is no longer stored in `plan.yaml`; it
+    // is resolved on demand from the bound project's topology. Capture
+    // the topology inputs so the advanced entry's `$TARGET` can be
+    // resolved inside the state closure (lazily — only when an entry is
+    // actually selected, so a drained / stuck plan never needs them).
+    // Resolution is best-effort: when the topology cannot be resolved
+    // (no resolvable target adapter, or an unbindable project) the
+    // entry's `target` reports `null` rather than failing `plan next`,
+    // mirroring the pre-removal behaviour for entries that carried no
+    // target. The build phase re-resolves the target before use.
+    let config = ctx.config.clone();
+    let project_dir = ctx.project_dir.clone();
 
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
         let validate_results = plan.validate(Some(&slices_dir), None);
@@ -143,14 +173,20 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
                 active: Some(entry.name.clone()),
                 ..NextBody::default()
             },
-            Some(entry) => NextBody {
-                next: Some(entry.name.clone()),
-                project: entry.project.clone(),
-                target: entry.target.as_ref().map(ToString::to_string),
-                description: entry.description.clone(),
-                sources: Some(entry.sources.clone()),
-                ..NextBody::default()
-            },
+            Some(entry) => {
+                let target = resolve_topology(&config, &project_dir)
+                    .and_then(|topology| resolve_target(entry, &topology))
+                    .ok()
+                    .map(|t| t.to_string());
+                NextBody {
+                    next: Some(entry.name.clone()),
+                    project: entry.project.clone(),
+                    target,
+                    description: entry.description.clone(),
+                    sources: Some(entry.sources.clone()),
+                    ..NextBody::default()
+                }
+            }
         })
     })?;
     ctx.write(&body, write_next_text)?;

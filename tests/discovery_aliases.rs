@@ -17,7 +17,7 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_stderr, specrun};
+use common::{Project, parse_stderr, parse_stdout, specrun};
 
 /// Discovery document with one lead per source key plus a
 /// kebab-case alias for the password-reset lead. Mirrors the
@@ -27,18 +27,18 @@ const DISCOVERY_MD: &str = "\
 
 ## Lead inventory
 
-### user-registration
+### legacy:user-registration
 
-- id: user-registration
-- sources: [legacy, runtime]
-- summary: Registration endpoint accepting email + password.
+- lead: user-registration
+- source: legacy
+- synopsis: Registration endpoint accepting email + password.
 
-### password-reset-request
+### legacy:password-reset-request
 
-- id: password-reset-request
+- lead: password-reset-request
+- source: legacy
 - aliases: [password-reset]
-- sources: [legacy]
-- summary: Reset endpoint.
+- synopsis: Reset endpoint.
 ";
 
 const PLAN_WITH_SOURCES: &str = "\
@@ -68,15 +68,7 @@ fn plan_add_resolves_alias_to_canonical_id() {
 
     specrun()
         .current_dir(project.root())
-        .args([
-            "plan",
-            "add",
-            "password-reset-request",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "legacy=password-reset",
-        ])
+        .args(["plan", "add", "password-reset-request", "--sources", "legacy=password-reset"])
         .assert()
         .success();
 
@@ -110,8 +102,6 @@ fn plan_add_persists_canonical_id() {
             "plan",
             "add",
             "password-reset-flow", // slice name differs from lead id
-            "--target",
-            "omnia@v1",
             "--sources",
             "legacy=password-reset",
         ])
@@ -137,26 +127,16 @@ fn plan_add_unknown_lead_refused() {
 
     let assert = specrun()
         .current_dir(project.root())
-        .args([
-            "--format",
-            "json",
-            "plan",
-            "add",
-            "ghost",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "legacy=never-heard-of-it",
-        ])
+        .args(["--format", "json", "plan", "add", "ghost", "--sources", "legacy=never-heard-of-it"])
         .assert()
         .failure();
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "unknown lead must exit 2");
 
+    // Payload-free `Error::Validation`: the discriminant is the
+    // top-level `error` code.
     let body = parse_stderr(&assert.get_output().stderr, project.root());
-    let results = body["results"].as_array().expect("results array");
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0]["rule-id"], "discovery-lead-unknown");
+    assert_eq!(body["error"], "discovery-lead-unknown");
 }
 
 #[test]
@@ -169,15 +149,7 @@ fn plan_add_without_discovery_skips_alias() {
 
     specrun()
         .current_dir(project.root())
-        .args([
-            "plan",
-            "add",
-            "wholly-unrelated-slice",
-            "--target",
-            "omnia@v1",
-            "--sources",
-            "legacy=opaque-candidate-id",
-        ])
+        .args(["plan", "add", "wholly-unrelated-slice", "--sources", "legacy=opaque-candidate-id"])
         .assert()
         .success();
 
@@ -201,7 +173,7 @@ fn plan_amend_alias_mutates_discovery() {
     // the plan; create one so the orthogonal alias edits land.
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
+        .args(["plan", "add", "user-registration"])
         .assert()
         .success();
 
@@ -239,7 +211,7 @@ fn plan_amend_alias_refused_on_collision() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
+        .args(["plan", "add", "user-registration"])
         .assert()
         .success();
 
@@ -257,9 +229,10 @@ fn plan_amend_alias_refused_on_collision() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
+    // `Error::Validation` is payload-free: the colliding-alias
+    // discriminant is the top-level `error` code.
     let body = parse_stderr(&assert.get_output().stderr, project.root());
-    let results = body["results"].as_array().expect("results array");
-    assert_eq!(results[0]["rule-id"], "discovery-alias-collision");
+    assert_eq!(body["error"], "discovery-alias-collision");
 
     let saved = fs::read_to_string(project.root().join("discovery.md")).expect("read discovery");
     assert!(
@@ -276,7 +249,7 @@ fn plan_amend_remove_alias_is_idempotent() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "password-reset-request", "--target", "omnia@v1"])
+        .args(["plan", "add", "password-reset-request"])
         .assert()
         .success();
 
@@ -324,7 +297,7 @@ fn plan_amend_alias_resolves_same_invocation() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "user-registration", "--target", "omnia@v1"])
+        .args(["plan", "add", "user-registration"])
         .assert()
         .success();
 
@@ -363,19 +336,19 @@ fn slice_validate_alias_collision() {
         "\
 ## Lead inventory
 
-### a
+### legacy:a
 
-- id: a
+- lead: a
+- source: legacy
 - aliases: [shared]
-- sources: [legacy]
-- summary: A.
+- synopsis: A.
 
-### b
+### legacy:b
 
-- id: b
+- lead: b
+- source: legacy
 - aliases: [shared]
-- sources: [legacy]
-- summary: B.
+- synopsis: B.
 ",
     );
 
@@ -390,11 +363,16 @@ fn slice_validate_alias_collision() {
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
-    let body = parse_stderr(&assert.get_output().stderr, project.root());
-    let results = body["results"].as_array().expect("results array");
+    // The pre-adapter gate renders its `DiagnosticReport` on stdout and
+    // fails payload-free: the colliding-alias diagnostic is one of the
+    // report's findings, while stderr carries only the gate discriminant.
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "slice-pre-adapter-gate");
+    let body = parse_stdout(&assert.get_output().stdout, project.root());
+    let findings = body["findings"].as_array().expect("findings array");
     assert!(
-        results.iter().any(|r| r["rule-id"] == "discovery-alias-collision"),
-        "expected at least one discovery-alias-collision finding, got: {results:?}"
+        findings.iter().any(|r| r["rule-id"] == "discovery-alias-collision"),
+        "expected at least one discovery-alias-collision finding, got: {findings:?}"
     );
 }
 
@@ -414,7 +392,7 @@ fn plan_amend_alias_survives_reapplied_discovery() {
 
     specrun()
         .current_dir(project.root())
-        .args(["plan", "add", "password-reset-request", "--target", "omnia@v1"])
+        .args(["plan", "add", "password-reset-request"])
         .assert()
         .success();
 
@@ -443,12 +421,12 @@ fn plan_amend_alias_survives_reapplied_discovery() {
         "\
 ## Lead inventory
 
-### password-reset-request
+### legacy:password-reset-request
 
-- id: password-reset-request
+- lead: password-reset-request
+- source: legacy
 - aliases: [password-reset, pwd-reset]
-- sources: [legacy]
-- summary: Reset endpoint (re-emitted).
+- synopsis: Reset endpoint (re-emitted).
 ",
     );
 

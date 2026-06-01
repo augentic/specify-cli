@@ -19,8 +19,10 @@ use std::path::PathBuf;
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
+use specify_diagnostics::{Diagnostic, FindingStatus, count_status};
 use specify_error::Error;
 
+use crate::adapter::operation::SourceOperation;
 use crate::change::Divergence;
 use crate::config::Layout;
 
@@ -81,26 +83,13 @@ pub enum EventKind {
         /// Status the entry holds after the undo.
         to: crate::change::Status,
     },
-    /// `/spec:plan`'s `propose` sub-step flagged a materially-
-    /// disagreeing slice (`slices[].divergence: likely`).
-    /// divergence and writer-ownership contract — emitted from the CLI when the operator (or the
-    /// `plan` skill body) runs `specrun plan create
-    /// --divergence-likely <slice>` or `specrun plan amend
-    /// --divergence likely`; the skill is no longer the writer.
-    #[serde(rename = "plan.propose.divergence", rename_all = "kebab-case")]
-    PlanProposeDivergence {
-        /// Plan name from `plan.yaml.name`.
-        plan_name: String,
-        /// Slice id under `plan.yaml.slices[].name`.
-        slice_name: String,
-    },
-    /// Operator stamped `slices[].divergence` via
+    /// Stamped `slices[].divergence` via
     /// `specrun plan amend --divergence <likely|accepted|rejected>`.
-    /// divergence and writer-ownership contract — the CLI is the single writer; `likely` reaches
-    /// this event from skill-body fallbacks against existing
-    /// `plan.yaml` entries (the post-`propose` happy path stages
-    /// `likely` via `specrun plan create --divergence-likely`, which
-    /// emits [`Self::PlanProposeDivergence`] instead).
+    /// divergence and writer-ownership contract — the CLI is the single writer. In the
+    /// RFC-29 D2 propose flow the `/spec:plan` agent stages `likely`
+    /// through this event after `propose --from`; the operator later
+    /// flips `accepted` / `rejected` the same way. This is the only
+    /// path that writes the `divergence` field.
     #[serde(rename = "plan.amend.divergence", rename_all = "kebab-case")]
     PlanAmendDivergence {
         /// Plan name from `plan.yaml.name`.
@@ -124,13 +113,13 @@ pub enum EventKind {
         slice_name: String,
     },
     /// `/spec:refine` finished one source-bound `extract` call. One
-    /// event per `(source-key, slice)` pair. Agent-driven.
+    /// event per `(source, slice)` pair. Agent-driven.
     #[serde(rename = "slice.extract.completed", rename_all = "kebab-case")]
     SliceExtractCompleted {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
     },
     /// `[conflict]` on a requirement in `spec.md` — same-authority
     /// disagreement the operator must reconcile. Emitted by
@@ -162,6 +151,105 @@ pub enum EventKind {
         /// `ID:` value on the tagged requirement block.
         requirement_id: String,
     },
+    /// Slice synthesis began — `/spec:refine` started folding the
+    /// extracted evidence into `proposal.md` / `spec.md` / `design.md`
+    /// / `tasks.md` / `model.yaml`. One event per slice (RFC-29c
+    /// §"Wire contracts"). Distinct from the per-requirement
+    /// `slice.synthesis.*` tag events above — `synthesize` is the
+    /// lifecycle verb, `synthesis` is the requirement-tag noun.
+    #[serde(rename = "slice.synthesize.started", rename_all = "kebab-case")]
+    SliceSynthesizeStarted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// Synthesis dispatched to the agent. Synthesis is always
+    /// agent-driven and `cache: opt-out` (RFC-29c §"Synthesis dispatch
+    /// (D10)"); this signal fires on the dry-run inputs phase so the
+    /// journal records that no cache short-circuit was attempted.
+    #[serde(rename = "slice.synthesize.agent", rename_all = "kebab-case")]
+    SliceSynthesizeAgent {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// Slice synthesis finished and the artifacts were persisted
+    /// (RFC-29c §"Wire contracts"). `artifacts` lists the persisted
+    /// relative paths (`proposal.md`, `specs/<unit>/spec.md`,
+    /// `design.md`, `tasks.md`, `model.yaml`).
+    #[serde(rename = "slice.synthesize.completed", rename_all = "kebab-case")]
+    SliceSynthesizeCompleted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Persisted artifact relative paths, in write order.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        artifacts: Vec<String>,
+    },
+    /// Slice synthesis failed before all artifacts were persisted
+    /// (RFC-29c §"Wire contracts"). `reason` carries a short human
+    /// reason or finding code so the journal records why the slice
+    /// stalled.
+    #[serde(rename = "slice.synthesize.failed", rename_all = "kebab-case")]
+    SliceSynthesizeFailed {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Short human reason / finding code for the failure.
+        reason: String,
+    },
+    /// `/spec:build` started implementing the slice — the target
+    /// adapter's `build` brief began running against the refined
+    /// artifacts (RFC-29d §"Journal events"). One event per slice.
+    #[serde(rename = "slice.build.started", rename_all = "kebab-case")]
+    SliceBuildStarted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// `/spec:build` finished implementing the slice — the target
+    /// adapter's `build` brief completed and the slice is ready for
+    /// `/spec:merge` (RFC-29d §"Journal events"). One event per slice.
+    #[serde(rename = "slice.build.succeeded", rename_all = "kebab-case")]
+    SliceBuildSucceeded {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// `/spec:build` stopped before the slice was implemented
+    /// (RFC-29d §"Journal events"). `reason` carries a short human
+    /// reason or finding code so the journal records why the build
+    /// stalled.
+    #[serde(rename = "slice.build.failed", rename_all = "kebab-case")]
+    SliceBuildFailed {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Short human reason / finding code for the failure.
+        reason: String,
+    },
+    /// `specrun slice merge` began folding the slice's deltas into the
+    /// baseline (RFC-29d §"Journal events"). The `slice.merge.*` pair
+    /// fires on the `specrun slice merge` validator outcome, not on a
+    /// merge report. One event per slice.
+    #[serde(rename = "slice.merge.started", rename_all = "kebab-case")]
+    SliceMergeStarted {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// `specrun slice merge` validated and applied the slice's deltas
+    /// to the baseline (RFC-29d §"Journal events"). Fires on the
+    /// validator outcome, not on a merge report. One event per slice.
+    #[serde(rename = "slice.merge.succeeded", rename_all = "kebab-case")]
+    SliceMergeSucceeded {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+    },
+    /// `specrun slice merge` refused to fold the slice into the
+    /// baseline (RFC-29d §"Journal events"). Fires on the validator
+    /// outcome, not on a merge report. `reason` carries a short human
+    /// reason or finding code so the journal records why the merge
+    /// stalled.
+    #[serde(rename = "slice.merge.failed", rename_all = "kebab-case")]
+    SliceMergeFailed {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Short human reason / finding code for the failure.
+        reason: String,
+    },
     /// extraction cache fingerprint contract — cache lookup matched and `extract` was *not*
     /// re-run. CI pinning the five fingerprint inputs at a known set
     /// can re-run any prior `/spec:execute` and expect byte-stable
@@ -171,7 +259,7 @@ pub enum EventKind {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
         adapter: String,
         /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
@@ -186,7 +274,7 @@ pub enum EventKind {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: String,
         /// Source key from `plan.yaml.sources.<key>`.
-        source_key: String,
+        source: String,
         /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
         adapter: String,
         /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
@@ -197,16 +285,63 @@ pub enum EventKind {
         /// `cache: opt-out`).
         reason: CacheMissReason,
     },
-    /// `reconciliation.yaml` audit index — `/spec:refine` wrote `reconciliation.yaml` for a slice.
-    /// Agent-driven from `/spec:refine` step 5.
-    #[serde(rename = "slice.reconciliation.written", rename_all = "kebab-case")]
-    SliceReconciliationWritten {
+    /// `survey` cache lookup matched and the operation was *not*
+    /// re-run. The plan-time peer of [`Self::SliceExtractCacheHit`];
+    /// keyed by the same five-input [`crate::adapter::cache::CacheFingerprint`].
+    #[serde(rename = "source.survey.cache-hit", rename_all = "kebab-case")]
+    SourceSurveyCacheHit {
+        /// Source key from `plan.yaml.sources.<key>`.
+        source: String,
+        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
+        adapter: String,
+        /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
+        /// inputs the cache layer keyed against.
+        fingerprint: String,
+    },
+    /// `survey` cache lookup missed and the operation ran. The
+    /// plan-time peer of [`Self::SliceExtractCacheMiss`]; `reason` is
+    /// one of the closed [`CacheMissReason`] values (`adapter-opt-out`
+    /// when the adapter ran under forced opt-out).
+    #[serde(rename = "source.survey.cache-miss", rename_all = "kebab-case")]
+    SourceSurveyCacheMiss {
+        /// Source key from `plan.yaml.sources.<key>`.
+        source: String,
+        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
+        adapter: String,
+        /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
+        /// inputs the cache layer computed for this run.
+        fingerprint: String,
+        /// Which fingerprint input drifted (or `no-prior-entry` on
+        /// first sight; `adapter-opt-out` under forced opt-out).
+        reason: CacheMissReason,
+    },
+    /// A source adapter ran one operation under agent execution
+    /// (`execution: agent`). One event per `(source, operation)`
+    /// pair; `operation` is the closed [`SourceOperation`] enum
+    /// (`survey | extract`).
+    #[serde(rename = "source.execution.agent", rename_all = "kebab-case")]
+    SourceExecutionAgent {
+        /// Source key from `plan.yaml.sources.<key>`.
+        source: String,
+        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
+        adapter: String,
+        /// Which operation ran (`survey` at plan time, `extract` at
+        /// slice time).
+        operation: SourceOperation,
+    },
+    /// A target adapter ran one operation under agent execution. The
+    /// `build` verb emits this per agent invocation (RFC-29d
+    /// §"Journal events"). Unlike [`Self::SourceExecutionAgent`], which
+    /// fans out over the `(source, operation)` pair, the build verb
+    /// derives `(slice, target)` from the bound project — `build` is
+    /// the only agent-dispatched target operation that emits this event
+    /// in v1, so the payload stays minimal at `{ slice, target }`.
+    #[serde(rename = "target.execution.agent", rename_all = "kebab-case")]
+    TargetExecutionAgent {
         /// Slice id under `plan.yaml.slices[].name`.
-        slice_name: String,
-        /// CLI version that authored the file (e.g. `specify@2.1.0`).
-        generator: String,
-        /// Count of `requirements[]` rows written.
-        requirement_count: usize,
+        slice: String,
+        /// Target name (`omnia`, `vectis`, …) the build dispatched to.
+        target: String,
     },
     /// runtime capture claim — target's `build` finished replay.
     /// Payload mirrors the `replay:` block written into the
@@ -245,27 +380,69 @@ pub enum EventKind {
         /// Source key the override now points at, when `action` is
         /// [`AuthorityOverrideAction::Set`]; absent on clear actions.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        source_key: Option<String>,
+        source: Option<String>,
     },
-    /// `specrun lint` finished a scan. RFC-33a §"Journal event" (D8):
-    /// payload carries the scan scope, wall-clock duration, per-status
-    /// counts, a `baseline_present` flag (hard-coded `false` until
-    /// RFC-33b lands), and the CLI exit code the scan resolved to.
-    /// Emission is wired in the scanner; this variant exists so the
-    /// taxonomy is closed even before the emitter ships.
+    /// `specrun plan propose --from` validated the agent reconciliation
+    /// response and wrote `plan.yaml.slices[]`. One event per successful
+    /// invocation — the `/spec:plan` skill never calls
+    /// `specrun journal emit` for D2. (RFC-29 review F8 folded the former
+    /// `plan.reconcile.agent` + `plan.reconcile.completed` pair into this
+    /// single event: they always co-fired atomically with no failure-mode
+    /// gap between them, so one indivisible event carries the whole D2
+    /// outcome.)
+    #[serde(rename = "plan.reconcile.completed", rename_all = "kebab-case")]
+    PlanReconcileCompleted {
+        /// Plan name from `plan.yaml.name`.
+        plan_name: String,
+        /// Count of `plan.yaml.slices[]` rows written.
+        slice_count: usize,
+        /// Slice names, in the agent's `slices[]` response order.
+        slice_names: Vec<String>,
+    },
+    /// A slice merged into the baseline and its working directory was
+    /// archived. This is the durable **outcome-ledger** entry
+    /// (decision-log §"History via git plus an outcome ledger"): the
+    /// append-only journal records what merged, when, which baseline
+    /// specs it touched, a one-line outcome summary, and the git SHA
+    /// the baseline sat at. The archived slice folder under
+    /// `.specify/archive/` is a prunable convenience cache
+    /// (`specrun archive prune`), not the system of record — this
+    /// event plus git history of `.specify/specs/` is.
+    #[serde(rename = "slice.archive.created", rename_all = "kebab-case")]
+    SliceArchiveCreated {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Baseline spec/composition names this slice merged into, in
+        /// the merge engine's `(class, name)` order.
+        touched_specs: Vec<String>,
+        /// One-line human summary of the merge operations (the same
+        /// text stamped into the archived slice's `.metadata.yaml`
+        /// merge outcome).
+        outcome_summary: String,
+        /// Git HEAD SHA after the merge, when the project is a git
+        /// repository; absent otherwise (best-effort, never fatal).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        merge_sha: Option<String>,
+    },
+    /// `specrun lint` finished a scan. The payload carries the scan
+    /// scope, wall-clock duration, per-status counts, a
+    /// `baseline_present` flag (hard-coded `false` until RFC-33b
+    /// lands), and the CLI exit code the scan resolved to. Emission is
+    /// wired in the scanner; this variant exists so the taxonomy is
+    /// closed even before the emitter ships.
     ///
-    /// Field names on the wire are `snake_case` to match the RFC payload
-    /// example verbatim (`duration_ms`, `baseline_present`,
+    /// Field names on the wire are `snake_case` to match the journal
+    /// payload example verbatim (`duration_ms`, `baseline_present`,
     /// `false_positive`, `exit_code`); this is the one variant in the
     /// taxonomy that does not project through `rename_all =
-    /// "kebab-case"`, because the RFC's payload sketch is the wire
-    /// contract consumers will read.
+    /// "kebab-case"`, because that payload shape is the wire contract
+    /// consumers will read.
     #[serde(rename = "lint-completed")]
     LintCompleted(LintCompletedPayload),
 }
 
-/// Payload for [`EventKind::LintCompleted`]. RFC-33a §"Journal event"
-/// (D8) pins the field set and the `snake_case` wire names.
+/// Payload for [`EventKind::LintCompleted`]. The journal event
+/// contract pins the field set and the `snake_case` wire names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LintCompletedPayload {
     /// Scope of the scan — which target, slice, or artifact the run
@@ -279,11 +456,10 @@ pub struct LintCompletedPayload {
     /// `new` / `baselined` buckets land additively with RFC-33b.
     pub counts: LintCounts,
     /// Whether the scan observed a baseline file. Hard-coded `false`
-    /// in RFC-33a emitters per D8; becomes scan-derived when RFC-33b
-    /// lands.
+    /// in current emitters; becomes scan-derived when RFC-33b lands.
     pub baseline_present: bool,
     /// CLI exit code the scan resolved to (status-aware severity per
-    /// RFC-33a §"Exit and presentation semantics"). `0` on clean
+    /// the exit and presentation semantics). `0` on clean
     /// scans, `2` when an `open` finding of `important` or `critical`
     /// severity remains.
     pub exit_code: i32,
@@ -291,7 +467,7 @@ pub struct LintCompletedPayload {
 
 /// Scan-scope sub-object on [`LintCompletedPayload`]. Each field is
 /// optional and serialised as `null` when absent so the wire shape
-/// matches the RFC example verbatim.
+/// matches the payload example verbatim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LintScope {
     /// Target name (`omnia`, `vectis`, …) when the scan was narrowed
@@ -305,7 +481,7 @@ pub struct LintScope {
     pub artifact: Option<String>,
 }
 
-/// Per-status finding counts on [`LintCompletedPayload`]. RFC-33a
+/// Per-status finding counts on [`LintCompletedPayload`]. Current
 /// emitters fill the three buckets named here; RFC-33b adds `new` and
 /// `baselined` additively when it lands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -408,9 +584,9 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 /// invocation, well below the limit.
 ///
 /// Used by CLI verbs that own more than one journal emit per
-/// invocation (e.g. `specrun plan create --auto-review`, which
-/// stages both `plan.propose.divergence` and
-/// `plan.transition.approved` in the same Gate-1 consent), and
+/// invocation (e.g. `specrun plan create --auto-approve
+/// --authority-override`, which stages both `plan.transition.approved`
+/// and `plan.amend.authority-override` in the same Gate-1 consent), and
 /// equally by single-event callers via
 /// `append_batch(layout, std::slice::from_ref(&event))`.
 ///
@@ -443,6 +619,32 @@ pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
     file.write_all(payload.as_bytes())?;
     file.sync_all()?;
     Ok(())
+}
+
+/// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`.
+///
+/// Best-effort: serialise/IO failures log to stderr with the supplied
+/// `command_label` prefix and never override the scan's exit code.
+pub fn emit_lint_completed(
+    layout: Layout<'_>, scope: LintScope, findings: &[Diagnostic], duration_ms: u128,
+    exit_code: i32, command_label: &str,
+) {
+    let counts = LintCounts {
+        open: count_status(findings, None),
+        ignored: count_status(findings, Some(FindingStatus::Ignored)),
+        false_positive: count_status(findings, Some(FindingStatus::FalsePositive)),
+    };
+    let payload = LintCompletedPayload {
+        scope,
+        duration_ms: u64::try_from(duration_ms).unwrap_or(u64::MAX),
+        counts,
+        baseline_present: false,
+        exit_code,
+    };
+    let event = Event::new(Timestamp::now(), EventKind::LintCompleted(payload));
+    if let Err(err) = append_batch(layout, std::slice::from_ref(&event)) {
+        eprintln!("{command_label}: failed to append lint-completed journal event: {err}");
+    }
 }
 
 /// Parses a fixed RFC3339 timestamp for test fixtures.
@@ -482,24 +684,27 @@ mod tests {
 
     #[test]
     fn append_batch_writes_in_order() {
-        // auto-approve Gate-1 contract: `specrun plan create --auto-review` may emit
-        // both `plan.propose.divergence` and
-        // `plan.transition.approved` in a single fsynced append.
-        // Exercise the batched helper to lock that contract.
+        // auto-approve Gate-1 contract: `specrun plan create --auto-approve
+        // --authority-override` may emit both `plan.transition.approved`
+        // and `plan.amend.authority-override` in a single fsynced append.
+        // Exercise the batched helper to lock ordering.
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
         let events = vec![
             Event::new(
                 test_timestamp("2026-05-22T13:30:00Z"),
-                EventKind::PlanProposeDivergence {
+                EventKind::PlanTransitionApproved {
                     plan_name: "fresh".to_string(),
-                    slice_name: "checkout".to_string(),
                 },
             ),
             Event::new(
                 test_timestamp("2026-05-22T13:30:00Z"),
-                EventKind::PlanTransitionApproved {
+                EventKind::PlanAmendAuthorityOverride {
                     plan_name: "fresh".to_string(),
+                    slice_name: "checkout".to_string(),
+                    action: AuthorityOverrideAction::Set,
+                    claim_kind: Some("criterion".to_string()),
+                    source: Some("runtime".to_string()),
                 },
             ),
         ];
@@ -508,21 +713,21 @@ mod tests {
         let lines = read_lines(layout);
         assert_eq!(lines.len(), 2, "expected two journal lines, got {}", lines.len());
         assert!(
-            lines[0].contains(r#""event":"plan.propose.divergence""#),
-            "first line must be plan.propose.divergence, got:\n{}",
+            lines[0].contains(r#""event":"plan.transition.approved""#),
+            "first line must be plan.transition.approved, got:\n{}",
             lines[0]
         );
         assert!(
-            lines[1].contains(r#""event":"plan.transition.approved""#),
-            "second line must be plan.transition.approved, got:\n{}",
+            lines[1].contains(r#""event":"plan.amend.authority-override""#),
+            "second line must be plan.amend.authority-override, got:\n{}",
             lines[1]
         );
     }
 
     #[test]
     fn append_batch_empty_slice_is_no_op() {
-        // Callers (e.g. `plan create` without `--auto-review` and
-        // without `--divergence-likely`) build the batch
+        // Callers (e.g. `plan create` without `--auto-approve` and
+        // without `--authority-override`) build the batch
         // unconditionally; an empty input must not create the
         // journal file on disk.
         let dir = tempdir().expect("tempdir");
@@ -536,6 +741,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Single table pins every payload-bearing variant's wire shape; splitting hides the contract."
+    )]
     fn event_wire_shapes_match_contract() {
         let dir = tempdir().expect("tempdir");
         let layout = Layout::new(dir.path());
@@ -543,18 +752,18 @@ mod tests {
             (
                 EventKind::SliceExtractCacheHit {
                     slice_name: "identity-user-registration".to_string(),
-                    source_key: "runtime".to_string(),
+                    source: "runtime".to_string(),
                     adapter: "captures".to_string(),
                     fingerprint: "sha256:cafef00d".to_string(),
                 },
                 &[
-                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source-key":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
+                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
                 ],
             ),
             (
                 EventKind::SliceExtractCacheMiss {
                     slice_name: "identity-user-registration".to_string(),
-                    source_key: "runtime".to_string(),
+                    source: "runtime".to_string(),
                     adapter: "captures".to_string(),
                     fingerprint: "sha256:beef".to_string(),
                     reason: CacheMissReason::AdapterVersionChanged,
@@ -562,19 +771,7 @@ mod tests {
                 &[
                     r#""event":"slice.extract.cache-miss""#,
                     r#""reason":"adapter-version-changed""#,
-                    r#""source-key":"runtime""#,
-                ],
-            ),
-            (
-                EventKind::SliceReconciliationWritten {
-                    slice_name: "identity-user-registration".to_string(),
-                    generator: "specify@2.1.0".to_string(),
-                    requirement_count: 7,
-                },
-                &[
-                    r#""event":"slice.reconciliation.written""#,
-                    r#""generator":"specify@2.1.0""#,
-                    r#""requirement-count":7"#,
+                    r#""source":"runtime""#,
                 ],
             ),
             (
@@ -599,13 +796,82 @@ mod tests {
                     slice_name: "identity-user-registration".to_string(),
                     action: AuthorityOverrideAction::Set,
                     claim_kind: Some("criterion".to_string()),
-                    source_key: Some("runtime".to_string()),
+                    source: Some("runtime".to_string()),
                 },
                 &[
                     r#""event":"plan.amend.authority-override""#,
                     r#""action":"set""#,
                     r#""claim-kind":"criterion""#,
-                    r#""source-key":"runtime""#,
+                    r#""source":"runtime""#,
+                ],
+            ),
+            (
+                EventKind::SourceSurveyCacheHit {
+                    source: "runtime".to_string(),
+                    adapter: "captures".to_string(),
+                    fingerprint: "sha256:cafef00d".to_string(),
+                },
+                &[
+                    r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.cache-hit","payload":{"source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
+                ],
+            ),
+            (
+                EventKind::SourceSurveyCacheMiss {
+                    source: "runtime".to_string(),
+                    adapter: "captures".to_string(),
+                    fingerprint: "sha256:beef".to_string(),
+                    reason: CacheMissReason::AdapterOptOut,
+                },
+                &[
+                    r#""event":"source.survey.cache-miss""#,
+                    r#""reason":"adapter-opt-out""#,
+                    r#""source":"runtime""#,
+                    r#""fingerprint":"sha256:beef""#,
+                ],
+            ),
+            (
+                EventKind::SourceExecutionAgent {
+                    source: "runtime".to_string(),
+                    adapter: "captures".to_string(),
+                    operation: SourceOperation::Survey,
+                },
+                &[
+                    r#""event":"source.execution.agent""#,
+                    r#""operation":"survey""#,
+                    r#""source":"runtime""#,
+                    r#""adapter":"captures""#,
+                ],
+            ),
+            (
+                EventKind::PlanReconcileCompleted {
+                    plan_name: "identity-revamp".to_string(),
+                    slice_count: 3,
+                    slice_names: vec![
+                        "identity-contracts".to_string(),
+                        "identity-service".to_string(),
+                        "password-reset".to_string(),
+                    ],
+                },
+                &[
+                    r#""event":"plan.reconcile.completed""#,
+                    r#""plan-name":"identity-revamp""#,
+                    r#""slice-count":3"#,
+                    r#""slice-names":["identity-contracts","identity-service","password-reset"]"#,
+                ],
+            ),
+            (
+                EventKind::SliceArchiveCreated {
+                    slice_name: "identity-service".to_string(),
+                    touched_specs: vec!["identity".to_string()],
+                    outcome_summary: "identity: 2 modified".to_string(),
+                    merge_sha: Some("a1b2c3d".to_string()),
+                },
+                &[
+                    r#""event":"slice.archive.created""#,
+                    r#""slice-name":"identity-service""#,
+                    r#""touched-specs":["identity"]"#,
+                    r#""outcome-summary":"identity: 2 modified""#,
+                    r#""merge-sha":"a1b2c3d""#,
                 ],
             ),
         ];
@@ -639,11 +905,222 @@ mod tests {
     }
 
     #[test]
+    fn plan_reconcile_event_round_trips() {
+        // `specrun plan propose --from` emits one `plan.reconcile.completed`
+        // event (RFC-29 review F8 folded the former agent/completed pair
+        // into this single indivisible event); lock its wire shape.
+        let completed = Event::new(
+            test_timestamp("2026-05-22T13:15:00Z"),
+            EventKind::PlanReconcileCompleted {
+                plan_name: "identity-revamp".to_string(),
+                slice_count: 3,
+                slice_names: vec![
+                    "identity-contracts".to_string(),
+                    "identity-service".to_string(),
+                    "password-reset".to_string(),
+                ],
+            },
+        );
+        let completed_json = serde_json::to_string(&completed).expect("serialise completed");
+        for needle in [
+            r#""event":"plan.reconcile.completed""#,
+            r#""plan-name":"identity-revamp""#,
+            r#""slice-count":3"#,
+            r#""slice-names":["identity-contracts","identity-service","password-reset"]"#,
+        ] {
+            assert!(
+                completed_json.contains(needle),
+                "completed wire form must contain `{needle}`; got:\n{completed_json}"
+            );
+        }
+        let completed_round: Event =
+            serde_json::from_str(&completed_json).expect("deserialise completed");
+        assert_eq!(completed_round, completed, "completed round-trip must preserve every field");
+    }
+
+    #[test]
+    fn slice_synthesize_events_round_trip() {
+        // RFC-29c §"Wire contracts": the four M2b lifecycle events
+        // serialise to their dotted-kebab ids with kebab-case payload
+        // fields, and round-trip back preserving every field. Distinct
+        // from the per-requirement `slice.synthesis.*` tag events.
+        let rows: &[(EventKind, &[&str])] = &[
+            (
+                EventKind::SliceSynthesizeStarted {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.synthesize.started""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceSynthesizeAgent {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.synthesize.agent""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceSynthesizeCompleted {
+                    slice_name: "identity-user-registration".to_string(),
+                    artifacts: vec![
+                        "proposal.md".to_string(),
+                        "specs/identity/spec.md".to_string(),
+                        "design.md".to_string(),
+                        "tasks.md".to_string(),
+                        "model.yaml".to_string(),
+                    ],
+                },
+                &[
+                    r#""event":"slice.synthesize.completed""#,
+                    r#""slice-name":"identity-user-registration""#,
+                    r#""artifacts":["proposal.md","specs/identity/spec.md","design.md","tasks.md","model.yaml"]"#,
+                ],
+            ),
+            (
+                EventKind::SliceSynthesizeFailed {
+                    slice_name: "identity-user-registration".to_string(),
+                    reason: "spec-requirement-missing-sources".to_string(),
+                },
+                &[
+                    r#""event":"slice.synthesize.failed""#,
+                    r#""slice-name":"identity-user-registration""#,
+                    r#""reason":"spec-requirement-missing-sources""#,
+                ],
+            ),
+        ];
+
+        for (kind, required) in rows {
+            let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
+            let json = serde_json::to_string(&event).expect("serialise synthesize event");
+            for needle in *required {
+                assert!(json.contains(needle), "wire form must contain `{needle}`; got:\n{json}");
+            }
+            let round: Event = serde_json::from_str(&json).expect("deserialise synthesize event");
+            assert_eq!(round, event, "synthesize round-trip must preserve every field");
+        }
+    }
+
+    #[test]
+    fn slice_build_merge_events_round_trip() {
+        // RFC-29d §"Journal events": the M3 build/merge lifecycle
+        // events and `target.execution.agent` serialise to their
+        // dotted-kebab ids with kebab-case payload fields, and
+        // round-trip back preserving every field. The `*.failed`
+        // variants carry a `reason`; `target.execution.agent` carries
+        // the minimal `{ slice, target }` derived at build time.
+        let rows: &[(EventKind, &[&str])] = &[
+            (
+                EventKind::SliceBuildStarted {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.build.started""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceBuildSucceeded {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.build.succeeded""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceBuildFailed {
+                    slice_name: "identity-user-registration".to_string(),
+                    reason: "cargo-check-failed".to_string(),
+                },
+                &[
+                    r#""event":"slice.build.failed""#,
+                    r#""slice-name":"identity-user-registration""#,
+                    r#""reason":"cargo-check-failed""#,
+                ],
+            ),
+            (
+                EventKind::SliceMergeStarted {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.merge.started""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceMergeSucceeded {
+                    slice_name: "identity-user-registration".to_string(),
+                },
+                &[
+                    r#""event":"slice.merge.succeeded""#,
+                    r#""slice-name":"identity-user-registration""#,
+                ],
+            ),
+            (
+                EventKind::SliceMergeFailed {
+                    slice_name: "identity-user-registration".to_string(),
+                    reason: "baseline-conflict".to_string(),
+                },
+                &[
+                    r#""event":"slice.merge.failed""#,
+                    r#""slice-name":"identity-user-registration""#,
+                    r#""reason":"baseline-conflict""#,
+                ],
+            ),
+            (
+                EventKind::TargetExecutionAgent {
+                    slice: "identity-user-registration".to_string(),
+                    target: "omnia".to_string(),
+                },
+                &[
+                    r#""event":"target.execution.agent""#,
+                    r#""slice":"identity-user-registration""#,
+                    r#""target":"omnia""#,
+                ],
+            ),
+        ];
+
+        for (kind, required) in rows {
+            let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
+            let json = serde_json::to_string(&event).expect("serialise build/merge event");
+            for needle in *required {
+                assert!(json.contains(needle), "wire form must contain `{needle}`; got:\n{json}");
+            }
+            let round: Event = serde_json::from_str(&json).expect("deserialise build/merge event");
+            assert_eq!(round, event, "build/merge round-trip must preserve every field");
+        }
+    }
+
+    #[test]
+    fn slice_synthesize_completed_omits_empty_artifacts() {
+        // `artifacts` carries `skip_serializing_if = "Vec::is_empty"`
+        // so an empty list does not reach the wire at all.
+        let event = Event::new(
+            test_timestamp("2026-05-22T13:15:00Z"),
+            EventKind::SliceSynthesizeCompleted {
+                slice_name: "identity-user-registration".to_string(),
+                artifacts: vec![],
+            },
+        );
+        let json = serde_json::to_string(&event).expect("serialise");
+        assert!(
+            !json.contains("artifacts"),
+            "empty artifacts must not reach the wire; got:\n{json}"
+        );
+        let round: Event = serde_json::from_str(&json).expect("deserialise");
+        assert_eq!(round, event, "round-trip must preserve the empty artifacts list");
+    }
+
+    #[test]
     fn lint_completed_round_trips() {
-        // RFC-33a §"Journal event" (D8): the lint-completed payload
-        // uses snake_case wire fields (`duration_ms`, `baseline_present`,
-        // `false_positive`, `exit_code`) so the JSON matches the RFC
-        // example verbatim. The wire id itself stays dotted-kebab.
+        // The lint-completed payload uses snake_case wire fields
+        // (`duration_ms`, `baseline_present`, `false_positive`,
+        // `exit_code`) so the JSON matches the payload example
+        // verbatim. The wire id itself stays dotted-kebab.
         let event = Event::new(
             test_timestamp("2026-05-22T13:15:00Z"),
             EventKind::LintCompleted(LintCompletedPayload {
@@ -697,6 +1174,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "Single sweep covers every payload-bearing variant; splitting hides the wire-format coverage discipline."
+    )]
     fn no_snake_case_leaks_to_wire() {
         // workflow §Wire format: snake_case lifecycle values are never
         // produced on disk. Exercise every variant that carries an
@@ -707,10 +1188,6 @@ mod tests {
             EventKind::PlanTransitionApproved {
                 plan_name: "p".to_string(),
             },
-            EventKind::PlanProposeDivergence {
-                plan_name: "p".to_string(),
-                slice_name: "s".to_string(),
-            },
             EventKind::PlanAmendDivergence {
                 plan_name: "p".to_string(),
                 slice_name: "s".to_string(),
@@ -720,9 +1197,74 @@ mod tests {
             EventKind::SliceTransitionRefined {
                 slice_name: "s".to_string(),
             },
+            EventKind::SliceSynthesizeStarted {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceSynthesizeAgent {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceSynthesizeCompleted {
+                slice_name: "s".to_string(),
+                artifacts: vec!["proposal.md".to_string()],
+            },
+            EventKind::SliceSynthesizeFailed {
+                slice_name: "s".to_string(),
+                reason: "spec-requirement-missing-sources".to_string(),
+            },
+            EventKind::SliceBuildStarted {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceBuildSucceeded {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceBuildFailed {
+                slice_name: "s".to_string(),
+                reason: "cargo-check-failed".to_string(),
+            },
+            EventKind::SliceMergeStarted {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceMergeSucceeded {
+                slice_name: "s".to_string(),
+            },
+            EventKind::SliceMergeFailed {
+                slice_name: "s".to_string(),
+                reason: "baseline-conflict".to_string(),
+            },
+            EventKind::TargetExecutionAgent {
+                slice: "s".to_string(),
+                target: "omnia".to_string(),
+            },
             EventKind::SliceExtractCompleted {
                 slice_name: "s".to_string(),
-                source_key: "k".to_string(),
+                source: "k".to_string(),
+            },
+            EventKind::SourceSurveyCacheHit {
+                source: "k".to_string(),
+                adapter: "captures".to_string(),
+                fingerprint: "sha256:beef".to_string(),
+            },
+            EventKind::SourceSurveyCacheMiss {
+                source: "k".to_string(),
+                adapter: "captures".to_string(),
+                fingerprint: "sha256:beef".to_string(),
+                reason: CacheMissReason::AdapterOptOut,
+            },
+            EventKind::SourceExecutionAgent {
+                source: "k".to_string(),
+                adapter: "captures".to_string(),
+                operation: SourceOperation::Extract,
+            },
+            EventKind::PlanReconcileCompleted {
+                plan_name: "p".to_string(),
+                slice_count: 1,
+                slice_names: vec!["s".to_string()],
+            },
+            EventKind::SliceArchiveCreated {
+                slice_name: "s".to_string(),
+                touched_specs: vec!["identity".to_string()],
+                outcome_summary: "identity: 1 modified".to_string(),
+                merge_sha: Some("abc1234".to_string()),
             },
         ] {
             append_batch(
@@ -732,7 +1274,17 @@ mod tests {
             .expect("append ok");
         }
         let raw = std::fs::read_to_string(path(layout)).expect("read journal");
-        for needle in ["plan_name", "slice_name", "source_key", "requirement_id", "in_progress"] {
+        for needle in [
+            "plan_name",
+            "slice_name",
+            "slice_count",
+            "slice_names",
+            "requirement_id",
+            "in_progress",
+            "touched_specs",
+            "outcome_summary",
+            "merge_sha",
+        ] {
             assert!(
                 !raw.contains(needle),
                 "snake_case `{needle}` must not appear on the wire; raw:\n{raw}"

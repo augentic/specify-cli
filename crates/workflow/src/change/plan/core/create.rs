@@ -93,7 +93,6 @@ mod tests {
         let incoming = Entry {
             name: "foo".into(),
             project: Some("default".into()),
-            target: None,
             // Even an entry that arrives with `Done` (the only other
             // legal status post-2.0) must be re-stamped to `Pending`
             // by `Plan::create` — the single-writer rule on the
@@ -188,12 +187,13 @@ mod tests {
     }
 
     #[test]
-    fn create_rejects_no_project_or_target() {
+    fn create_allows_omitted_project() {
+        // A slice may omit `project`; it resolves to the sole topology
+        // project at read time. `Plan::create` (no topology) must accept it.
         let mut plan = plan_with_changes(vec![]);
         let entry = Entry {
-            name: "bad".into(),
+            name: "no-project".into(),
             project: None,
-            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -202,18 +202,9 @@ mod tests {
             divergence: None,
             authority_override: SliceAuthorityOverride::default(),
         };
-        let err = plan.create(entry).expect_err("must reject entry without project or target");
-        match err {
-            Error::Diag { code, detail } => {
-                assert_eq!(code, "plan-create-validation-failed");
-                assert!(
-                    detail.contains("project") && detail.contains("target"),
-                    "error should mention project and target: {detail}"
-                );
-            }
-            other => panic!("expected Error::Diag, got {other:?}"),
-        }
-        assert!(plan.entries.is_empty(), "plan must remain empty after rejected create");
+        plan.create(entry).expect("create must accept an entry that omits project");
+        assert_eq!(plan.entries.len(), 1);
+        assert_eq!(plan.entries[0].project, None);
     }
 
     #[test]
@@ -222,7 +213,6 @@ mod tests {
         let entry = Entry {
             name: "with-ctx".into(),
             project: Some("default".into()),
-            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],
@@ -245,7 +235,6 @@ mod tests {
         let entry = Entry {
             name: "bad-ctx".into(),
             project: Some("default".into()),
-            target: None,
             status: Status::Pending,
             depends_on: vec![],
             sources: vec![],

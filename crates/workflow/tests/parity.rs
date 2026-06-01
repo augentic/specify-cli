@@ -2,7 +2,8 @@
 //! outputs captured from the archived Python reference implementation
 //! (now retired). The Rust port must match them exactly.
 
-use specify_error::{Error, ValidationStatus, ValidationSummary};
+use specify_diagnostics::Diagnostic;
+use specify_error::Error;
 use specify_workflow::merge::{merge, validate_baseline};
 
 macro_rules! fixture {
@@ -121,12 +122,10 @@ fn merge_failure_consolidates_errors() {
 // validate_baseline parity
 // ---------------------------------------------------------------------------
 
-fn fails(results: &[ValidationSummary]) -> Vec<&str> {
-    results
-        .iter()
-        .filter(|r| r.status == ValidationStatus::Fail)
-        .filter_map(|r| r.detail.as_deref())
-        .collect()
+fn fails(results: &[Diagnostic]) -> Vec<&str> {
+    // `validate_baseline` emits one `violation` diagnostic per failing
+    // rule; the per-row detail lives in `impact`.
+    results.iter().map(|d| d.impact.as_str()).collect()
 }
 
 #[test]

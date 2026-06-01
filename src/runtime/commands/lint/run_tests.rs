@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 
-use specify_lints::lint::diagnostics::{RenderError, map_hint_error};
-use specify_lints::lint::eval::HintError;
-use specify_lints::lint::index::IndexError;
-use specify_lints::{
-    Artifact, Confidence, FindingEvidence, FindingLocation, FindingSource, FindingStatus, HintKind,
-    ResolvedRule, Severity,
+use specify_diagnostics::{
+    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticReport, DiagnosticReportVersion,
+    DiagnosticSource, DiagnosticSummary, FindingEvidence, FindingLocation, FindingStatus,
+    RenderError, Severity,
 };
+use specify_standards::lint::diagnostics::{map_hint_error, map_index_error};
+use specify_standards::lint::eval::HintError;
+use specify_standards::lint::ignore::deny_blocking_findings;
+use specify_standards::lint::index::IndexError;
+use specify_standards::rules::{HintKind, Origin, PathRoot, ResolvedRule};
 
 use super::*;
 
@@ -20,8 +23,8 @@ fn fake_rule() -> ResolvedRule {
         applicability: None,
         deterministic_hints: None,
         references: None,
-        origin: specify_lints::Origin::Shared,
-        path_root: specify_lints::PathRoot::RulesRoot,
+        origin: Origin::Shared,
+        path_root: PathRoot::RulesRoot,
         path: "shared/UNI-001.md".into(),
         body: String::new(),
         deprecated: None,
@@ -134,7 +137,7 @@ const RENDER_CASES: &[DiagCase] = &[
 
 fn assert_validation_rule_id(got: Error, rule_id: &str) {
     match got {
-        Error::Validation { results } => assert_eq!(results[0].rule_id, rule_id),
+        Error::Validation { code, .. } => assert_eq!(code, rule_id),
         other => panic!("lint exit mapping: expected Validation({rule_id}), got {other:?}"),
     }
 }
@@ -187,14 +190,15 @@ fn tasks_parser_handles_touches_and_produces() {
     assert_eq!(paths, vec![PathBuf::from("a.md"), PathBuf::from("b.md")]);
 }
 
-fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> LintFinding {
-    LintFinding {
+fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> Diagnostic {
+    Diagnostic {
         id: "FIND-0001".into(),
         rule_id: Some("UNI-014".into()),
         related_rule_ids: None,
         title: "exit-test finding".into(),
         severity,
-        source: FindingSource::Deterministic,
+        source: DiagnosticSource::Deterministic,
+        kind: DiagnosticKind::Violation,
         target_adapter: None,
         source_adapter: None,
         slice: None,
@@ -217,53 +221,55 @@ fn exit_fixture_finding(severity: Severity, status: Option<FindingStatus>) -> Li
     }
 }
 
-fn exit_result(findings: Vec<LintFinding>) -> LintResult {
-    LintResult {
-        version: LintResultVersion,
-        summary: LintSummary::from_findings(&findings),
+fn exit_result(findings: Vec<Diagnostic>) -> DiagnosticReport {
+    DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
         findings,
     }
 }
 
-/// RFC-33a §"Exit and presentation semantics": exit 2 fires only
+/// Exit and presentation semantics: exit 2 fires only
 /// when at least one finding carries `status: open` AND severity is
 /// critical or important. Ignored / false-positive findings stay in
 /// the envelope but do not block.
 #[test]
-fn decide_exit_is_status_aware() {
+fn deny_blocking_findings_is_status_aware() {
     // Empty envelope → exit 0.
-    decide_exit(&exit_result(vec![])).expect("empty envelope must exit 0");
+    deny_blocking_findings(&exit_result(vec![])).expect("empty envelope must exit 0");
 
     // Critical but ignored → exit 0.
     let critical_ignored = exit_fixture_finding(Severity::Critical, Some(FindingStatus::Ignored));
-    decide_exit(&exit_result(vec![critical_ignored.clone()]))
+    deny_blocking_findings(&exit_result(vec![critical_ignored.clone()]))
         .expect("ignored critical must not block");
 
     // Important but false-positive → exit 0.
     let important_fp =
         exit_fixture_finding(Severity::Important, Some(FindingStatus::FalsePositive));
-    decide_exit(&exit_result(vec![important_fp.clone()]))
+    deny_blocking_findings(&exit_result(vec![important_fp.clone()]))
         .expect("false-positive important must not block");
 
     // Suggestion + Open → exit 0 (severity below the blocking
     // threshold).
     let open_suggestion = exit_fixture_finding(Severity::Suggestion, Some(FindingStatus::Open));
-    decide_exit(&exit_result(vec![open_suggestion])).expect("suggestion severity must not block");
+    deny_blocking_findings(&exit_result(vec![open_suggestion]))
+        .expect("suggestion severity must not block");
 
     // Critical + Open → exit 2.
     let critical_open = exit_fixture_finding(Severity::Critical, Some(FindingStatus::Open));
-    let err = decide_exit(&exit_result(vec![critical_open])).expect_err("open critical blocks");
+    let err = deny_blocking_findings(&exit_result(vec![critical_open]))
+        .expect_err("open critical blocks");
     match err {
-        Error::Validation { results } => {
-            assert_eq!(results[0].rule_id, "review-findings-present");
+        Error::Validation { code, .. } => {
+            assert_eq!(code, "review-findings-present");
         }
         other => panic!("expected Validation, got {other:?}"),
     }
 
     // Unset status + Important → exit 2 (raw scanner output).
     let important_unset = exit_fixture_finding(Severity::Important, None);
-    let err =
-        decide_exit(&exit_result(vec![important_unset])).expect_err("unset status treated as open");
+    let err = deny_blocking_findings(&exit_result(vec![important_unset]))
+        .expect_err("unset status treated as open");
     assert!(matches!(err, Error::Validation { .. }));
 
     // Mixed: one ignored critical + one open important → blocks.
@@ -272,6 +278,7 @@ fn decide_exit_is_status_aware() {
         important_fp,
         exit_fixture_finding(Severity::Important, Some(FindingStatus::Open)),
     ];
-    let err = decide_exit(&exit_result(mixed)).expect_err("any open critical/important blocks");
+    let err = deny_blocking_findings(&exit_result(mixed))
+        .expect_err("any open critical/important blocks");
     assert!(matches!(err, Error::Validation { .. }));
 }

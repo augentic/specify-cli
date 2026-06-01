@@ -1,7 +1,7 @@
 //! runtime capture claim — `kind: example` claim shape (`captures` adapter).
 //!
 //! Runtime captures join the closed `claimKind` enum as
-//! `example`. The body carries `claim-id`, optional `path`, a
+//! `example`. The body carries `id`, optional `path`, a
 //! required `replay-digest: sha256:<hex>`, and the open `input` /
 //! `output` JSON-shaped blocks the adapter records from the
 //! captured request/response. Bodies larger than 64 `KiB` are stored
@@ -26,9 +26,9 @@ pub struct ExampleClaim {
     /// literal `example`.
     pub kind: ExampleKind,
     /// Stable claim id (required on `example` per the schema's `allOf`
-    /// branch). Resolves the same id space the reconciliation table joins
+    /// branch). Resolves the same id space the provenance table joins
     /// against.
-    pub claim_id: String,
+    pub id: String,
     /// Optional `<path>#L<n>` anchor (the capture's on-disk location).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -73,7 +73,7 @@ mod tests {
     fn fixture() -> ExampleClaim {
         ExampleClaim {
             kind: ExampleKind::Example,
-            claim_id: "users.register.happy-path".to_string(),
+            id: "users.register.happy-path".to_string(),
             path: Some("tests/data/replays/users-register/happy.json".to_string()),
             replay_digest: "sha256:7a2b".to_string(),
             input: Some(json!({
@@ -95,7 +95,7 @@ mod tests {
         let claim = fixture();
         let yaml = serde_saphyr::to_string(&claim).expect("serialise");
         assert!(yaml.contains("kind: example"));
-        assert!(yaml.contains("claim-id: users.register.happy-path"));
+        assert!(yaml.contains("id: users.register.happy-path"));
         assert!(yaml.contains("replay-digest:"));
         let reparsed: ExampleClaim = serde_saphyr::from_str(&yaml).expect("reparse");
         assert_eq!(claim, reparsed);
@@ -105,7 +105,7 @@ mod tests {
     fn elides_optional_fields_when_absent() {
         let claim = ExampleClaim {
             kind: ExampleKind::Example,
-            claim_id: "users.register.minimal".to_string(),
+            id: "users.register.minimal".to_string(),
             path: None,
             replay_digest: "sha256:deadbeef".to_string(),
             input: None,
@@ -122,7 +122,7 @@ mod tests {
     fn rejects_unknown_fields() {
         let raw = r#"{
             "kind": "example",
-            "claim-id": "x",
+            "id": "x",
             "replay-digest": "sha256:a",
             "rogue": true
         }"#;

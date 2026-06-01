@@ -7,6 +7,5 @@ sources:
 
 slices:
   - name: add-search-filter
-    target: omnia@v1
     sources: [intent]
     status: pending

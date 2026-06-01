@@ -30,7 +30,9 @@ fn diag(project: &RegistryProject, problem: &SlotProblem) -> Diagnostic {
     let expected = CloneSignature {
         slot_kind: Some(problem.expected_kind.to_string()),
         url: Some(project.url.clone()),
-        adapter: Some(project.adapter.clone()),
+        // RFC-36: the registry `adapter` is only a greenfield seed, so it
+        // is no longer part of the authoritative clone signature.
+        adapter: project.adapter.clone(),
         target: problem.expected_target.as_ref().map(|path| path.display().to_string()),
     };
     let observed = CloneSignature {

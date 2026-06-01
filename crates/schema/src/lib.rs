@@ -1,21 +1,27 @@
 //! Embedded JSON Schemas and the JSON-Schema validation plumbing
 //! shared between `specify-workflow` (workflow artifacts) and the future
-//! `specify-lints` standards-layer crate, per [DECISIONS.md § Standards layer split into `specify-lints` and `specify-schema`](../../DECISIONS.md#standards-layer-split-into-specify-lints-and-specify-schema).
+//! `specify-standards` standards-layer crate, per [DECISIONS.md § Standards layer split into `specify-standards` and `specify-schema`](../../DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema).
 //!
 //! Schemas are bundled at compile time via `include_str!` so the binary
 //! carries them with no runtime filesystem lookup. The helpers in
-//! [`validate`] convert `jsonschema` validator output into the shared
-//! [`specify_error::ValidationSummary`] shape that callers fold into an
-//! [`specify_error::Error::Validation`] (exit code 2) or
-//! [`specify_error::Error::Diag`] (exit code 1) as their policy
+//! [`validate`] convert `jsonschema` validator output into the
+//! operational [`validate::ValidationSummary`] shape that callers fold
+//! into a payload-free [`specify_error::Error::Validation`] (exit code
+//! 2) or [`specify_error::Error::Diag`] (exit code 1) as their policy
 //! dictates.
 
 pub mod constants;
 pub mod validate;
 
 pub use constants::{
-    COMPONENTS_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LINT_FINDING_JSON_SCHEMA,
-    LINT_RESULT_JSON_SCHEMA, PLAN_JSON_SCHEMA, RECONCILIATION_JSON_SCHEMA,
-    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA,
+    BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA,
+    DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA,
+    MARKETPLACE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
+    SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA,
+    WORKSPACE_MODEL_JSON_SCHEMA,
 };
-pub use validate::{compile_schema, read_yaml_as_json, validate_serialisable, validate_value};
+pub use validate::{
+    ValidationStatus, ValidationSummary, compile_schema, join_details, read_yaml_as_json,
+    validate_serialisable, validate_value,
+};

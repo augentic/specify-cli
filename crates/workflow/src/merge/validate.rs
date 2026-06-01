@@ -5,16 +5,11 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use regex::Regex;
-use specify_error::{ValidationStatus, ValidationSummary};
+use specify_diagnostics::{Artifact, Diagnostic};
 use specify_model::spec::{REQ_ID_PATTERN, REQ_ID_PREFIX, SCENARIO_HEADING, parse_baseline};
 
-fn fail(rule_id: &str, rule: &str, detail: String) -> ValidationSummary {
-    ValidationSummary {
-        status: ValidationStatus::Fail,
-        rule_id: rule_id.into(),
-        rule: rule.into(),
-        detail: Some(detail),
-    }
+fn fail(rule_id: &str, rule: &str, detail: String) -> Diagnostic {
+    Diagnostic::violation(rule_id, rule, detail, Artifact::Specs, None)
 }
 
 fn req_id_re() -> &'static Regex {
@@ -43,21 +38,21 @@ const RULE_DESIGN_REFS_EXIST_DESC: &str =
 
 /// Post-merge coherence validation.
 ///
-/// Returns one [`ValidationSummary`] per violation (always `Fail`); an
-/// empty vec means the baseline passes every coherence rule. The
-/// `design` argument enables the orphan-reference rule
-/// (`merge.design-references-exist`) — see the inline parity quirk
-/// below.
+/// Returns one [`Diagnostic`] `violation` per breach (always
+/// deterministic, `important`); an empty vec means the baseline passes
+/// every coherence rule. The `design` argument enables the
+/// orphan-reference rule (`merge.design-references-exist`) — see the
+/// inline parity quirk below.
 ///
 /// # Panics
 ///
 /// Panics if `REQ_ID_PATTERN` is not a valid regex (compile-time
 /// constant — should never happen).
 #[must_use]
-pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<ValidationSummary> {
+pub fn validate_baseline(baseline: &str, design: Option<&str>) -> Vec<Diagnostic> {
     let parsed = parse_baseline(baseline);
     let blocks = parsed.requirements;
-    let mut results: Vec<ValidationSummary> = Vec::new();
+    let mut results: Vec<Diagnostic> = Vec::new();
 
     // (a) Duplicate IDs.
     let mut seen_ids: HashSet<&str> = HashSet::new();
@@ -170,7 +165,7 @@ mod tests {
     fn duplicate_ids_fail() {
         let baseline = "### Requirement: A\n\nID: REQ-001\n\n#### Scenario: x\n\n- ok\n\n### Requirement: B\n\nID: REQ-001\n\n#### Scenario: y\n\n- ok\n";
         let results = validate_baseline(baseline, None);
-        let fails: Vec<_> = results.iter().filter_map(as_fail).collect();
+        let fails: Vec<_> = results.iter().map(as_fail).collect();
         assert!(
             fails.iter().any(|(rid, detail)| *rid == RULE_NO_DUPLICATE_IDS
                 && detail.contains("Duplicate ID: REQ-001")),
@@ -182,7 +177,7 @@ mod tests {
     fn missing_id_and_bad_id_fail() {
         let invalid = "### Requirement: A\n\nID: NOT-AN-ID\n\n#### Scenario: x\n\n- ok\n\n### Requirement: B\n\n#### Scenario: y\n\n- ok\n";
         let results = validate_baseline(invalid, None);
-        let fails: Vec<_> = results.iter().filter_map(as_fail).collect();
+        let fails: Vec<_> = results.iter().map(as_fail).collect();
         assert!(
             fails.iter().any(|(rid, _)| *rid == RULE_ID_MATCHES_PATTERN),
             "expected id-matches-pattern fail, got {fails:?}"
@@ -204,8 +199,7 @@ mod tests {
         assert!(validate_baseline(baseline, Some(design)).is_empty());
     }
 
-    fn as_fail(result: &ValidationSummary) -> Option<(&str, &str)> {
-        (result.status == ValidationStatus::Fail)
-            .then(|| (result.rule_id.as_str(), result.detail.as_deref().unwrap_or("")))
+    fn as_fail(result: &Diagnostic) -> (&str, &str) {
+        (result.rule_id.as_deref().unwrap_or(""), result.impact.as_str())
     }
 }

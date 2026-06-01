@@ -68,7 +68,11 @@ fn validate_good_slice_passes() {
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["passed"], true);
+    // The validate surface now emits a `DiagnosticReport`. A clean slice
+    // carries no blocking (critical/important) diagnostics; exit 0 is the
+    // pass signal.
+    assert_eq!(actual["summary"]["critical"], 0);
+    assert_eq!(actual["summary"]["important"], 0);
     assert_golden("validate-good.json", actual);
 }
 
@@ -89,7 +93,13 @@ fn validate_bad_slice_fails_with_exit_two() {
     assert_eq!(assert.get_output().status.code(), Some(2), "validate on bad fixture must exit 2");
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["passed"], false);
+    // The validate surface now emits a `DiagnosticReport`; the failing
+    // slice carries at least one blocking `important` violation and the
+    // command exits 2.
+    assert!(
+        actual["summary"]["important"].as_u64().unwrap_or(0) > 0,
+        "bad fixture must surface important violations: {actual}"
+    );
     assert_golden("validate-bad.json", actual);
 }
 

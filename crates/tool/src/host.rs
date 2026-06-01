@@ -88,7 +88,7 @@ impl WasiRunner {
     /// into capped [`MemoryOutputPipe`] buffers so the host can examine
     /// the output without printing to the inherited terminal. Used by
     /// `specrun lint`'s `kind: tool` evaluator to fold a tool's
-    /// `LintResult` envelope into the scan output (`kind: tool` evaluator contract).
+    /// `DiagnosticReport` envelope into the scan output (`kind: tool` evaluator contract).
     ///
     /// # Errors
     ///

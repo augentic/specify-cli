@@ -14,7 +14,7 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
-use specify_error::{ValidationStatus, ValidationSummary};
+use specify_diagnostics::{Artifact, Diagnostic, FindingLocation};
 
 // ---------------------------------------------------------------------------
 // Public data types
@@ -134,28 +134,32 @@ pub struct Finding {
 }
 
 impl Finding {
-    /// Lift a [`Finding`] to the wire-shape [`ValidationSummary`].
-    /// `path_hint` is prepended to the detail so the operator can
-    /// locate the offending file.
+    /// Lift a [`Finding`] into the neutral [`Diagnostic`] currency.
+    /// `path_hint` (a slice-relative path) anchors the diagnostic
+    /// location and is prepended to the detail so the operator can
+    /// locate the offending file. Structural provenance breaches are
+    /// deterministic `violation` findings against the `specs` artifact.
     #[must_use]
-    pub fn into_summary(self, path_hint: &str) -> ValidationSummary {
+    pub fn into_diagnostic(self, path_hint: &str) -> Diagnostic {
         let Self {
             rule_id,
             rule,
             detail,
             span,
         } = self;
+        let location = (!path_hint.is_empty()).then(|| FindingLocation {
+            path: path_hint.to_string(),
+            line: u32::try_from(span.line_start).ok(),
+            column: None,
+            end_line: None,
+            end_column: None,
+        });
         let detail = if path_hint.is_empty() {
             format!("line {}: {detail}", span.line_start)
         } else {
             format!("{path_hint}:{}: {detail}", span.line_start)
         };
-        ValidationSummary {
-            status: ValidationStatus::Fail,
-            rule_id: rule_id.into(),
-            rule: rule.into(),
-            detail: Some(detail),
-        }
+        Diagnostic::violation(rule_id, rule, detail, Artifact::Specs, location)
     }
 }
 
@@ -366,7 +370,7 @@ fn check_sources(req: &Requirement, source_keys: &BTreeSet<String>, out: &mut Ve
     for key in &req.sources {
         if !is_valid_source_key(key) {
             out.push(Finding {
-                rule_id: "spec.requirement-source-key-malformed",
+                rule_id: "spec.requirement-source-malformed",
                 rule: "Each `Sources:` key is kebab-case (`[a-z][a-z0-9-]*`)",
                 detail: format!(
                     "requirement {} has malformed source key `{key}`",
@@ -378,7 +382,7 @@ fn check_sources(req: &Requirement, source_keys: &BTreeSet<String>, out: &mut Ve
         }
         if !source_keys.is_empty() && !source_keys.contains(key) {
             out.push(Finding {
-                rule_id: "spec.requirement-source-key-undefined",
+                rule_id: "spec.requirement-source-undefined",
                 rule: "Each `Sources:` key resolves to a slice-level plan binding",
                 detail: format!(
                     "requirement {} references source key `{key}`, which is not declared on the slice's plan entry",

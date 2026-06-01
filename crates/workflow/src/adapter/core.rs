@@ -18,7 +18,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_error::{Error, ValidationStatus};
+use specify_error::Error;
+use specify_schema::ValidationStatus;
 
 use crate::adapter::operation::{SourceOperation, TargetOperation};
 use crate::schema::validate_value;
@@ -130,6 +131,23 @@ pub struct AdapterToolDeclaration {
     pub permissions: Vec<String>,
 }
 
+/// One adapter-declared build input inside a target manifest (RFC-29d).
+///
+/// Each entry names a path the target's `build` operation consumes,
+/// relative to the build request's `inputs.root` (the slice tree). The
+/// CLI assembles the request's `inputs.artifacts.additional[]` from
+/// this list and (in a later change) raises `target-build-input-missing`
+/// when a `required` path is absent. v1 keeps the declaration a flat
+/// path list — globs and conditional inputs are deferred.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct BuildInputDeclaration {
+    /// Path relative to the build request's `inputs.root`.
+    pub path: String,
+    /// Whether `build` requires this input; a missing `required` path
+    /// is a build-time abort once the matching check lands.
+    pub required: bool,
+}
+
 /// Closed enum for the optional `cache:` field on an adapter manifest
 /// (extraction cache fingerprint contract). Single variant in v1; widened only behind an accepted design change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
@@ -140,6 +158,29 @@ pub enum CacheMode {
     /// of this adapter; the matching `slice.extract.cache-miss`
     /// journal event carries `reason: adapter-opt-out`.
     OptOut,
+}
+
+/// Closed adapter execution mode (RFC-29 D9).
+///
+/// Declared by the required `execution:` field on `adapter.yaml`.
+/// Source and target adapters share the enum; RFC-29 M1 (D9) landed the
+/// source-side dispatch — the target-side `build` / `merge` dispatch
+/// follows in M3, so target manifests carry `agent` as a placeholder
+/// until then. See DECISIONS.md §"Adapter execution mode (D9)".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum Execution {
+    /// `execution: agent` — the adapter's brief is executed by an agent
+    /// against the sandbox preopens. The CLI orchestrates inputs and
+    /// validates outputs against the schemas, but does not cache the
+    /// result: `agent` forces `cache: opt-out` (see
+    /// [`SourceAdapter::effective_cache_mode`]).
+    Agent,
+    /// `execution: tool` — `survey` / `extract` (sources) or `build` /
+    /// `merge` (targets) are dispatched through a declared WASI tool or
+    /// a built-in deterministic Rust path.
+    Tool,
 }
 
 /// Where an adapter manifest was located on disk.
@@ -221,6 +262,13 @@ pub struct SourceAdapter {
     /// successful [`SourceAdapter::resolve`]; the field is retained
     /// so YAML round-trips byte-for-byte through serde.
     pub axis: Axis,
+    /// Closed adapter execution mode (RFC-29 D9). Required by
+    /// `source.schema.json`; modelled as `Option` (mirroring
+    /// `description`) so the typed `check_execution` gate rejects a
+    /// manifest that omits it with `adapter-execution-mode-required`
+    /// rather than defaulting silently.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<Execution>,
     /// Typed source-operation → relative brief path map. Closed by
     /// `source.schema.json#/properties/briefs`: every source manifest
     /// declares `extract` + `survey`. `briefs.keys()` is the
@@ -258,6 +306,14 @@ pub struct TargetAdapter {
     /// a successful [`TargetAdapter::resolve`]; the field is retained
     /// so YAML round-trips byte-for-byte through serde.
     pub axis: Axis,
+    /// Closed adapter execution mode (RFC-29 D9). Required by
+    /// `target.schema.json`; modelled as `Option` (mirroring
+    /// `description`) so the typed `check_execution` gate rejects a
+    /// manifest that omits it with `adapter-execution-mode-required`
+    /// rather than defaulting silently. Target dispatch lands in M3;
+    /// first-party target manifests carry `agent` as a placeholder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<Execution>,
     /// Typed target-operation → relative brief path map. Closed by
     /// `target.schema.json#/properties/briefs`: every target manifest
     /// declares `shape` + `build` + `merge`. `briefs.keys()` is the
@@ -267,6 +323,12 @@ pub struct TargetAdapter {
     /// Optional declared WASI tools for declared WASI tools.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<AdapterToolDeclaration>,
+    /// Optional adapter-declared build inputs (RFC-29d). Each entry is
+    /// a path relative to the build request's `inputs.root`, flagged
+    /// `required`; the CLI assembles `inputs.artifacts.additional[]`
+    /// from this list. Defaults to an empty list when omitted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<BuildInputDeclaration>,
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -330,6 +392,7 @@ impl SourceAdapter {
         let (manifest, location, manifest_path) =
             resolve_typed::<Self>(Axis::Source, name, project_dir)?;
         check_axis_and_name(Axis::Source, name, manifest.axis, &manifest.name, &manifest_path)?;
+        check_execution(manifest.execution, manifest.cache, &manifest_path)?;
         Ok(ResolvedSourceAdapter { manifest, location })
     }
 
@@ -340,6 +403,21 @@ impl SourceAdapter {
     /// `briefs.keys()` is the canonical typed operation source.
     pub fn operations(&self) -> impl Iterator<Item = &SourceOperation> {
         self.briefs.keys()
+    }
+
+    /// Effective extraction-cache mode after applying the
+    /// `execution: agent` forced opt-out (RFC-29 D9). When
+    /// `execution: agent` the cache is always bypassed regardless of
+    /// the declared `cache:` field; otherwise the declared mode (or its
+    /// absence) applies. The source-operation runner (RFC-29 D1)
+    /// consumes this rather than the raw [`Self::cache`] field.
+    #[must_use]
+    pub const fn effective_cache_mode(&self) -> Option<CacheMode> {
+        if matches!(self.execution, Some(Execution::Agent)) {
+            Some(CacheMode::OptOut)
+        } else {
+            self.cache
+        }
     }
 }
 
@@ -370,6 +448,7 @@ impl TargetAdapter {
         let (manifest, location, manifest_path) =
             resolve_typed::<Self>(Axis::Target, name, project_dir)?;
         check_axis_and_name(Axis::Target, name, manifest.axis, &manifest.name, &manifest_path)?;
+        check_execution(manifest.execution, manifest.cache, &manifest_path)?;
         Ok(ResolvedTargetAdapter { manifest, location })
     }
 
@@ -380,6 +459,19 @@ impl TargetAdapter {
     /// `briefs.keys()` is the canonical typed operation source.
     pub fn operations(&self) -> impl Iterator<Item = &TargetOperation> {
         self.briefs.keys()
+    }
+
+    /// Effective extraction-cache mode after applying the
+    /// `execution: agent` forced opt-out (RFC-29 D9). Mirrors
+    /// [`SourceAdapter::effective_cache_mode`]; target dispatch (M3)
+    /// will consume it once `build` / `merge` become CLI-owned.
+    #[must_use]
+    pub const fn effective_cache_mode(&self) -> Option<CacheMode> {
+        if matches!(self.execution, Some(Execution::Agent)) {
+            Some(CacheMode::OptOut)
+        } else {
+            self.cache
+        }
     }
 }
 
@@ -565,6 +657,56 @@ fn check_axis_and_name(
     Ok(())
 }
 
+/// Typed `execution`-mode gate (RFC-29 D9), run after schema validation
+/// and the axis/name coherence check.
+///
+/// Two single-signal aborts, both `Error::Validation` (exit 2) with the
+/// kebab `error` discriminants from the RFC-29 wire contract:
+///
+/// - `adapter-execution-mode-required` — the manifest omits `execution`.
+///   The per-axis JSON Schemas also mark `execution` `required`, so this
+///   typed gate is the belt-and-suspenders that refuses to default
+///   silently when a manifest reaches the loader through a path that
+///   bypassed schema validation.
+/// - `adapter-execution-agent-cache-conflict` — `execution: agent` is
+///   declared together with a `cache:` mode other than the forced
+///   opt-out. This arm is a forward guard: [`CacheMode`] is
+///   single-variant (`OptOut`) today and `source.schema.json` /
+///   `target.schema.json` enumerate only `["opt-out"]`, so no legal
+///   manifest can declare a non-opt-out cache mode — the arm cannot
+///   fire until the cache enum widens. The runtime "agent forces
+///   opt-out" behaviour itself is modelled by
+///   [`SourceAdapter::effective_cache_mode`] /
+///   [`TargetAdapter::effective_cache_mode`], not here.
+fn check_execution(
+    execution: Option<Execution>, cache: Option<CacheMode>, manifest_path: &Path,
+) -> Result<(), Error> {
+    let Some(execution) = execution else {
+        return Err(Error::validation_failed(
+            "adapter-execution-mode-required",
+            "adapter manifest declares a closed `execution` mode",
+            format!(
+                "{} omits the required `execution` field (`agent` or `tool`)",
+                manifest_path.display(),
+            ),
+        ));
+    };
+    if execution == Execution::Agent
+        && let Some(mode) = cache
+        && mode != CacheMode::OptOut
+    {
+        return Err(Error::validation_failed(
+            "adapter-execution-agent-cache-conflict",
+            "`execution: agent` forces `cache: opt-out`",
+            format!(
+                "{} declares `execution: agent` with `cache: {mode}`; agent execution forces `cache: opt-out`",
+                manifest_path.display(),
+            ),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_schema(
     axis: Axis, manifest_path: &Path, instance: &serde_json::Value,
 ) -> Result<(), Error> {
@@ -678,6 +820,110 @@ briefs:
             manifest.operations().copied().collect::<Vec<_>>(),
             // BTreeMap key order: build < merge < shape (kebab-case).
             vec![TargetOperation::Build, TargetOperation::Merge, TargetOperation::Shape]
+        );
+    }
+
+    #[test]
+    fn execution_mode_round_trips() {
+        let yaml = r"name: documentation
+version: 1
+axis: source
+execution: agent
+briefs:
+  survey: briefs/survey.md
+  extract: briefs/extract.md
+";
+        let manifest: SourceAdapter = serde_saphyr::from_str(yaml).expect("parse");
+        assert_eq!(manifest.execution, Some(Execution::Agent));
+        let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
+        assert!(
+            rendered.contains("execution: agent"),
+            "execution must round-trip as kebab-case, got:\n{rendered}"
+        );
+        let reparsed: SourceAdapter = serde_saphyr::from_str(&rendered).expect("reparse");
+        assert_eq!(manifest, reparsed);
+    }
+
+    #[test]
+    fn execution_tool_parses() {
+        let yaml = r"name: omnia
+version: 1
+axis: target
+execution: tool
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+";
+        let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
+        assert_eq!(manifest.execution, Some(Execution::Tool));
+    }
+
+    #[test]
+    fn check_execution_rejects_missing_mode() {
+        // The typed gate refuses to default silently when `execution`
+        // is absent — the kebab discriminant routes to exit 2.
+        let err = check_execution(None, None, Path::new("adapter.yaml"))
+            .expect_err("missing execution must be rejected");
+        let Error::Validation { code, .. } = err else {
+            panic!("expected Error::Validation, got: {err:?}");
+        };
+        assert_eq!(code, "adapter-execution-mode-required");
+    }
+
+    #[test]
+    fn check_execution_agent_allows_forced_opt_out() {
+        // `execution: agent` forces `cache: opt-out`; declaring the
+        // matching opt-out (or no cache at all) is not a conflict.
+        check_execution(Some(Execution::Agent), Some(CacheMode::OptOut), Path::new("adapter.yaml"))
+            .expect("agent + opt-out is consistent");
+        check_execution(Some(Execution::Agent), None, Path::new("adapter.yaml"))
+            .expect("agent + absent cache is consistent");
+    }
+
+    #[test]
+    fn check_execution_tool_passes() {
+        check_execution(Some(Execution::Tool), None, Path::new("adapter.yaml"))
+            .expect("tool execution with no cache declaration passes");
+        check_execution(Some(Execution::Tool), Some(CacheMode::OptOut), Path::new("adapter.yaml"))
+            .expect("tool execution may still opt out of the cache");
+    }
+
+    #[test]
+    fn agent_execution_forces_effective_opt_out() {
+        let yaml = r"name: documentation
+version: 1
+axis: source
+execution: agent
+briefs:
+  survey: briefs/survey.md
+  extract: briefs/extract.md
+";
+        let manifest: SourceAdapter = serde_saphyr::from_str(yaml).expect("parse");
+        assert_eq!(manifest.cache, None, "no declared cache field");
+        assert_eq!(
+            manifest.effective_cache_mode(),
+            Some(CacheMode::OptOut),
+            "execution: agent forces cache: opt-out even with no declared cache"
+        );
+    }
+
+    #[test]
+    fn tool_execution_preserves_declared_cache() {
+        let yaml = r"name: omnia
+version: 1
+axis: target
+execution: tool
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+";
+        let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
+        assert_eq!(
+            manifest.effective_cache_mode(),
+            None,
+            "tool execution leaves the (absent) declared cache mode untouched"
         );
     }
 

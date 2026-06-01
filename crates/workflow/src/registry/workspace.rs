@@ -17,7 +17,7 @@ pub use slot_problem::{
 };
 use specify_error::Error;
 pub use status::{ConfiguredTargetKind, SlotKind, SlotStatus, status, status_projects};
-pub use sync::sync_projects;
+pub use sync::{regenerate_topology_lock, sync_projects};
 
 fn workspace_base(project_dir: &Path) -> PathBuf {
     project_dir.join(".specify").join("workspace")

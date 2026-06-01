@@ -1,22 +1,29 @@
 //! `specrun source preview` handler — workflow-free source adapter
 //! execution scaffolding (`specrun source preview` contract).
 //!
-//! Resolves the adapter, validates `--source`, scaffolds the output
-//! directory with an `evidence/` subtree, and emits a summary of
+//! Validates `--source`, then runs the shared [`prep`] seam (adapter
+//! resolution, brief directory, the four-root sandbox layout, and
+//! `evidence/` scaffolding under `--out`) and emits a summary of
 //! adapter info, brief paths, and the source binding. The agent then
 //! executes the briefs against the prepared environment.
 //!
-//! No `.specify/` writes, no journal events. Output lives entirely
-//! under `--out` (default `.specify-preview/`).
+//! Preview is the workflow-free dry run: it consumes [`prep`] but adds
+//! none of the workflow-integrated behaviour (sandbox dispatch, cache,
+//! journal events, `discovery.md` merge / Evidence persist) the
+//! RFC-29 D1 `survey` / `extract` runners layer on the same seam.
+//! No `.specify/` writes, no journal events; output lives entirely
+//! under `--out` (default `.specify-preview/`). Because preview is
+//! slice-less, it preps under the [`prep::SourceOp::Survey`] keying;
+//! the resulting scratch path is data only and is never created.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_error::{Error, Result};
-use specify_workflow::adapter::SourceAdapter;
 
 use crate::runtime::cli::Format;
+use crate::runtime::commands::source::prep;
 use crate::runtime::output;
 
 const DEFAULT_OUT_DIR: &str = ".specify-preview";
@@ -52,30 +59,36 @@ pub fn preview(
         });
     }
 
-    let resolved = SourceAdapter::resolve(adapter_name, project_dir)?;
-    let adapter_dir = resolved.location.path().clone();
-
     let out_dir = out.map_or_else(|| PathBuf::from(DEFAULT_OUT_DIR), Path::to_path_buf);
-    let evidence_dir = out_dir.join("evidence");
-    std::fs::create_dir_all(&evidence_dir).map_err(Error::Io)?;
 
-    let briefs: Vec<BriefEntry> = resolved
+    let prepared = prep::prepare(&prep::PrepRequest {
+        adapter: adapter_name,
+        project_dir,
+        op: prep::SourceOp::Survey,
+        source: Some(source),
+        leads,
+        evidence_root: Some(&out_dir),
+    })?;
+
+    let briefs: Vec<BriefEntry> = prepared
         .manifest
         .briefs
         .iter()
         .map(|(op, relative)| BriefEntry {
             operation: op.to_string(),
-            path: adapter_dir.join(relative),
+            path: prepared.adapter_dir.join(relative),
         })
         .collect();
 
     let body = PreviewBody {
-        adapter: resolved.manifest.name,
-        version: resolved.manifest.version,
+        adapter: prepared.manifest.name,
+        version: prepared.manifest.version,
         source: source.to_path_buf(),
         out: out_dir,
-        evidence_dir,
-        leads: leads.to_vec(),
+        evidence_dir: prepared
+            .evidence_dir
+            .expect("evidence_root: Some(..) => evidence_dir present"),
+        leads: prepared.leads,
         briefs,
     };
 

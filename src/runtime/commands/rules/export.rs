@@ -1,7 +1,7 @@
 //! `specrun rules export` handler — `ResolvedRules` export contract.
 //!
 //! Read-only. Builds the `ResolveInputs` struct from CLI args,
-//! delegates to [`specify_lints::build_resolved_rules`], and
+//! delegates to [`specify_standards::build_resolved_rules`], and
 //! streams the resulting envelope to stdout as JSON. v1 supports
 //! JSON output only; the global `--format text` default at the
 //! `Cli` level surfaces as `Error::Argument` (exit 2) so the
@@ -18,7 +18,7 @@
 //! | `Filesystem`             | `Filesystem { op }`     | 1    |
 
 use specify_error::{Error, Result};
-use specify_lints::{ResolveInputs, build_resolved_rules, map_resolve_error};
+use specify_standards::{ResolveInputs, build_resolved_rules, map_resolve_error};
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::rules::cli::ExportArgs;

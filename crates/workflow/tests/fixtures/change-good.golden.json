@@ -1,82 +1,51 @@
 {
-  "brief-results": {
-    "design": [
-      {
-        "rule": "References only requirement ids present in specs",
-        "rule-id": "design.references-valid-ids",
-        "status": "pass"
-      }
-    ],
-    "proposal": [
-      {
-        "rule": "Has a Why section with at least one sentence",
-        "rule-id": "proposal.why-has-content",
-        "status": "pass"
-      },
-      {
-        "rule": "Has a Units section listing at least one entry",
-        "rule-id": "proposal.units-listed",
-        "status": "pass"
-      },
-      {
-        "detail": "Semantic check — requires LLM judgment",
-        "rule": "Uses imperative language for motivation",
-        "rule-id": "proposal.uses-imperative-language",
-        "status": "deferred"
-      }
-    ],
-    "specs/login/spec.md": [
-      {
-        "rule": "Every requirement has at least one scenario",
-        "rule-id": "specs.requirements-have-scenarios",
-        "status": "pass"
-      },
-      {
-        "rule": "Every requirement has an `ID:` line",
-        "rule-id": "specs.requirements-have-ids",
-        "status": "pass"
-      },
-      {
-        "rule": "IDs use the `REQ-[0-9]{3}` format",
-        "rule-id": "specs.ids-match-pattern",
-        "status": "pass"
-      },
-      {
-        "detail": "Semantic check — requires LLM judgment",
-        "rule": "Uses SHALL/MUST language for normative requirements",
-        "rule-id": "specs.uses-normative-language",
-        "status": "deferred"
-      }
-    ],
-    "tasks": [
-      {
-        "rule": "All tasks use `- [ ] X.Y` checkbox format",
-        "rule-id": "tasks.use-checkbox-format",
-        "status": "pass"
-      },
-      {
-        "rule": "Tasks grouped under `## ` headings",
-        "rule-id": "tasks.grouped-under-headings",
-        "status": "pass"
-      }
-    ]
-  },
-  "cross-checks": [
+  "findings": [
     {
-      "rule": "Every unit listed in the proposal has a matching spec file",
-      "rule-id": "cross.proposal-units-have-specs",
-      "status": "pass"
+      "artifact": "unknown",
+      "confidence": "medium",
+      "evidence": {
+        "kind": "snippet",
+        "value": "Semantic check — requires agent judgment"
+      },
+      "fingerprint": "sha256:9988345508dbc7733fe82e363d0d3d0ef6c62138397b632309417f03c1c4e648",
+      "id": "DIAG-0001",
+      "impact": "Semantic check — requires agent judgment",
+      "kind": "review",
+      "location": {
+        "path": "proposal.md"
+      },
+      "remediation": "Uses imperative language for motivation",
+      "rule-id": "proposal.uses-imperative-language",
+      "severity": "suggestion",
+      "source": "model-assisted",
+      "title": "Uses imperative language for motivation"
     },
     {
-      "rule": "Every requirement id referenced in design.md exists in specs",
-      "rule-id": "cross.design-references-valid",
-      "status": "pass"
-    },
-    {
-      "rule": "composition.yaml maps_to values are well-formed",
-      "rule-id": "cross.composition-maps-to-consistent",
-      "status": "pass"
+      "artifact": "specs",
+      "confidence": "medium",
+      "evidence": {
+        "kind": "snippet",
+        "value": "Semantic check — requires agent judgment"
+      },
+      "fingerprint": "sha256:a3c693e96432be9ea84df255ba442430f4ef6d675bc54882e17ce68e06fe8bd6",
+      "id": "DIAG-0002",
+      "impact": "Semantic check — requires agent judgment",
+      "kind": "review",
+      "location": {
+        "path": "specs/login/spec.md"
+      },
+      "remediation": "Uses SHALL/MUST language for normative requirements",
+      "rule-id": "specs.uses-normative-language",
+      "severity": "suggestion",
+      "source": "model-assisted",
+      "title": "Uses SHALL/MUST language for normative requirements"
     }
   ],
-  "passed": true
+  "summary": {
+    "critical": 0,
+    "important": 0,
+    "optional": 0,
+    "suggestion": 2
+  },
+  "version": 1
 }

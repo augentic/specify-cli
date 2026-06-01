@@ -12,8 +12,9 @@ pub enum RulesAction {
     ///
     /// Read-only: no `.specify/` writes, no lifecycle transitions,
     /// no journal events. The handler probes for shared `UNI-*`
-    /// rules (via `--rules-root` or a project-local
-    /// `adapters/shared/rules/universal/` tree), discovers the
+    /// rules (via `--rules-root`, a project-local monorepo
+    /// `adapters/shared/rules/universal/` tree, or the distributed
+    /// codex cache `.specify/.cache/codex/`), discovers the
     /// `--target` and `--source` overlays per the rules contract §"Resolution
     /// roots", and streams the sorted `ResolvedRules` envelope to
     /// stdout.
@@ -23,6 +24,34 @@ pub enum RulesAction {
     /// at the `Cli` level surfaces as an explicit argument error so
     /// the closed JSON-only contract stays visible.
     Export(ExportArgs),
+
+    /// Distribute (or refresh) the shared codex into the project codex
+    /// cache `.specify/.cache/codex/`, pinned to the project's adapter
+    /// source/ref (codex root resolution, RM-07).
+    ///
+    /// Mirrors `adapters/shared/rules/universal/` (and, with
+    /// `--include-framework`, `core/`) from the adapter source so the
+    /// resolver's rules-root probe finds shared `UNI-*` rules without
+    /// `--rules-root`. Requires an initialised `.specify/`; writes only
+    /// under `.specify/.cache/codex/`.
+    Sync(SyncArgs),
+}
+
+/// Flag surface for `specrun rules sync`.
+#[derive(Args)]
+pub struct SyncArgs {
+    /// Also distribute the framework `core/` pack
+    /// (`adapters/shared/rules/core/`) alongside the always-distributed
+    /// `universal/` pack. Default off — consumer projects carry only
+    /// `UNI-*` rules.
+    #[arg(long)]
+    pub include_framework: bool,
+
+    /// Adapter source to pull the codex from (bare name or URL).
+    /// Defaults to the project's recorded `adapter:` value; required
+    /// for hub projects, which declare no adapter.
+    #[arg(long)]
+    pub source: Option<String>,
 }
 
 /// Flag surface for `specrun rules export`. Grouped into one struct so
@@ -31,10 +60,12 @@ pub enum RulesAction {
 #[derive(Args)]
 pub struct ExportArgs {
     /// Codex root supplying shared `UNI-*` rules and rules-root
-    /// fallback overlays (codex root resolution
-    /// (v1)"). When omitted the resolver probes the
-    /// project-local `adapters/shared/rules/universal/` tree;
-    /// failing that, exits with `rules-root-required`.
+    /// fallback overlays (codex root resolution (v1)). When omitted the
+    /// resolver probes the project-local monorepo
+    /// `adapters/shared/rules/universal/` tree, then the distributed
+    /// codex cache `.specify/.cache/codex/` (populated by `specrun init`
+    /// / `specrun rules sync`); failing both, exits with
+    /// `rules-root-required`.
     #[arg(long)]
     pub rules_root: Option<PathBuf>,
 
@@ -69,7 +100,7 @@ pub struct ExportArgs {
     pub include_unmatched: bool,
 
     /// Include `CORE-*` rules resolved from
-    /// `adapters/shared/rules/core/` (RFC-34 §A3 / §F3).
+    /// `adapters/shared/rules/core/`.
     /// Default off — consumer-project exports never carry
     /// framework-only `CORE-*` rules unless the caller opts in.
     #[arg(long)]

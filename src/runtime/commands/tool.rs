@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
 pub(super) use run::run;
-use specify_error::{Error, Result, ValidationStatus, ValidationSummary};
+use specify_error::{Error, Result};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};
 use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
@@ -68,12 +68,18 @@ fn validate_manifest_tools(tools: &[Tool], scope: &ToolScope) -> Result<()> {
     let manifest = ToolManifest {
         tools: tools.to_vec(),
     };
-    let summaries: Vec<ValidationSummary> = manifest
-        .validate_structure(scope)
-        .into_iter()
-        .filter(|summary| summary.status == ValidationStatus::Fail)
-        .collect();
-    if summaries.is_empty() { Ok(()) } else { Err(Error::Validation { results: summaries }) }
+    // `validate_structure` returns one deterministic `violation`
+    // diagnostic per failing rule (passing rules emit nothing), so an
+    // empty vector means the manifest is structurally valid. Collapse
+    // any failures into a single payload-free `Error::Validation` keyed
+    // on the first rule id; per-row detail is joined into the message.
+    let diagnostics = manifest.validate_structure(scope);
+    let Some(first) = diagnostics.first() else {
+        return Ok(());
+    };
+    let code = first.rule_id.clone().unwrap_or_else(|| "tool-manifest-invalid".to_string());
+    let detail = diagnostics.iter().map(|d| d.impact.as_str()).collect::<Vec<_>>().join("; ");
+    Err(Error::validation_failed(code, "tools.yaml manifest must satisfy structural rules", detail))
 }
 
 fn find<'a>(inventory: &'a Inventory, name: &str) -> Result<&'a ScopedTool> {

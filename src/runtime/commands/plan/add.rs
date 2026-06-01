@@ -13,7 +13,7 @@ use specify_workflow::config::with_state;
 use specify_workflow::journal;
 use specify_workflow::schema::validate_plan;
 
-use super::args::{bindings_from_args, load_discovery, parse_target_flag};
+use super::args::{bindings_from_args, load_discovery};
 use super::cli::AddArgs;
 use super::entry::{Action, EntryBody, write_entry_text};
 use super::{check_project, plan_ref};
@@ -26,7 +26,6 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
         sources,
         description,
         project,
-        target,
         context,
         authority_override,
     } = args;
@@ -48,14 +47,12 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
     let authority_override_map = SliceAuthorityOverride {
         by_kind: authority_override
             .iter()
-            .map(|a| (a.kind, a.source_key.clone()))
+            .map(|a| (a.kind, a.source.clone()))
             .collect::<BTreeMap<_, _>>(),
     };
-    let target = target.map(|raw| parse_target_flag(&raw)).transpose()?;
     let entry = Entry {
         name: name.to_string(),
         project,
-        target,
         status: Status::Pending,
         depends_on,
         sources,

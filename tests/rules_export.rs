@@ -2,7 +2,7 @@
 //!
 //! Exercises the runtime rules export contract — `ResolvedRules` export
 //! rules export" and §"Codex root resolution (v1)" — via the
-//! [`specify_lints::build_resolved_rules`] library entrypoint
+//! [`specify_standards::build_resolved_rules`] library entrypoint
 //! for the positive scenarios and `assert_cmd` for the negative
 //! `rules-root-required` scenario (the latter end-to-end proof that
 //! the CH-17 CLI plumbing wires through to `Exit::ValidationFailed`).
@@ -40,7 +40,7 @@ use std::{env, fs};
 
 use assert_cmd::Command;
 use serde_json::Value;
-use specify_lints::{ResolveInputs, ResolvedRules, build_resolved_rules};
+use specify_standards::{ResolveInputs, ResolvedRules, build_resolved_rules};
 use tempfile::tempdir;
 
 /// Locate the `augentic/specify` plugin-repo checkout. Returns
@@ -169,7 +169,11 @@ fn omnia_with_documentation_source_overlay() {
         .iter()
         .find(|r| r.rule_id == "SRC-001")
         .expect("SRC-001 must appear when documentation source is bound");
-    assert_eq!(src_001.origin, specify_lints::Origin::Source, "SRC-001 must carry origin=source");
+    assert_eq!(
+        src_001.origin,
+        specify_standards::Origin::Source,
+        "SRC-001 must carry origin=source"
+    );
 
     let value = serde_json::to_value(&resolved).expect("to_value");
     assert_golden(&value, "omnia-with-documentation");
@@ -276,7 +280,7 @@ fn omnia_agent_consumable_assertions() {
     );
 }
 
-/// RFC-34 §A3 / §F3 CLI smoke test: a hand-built rules-root tree with
+/// CLI smoke test: a hand-built rules-root tree with
 /// a `CORE-*` rule under `adapters/shared/rules/core/` excludes that
 /// rule from `specrun rules export` by default and includes it under
 /// `--include-core`. Uses `assert_cmd` so the closed CLI plumbing
@@ -328,20 +332,20 @@ fn include_core_flag_toggles_core_rules() {
 
 /// Write a minimal rule fixture that satisfies the CH-11 parser and
 /// the codex-rule schema. Mirrors the helper used by the resolver's
-/// unit tests in `crates/specify-lints/src/rules/resolve.rs`.
+/// unit tests in `crates/standards/src/rules/resolve.rs`.
 fn write_rule_fixture(path: &Path, id: &str, title: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("create parent dir");
     }
     let body = format!(
-        "---\nid: {id}\ntitle: {title}\nseverity: important\ntrigger: Synthetic RFC-34 C4 fixture trigger sentence long enough for schema.\n---\n\n## Rule\n\nBody for {id}.\n",
+        "---\nid: {id}\ntitle: {title}\nseverity: important\ntrigger: Synthetic fixture trigger sentence long enough for schema.\n---\n\n## Rule\n\nBody for {id}.\n",
     );
     fs::write(path, body).expect("write rule fixture");
 }
 
 /// Invoke `specrun rules export` against an explicit rules root and
 /// parse the JSON envelope on stdout. `include_core` toggles the
-/// closed RFC-34 flag.
+/// closed `--include-core` flag.
 fn export_via_cli(rules_root: &Path, project: &Path, include_core: bool) -> Value {
     let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
     cmd.args(["--format", "json", "rules", "export", "--target", "omnia"])
@@ -394,9 +398,9 @@ fn negative_rules_root_required() {
     let envelope: Value = serde_json::from_str(stderr)
         .unwrap_or_else(|err| panic!("stderr is not JSON ({err}); raw:\n{stderr}"));
 
-    let rule_id = envelope
-        .pointer("/results/0/rule-id")
+    let code = envelope
+        .get("error")
         .and_then(Value::as_str)
-        .expect("envelope must carry results[0].rule-id");
-    assert_eq!(rule_id, "rules-root-required", "envelope:\n{envelope:#}");
+        .expect("envelope must carry the top-level error code");
+    assert_eq!(code, "rules-root-required", "envelope:\n{envelope:#}");
 }

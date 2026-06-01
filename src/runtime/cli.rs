@@ -9,6 +9,8 @@ use clap_complete::Shell;
 use specify_model::evidence::ClaimKind;
 
 pub use crate::output::Format;
+use crate::runtime::commands::archive::cli::ArchiveAction;
+use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
@@ -54,13 +56,20 @@ pub enum Commands {
         /// Project name (defaults to the project directory name)
         #[arg(long)]
         name: Option<String>,
-        /// Project domain description (tech stack, architecture, testing)
+        /// Project description (tech stack, architecture, testing)
         #[arg(long)]
-        domain: Option<String>,
+        description: Option<String>,
         /// Scaffold a registry-only platform hub instead of a regular
         /// project. Refuses to run when `.specify/` already exists.
         #[arg(long)]
         hub: bool,
+        /// Also distribute the framework `core/` pack
+        /// (`adapters/shared/rules/core/`) into the project codex cache
+        /// alongside the shared `universal/` pack. Default off —
+        /// consumer projects carry only `UNI-*` rules. Ignored with
+        /// `--hub`.
+        #[arg(long, conflicts_with = "hub")]
+        include_framework: bool,
     },
 
     /// Source adapter operations (workflow contract). Source adapters provide
@@ -98,7 +107,7 @@ pub enum Commands {
 
     /// Deterministic lint (`specrun lint` v1). Resolves applicable codex
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
-    /// and emits the `LintResult` envelope lint-result envelope. Read-only.
+    /// and emits the `DiagnosticReport` envelope. Read-only.
     Lint {
         #[command(subcommand)]
         action: LintAction,
@@ -110,11 +119,28 @@ pub enum Commands {
         action: SliceAction,
     },
 
+    /// Slice-archive cache maintenance. The archived slice folders
+    /// under `.specify/archive/` are a prunable convenience cache;
+    /// `prune` reclaims disk by retention bound.
+    Archive {
+        #[command(subcommand)]
+        action: ArchiveAction,
+    },
+
     /// Executable plan operations — `plan.yaml` lifecycle and the
     /// `/spec:execute` driver lock.
     Plan {
         #[command(subcommand)]
         action: PlanAction,
+    },
+
+    /// Workflow journal at `.specify/journal.jsonl`. `emit` is a
+    /// guarded front door onto the closed §Observability event
+    /// taxonomy — it appends one well-formed line, minting no event
+    /// kinds of its own.
+    Journal {
+        #[command(subcommand)]
+        action: JournalAction,
     },
 
     /// Platform registry at `registry.yaml` (repo root)
@@ -229,7 +255,7 @@ impl FromStr for SourceArg {
 ///
 /// Wire forms (workflow §`Slice.sources`):
 ///
-/// - `<key>=<lead-id>` — structured binding; both sides are
+/// - `<key>=<lead>` — structured binding; both sides are
 ///   non-empty kebab identifiers. Materialises via
 ///   [`specify_workflow::change::SliceSourceBinding::structured`].
 /// - `<key>` — bare-string shorthand; sugar for
@@ -254,8 +280,8 @@ pub struct SliceSourceArg {
 /// flag on `specrun plan add` (where the slice context is implicit
 /// from the command's positional `name`).
 ///
-/// Wire form is `<claim-kind>=<source-key>`; both sides must be
-/// non-empty and kebab-case (`source-key` is validated at the
+/// Wire form is `<claim-kind>=<source>`; both sides must be
+/// non-empty and kebab-case (`source` is validated at the
 /// `specrun slice validate` stage via the orphan-key check).
 /// `claim-kind` is parsed at the CLI boundary against the closed
 /// [`ClaimKind`] enum so misspellings fail before any plan mutation
@@ -263,12 +289,12 @@ pub struct SliceSourceArg {
 #[derive(Clone, Debug)]
 pub struct AuthorityOverrideKindAssign {
     pub(crate) kind: ClaimKind,
-    pub(crate) source_key: String,
+    pub(crate) source: String,
 }
 
 /// Typed value for `specrun plan amend --add-alias` /
 /// `--remove-alias` (discovery alias contract). Wire form is
-/// `<lead-id>=<alias>`; both sides must be non-empty
+/// `<lead>=<alias>`; both sides must be non-empty
 /// kebab-case strings. The closed [`specify_error::is_kebab`]
 /// check runs at the handler boundary so the parser stays focused
 /// on the `=` split.
@@ -288,7 +314,7 @@ impl FromStr for AliasAssign {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (lead, alias) = s
             .split_once('=')
-            .ok_or_else(|| format!("alias flag must be <lead-id>=<alias>, got `{s}`"))?;
+            .ok_or_else(|| format!("alias flag must be <lead>=<alias>, got `{s}`"))?;
         if lead.is_empty() || alias.is_empty() {
             return Err(format!("alias flag lead and alias must both be non-empty, got `{s}`"));
         }
@@ -306,24 +332,24 @@ impl FromStr for AuthorityOverrideKindAssign {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (raw_kind, source_key) = s.split_once('=').ok_or_else(|| {
-            format!("--authority-override must be <kind>=<source-key>, got `{s}`")
-        })?;
-        if raw_kind.is_empty() || source_key.is_empty() {
+        let (raw_kind, source) = s
+            .split_once('=')
+            .ok_or_else(|| format!("--authority-override must be <kind>=<source>, got `{s}`"))?;
+        if raw_kind.is_empty() || source.is_empty() {
             return Err(format!(
-                "--authority-override kind and source-key must both be non-empty, got `{s}`"
+                "--authority-override kind and source must both be non-empty, got `{s}`"
             ));
         }
-        if source_key.contains('=') {
+        if source.contains('=') {
             return Err(format!(
                 "--authority-override value `{s}` must contain exactly one `=` separator between \
-                 kind and source-key"
+                 kind and source"
             ));
         }
         let kind: ClaimKind = raw_kind.parse()?;
         Ok(Self {
             kind,
-            source_key: source_key.to_string(),
+            source: source.to_string(),
         })
     }
 }
@@ -338,11 +364,11 @@ impl FromStr for SliceSourceArg {
         if let Some((k, v)) = s.split_once('=') {
             if v.contains('=') {
                 return Err(format!(
-                    "--sources value `{s}` must be <key>=<lead-id> with at most one `=`"
+                    "--sources value `{s}` must be <key>=<lead> with at most one `=`"
                 ));
             }
             if k.is_empty() || v.is_empty() {
-                return Err(format!("--sources key and lead-id must both be non-empty, got `{s}`"));
+                return Err(format!("--sources key and lead must both be non-empty, got `{s}`"));
             }
             Ok(Self {
                 key: k.to_string(),

@@ -103,7 +103,7 @@
     "ignore_directives": {
       "type": "array",
       "items": { "$ref": "#/$defs/ignoreDirective" },
-      "description": "`WorkspaceModel` entity: `ignore_directive` facts from the RFC-33a indexer pass that recognises `specify-ignore: <RULE-ID> — <rationale>` comments across the closed comment-style list. Optional in v1 envelopes until the indexer extractor lands; consumers MUST tolerate the field's absence."
+      "description": "`WorkspaceModel` entity: `ignore_directive` facts from the indexer pass that recognises `specify-ignore: <RULE-ID> — <rationale>` comments across the closed comment-style list. Optional in v1 envelopes until the indexer extractor lands; consumers MUST tolerate the field's absence."
     },
     "briefs": {
       "type": "array",

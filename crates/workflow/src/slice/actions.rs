@@ -10,6 +10,7 @@ pub mod discard;
 pub mod io;
 pub mod outcome;
 pub mod overlap;
+pub mod prune;
 pub mod scan;
 pub mod transition;
 
@@ -19,5 +20,6 @@ pub use discard::discard;
 pub use io::move_atomic;
 pub use outcome::stamp_outcome;
 pub use overlap::{Overlap, overlap};
+pub use prune::{ArchivedSlice, Retention};
 pub use scan::{scan_touched, write_touched};
 pub use transition::transition;

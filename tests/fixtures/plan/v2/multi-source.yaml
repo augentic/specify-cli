@@ -10,11 +10,10 @@ sources:
 
 slices:
   - name: identity-user-registration
-    target: omnia@v1
     project: identity-svc
     sources:
-      - key: identity-design-notes
+      - source: identity-design-notes
         lead: user-registration
-      - key: legacy-monolith
+      - source: legacy-monolith
         lead: user-registration
     status: pending

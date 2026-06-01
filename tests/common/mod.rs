@@ -82,7 +82,7 @@ pub fn stamp_slice_outcome(
 /// Panics if `path` cannot be read.
 pub fn sha256_hex(path: &Path) -> String {
     let bytes = fs::read(path).expect("read bytes for sha256");
-    specify_tool::sha256_hex(&bytes)
+    specify_digest::sha256_hex(&bytes)
 }
 
 /// Scaffold a minimal target-adapter project declaring a single WASI tool.
@@ -111,7 +111,7 @@ pub fn scaffold_tool_project(
     .expect("write project.yaml");
     fs::write(
         adapter.join("adapter.yaml"),
-        "name: test-adp\nversion: 1\naxis: target\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test adapter\n",
+        "name: test-adp\nversion: 1\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Test adapter\n",
     )
     .expect("write adapter.yaml");
     for op in ["shape", "build", "merge"] {

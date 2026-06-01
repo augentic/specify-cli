@@ -2,8 +2,7 @@
 
 mod cli;
 mod commands;
-pub mod map_finding;
-pub mod severity;
+mod exit;
 
 use std::process::ExitCode;
 

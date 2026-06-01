@@ -1,11 +1,20 @@
 //! `git` invocations for fetching a adapter from a GitHub URI.
 //! Sparse-checkouts the adapter's parent directory rather than the
-//! full repository so the cache stays cheap on large monorepos.
+//! full repository so the cache stays cheap on large monorepos. The
+//! shared codex tree (`adapters/shared/rules/`) is fetched in the same
+//! sparse set so codex distribution (RM-07) can copy it from the same
+//! checkout without a second clone.
 
 use std::process::Command;
 
 use specify_error::Error;
 use tempfile::TempDir;
+
+/// Shared codex tree path, fetched alongside the adapter so
+/// `cache_codex` can distribute `UNI-*` / `CORE-*` packs from the same
+/// checkout. Harmless when the source repo carries no such tree —
+/// `sparse-checkout set` simply materialises nothing for it.
+const SHARED_RULES_PATH: &str = "adapters/shared/rules";
 
 pub(super) fn sparse_checkout_github(
     repo_url: &str, checkout_ref: Option<&str>, adapter_path: &str,
@@ -24,8 +33,8 @@ pub(super) fn sparse_checkout_github(
 
     let sparse_path = sparse_checkout_path(adapter_path);
     cmd(
-        &["-C", &checkout_arg, "sparse-checkout", "set", "--", sparse_path],
-        "sparse-checkout adapter path",
+        &["-C", &checkout_arg, "sparse-checkout", "set", "--", sparse_path, SHARED_RULES_PATH],
+        "sparse-checkout adapter and shared-codex paths",
     )?;
     Ok(checkout)
 }

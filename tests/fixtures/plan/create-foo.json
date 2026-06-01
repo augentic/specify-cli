@@ -6,8 +6,7 @@
     "name": "foo",
     "project": null,
     "sources": [],
-    "status": "pending",
-    "target": "contracts@v1"
+    "status": "pending"
   },
   "plan": {
     "name": "demo",
