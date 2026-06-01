@@ -9,6 +9,7 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::{Plan, Status};
 use specify_workflow::config::{Layout, is_workspace_clone, with_state};
+use specify_workflow::journal::{self, Event, EventKind};
 use specify_workflow::merge::{
     BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
 };
@@ -23,7 +24,8 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
 
-    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Timestamp::now())?;
+    let now = Timestamp::now();
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir, now)?;
 
     // The merge-owned workspace commit is limited to the baseline spec
     // tree and archived slice. Opaque/generated outputs remain as residue
@@ -31,6 +33,12 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     if is_clone_eligible(&ctx.project_dir) {
         auto_commit(&ctx.project_dir, name);
     }
+
+    // Append the durable outcome-ledger entry (decision-log §"History
+    // via git plus an outcome ledger"). Best-effort: a journal write
+    // failure must not undo a committed merge, so the error is logged,
+    // not propagated.
+    emit_archive_created(ctx, name, &merged, now);
 
     stamp_plan_entry_done(ctx, name)?;
 
@@ -45,6 +53,47 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
         write_run_text,
     )?;
     Ok(())
+}
+
+/// Append the `slice.archive.created` outcome-ledger event. Captures
+/// the merged baseline spec names, a one-line summary, and the git HEAD
+/// SHA after the merge (best-effort). A journal-write or git failure is
+/// logged and swallowed — the merge has already committed to disk, so a
+/// ledger hiccup must never surface as a non-zero exit.
+fn emit_archive_created(ctx: &Ctx, name: &str, merged: &[MergePreviewEntry], now: Timestamp) {
+    let touched_specs: Vec<String> = merged.iter().map(|e| e.name.clone()).collect();
+    let outcome_summary = if merged.is_empty() {
+        "no baseline specs touched".to_string()
+    } else {
+        merged
+            .iter()
+            .map(|e| format!("{}: {}", e.name, summarise_ops(&e.result.operations)))
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
+    let event = Event::new(
+        now,
+        EventKind::SliceArchiveCreated {
+            slice_name: name.to_string(),
+            touched_specs,
+            outcome_summary,
+            merge_sha: git_head_sha(&ctx.project_dir),
+        },
+    );
+    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
+        eprintln!("warning: slice.archive.created journal append: {err}");
+    }
+}
+
+/// Read the current git HEAD SHA, or `None` when the project is not a
+/// git repository or `git` is unavailable.
+fn git_head_sha(project_dir: &Path) -> Option<String> {
+    let output = git(project_dir, &["rev-parse", "HEAD"]).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let sha = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    if sha.is_empty() { None } else { Some(sha) }
 }
 
 /// workflow §Workflow: `/spec:merge` is the sole writer of per-entry

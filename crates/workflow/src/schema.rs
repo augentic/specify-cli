@@ -23,8 +23,8 @@ use specify_model::discovery::Lead;
 pub use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA,
     PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, compile_schema, read_yaml_as_json,
-    validate_serialisable, validate_value,
+    RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, compile_schema,
+    read_yaml_as_json, validate_serialisable, validate_value,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 

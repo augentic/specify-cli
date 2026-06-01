@@ -230,17 +230,6 @@ pub enum EventKind {
         /// slice time).
         operation: SourceOperation,
     },
-    /// `provenance.yaml` audit index — `/spec:refine` wrote `provenance.yaml` for a slice.
-    /// Agent-driven from `/spec:refine` step 5.
-    #[serde(rename = "slice.provenance.written", rename_all = "kebab-case")]
-    SliceProvenanceWritten {
-        /// Slice id under `plan.yaml.slices[].name`.
-        slice_name: String,
-        /// CLI version that authored the file (e.g. `specify@2.1.0`).
-        generator: String,
-        /// Count of `requirements[]` rows written.
-        requirement_count: usize,
-    },
     /// runtime capture claim — target's `build` finished replay.
     /// Payload mirrors the `replay:` block written into the
     /// slice's `.metadata.yaml`. Optional in v1 (targets that have
@@ -314,6 +303,31 @@ pub enum EventKind {
         slice_count: usize,
         /// Derived slice names, in the agent's `slices[]` response order.
         slice_names: Vec<String>,
+    },
+    /// A slice merged into the baseline and its working directory was
+    /// archived. This is the durable **outcome-ledger** entry
+    /// (decision-log §"History via git plus an outcome ledger"): the
+    /// append-only journal records what merged, when, which baseline
+    /// specs it touched, a one-line outcome summary, and the git SHA
+    /// the baseline sat at. The archived slice folder under
+    /// `.specify/archive/` is a prunable convenience cache
+    /// (`specrun archive prune`), not the system of record — this
+    /// event plus git history of `.specify/specs/` is.
+    #[serde(rename = "slice.archive.created", rename_all = "kebab-case")]
+    SliceArchiveCreated {
+        /// Slice id under `plan.yaml.slices[].name`.
+        slice_name: String,
+        /// Baseline spec/composition names this slice merged into, in
+        /// the merge engine's `(class, name)` order.
+        touched_specs: Vec<String>,
+        /// One-line human summary of the merge operations (the same
+        /// text stamped into the archived slice's `.metadata.yaml`
+        /// merge outcome).
+        outcome_summary: String,
+        /// Git HEAD SHA after the merge, when the project is a git
+        /// repository; absent otherwise (best-effort, never fatal).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        merge_sha: Option<String>,
     },
     /// `specrun lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
@@ -684,18 +698,6 @@ mod tests {
                 ],
             ),
             (
-                EventKind::SliceProvenanceWritten {
-                    slice_name: "identity-user-registration".to_string(),
-                    generator: "specify@2.1.0".to_string(),
-                    requirement_count: 7,
-                },
-                &[
-                    r#""event":"slice.provenance.written""#,
-                    r#""generator":"specify@2.1.0""#,
-                    r#""requirement-count":7"#,
-                ],
-            ),
-            (
                 EventKind::SliceReplayCompleted {
                     slice_name: "identity-user-registration".to_string(),
                     runner: "omnia-target@1.4 (cargo nextest)".to_string(),
@@ -805,6 +807,21 @@ mod tests {
                     r#""plan-name":"identity-revamp""#,
                     r#""slice-count":3"#,
                     r#""slice-names":["identity-contracts","identity-service","password-reset"]"#,
+                ],
+            ),
+            (
+                EventKind::SliceArchiveCreated {
+                    slice_name: "identity-service".to_string(),
+                    touched_specs: vec!["identity".to_string()],
+                    outcome_summary: "identity: 2 modified".to_string(),
+                    merge_sha: Some("a1b2c3d".to_string()),
+                },
+                &[
+                    r#""event":"slice.archive.created""#,
+                    r#""slice-name":"identity-service""#,
+                    r#""touched-specs":["identity"]"#,
+                    r#""outcome-summary":"identity: 2 modified""#,
+                    r#""merge-sha":"a1b2c3d""#,
                 ],
             ),
         ];
@@ -1022,6 +1039,12 @@ mod tests {
                 slice_count: 1,
                 slice_names: vec!["s".to_string()],
             },
+            EventKind::SliceArchiveCreated {
+                slice_name: "s".to_string(),
+                touched_specs: vec!["identity".to_string()],
+                outcome_summary: "identity: 1 modified".to_string(),
+                merge_sha: Some("abc1234".to_string()),
+            },
         ] {
             append_batch(
                 layout,
@@ -1037,6 +1060,9 @@ mod tests {
             "slice_names",
             "requirement_id",
             "in_progress",
+            "touched_specs",
+            "outcome_summary",
+            "merge_sha",
         ] {
             assert!(
                 !raw.contains(needle),

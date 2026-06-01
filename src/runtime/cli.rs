@@ -9,6 +9,7 @@ use clap_complete::Shell;
 use specify_model::evidence::ClaimKind;
 
 pub use crate::output::Format;
+use crate::runtime::commands::archive::cli::ArchiveAction;
 use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
@@ -116,6 +117,14 @@ pub enum Commands {
     Slice {
         #[command(subcommand)]
         action: SliceAction,
+    },
+
+    /// Slice-archive cache maintenance. The archived slice folders
+    /// under `.specify/archive/` are a prunable convenience cache;
+    /// `prune` reclaims disk by retention bound.
+    Archive {
+        #[command(subcommand)]
+        action: ArchiveAction,
     },
 
     /// Executable plan operations — `plan.yaml` lifecycle and the

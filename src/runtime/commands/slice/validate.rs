@@ -20,7 +20,6 @@ use specify_workflow::change::{Plan, orphan_authority_override_keys};
 use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
 use specify_workflow::journal::{Event, EventKind, append_batch};
 use specify_workflow::schema::{evidence_yaml_paths, validate_evidence_dir};
-use specify_workflow::slice::provenance::{self as slice_provenance, ProvenanceIndex};
 
 use crate::runtime::context::Ctx;
 
@@ -38,26 +37,19 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // validation, provenance-drift REQ-id gathering, and post-pass
     // synthesis journal emission.
     let source_keys = resolve_slice_source_keys(ctx, name)?;
-    let (spec_req_ids, synthesis_tags, provenance_findings) =
+    let (_spec_req_ids, synthesis_tags, provenance_findings) =
         scan_slice_specs(&slice_dir, &source_keys)?;
     if !provenance_findings.is_empty() {
         return fail_with(ctx, "slice-provenance-invalid", provenance_findings);
     }
 
-    // `provenance.yaml` audit index — when `provenance.yaml` exists, cross-check it against
-    // `spec.md` REQ ids and per-source evidence claim ids. Absence
-    // of `provenance.yaml` is *not* drift: older slices and pre-refine
-    // slices skip the check silently. The slice-provenance-drift error
-    // body bundles every finding so the operator sees the full
-    // re-refine surface in one pass.
-    //
     // per-slice authority override — refuse a per-slice `authority-override` map that
     // names a source key absent from the slice's own `sources[]`
     // list. Runs before `validate_slice` so the operator sees the
     // structural issue before adapter rules surface downstream
     // breakage. Both checks share an error envelope when they
     // both fire so the operator can see every issue in one pass.
-    let gate_findings = collect_pre_adapter_gates(ctx, &slice_dir, name, &spec_req_ids)?;
+    let gate_findings = collect_pre_adapter_gates(ctx, &slice_dir, name)?;
     if !gate_findings.is_empty() {
         return fail_with(ctx, "slice-pre-adapter-gate", gate_findings);
     }
@@ -218,28 +210,30 @@ fn scan_slice_specs(
     Ok((req_ids, synthesis_tags, provenance_findings))
 }
 
-/// Bundle the four pre-adapter gates that fire on a single slice:
+/// Bundle the three pre-adapter gates that fire on a single slice:
 ///
-/// 1. `provenance.yaml` audit index — provenance-drift detection between `spec.md`, the
-///    per-slice `provenance.yaml`, and per-source `evidence/<key>.yaml`.
-/// 2. per-slice authority override — orphan source keys on the slice's
+/// 1. per-slice authority override — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
-/// 3. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
+/// 2. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
 ///    `<project_dir>/discovery.md`. A discovery-level check (not
 ///    per-slice) but evaluated here because `specrun slice validate`
 ///    is the single CLI surface skills shell out to between
 ///    `/spec:refine` and `/spec:build`.
-/// 4. component catalog contract — catalog drift between Evidence `component:`
+/// 3. component catalog contract — catalog drift between Evidence `component:`
 ///    directives and `.specify/design-system/components.yaml`.
 ///
-/// All four checks can fail independently; we collect every finding
+/// Provenance no longer has a file-drift gate: it is carried inline in
+/// `model.yaml` and projected on demand (`specrun slice provenance`),
+/// so there is no second representation to drift against. Spec-level
+/// `Sources:` / `Status:` coherence still runs in [`scan_slice_specs`].
+///
+/// All three checks can fail independently; we collect every finding
 /// into one [`Diagnostic`] vector so the caller can render the full
 /// surface in one pass instead of one error per re-run.
 fn collect_pre_adapter_gates(
-    ctx: &Ctx, slice_dir: &Path, name: &str, spec_req_ids: &BTreeSet<String>,
+    ctx: &Ctx, slice_dir: &Path, name: &str,
 ) -> Result<Vec<Diagnostic>> {
     let mut findings: Vec<Diagnostic> = Vec::new();
-    findings.extend(collect_provenance_drift_findings(slice_dir, spec_req_ids)?);
     findings.extend(override_orphans(ctx, name)?);
     findings.extend(alias_collisions(ctx)?);
     findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
@@ -330,30 +324,6 @@ const SYNOPSIS_MIN_WORDS: usize = 4;
 /// Minimum non-whitespace character count below which a `synopsis` is
 /// flagged as thin.
 const SYNOPSIS_MIN_CHARS: usize = 20;
-
-/// `provenance.yaml` audit index drift gate. Loads `<slice>/provenance.yaml` when present,
-/// gathers `REQ-*` ids from every `<slice>/specs/**/*.md` file and
-/// claim ids from every `<slice>/evidence/<source>.yaml` file, and
-/// emits one `slice-provenance-drift` finding per drift entry. The
-/// provenance file's own schema validation runs first
-/// ([`ProvenanceIndex::load`]) so structural errors surface as
-/// `provenance-schema` failures rather than bare drift noise.
-///
-/// Absence of `provenance.yaml` is a legal state — older slices and
-/// `refining` slices that haven't yet been driven through
-/// `/spec:refine` skip the check silently.
-fn collect_provenance_drift_findings(
-    slice_dir: &Path, spec_req_ids: &BTreeSet<String>,
-) -> Result<Vec<Diagnostic>> {
-    let index_path = slice_dir.join("provenance.yaml");
-    if !index_path.is_file() {
-        return Ok(Vec::new());
-    }
-    let provenance_index = ProvenanceIndex::load(&index_path)?;
-    let evidence = slice_provenance::collect_evidence_claim_ids(slice_dir)?;
-    let drift = provenance_index.detect_drift(spec_req_ids, &evidence);
-    Ok(drift.into_iter().map(slice_provenance::ProvenanceDrift::into_diagnostic).collect())
-}
 
 /// per-slice authority override orphan-source gate. Loads `plan.yaml` (when
 /// present) and reports one finding per `(slice, kind)` pair

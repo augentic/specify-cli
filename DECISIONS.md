@@ -28,7 +28,7 @@ run` WASI passthrough.
 |------|--------------------------|-----------------------------------------------------------------------------------------------|
 | 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, provenance, and discovery kebab discriminants `slice-authority-override-orphan-source`, `slice-provenance-drift`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
+| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, slice-model, and discovery kebab discriminants `slice-authority-override-orphan-source`, `slice-model-source-orphan`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
 
 The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
@@ -428,6 +428,8 @@ Refer to workflow §"Plan-time reconciliation".
 
 ## Evidence per-kind authority overrides
 
+> **Superseded by §"Authority: document-level plus one override (v1)".** The per-Evidence `authority-overrides` surface described below is **deferred to a future RFC** and removed from `evidence.schema.json` for v1. The historical design is retained here for context.
+
 `evidence.schema.json` gains an
 optional `authority-overrides` map keyed by claim kind, valued by
 authority class. The document-level `authority:` field stays
@@ -450,14 +452,21 @@ are out of scope.
 
 ## `provenance.yaml` audit index
 
+> **Superseded** by §"Single slice-model artifact (RFC-29 M2b
+> simplification)". Provenance is no longer a persisted `provenance.yaml`
+> file; it is carried inline in `model.yaml` and projected on demand by
+> `specrun slice provenance`. The `slice-provenance-drift` discriminant
+> and the `slice.provenance.written` event are retired. The historical
+> decision below is kept for the record.
+
 `schemas/slice/provenance.schema.json`
-fixes the closed top-level shape (`version`, `slice`,
+fixed the closed top-level shape (`version`, `slice`,
 `generated-at`, `generator`, `requirements[]`). `/spec:refine`
-writes the file atomically; downstream verbs read `spec.md` as the
-authoritative artifact and treat `provenance.yaml` as an inspection
-surface. `specrun slice validate` enforces id-set parity between
+wrote the file atomically; downstream verbs read `spec.md` as the
+authoritative artifact and treated `provenance.yaml` as an inspection
+surface. `specrun slice validate` enforced id-set parity between
 `spec.md` `REQ-*` ids and `provenance.yaml.requirements[].id` and
-catches contributing-claim → Evidence-claim drift, both via the
+caught contributing-claim → Evidence-claim drift, both via the
 `slice-provenance-drift` discriminant.
 
 ## Extraction cache fingerprint inputs
@@ -496,7 +505,7 @@ variants are `snake_case` and bridge to the wire via
 | `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
 | `source.survey.cache-hit` / `.cache-miss` | The `specrun source survey` runner's cache probe; payloads carry `source`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`). |
 | `source.execution.agent` | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`). |
-| `slice.provenance.written` | `/spec:refine`'s atomic `provenance.yaml` writer (Change 2.6). `provenance.yaml` audit semantics. |
+| `slice.archive.created` | `specrun slice merge`'s archive step (the append-only outcome ledger). Payload carries `slice-name`, `touched-specs`, `outcome-summary`, and the optional `merge-sha`. See §"History via git plus an outcome ledger". |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
 | `lint-completed` | `specrun lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the journal payload verbatim. |
@@ -1079,7 +1088,7 @@ shape via `Error::validation_failed(code, detail)` but render no report.
 **Widened `ruleId` namespace.** The diagnostic `ruleId` pattern accepts
 both the closed codex family (`UNI-`/`CORE-`/`FRAME-`/… `-NNN`) and the
 runtime-validation discriminant form (dotted/kebab lowercase, e.g.
-`spec.requirement-id-missing`, `slice-provenance-drift`), so workflow
+`spec.requirement-id-missing`, `slice-model-source-orphan`), so workflow
 and validate producers can stamp their invariant ids onto the same
 finding shape the codex engine uses. `validate_diagnostic` mirrors the
 widened pattern.
@@ -1217,3 +1226,53 @@ cache, **pinned to the same adapter source/ref**.
   (on `lint` / `rules export`) controls whether `CORE-*` rules are
   evaluated/exported. They are independent: consumer projects default to
   neither distributing nor evaluating the framework `core/` pack.
+
+## Single slice-model artifact (RFC-29 M2b simplification)
+
+Revises RFC-29 D3a/D4 (durable spec in the parent repo's [decision log](https://github.com/augentic/specify/blob/main/docs/explanation/decision-log.md#one-slice-model-artifact-provenance-inline)).
+
+- **One artifact.** A synthesized slice persists exactly one structured
+  file, `model.yaml`, with provenance inline (`requirements[].claims[]`
+  carrying `winner`, plus `resolution`). There is no on-disk
+  `provenance.yaml`.
+- **Provenance is a projection.** `ProvenanceIndex` in
+  [`crates/workflow/src/slice/provenance.rs`](./crates/workflow/src/slice/provenance.rs)
+  is computed from `model.yaml` and emitted on demand by
+  `specrun slice provenance [--format]`; it is never loaded from disk.
+  The `slice-provenance-drift` file-drift gate retires (a projection
+  cannot drift from its source); spec-vs-model staleness
+  (`slice-spec-provenance-stale`) and `(source, id)` orphan checks
+  remain. The `slice.provenance.written` journal kind retires.
+- **One schema.** `SLICE_MODEL_JSON_SCHEMA` validates both the agent's
+  synthesis-response `model` and the persisted file; kernel-owned fields
+  (`requirements[].id`, `.status`, `claims[].winner`) are optional. The
+  kernel re-derives them and ignores any the agent supplied
+  (normalize, never reject), so `DRAFT_MODEL_JSON_SCHEMA` and the
+  `slice-synthesize-kernel-field-usurped` abort both retire.
+
+## Authority: document-level plus one override (v1)
+
+Simplifies the RFC-29c authority resolution surface. v1 resolves
+authority at document level (`intent` > `documentation` > `behaviour`)
+with a single override surface: the per-slice `authority-override` on
+`plan.yaml`, keyed by claim kind, naming the winning source. The
+per-Evidence `authority-overrides` field on `evidence.schema.json` and
+per-kind class-lifting are removed for v1 and deferred to a future RFC.
+The `AuthorityOverrides` type in
+[`crates/model/src/evidence/authority.rs`](./crates/model/src/evidence/authority.rs)
+is deleted accordingly; the closed `AuthorityClass` / `ClaimKind` enums
+stay (the latter keys the surviving per-slice override).
+
+## History via git plus an outcome ledger
+
+Revises the archive posture. The durable record of merged work is git
+history of the committed `.specify/specs/` baseline plus an append-only
+outcome ledger: a `slice.archive.created` journal event (payload: slice,
+touched-specs, outcome summary, merge SHA) emitted from the merge path
+in [`src/runtime/commands/slice/merge.rs`](./src/runtime/commands/slice/merge.rs).
+The archived slice folder under `.specify/archive/YYYY-MM-DD-<slice>/`
+becomes a prunable convenience cache governed by a new `specrun archive
+prune` verb (retention policy mirroring the tool-cache GC in
+[`crates/tool/src/cache/gc.rs`](./crates/tool/src/cache/gc.rs)), not the
+system of record. `.specify/specs/` stays committable (init gitignores
+only `.specify/.cache/` and `.specify/workspace/`).

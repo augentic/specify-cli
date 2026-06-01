@@ -22,6 +22,14 @@ pub enum SliceAction {
         /// Slice name (under `.specify/slices/`)
         name: String,
     },
+    /// Project the audit-only provenance view from the slice's
+    /// `model.yaml` (RFC-29c §"Provenance projection"). Provenance is
+    /// carried inline in `model.yaml`; this reshapes it on demand and
+    /// never reads or writes a `provenance.yaml` file.
+    Provenance {
+        /// Slice name (under `.specify/slices/`)
+        name: String,
+    },
     /// Spec-merge operations for a slice
     Merge {
         #[command(subcommand)]

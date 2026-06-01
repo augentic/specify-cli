@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/evidence.schema.json",
   "title": "Specify source-adapter Evidence",
-  "description": "Validates a single source-adapter `Evidence` document per workflow §Source adapter contract — the per-source result of `extract`, persisted under `.specify/slices/<slice>/evidence/<source>.yaml`. The document's `(slice, source)` identity is carried by its on-disk path (slice directory + `<source>.yaml` filename), and its adapter resolves from `plan.yaml.sources.<source>.adapter`; neither is duplicated in-document. Top-level fields: `authority` (closed enum `intent | documentation | behaviour`), `lead` (kebab-case lead id from `discovery.md`), `claims[]`, and the optional `authority-overrides` map keyed by claim kind whose values resolve a per-kind authority class for this Evidence document. Each claim carries a closed `kind` from {intent, requirement, criterion, decision, section, diagram, contract, example, excerpt, type, call, region, container, leaf} — `region`/`container`/`leaf` are the spatial kinds co-introduced with the `screenshots` source adapter; `example` is the runtime capture kind emitted by the `captures` source adapter and carries open per-kind body fields `replay-digest` (`sha256:<hex>`), `input`, and `output`. `id` is required on `requirement`, `criterion`, and `example` kinds and optional on others; `path` matches the grammar `<path>` | `<path>#L<n>` | `<path>#L<start>-L<end>`. Per-kind body fields (`statement`, `criterion`, `decision`, `replay-digest`, `input`, `output`, etc.) are intentionally open.",
+  "description": "Validates a single source-adapter `Evidence` document per workflow §Source adapter contract — the per-source result of `extract`, persisted under `.specify/slices/<slice>/evidence/<source>.yaml`. The document's `(slice, source)` identity is carried by its on-disk path (slice directory + `<source>.yaml` filename), and its adapter resolves from `plan.yaml.sources.<source>.adapter`; neither is duplicated in-document. Top-level fields: `authority` (closed enum `intent | documentation | behaviour`), `lead` (kebab-case lead id from `discovery.md`), and `claims[]`. v1 resolves authority at document level; the only operator override surface is the per-slice `authority-override` on `plan.yaml` (a per-Evidence `authority-overrides` map is deferred to a future RFC). Each claim carries a closed `kind` from {intent, requirement, criterion, decision, section, diagram, contract, example, excerpt, type, call, region, container, leaf} — `region`/`container`/`leaf` are the spatial kinds co-introduced with the `screenshots` source adapter; `example` is the runtime capture kind emitted by the `captures` source adapter and carries open per-kind body fields `replay-digest` (`sha256:<hex>`), `input`, and `output`. `id` is required on `requirement`, `criterion`, and `example` kinds and optional on others; `path` matches the grammar `<path>` | `<path>#L<n>` | `<path>#L<start>-L<end>`. Per-kind body fields (`statement`, `criterion`, `decision`, `replay-digest`, `input`, `output`, etc.) are intentionally open.",
   "type": "object",
   "additionalProperties": true,
   "required": ["authority", "lead", "claims"],
   "properties": {
     "authority": {
       "$ref": "#/$defs/authorityClass",
-      "description": "Document-level authority class for this Evidence per workflow §Authority hierarchy. Per-kind overrides land in `authority-overrides`."
+      "description": "Document-level authority class for this Evidence per workflow §Authority hierarchy. v1 resolves authority at document level; the only override surface is the per-slice `authority-override` on `plan.yaml` (a per-Evidence `authority-overrides` surface is deferred to a future RFC)."
     },
     "lead": {
       "$ref": "#/$defs/kebabName",
@@ -19,12 +19,6 @@
       "type": "array",
       "description": "Per-claim extraction records. Empty `claims: []` is valid; failure is signalled by not writing the Evidence file at all.",
       "items": { "$ref": "#/$defs/claim" }
-    },
-    "authority-overrides": {
-      "type": "object",
-      "description": "Optional per-(Evidence, claim-kind) authority overrides. Keys are the closed claim-kind enum; values are the closed authority-class enum. Synthesis consults this map first, then falls back to the document-level `authority:` field, then to the workflow default ordering. Both keys and values are closed enums; new kinds or classes require updating the workflow contract and schemas together.",
-      "propertyNames": { "$ref": "#/$defs/claimKind" },
-      "additionalProperties": { "$ref": "#/$defs/authorityClass" }
     }
   },
   "$defs": {

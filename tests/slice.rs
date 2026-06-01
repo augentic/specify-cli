@@ -584,29 +584,8 @@ fn validate_rejects_tag_status_mismatch() {
 }
 
 // ---------------------------------------------------------------------------
-// `provenance.yaml` audit index — `slice validate` provenance drift gate
+// Provenance projection — `slice provenance` (RFC-29c)
 // ---------------------------------------------------------------------------
-
-/// Minimal provenance.yaml for a slice named `my-slice` with one
-/// requirement `REQ-001` whose single contributing claim cites
-/// `legacy-monolith :: REQ-001` (the same id we'll seed the evidence
-/// file with by default).
-const CLEAN_RECONCILIATION_YAML: &str = "version: 1
-slice: my-slice
-generated-at: 2026-05-22T13:15:00Z
-generator: specify@2.1.0
-requirements:
-  - id: REQ-001
-    status: agreed
-    sources: [legacy-monolith]
-    contributing-claims:
-      - source: legacy-monolith
-        id: password-reset.request
-        kind: requirement
-        value: \"Password reset request returns a 200 response.\"
-        path: src/users/reset.ts#L42
-    resolution: single-source
-";
 
 const CLEAN_SPEC_MD: &str = "### Requirement: Password reset request
 
@@ -617,140 +596,63 @@ Status: agreed
 The system lets a registered user request a password reset link by email.
 ";
 
-const CLEAN_EVIDENCE_YAML: &str = "authority: behaviour
-lead: my-slice
-claims:
-  - kind: requirement
-    id: password-reset.request
-    statement: \"Password reset request returns a 200 response.\"
-    path: src/users/reset.ts#L42
+/// Minimal projectable `model.yaml` for a slice named `my-slice` with
+/// one fully-projected requirement (kernel-owned fields present), so
+/// `slice provenance` can reshape it into the audit view.
+const CLEAN_MODEL_YAML: &str = "version: 1
+slice: my-slice
+target: omnia@v1
+requirements:
+  - id: REQ-001
+    title: Password reset request
+    status: agreed
+    sources: [legacy-monolith]
+    claims:
+      - source: legacy-monolith
+        id: password-reset.request
+        kind: requirement
+        value: \"Password reset request returns a 200 response.\"
+        path: src/users/reset.ts#L42
+    resolution: single-source
+    statement: The system lets a registered user request a password reset link by email.
+domain:
+  types: []
+apis:
+  surfaces: []
+configuration: []
+technical-logic:
+  decisions: []
+observability: []
+tasks: []
 ";
 
-/// Stage a fully-wired slice with provenance.yaml + spec.md + evidence
-/// so the drift gate has every input it needs and the baseline test
-/// fixture validates clean. Caller may then mutate any file before
-/// re-running `slice validate` to exercise drift.
-fn stage_slice_with_provenance() -> Project {
+#[test]
+fn provenance_projects_from_model() {
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
-    // stage_slice_with_spec writes specs/login/spec.md by default;
-    // the provenance gate gathers REQ ids across every spec.md, so we
-    // can leave that path alone.
     let slice_dir = project.slices_dir().join("my-slice");
-    fs::write(slice_dir.join("provenance.yaml"), CLEAN_RECONCILIATION_YAML)
-        .expect("write provenance.yaml");
-    let evidence_dir = slice_dir.join("evidence");
-    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
-    fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
-        .expect("write evidence");
-    project
-}
-
-#[test]
-fn validate_passes_on_clean_provenance_inputs() {
-    let project = stage_slice_with_provenance();
+    fs::write(slice_dir.join("model.yaml"), CLEAN_MODEL_YAML).expect("write model.yaml");
     let assert = specrun()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert();
-    // Adapter-level brief validation may still surface findings on the
-    // synthetic slice — those route through different rule ids. Assert
-    // that whatever surfaces on the report, *no* finding carries
-    // `slice-provenance-drift` against clean inputs.
-    assert_no_finding(assert.get_output(), "slice-provenance-drift");
-}
-
-#[test]
-fn validate_req_id_drift() {
-    let project = stage_slice_with_provenance();
-    // Append a second REQ block to spec.md so spec.md has REQ-001 +
-    // REQ-002 while provenance.yaml only knows REQ-001.
-    let spec_path = project.slices_dir().join("my-slice/specs/login/spec.md");
-    let extended = format!(
-        "{CLEAN_SPEC_MD}\n\
-         ### Requirement: Extra requirement\n\n\
-         ID: REQ-002\n\
-         Sources: [legacy-monolith]\n\
-         Status: agreed\n\n\
-         An undiscovered requirement.\n",
-    );
-    fs::write(&spec_path, extended).expect("rewrite spec.md");
-
-    let assert = specrun()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .args(["--format", "json", "slice", "provenance", "my-slice"])
         .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
-    let detail = find_finding_impact(assert.get_output(), "slice-provenance-drift");
-    assert!(detail.contains("REQ-002"), "drift detail should name REQ-002, got: {detail}");
+        .success();
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(stdout.contains("REQ-001"), "projection should list REQ-001, got: {stdout}");
     assert!(
-        detail.contains("missing from provenance.yaml"),
-        "drift detail should mention the drift direction, got: {detail}"
+        stdout.contains("single-source"),
+        "projection should carry the resolution, got: {stdout}"
     );
 }
 
 #[test]
-fn validate_claim_drift_on_rename() {
-    let project = stage_slice_with_provenance();
-    // Rename the evidence claim id; provenance.yaml still cites the old one.
-    let evidence_path = project.slices_dir().join("my-slice/evidence/legacy-monolith.yaml");
-    let modified = CLEAN_EVIDENCE_YAML.replace("id: password-reset.request", "id: renamed-claim");
-    fs::write(&evidence_path, modified).expect("rewrite evidence");
-
-    let assert = specrun()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert()
-        .failure();
-    assert_eq!(assert.get_output().status.code(), Some(2));
-    let detail = find_finding_impact(assert.get_output(), "slice-provenance-drift");
-    assert!(
-        detail.contains("legacy-monolith") && detail.contains("password-reset.request"),
-        "drift detail should name the dangling (source, id) pair, got: {detail}"
-    );
-}
-
-#[test]
-fn validate_skips_drift_gate_without_provenance() {
-    // Stage a slice with spec.md but no provenance.yaml — the drift gate
-    // must be a silent no-op so older slices and pre-refine slices
-    // still validate. (Any other adapter-level rules can still
-    // surface, but no drift row may appear.)
+fn provenance_fails_without_model() {
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
     let assert = specrun()
         .current_dir(project.root())
-        .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert();
-    assert_no_finding(assert.get_output(), "slice-provenance-drift");
-}
-
-#[test]
-fn validate_no_drift_pre_synthesis() {
-    // When provenance.yaml is present but spec.md is still pre-synthesis
-    // (no Sources/Status lines), the drift gate must still gather
-    // REQ ids from the bare `ID:` lines so a partially-refined slice
-    // does not silently drift. This protects against the case where
-    // the operator hand-deletes `Sources:` / `Status:` lines but
-    // leaves the requirement intact.
-    let spec = "### Requirement: Pre-synthesis body
-
-ID: REQ-001
-
-body without metadata lines yet
-";
-    let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let slice_dir = project.slices_dir().join("my-slice");
-    fs::write(slice_dir.join("provenance.yaml"), CLEAN_RECONCILIATION_YAML)
-        .expect("write provenance");
-    let evidence_dir = slice_dir.join("evidence");
-    fs::create_dir_all(&evidence_dir).expect("mkdir");
-    fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
-        .expect("write evidence");
-    let assert = specrun()
-        .current_dir(project.root())
-        .args(["--format", "json", "slice", "validate", "my-slice"])
-        .assert();
-    assert_no_finding(assert.get_output(), "slice-provenance-drift");
+        .args(["--format", "json", "slice", "provenance", "my-slice"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
 }
 
 // ---------------------------------------------------------------------------

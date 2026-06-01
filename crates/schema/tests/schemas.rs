@@ -9,7 +9,8 @@ use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA,
     EVIDENCE_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA,
     RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
-    ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
+    SLICE_MODEL_JSON_SCHEMA, ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
+    validate_value,
 };
 
 #[test]
@@ -25,6 +26,45 @@ fn evidence_schema_compiles() {
 #[test]
 fn provenance_schema_compiles() {
     compile_schema(PROVENANCE_JSON_SCHEMA).expect("provenance schema compiles");
+}
+
+#[test]
+fn slice_model_schema_compiles() {
+    compile_schema(SLICE_MODEL_JSON_SCHEMA).expect("slice model schema compiles");
+}
+
+/// The single slice-model schema validates an agent synthesis response
+/// `model` (kernel-owned + header fields omitted) — proving the
+/// optional-field design that lets one schema serve both the response
+/// and the persisted file.
+#[test]
+fn slice_model_schema_accepts_agent_response_without_kernel_fields() {
+    let instance = json!({
+        "requirements": [{
+            "title": "Request password reset",
+            "agreement": "agreed",
+            "claims": [
+                { "source": "docs", "id": "password-reset.request", "kind": "requirement" }
+            ],
+            "statement": "The system lets a user request a reset link."
+        }],
+        "domain": { "types": [] },
+        "apis": { "surfaces": [] },
+        "configuration": [],
+        "technical-logic": { "decisions": [] },
+        "observability": [],
+        "tasks": []
+    });
+    let summaries = validate_value(
+        &instance,
+        SLICE_MODEL_JSON_SCHEMA,
+        "slice-model",
+        "agent response model omits kernel-owned and header fields",
+    );
+    assert!(
+        summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
+        "agent response without kernel fields must validate; got {summaries:?}"
+    );
 }
 
 #[test]

@@ -10,6 +10,13 @@ use specify_error::Error;
 /// Lines the framework requires in the project `.gitignore`. Both
 /// directories are framework-managed scratch under `.specify/` and
 /// must never be checked in.
+///
+/// Deliberately **not** listed: `.specify/specs/` (the baseline, the
+/// durable system of record) and `.specify/archive/` (the prunable
+/// outcome cache). Both stay committable so git history of the baseline
+/// — together with the `slice.archive.created` outcome ledger in
+/// `journal.jsonl` — is the record of merged work (decision-log
+/// §"History via git plus an outcome ledger").
 const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/workspace/"];
 
 /// Idempotent: ensure each line in `SPECIFY_GITIGNORE_ENTRIES` appears

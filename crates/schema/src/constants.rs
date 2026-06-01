@@ -25,8 +25,18 @@ pub const LEAD_JSON_SCHEMA: &str = include_str!("../../../schemas/discovery/lead
 pub const PROPOSAL_JSON_SCHEMA: &str =
     include_str!("../../../schemas/discovery/proposal.schema.json");
 
-/// Schema for `provenance.yaml`, the audit-only provenance
-/// index emitted by slice synthesis.
+/// Schema for the single slice `model.yaml` (RFC-29 M2b).
+///
+/// One schema validates both the agent synthesis-response `model` and
+/// the persisted file: kernel-owned and header fields are optional so
+/// the kernel re-derives/stamps them on projection. Provenance is
+/// carried inline; the provenance view is projected on demand.
+pub const SLICE_MODEL_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/slice/model.schema.json");
+
+/// Schema for the provenance projection emitted on demand by
+/// `specrun slice provenance`. Audit-only and projected from
+/// `model.yaml`; not a persisted file.
 pub const PROVENANCE_JSON_SCHEMA: &str =
     include_str!("../../../schemas/slice/provenance.schema.json");
 

@@ -12,6 +12,7 @@ use specify_workflow::slice::LifecycleStatus;
 pub mod cli;
 mod lifecycle;
 mod merge;
+mod provenance;
 mod task;
 mod touched;
 mod validate;
@@ -49,6 +50,7 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             if_exists,
         } => lifecycle::create(ctx, &name, target, if_exists),
         SliceAction::Validate { name } => validate::run(ctx, &name),
+        SliceAction::Provenance { name } => provenance::run(ctx, &name),
         SliceAction::Merge { action } => match action {
             SliceMergeAction::Run { name } => merge::run(ctx, &name),
             SliceMergeAction::Preview { name } => merge::preview(ctx, &name),

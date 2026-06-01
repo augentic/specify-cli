@@ -320,7 +320,7 @@ impl Diagnostic {
     /// Build a workflow/validate finding with a computed fingerprint.
     ///
     /// `rule_id` is the dot- or kebab-namespaced invariant id (e.g.
-    /// `spec.requirement-id-missing`, `slice-provenance-drift`); the
+    /// `spec.requirement-id-missing`, `slice-model-source-orphan`); the
     /// finding schema's `ruleId` pattern accepts this namespace
     /// alongside the codex `UNI-`/`CORE-` family. `detail` becomes both
     /// the snippet evidence payload and the operator-facing `impact`;

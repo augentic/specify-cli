@@ -117,9 +117,9 @@ Touching `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/model/src/s
 
 `captures` emits `kind: example` Evidence claims with `replay-digest: sha256:…` anchors and default `authority: behaviour`. Schema entry in [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json); claim type at [`crates/model/src/evidence/claim/example.rs`](../../crates/model/src/evidence/claim/example.rs).
 
-## D2 — Per-kind authority on Evidence
+## D2 — Per-kind authority on Evidence (deferred)
 
-`evidence.schema.json` carries an optional `authority-overrides` map keyed by claim kind. Synthesis consults this map before the document-level `authority:`. See [`DECISIONS.md` §"Evidence per-kind authority overrides"](../../DECISIONS.md#evidence-per-kind-authority-overrides) and [`crates/model/src/evidence/authority.rs`](../../crates/model/src/evidence/authority.rs).
+A per-Evidence `authority-overrides` map keyed by claim kind is **deferred to a future RFC** (decision-log §"Authority: document-level plus one override (v1)"). v1 resolves authority at document level via the Evidence `authority:` field, with the per-slice `authority-override` on `plan.yaml` as the sole override surface (D3). See [`DECISIONS.md` §"Authority: document-level plus one override (v1)"](../../DECISIONS.md#authority-document-level-plus-one-override-v1) and [`crates/model/src/evidence/authority.rs`](../../crates/model/src/evidence/authority.rs).
 
 ## D3 — Per-slice authority on `plan.yaml`
 
