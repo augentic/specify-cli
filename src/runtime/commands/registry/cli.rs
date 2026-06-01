@@ -17,11 +17,14 @@ pub enum RegistryAction {
         /// `http(s)://` / `ssh://` / `git+...` remote.
         #[arg(long)]
         url: String,
-        /// Adapter identifier (e.g. `omnia@v1`). Non-empty after trim.
+        /// Optional greenfield scaffold seed (RFC-36) — the adapter
+        /// written into a brand-new project's `project.yaml` when
+        /// `workspace sync` clones an empty repo. Not read for plan-time
+        /// topology.
         #[arg(long)]
-        adapter: String,
-        /// Domain-level characterisation; required when the registry
-        /// declares more than one project.
+        adapter: Option<String>,
+        /// Optional greenfield seed; a project's authoritative
+        /// description lives in its own `project.yaml`.
         #[arg(long)]
         description: Option<String>,
     },

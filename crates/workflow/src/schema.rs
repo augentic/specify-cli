@@ -23,7 +23,8 @@ use specify_model::discovery::Lead;
 pub use specify_schema::{
     COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA,
     PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, compile_schema, read_yaml_as_json, validate_serialisable, validate_value,
+    RULE_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, compile_schema, read_yaml_as_json,
+    validate_serialisable, validate_value,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -124,6 +125,29 @@ pub fn validate_proposal_json(content: &str) -> Result<()> {
     err_from_failures(
         "proposal-schema",
         &validation_failures(&instance, PROPOSAL_JSON_SCHEMA, "proposal-schema", rule),
+    )
+}
+
+/// Validate a [`crate::registry::TopologyLock`] against the embedded
+/// `schemas/topology-lock.schema.json` (RFC-36).
+///
+/// Returns `Ok(())` on a clean validation; otherwise a payload-free
+/// [`Error::Validation`] keyed on `"topology-lock-schema"`. Used by the
+/// `topology.lock` reader/writer so a corrupt cache fails closed.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] when the lock fails the schema; falls
+/// back to [`Error::Diag`] when the embedded schema is unparseable or
+/// the lock is not JSON-serialisable (both unreachable in production).
+pub fn validate_topology_lock(lock: &crate::registry::TopologyLock) -> Result<()> {
+    validate_serialisable(
+        lock,
+        TOPOLOGY_LOCK_JSON_SCHEMA,
+        "topology-lock-schema",
+        ".specify/topology.lock conforms to schemas/topology-lock.schema.json",
+        "topology-lock-schema-serialise",
+        "topology.lock",
     )
 }
 

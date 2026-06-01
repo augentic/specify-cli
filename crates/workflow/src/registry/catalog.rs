@@ -40,12 +40,20 @@ pub struct RegistryProject {
     /// `git+http(s)://` / `git+ssh://` remote. Shape-validated by
     /// [`Registry::validate_shape`]. Stored verbatim.
     pub url: String,
-    /// Adapter identifier — e.g. `omnia@v1`. Opaque at this layer;
-    /// the `name@version` suffix is **not** parsed here.
-    pub adapter: String,
-    /// Domain-level characterisation of the project. Required when
-    /// `len(projects) > 1`; optional for single-project registries.
-    #[serde(default)]
+    /// Optional greenfield scaffold seed (RFC-36) — the adapter written
+    /// into a brand-new project's `project.yaml` when `workspace sync`
+    /// clones an empty repo. **Not** read for plan-time topology; a
+    /// project's authoritative target adapter lives in its own
+    /// `project.yaml` and is projected into `.specify/topology.lock`.
+    /// Opaque at this layer; the `name@version` suffix is not parsed
+    /// here. Pre-RFC-36 registries that carry `adapter:` still parse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<String>,
+    /// Demoted to a greenfield seed (RFC-36); ignored at topology time.
+    /// A project's authoritative description lives in its own
+    /// `project.yaml`. Pre-RFC-36 registries that carry `description:`
+    /// still parse.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Optional contract role declarations for this project.
     #[serde(default, skip_serializing_if = "Option::is_none")]

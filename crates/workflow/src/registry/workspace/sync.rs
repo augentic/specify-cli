@@ -10,8 +10,10 @@ use super::bootstrap::{self, greenfield_init};
 use super::git::{self, git_output_ok};
 use super::slot_problem::inspect_at;
 use super::{contracts_base, registry_symlink_target, workspace_base, workspace_slot_path};
-use crate::registry::catalog::RegistryProject;
+use crate::config::{Layout, ProjectConfig};
+use crate::registry::catalog::{Registry, RegistryProject};
 use crate::registry::gitignore::ensure_gitignore_entries;
+use crate::registry::topology::{TopologyLock, TopologyProject};
 
 /// Materialise `.specify/workspace/<name>/` for selected registry entries.
 ///
@@ -41,7 +43,7 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
             if project.is_local() {
                 materialise_symlink(project_dir, &project.url, &dest)
             } else {
-                materialise_git_remote(&project.url, &dest, &project.adapter, project_dir)
+                materialise_git_remote(&project.url, &dest, project.adapter.as_deref(), project_dir)
             }
         });
         if let Err(err) = result {
@@ -83,6 +85,41 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
             ),
         })
     }
+}
+
+/// Regenerate `.specify/topology.lock` from the materialised workspace
+/// slots (RFC-36).
+///
+/// Projects every registry member's `project.yaml` (target adapter,
+/// description, capabilities, keywords) into the committed cache, in
+/// registry order. Slots without a readable `project.yaml` yet (a
+/// remote not materialised in this selective sync) are skipped — a full
+/// `workspace sync` materialises every slot and so produces a complete
+/// cache. Write-if-changed: an up-to-date lock is left untouched so the
+/// committed bytes stay stable.
+///
+/// # Errors
+///
+/// Surfaces target-resolution errors and a malformed/too-new existing
+/// lock; an absent slot `project.yaml` is skipped, not an error.
+pub fn regenerate_topology_lock(project_dir: &Path, registry: &Registry) -> Result<(), Error> {
+    let base = workspace_base(project_dir);
+    let mut projects: Vec<TopologyProject> = Vec::new();
+    for project in &registry.projects {
+        let slot = workspace_slot_path(&base, &project.name)?;
+        if !slot.join(".specify").join("project.yaml").exists() {
+            continue;
+        }
+        let config = ProjectConfig::load(&slot)?;
+        projects.push(TopologyProject::resolve(&project.name, &config, &slot)?);
+    }
+
+    let path = Layout::new(project_dir).topology_lock_path();
+    let fresh = TopologyLock::from_projects(projects);
+    if TopologyLock::load(&path)?.as_ref() != Some(&fresh) {
+        fresh.save(&path)?;
+    }
+    Ok(())
 }
 
 fn prepare_workspace_base(project_dir: &Path) -> Result<PathBuf, Error> {
@@ -187,7 +224,7 @@ fn symlink(target: &Path, link: &Path) -> Result<(), Error> {
 }
 
 pub(super) fn materialise_git_remote(
-    url: &str, dest: &Path, adapter: &str, initiating_project_dir: &Path,
+    url: &str, dest: &Path, adapter: Option<&str>, initiating_project_dir: &Path,
 ) -> Result<(), Error> {
     match std::fs::symlink_metadata(dest) {
         Ok(meta) if meta.file_type().is_symlink() => Err(Error::Diag {
@@ -216,7 +253,7 @@ pub(super) fn materialise_git_remote(
                 )
                 .or(Ok(()))
             } else {
-                greenfield_init(dest, adapter, initiating_project_dir, true)
+                greenfield_init(dest, require_seed(adapter, dest)?, initiating_project_dir, true)
             }
         }
         Ok(_) => Err(Error::Diag {
@@ -246,11 +283,26 @@ pub(super) fn materialise_git_remote(
                 ensure_origin_matches(dest, url)?;
                 Ok(())
             } else {
-                bootstrap::bootstrap(url, dest, adapter, initiating_project_dir)
+                bootstrap::bootstrap(url, dest, require_seed(adapter, dest)?, initiating_project_dir)
             }
         }
         Err(err) => Err(Error::Io(err)),
     }
+}
+
+/// A greenfield scaffold needs an adapter; RFC-36 makes the registry
+/// `adapter` an optional seed, so error clearly when a brand-new slot
+/// must be bootstrapped but no seed was declared.
+fn require_seed<'a>(adapter: Option<&'a str>, dest: &Path) -> Result<&'a str, Error> {
+    adapter.ok_or_else(|| Error::Diag {
+        code: "workspace-greenfield-no-adapter-seed",
+        detail: format!(
+            "`{}` needs a greenfield scaffold but registry.yaml declares no `adapter` seed for \
+             this project; add `adapter: <name@vN>` to the registry entry (RFC-36 greenfield \
+             seed) or create the repo with its own `.specify/project.yaml` first",
+            dest.display()
+        ),
+    })
 }
 
 fn ensure_origin_matches(dest: &Path, expected_url: &str) -> Result<(), Error> {

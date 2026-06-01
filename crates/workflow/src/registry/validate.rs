@@ -61,15 +61,6 @@ impl Registry {
                 });
             }
             validate_project_url(&project.url, idx, &project.name)?;
-            if project.adapter.is_empty() {
-                return Err(Error::Diag {
-                    code: "registry-project-adapter-empty",
-                    detail: format!(
-                        "registry.yaml: projects[{idx}] (`{}`).adapter is empty",
-                        project.name
-                    ),
-                });
-            }
             if !seen_names.insert(project.name.as_str()) {
                 return Err(Error::Diag {
                     code: "registry-project-name-duplicate",
@@ -80,20 +71,13 @@ impl Registry {
             validate_project_contracts(project, &mut producers)?;
         }
 
-        if self.projects.len() > 1 {
-            for (idx, project) in self.projects.iter().enumerate() {
-                let missing = project.description.as_ref().is_none_or(|s| s.trim().is_empty());
-                if missing {
-                    return Err(Error::Diag {
-                        code: "registry-description-missing-multi-repo",
-                        detail: format!(
-                            "registry.yaml: projects[{idx}] (`{}`).description is required when the registry declares more than one project",
-                            project.name
-                        ),
-                    });
-                }
-            }
-        }
+        // RFC-36: the registry no longer authors a project's adapter or
+        // description for plan-time topology. The former
+        // `registry-project-adapter-empty` and
+        // `registry-description-missing-multi-repo` invariants are
+        // retired — those facets live in each project's `project.yaml`
+        // and are checked against `.specify/topology.lock` by
+        // `specrun plan validate` (`topology-cache-stale`).
 
         Ok(())
     }

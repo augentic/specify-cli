@@ -35,7 +35,6 @@ use specify_workflow::change::{
 };
 use specify_workflow::config::{ProjectConfig, with_state};
 use specify_workflow::journal::{self, Event, EventKind};
-use specify_workflow::registry::Registry;
 use specify_workflow::schema::validate_proposal_json;
 
 use super::{Ref, cli, plan_ref, require_file};
@@ -177,12 +176,11 @@ fn load_discovery(ctx: &Ctx) -> Result<Discovery> {
 }
 
 /// Resolve the project topology the request embeds and the response binds
-/// to — the registry projects for a hub, or the sole project synthesised
-/// from `project.yaml`.
+/// to — the committed `.specify/topology.lock` projection for a hub
+/// (RFC-36), or the sole project synthesised from `project.yaml`.
 fn load_topology(ctx: &Ctx) -> Result<Vec<ProjectRef>> {
     let config = ProjectConfig::load(&ctx.project_dir)?;
-    let registry = Registry::load(&ctx.project_dir)?;
-    resolve_topology(&config, registry.as_ref(), &ctx.project_dir)
+    resolve_topology(&config, &ctx.project_dir)
 }
 
 /// Read the `--from` response file, mapping a missing file to an exit-2

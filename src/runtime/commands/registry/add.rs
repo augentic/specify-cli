@@ -8,7 +8,7 @@ use super::dto::{AddBody, write_add_text};
 use crate::runtime::context::Ctx;
 
 pub(super) fn run(
-    ctx: &Ctx, name: String, url: String, adapter: String, description: Option<String>,
+    ctx: &Ctx, name: String, url: String, adapter: Option<String>, description: Option<String>,
 ) -> Result<()> {
     if !is_kebab(&name) {
         return Err(Error::Diag {
@@ -19,20 +19,15 @@ pub(super) fn run(
             ),
         });
     }
-    if adapter.trim().is_empty() {
-        return Err(Error::Diag {
-            code: "registry-add-adapter-empty",
-            detail: "registry add: --adapter must be non-empty (e.g. `omnia@v1`)".into(),
-        });
-    }
 
     let registry_path = Registry::path(&ctx.project_dir);
     let path = registry_path.display().to_string();
     let hub_mode = ctx.config.hub;
+    // RFC-36: `--adapter` is an optional greenfield scaffold seed only.
     let candidate = RegistryProject {
         name,
         url,
-        adapter,
+        adapter: adapter.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         description: description.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
         contracts: None,
     };

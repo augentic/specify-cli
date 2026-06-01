@@ -30,6 +30,13 @@ pub const PROPOSAL_JSON_SCHEMA: &str =
 pub const PROVENANCE_JSON_SCHEMA: &str =
     include_str!("../../../schemas/slice/provenance.schema.json");
 
+/// Schema for `.specify/topology.lock`, the committed projection of
+/// each member project's `project.yaml` topology facets, regenerated
+/// by `specrun workspace sync` (RFC-36). Hub plan-time topology reads
+/// the cache rather than `registry.yaml`.
+pub const TOPOLOGY_LOCK_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/topology-lock.schema.json");
+
 /// Schema for `components.yaml`, the operator-curated design-system
 /// component catalog.
 pub const COMPONENTS_JSON_SCHEMA: &str =
