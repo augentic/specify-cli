@@ -802,7 +802,6 @@ mod tests {
 
     use super::super::model::{Lifecycle, SourceBinding};
     use super::*;
-    use crate::registry::{Registry, RegistryProject};
     use crate::schema::validate_proposal_json;
 
     fn discovery(body: &str) -> Discovery {
@@ -814,6 +813,8 @@ mod tests {
             name: name.to_string(),
             target: target.to_string(),
             description: Some(description.to_string()),
+            capabilities: Vec::new(),
+            keywords: Vec::new(),
         }
     }
 
@@ -970,9 +971,8 @@ slices:
         validate_proposal_json(&json).expect("round-tripped response validates");
     }
 
-    #[test]
-    fn resolve_topology_hub_maps_registry_projects() {
-        let config = ProjectConfig {
+    fn hub_config() -> ProjectConfig {
+        ProjectConfig {
             name: "platform".to_string(),
             description: None,
             capabilities: Vec::new(),
@@ -982,29 +982,31 @@ slices:
             rules: std::collections::BTreeMap::new(),
             tools: Vec::new(),
             hub: true,
-        };
-        let registry = Registry {
-            version: 1,
-            projects: vec![
-                RegistryProject {
-                    name: "identity-contracts".to_string(),
-                    url: "./contracts".to_string(),
-                    adapter: "contracts@v1".to_string(),
-                    description: Some("Contracts crate.".to_string()),
-                    contracts: None,
-                },
-                RegistryProject {
-                    name: "identity-service".to_string(),
-                    url: "git@github.com:org/identity.git".to_string(),
-                    adapter: "omnia@v1".to_string(),
-                    description: None,
-                    contracts: None,
-                },
-            ],
-        };
+        }
+    }
 
-        let topology = resolve_topology(&config, Some(&registry), Path::new("/unused"))
-            .expect("hub topology resolves");
+    #[test]
+    fn resolve_topology_hub_reads_topology_lock() {
+        // RFC-36: hub topology is projected from the committed
+        // `.specify/topology.lock`, not `registry.yaml`.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let specify = dir.path().join(".specify");
+        std::fs::create_dir_all(&specify).expect("mkdir .specify");
+        std::fs::write(
+            specify.join("topology.lock"),
+            "version: 1\n\
+             projects:\n  \
+               - name: identity-contracts\n    \
+                 target: contracts@v1\n    \
+                 description: Contracts crate.\n    \
+                 capabilities:\n      \
+                   - contracts\n  \
+               - name: identity-service\n    \
+                 target: omnia@v1\n",
+        )
+        .expect("write topology.lock");
+
+        let topology = resolve_topology(&hub_config(), dir.path()).expect("hub topology resolves");
         assert_eq!(
             topology,
             vec![
@@ -1012,14 +1014,27 @@ slices:
                     name: "identity-contracts".to_string(),
                     target: "contracts@v1".to_string(),
                     description: Some("Contracts crate.".to_string()),
+                    capabilities: vec!["contracts".to_string()],
+                    keywords: Vec::new(),
                 },
                 ProjectRef {
                     name: "identity-service".to_string(),
                     target: "omnia@v1".to_string(),
                     description: None,
+                    capabilities: Vec::new(),
+                    keywords: Vec::new(),
                 },
             ]
         );
+    }
+
+    #[test]
+    fn resolve_topology_hub_missing_cache_errors() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        match resolve_topology(&hub_config(), dir.path()) {
+            Err(Error::Validation { code, .. }) => assert_eq!(code, "topology-cache-missing"),
+            other => panic!("expected topology-cache-missing, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1035,7 +1050,7 @@ slices:
             tools: Vec::new(),
             hub: false,
         };
-        match resolve_topology(&config, None, Path::new("/unused")) {
+        match resolve_topology(&config, Path::new("/unused")) {
             Err(Error::Validation { code, .. }) => {
                 assert_eq!(code, "plan-propose-project-adapter-missing");
             }

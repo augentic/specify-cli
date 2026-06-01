@@ -19,8 +19,8 @@ use tempfile::{TempDir, tempdir};
 
 mod common;
 use common::{
-    Project, assert_golden_at, init_hub, omnia_schema_dir, parse_stderr, parse_stdout, repo_root,
-    specrun,
+    Project, assert_golden_at, copy_dir, init_hub, omnia_schema_dir, parse_stderr, parse_stdout,
+    repo_root, specrun,
 };
 
 fn plan_fixtures() -> PathBuf {
@@ -1535,7 +1535,13 @@ fn validate_reports_all_health_diagnostics() {
 }
 
 #[test]
-fn validate_reports_adapter_mismatch() {
+fn validate_reports_topology_cache_stale() {
+    // RFC-36: a slot's `project.yaml` is the authored home for its
+    // facets; `.specify/topology.lock` is the derived projection. When a
+    // materialised slot drifts from the committed cache, `plan validate`
+    // emits the warning-only `topology-cache-stale` diagnostic whose fix
+    // is `specrun workspace sync`. (Replaces the former
+    // `adapter-mismatch-workspace` check.)
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
@@ -1553,14 +1559,30 @@ fn validate_reports_adapter_mismatch() {
         "version: 1\n\
              projects:\n\
              \x20\x20- name: alpha\n\
-             \x20\x20\x20\x20url: git@github.com:org/alpha.git\n\
-             \x20\x20\x20\x20adapter: omnia@v1\n",
+             \x20\x20\x20\x20url: git@github.com:org/alpha.git\n",
     )
     .unwrap();
 
+    // Materialise the slot with a resolvable adapter and an authored
+    // description, then seed a topology.lock whose entry disagrees.
     let slot_specify = tmp.path().join(".specify/workspace/alpha/.specify");
     fs::create_dir_all(&slot_specify).unwrap();
-    fs::write(slot_specify.join("project.yaml"), "name: alpha\nadapter: vectis@v1\n").unwrap();
+    fs::write(
+        slot_specify.join("project.yaml"),
+        "name: alpha\nadapter: omnia@v1\ndescription: Fresh description\n",
+    )
+    .unwrap();
+    copy_dir(&omnia_schema_dir(), &slot_specify.join(".cache/manifests/targets/omnia"));
+
+    fs::write(
+        tmp.path().join(".specify/topology.lock"),
+        "version: 1\n\
+             projects:\n\
+             \x20\x20- name: alpha\n\
+             \x20\x20\x20\x20target: omnia@v1\n\
+             \x20\x20\x20\x20description: Stale description\n",
+    )
+    .unwrap();
 
     let assert =
         specrun().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
@@ -1568,19 +1590,14 @@ fn validate_reports_adapter_mismatch() {
         serde_json::from_str(&String::from_utf8(assert.get_output().stdout.clone()).expect("utf8"))
             .expect("stdout is JSON");
     let results = value["results"].as_array().expect("results array");
-    let mismatch: Vec<&Value> =
-        results.iter().filter(|r| r["code"] == "adapter-mismatch-workspace").collect();
-    assert_eq!(
-        mismatch.len(),
-        1,
-        "expected one adapter-mismatch-workspace finding, got: {results:#?}"
-    );
-    assert_eq!(mismatch[0]["severity"], "warning");
-    let msg = mismatch[0]["message"].as_str().expect("message string");
-    assert!(msg.contains("alpha"), "expected clone name in message, got: {msg}");
-    assert!(msg.contains("vectis@v1"), "expected slot adapter in message, got: {msg}");
-    assert!(msg.contains("omnia@v1"), "expected registry adapter in message, got: {msg}");
-    assert_eq!(value["passed"], true, "adapter mismatch is warning-only");
+    let stale: Vec<&Value> =
+        results.iter().filter(|r| r["code"] == "topology-cache-stale").collect();
+    assert_eq!(stale.len(), 1, "expected one topology-cache-stale finding, got: {results:#?}");
+    assert_eq!(stale[0]["severity"], "warning");
+    let msg = stale[0]["message"].as_str().expect("message string");
+    assert!(msg.contains("alpha"), "expected slot name in message, got: {msg}");
+    assert!(msg.contains("workspace sync"), "expected the fix command in message, got: {msg}");
+    assert_eq!(value["passed"], true, "stale cache is warning-only");
 }
 
 #[test]
@@ -2441,6 +2458,21 @@ const PROPOSE_DISCOVERY_HUB: &str = "\
 - synopsis: Legacy reset-password flow.
 ";
 
+/// Committed `.specify/topology.lock` for the hub fixture (RFC-36) —
+/// the projection `workspace sync` would derive from each member
+/// project's `project.yaml`. Descriptions mirror the registry seeds so
+/// the request envelope's `projects[]` stays the authoritative shape.
+const PROPOSE_TOPOLOGY_HUB: &str = "\
+version: 1
+projects:
+  - name: identity-contracts
+    target: contracts@v1
+    description: Versioned API contracts crate for the identity domain.
+  - name: identity-service
+    target: omnia@v1
+    description: Omnia identity service implementing auth and password flows.
+";
+
 /// Hub plan declaring the two surveyed source keys, no slices yet.
 const PROPOSE_PLAN_HUB: &str = "\
 name: identity-revamp
@@ -2535,6 +2567,11 @@ fn hub_project(registry: &str, discovery: &str, plan: &str) -> TempDir {
     fs::write(tmp.path().join("registry.yaml"), registry).expect("write registry.yaml");
     seed_discovery(tmp.path(), discovery);
     fs::write(tmp.path().join("plan.yaml"), plan).expect("write plan.yaml");
+    // RFC-36: hub plan-time topology reads the committed cache, not the
+    // registry. Seed the projection `workspace sync` would produce for
+    // the remote members (which a unit test cannot materialise).
+    fs::write(tmp.path().join(".specify/topology.lock"), PROPOSE_TOPOLOGY_HUB)
+        .expect("write topology.lock");
     tmp
 }
 

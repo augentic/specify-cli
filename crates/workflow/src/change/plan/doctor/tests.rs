@@ -187,7 +187,7 @@ fn rp(name: &str, url: &str, schema: &str, description: &str) -> RegistryProject
     RegistryProject {
         name: name.into(),
         url: url.into(),
-        adapter: schema.into(),
+        adapter: Some(schema.into()),
         description: Some(description.into()),
         contracts: None,
     }

@@ -112,6 +112,34 @@ fn add_round_trips_through_show() {
 }
 
 #[test]
+fn add_succeeds_without_adapter() {
+    // RFC-36: `--adapter` is an optional greenfield seed. Omitting it is
+    // legal — the project's own `project.yaml` authors its target adapter.
+    let tmp = tempdir().unwrap();
+    init_hub(&tmp, "platform-hub");
+
+    let assert = specrun()
+        .current_dir(tmp.path())
+        .args([
+            "--format",
+            "json",
+            "registry",
+            "add",
+            "alpha",
+            "--url",
+            "git@github.com:augentic/alpha.git",
+        ])
+        .assert()
+        .success();
+    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert!(value["error"].is_null(), "success envelope must omit error: {value}");
+    assert_eq!(value["added"]["name"], "alpha");
+
+    let loaded = fs::read_to_string(tmp.path().join("registry.yaml")).expect("read registry");
+    assert!(!loaded.contains("adapter:"), "omitted seed must not write an adapter key: {loaded}");
+}
+
+#[test]
 fn add_rejects_dot_url_in_hub_mode() {
     let tmp = tempdir().unwrap();
     init_hub(&tmp, "platform-hub");
@@ -334,7 +362,7 @@ fn load_from_tempdir() {
     assert_eq!(loaded.projects.len(), 1);
     assert_eq!(loaded.projects[0].name, "traffic");
     assert_eq!(loaded.projects[0].url, ".");
-    assert_eq!(loaded.projects[0].adapter, "omnia@v1");
+    assert_eq!(loaded.projects[0].adapter.as_deref(), Some("omnia@v1"));
     assert!(loaded.is_single_repo());
 }
 

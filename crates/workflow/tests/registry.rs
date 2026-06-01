@@ -61,7 +61,7 @@ fn registry_parses_canonical_example() {
     assert_eq!(registry.projects.len(), 1);
     assert_eq!(registry.projects[0].name, "traffic");
     assert_eq!(registry.projects[0].url, ".");
-    assert_eq!(registry.projects[0].adapter, "omnia@v1");
+    assert_eq!(registry.projects[0].adapter.as_deref(), Some("omnia@v1"));
 }
 
 #[test]
@@ -165,7 +165,10 @@ projects:
 }
 
 #[test]
-fn registry_rejects_missing_schema() {
+fn registry_accepts_missing_adapter() {
+    // RFC-36: the registry `adapter` is an optional greenfield seed. A
+    // project without it parses and validates; its target adapter lives
+    // in its own `project.yaml`.
     let yaml = "\
 version: 1
 projects:
@@ -173,8 +176,8 @@ projects:
     url: .
 ";
     let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("missing schema");
-    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    assert!(registry.projects[0].adapter.is_none());
 }
 
 #[test]
@@ -231,7 +234,10 @@ projects:
 }
 
 #[test]
-fn registry_rejects_empty_string_schema() {
+fn registry_accepts_empty_string_adapter() {
+    // RFC-36: an empty `adapter` seed is harmless — the registry no
+    // longer authors the project's target adapter, so the former
+    // `registry-project-adapter-empty` invariant is retired.
     let yaml = "\
 version: 1
 projects:
@@ -240,11 +246,8 @@ projects:
     adapter: \"\"
 ";
     let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("empty adapter");
-    match err {
-        Error::Diag { detail: msg, .. } => assert!(msg.contains("adapter"), "msg: {msg}"),
-        other => panic!("wrong variant: {other:?}"),
-    }
+    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
+    assert_eq!(registry.projects[0].adapter.as_deref(), Some(""));
 }
 
 #[test]
@@ -303,14 +306,14 @@ fn registry_round_trip_serialize() {
             RegistryProject {
                 name: "traffic".into(),
                 url: ".".into(),
-                adapter: "omnia@v1".into(),
+                adapter: Some("omnia@v1".into()),
                 description: Some("Real-time traffic routing".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "ingest".into(),
                 url: "git@github.com:augentic/ingest.git".into(),
-                adapter: "omnia@v1".into(),
+                adapter: Some("omnia@v1".into()),
                 description: Some("Data ingestion pipeline".into()),
                 contracts: None,
             },
@@ -352,52 +355,24 @@ projects:
 }
 
 #[test]
-fn multi_project_missing_description_rejected() {
+fn multi_project_missing_description_accepted() {
+    // RFC-36: the registry no longer authors descriptions, so the former
+    // `registry-description-missing-multi-repo` invariant is retired —
+    // descriptions live in each project's `project.yaml`.
     let yaml = "\
 version: 1
 projects:
   - name: alpha
     url: .
     adapter: omnia@v1
-    description: The alpha service
   - name: beta
     url: ../beta
-    adapter: omnia@v1
 ";
     let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("missing description in multi-project");
-    match err {
-        Error::Diag { code, detail: msg } => {
-            assert_eq!(code, "registry-description-missing-multi-repo", "msg: {msg}");
-            assert!(msg.contains("beta"), "msg should mention project name: {msg}");
-        }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn multi_project_empty_description_rejected() {
-    let yaml = "\
-version: 1
-projects:
-  - name: alpha
-    url: .
-    adapter: omnia@v1
-    description: \"  \"
-  - name: beta
-    url: ../beta
-    adapter: omnia@v1
-    description: The beta service
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("whitespace-only description in multi-project");
-    match err {
-        Error::Diag { code, detail: msg } => {
-            assert_eq!(code, "registry-description-missing-multi-repo", "msg: {msg}");
-            assert!(msg.contains("alpha"), "msg should mention project name: {msg}");
-        }
-        other => panic!("wrong variant: {other:?}"),
-    }
+    let registry = Registry::load(tmp.path()).expect("multi-project without descriptions parses");
+    let registry = registry.expect("present");
+    assert_eq!(registry.projects.len(), 2);
+    assert!(registry.projects.iter().all(|p| p.description.is_none()));
 }
 
 #[test]
@@ -413,7 +388,7 @@ fn description_round_trips_through_serde() {
     let original = RegistryProject {
         name: "traffic".into(),
         url: ".".into(),
-        adapter: "omnia@v1".into(),
+        adapter: Some("omnia@v1".into()),
         description: Some("Real-time traffic routing".into()),
         contracts: None,
     };
@@ -436,7 +411,7 @@ fn registry_with_one_url(url: &str) -> Registry {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: url.into(),
-            adapter: "omnia@v1".into(),
+            adapter: Some("omnia@v1".into()),
             description: None,
             contracts: None,
         }],
@@ -461,7 +436,7 @@ fn project_url_materialises_as_symlink() {
         let p = RegistryProject {
             name: "traffic".into(),
             url: url.into(),
-            adapter: "omnia@v1".into(),
+            adapter: Some("omnia@v1".into()),
             description: None,
             contracts: None,
         };
@@ -571,14 +546,14 @@ fn validate_shape_hub_accepts_non_dot_urls() {
             RegistryProject {
                 name: "alpha".into(),
                 url: "git@github.com:augentic/alpha.git".into(),
-                adapter: "omnia@v1".into(),
+                adapter: Some("omnia@v1".into()),
                 description: Some("Alpha service".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "beta".into(),
                 url: "../beta".into(),
-                adapter: "omnia@v1".into(),
+                adapter: Some("omnia@v1".into()),
                 description: Some("Beta service".into()),
                 contracts: None,
             },
@@ -594,7 +569,7 @@ fn validate_shape_hub_rejects_dot_url_entry() {
         projects: vec![RegistryProject {
             name: "platform".into(),
             url: ".".into(),
-            adapter: "omnia@v1".into(),
+            adapter: Some("omnia@v1".into()),
             description: None,
             contracts: None,
         }],
@@ -621,14 +596,14 @@ fn validate_shape_hub_rejects_dot_url_multi() {
             RegistryProject {
                 name: "alpha".into(),
                 url: "../alpha".into(),
-                adapter: "omnia@v1".into(),
+                adapter: Some("omnia@v1".into()),
                 description: Some("Alpha service".into()),
                 contracts: None,
             },
             RegistryProject {
                 name: "self-as-project".into(),
                 url: ".".into(),
-                adapter: "omnia@v1".into(),
+                adapter: Some("omnia@v1".into()),
                 description: Some("Should be the hub, not an entry".into()),
                 contracts: None,
             },
@@ -675,7 +650,7 @@ fn validate_shape_unchanged_for_dot_url() {
         projects: vec![RegistryProject {
             name: "platform".into(),
             url: ".".into(),
-            adapter: "omnia@v1".into(),
+            adapter: Some("omnia@v1".into()),
             description: None,
             contracts: None,
         }],
@@ -741,7 +716,7 @@ fn contract_roles_round_trip_omits_empty() {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: ".".into(),
-            adapter: "omnia@v1".into(),
+            adapter: Some("omnia@v1".into()),
             description: None,
             contracts: Some(ContractRoles {
                 produces: vec!["http/traffic-api.yaml".into()],
@@ -762,7 +737,7 @@ fn contract_roles_none_omits_contracts_key() {
         projects: vec![RegistryProject {
             name: "traffic".into(),
             url: ".".into(),
-            adapter: "omnia@v1".into(),
+            adapter: Some("omnia@v1".into()),
             description: None,
             contracts: None,
         }],

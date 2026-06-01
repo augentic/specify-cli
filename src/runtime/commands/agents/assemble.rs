@@ -2,6 +2,7 @@
 //! (adapter, registry, slices, root markers) and emits a
 //! [`render::Input`] plus the per-input fingerprint set.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -9,7 +10,7 @@ use std::path::Path;
 use specify_error::{Error, Result};
 use specify_workflow::adapter::{ADAPTER_FILENAME, ResolvedTargetAdapter};
 use specify_workflow::config::{Layout, ProjectConfig};
-use specify_workflow::registry::Registry;
+use specify_workflow::registry::{Registry, TopologyLock, TopologyProject};
 use specify_workflow::slice::SliceMetadata;
 
 use super::{detect, fingerprint, render};
@@ -58,7 +59,7 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
         declared_tools: declared_tools(&ctx.config),
         active_slices,
         workspace_peers: materialized_workspace_peers(registry.as_ref(), &ctx.project_dir)?,
-        dependencies: dependency_peers(registry.as_ref()),
+        dependencies: dependency_peers(registry.as_ref(), &ctx.project_dir)?,
     };
     Ok(RenderAssembly {
         input,
@@ -140,7 +141,7 @@ fn declared_tools(config: &ProjectConfig) -> Vec<render::Tool> {
     tools
 }
 
-fn dependency_peers(registry: Option<&Registry>) -> Vec<render::Dep> {
+fn dependency_peers(registry: Option<&Registry>, project_dir: &Path) -> Vec<render::Dep> {
     let Some(registry) = registry else {
         return Vec::new();
     };
@@ -148,14 +149,32 @@ fn dependency_peers(registry: Option<&Registry>) -> Vec<render::Dep> {
         return Vec::new();
     }
 
+    // RFC-36: peer adapter/description come from the committed
+    // `.specify/topology.lock` (each member project's authored
+    // `project.yaml`). A fresh hub may not have synced a cache yet, so
+    // fall back to the registry's optional greenfield seed.
+    let lock = TopologyLock::load(&Layout::new(project_dir).topology_lock_path()).ok().flatten();
+    let facets: HashMap<&str, &TopologyProject> = lock
+        .as_ref()
+        .map(|lock| lock.projects.iter().map(|p| (p.name.as_str(), p)).collect())
+        .unwrap_or_default();
+
     let mut peers: Vec<render::Dep> = registry
         .projects
         .iter()
-        .map(|project| render::Dep {
-            name: project.name.clone(),
-            adapter: project.adapter.clone(),
-            url: project.url.clone(),
-            description: project.description.clone(),
+        .map(|project| {
+            let cached = facets.get(project.name.as_str());
+            render::Dep {
+                name: project.name.clone(),
+                adapter: cached
+                    .map(|c| c.target.clone())
+                    .or_else(|| project.adapter.clone())
+                    .unwrap_or_default(),
+                url: project.url.clone(),
+                description: cached
+                    .and_then(|c| c.description.clone())
+                    .or_else(|| project.description.clone()),
+            }
         })
         .collect();
     peers.sort_by(|left, right| {

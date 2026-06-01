@@ -68,7 +68,7 @@ fn registry_with_projects(names: &[&str]) -> Registry {
             .map(|name| RegistryProject {
                 name: (*name).to_string(),
                 url: format!("./{name}"),
-                adapter: "omnia@v1".to_string(),
+                adapter: Some("omnia@v1".to_string()),
                 description: Some(format!("{name} service")),
                 contracts: None,
             })
@@ -88,7 +88,7 @@ fn remote_project(url: String) -> RegistryProject {
     RegistryProject {
         name: "alpha".to_string(),
         url,
-        adapter: "omnia@v1".to_string(),
+        adapter: Some("omnia@v1".to_string()),
         description: Some("alpha service".to_string()),
         contracts: None,
     }
@@ -394,7 +394,7 @@ fn c02_remote_slot_refuses_existing_symlink() {
     let project = RegistryProject {
         name: "remote".to_string(),
         url: "https://example.invalid/org/remote.git".to_string(),
-        adapter: "https://example.invalid/adapter".to_string(),
+        adapter: Some("https://example.invalid/adapter".to_string()),
         description: Some("remote service".to_string()),
         contracts: None,
     };
@@ -447,7 +447,7 @@ fn c10_slot_problem_wrong_origin() {
     let project = RegistryProject {
         name: "remote".to_string(),
         url: "https://example.invalid/new.git".to_string(),
-        adapter: "https://example.invalid/adapter".to_string(),
+        adapter: Some("https://example.invalid/adapter".to_string()),
         description: Some("remote service".to_string()),
         contracts: None,
     };
@@ -469,7 +469,7 @@ fn c02_sync_refuses_escaping_name() {
     let project = RegistryProject {
         name: "../escape".to_string(),
         url: "./peer".to_string(),
-        adapter: "omnia@v1".to_string(),
+        adapter: Some("omnia@v1".to_string()),
         description: Some("bad selector".to_string()),
         contracts: None,
     };
@@ -816,7 +816,7 @@ fn c03_status_git_clone_mismatch() {
     let project = RegistryProject {
         name: "remote".to_string(),
         url: remote_url.to_string(),
-        adapter: "omnia@v1".to_string(),
+        adapter: Some("omnia@v1".to_string()),
         description: Some("remote service".to_string()),
         contracts: None,
     };
@@ -848,7 +848,7 @@ fn c03_status_other_materialisation() {
     let project = RegistryProject {
         name: "odd".to_string(),
         url: "https://example.invalid/org/odd.git".to_string(),
-        adapter: "omnia@v1".to_string(),
+        adapter: Some("omnia@v1".to_string()),
         description: Some("odd service".to_string()),
         contracts: None,
     };
@@ -1045,4 +1045,66 @@ projects:
     let registry = Registry::load(project_dir).unwrap().expect("registry present");
     workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).unwrap();
     assert!(Path::new(&project_dir.join(".specify/workspace")).is_dir());
+}
+
+// ---------- RFC-36 topology.lock regeneration ------------------------
+
+/// Stage a materialised slot with a resolvable omnia adapter and the
+/// given `project.yaml` body under `.specify/workspace/<name>/`.
+fn stage_topology_slot(project_dir: &Path, name: &str, project_yaml: &str) {
+    let slot_specify = project_dir.join(".specify/workspace").join(name).join(".specify");
+    fs::create_dir_all(&slot_specify).unwrap();
+    fs::write(slot_specify.join("project.yaml"), project_yaml).unwrap();
+    let omnia_manifest = slot_specify.join(".cache/manifests/targets/omnia");
+    fs::create_dir_all(&omnia_manifest).unwrap();
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/plugins/adapters/targets/omnia/adapter.yaml");
+    fs::copy(fixture, omnia_manifest.join("adapter.yaml")).unwrap();
+}
+
+#[test]
+fn regenerate_topology_lock_projects_authored_facets() {
+    use specify_workflow::registry::topology::TopologyLock;
+    use specify_workflow::registry::workspace::regenerate_topology_lock;
+
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    stage_topology_slot(
+        project_dir,
+        "alpha",
+        "name: alpha\nadapter: omnia@v1\ndescription: Alpha core\ncapabilities:\n  - auth\n",
+    );
+    // A registry member whose slot has not been materialised yet is
+    // skipped, not an error.
+    let registry = Registry {
+        version: 1,
+        projects: vec![
+            RegistryProject {
+                name: "alpha".to_string(),
+                url: "git@github.com:org/alpha.git".to_string(),
+                adapter: None,
+                description: None,
+                contracts: None,
+            },
+            RegistryProject {
+                name: "beta".to_string(),
+                url: "git@github.com:org/beta.git".to_string(),
+                adapter: None,
+                description: None,
+                contracts: None,
+            },
+        ],
+    };
+
+    regenerate_topology_lock(project_dir, &registry).expect("regenerate");
+
+    let lock = TopologyLock::load(&project_dir.join(".specify/topology.lock"))
+        .expect("load")
+        .expect("present");
+    assert_eq!(lock.projects.len(), 1, "unmaterialised beta is skipped");
+    let alpha = &lock.projects[0];
+    assert_eq!(alpha.name, "alpha");
+    assert_eq!(alpha.target, "omnia@v1");
+    assert_eq!(alpha.description.as_deref(), Some("Alpha core"));
+    assert_eq!(alpha.capabilities, vec!["auth".to_string()]);
 }

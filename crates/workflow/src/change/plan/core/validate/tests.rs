@@ -190,7 +190,7 @@ fn project_not_in_registry() {
         projects: vec![RegistryProject {
             name: "real-project".to_string(),
             url: ".".to_string(),
-            adapter: "omnia@v1".to_string(),
+            adapter: Some("omnia@v1".to_string()),
             description: None,
             contracts: None,
         }],
@@ -210,14 +210,14 @@ fn project_matches_registry() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                adapter: "omnia@v1".to_string(),
+                adapter: Some("omnia@v1".to_string()),
                 description: Some("Alpha".to_string()),
                 contracts: None,
             },
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                adapter: "omnia@v1".to_string(),
+                adapter: Some("omnia@v1".to_string()),
                 description: Some("Beta".to_string()),
                 contracts: None,
             },
@@ -253,14 +253,14 @@ fn omitted_project_flagged_in_multi_project_registry() {
             RegistryProject {
                 name: "alpha".to_string(),
                 url: ".".to_string(),
-                adapter: "omnia@v1".to_string(),
+                adapter: Some("omnia@v1".to_string()),
                 description: None,
                 contracts: None,
             },
             RegistryProject {
                 name: "beta".to_string(),
                 url: "git@github.com:org/beta.git".to_string(),
-                adapter: "contracts@v1".to_string(),
+                adapter: Some("contracts@v1".to_string()),
                 description: None,
                 contracts: None,
             },
@@ -286,7 +286,7 @@ fn omitted_project_ok_in_single_project_registry() {
         projects: vec![RegistryProject {
             name: "only".to_string(),
             url: ".".to_string(),
-            adapter: "omnia@v1".to_string(),
+            adapter: Some("omnia@v1".to_string()),
             description: None,
             contracts: None,
         }],

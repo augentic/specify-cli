@@ -178,7 +178,7 @@ mod tests {
             reg.projects.push(crate::registry::RegistryProject {
                 name: "alpha".into(),
                 url: ".".into(),
-                adapter: "omnia@v1".into(),
+                adapter: Some("omnia@v1".into()),
                 description: None,
                 contracts: None,
             });

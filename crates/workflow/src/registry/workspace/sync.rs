@@ -283,7 +283,12 @@ pub(super) fn materialise_git_remote(
                 ensure_origin_matches(dest, url)?;
                 Ok(())
             } else {
-                bootstrap::bootstrap(url, dest, require_seed(adapter, dest)?, initiating_project_dir)
+                bootstrap::bootstrap(
+                    url,
+                    dest,
+                    require_seed(adapter, dest)?,
+                    initiating_project_dir,
+                )
             }
         }
         Err(err) => Err(Error::Io(err)),

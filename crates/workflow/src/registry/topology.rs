@@ -65,7 +65,7 @@ struct Version {
 impl TopologyLock {
     /// Wrap a resolved project list into a versioned lock document.
     #[must_use]
-    pub fn from_projects(projects: Vec<TopologyProject>) -> Self {
+    pub const fn from_projects(projects: Vec<TopologyProject>) -> Self {
         Self {
             version: CURRENT_TOPOLOGY_LOCK_VERSION,
             projects,
