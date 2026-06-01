@@ -59,7 +59,7 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
         declared_tools: declared_tools(&ctx.config),
         active_slices,
         workspace_peers: materialized_workspace_peers(registry.as_ref(), &ctx.project_dir)?,
-        dependencies: dependency_peers(registry.as_ref(), &ctx.project_dir)?,
+        dependencies: dependency_peers(registry.as_ref(), &ctx.project_dir),
     };
     Ok(RenderAssembly {
         input,
