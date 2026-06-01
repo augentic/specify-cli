@@ -52,7 +52,7 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
         project_name: ctx.config.name.clone(),
         is_hub: ctx.config.hub,
         detection,
-        domain: ctx.config.domain.clone(),
+        description: ctx.config.description.clone(),
         adapter,
         rule_overrides: rule_overrides(&ctx.config),
         declared_tools: declared_tools(&ctx.config),

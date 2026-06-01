@@ -36,8 +36,9 @@ pub struct InitOptions<'a> {
     pub adapter: Option<&'a str>,
     /// Project name; defaults to the project directory name when `None`.
     pub name: Option<&'a str>,
-    /// Optional project domain description.
-    pub domain: Option<&'a str>,
+    /// Optional free-text project description (tech stack, architecture,
+    /// testing approach).
+    pub description: Option<&'a str>,
     /// When `true`, scaffold a registry-only platform **hub** instead
     /// of a regular project: writes `registry.yaml` at the repo root
     /// and `project.yaml { hub: true }` (with `adapter:` omitted)
@@ -201,7 +202,7 @@ mod tests {
                 project_dir: tmp.path(),
                 adapter: None,
                 name: Some("demo"),
-                domain: None,
+                description: None,
                 hub: false,
                 include_framework: false,
             },
@@ -231,7 +232,7 @@ mod tests {
                 project_dir: tmp.path(),
                 adapter: Some("omnia"),
                 name: Some("platform-hub"),
-                domain: None,
+                description: None,
                 hub: true,
                 include_framework: false,
             },

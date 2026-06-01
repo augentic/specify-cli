@@ -18,9 +18,22 @@ pub struct ProjectConfig {
     pub name: String,
 
     /// Free-text description of the project's tech stack, architecture,
-    /// and testing approach. Falls back to `adapter.domain` when empty.
+    /// and testing approach. Falls back to the adapter's domain when empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub domain: Option<String>,
+    pub description: Option<String>,
+
+    /// Authoring-only capability tags characterising what this project
+    /// owns (e.g. `auth`, `billing`). Inert today: declared in
+    /// `project.yaml` for future slice-to-project routing, but not yet
+    /// read by any consumer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+
+    /// Authoring-only free-form keyword tags supplementing
+    /// `capabilities`. Inert today, with the same status as
+    /// `capabilities`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
 
     /// Adapter identifier — either a bare name (`omnia`) or a URL.
     /// Absent for registry-only platform hubs (`hub: true`); see the
@@ -269,7 +282,9 @@ mod tests {
     fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {
         ProjectConfig {
             name: "demo".to_string(),
-            domain: None,
+            description: None,
+            capabilities: Vec::new(),
+            keywords: Vec::new(),
             adapter: Some("omnia".to_string()),
             specify_version: None,
             rules,
@@ -367,7 +382,9 @@ mod tests {
     fn hub_field_omitted_when_false_in_serialise() {
         let cfg = ProjectConfig {
             name: "demo".to_string(),
-            domain: None,
+            description: None,
+            capabilities: Vec::new(),
+            keywords: Vec::new(),
             adapter: Some("omnia".to_string()),
             specify_version: None,
             rules: BTreeMap::new(),
@@ -383,7 +400,9 @@ mod tests {
     fn hub_field_serialised_when_true() {
         let cfg = ProjectConfig {
             name: "platform".to_string(),
-            domain: None,
+            description: None,
+            capabilities: Vec::new(),
+            keywords: Vec::new(),
             adapter: None,
             specify_version: None,
             rules: BTreeMap::new(),

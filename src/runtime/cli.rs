@@ -55,9 +55,9 @@ pub enum Commands {
         /// Project name (defaults to the project directory name)
         #[arg(long)]
         name: Option<String>,
-        /// Project domain description (tech stack, architecture, testing)
+        /// Project description (tech stack, architecture, testing)
         #[arg(long)]
-        domain: Option<String>,
+        description: Option<String>,
         /// Scaffold a registry-only platform hub instead of a regular
         /// project. Refuses to run when `.specify/` already exists.
         #[arg(long)]

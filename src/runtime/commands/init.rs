@@ -19,8 +19,8 @@ fn canonical(p: &Path) -> String {
 }
 
 pub(super) fn run(
-    format: Format, adapter: Option<&str>, name: Option<&str>, domain: Option<&str>, hub: bool,
-    include_framework: bool,
+    format: Format, adapter: Option<&str>, name: Option<&str>, description: Option<&str>,
+    hub: bool, include_framework: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
@@ -28,7 +28,7 @@ pub(super) fn run(
         project_dir: &project_dir,
         adapter,
         name,
-        domain,
+        description,
         hub,
         include_framework,
     };

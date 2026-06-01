@@ -87,7 +87,7 @@ pub struct ProposalRequest {
 ///
 /// For a platform hub this mirrors a `registry.yaml#/projects[]` entry;
 /// for a single regular project the CLI synthesises one entry from
-/// `project.yaml` (name + resolved target adapter + domain).
+/// `project.yaml` (name + resolved target adapter + description).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ProjectRef {
@@ -294,7 +294,7 @@ pub fn build_request(discovery: &Discovery, projects: &[ProjectRef]) -> Result<P
 ///   downstream gate when a hub declares no projects.
 /// - **Single regular project** — one synthesised [`ProjectRef`]:
 ///   `name` from `project.yaml.name`, `description` from
-///   `project.yaml.domain`, and `target` formed by resolving
+///   `project.yaml.description`, and `target` formed by resolving
 ///   `project.yaml.adapter` through [`TargetAdapter::resolve`] and
 ///   joining the resolved adapter's canonical `name` + `version` into
 ///   `name@vN`.
@@ -349,7 +349,7 @@ fn regular_topology(config: &ProjectConfig, project_dir: &Path) -> Result<Projec
     Ok(ProjectRef {
         name: config.name.clone(),
         target,
-        description: config.domain.clone(),
+        description: config.description.clone(),
     })
 }
 
@@ -948,7 +948,9 @@ slices:
     fn resolve_topology_hub_maps_registry_projects() {
         let config = ProjectConfig {
             name: "platform".to_string(),
-            domain: None,
+            description: None,
+            capabilities: Vec::new(),
+            keywords: Vec::new(),
             adapter: None,
             specify_version: None,
             rules: std::collections::BTreeMap::new(),
@@ -998,7 +1000,9 @@ slices:
     fn resolve_topology_regular_missing_adapter_errors() {
         let config = ProjectConfig {
             name: "demo".to_string(),
-            domain: None,
+            description: None,
+            capabilities: Vec::new(),
+            keywords: Vec::new(),
             adapter: None,
             specify_version: None,
             rules: std::collections::BTreeMap::new(),

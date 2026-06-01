@@ -81,7 +81,9 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     let cfg = ProjectConfig {
         name,
-        domain: opts.domain.map(str::to_string),
+        description: opts.description.map(str::to_string),
+        capabilities: Vec::new(),
+        keywords: Vec::new(),
         adapter: None,
         specify_version: Some(specify_version.clone()),
         rules: BTreeMap::new(),
@@ -134,7 +136,7 @@ mod tests {
             project_dir,
             adapter: None,
             name: Some(name),
-            domain: None,
+            description: None,
             hub: true,
             include_framework: false,
         }

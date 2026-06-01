@@ -36,7 +36,7 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Init {
             adapter,
             name,
-            domain,
+            description,
             hub,
             include_framework,
         } => dispatch(format, || {
@@ -44,7 +44,7 @@ pub fn run(cli: Cli) -> Exit {
                 format,
                 adapter.as_deref(),
                 name.as_deref(),
-                domain.as_deref(),
+                description.as_deref(),
                 hub,
                 include_framework,
             )

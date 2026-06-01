@@ -103,8 +103,6 @@ fn journal_events(project: &Project) -> Vec<Value> {
 }
 
 const VALID_EVIDENCE: &str = "\
-source: legacy
-adapter: code-typescript
 authority: behaviour
 lead: user-registration
 claims: []
@@ -253,7 +251,7 @@ fn agent_finalize_value_bound_source_persists_evidence() {
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(
         scratch.join("evidence.yaml"),
-        "source: brief\nadapter: intent\nauthority: intent\nlead: password-reset\nclaims: []\n",
+        "authority: intent\nlead: password-reset\nclaims: []\n",
     )
     .expect("write evidence.yaml");
 
@@ -285,11 +283,8 @@ fn agent_finalize_invalid_evidence_persists_no_file() {
     // Missing the required `claims` field — parses as YAML but fails the schema.
     let scratch = extract_scratch_dir(&project, "code-typescript", "identity");
     fs::create_dir_all(&scratch).expect("create scratch dir");
-    fs::write(
-        scratch.join("evidence.yaml"),
-        "source: legacy\nadapter: code-typescript\nauthority: behaviour\nlead: user-registration\n",
-    )
-    .expect("write invalid evidence.yaml");
+    fs::write(scratch.join("evidence.yaml"), "authority: behaviour\nlead: user-registration\n")
+        .expect("write invalid evidence.yaml");
 
     let assert = specrun()
         .current_dir(project.root())

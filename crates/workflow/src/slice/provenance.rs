@@ -609,9 +609,7 @@ rogue: true
         std::fs::create_dir_all(&evidence_dir).expect("mkdir");
         std::fs::write(
             evidence_dir.join("runtime.yaml"),
-            r"source: runtime
-adapter: captures
-authority: behaviour
+            r"authority: behaviour
 lead: user-registration
 claims:
   - kind: example
@@ -623,9 +621,7 @@ claims:
         .expect("write runtime");
         std::fs::write(
             evidence_dir.join("legacy.yml"),
-            r"source: legacy
-adapter: code-typescript
-authority: behaviour
+            r"authority: behaviour
 lead: user-registration
 claims:
   - kind: excerpt

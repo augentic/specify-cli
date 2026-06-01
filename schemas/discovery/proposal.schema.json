@@ -24,7 +24,7 @@
     "projectRef": {
       "type": "object",
       "additionalProperties": false,
-      "description": "One project the agent can bind a response slice to. For a hub this is a `registry.yaml#/projects[]` entry; for a single regular project the CLI synthesizes one entry from `project.yaml` (name + target adapter + domain). The agent matches the slice's scope against the project's `target` and `description`.",
+      "description": "One project the agent can bind a response slice to. For a hub this is a `registry.yaml#/projects[]` entry; for a single regular project the CLI synthesizes one entry from `project.yaml` (name + target adapter + description). The agent matches the slice's scope against the project's `target` and `description`.",
       "required": [
         "name",
         "target"
@@ -96,7 +96,7 @@
         "projects": {
           "type": "array",
           "minItems": 1,
-          "description": "Project topology the agent binds slices to — always at least one project, so there is no separate single-repo shape. For a hub this is every entry from `registry.yaml#/projects[]`; for a single regular project the CLI synthesizes one entry from `project.yaml` (name + resolved target adapter + domain). Persisted project configuration is normalized into this envelope-local shape.",
+          "description": "Project topology the agent binds slices to — always at least one project, so there is no separate single-repo shape. For a hub this is every entry from `registry.yaml#/projects[]`; for a single regular project the CLI synthesizes one entry from `project.yaml` (name + resolved target adapter + description). Persisted project configuration is normalized into this envelope-local shape.",
           "items": {
             "$ref": "#/$defs/projectRef"
           }

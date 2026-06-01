@@ -224,8 +224,6 @@ fn target_rejects_axis_and_brief_violations() {
 // --- evidence.schema.json ------------------------------------------
 
 const EVIDENCE_VALID_REQUIREMENT: &str = r"
-source: legacy-monolith
-adapter: code-typescript
 authority: behaviour
 lead: user-registration
 claims:
@@ -236,8 +234,6 @@ claims:
 ";
 
 const EVIDENCE_VALID_SPATIAL: &str = r"
-source: home-screenshot
-adapter: screenshots
 authority: documentation
 lead: home-screen
 claims:
@@ -250,31 +246,23 @@ claims:
 ";
 
 const EVIDENCE_VALID_EMPTY_CLAIMS: &str = r"
-source: intent
-adapter: intent
 authority: intent
 lead: add-search-filter
 claims: []
 ";
 
 const EVIDENCE_INVALID_MISSING_AUTHORITY: &str = r"
-source: legacy-monolith
-adapter: code-typescript
 lead: user-registration
 claims: []
 ";
 
 const EVIDENCE_INVALID_BAD_AUTHORITY: &str = r"
-source: legacy-monolith
-adapter: code-typescript
 authority: unknown
 lead: user-registration
 claims: []
 ";
 
 const EVIDENCE_INVALID_BAD_KIND: &str = r"
-source: legacy-monolith
-adapter: code-typescript
 authority: behaviour
 lead: user-registration
 claims:
@@ -283,8 +271,6 @@ claims:
 ";
 
 const EVIDENCE_INVALID_REQUIREMENT_NO_CLAIM_ID: &str = r"
-source: notes
-adapter: documentation
 authority: documentation
 lead: password-reset
 claims:
@@ -292,11 +278,9 @@ claims:
     statement: Reset links expire after 30 minutes.
 ";
 
-const EVIDENCE_INVALID_SOURCE_NOT_KEBAB: &str = r"
-source: LegacyMonolith
-adapter: code-typescript
+const EVIDENCE_INVALID_LEAD_NOT_KEBAB: &str = r"
 authority: behaviour
-lead: user-registration
+lead: User_Registration
 claims: []
 ";
 
@@ -319,7 +303,7 @@ fn evidence_rejects_bad_authority_and_kinds() {
         &yaml(EVIDENCE_INVALID_REQUIREMENT_NO_CLAIM_ID),
         "evidence/requirement-missing-id",
     );
-    assert_invalid(&v, &yaml(EVIDENCE_INVALID_SOURCE_NOT_KEBAB), "evidence/source-not-kebab");
+    assert_invalid(&v, &yaml(EVIDENCE_INVALID_LEAD_NOT_KEBAB), "evidence/lead-not-kebab");
 }
 
 // --- discovery/lead.schema.json --------------------------------

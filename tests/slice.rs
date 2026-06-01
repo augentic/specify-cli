@@ -617,9 +617,7 @@ Status: agreed
 The system lets a registered user request a password reset link by email.
 ";
 
-const CLEAN_EVIDENCE_YAML: &str = "source: legacy-monolith
-adapter: code-typescript
-authority: behaviour
+const CLEAN_EVIDENCE_YAML: &str = "authority: behaviour
 lead: my-slice
 claims:
   - kind: requirement
@@ -760,9 +758,7 @@ body without metadata lines yet
 // ---------------------------------------------------------------------------
 
 /// Evidence with a `component:` directive on a claim.
-const EVIDENCE_WITH_COMPONENT: &str = "source: ui-screens
-adapter: screenshots
-authority: behaviour
+const EVIDENCE_WITH_COMPONENT: &str = "authority: behaviour
 lead: my-slice
 claims:
   - kind: region
@@ -773,9 +769,7 @@ claims:
 
 /// Evidence with `notes.candidate_component` (informational hint,
 /// not a hard `component:` directive).
-const EVIDENCE_WITH_CANDIDATE_COMPONENT: &str = "source: ui-screens
-adapter: screenshots
-authority: behaviour
+const EVIDENCE_WITH_CANDIDATE_COMPONENT: &str = "authority: behaviour
 lead: my-slice
 claims:
   - kind: region
@@ -917,9 +911,7 @@ fn validate_ignores_candidate_notes() {
 #[test]
 fn validate_passes_with_empty_catalog() {
     let empty_catalog = "version: 1\ncomponents: {}\n";
-    let evidence_no_component = "source: ui-screens
-adapter: screenshots
-authority: behaviour
+    let evidence_no_component = "authority: behaviour
 lead: my-slice
 claims:
   - kind: region

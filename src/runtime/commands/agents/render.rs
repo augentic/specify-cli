@@ -12,7 +12,7 @@ pub(super) struct Input {
     pub(super) project_name: String,
     pub(super) is_hub: bool,
     pub(super) detection: Detection,
-    pub(super) domain: Option<String>,
+    pub(super) description: Option<String>,
     pub(super) adapter: Option<Adapter>,
     pub(super) rule_overrides: Vec<Rule>,
     pub(super) declared_tools: Vec<Tool>,
@@ -138,8 +138,10 @@ fn navigation_bullets(input: &Input) -> Vec<String> {
 
 fn conventions_bullets(input: &Input) -> Vec<String> {
     let mut bullets = Vec::new();
-    if let Some(domain) = input.domain.as_deref().map(one_line).filter(|value| !value.is_empty()) {
-        bullets.push(format!("project domain: {domain}."));
+    if let Some(description) =
+        input.description.as_deref().map(one_line).filter(|value| !value.is_empty())
+    {
+        bullets.push(format!("project description: {description}."));
     }
     if let Some(adapter) = &input.adapter {
         bullets.push(format!(
@@ -238,7 +240,7 @@ mod tests {
             project_name: "demo".to_string(),
             is_hub: false,
             detection: Detection::default(),
-            domain: Some("Rust services".to_string()),
+            description: Some("Rust services".to_string()),
             adapter: Some(Adapter {
                 name: "omnia".to_string(),
                 version: 1,
