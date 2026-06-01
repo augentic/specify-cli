@@ -230,9 +230,7 @@ fn scan_slice_specs(
 /// All three checks can fail independently; we collect every finding
 /// into one [`Diagnostic`] vector so the caller can render the full
 /// surface in one pass instead of one error per re-run.
-fn collect_pre_adapter_gates(
-    ctx: &Ctx, slice_dir: &Path, name: &str,
-) -> Result<Vec<Diagnostic>> {
+fn collect_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<Vec<Diagnostic>> {
     let mut findings: Vec<Diagnostic> = Vec::new();
     findings.extend(override_orphans(ctx, name)?);
     findings.extend(alias_collisions(ctx)?);

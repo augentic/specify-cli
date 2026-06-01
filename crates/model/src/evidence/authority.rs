@@ -228,8 +228,14 @@ mod tests {
     #[test]
     fn resolution_order_step_1_per_slice_wins() {
         let contributors = vec![
-            Contributor { source: "docs", authority: AuthorityClass::Documentation },
-            Contributor { source: "runtime", authority: AuthorityClass::Behaviour },
+            Contributor {
+                source: "docs",
+                authority: AuthorityClass::Documentation,
+            },
+            Contributor {
+                source: "runtime",
+                authority: AuthorityClass::Behaviour,
+            },
         ];
         let resolved = resolve(Some("runtime"), &contributors);
         assert_eq!(resolved, Resolved::PerSlice { winner: "runtime" });
@@ -238,21 +244,36 @@ mod tests {
     #[test]
     fn resolution_order_step_2_document_authority_wins() {
         let contributors = vec![
-            Contributor { source: "docs", authority: AuthorityClass::Documentation },
-            Contributor { source: "runtime", authority: AuthorityClass::Behaviour },
+            Contributor {
+                source: "docs",
+                authority: AuthorityClass::Documentation,
+            },
+            Contributor {
+                source: "runtime",
+                authority: AuthorityClass::Behaviour,
+            },
         ];
         let resolved = resolve(None, &contributors);
         assert_eq!(
             resolved,
-            Resolved::Document { winner: "docs", class: AuthorityClass::Documentation }
+            Resolved::Document {
+                winner: "docs",
+                class: AuthorityClass::Documentation
+            }
         );
     }
 
     #[test]
     fn resolution_order_step_3_tied_conflict() {
         let contributors = vec![
-            Contributor { source: "docs-a", authority: AuthorityClass::Documentation },
-            Contributor { source: "docs-b", authority: AuthorityClass::Documentation },
+            Contributor {
+                source: "docs-a",
+                authority: AuthorityClass::Documentation,
+            },
+            Contributor {
+                source: "docs-b",
+                authority: AuthorityClass::Documentation,
+            },
         ];
         let resolved = resolve(None, &contributors);
         let Resolved::Conflict { tied } = resolved else {

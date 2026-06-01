@@ -69,7 +69,7 @@ Closed enum `intent > documentation > behaviour`. Resolution order: per-slice ov
 
 ## Refinement
 
-`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md`, writes `provenance.yaml`, and transitions the slice to `refined`. Validators live in [`crates/validate/src/`](../../crates/validate/src/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
+`/spec:refine` runs `extract` per bound source, synthesizes `proposal.md` / `spec.md` / `design.md` / `tasks.md` (provenance is carried inline in the single `model.yaml` artifact, projected on demand by `specrun slice provenance`), and transitions the slice to `refined`. Validators live in [`crates/validate/src/`](../../crates/validate/src/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
 
 ## Extraction
 
@@ -125,9 +125,9 @@ A per-Evidence `authority-overrides` map keyed by claim kind is **deferred to a 
 
 `plan.yaml.slices[].authority-override` maps claim kind to a source key bound on the slice. Orphan keys surface as `slice-authority-override-orphan-source`. See [`DECISIONS.md` §"Plan per-slice authority overrides"](../../DECISIONS.md#plan-per-slice-authority-overrides).
 
-## D4 — `provenance.yaml` is audit-only
+## D4 — Provenance is an on-demand projection
 
-Provenance index at `.specify/slices/<slice>/provenance.yaml`; `spec.md` is the authoritative artifact. Schema at [`schemas/slice/provenance.schema.json`](../../schemas/slice/provenance.schema.json); validator at [`crates/workflow/src/slice/provenance.rs`](../../crates/workflow/src/slice/provenance.rs). See [`DECISIONS.md` §"`provenance.yaml` audit index"](../../DECISIONS.md#provenanceyaml-audit-index).
+Provenance is carried inline in the single `model.yaml` artifact; `spec.md` is the authoritative artifact. There is no persisted `provenance.yaml` — `specrun slice provenance <slice> [--format]` projects the audit view on demand. Projection schema at [`schemas/slice/provenance.schema.json`](../../schemas/slice/provenance.schema.json); projector at [`crates/workflow/src/slice/provenance.rs`](../../crates/workflow/src/slice/provenance.rs). See [`DECISIONS.md` §"Single slice-model artifact (RFC-29 M2b simplification)"](../../DECISIONS.md#single-slice-model-artifact-rfc-29-m2b-simplification).
 
 ## D5 — Operator-driven `divergence`
 
@@ -145,6 +145,6 @@ Leads carry an optional `aliases[]` bullet. `slices[].sources[].lead` resolves f
 
 Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, lead id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/workflow/src/adapter/cache.rs`](../../crates/workflow/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
 
-## Provenance index
+## Provenance projection
 
-Closed top-level shape on `provenance.yaml`: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. See [`crates/workflow/src/slice/provenance.rs`](../../crates/workflow/src/slice/provenance.rs) and `kind: tool` evaluator contract above.
+Closed top-level shape on the projected view: `version`, `slice`, `generated-at`, `generator`, `requirements[]`. The view is computed from `model.yaml` on demand by `specrun slice provenance` and is never persisted. See [`crates/workflow/src/slice/provenance.rs`](../../crates/workflow/src/slice/provenance.rs) and `kind: tool` evaluator contract above.

@@ -119,10 +119,11 @@ pub struct ModelClaim {
 /// the document fails the schema.
 pub fn validate_model_doc(value: &JsonValue) -> Result<()> {
     let rule = "model.yaml conforms to schemas/slice/model.schema.json";
-    let failures: Vec<_> = validate_value(value, SLICE_MODEL_JSON_SCHEMA, "slice-model-schema", rule)
-        .into_iter()
-        .filter(|summary| summary.status == ValidationStatus::Fail)
-        .collect();
+    let failures: Vec<_> =
+        validate_value(value, SLICE_MODEL_JSON_SCHEMA, "slice-model-schema", rule)
+            .into_iter()
+            .filter(|summary| summary.status == ValidationStatus::Fail)
+            .collect();
     if failures.is_empty() {
         Ok(())
     } else {
@@ -284,7 +285,10 @@ tasks: []
     fn projects_provenance_from_inline_data() {
         let model = SliceModel::parse_yaml(PROJECTED_MODEL).expect("parse");
         let index = model
-            .to_provenance_index(test_timestamp("2026-05-28T05:45:00Z"), "specify@2.1.0".to_string())
+            .to_provenance_index(
+                test_timestamp("2026-05-28T05:45:00Z"),
+                "specify@2.1.0".to_string(),
+            )
             .expect("projection succeeds");
         assert_eq!(index.slice, "identity-service");
         assert_eq!(index.requirements.len(), 1);
@@ -300,17 +304,19 @@ tasks: []
         let mut model = SliceModel::parse_yaml(PROJECTED_MODEL).expect("parse");
         model.requirements[0].id = None;
         let err = model
-            .to_provenance_index(test_timestamp("2026-05-28T05:45:00Z"), "specify@2.1.0".to_string())
+            .to_provenance_index(
+                test_timestamp("2026-05-28T05:45:00Z"),
+                "specify@2.1.0".to_string(),
+            )
             .expect_err("a draft without projected ids cannot project provenance");
         assert!(matches!(err, Error::Validation { .. }));
     }
 
     #[test]
     fn rejects_document_missing_required_sections() {
-        let err = SliceModel::parse_yaml(
-            "version: 1\nslice: x\ntarget: omnia@v1\nrequirements: []\n",
-        )
-        .expect_err("a document missing the required sections must fail the schema");
+        let err =
+            SliceModel::parse_yaml("version: 1\nslice: x\ntarget: omnia@v1\nrequirements: []\n")
+                .expect_err("a document missing the required sections must fail the schema");
         assert!(matches!(err, Error::Validation { .. }));
     }
 }

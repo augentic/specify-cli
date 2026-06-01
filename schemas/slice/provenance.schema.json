@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/slice/provenance.schema.json",
-  "title": "Specify slice provenance.yaml",
-  "description": "Validates a slice's provenance index per workflow \u00a7D4. `/spec:refine` writes one `provenance.yaml` per slice at `.specify/slices/<slice>/provenance.yaml`, listing every `REQ-*` id in `spec.md` and the `(source, id)` pairs that contributed plus the authority outcome. The file is byte-stable across runs given the same inputs and is the operator's audit surface for synthesis decisions; it is regenerated whole on each `/spec:refine` and is not an authoritative input to any downstream verb (see workflow \u00a7Provenance index). Closed top-level shape; closed per-requirement shape; closed per-contributing-claim shape \u2014 unknown fields are rejected. Drift between `spec.md` `REQ-*` ids and this file's `requirements[].id` is reported by `specrun slice validate` as `slice-provenance-drift`.",
+  "title": "Specify slice provenance projection",
+  "description": "Validates the provenance audit view per workflow \u00a7D4. This is **not** a persisted file: provenance is carried inline in the single `model.yaml` artifact, and `specrun slice provenance <slice> [--format]` projects this shape on demand, listing every `REQ-*` id in `spec.md` and the `(source, id)` pairs that contributed plus the authority outcome. The projection is byte-stable across runs given the same model and is the operator's audit surface for synthesis decisions; it is regenerated from `model.yaml` on every invocation and is not an authoritative input to any downstream verb (see workflow \u00a7Provenance projection). Closed top-level shape; closed per-requirement shape; closed per-contributing-claim shape \u2014 unknown fields are rejected. Because the view is a pure projection of `model.yaml`, it cannot drift from its source; the former `slice-provenance-drift` gate is retired.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "slice", "generated-at", "generator", "requirements"],
@@ -10,7 +10,7 @@
     "version": {
       "type": "integer",
       "minimum": 1,
-      "description": "Stored schema version. Currently `1`. Bumped only on a breaking shape change to `provenance.yaml`; additive fields land without a bump."
+      "description": "Projection schema version. Currently `1`. Bumped only on a breaking shape change to the projected view; additive fields land without a bump."
     },
     "slice": {
       "$ref": "#/$defs/kebabName",

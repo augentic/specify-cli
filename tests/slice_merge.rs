@@ -374,11 +374,7 @@ fn archive_prune_requires_a_bound() {
     let project = Project::init();
     fs::create_dir_all(project.root().join(".specify/archive")).unwrap();
 
-    specrun()
-        .current_dir(project.root())
-        .args(["archive", "prune"])
-        .assert()
-        .failure();
+    specrun().current_dir(project.root()).args(["archive", "prune"]).assert().failure();
 }
 
 #[test]

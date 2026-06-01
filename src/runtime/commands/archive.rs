@@ -6,8 +6,7 @@ use std::io::Write;
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
-use specify_workflow::slice::actions::Retention;
-use specify_workflow::slice::actions::prune;
+use specify_workflow::slice::actions::{Retention, prune};
 
 pub mod cli;
 
@@ -31,11 +30,15 @@ fn prune_archive(
     if keep.is_none() && older_than.is_none() {
         return Err(Error::Argument {
             flag: "--keep/--older-than",
-            detail: "supply at least one retention bound (`--keep <n>` and/or `--older-than <days>`)"
-                .to_string(),
+            detail:
+                "supply at least one retention bound (`--keep <n>` and/or `--older-than <days>`)"
+                    .to_string(),
         });
     }
-    let retention = Retention { keep, max_age_days: older_than };
+    let retention = Retention {
+        keep,
+        max_age_days: older_than,
+    };
     let archive_dir = ctx.archive_dir();
     let candidates = prune::scan(&archive_dir, retention, Timestamp::now())?;
     if !dry_run {
