@@ -567,7 +567,6 @@ version: 1
 kind: response
 slices:
   - name: fix-typo
-    scope: fix-typo
     sources:
       - { source: intent, lead: fix-typo }
 ";
@@ -582,21 +581,18 @@ version: 1
 kind: response
 slices:
   - name: identity-contracts
-    scope: identity-api
     sources:
       - { source: docs, lead: identity-api }
       - { source: legacy, lead: identity-api }
     project: identity-contracts
     rationale: "identity API surface matched by shared slug across docs + legacy"
   - name: identity-service
-    scope: identity-api
     sources:
       - { source: docs, lead: identity-api }
       - { source: legacy, lead: identity-api }
     project: identity-service
     depends-on: [identity-contracts]
   - name: password-reset
-    scope: password-reset
     sources:
       - { source: docs, lead: password-reset }
       - { source: legacy, lead: reset-password }
@@ -614,7 +610,7 @@ slices:
         let malformed = r"
 version: 1
 slices:
-  - scope: orphan
+  - name: orphan
     sources:
       - { source: intent, lead: orphan }
 ";

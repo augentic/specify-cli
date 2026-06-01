@@ -2404,12 +2404,12 @@ const PROPOSE_DISCOVERY_N1: &str = "\
 ";
 
 /// N=1 agent response: omits `project` (kernel auto-binds the sole
-/// project) and `name` (kernel derives it from `scope`).
+/// project) and carries the explicit slice `name`.
 const PROPOSE_RESPONSE_N1: &str = r#"{
   "version": 1,
   "kind": "response",
   "slices": [
-    { "scope": "fix-typo", "sources": [{ "source": "intent", "lead": "fix-typo" }] }
+    { "name": "fix-typo", "sources": [{ "source": "intent", "lead": "fix-typo" }] }
   ]
 }"#;
 
@@ -2487,17 +2487,15 @@ slices: []
 ";
 
 /// Multi-source fan-out response (the proposal-schema envelope
-/// example): `identity-api` fans out to two projects (shared `scope`,
-/// identical `sources`); `password-reset` is a 1:1 scope matched across
-/// sources by summary, with a `depends-on` edge into the contracts
-/// crate.
+/// example): the `identity-api` lead is referenced by two slices
+/// (`identity-contracts` + `identity-service`, joined by `depends-on`);
+/// `password-reset` is a single slice matched across sources by summary.
 const PROPOSE_RESPONSE_FANOUT: &str = r#"{
   "version": 1,
   "kind": "response",
-  "slices": [
+    "slices": [
     {
       "name": "identity-contracts",
-      "scope": "identity-api",
       "sources": [
         { "source": "docs", "lead": "identity-api" },
         { "source": "legacy", "lead": "identity-api" }
@@ -2507,7 +2505,6 @@ const PROPOSE_RESPONSE_FANOUT: &str = r#"{
     },
     {
       "name": "identity-service",
-      "scope": "identity-api",
       "sources": [
         { "source": "docs", "lead": "identity-api" },
         { "source": "legacy", "lead": "identity-api" }
@@ -2517,7 +2514,6 @@ const PROPOSE_RESPONSE_FANOUT: &str = r#"{
     },
     {
       "name": "password-reset",
-      "scope": "password-reset",
       "sources": [
         { "source": "docs", "lead": "password-reset" },
         { "source": "legacy", "lead": "reset-password" }
@@ -2673,7 +2669,6 @@ fn propose_from_n1_auto_bind_golden() {
     let actual = propose_from_ok(project.root(), PROPOSE_RESPONSE_N1);
     assert_eq!(actual["plan"]["name"], "demo");
     assert_eq!(actual["slice-count"], 1);
-    assert_eq!(actual["scope-count"], 1);
     assert_eq!(actual["slice-names"], serde_json::json!(["fix-typo"]));
     assert_golden("propose-from-n1-summary.json", actual);
 
@@ -2698,7 +2693,6 @@ fn propose_from_fan_out_golden() {
     let actual = propose_from_ok(tmp.path(), PROPOSE_RESPONSE_FANOUT);
     assert_eq!(actual["plan"]["name"], "identity-revamp");
     assert_eq!(actual["slice-count"], 3);
-    assert_eq!(actual["scope-count"], 2);
     assert_eq!(
         actual["slice-names"],
         serde_json::json!(["identity-contracts", "identity-service", "password-reset"])
@@ -2722,7 +2716,7 @@ fn propose_from_fan_out_golden() {
     assert_eq!(plan.entries[0].sources.len(), 2);
     assert_eq!(plan.entries[0].sources[0].source(), "docs");
     assert_eq!(plan.entries[0].sources[1].source(), "legacy");
-    // The 1:1 scope keeps the cross-source leads verbatim.
+    // The password-reset slice keeps the cross-source leads verbatim.
     assert_eq!(plan.entries[2].sources[1].source(), "legacy");
     assert_eq!(plan.entries[2].sources[1].lead("password-reset"), "reset-password");
     // depends-on resolves to a derived slice name.
@@ -2733,7 +2727,7 @@ fn propose_from_fan_out_golden() {
 // -- journal tail -----------------------------------------------------
 
 #[test]
-fn propose_from_emits_paired_journal_tail() {
+fn propose_from_emits_single_journal_tail() {
     let tmp = hub_project(PROPOSE_REGISTRY_HUB, PROPOSE_DISCOVERY_HUB, PROPOSE_PLAN_HUB);
     let response = write_response(tmp.path(), PROPOSE_RESPONSE_FANOUT);
     specrun()
@@ -2749,25 +2743,11 @@ fn propose_from_emits_paired_journal_tail() {
         .filter(|l| !l.is_empty())
         .map(|l| serde_json::from_str(l).expect("journal line is JSON"))
         .collect();
-    assert_eq!(events.len(), 2, "exactly the two reconcile events fire, got:\n{events:#?}");
+    assert_eq!(events.len(), 1, "exactly one reconcile event fires, got:\n{events:#?}");
 
-    // First: plan.reconcile.agent with deduped scopes (the fan-out
-    // scope contributes a single entry that carries its rationale).
-    let agent = &events[0];
-    assert_eq!(agent["event"], "plan.reconcile.agent");
-    assert_eq!(agent["payload"]["plan-name"], "identity-revamp");
-    assert_eq!(agent["payload"]["slice-count"], 3);
-    let scopes = agent["payload"]["scopes"].as_array().expect("scopes array");
-    assert_eq!(scopes.len(), 2, "the identity-api fan-out scope dedupes to one entry: {scopes:#?}");
-    assert_eq!(scopes[0]["scope"], "identity-api");
-    assert_eq!(
-        scopes[0]["rationale"],
-        "identity API surface matched by shared slug across docs + legacy"
-    );
-    assert_eq!(scopes[1]["scope"], "password-reset");
-
-    // Then: plan.reconcile.completed with the derived names in order.
-    let completed = &events[1];
+    // RFC-29 review F8 folded the former agent/completed pair into one
+    // `plan.reconcile.completed` event carrying the slice names in order.
+    let completed = &events[0];
     assert_eq!(completed["event"], "plan.reconcile.completed");
     assert_eq!(completed["payload"]["plan-name"], "identity-revamp");
     assert_eq!(completed["payload"]["slice-count"], 3);
@@ -2822,7 +2802,7 @@ fn propose_response_schema_rejected() {
     // the structural deserialise.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"slices":[{"scope":"a","sources":[{"source":"docs","lead":"a"}]}]}"#,
+        r#"{"version":1,"slices":[{"name":"a","sources":[{"source":"docs","lead":"a"}]}]}"#,
     );
     assert_eq!(body["error"], "proposal-schema");
 }
@@ -2840,7 +2820,7 @@ fn propose_reconcile_lead_orphan() {
 
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"ghost"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"ghost"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-lead-orphan");
 }
@@ -2854,23 +2834,9 @@ fn propose_reconcile_slice_source_collision() {
     // One slice names two leads from the same source.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"},{"source":"docs","lead":"b"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"a"},{"source":"docs","lead":"b"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-slice-source-collision");
-}
-
-#[test]
-fn propose_reconcile_fanout_source_mismatch() {
-    let project = Project::init();
-    project.seed_plan("name: demo\nslices: []\n");
-    seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
-
-    // Two slices share `scope: s` but carry differing sources.
-    let body = propose_from_stderr(
-        project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}]},{"scope":"s","sources":[{"source":"docs","lead":"b"}]}]}"#,
-    );
-    assert_eq!(body["error"], "plan-reconcile-fanout-source-mismatch");
 }
 
 #[test]
@@ -2882,7 +2848,7 @@ fn propose_reconcile_partition_gap() {
     // The catalog carries two leads; the response covers only `a`.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-partition");
 }
@@ -2896,7 +2862,7 @@ fn propose_reconcile_project_orphan() {
     // The slice binds a project absent from the (sole-project) topology.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}],"project":"ghost"}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"a"}],"project":"ghost"}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-project-orphan");
 }
@@ -2913,23 +2879,9 @@ fn propose_reconcile_project_binding_required() {
 
     let body = propose_from_stderr(
         tmp.path(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-project-binding-required");
-}
-
-#[test]
-fn propose_reconcile_slice_duplicate() {
-    let project = Project::init();
-    project.seed_plan("name: demo\nslices: []\n");
-    seed_discovery(project.root(), &discovery_doc(&[("docs", "a")]));
-
-    // Two slices collapse to the same (scope, auto-bound project) pair.
-    let body = propose_from_stderr(
-        project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"scope":"s","sources":[{"source":"docs","lead":"a"}]},{"scope":"s","sources":[{"source":"docs","lead":"a"}]}]}"#,
-    );
-    assert_eq!(body["error"], "plan-reconcile-slice-duplicate");
 }
 
 #[test]
@@ -2938,10 +2890,11 @@ fn propose_reconcile_slice_name_collision() {
     project.seed_plan("name: demo\nslices: []\n");
     seed_discovery(project.root(), &discovery_doc(&[("docs", "a"), ("docs", "b")]));
 
-    // Two distinct scopes, but both supply the explicit name `dup`.
+    // Two distinct slices both supply the name `dup`. Name uniqueness is
+    // the sole duplicate gate now that `scope` is gone (RFC-29 review F3).
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"dup","scope":"s1","sources":[{"source":"docs","lead":"a"}]},{"name":"dup","scope":"s2","sources":[{"source":"docs","lead":"b"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"dup","sources":[{"source":"docs","lead":"a"}]},{"name":"dup","sources":[{"source":"docs","lead":"b"}]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-slice-name-collision");
 }
@@ -2955,7 +2908,7 @@ fn propose_reconcile_depends_on_cycle() {
     // alpha ↔ beta depend on each other.
     let body = propose_from_stderr(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"alpha","scope":"s1","sources":[{"source":"docs","lead":"a"}],"depends-on":["beta"]},{"name":"beta","scope":"s2","sources":[{"source":"docs","lead":"b"}],"depends-on":["alpha"]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"alpha","sources":[{"source":"docs","lead":"a"}],"depends-on":["beta"]},{"name":"beta","sources":[{"source":"docs","lead":"b"}],"depends-on":["alpha"]}]}"#,
     );
     assert_eq!(body["error"], "plan-reconcile-depends-on-cycle");
 }
@@ -2992,7 +2945,7 @@ fn propose_re_propose_replaces_all_slices() {
 
     propose_from_ok(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"first","scope":"first","sources":[{"source":"intent","lead":"fix-typo"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"first","sources":[{"source":"intent","lead":"fix-typo"}]}]}"#,
     );
     let plan_after_first = Plan::load(&project.plan_path()).expect("load plan");
     assert_eq!(
@@ -3002,7 +2955,7 @@ fn propose_re_propose_replaces_all_slices() {
 
     propose_from_ok(
         project.root(),
-        r#"{"version":1,"kind":"response","slices":[{"name":"second","scope":"second","sources":[{"source":"intent","lead":"fix-typo"}]}]}"#,
+        r#"{"version":1,"kind":"response","slices":[{"name":"second","sources":[{"source":"intent","lead":"fix-typo"}]}]}"#,
     );
     let plan_after_second = Plan::load(&project.plan_path()).expect("load plan");
     assert_eq!(

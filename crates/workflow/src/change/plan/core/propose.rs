@@ -26,7 +26,7 @@
 //! [`resolve_topology`], which reads the hub topology cache or resolves
 //! the regular project's target adapter to its canonical `name@vN` ref.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
 use petgraph::algo::tarjan_scc;
@@ -41,7 +41,6 @@ use super::validate::entry_dependency_graph;
 use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
 use crate::init::adapter_name_from_value;
-use crate::journal::ReconcileScope;
 use crate::registry::topology::TopologyLock;
 
 /// Wire version pinned by `schemas/discovery/proposal.schema.json`
@@ -157,29 +156,31 @@ pub struct ProposalResponse {
     pub slices: Vec<ResponseSlice>,
 }
 
-/// One `slices[]` row in a [`ProposalResponse`]: a `(scope, project)`
-/// pair carrying its matched `sources[]` inline.
+/// One `slices[]` row in a [`ProposalResponse`]: one slice of work
+/// carrying its matched `sources[]` inline and its explicit `name`.
+///
+/// The `scope` noun was removed (RFC-29 review F3): there is no kernel
+/// fan-out grouping. A body of work that targets more than one project
+/// is expressed as multiple ordinary slices (which may legally reference
+/// the same lead) joined by `depends-on`; the agent's explicit `name`
+/// disambiguates cross-source matches that carry differing slugs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ResponseSlice {
-    /// Optional explicit plan slice name. When absent the kernel derives
-    /// a name from `scope` (or `scope`-plus-`project` on fan-out).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Logical id of the reconciled unit of work — the slice-name basis
-    /// and the fan-out grouping key. Propose-time only; never written to
-    /// `plan.yaml`.
-    pub scope: String,
+    /// Explicit plan slice name (kebab-case). Required — with `scope`
+    /// gone the agent names every slice directly, and the kernel writes
+    /// it verbatim to `plan.yaml.slices[].name`.
+    pub name: String,
     /// Matched catalog rows, each referenced by `{ source, lead }`
-    /// (at most one per source). Slices sharing a `scope` carry an
-    /// identical set.
+    /// (at most one per source). A lead may appear in more than one
+    /// slice — that is fan-out.
     pub sources: Vec<ResponseMember>,
-    /// Optional scope-level cross-source-match rationale. Attached on any
-    /// one slice in a fan-out group.
+    /// Optional cross-source-match rationale the agent renders into
+    /// `change.md` for Gate 1. Agent-authored and kernel-ignored — it is
+    /// not echoed into the journal.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rationale: Option<String>,
-    /// Derived slice names this row depends on (not scope ids). Empty
-    /// stays off the wire.
+    /// Slice names this row depends on. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub depends_on: Vec<String>,
     /// Project this slice binds to, chosen from the request's
@@ -204,11 +205,12 @@ pub struct ResponseMember {
 ///
 /// The membership oracle the response-validation kernel (a later chunk)
 /// checks every agent-supplied `{ source, lead }` against to
-/// reject orphan bindings and to prove the scope partition is total.
-/// Identities are deduplicated — a well-formed `discovery.md` carries a
-/// unique `(source, lead)` per lead (the per-source single
-/// namespace is enforced by `Discovery::check_alias_collisions`), so
-/// [`LeadCatalog::len`] equals the surveyed lead count.
+/// reject orphan bindings and to prove every surveyed lead is covered by
+/// at least one slice. Identities are deduplicated — a well-formed
+/// `discovery.md` carries a unique `(source, lead)` per lead (the
+/// per-source single namespace is enforced by
+/// `Discovery::check_alias_collisions`), so [`LeadCatalog::len`] equals
+/// the surveyed lead count.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LeadCatalog {
     identities: BTreeSet<(String, String)>,
@@ -382,20 +384,15 @@ fn regular_topology(config: &ProjectConfig, project_dir: &Path) -> Result<Projec
 /// Outcome of a successful [`Plan::propose_from`] projection.
 ///
 /// The reconciliation kernel returns it so the CLI handler (the
-/// `propose --from` command) can emit the two D2 journal events
-/// without re-deriving anything: [`ProposeOutcome::scopes`] feeds the
-/// deduped `plan.reconcile.agent` payload, and
-/// [`ProposeOutcome::slice_names`] (plus its length) feeds
-/// `plan.reconcile.completed`.
+/// `propose --from` command) can emit the single D2
+/// `plan.reconcile.completed` journal event without re-deriving
+/// anything: [`ProposeOutcome::slice_names`] (plus its length) feeds the
+/// payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProposeOutcome {
-    /// Derived slice names, in the agent's `slices[]` response order —
-    /// the same order the kernel wrote `plan.yaml.slices[]`.
+    /// Slice names, in the agent's `slices[]` response order — the same
+    /// order the kernel wrote `plan.yaml.slices[]`.
     pub slice_names: Vec<String>,
-    /// Reconciled scopes deduped by `scope` id in first-appearance
-    /// order, each carrying the scope's first non-empty cross-source
-    /// `rationale` (a fan-out scope contributes one entry).
-    pub scopes: Vec<ReconcileScope>,
 }
 
 impl Plan {
@@ -407,11 +404,11 @@ impl Plan {
     /// validation (`validate_proposal_json`) at the CLI boundary, so this
     /// method enforces only the *semantic* invariants the schema cannot
     /// express. The checks fire in this order, returning the first
-    /// violation: replaceable gate (`plan-reconcile-plan-not-replaceable`); lead-orphan (`plan-reconcile-lead-orphan`); per-slice same-source fusion (`plan-reconcile-slice-source-collision`); fan-out source consistency (`plan-reconcile-fanout-source-mismatch`); total global partition (`plan-reconcile-partition`); project auto-bind / orphan (`plan-reconcile-project-binding-required`, `plan-reconcile-project-orphan`); unique `(scope, project)` pairs (`plan-reconcile-slice-duplicate`); slice-name derivation + collision (`plan-reconcile-slice-name-collision`); `depends-on` cycle (`plan-reconcile-depends-on-cycle`); and finally a backstop [`Plan::validate`] over the projected entries that rolls the plan back on any blocking finding.
+    /// violation: replaceable gate (`plan-reconcile-plan-not-replaceable`); lead-orphan (`plan-reconcile-lead-orphan`); per-slice same-source fusion (`plan-reconcile-slice-source-collision`); total lead coverage (`plan-reconcile-partition`); project auto-bind / orphan (`plan-reconcile-project-binding-required`, `plan-reconcile-project-orphan`); slice-name kebab-case + collision (`plan-reconcile-slice-name-invalid`, `plan-reconcile-slice-name-collision`); `depends-on` cycle (`plan-reconcile-depends-on-cycle`); and finally a backstop [`Plan::validate`] over the projected entries that rolls the plan back on any blocking finding.
     ///
     /// On success `self.entries` is the projected slice set in response
-    /// order and the returned [`ProposeOutcome`] carries the derived
-    /// names and deduped scopes for the caller's journal events.
+    /// order and the returned [`ProposeOutcome`] carries the slice names
+    /// for the caller's `plan.reconcile.completed` journal event.
     ///
     /// # Errors
     ///
@@ -432,20 +429,18 @@ impl Plan {
         let slices = response.slices.as_slice();
 
         check_lead_orphans(slices, &catalog)?;
-        let scope_sets = group_scopes(slices, &slice_source_sets(slices)?)?;
-        check_partition(&scope_sets, &catalog)?;
+        let source_sets = slice_source_sets(slices)?;
+        check_coverage(&source_sets, &catalog)?;
         let bound = bind_projects(slices, topology)?;
-        check_slice_duplicates(slices, &bound)?;
         // Eagerly validate that every bound project's target parses as
         // `name@vN` so a corrupt topology fails at propose time, even
         // though the resolved target is no longer written to disk.
         for project in &bound {
             parse_project_target(project)?;
         }
-        let names = derive_names(slices, &bound)?;
+        let names = slice_names(slices)?;
         check_name_collisions(&names)?;
 
-        let scopes = dedup_scopes(&response);
         let new_entries = build_entries(response.slices, &names, &bound);
 
         if has_dependency_cycle(&new_entries) {
@@ -466,18 +461,15 @@ impl Plan {
             return Err(Error::validation_failed(finding.code, String::new(), finding.message));
         }
 
-        Ok(ProposeOutcome {
-            slice_names: names,
-            scopes,
-        })
+        Ok(ProposeOutcome { slice_names: names })
     }
 }
 
 /// A `(source, lead)` catalog identity.
 type LeadPair = (String, String);
 
-/// The order-insensitive `sources[]` membership of one scope.
-type ScopeMembership = BTreeSet<LeadPair>;
+/// The order-insensitive `sources[]` membership of one slice.
+type SliceMembership = BTreeSet<LeadPair>;
 
 /// Lead-orphan: every cited `(source, lead)` must name a current
 /// catalog row (`plan-reconcile-lead-orphan`).
@@ -500,8 +492,10 @@ fn check_lead_orphans(slices: &[ResponseSlice], catalog: &LeadCatalog) -> Result
 }
 
 /// Per-slice source set, enforcing at-most-one-lead-per-source
-/// (`plan-reconcile-slice-source-collision`).
-fn slice_source_sets(slices: &[ResponseSlice]) -> Result<Vec<ScopeMembership>> {
+/// (`plan-reconcile-slice-source-collision`). This per-slice shape check
+/// is independent of the removed `scope` grouping (RFC-29 review F3) — a
+/// slice that named the same source twice is malformed regardless.
+fn slice_source_sets(slices: &[ResponseSlice]) -> Result<Vec<SliceMembership>> {
     let mut out = Vec::with_capacity(slices.len());
     for slice in slices {
         let mut set = BTreeSet::new();
@@ -510,10 +504,10 @@ fn slice_source_sets(slices: &[ResponseSlice]) -> Result<Vec<ScopeMembership>> {
             if !keys.insert(member.source.as_str()) {
                 return Err(Error::validation_failed(
                     "plan-reconcile-slice-source-collision",
-                    "a scope names at most one lead per source",
+                    "a slice names at most one lead per source",
                     format!(
-                        "scope '{}' names source '{}' more than once",
-                        slice.scope, member.source
+                        "slice '{}' names source '{}' more than once",
+                        slice.name, member.source
                     ),
                 ));
             }
@@ -524,54 +518,24 @@ fn slice_source_sets(slices: &[ResponseSlice]) -> Result<Vec<ScopeMembership>> {
     Ok(out)
 }
 
-/// Collapse slices into per-scope membership in first-appearance order,
-/// enforcing fan-out consistency (`plan-reconcile-fanout-source-mismatch`):
-/// slices sharing a `scope` carry an identical `sources[]` set.
-fn group_scopes(
-    slices: &[ResponseSlice], sets: &[ScopeMembership],
-) -> Result<Vec<(String, ScopeMembership)>> {
-    let mut scope_sets: Vec<(String, ScopeMembership)> = Vec::new();
-    for (idx, slice) in slices.iter().enumerate() {
-        let set = &sets[idx];
-        match scope_sets.iter().find(|(scope, _)| scope == &slice.scope) {
-            Some((_, existing)) if existing != set => {
-                return Err(Error::validation_failed(
-                    "plan-reconcile-fanout-source-mismatch",
-                    "slices sharing a scope must carry identical sources",
-                    format!("scope '{}' has fan-out rows with differing sources", slice.scope),
-                ));
-            }
-            Some(_) => {}
-            None => scope_sets.push((slice.scope.clone(), set.clone())),
-        }
-    }
-    Ok(scope_sets)
-}
-
-/// Total global partition: every catalog lead lands in exactly one scope —
-/// none missing, none in two scopes (`plan-reconcile-partition`).
-fn check_partition(scope_sets: &[(String, ScopeMembership)], catalog: &LeadCatalog) -> Result<()> {
-    let mut owner: HashMap<LeadPair, String> = HashMap::new();
-    for (scope, set) in scope_sets {
+/// Total lead coverage: every surveyed lead is referenced by at least
+/// one slice (`plan-reconcile-partition`). With the `scope` grouping
+/// removed (RFC-29 review F3) a lead may legally appear in more than one
+/// slice — that is fan-out, not a double-count — so coverage is the only
+/// remaining invariant: nothing surveyed is left unplanned.
+fn check_coverage(source_sets: &[SliceMembership], catalog: &LeadCatalog) -> Result<()> {
+    let mut covered: HashSet<&LeadPair> = HashSet::new();
+    for set in source_sets {
         for pair in set {
-            if let Some(prev) = owner.insert(pair.clone(), scope.clone()) {
-                return Err(Error::validation_failed(
-                    "plan-reconcile-partition",
-                    "each surveyed lead belongs to exactly one scope",
-                    format!(
-                        "lead ({}, {}) appears in scopes '{prev}' and '{scope}'",
-                        pair.0, pair.1
-                    ),
-                ));
-            }
+            covered.insert(pair);
         }
     }
     for pair in &catalog.identities {
-        if !owner.contains_key(pair) {
+        if !covered.contains(pair) {
             return Err(Error::validation_failed(
                 "plan-reconcile-partition",
-                "each surveyed lead belongs to exactly one scope",
-                format!("lead ({}, {}) is unaccounted for by any scope", pair.0, pair.1),
+                "every surveyed lead must be referenced by at least one slice",
+                format!("lead ({}, {}) is unaccounted for by any slice", pair.0, pair.1),
             ));
         }
     }
@@ -592,7 +556,7 @@ fn bind_projects<'a>(
                 Error::validation_failed(
                     "plan-reconcile-project-orphan",
                     "a bound project must exist in the request topology",
-                    format!("slice scope '{}' binds unknown project '{name}'", slice.scope),
+                    format!("slice '{}' binds unknown project '{name}'", slice.name),
                 )
             })?,
             None if topology.len() == 1 => &topology[0],
@@ -601,8 +565,8 @@ fn bind_projects<'a>(
                     "plan-reconcile-project-binding-required",
                     "a slice may omit project only when exactly one project exists",
                     format!(
-                        "scope '{}' omits project but {} projects are available",
-                        slice.scope,
+                        "slice '{}' omits project but {} projects are available",
+                        slice.name,
                         topology.len()
                     ),
                 ));
@@ -611,21 +575,6 @@ fn bind_projects<'a>(
         bound.push(project);
     }
     Ok(bound)
-}
-
-/// Unique `(scope, project)` pairs (`plan-reconcile-slice-duplicate`).
-fn check_slice_duplicates(slices: &[ResponseSlice], bound: &[&ProjectRef]) -> Result<()> {
-    let mut seen: HashSet<(&str, &str)> = HashSet::new();
-    for (idx, slice) in slices.iter().enumerate() {
-        if !seen.insert((slice.scope.as_str(), bound[idx].name.as_str())) {
-            return Err(Error::validation_failed(
-                "plan-reconcile-slice-duplicate",
-                "each (scope, project) pair maps to one slice",
-                format!("scope '{}' binds project '{}' twice", slice.scope, bound[idx].name),
-            ));
-        }
-    }
-    Ok(())
 }
 
 /// Resolve a single slice [`Entry`]'s target adapter from the project
@@ -689,36 +638,29 @@ fn parse_project_target(project: &ProjectRef) -> Result<TargetRef> {
     })
 }
 
-/// Derive each slice name (RFC-29 D2 slice-name derivation): an explicit name, else
-/// `scope` for a 1:1 scope, else `<scope>-<project>` across a fan-out
-/// group. Every derived or explicit name must be kebab-case.
-fn derive_names(slices: &[ResponseSlice], bound: &[&ProjectRef]) -> Result<Vec<String>> {
-    let mut scope_count: HashMap<&str, usize> = HashMap::new();
-    for slice in slices {
-        *scope_count.entry(slice.scope.as_str()).or_default() += 1;
-    }
+/// Collect each slice's explicit `name`, validating kebab-case
+/// (`plan-reconcile-slice-name-invalid`). With `scope` removed (RFC-29
+/// review F3) there is no kernel name derivation — the agent names every
+/// slice and the kernel writes the name verbatim.
+fn slice_names(slices: &[ResponseSlice]) -> Result<Vec<String>> {
     let mut names = Vec::with_capacity(slices.len());
-    for (idx, slice) in slices.iter().enumerate() {
-        let name = match &slice.name {
-            Some(explicit) => explicit.clone(),
-            None if scope_count[slice.scope.as_str()] == 1 => slice.scope.clone(),
-            None => format!("{}-{}", slice.scope, bound[idx].name),
-        };
-        if !is_kebab(&name) {
+    for slice in slices {
+        if !is_kebab(&slice.name) {
             return Err(Error::validation_failed(
                 "plan-reconcile-slice-name-invalid",
-                "a derived or explicit slice name must be kebab-case",
-                format!("slice name '{name}' is not kebab-case"),
+                "a slice name must be kebab-case",
+                format!("slice name '{}' is not kebab-case", slice.name),
             ));
         }
-        names.push(name);
+        names.push(slice.name.clone());
     }
     Ok(names)
 }
 
-/// Reject clashing final slice names. Derived names are unique by
-/// construction, so a clash necessarily involves an agent-supplied
-/// explicit name (`plan-reconcile-slice-name-collision`).
+/// Reject clashing slice names (`plan-reconcile-slice-name-collision`).
+/// With names now agent-supplied on every slice, this is the sole
+/// uniqueness gate — it subsumes the former `(scope, project)`
+/// duplicate check.
 fn check_name_collisions(names: &[String]) -> Result<()> {
     let mut seen: HashSet<&str> = HashSet::new();
     for name in names {
@@ -771,29 +713,6 @@ fn has_dependency_cycle(entries: &[Entry]) -> bool {
     tarjan_scc(&graph)
         .into_iter()
         .any(|scc| scc.len() > 1 || (scc.len() == 1 && graph.find_edge(scc[0], scc[0]).is_some()))
-}
-
-/// Dedupe a response's scopes by `scope` id in first-appearance order,
-/// carrying each scope's first non-`None` cross-source `rationale`.
-fn dedup_scopes(response: &ProposalResponse) -> Vec<ReconcileScope> {
-    let mut order: Vec<&str> = Vec::new();
-    let mut seen: HashSet<&str> = HashSet::new();
-    for slice in &response.slices {
-        if seen.insert(slice.scope.as_str()) {
-            order.push(slice.scope.as_str());
-        }
-    }
-    order
-        .into_iter()
-        .map(|scope| ReconcileScope {
-            scope: scope.to_string(),
-            rationale: response
-                .slices
-                .iter()
-                .filter(|s| s.scope == scope)
-                .find_map(|s| s.rationale.clone()),
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -914,26 +833,25 @@ mod tests {
     #[test]
     fn response_round_trips_rfc_multi_source_example() {
         // Multi-source fan-out response (the proposal-schema envelope example).
+        // Fan-out is two ordinary slices that reference the same lead and
+        // are joined by `depends-on` — there is no `scope` grouping.
         let yaml = "\
 version: 1
 kind: response
 slices:
   - name: identity-contracts
-    scope: identity-api
     sources:
       - { source: docs, lead: identity-api }
       - { source: legacy, lead: identity-api }
     project: identity-contracts
     rationale: \"identity API surface matched by shared slug across docs + legacy\"
   - name: identity-service
-    scope: identity-api
     sources:
       - { source: docs, lead: identity-api }
       - { source: legacy, lead: identity-api }
     project: identity-service
     depends-on: [identity-contracts]
   - name: password-reset
-    scope: password-reset
     sources:
       - { source: docs, lead: password-reset }
       - { source: legacy, lead: reset-password }
@@ -948,8 +866,7 @@ slices:
         assert_eq!(response.slices.len(), 3);
 
         let contracts = &response.slices[0];
-        assert_eq!(contracts.name.as_deref(), Some("identity-contracts"));
-        assert_eq!(contracts.scope, "identity-api");
+        assert_eq!(contracts.name, "identity-contracts");
         assert_eq!(contracts.project.as_deref(), Some("identity-contracts"));
         assert_eq!(contracts.sources.len(), 2);
         assert_eq!(contracts.sources[0].source, "docs");
@@ -957,11 +874,12 @@ slices:
         assert!(contracts.depends_on.is_empty());
 
         let service = &response.slices[1];
+        assert_eq!(service.name, "identity-service");
         assert_eq!(service.depends_on, vec!["identity-contracts"]);
         assert!(service.rationale.is_none());
 
         let reset = &response.slices[2];
-        assert_eq!(reset.scope, "password-reset");
+        assert_eq!(reset.name, "password-reset");
         assert_eq!(reset.sources[1].source, "legacy");
         assert_eq!(reset.sources[1].lead, "reset-password");
 
@@ -1067,10 +985,9 @@ slices:
         }
     }
 
-    fn slice(scope: &str, sources: Vec<ResponseMember>) -> ResponseSlice {
+    fn slice(name: &str, sources: Vec<ResponseMember>) -> ResponseSlice {
         ResponseSlice {
-            name: None,
-            scope: scope.to_string(),
+            name: name.to_string(),
             sources,
             rationale: None,
             depends_on: Vec::new(),
@@ -1147,18 +1064,6 @@ slices:
     }
 
     #[test]
-    fn propose_rejects_fanout_source_mismatch() {
-        let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
-        let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
-        let topo = vec![project("p", "omnia@v1", "svc")];
-        let resp = response(vec![
-            slice("s", vec![member("docs", "a")]),
-            slice("s", vec![member("docs", "b")]),
-        ]);
-        assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-fanout-source-mismatch");
-    }
-
-    #[test]
     fn propose_rejects_partition_gap() {
         let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
         let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
@@ -1196,32 +1101,13 @@ slices:
     }
 
     #[test]
-    fn propose_rejects_slice_duplicate() {
-        let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
-        let doc = discovery_with(&[("docs", "a")]);
-        let topo = vec![project("p", "omnia@v1", "svc")];
-        // Two slices share one (scope, project) pair with identical sources.
-        let bind = || {
-            let mut s = slice("s", vec![member("docs", "a")]);
-            s.project = Some("p".to_string());
-            s
-        };
-        assert_code(
-            plan.propose_from(response(vec![bind(), bind()]), &doc, &topo),
-            "plan-reconcile-slice-duplicate",
-        );
-    }
-
-    #[test]
     fn propose_rejects_slice_name_collision() {
         let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
         let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
         let topo = vec![project("p", "omnia@v1", "svc")];
-        let mut s1 = slice("s1", vec![member("docs", "a")]);
-        s1.name = Some("dup".to_string());
+        let mut s1 = slice("dup", vec![member("docs", "a")]);
         s1.project = Some("p".to_string());
-        let mut s2 = slice("s2", vec![member("docs", "b")]);
-        s2.name = Some("dup".to_string());
+        let mut s2 = slice("dup", vec![member("docs", "b")]);
         s2.project = Some("p".to_string());
         assert_code(
             plan.propose_from(response(vec![s1, s2]), &doc, &topo),
@@ -1230,16 +1116,23 @@ slices:
     }
 
     #[test]
+    fn propose_rejects_slice_name_not_kebab() {
+        let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
+        let doc = discovery_with(&[("docs", "a")]);
+        let topo = vec![project("p", "omnia@v1", "svc")];
+        let resp = response(vec![slice("Not Kebab", vec![member("docs", "a")])]);
+        assert_code(plan.propose_from(resp, &doc, &topo), "plan-reconcile-slice-name-invalid");
+    }
+
+    #[test]
     fn propose_rejects_depends_on_cycle() {
         let mut plan = plan_with_sources(Lifecycle::Pending, &["docs"]);
         let doc = discovery_with(&[("docs", "a"), ("docs", "b")]);
         let topo = vec![project("p", "omnia@v1", "svc")];
-        let mut s1 = slice("alpha-scope", vec![member("docs", "a")]);
-        s1.name = Some("alpha".to_string());
+        let mut s1 = slice("alpha", vec![member("docs", "a")]);
         s1.project = Some("p".to_string());
         s1.depends_on = vec!["beta".to_string()];
-        let mut s2 = slice("beta-scope", vec![member("docs", "b")]);
-        s2.name = Some("beta".to_string());
+        let mut s2 = slice("beta", vec![member("docs", "b")]);
         s2.project = Some("p".to_string());
         s2.depends_on = vec!["alpha".to_string()];
         assert_code(
@@ -1253,15 +1146,12 @@ slices:
         let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
         let doc = discovery_with(&[("intent", "fix-typo")]);
         let topo = vec![project("my-app", "omnia@v1", "Single Omnia service.")];
-        // No explicit name (derives from scope) and no project (auto-bound).
+        // Explicit name, no project (auto-bound to the sole project).
         let resp = response(vec![slice("fix-typo", vec![member("intent", "fix-typo")])]);
 
         let out = plan.propose_from(resp, &doc, &topo).expect("N=1 projects");
 
         assert_eq!(out.slice_names, vec!["fix-typo"]);
-        assert_eq!(out.scopes.len(), 1);
-        assert_eq!(out.scopes[0].scope, "fix-typo");
-        assert_eq!(out.scopes[0].rationale, None);
 
         assert_eq!(plan.entries.len(), 1);
         let entry = &plan.entries[0];
@@ -1288,27 +1178,26 @@ slices:
         ];
         let mut plan = plan_with_sources(Lifecycle::Pending, &["docs", "legacy"]);
 
-        // Multi-source fan-out response (the proposal-schema envelope example).
+        // Multi-source fan-out response. Fan-out is two ordinary slices
+        // referencing the same `identity-api` lead, joined by `depends-on`;
+        // there is no `scope` grouping.
         let yaml = "\
 version: 1
 kind: response
 slices:
   - name: identity-contracts
-    scope: identity-api
     sources:
       - { source: docs, lead: identity-api }
       - { source: legacy, lead: identity-api }
     project: identity-contracts
     rationale: \"identity API surface matched by shared slug across docs + legacy\"
   - name: identity-service
-    scope: identity-api
     sources:
       - { source: docs, lead: identity-api }
       - { source: legacy, lead: identity-api }
     project: identity-service
     depends-on: [identity-contracts]
   - name: password-reset
-    scope: password-reset
     sources:
       - { source: docs, lead: password-reset }
       - { source: legacy, lead: reset-password }
@@ -1323,21 +1212,6 @@ slices:
         assert_eq!(
             out.slice_names,
             vec!["identity-contracts", "identity-service", "password-reset"]
-        );
-        // Two distinct scopes; the fan-out scope dedupes to one entry and
-        // carries its rationale.
-        assert_eq!(out.scopes.len(), 2);
-        assert_eq!(out.scopes[0].scope, "identity-api");
-        assert_eq!(
-            out.scopes[0].rationale.as_deref(),
-            Some("identity API surface matched by shared slug across docs + legacy")
-        );
-        assert_eq!(out.scopes[1].scope, "password-reset");
-        assert_eq!(
-            out.scopes[1].rationale.as_deref(),
-            Some(
-                "password-reset (docs) and reset-password (legacy) are the same flow by synopsis judgment"
-            )
         );
 
         assert_eq!(plan.entries.len(), 3);

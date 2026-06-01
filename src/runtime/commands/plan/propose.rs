@@ -15,9 +15,8 @@
 //!   `discovery.md` and the topology (never trusting a prior dry-run
 //!   snapshot), projects the response onto `plan.yaml.slices[]` through
 //!   [`Plan::propose_from`] under the atomic [`with_state`] write loop,
-//!   and — only after the write commits — emits the paired
-//!   `plan.reconcile.agent` + `plan.reconcile.completed` journal events
-//!   in one batched append.
+//!   and — only after the write commits — emits the single
+//!   `plan.reconcile.completed` journal event.
 //!
 //! Passing neither mode fails with `plan-propose-mode-required`
 //! (exit 2); the clap layer rejects passing both.
@@ -107,8 +106,8 @@ fn from(ctx: &Ctx, response_path: &Path) -> Result<()> {
         })
     })?;
 
-    // Only after the write commits: emit both events in one batch.
-    emit_reconcile_events(ctx, &projected)?;
+    // Only after the write commits: emit the reconcile event.
+    emit_reconcile_event(ctx, &projected)?;
 
     ctx.write(&summary(projected), write_summary_text)
 }
@@ -128,40 +127,26 @@ struct ProposeSummary {
     plan: Ref,
     slice_names: Vec<String>,
     slice_count: usize,
-    scope_count: usize,
 }
 
-/// Emit the paired `plan.reconcile.agent` then `plan.reconcile.completed`
-/// events in one batched, fsynced append — reached only after the
-/// `plan.yaml` write has committed.
-fn emit_reconcile_events(ctx: &Ctx, projected: &Projected) -> Result<()> {
-    let slice_count = projected.outcome.slice_names.len();
-    let events = [
-        Event::new(
-            Timestamp::now(),
-            EventKind::PlanReconcileAgent {
-                plan_name: projected.plan.name.clone(),
-                scopes: projected.outcome.scopes.clone(),
-                slice_count,
-            },
-        ),
-        Event::new(
-            Timestamp::now(),
-            EventKind::PlanReconcileCompleted {
-                plan_name: projected.plan.name.clone(),
-                slice_count,
-                slice_names: projected.outcome.slice_names.clone(),
-            },
-        ),
-    ];
-    journal::append_batch(ctx.layout(), &events)
+/// Emit the single `plan.reconcile.completed` event — reached only after
+/// the `plan.yaml` write has committed.
+fn emit_reconcile_event(ctx: &Ctx, projected: &Projected) -> Result<()> {
+    let event = Event::new(
+        Timestamp::now(),
+        EventKind::PlanReconcileCompleted {
+            plan_name: projected.plan.name.clone(),
+            slice_count: projected.outcome.slice_names.len(),
+            slice_names: projected.outcome.slice_names.clone(),
+        },
+    );
+    journal::append_batch(ctx.layout(), std::slice::from_ref(&event))
 }
 
 /// Build the `--from` response summary from a committed projection.
 fn summary(projected: Projected) -> ProposeSummary {
     ProposeSummary {
         slice_count: projected.outcome.slice_names.len(),
-        scope_count: projected.outcome.scopes.len(),
         slice_names: projected.outcome.slice_names,
         plan: projected.plan,
     }
@@ -215,7 +200,6 @@ fn write_summary_text(w: &mut dyn Write, body: &ProposeSummary) -> std::io::Resu
     writeln!(w, "plan: {}", body.plan.name)?;
     writeln!(w, "path: {}", body.plan.path)?;
     writeln!(w, "slice-count: {}", body.slice_count)?;
-    writeln!(w, "scope-count: {}", body.scope_count)?;
     if body.slice_names.is_empty() {
         writeln!(w, "slices: (none)")?;
     } else {

@@ -97,8 +97,8 @@ pub enum PlanAction {
     ///   it re-reads `discovery.md`, rebuilds the lead catalog (never
     ///   trusting a prior dry-run snapshot), validates the agent's
     ///   grouping response, and replaces `plan.yaml.slices[]` wholesale —
-    ///   in the agent's response order — then emits the paired
-    ///   `plan.reconcile.agent` + `plan.reconcile.completed` events.
+    ///   in the agent's response order — then emits the single
+    ///   `plan.reconcile.completed` event.
     ///
     /// Passing neither mode fails with `plan-propose-mode-required`
     /// (exit 2).
