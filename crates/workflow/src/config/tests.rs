@@ -169,9 +169,9 @@ fn workspace_field_defaults_false_round_trips() {
     assert!(cfg.tools.is_empty(), "tools must default empty when absent");
 
     let tmp = tempdir().unwrap();
-    write_config(tmp.path(), "name: demo\nhub: true\n");
+    write_config(tmp.path(), "name: demo\nworkspace: true\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("loads");
-    assert!(cfg.workspace, "legacy hub: true must deserialize as workspace");
+    assert!(cfg.workspace, "workspace: true must deserialize");
     assert!(cfg.adapter.is_none(), "workspace project.yaml must omit adapter:");
 }
 
@@ -241,22 +241,22 @@ fn tools_field_omitted_when_empty() {
 }
 
 #[test]
-fn workspace_clone_detects_literal_workspace_slot() {
+fn slot_detects_literal_workspace_slot() {
     let path = Path::new("/repo/.specify/workspace/orders");
-    assert!(is_workspace_clone(path));
+    assert!(is_slot(path));
 }
 
 #[test]
-fn workspace_clone_detects_nested() {
+fn slot_detects_nested() {
     let path = Path::new("/repo/.specify/workspace/orders/src/service");
-    assert!(is_workspace_clone(path));
+    assert!(is_slot(path));
 }
 
 #[test]
-fn workspace_clone_rejects_non_workspace_paths() {
-    assert!(!is_workspace_clone(Path::new("/repo")));
-    assert!(!is_workspace_clone(Path::new("/repo/.specify")));
-    assert!(!is_workspace_clone(Path::new("/repo/.specify/workspace")));
+fn slot_rejects_non_slot_paths() {
+    assert!(!is_slot(Path::new("/repo")));
+    assert!(!is_slot(Path::new("/repo/.specify")));
+    assert!(!is_slot(Path::new("/repo/.specify/workspace")));
 }
 
 #[test]

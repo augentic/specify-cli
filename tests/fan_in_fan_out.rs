@@ -21,7 +21,7 @@
 //! RFC-29d describes the *same-tree registry-symlink* topology, where
 //! two registry projects resolve into one working tree via `registry.yaml`
 //! URLs materialised as symlinks. Per the C10 pragmatism guidance, this
-//! test uses the **hub + committed `topology.lock`** projection that the
+//! test uses the **workspace + committed `topology.lock`** projection that the
 //! shipped `plan propose` tests already exercise (see
 //! `tests/plan_orchestrate.rs::propose_*`) — it exposes the same two
 //! projects to `propose` without the symlink-materialisation machinery,
@@ -45,7 +45,7 @@
 //! covered in `tests/slice.rs::synthesize_normalizes_pre_assigned_fields`.
 //! This test asserts the *composed* path and the fan-out-specific guards
 //! (`plan-propose-mode-required` plus a `project-binding-required`
-//! spot-check on this hub), then the build / merge / ordering /
+//! spot-check on this workspace), then the build / merge / ordering /
 //! determinism behaviour no existing test covers.
 //!
 //! `change.md` rendering of cross-source matches is **agent-owned**: the
@@ -64,7 +64,7 @@ use tempfile::{TempDir, tempdir};
 
 mod common;
 use common::{
-    copy_dir, init_hub, omnia_schema_dir, parse_json, parse_stderr, parse_stdout, repo_root,
+    copy_dir, init_workspace, omnia_schema_dir, parse_json, parse_stderr, parse_stdout, repo_root,
     specrun,
 };
 
@@ -96,7 +96,7 @@ projects:
     description: Omnia identity service implementing auth and password flows.
 ";
 
-/// Committed plan-time topology projection (RFC-36) the hub reads in
+/// Committed plan-time topology projection (RFC-36) the workspace reads in
 /// place of materialising the remote members.
 const TOPOLOGY_HUB: &str = "\
 version: 1
@@ -218,12 +218,12 @@ fn read_plan(root: &Path) -> String {
 // Scenario setup
 // ---------------------------------------------------------------------------
 
-/// Stand up the hub project, stage adapters + sources, and run both
+/// Stand up the workspace, stage adapters + sources, and run both
 /// surveys so `discovery.md` carries all four leads.
 fn scenario() -> TempDir {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
-    init_hub(&tmp, "identity-revamp");
+    init_workspace(&tmp, "identity-revamp");
     fs::write(root.join("registry.yaml"), REGISTRY_HUB).expect("write registry.yaml");
     fs::write(root.join(".specify/topology.lock"), TOPOLOGY_HUB).expect("write topology.lock");
     fs::write(root.join("plan.yaml"), PLAN_HUB).expect("write plan.yaml");

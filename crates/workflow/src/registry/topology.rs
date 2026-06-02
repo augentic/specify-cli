@@ -7,7 +7,7 @@
 //! owned units and a `recent[]` tail of merge outcomes — is a
 //! deterministic structural projection of its baseline
 //! (`.specify/specs/` + `.specify/journal.jsonl`). `specrun workspace
-//! sync` resolves both into this committed lockfile so workspace-root plan-time
+//! sync` resolves both into this committed lockfile so workspace plan-time
 //! topology (`workspace_topology`) reads a single derived source offline. The
 //! lockfile is machine-written (write-if-changed, mirroring
 //! `.specify/context.lock`); operators never hand-edit it.
@@ -124,7 +124,7 @@ impl TopologyLock {
 
     /// Load + version-gate the committed cache. A missing file yields
     /// `Ok(None)` — the registry layer decides whether absence is fatal
-    /// (workspace-root plan-time topology raises `topology-cache-missing`).
+    /// (workspace plan-time topology raises `topology-cache-missing`).
     ///
     /// # Errors
     ///

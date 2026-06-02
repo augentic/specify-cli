@@ -32,7 +32,7 @@ pub fn assert_ok(result: Result<()>, what: &str) {
     result.unwrap_or_else(|err| panic!("{what} failed: {err}"));
 }
 
-/// Path to the workspace root for the `specify` crate (where the
+/// Path to the repo root for the `specify` crate (where the
 /// integration tests live).
 pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -198,7 +198,7 @@ pub fn copy_dir(src: &Path, dst: &Path) {
     }
 }
 
-/// Scaffold an empty workspace-root project in `tmp` via `specrun init --workspace`.
+/// Scaffold an empty workspace project in `tmp` via `specrun init --workspace`.
 ///
 /// # Panics
 ///
@@ -210,11 +210,6 @@ pub fn init_workspace(tmp: &TempDir, name: &str) {
         .args(["--name", name, "--workspace"])
         .assert()
         .success();
-}
-
-/// Back-compat alias for tests migrating from `init_hub`.
-pub fn init_hub(tmp: &TempDir, name: &str) {
-    init_workspace(tmp, name);
 }
 
 /// Placeholder substituted in for the test's tempdir path before

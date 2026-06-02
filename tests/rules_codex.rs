@@ -112,6 +112,6 @@ fn rules_sync_on_hub_without_source_errors() {
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
         stderr.contains("declares no adapter") || stderr.contains("rules-sync-no-adapter"),
-        "hub `rules sync` must explain the missing adapter, got stderr:\n{stderr}"
+        "workspace `rules sync` must explain the missing adapter, got stderr:\n{stderr}"
     );
 }

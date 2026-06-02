@@ -11,7 +11,7 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
-        .expect("workspace root above crates/init")
+        .expect("repo root above crates/init")
         .to_path_buf()
 }
 
@@ -90,14 +90,14 @@ fn init_creates_specify_tree() {
     assert_eq!(result.config_path, config_path);
     assert_eq!(result.adapter_name, "omnia");
 
-    // Non-hub init must not pre-touch any platform-component
+    // Non-workspace init must not pre-touch any platform-component
     // artefact at the repo root. Operators mint these via
     // `specrun registry add` and `specrun plan create`
     // (which scaffolds change.md + plan.yaml together).
     for absent in ["registry.yaml", "plan.yaml", "change.md"] {
         assert!(
             !tmp.path().join(absent).exists(),
-            "non-hub init must not pre-touch `{absent}` at the repo root"
+            "non-workspace init must not pre-touch `{absent}` at the repo root"
         );
     }
 

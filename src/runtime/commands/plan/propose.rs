@@ -166,7 +166,7 @@ fn load_discovery(ctx: &Ctx) -> Result<Discovery> {
 }
 
 /// Resolve the project topology the request embeds and the response binds
-/// to — the committed `.specify/topology.lock` projection for a hub
+/// to — the committed `.specify/topology.lock` projection for a workspace
 /// (RFC-36), or the sole project synthesised from `project.yaml`.
 fn load_topology(ctx: &Ctx) -> Result<Vec<ProjectRef>> {
     let config = ProjectConfig::load(&ctx.project_dir)?;

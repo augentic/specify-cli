@@ -17,7 +17,7 @@ pub(super) fn create(
             ctx.config.adapter.clone().ok_or_else(|| Error::Diag {
                 code: "slice-create-target-missing",
                 detail: "no project target declared; pass `--target <id>` explicitly or \
-                         run `specrun init <adapter>` first (workspace roots cannot create \
+                         run `specrun init <adapter>` first (workspaces cannot create \
                          changes)"
                     .to_string(),
             })

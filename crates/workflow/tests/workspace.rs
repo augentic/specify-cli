@@ -530,7 +530,7 @@ fn c02_sync_preserves_gitignore_once() {
 #[test]
 fn c04_prepare_creates_change_branch() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
@@ -551,7 +551,7 @@ fn c04_prepare_creates_change_branch() {
 #[test]
 fn c04_prepare_reuses_resume_dirty_ok() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
@@ -582,7 +582,7 @@ fn c04_prepare_reuses_resume_dirty_ok() {
 #[test]
 fn c04_prepare_ff_remote_ahead() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
@@ -609,7 +609,7 @@ fn c04_prepare_ff_remote_ahead() {
 #[test]
 fn c04_prepare_blocks_unrelated_dirty() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
@@ -627,7 +627,7 @@ fn c04_prepare_blocks_unrelated_dirty() {
 #[test]
 fn c04_prepare_branch_reports_missing_origin() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let slot = project_dir.join(".specify/workspace/alpha");
     fs::create_dir_all(&slot).unwrap();
@@ -647,7 +647,7 @@ fn c04_prepare_branch_reports_missing_origin() {
 #[test]
 fn c04_prepare_unresolved_origin_head() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let remote = tmp.path().join("headless.git");
     run_git(tmp.path(), &["init", "--bare", remote.to_str().unwrap()]);
@@ -866,7 +866,7 @@ fn c03_status_other_materialisation() {
 #[test]
 fn c07_push_pushes_clean_change_branch_only() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
@@ -889,7 +889,7 @@ fn c07_push_pushes_clean_change_branch_only() {
 #[test]
 fn c07_push_up_to_date() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
@@ -910,7 +910,7 @@ fn c07_push_up_to_date() {
 #[test]
 fn c07_push_dirty_without_push() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
@@ -936,7 +936,7 @@ fn c07_push_dirty_without_push() {
 #[test]
 fn c07_push_wrong_branch_no_checkout() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);
@@ -954,7 +954,7 @@ fn c07_push_wrong_branch_no_checkout() {
 #[test]
 fn c07_push_missing_origin_is_local_only() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     let slot = project_dir.join(".specify/workspace/alpha");
     fs::create_dir_all(&slot).unwrap();
     run_git(&slot, &["init", "-b", "main"]);
@@ -973,7 +973,7 @@ fn c07_push_missing_origin_is_local_only() {
 #[test]
 fn c07_push_dry_run_classifies_without_pushing() {
     let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("hub");
+    let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
     let (_remote, remote_url) = seed_bare_remote(&tmp);
     let slot = clone_workspace_slot(&project_dir, &remote_url);

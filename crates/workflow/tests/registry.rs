@@ -527,7 +527,7 @@ fn rejects_url_with_leading_whitespace() {
     }
 }
 
-// ---------- Registry hub-mode validation (registry hub-mode validation) ----------
+// ---------- Registry workspace validation (registry workspace validation) ----------
 
 #[test]
 fn validate_shape_workspace_accepts_empty_projects() {
@@ -559,7 +559,7 @@ fn validate_shape_workspace_accepts_non_dot_urls() {
             },
         ],
     };
-    reg.validate_shape_workspace().expect("non-`.` urls must pass hub-mode validation");
+    reg.validate_shape_workspace().expect("non-`.` urls must pass workspace validation");
 }
 
 #[test]
@@ -604,7 +604,7 @@ fn validate_shape_workspace_rejects_dot_url_multi() {
                 name: "self-as-project".into(),
                 url: ".".into(),
                 adapter: Some("omnia@v1".into()),
-                description: Some("Should be the hub, not an entry".into()),
+                description: Some("Should be the workspace, not an entry".into()),
                 contracts: None,
             },
         ],
@@ -635,7 +635,7 @@ fn validate_shape_workspace_inherits_base_errors() {
             assert!(msg.contains("version"), "msg: {msg}");
             assert_ne!(
                 code, "workspace-cannot-be-project",
-                "must not short-circuit base-shape errors with the hub diagnostic: {msg}"
+                "must not short-circuit base-shape errors with the workspace diagnostic: {msg}"
             );
         }
         other => panic!("wrong error variant: {other:?}"),
@@ -645,7 +645,7 @@ fn validate_shape_workspace_inherits_base_errors() {
 #[test]
 fn validate_shape_unchanged_for_dot_url() {
     // The base `validate_shape` continues to accept `url: .` — only
-    // the new hub-only mode rejects it. This pins the additive-API
+    // the new workspace-only mode rejects it. This pins the additive-API
     // contract from the registry design.
     let reg = Registry {
         version: 1,

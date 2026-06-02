@@ -31,8 +31,8 @@ fn regular_init_rejects_missing_adapter() {
 }
 
 #[test]
-fn hub_init_rejects_adapter_argument() {
-    // `--hub` and `<adapter>` are mutually exclusive; the
+fn workspace_init_rejects_adapter_argument() {
+    // `--workspace` and `<adapter>` are mutually exclusive; the
     // orchestrator re-checks even when the CLI layer already
     // filtered.
     let tmp = tempdir().unwrap();
@@ -40,7 +40,7 @@ fn hub_init_rejects_adapter_argument() {
         InitOptions {
             project_dir: tmp.path(),
             adapter: Some("omnia"),
-            name: Some("platform-hub"),
+            name: Some("platform-workspace"),
             description: None,
             workspace: true,
             include_framework: false,
@@ -48,7 +48,7 @@ fn hub_init_rejects_adapter_argument() {
         },
         fixed_now(),
     )
-    .expect_err("hub + adapter must error");
+    .expect_err("workspace + adapter must error");
     assert!(
         matches!(
             &err,

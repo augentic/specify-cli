@@ -10,7 +10,7 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_hub, omnia_schema_dir, parse_stdout, run_git, specrun};
+use common::{Project, init_workspace, omnia_schema_dir, parse_stdout, run_git, specrun};
 
 #[test]
 fn workspace_help_lists_active_subcommands() {
@@ -27,7 +27,7 @@ fn workspace_help_lists_active_subcommands() {
 #[test]
 fn c01_sync_unknown_selector_preflight() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
@@ -51,20 +51,24 @@ fn c01_sync_unknown_selector_preflight() {
     assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
-        !tmp.path().join(".specify/workspace").exists(),
-        "unknown selector must fail before workspace materialisation"
+        !tmp.path().join(".specify/workspace/ghost").exists(),
+        "unknown selector must fail before materialising the requested slot"
+    );
+    assert!(
+        !tmp.path().join(".specify/workspace/alpha").exists(),
+        "unknown selector must fail before syncing any registry project"
     );
     assert_eq!(
         fs::read_to_string(tmp.path().join(".gitignore")).ok(),
         gitignore_before,
-        "unknown selector must fail before sync mutates .gitignore"
+        "unknown selector must fail before sync mutates .gitignore again"
     );
 }
 
 #[test]
 fn c01_sync_skips_unselected_slots() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
     for name in ["billing", "orders", "inventory"] {
         fs::create_dir_all(tmp.path().join(name)).unwrap();
     }
@@ -103,7 +107,7 @@ fn c01_sync_skips_unselected_slots() {
 #[test]
 fn c01_push_unknown_selector_preflight() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
     fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         tmp.path().join("registry.yaml"),
@@ -127,15 +131,19 @@ fn c01_push_unknown_selector_preflight() {
     assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
-        !tmp.path().join(".specify/workspace").exists(),
-        "unknown selector must fail before workspace paths are touched"
+        !tmp.path().join(".specify/workspace/ghost").exists(),
+        "unknown selector must fail before materialising the requested slot"
+    );
+    assert!(
+        !tmp.path().join(".specify/workspace/alpha").exists(),
+        "unknown selector must fail before push touches registry project slots"
     );
 }
 
 #[test]
 fn c04_prepare_returns_json() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
 
     let alpha = tmp.path().join("alpha");
     fs::create_dir_all(&alpha).unwrap();
@@ -189,7 +197,7 @@ fn c04_prepare_returns_json() {
 #[test]
 fn c04_prepare_origin_head_diagnostic() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
 
     let remote = tmp.path().join("headless.git");
     run_git(tmp.path(), &["init", "--bare", remote.to_str().unwrap()]);

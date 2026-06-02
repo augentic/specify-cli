@@ -45,7 +45,7 @@ fn build_request_n1_validates_as_request() {
 }
 
 #[test]
-fn build_request_hub_validates_as_request() {
+fn build_request_workspace_validates_as_request() {
     let doc = discovery(
         "## Lead inventory\n\n\
              ### docs:identity-api\n\n\
@@ -70,7 +70,7 @@ fn build_request_hub_validates_as_request() {
     assert_eq!(request.leads.len(), 3);
 
     let json = serde_json::to_string(&request).expect("serialise request");
-    validate_proposal_json(&json).expect("hub request validates against the schema");
+    validate_proposal_json(&json).expect("workspace request validates against the schema");
 }
 
 #[test]
@@ -167,7 +167,7 @@ slices:
     validate_proposal_json(&json).expect("round-tripped response validates");
 }
 
-fn hub_config() -> ProjectConfig {
+fn workspace_config() -> ProjectConfig {
     ProjectConfig {
         name: "platform".to_string(),
         description: None,
@@ -180,8 +180,8 @@ fn hub_config() -> ProjectConfig {
 }
 
 #[test]
-fn resolve_topology_hub_reads_topology_lock() {
-    // RFC-36: hub topology is projected from the committed
+fn resolve_topology_workspace_reads_topology_lock() {
+    // RFC-36: workspace topology is projected from the committed
     // `.specify/topology.lock`, not `registry.yaml`.
     let dir = tempfile::tempdir().expect("tempdir");
     let specify = dir.path().join(".specify");
@@ -202,7 +202,8 @@ fn resolve_topology_hub_reads_topology_lock() {
     )
     .expect("write topology.lock");
 
-    let topology = resolve_topology(&hub_config(), dir.path()).expect("hub topology resolves");
+    let topology =
+        resolve_topology(&workspace_config(), dir.path()).expect("workspace topology resolves");
     assert_eq!(
         topology,
         vec![
@@ -233,9 +234,9 @@ fn resolve_topology_hub_reads_topology_lock() {
 }
 
 #[test]
-fn resolve_topology_hub_missing_cache_errors() {
+fn resolve_topology_workspace_missing_cache_errors() {
     let dir = tempfile::tempdir().expect("tempdir");
-    match resolve_topology(&hub_config(), dir.path()) {
+    match resolve_topology(&workspace_config(), dir.path()) {
         Err(Error::Validation { code, .. }) => assert_eq!(code, "topology-cache-missing"),
         other => panic!("expected topology-cache-missing, got {other:?}"),
     }

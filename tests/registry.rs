@@ -1,6 +1,6 @@
 //! Integration tests for `specrun registry` (registry add/remove).
 //!
-//! Covers `registry add`, `registry remove`, the hub-mode `registry
+//! Covers `registry add`, `registry remove`, the workspace `registry
 //! validate` invariants surfaced after a fresh `init --workspace`, and the
 //! schema-level `registry {show,validate}` matrix (registry show/validate) on
 //! single- and multi-project layouts.
@@ -11,10 +11,10 @@ use serde_json::Value;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_hub, omnia_schema_dir, parse_stderr, parse_stdout, specrun};
+use common::{Project, init_workspace, omnia_schema_dir, parse_stderr, parse_stdout, specrun};
 
 #[test]
-fn init_hub_validate_succeeds_on_empty() {
+fn init_workspace_validate_succeeds_on_empty() {
     let tmp = tempdir().unwrap();
     specrun()
         .current_dir(tmp.path())
@@ -33,7 +33,7 @@ fn init_hub_validate_succeeds_on_empty() {
 }
 
 #[test]
-fn init_hub_validate_rejects_dot_url() {
+fn init_workspace_validate_rejects_dot_url() {
     let tmp = tempdir().unwrap();
     specrun()
         .current_dir(tmp.path())
@@ -51,7 +51,7 @@ fn init_hub_validate_rejects_dot_url() {
          projects:\n\
          \x20\x20- name: platform\n\
          \x20\x20\x20\x20url: .\n\
-         \x20\x20\x20\x20adapter: hub\n",
+         \x20\x20\x20\x20adapter: invalid-adapter\n",
     )
     .unwrap();
 
@@ -75,7 +75,7 @@ fn init_hub_validate_rejects_dot_url() {
 #[test]
 fn add_round_trips_through_show() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-workspace");
+    init_workspace(&tmp, "platform-workspace");
 
     // Hub registries reject `url: .` (workspace-cannot-be-project) but accept
     // remote-url entries — the canonical multi-repo shape.
@@ -116,7 +116,7 @@ fn add_succeeds_without_adapter() {
     // RFC-36: `--adapter` is an optional greenfield seed. Omitting it is
     // legal — the project's own `project.yaml` authors its target adapter.
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-workspace");
+    init_workspace(&tmp, "platform-workspace");
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -140,9 +140,9 @@ fn add_succeeds_without_adapter() {
 }
 
 #[test]
-fn add_rejects_dot_url_in_hub_mode() {
+fn add_rejects_dot_url_in_workspace_mode() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-workspace");
+    init_workspace(&tmp, "platform-workspace");
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -171,7 +171,7 @@ fn add_rejects_dot_url_in_hub_mode() {
 #[test]
 fn add_rejects_non_kebab() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-workspace");
+    init_workspace(&tmp, "platform-workspace");
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -198,7 +198,7 @@ fn add_rejects_non_kebab() {
 #[test]
 fn remove_succeeds_and_round_trips() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-workspace");
+    init_workspace(&tmp, "platform-workspace");
 
     // Seed two entries — both descriptions present so the registry is
     // multi-repo–valid.
@@ -244,7 +244,7 @@ fn remove_succeeds_and_round_trips() {
 #[test]
 fn remove_warns_on_plan_ref() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-workspace");
+    init_workspace(&tmp, "platform-workspace");
 
     for (name, url) in
         [("alpha", "git@github.com:org/alpha.git"), ("beta", "git@github.com:org/beta.git")]
@@ -299,7 +299,7 @@ fn remove_warns_on_plan_ref() {
 #[test]
 fn remove_unknown_project_errors() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-workspace");
+    init_workspace(&tmp, "platform-workspace");
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -316,7 +316,7 @@ fn remove_unknown_project_errors() {
 #[test]
 fn remove_refuses_when_absent() {
     let tmp = tempdir().unwrap();
-    // Plain init (no hub) — single-repo project has no registry.yaml
+    // Plain init (no workspace) — single-repo project has no registry.yaml
     // by default.
     specrun()
         .current_dir(tmp.path())

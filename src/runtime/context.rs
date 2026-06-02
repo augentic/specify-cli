@@ -48,17 +48,17 @@ impl Ctx {
     /// Resolve this project's target adapter into a
     /// [`ResolvedTargetAdapter`].
     ///
-    /// Workspace-root projects (`workspace: true`, `adapter:` omitted) do not declare
+    /// Workspace projects (`workspace: true`, `adapter:` omitted) do not declare
     /// an adapter, so this returns a `workspace-no-adapter` diagnostic
-    /// naming the workspace-root case rather than a stray adapter-resolution
+    /// naming the workspace case rather than a stray adapter-resolution
     /// error lower down the stack.
     pub(crate) fn resolve_target_adapter(&self) -> Result<ResolvedTargetAdapter, Error> {
         let Some(adapter_value) = self.config.adapter.as_deref() else {
             return Err(Error::Diag {
                 code: "workspace-no-adapter",
-                detail: "this project has no adapter declared (workspace roots do not run \
+                detail: "this project has no adapter declared (workspaces do not run \
                          per-target operations); only `specrun registry` and `specrun plan` \
-                         verbs are supported on workspace roots"
+                         verbs are supported on workspaces"
                     .to_string(),
             });
         };

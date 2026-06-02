@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::{Plan, Status};
-use specify_workflow::config::{Layout, is_workspace_clone, with_state};
+use specify_workflow::config::{Layout, is_slot, with_state};
 use specify_workflow::journal::{self, Event, EventKind};
 use specify_workflow::merge::{
     BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
@@ -359,7 +359,7 @@ fn summarise_ops(ops: &[MergeOperation]) -> String {
 /// than a freshly merged clone. The `.specify/project.yaml` check is
 /// already enforced upstream by `Ctx::load`.
 fn is_clone_eligible(project_dir: &Path) -> bool {
-    if !is_workspace_clone(project_dir) {
+    if !is_slot(project_dir) {
         return false;
     }
     !Layout::new(project_dir).plan_path().exists()

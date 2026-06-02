@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    fn render_input_skips_for_workspace_roots() {
+    fn render_input_skips_for_workspaces() {
         let tmp = tempdir().expect("tempdir");
         let cfg_path = Layout::new(tmp.path()).config_path();
         fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");
@@ -186,7 +186,7 @@ mod tests {
         let assembly = assemble::render_input(&ctx).expect("workspace assembly");
         let input = &assembly.input;
 
-        assert!(input.is_workspace_root);
+        assert!(input.is_workspace);
         assert!(input.adapter.is_none());
         assert!(input.dependencies.is_empty());
         assert_eq!(

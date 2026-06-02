@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
-use specify_workflow::config::{ProjectConfig, is_workspace_clone};
+use specify_workflow::config::{ProjectConfig, is_slot};
 use specify_workflow::init::{InitOptions, InitResult, init};
 use specify_workflow::migrate::{self, MigrationAction};
 use specify_workflow::registry::Registry;
@@ -110,16 +110,16 @@ struct Body {
 }
 
 fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
-    let workspace_root = body.adapter_name == "workspace";
-    if workspace_root {
-        writeln!(w, "Initialized .specify/ as a registry-only workspace root")?;
+    let is_workspace = body.adapter_name == "workspace";
+    if is_workspace {
+        writeln!(w, "Initialized .specify/ as a registry-only workspace")?;
     } else {
         writeln!(w, "Initialized .specify/")?;
     }
     writeln!(w, "  adapter: {}", body.adapter_name)?;
     writeln!(w, "  config: {}", body.config_path)?;
     writeln!(w, "  cache present: {}", body.cache_present)?;
-    if !workspace_root {
+    if !is_workspace {
         writeln!(w, "  codex present: {}", body.codex_present)?;
     }
     if !body.directories_created.is_empty() {
@@ -140,7 +140,7 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
         writeln!(w, "  {message}")?;
     }
     writeln!(w)?;
-    if workspace_root {
+    if is_workspace {
         writeln!(
             w,
             "Next: run `specrun registry add <id> <url>` to declare projects, then `/spec:plan <name>`."
@@ -181,7 +181,7 @@ fn emit_init_result(
 
 /// Returns `None` when initial context generation ran, `Some(reason)` when it was skipped.
 fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option<&'static str>> {
-    if is_workspace_clone(project_dir) {
+    if is_slot(project_dir) {
         return Ok(Some("workspace-clone"));
     }
     match project_dir.join("AGENTS.md").try_exists() {

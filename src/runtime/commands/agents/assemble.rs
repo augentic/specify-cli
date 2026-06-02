@@ -51,7 +51,7 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
 
     let input = render::Input {
         project_name: ctx.config.name.clone(),
-        is_workspace_root: ctx.config.workspace,
+        is_workspace: ctx.config.workspace,
         detection,
         description: ctx.config.description.clone(),
         adapter,
@@ -151,7 +151,7 @@ fn dependency_peers(registry: Option<&Registry>, project_dir: &Path) -> Vec<rend
 
     // RFC-36: peer adapter/description come from the committed
     // `.specify/topology.lock` (each member project's authored
-    // `project.yaml`). A fresh workspace root may not have synced a cache yet, so
+    // `project.yaml`). A fresh workspace may not have synced a cache yet, so
     // fall back to the registry's optional greenfield seed.
     let lock = TopologyLock::load(&Layout::new(project_dir).topology_lock_path()).ok().flatten();
     let facets: HashMap<&str, &TopologyProject> = lock

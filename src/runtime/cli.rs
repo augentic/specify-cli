@@ -44,7 +44,7 @@ pub enum Commands {
     /// Initialize .specify/ in a project.
     ///
     /// Pass `<adapter>` (bare name or URL) for a regular project, or
-    /// `--workspace` for a registry-only workspace root. The two are mutually
+    /// `--workspace` for a registry-only workspace. The two are mutually
     /// exclusive — clap enforces the `<adapter>` xor `--workspace` shape
     /// and exits `2` with its standard parse-error diagnostic when the
     /// invariant is violated.
@@ -64,7 +64,7 @@ pub enum Commands {
         /// Project description (tech stack, architecture, testing)
         #[arg(long)]
         description: Option<String>,
-        /// Scaffold a registry-only workspace root instead of a regular
+        /// Scaffold a registry-only workspace instead of a regular
         /// project. Refuses to run when `.specify/` already exists.
         #[arg(long)]
         workspace: bool,

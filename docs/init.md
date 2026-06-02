@@ -25,13 +25,13 @@ the project will use. The CLI writes:
   mirror or to register additional namespaces. The file is checked
   in; re-running `init` never overwrites operator edits.
 
-## Workspace root — `specrun init --workspace`
+## Workspace — `specrun init --workspace`
 
 ```bash
 specrun init --workspace --name <workspace-name>
 ```
 
-A workspace root is a registry-only project: it owns `registry.yaml` and
+A workspace is a registry-only project: it owns `registry.yaml` and
 the cross-repo workspace slots, but does not itself host adapter artifacts.
 Use this for the platform repo that orchestrates a fleet of adapter
 projects. Workspace init writes `workspace: true` in `project.yaml`,
@@ -42,13 +42,9 @@ also writes `.specify/wasm-pkg.toml` so workspace operators can publish or
 pull packages with `wkg --config .specify/wasm-pkg.toml` against the same
 registry config the runtime honours.
 
-Legacy `hub: true` in existing `project.yaml` files still deserialises
-(read alias); any re-serialisation or `specrun init --upgrade` emits
-`workspace: true`.
-
 ## Why the two shapes are exclusive
 
-An adapter project pins one adapter identifier; a workspace root pins
+An adapter project pins one adapter identifier; a workspace pins
 none (it owns the registry of many). Mixing the two would produce a
 `project.yaml` whose semantics depend on whether downstream verbs
 treat the project as an adapter source or as a registry root, and

@@ -30,7 +30,7 @@ pub struct ProjectConfig {
     pub description: Option<String>,
 
     /// Adapter identifier — either a bare name (`omnia`) or a URL.
-    /// Absent for registry-only workspace roots (`workspace: true`); see the
+    /// Absent for registry-only workspaces (`workspace: true`); see the
     /// `workspace` field for the discriminator.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adapter: Option<String>,
@@ -53,16 +53,15 @@ pub struct ProjectConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<specify_tool::manifest::Tool>,
 
-    /// `true` when this project is a registry-only **workspace root**.
-    /// Workspace roots hold platform-level state — `registry.yaml`,
+    /// `true` when this project is a registry-only **workspace**.
+    /// Workspaces hold platform-level state — `registry.yaml`,
     /// `change.md`, `plan.yaml`, workspace slots under `.specify/workspace/`
     /// — but never appear in their own `registry.yaml` and have phase
-    /// pipelines disabled. Workspace roots **omit** the `adapter:` field
+    /// pipelines disabled. Workspaces **omit** the `adapter:` field
     /// entirely; the absence of `adapter:` together with `workspace: true`
-    /// is the discriminator. Legacy `hub:` deserialises as an alias.
-    /// Defaults to `false`; serialised only when `true` so regular
-    /// `project.yaml` files round-trip byte-stable.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not", alias = "hub")]
+    /// is the discriminator. Defaults to `false`; serialised only when
+    /// `true` so regular `project.yaml` files round-trip byte-stable.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub workspace: bool,
 }
 
@@ -307,12 +306,12 @@ impl<'a> Layout<'a> {
 /// Detect whether `project_dir` lives below `.specify/workspace/<peer>/`.
 ///
 /// This is a path-ancestry predicate only. Context generation uses the
-/// shared posture to skip init-time `AGENTS.md` creation in workspace
-/// clones and to refuse standalone generation there; callers that need
-/// a fully initialized clone can layer `.specify/project.yaml` or
+/// shared posture to skip init-time `AGENTS.md` creation in materialised
+/// slots and to refuse standalone generation there; callers that need
+/// a fully initialized slot can layer `.specify/project.yaml` or
 /// plan-file guards on top.
 #[must_use]
-pub fn is_workspace_clone(project_dir: &Path) -> bool {
+pub fn is_slot(project_dir: &Path) -> bool {
     let components: Vec<_> = project_dir.components().collect();
     components.windows(3).any(|w| {
         w[0].as_os_str() == ".specify"

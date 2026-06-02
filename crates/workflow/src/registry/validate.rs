@@ -82,13 +82,13 @@ impl Registry {
         Ok(())
     }
 
-    /// Workspace-root-only shape check.
+    /// Workspace-only shape check.
     ///
     /// Runs the base [`Registry::validate_shape`] first, then layers on
-    /// the additional invariant that a **registry-only workspace root**
+    /// the additional invariant that a **registry-only workspace**
     /// must never list itself as a project: any entry with `url: .` is
     /// rejected with a `workspace-cannot-be-project` diagnostic. The
-    /// workspace root holds platform-level state (registry, change brief,
+    /// workspace holds platform-level state (registry, change brief,
     /// plan, workspace slots) but is never a code project.
     ///
     /// Callers opt in by checking `project.yaml:workspace: true` and
@@ -109,7 +109,7 @@ impl Registry {
                     code: "workspace-cannot-be-project",
                     detail: format!(
                         "registry.yaml: projects[{idx}] (`{}`).url is `.`; \
-                         a registry-only workspace root must not appear in its own \
+                         a registry-only workspace must not appear in its own \
                          registry — code projects always live in their own repos",
                         project.name
                     ),

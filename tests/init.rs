@@ -165,7 +165,7 @@ fn init_with_adapter_and_workspace_errors() {
     );
 }
 
-// ---- specrun init --workspace (registry workspace-root topology) ----
+// ---- specrun init --workspace (registry workspace topology) ----
 
 #[test]
 fn init_workspace_writes_canonical_on_disk_shape() {
@@ -193,7 +193,7 @@ fn init_workspace_writes_canonical_on_disk_shape() {
 
     // Workspace init scaffolds `project.yaml` (under `.specify/`) plus
     // `registry.yaml` at the repo root, and nothing else. `registry.yaml`
-    // survives because bootstrapping a workspace root is bootstrapping its registry;
+    // survives because bootstrapping a workspace is bootstrapping its registry;
     // `change.md` and `plan.yaml` stay operator-managed.
     assert!(tmp.path().join(".specify/project.yaml").is_file());
     assert!(tmp.path().join("registry.yaml").is_file());
@@ -386,7 +386,7 @@ fn init_upgrade_preserves_workspace_and_registry() {
     fs::create_dir_all(&specify).unwrap();
     fs::write(
         specify.join("project.yaml"),
-        "name: platform-workspace\nspecify_version: 0.2.0\nhub: true\n",
+        "name: platform-workspace\nspecify_version: 0.2.0\nworkspace: true\n",
     )
     .unwrap();
     fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
@@ -412,7 +412,7 @@ fn init_upgrade_preserves_workspace_and_registry() {
     assert!(cfg.adapter.is_none(), "workspace upgrade must not synthesise an adapter");
     assert_eq!(cfg.specify_version.as_deref(), Some("0.3.0"));
     let project_yaml = fs::read_to_string(specify.join("project.yaml")).unwrap();
-    assert!(project_yaml.contains("workspace: true"), "upgrade must canonicalise hub: key");
+    assert!(project_yaml.contains("workspace: true"), "upgrade must preserve workspace: key");
     assert_eq!(
         fs::read(tmp.path().join("registry.yaml")).unwrap(),
         registry_before,

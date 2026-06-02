@@ -85,10 +85,10 @@ fn context_lock_schema_compiles_from_disk() {
 /// re-reads the canonical workspace file at runtime and asserts equality.
 #[test]
 fn embedded_schemas_match_on_disk_sources() {
-    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(std::path::Path::parent)
-        .expect("crates/schema has a workspace root two levels up");
+        .expect("crates/schema has a repo root two levels up");
     let pairs: &[(&str, &str, &str)] = &[
         ("ADAPTER_JSON_SCHEMA", ADAPTER_JSON_SCHEMA, "schemas/adapter.schema.json"),
         ("SOURCE_JSON_SCHEMA", SOURCE_JSON_SCHEMA, "schemas/source.schema.json"),
@@ -152,7 +152,7 @@ fn embedded_schemas_match_on_disk_sources() {
         ),
     ];
     for (name, embedded, relative) in pairs {
-        let on_disk = std::fs::read_to_string(workspace_root.join(relative))
+        let on_disk = std::fs::read_to_string(repo_root.join(relative))
             .unwrap_or_else(|err| panic!("read {relative} for {name}: {err}"));
         assert_eq!(
             *embedded, on_disk,

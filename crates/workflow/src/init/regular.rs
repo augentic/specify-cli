@@ -1,4 +1,4 @@
-//! Regular (non-workspace-root) init body. Scaffolds the per-project `.specify/`
+//! Regular (non-workspace) init body. Scaffolds the per-project `.specify/`
 //! tree, resolves the requested adapter into the cache, and writes
 //! `project.yaml`.
 

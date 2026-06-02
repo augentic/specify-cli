@@ -124,12 +124,12 @@ pub struct Entry {
     /// Target registry project. Optional on disk: an omitted value
     /// resolves to the sole project in the topology (a single regular
     /// project synthesised from `project.yaml`), so single-project
-    /// plans need not repeat the project name; multi-project workspace root
+    /// plans need not repeat the project name; multi-project workspace
     /// registries require an explicit value.
     ///
     /// The target adapter (`name@vN`) is **not** stored on the slice —
     /// it is resolved on demand from this project via the topology
-    /// (the committed `.specify/topology.lock` for a workspace root, `project.yaml.adapter` for a single
+    /// (the committed `.specify/topology.lock` for a workspace, `project.yaml.adapter` for a single
     /// regular project) by [`crate::change::plan::core::resolve_target`].
     #[serde(default)]
     pub project: Option<String>,

@@ -1,6 +1,6 @@
 //! Orchestration for `specrun init`. Scaffolds `.specify/`, resolves
 //! the requested adapter, writes `project.yaml`, and upserts
-//! `.gitignore` lines. Workspace-root mode additionally mints `registry.yaml`.
+//! `.gitignore` lines. Workspace mode additionally mints `registry.yaml`.
 
 mod adapter_uri;
 mod cache;
@@ -40,7 +40,7 @@ pub struct InitOptions<'a> {
     /// Optional free-text project description (tech stack, architecture,
     /// testing approach).
     pub description: Option<&'a str>,
-    /// When `true`, scaffold a registry-only **workspace root** instead
+    /// When `true`, scaffold a registry-only **workspace** instead
     /// of a regular project: writes `registry.yaml` at the repo root
     /// and `project.yaml { workspace: true }` (with `adapter:` omitted)
     /// under `.specify/`. Workspace init refuses to run when `.specify/`
@@ -50,7 +50,7 @@ pub struct InitOptions<'a> {
     /// (`adapters/shared/rules/core/`) into the project codex cache
     /// alongside the always-distributed `universal/` pack. Default off:
     /// consumer projects carry only `UNI-*` rules. Ignored for workspace
-    /// init (workspace roots resolve no adapter and so distribute no codex).
+    /// init (workspaces resolve no adapter and so distribute no codex).
     pub include_framework: bool,
     /// When `true`, run the re-entry **upgrade** path instead of a
     /// fresh scaffold: bump `project.yaml.specify_version` to the
@@ -117,12 +117,12 @@ pub struct InitResult {
 ///
 /// When [`InitOptions::upgrade`] is `true`, dispatches to the private
 /// upgrade runner (the re-entry version bump) ahead of the workspace /
-/// regular branch — one runner serves both regular and workspace-root
+/// regular branch — one runner serves both regular and workspace
 /// projects because the preservation logic is identical (preserve every
 /// field, touch only `specify_version`).
 ///
 /// When [`InitOptions::workspace`] is `true`, dispatches to the private
-/// workspace runner for the workspace-root on-disk shape.
+/// workspace runner for the workspace on-disk shape.
 ///
 /// `now` records the `cache_meta.yaml::fetched_at` stamp; the dispatcher
 /// passes `Timestamp::now` and tests pin a deterministic value.

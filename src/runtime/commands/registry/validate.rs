@@ -9,7 +9,7 @@ use crate::runtime::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let path = Registry::path(&ctx.project_dir).display().to_string();
-    // Workspace roots opt into the stricter shape via `project.yaml:workspace:
+    // Workspaces opt into the stricter shape via `project.yaml:workspace:
     // true`. Tolerate a missing/unparseable project.yaml here —
     // `specrun registry validate` is allowed to run before `specify
     // init`, in which case there is no workspace flag to honour and the base

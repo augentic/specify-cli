@@ -19,7 +19,7 @@ use crate::runtime::context::Ctx;
 /// # Errors
 ///
 /// Returns `rules-sync-no-adapter` when the project declares no adapter
-/// and no `--source` override is given (the workspace-root case). Bubbles up
+/// and no `--source` override is given (the workspace case). Bubbles up
 /// adapter-resolution and filesystem errors from [`sync_codex`].
 pub fn run(ctx: &Ctx, args: &SyncArgs) -> Result<()> {
     let adapter_value = args
@@ -28,7 +28,7 @@ pub fn run(ctx: &Ctx, args: &SyncArgs) -> Result<()> {
         .or(ctx.config.adapter.as_deref())
         .ok_or_else(|| Error::Diag {
             code: "rules-sync-no-adapter",
-            detail: "this project declares no adapter (workspace roots distribute no codex); \
+            detail: "this project declares no adapter (workspaces distribute no codex); \
                      pass --source <adapter> to sync the shared codex from an explicit source"
                 .to_string(),
         })?

@@ -1,5 +1,5 @@
 //! Acceptance matrix for the four `specrun init` shapes (RFC-30 Wave E
-//! item 6): `greenfield`, `brownfield`, `hub`, and `migrated`.
+//! item 6): `greenfield`, `brownfield`, `workspace`, and `migrated`.
 //!
 //! Each test drives the real `specrun` binary over a throwaway tempdir
 //! and asserts the on-disk + JSON-envelope contract for one shape:
@@ -9,16 +9,16 @@
 //! - `brownfield` — `specrun init --upgrade` over a populated regular
 //!   project bumps only the pin, keeps operator artifacts byte-stable,
 //!   and re-runs as a no-op.
-//! - `hub` — the same re-entry over a populated hub project, with the
-//!   `workspace: true` discriminator and `registry.yaml` preserved.
+//! - `workspace` — the same re-entry over a populated workspace,
+//!   with the `workspace: true` discriminator and `registry.yaml` preserved.
 //! - `migrated` — the new end-to-end: `specrun migrate` transforms a v1
 //!   tree into the golden v2 tree, then `specrun init --upgrade`
 //!   re-enters the migrated artifact set.
 //!
-//! The `brownfield` / `hub` headline invariants are also covered with an
+//! The `brownfield` / `workspace` headline invariants are also covered with an
 //! exhaustive byte-level write-set diff by Change E's
 //! `init_upgrade_bumps_only_version_and_preserves_artifacts` and
-//! `init_upgrade_preserves_hub_and_registry` in `tests/init.rs`; the
+//! `init_upgrade_preserves_workspace_and_registry` in `tests/init.rs`; the
 //! versions here keep all four shapes co-located as one readable matrix.
 
 use std::collections::BTreeMap;
@@ -113,19 +113,19 @@ fn brownfield() {
 
 #[test]
 fn workspace() {
-    // Concise matrix view of the hub re-entry upgrade. Exhaustive
-    // coverage: tests/init.rs::init_upgrade_preserves_hub_and_registry
+    // Concise matrix view of the workspace re-entry upgrade. Exhaustive
+    // coverage: tests/init.rs::init_upgrade_preserves_workspace_and_registry
     // (Change E).
     let tmp = tempdir().unwrap();
     let specify = tmp.path().join(".specify");
     fs::create_dir_all(&specify).unwrap();
     fs::write(
         specify.join("project.yaml"),
-        "name: platform-workspace\nspecify_version: 0.2.0\nhub: true\n",
+        "name: platform-workspace\nspecify_version: 0.2.0\nworkspace: true\n",
     )
     .unwrap();
     fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
-    fs::write(tmp.path().join("AGENTS.md"), "# hub sentinel\n").unwrap();
+    fs::write(tmp.path().join("AGENTS.md"), "# workspace sentinel\n").unwrap();
 
     let before = snapshot(tmp.path());
     let assert = specrun()
@@ -141,7 +141,7 @@ fn workspace() {
     assert_only_project_yaml_changed(&before, &snapshot(tmp.path()));
     let cfg = load_cfg(tmp.path());
     assert!(cfg.workspace, "workspace discriminator must survive the upgrade");
-    assert!(cfg.adapter.is_none(), "hub upgrade must not synthesise an adapter");
+    assert!(cfg.adapter.is_none(), "workspace upgrade must not synthesise an adapter");
     assert_eq!(cfg.specify_version.as_deref(), Some(BINARY_VERSION));
 
     assert_second_run_is_noop(tmp.path());

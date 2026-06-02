@@ -1,4 +1,4 @@
-//! Workspace-root variant of `init` — scaffolds a registry-only platform
+//! Workspace variant of `init` — scaffolds a registry-only platform
 //! workspace (`registry.yaml` plus `project.yaml { workspace: true }`).
 //! Refuses to run when `.specify/` already exists.
 
@@ -16,7 +16,7 @@ use crate::init::{
 };
 use crate::registry::Registry;
 
-/// Scaffold a registry-only workspace root.
+/// Scaffold a registry-only workspace.
 ///
 /// On-disk shape after success:
 ///
@@ -28,13 +28,13 @@ use crate::registry::Registry;
 /// ```
 ///
 /// `registry.yaml` is the one platform-component artefact init
-/// scaffolds — bootstrapping a workspace root *is* bootstrapping its
+/// scaffolds — bootstrapping a workspace *is* bootstrapping its
 /// registry. `change.md` and `plan.yaml` stay operator-managed even on
-/// a workspace root; the operator runs `/spec:plan <name>`
+/// a workspace; the operator runs `/spec:plan <name>`
 /// (which scaffolds both files atomically) when the work itself begins.
 ///
 /// Adapter resolution is intentionally skipped — there is no
-/// `pipeline.define` for a workspace root to walk.
+/// `pipeline.define` for a workspace to walk.
 ///
 /// # Errors
 ///

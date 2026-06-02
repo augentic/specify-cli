@@ -44,7 +44,7 @@ fn workspace_init_writes_canonical_on_disk_shape() {
     let cfg = ProjectConfig::load(tmp.path()).expect("reload project.yaml");
     assert!(cfg.adapter.is_none(), "workspace project.yaml must omit adapter:");
     assert!(cfg.workspace, "project.yaml must carry workspace: true");
-    assert!(cfg.rules.is_empty(), "workspace roots do not scaffold rules");
+    assert!(cfg.rules.is_empty(), "workspaces do not scaffold rules");
     assert_eq!(cfg.name, "platform-workspace");
 
     let on_disk = fs::read_to_string(&project_yaml).expect("read project.yaml");

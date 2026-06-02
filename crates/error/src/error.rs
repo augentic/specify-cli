@@ -153,7 +153,7 @@ impl Error {
                     "complete or drop the listed entries, or rerun with --force to archive anyway.",
                 ),
                 "init-requires-adapter-or-workspace" => Some(
-                    "`specrun init <adapter>` for a regular project, or `specrun init --workspace` for a workspace root.\nsee: docs/init.md",
+                    "`specrun init <adapter>` for a regular project, or `specrun init --workspace` for a workspace.\nsee: docs/init.md",
                 ),
                 "context-existing-unfenced-agents-md" => {
                     Some("rerun with --force to rewrite AGENTS.md.")

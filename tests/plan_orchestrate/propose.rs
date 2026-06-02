@@ -37,9 +37,9 @@ const PROPOSE_RESPONSE_N1: &str = r#"{
   ]
 }"#;
 
-/// Hub registry with two projects bound to different target adapters —
+/// Workspace registry with two projects bound to different target adapters —
 /// the topology the fan-out response binds against.
-const PROPOSE_REGISTRY_HUB: &str = "\
+const PROPOSE_REGISTRY_WORKSPACE: &str = "\
 version: 1
 projects:
   - name: identity-contracts
@@ -52,9 +52,9 @@ projects:
     description: Omnia identity service implementing auth and password flows.
 ";
 
-/// Hub surveyed inventory: four leads across `docs` + `legacy` (the
+/// Workspace surveyed inventory: four leads across `docs` + `legacy` (the
 /// proposal-schema envelope example, in document order).
-const PROPOSE_DISCOVERY_HUB: &str = "\
+const PROPOSE_DISCOVERY_WORKSPACE: &str = "\
 ## Lead inventory
 
 ### docs:identity-api
@@ -82,11 +82,11 @@ const PROPOSE_DISCOVERY_HUB: &str = "\
 - synopsis: Legacy reset-password flow.
 ";
 
-/// Committed `.specify/topology.lock` for the hub fixture (RFC-36) —
+/// Committed `.specify/topology.lock` for the workspace fixture (RFC-36) —
 /// the projection `workspace sync` would derive from each member
 /// project's `project.yaml`. Descriptions mirror the registry seeds so
 /// the request envelope's `projects[]` stays the authoritative shape.
-const PROPOSE_TOPOLOGY_HUB: &str = "\
+const PROPOSE_TOPOLOGY_WORKSPACE: &str = "\
 version: 1
 projects:
   - name: identity-contracts
@@ -97,8 +97,8 @@ projects:
     description: Omnia identity service implementing auth and password flows.
 ";
 
-/// Hub plan declaring the two surveyed source keys, no slices yet.
-const PROPOSE_PLAN_HUB: &str = "\
+/// Workspace plan declaring the two surveyed source keys, no slices yet.
+const PROPOSE_PLAN_WORKSPACE: &str = "\
 name: identity-revamp
 sources:
   docs:
@@ -179,18 +179,18 @@ fn write_response(root: &Path, body: &str) -> PathBuf {
     path
 }
 
-/// Scaffold a hub-mode project in a fresh tempdir, seeding
+/// Scaffold a workspace project in a fresh tempdir, seeding
 /// `registry.yaml`, `discovery.md`, and `plan.yaml`.
-fn hub_project(registry: &str, discovery: &str, plan: &str) -> TempDir {
+fn workspace_project(registry: &str, discovery: &str, plan: &str) -> TempDir {
     let tmp = tempdir().expect("tempdir");
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
     fs::write(tmp.path().join("registry.yaml"), registry).expect("write registry.yaml");
     seed_discovery(tmp.path(), discovery);
     fs::write(tmp.path().join("plan.yaml"), plan).expect("write plan.yaml");
-    // RFC-36: hub plan-time topology reads the committed cache, not the
+    // RFC-36: workspace plan-time topology reads the committed cache, not the
     // registry. Seed the projection `workspace sync` would produce for
     // the remote members (which a unit test cannot materialise).
-    fs::write(tmp.path().join(".specify/topology.lock"), PROPOSE_TOPOLOGY_HUB)
+    fs::write(tmp.path().join(".specify/topology.lock"), PROPOSE_TOPOLOGY_WORKSPACE)
         .expect("write topology.lock");
     tmp
 }
@@ -258,10 +258,10 @@ fn propose_dry_run_n1_request_golden() {
 }
 
 #[test]
-fn propose_dry_run_hub_request_golden() {
-    // Hub: the registry's two projects and four leads across two
+fn propose_dry_run_workspace_request_golden() {
+    // Workspace: the registry's two projects and four leads across two
     // sources project verbatim into the request envelope.
-    let tmp = hub_project(PROPOSE_REGISTRY_HUB, PROPOSE_DISCOVERY_HUB, PROPOSE_PLAN_HUB);
+    let tmp = workspace_project(PROPOSE_REGISTRY_WORKSPACE, PROPOSE_DISCOVERY_WORKSPACE, PROPOSE_PLAN_WORKSPACE);
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -279,7 +279,7 @@ fn propose_dry_run_hub_request_golden() {
     let leads = actual["leads"].as_array().expect("leads array");
     assert_eq!(leads.len(), 4);
 
-    assert_golden("propose-dry-run-hub-request.json", actual);
+    assert_golden("propose-dry-run-workspace-request.json", actual);
 }
 
 // -- `--from` happy-path goldens -------------------------------------
@@ -312,7 +312,7 @@ fn propose_from_n1_auto_bind_golden() {
 
 #[test]
 fn propose_from_fan_out_golden() {
-    let tmp = hub_project(PROPOSE_REGISTRY_HUB, PROPOSE_DISCOVERY_HUB, PROPOSE_PLAN_HUB);
+    let tmp = workspace_project(PROPOSE_REGISTRY_WORKSPACE, PROPOSE_DISCOVERY_WORKSPACE, PROPOSE_PLAN_WORKSPACE);
 
     let actual = propose_from_ok(tmp.path(), PROPOSE_RESPONSE_FANOUT);
     assert_eq!(actual["plan"]["name"], "identity-revamp");
@@ -352,7 +352,7 @@ fn propose_from_fan_out_golden() {
 
 #[test]
 fn propose_from_emits_single_journal_tail() {
-    let tmp = hub_project(PROPOSE_REGISTRY_HUB, PROPOSE_DISCOVERY_HUB, PROPOSE_PLAN_HUB);
+    let tmp = workspace_project(PROPOSE_REGISTRY_WORKSPACE, PROPOSE_DISCOVERY_WORKSPACE, PROPOSE_PLAN_WORKSPACE);
     let response = write_response(tmp.path(), PROPOSE_RESPONSE_FANOUT);
     specrun()
         .current_dir(tmp.path())
@@ -493,10 +493,10 @@ fn propose_reconcile_project_orphan() {
 
 #[test]
 fn propose_reconcile_project_binding_required() {
-    // Two projects offered (hub); the slice omits `project`, so the
+    // Two projects offered (workspace); the slice omits `project`, so the
     // kernel cannot auto-bind.
-    let tmp = hub_project(
-        PROPOSE_REGISTRY_HUB,
+    let tmp = workspace_project(
+        PROPOSE_REGISTRY_WORKSPACE,
         &discovery_doc(&[("docs", "a")]),
         "name: identity-revamp\nslices: []\n",
     );
