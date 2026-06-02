@@ -75,8 +75,6 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     let cfg = ProjectConfig {
         name,
         description: opts.description.map(str::to_string),
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
         adapter: Some(adapter_value),
         specify_version: Some(specify_version.clone()),
         rules,

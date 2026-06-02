@@ -7,13 +7,13 @@ use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_schema::{
     ADAPTER_JSON_SCHEMA, BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA,
-    COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA,
-    EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA, PLAN_JSON_SCHEMA,
-    PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
-    SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SOURCE_JSON_SCHEMA,
-    SYNTHESIS_JSON_SCHEMA, TARGET_JSON_SCHEMA, TOOL_JSON_SCHEMA, TOOL_SIDECAR_JSON_SCHEMA,
-    TOPOLOGY_LOCK_JSON_SCHEMA, ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
-    validate_value,
+    COMPONENTS_JSON_SCHEMA, DECISION_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA,
+    DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA,
+    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
+    RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA,
+    SOURCE_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TARGET_JSON_SCHEMA, TOOL_JSON_SCHEMA,
+    TOOL_SIDECAR_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, ValidationStatus,
+    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
 };
 
 #[test]
@@ -276,6 +276,60 @@ fn synthesis_schema_accepts_rfc_response_example() {
 #[test]
 fn components_schema_compiles() {
     compile_schema(COMPONENTS_JSON_SCHEMA).expect("components schema compiles");
+}
+
+#[test]
+fn decision_schema_compiles() {
+    compile_schema(DECISION_JSON_SCHEMA).expect("decision schema compiles");
+}
+
+/// The RFC-36 §"Record shape" slice-authored example validates without
+/// the engine-stamped `id` / `slice` / `date` fields — proving the
+/// optional-field design that lets one schema serve both the slice form
+/// and the persisted baseline form.
+#[test]
+fn decision_schema_accepts_slice_authored_form() {
+    let instance = json!({
+        "slug": "identity-store-postgres",
+        "status": "accepted",
+        "supersedes": ["DEC-0003"],
+        "related": ["REQ-001", "REQ-014"]
+    });
+    let summaries = validate_value(
+        &instance,
+        DECISION_JSON_SCHEMA,
+        "decision",
+        "slice-authored decision omits engine-stamped fields",
+    );
+    assert!(
+        summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
+        "slice-authored decision must validate; got {summaries:?}"
+    );
+}
+
+/// The RFC-36 §"Record shape" promoted baseline example validates with
+/// the engine-stamped header fields present.
+#[test]
+fn decision_schema_accepts_promoted_baseline_form() {
+    let instance = json!({
+        "id": "DEC-0007",
+        "slug": "identity-store-postgres",
+        "status": "accepted",
+        "slice": "identity-service",
+        "date": "2026-06-02",
+        "supersedes": ["DEC-0003"],
+        "related": ["REQ-001", "REQ-014"]
+    });
+    let summaries = validate_value(
+        &instance,
+        DECISION_JSON_SCHEMA,
+        "decision",
+        "promoted baseline decision carries engine-stamped fields",
+    );
+    assert!(
+        summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
+        "promoted baseline decision must validate; got {summaries:?}"
+    );
 }
 
 #[test]

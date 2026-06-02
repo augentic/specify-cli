@@ -31,8 +31,6 @@ fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {
     ProjectConfig {
         name: "demo".to_string(),
         description: None,
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
         adapter: Some("omnia".to_string()),
         specify_version: None,
         rules,
@@ -182,8 +180,6 @@ fn hub_field_omitted_when_false_in_serialise() {
     let cfg = ProjectConfig {
         name: "demo".to_string(),
         description: None,
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
         adapter: Some("omnia".to_string()),
         specify_version: None,
         rules: BTreeMap::new(),
@@ -200,8 +196,6 @@ fn hub_field_serialised_when_true() {
     let cfg = ProjectConfig {
         name: "platform".to_string(),
         description: None,
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
         adapter: None,
         specify_version: None,
         rules: BTreeMap::new(),

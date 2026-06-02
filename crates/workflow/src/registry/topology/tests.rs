@@ -7,21 +7,29 @@ fn round_trips_through_yaml_with_empties_elided() {
             name: "identity-contracts".to_string(),
             target: "contracts@v1".to_string(),
             description: Some("Contracts crate.".to_string()),
-            capabilities: vec!["contracts".to_string()],
-            keywords: Vec::new(),
+            surface: vec![Surface {
+                unit: "identity-api".to_string(),
+                requirements: vec!["Authenticate user".to_string()],
+                more: None,
+            }],
+            recent: Vec::new(),
+            decisions: Vec::new(),
+            decisions_more: None,
         },
         TopologyProject {
             name: "identity-service".to_string(),
             target: "omnia@v1".to_string(),
             description: None,
-            capabilities: Vec::new(),
-            keywords: Vec::new(),
+            surface: Vec::new(),
+            recent: Vec::new(),
+            decisions: Vec::new(),
+            decisions_more: None,
         },
     ]);
 
     let yaml = serde_saphyr::to_string(&lock).expect("serialize lock");
     assert!(yaml.contains("name: identity-contracts"), "{yaml}");
-    assert!(!yaml.contains("keywords:"), "empty keywords elided: {yaml}");
+    assert!(!yaml.contains("recent:"), "empty recent elided: {yaml}");
 
     let parsed: TopologyLock = serde_saphyr::from_str(&yaml).expect("round-trip");
     assert_eq!(parsed, lock);
@@ -35,8 +43,10 @@ fn save_then_load_is_identity() {
         name: "svc".to_string(),
         target: "omnia@v1".to_string(),
         description: None,
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
+        surface: Vec::new(),
+        recent: Vec::new(),
+        decisions: Vec::new(),
+        decisions_more: None,
     }]);
 
     lock.save(&path).expect("save");

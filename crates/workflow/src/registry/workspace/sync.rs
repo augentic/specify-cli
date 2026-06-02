@@ -90,9 +90,11 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
 /// Regenerate `.specify/topology.lock` from the materialised workspace
 /// slots (RFC-36).
 ///
-/// Projects every registry member's `project.yaml` (target adapter,
-/// description, capabilities, keywords) into the committed cache, in
-/// registry order. Slots without a readable `project.yaml` yet (a
+/// Projects every registry member's authored intent (target adapter,
+/// description) plus its deterministic baseline identity (`surface[]`
+/// from `.specify/specs/`, `recent[]` from the journal ledger) into the
+/// committed cache, in registry order. Slots without a readable
+/// `project.yaml` yet (a
 /// remote not materialised in this selective sync) are skipped — a full
 /// `workspace sync` materialises every slot and so produces a complete
 /// cache. Write-if-changed: an up-to-date lock is left untouched so the

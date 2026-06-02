@@ -10,6 +10,7 @@
 //! non-empty body lines after a leading frontmatter block is stripped.
 
 use super::files::DiscoveredFile;
+use super::frontmatter;
 use super::markdown::extract_sections;
 use crate::lint::{AdapterAxis, Brief};
 
@@ -64,32 +65,9 @@ fn parse_brief_path(relative: &str) -> Option<(AdapterAxis, &str, &str)> {
 
 fn count_body_lines(file: &DiscoveredFile) -> u32 {
     let text = file.text();
-    let body = strip_frontmatter(&text);
+    let body = frontmatter::split(&text).map_or(text.as_str(), |(_, body)| body);
     let count = body.lines().filter(|line| !line.trim().is_empty()).count();
     u32::try_from(count).unwrap_or(u32::MAX)
-}
-
-fn strip_frontmatter(text: &str) -> &str {
-    let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else {
-        return text;
-    };
-    let mut search_from = 0;
-    while let Some(rel) = rest[search_from..].find("\n---") {
-        let pos = search_from + rel;
-        let after = pos + "\n---".len();
-        let tail = &rest[after..];
-        if tail.is_empty() {
-            return "";
-        }
-        if let Some(stripped) = tail.strip_prefix('\n') {
-            return stripped;
-        }
-        if let Some(stripped) = tail.strip_prefix("\r\n") {
-            return stripped;
-        }
-        search_from = after;
-    }
-    text
 }
 
 #[cfg(test)]

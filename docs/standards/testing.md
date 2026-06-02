@@ -34,7 +34,7 @@ Test function names are identifiers, not sentences — the same brevity rules as
 - Prefer structural assertions (status fields, exit codes, JSON shape) over byte-for-byte prose comparisons.
 - Tests that need git operations set the four `GIT_*` env vars from `tests/common::GIT_ENV` so authorship is deterministic.
 
-`tests/cross_repo.rs` is the RM-01 happy-path acceptance harness — read it first when extending multi-repo coverage.
+`tests/cross_repo.rs` is the RM-05 happy-path acceptance harness — read it first when extending multi-repo coverage.
 
 ## Golden file discipline
 

@@ -19,21 +19,15 @@ pub struct ProjectConfig {
 
     /// Free-text description of the project's tech stack, architecture,
     /// and testing approach. Falls back to the adapter's domain when empty.
+    ///
+    /// Authored intent only. A project's *derived* routing identity —
+    /// the `surface[]` of owned units and a `recent[]` merge tail — is
+    /// projected from its baseline (`.specify/specs/` + journal) per
+    /// RFC-36, never re-authored here. The retired `capabilities` /
+    /// `keywords` facets are silently ignored if still present (this
+    /// struct does not `deny_unknown_fields`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-
-    /// Authoring-only capability tags characterising what this project
-    /// owns (e.g. `auth`, `billing`). Inert today: declared in
-    /// `project.yaml` for future slice-to-project routing, but not yet
-    /// read by any consumer.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capabilities: Vec<String>,
-
-    /// Authoring-only free-form keyword tags supplementing
-    /// `capabilities`. Inert today, with the same status as
-    /// `capabilities`.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub keywords: Vec<String>,
 
     /// Adapter identifier — either a bare name (`omnia`) or a URL.
     /// Absent for registry-only platform hubs (`hub: true`); see the
@@ -244,6 +238,16 @@ impl<'a> Layout<'a> {
     #[must_use]
     pub fn cache_dir(&self) -> PathBuf {
         self.specify_dir().join(".cache")
+    }
+
+    /// Absolute path to `<project_dir>/.specify/decisions/` — the
+    /// append-only Decision Record catalogue promoted by
+    /// `specrun slice merge` (RFC-36). One flat, project-global tree of
+    /// `DEC-NNNN-<slug>.md` files. Machine-written by merge; the single
+    /// permitted post-write mutation is a supersede status flip.
+    #[must_use]
+    pub fn decisions_dir(&self) -> PathBuf {
+        self.specify_dir().join("decisions")
     }
 
     /// Absolute path to `<project_dir>/.specify/archive/`. Centralised

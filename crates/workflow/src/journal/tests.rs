@@ -208,6 +208,7 @@ fn event_wire_shapes_match_contract() {
                 touched_specs: vec!["identity".to_string()],
                 outcome_summary: "identity: 2 modified".to_string(),
                 merge_sha: Some("a1b2c3d".to_string()),
+                decisions: Vec::new(),
             },
             &[
                 r#""event":"slice.archive.created""#,
@@ -665,6 +666,7 @@ fn no_snake_case_leaks_to_wire() {
             touched_specs: vec!["identity".to_string()],
             outcome_summary: "identity: 1 modified".to_string(),
             merge_sha: Some("abc1234".to_string()),
+            decisions: Vec::new(),
         },
     ] {
         append_batch(

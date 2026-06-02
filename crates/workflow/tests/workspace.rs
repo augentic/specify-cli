@@ -1063,17 +1063,34 @@ fn stage_topology_slot(project_dir: &Path, name: &str, project_yaml: &str) {
 }
 
 #[test]
-fn regenerate_topology_lock_projects_authored_facets() {
+fn regenerate_topology_lock_projects_baseline_identity() {
     use specify_workflow::registry::topology::TopologyLock;
     use specify_workflow::registry::workspace::regenerate_topology_lock;
 
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
+    // A stale `capabilities:` key is silently ignored (RFC-36); routing
+    // identity is derived from the slot's baseline, not re-authored.
     stage_topology_slot(
         project_dir,
         "alpha",
         "name: alpha\nadapter: omnia@v1\ndescription: Alpha core\ncapabilities:\n  - auth\n",
     );
+    let alpha_specify = project_dir.join(".specify/workspace/alpha/.specify");
+    let session_dir = alpha_specify.join("specs/session");
+    fs::create_dir_all(&session_dir).unwrap();
+    fs::write(
+        session_dir.join("spec.md"),
+        "### Requirement: Issue session token\n\nID: REQ-001\n\nBody.\n\n\
+         ### Requirement: Revoke session\n\nID: REQ-002\n\nBody.\n",
+    )
+    .unwrap();
+    fs::write(
+        alpha_specify.join("journal.jsonl"),
+        "{\"timestamp\":\"2026-01-01T00:00:00Z\",\"event\":\"slice.archive.created\",\"payload\":{\"slice-name\":\"session\",\"touched-specs\":[\"session\"],\"outcome-summary\":\"session: 2 added\"}}\n",
+    )
+    .unwrap();
+
     // A registry member whose slot has not been materialised yet is
     // skipped, not an error.
     let registry = Registry {
@@ -1106,5 +1123,70 @@ fn regenerate_topology_lock_projects_authored_facets() {
     assert_eq!(alpha.name, "alpha");
     assert_eq!(alpha.target, "omnia@v1");
     assert_eq!(alpha.description.as_deref(), Some("Alpha core"));
-    assert_eq!(alpha.capabilities, vec!["auth".to_string()]);
+    assert_eq!(alpha.surface.len(), 1);
+    assert_eq!(alpha.surface[0].unit, "session");
+    assert_eq!(
+        alpha.surface[0].requirements,
+        vec!["Issue session token".to_string(), "Revoke session".to_string()]
+    );
+    assert_eq!(alpha.recent, vec!["session: 2 added".to_string()]);
+}
+
+#[test]
+fn regenerate_topology_lock_projects_accepted_decisions() {
+    use specify_workflow::registry::topology::TopologyLock;
+    use specify_workflow::registry::workspace::regenerate_topology_lock;
+
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    stage_topology_slot(
+        project_dir,
+        "alpha",
+        "name: alpha\nadapter: omnia@v1\ndescription: Alpha core\n",
+    );
+    let decisions_dir = project_dir.join(".specify/workspace/alpha/.specify/decisions");
+    fs::create_dir_all(&decisions_dir).unwrap();
+    let decision = |id: &str, slug: &str, status: &str, title: &str| {
+        format!(
+            "---\nid: {id}\nslug: {slug}\nstatus: {status}\nslice: s\ndate: 2026-06-02\n---\n\
+             # {title}\n\n## Context\nc\n\n## Decision\nd\n\n## Consequences\ne\n"
+        )
+    };
+    fs::write(
+        decisions_dir.join("DEC-0001-use-postgres.md"),
+        decision("DEC-0001", "use-postgres", "accepted", "Use PostgreSQL"),
+    )
+    .unwrap();
+    fs::write(
+        decisions_dir.join("DEC-0002-drop-redis.md"),
+        decision("DEC-0002", "drop-redis", "rejected", "Drop Redis"),
+    )
+    .unwrap();
+
+    let registry = Registry {
+        version: 1,
+        projects: vec![RegistryProject {
+            name: "alpha".to_string(),
+            url: "git@github.com:org/alpha.git".to_string(),
+            adapter: None,
+            description: None,
+            contracts: None,
+        }],
+    };
+
+    regenerate_topology_lock(project_dir, &registry).expect("regenerate");
+
+    let lock = TopologyLock::load(&project_dir.join(".specify/topology.lock"))
+        .expect("load")
+        .expect("present");
+    let alpha = &lock.projects[0];
+    // Only the accepted record is projected, title-only.
+    assert_eq!(alpha.decisions.len(), 1);
+    assert_eq!(alpha.decisions[0].id, "DEC-0001");
+    assert_eq!(alpha.decisions[0].title, "Use PostgreSQL");
+    assert!(alpha.decisions_more.is_none());
+
+    // The accepted decision round-trips onto the wire under `decisions:`.
+    let yaml = fs::read_to_string(project_dir.join(".specify/topology.lock")).unwrap();
+    assert!(yaml.contains("DEC-0001"), "{yaml}");
 }

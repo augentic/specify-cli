@@ -995,7 +995,7 @@ fn validate_skips_provenance_without_metadata() {
 }
 
 // ---------------------------------------------------------------------------
-// slice validate — `discovery-lead-synopsis-thin` advisory (RFC-29b-signal D2.1)
+// slice validate — `discovery-lead-synopsis-thin` advisory (DECISIONS §Lead reconciliation D2.1)
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------

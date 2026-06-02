@@ -135,8 +135,13 @@ pub fn under_symlink(root: &Path, path: &Path) -> Result<bool, ToolingError> {
     Ok(fs::symlink_metadata(path).map_err(ToolingError::from)?.file_type().is_symlink())
 }
 
-fn frontmatter_block(content: &str) -> Option<&str> {
+pub(crate) fn frontmatter_split(content: &str) -> Option<(&str, &str)> {
     let rest = content.strip_prefix("---\n")?;
     let end = rest.find("\n---")?;
-    Some(&rest[..end])
+    let body_start = "---\n".len() + end + "\n---".len();
+    Some((&rest[..end], &content[body_start..]))
+}
+
+pub(crate) fn frontmatter_block(content: &str) -> Option<&str> {
+    frontmatter_split(content).map(|(block, _)| block)
 }

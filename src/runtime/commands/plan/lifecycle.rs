@@ -63,11 +63,16 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 }
 
 /// RFC-36: compare the committed `.specify/topology.lock` against each
-/// materialised slot's current `project.yaml`, emitting
-/// `topology-cache-stale` on divergence (the fix is `specrun workspace
-/// sync`). Replaces the former registry-authored
-/// `adapter-mismatch-workspace` check — the project's `project.yaml` is
-/// now authoritative and the cache is the derived projection of it.
+/// materialised slot's current `project.yaml` *and baseline projection*
+/// (`surface[]` from `.specify/specs/`, `recent[]` from the journal
+/// ledger), emitting `topology-cache-stale` on divergence (the fix is
+/// `specrun workspace sync`). Because the projection is deterministic
+/// (D36-6), this is a regenerate-and-compare check: `TopologyProject::resolve`
+/// re-derives the fresh entry and any drift in `target` / `description`
+/// / `surface` / `recent` trips the warning. Replaces the former
+/// registry-authored `adapter-mismatch-workspace` check — the project's
+/// `project.yaml` plus its baseline are now authoritative and the cache
+/// is the derived projection of them.
 fn topology_cache_staleness(
     ctx: &Ctx, registry: &Registry, results: &mut Vec<PlanDoctorDiagnostic>,
 ) {

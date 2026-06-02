@@ -99,8 +99,6 @@ mod tests {
         ProjectConfig {
             name: "demo".to_string(),
             description: Some("demo domain".to_string()),
-            capabilities: Vec::new(),
-            keywords: Vec::new(),
             adapter: Some("mini".to_string()),
             specify_version: None,
             rules,
@@ -177,8 +175,6 @@ mod tests {
             config: ProjectConfig {
                 name: "platform".to_string(),
                 description: None,
-                capabilities: Vec::new(),
-                keywords: Vec::new(),
                 adapter: None,
                 specify_version: None,
                 rules: BTreeMap::new(),

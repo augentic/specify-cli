@@ -343,7 +343,7 @@ fn lead_rejects_missing_source_bad_id_and_retired_tentative() {
     let v = load("discovery/lead.schema.json");
     assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
-    // `tentative` was retired (RFC-29b-signal D2.3); the schema is
+    // `tentative` was retired (DECISIONS §Lead reconciliation D2.3); the schema is
     // `additionalProperties: false`, so a lead carrying it now fails.
     assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_REMOVED), "lead/retired-tentative");
 }

@@ -59,31 +59,8 @@ fn parse_skill_path(relative: &str) -> Option<(&str, &str)> {
 /// `---\n…\n---\n` block before counting.
 fn body_line_count(file: &DiscoveredFile) -> u32 {
     let text = file.text();
-    let body = strip_frontmatter(&text);
+    let body = frontmatter::split(&text).map_or(text.as_str(), |(_, body)| body);
     u32::try_from(body.lines().count()).unwrap_or(u32::MAX)
-}
-
-fn strip_frontmatter(text: &str) -> &str {
-    let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else {
-        return text;
-    };
-    let mut search_from = 0;
-    while let Some(rel) = rest[search_from..].find("\n---") {
-        let pos = search_from + rel;
-        let after = pos + "\n---".len();
-        let tail = &rest[after..];
-        if tail.is_empty() {
-            return "";
-        }
-        if let Some(stripped) = tail.strip_prefix('\n') {
-            return stripped;
-        }
-        if let Some(stripped) = tail.strip_prefix("\r\n") {
-            return stripped;
-        }
-        search_from = after;
-    }
-    text
 }
 
 #[cfg(test)]

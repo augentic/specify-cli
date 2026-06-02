@@ -13,8 +13,10 @@ fn project(name: &str, target: &str, description: &str) -> ProjectRef {
         name: name.to_string(),
         target: target.to_string(),
         description: Some(description.to_string()),
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
+        surface: Vec::new(),
+        recent: Vec::new(),
+        decisions: Vec::new(),
+        decisions_more: None,
     }
 }
 
@@ -172,8 +174,6 @@ fn hub_config() -> ProjectConfig {
     ProjectConfig {
         name: "platform".to_string(),
         description: None,
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
         adapter: None,
         specify_version: None,
         rules: std::collections::BTreeMap::new(),
@@ -196,8 +196,10 @@ fn resolve_topology_hub_reads_topology_lock() {
                - name: identity-contracts\n    \
                  target: contracts@v1\n    \
                  description: Contracts crate.\n    \
-                 capabilities:\n      \
-                   - contracts\n  \
+                 surface:\n      \
+                   - unit: identity-api\n        \
+                     requirements:\n          \
+                       - Authenticate user\n  \
                - name: identity-service\n    \
                  target: omnia@v1\n",
     )
@@ -211,15 +213,23 @@ fn resolve_topology_hub_reads_topology_lock() {
                 name: "identity-contracts".to_string(),
                 target: "contracts@v1".to_string(),
                 description: Some("Contracts crate.".to_string()),
-                capabilities: vec!["contracts".to_string()],
-                keywords: Vec::new(),
+                surface: vec![Surface {
+                    unit: "identity-api".to_string(),
+                    requirements: vec!["Authenticate user".to_string()],
+                    more: None,
+                }],
+                recent: Vec::new(),
+                decisions: Vec::new(),
+                decisions_more: None,
             },
             ProjectRef {
                 name: "identity-service".to_string(),
                 target: "omnia@v1".to_string(),
                 description: None,
-                capabilities: Vec::new(),
-                keywords: Vec::new(),
+                surface: Vec::new(),
+                recent: Vec::new(),
+                decisions: Vec::new(),
+                decisions_more: None,
             },
         ]
     );
@@ -239,8 +249,6 @@ fn resolve_topology_regular_missing_adapter_errors() {
     let config = ProjectConfig {
         name: "demo".to_string(),
         description: None,
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
         adapter: None,
         specify_version: None,
         rules: std::collections::BTreeMap::new(),

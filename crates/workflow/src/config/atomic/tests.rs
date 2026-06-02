@@ -92,8 +92,6 @@ fn load_round_trips_when_present() {
     let cfg = ProjectConfig {
         name: "demo".into(),
         description: None,
-        capabilities: Vec::new(),
-        keywords: Vec::new(),
         adapter: Some("omnia".into()),
         specify_version: None,
         rules: BTreeMap::new(),
