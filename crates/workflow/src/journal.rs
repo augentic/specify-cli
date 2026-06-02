@@ -14,7 +14,7 @@
 //!
 //! [workflow §Observability]: ../../../../docs/standards/workflow.md#observability
 
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 
 use jiff::Timestamp;
@@ -423,6 +423,12 @@ pub enum EventKind {
         /// repository; absent otherwise (best-effort, never fatal).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         merge_sha: Option<String>,
+        /// `DEC-NNNN` ids promoted into the Decision Record catalogue by
+        /// this merge (RFC-36), in slug order. Empty stays off the wire;
+        /// this is the durable ledger of promoted decisions alongside git
+        /// history of `.specify/decisions/`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        decisions: Vec<String>,
     },
     /// `specrun lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
@@ -566,6 +572,34 @@ mod authority_override_action_tests {
 #[must_use]
 pub fn path(layout: Layout<'_>) -> PathBuf {
     layout.specify_dir().join(JOURNAL_FILE_NAME)
+}
+
+/// Read every parseable [`Event`] from the journal at
+/// `<project_dir>/.specify/journal.jsonl`, in append (file) order.
+///
+/// A missing journal yields an empty vector. Blank lines are skipped.
+/// Lines that fail to parse as an [`Event`] are skipped rather than
+/// failing the whole read, so a journal written by a newer binary
+/// (carrying event kinds this binary does not know) still yields the
+/// events it does understand — the read stays forward-compatible and,
+/// for a given file, deterministic. This is the read side the RFC-36
+/// identity projection (`recent[]`) consumes.
+///
+/// # Errors
+///
+/// Propagates I/O failures other than a missing file.
+pub fn read(layout: Layout<'_>) -> Result<Vec<Event>, Error> {
+    let path = path(layout);
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(Error::Io(err)),
+    };
+    Ok(contents
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| serde_json::from_str::<Event>(line).ok())
+        .collect())
 }
 
 /// Append a sequence of [`Event`]s to the project journal in a
@@ -865,6 +899,7 @@ mod tests {
                     touched_specs: vec!["identity".to_string()],
                     outcome_summary: "identity: 2 modified".to_string(),
                     merge_sha: Some("a1b2c3d".to_string()),
+                    decisions: Vec::new(),
                 },
                 &[
                     r#""event":"slice.archive.created""#,
@@ -1265,6 +1300,7 @@ mod tests {
                 touched_specs: vec!["identity".to_string()],
                 outcome_summary: "identity: 1 modified".to_string(),
                 merge_sha: Some("abc1234".to_string()),
+                decisions: Vec::new(),
             },
         ] {
             append_batch(

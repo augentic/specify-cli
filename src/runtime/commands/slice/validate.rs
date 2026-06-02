@@ -13,11 +13,13 @@ use specify_diagnostics::{
     blocking_present, renumber,
 };
 use specify_error::{Error, Result};
+use specify_model::decision::{DecisionRecord, parse_decision};
 use specify_model::discovery::Discovery;
 use specify_model::evidence::ClaimKind;
 use specify_model::spec::provenance::{self, ParsedSpec, RequirementStatus, RequirementTag};
 use specify_validate::validate_slice;
 use specify_workflow::change::{Plan, orphan_authority_override_keys};
+use specify_workflow::decisions::{is_dec_ref, read_baseline};
 use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
 use specify_workflow::journal::{Event, EventKind, append_batch};
 use specify_workflow::schema::{evidence_yaml_paths, validate_evidence_dir};
@@ -63,7 +65,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // on stdout either way; only a blocking diagnostic gates exit.
     //
     // The `discovery-lead-synopsis-thin` content-floor advisory
-    // (RFC-29b-signal D2.1) rides this non-blocking surface — never
+    // (DECISIONS §Lead reconciliation D2.1) rides this non-blocking surface — never
     // the pre-adapter gate above, which hard-fails on any finding —
     // so a thin `synopsis` nudges without ever parking the slice.
     let mut findings = validate_slice(&slice_dir)?;
@@ -246,6 +248,126 @@ fn collect_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<
     findings.extend(alias_collisions(ctx)?);
     findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
     findings.extend(collect_model_drift_findings(ctx, slice_dir, name)?);
+    findings.extend(collect_decision_gates(ctx, slice_dir)?);
+    Ok(findings)
+}
+
+/// Decision Record gate (RFC-36 §"Validation findings"). Over
+/// `<slice>/decisions/*.md` it raises the per-file findings owned by the
+/// `specify-model` parser — `decision-record-schema`,
+/// `decision-record-section-missing`, `decision-slug-grammar` (the same
+/// parser-drives-findings posture as the `spec.md` provenance parser, so
+/// no JSON schema runs here) — plus the two cross-file checks the parser
+/// cannot make alone:
+///
+/// - `decision-slug-collision` — two records in the slice share a `slug`.
+/// - `decision-supersede-orphan` — a `supersedes:` target resolves to
+///   neither the live baseline catalogue nor a sibling slice record.
+///   Re-checked against the live baseline at merge (the baseline may move
+///   between refine and merge).
+///
+/// Absent `decisions/` skips the gate silently — Decision Records are
+/// opt-in.
+fn collect_decision_gates(ctx: &Ctx, slice_dir: &Path) -> Result<Vec<Diagnostic>> {
+    let decisions_dir = slice_dir.join("decisions");
+    if !decisions_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(&decisions_dir).map_err(|source| Error::Filesystem {
+        op: "readdir",
+        path: decisions_dir.clone(),
+        source,
+    })? {
+        let entry = entry.map_err(|source| Error::Filesystem {
+            op: "readdir-entry",
+            path: decisions_dir.clone(),
+            source,
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            files.push(path);
+        }
+    }
+    files.sort();
+
+    let mut findings: Vec<Diagnostic> = Vec::new();
+    let mut slug_files: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut records: Vec<(String, DecisionRecord)> = Vec::new();
+
+    for path in &files {
+        let text = std::fs::read_to_string(path).map_err(|source| Error::Filesystem {
+            op: "read",
+            path: path.clone(),
+            source,
+        })?;
+        let hint = path_hint(path, slice_dir);
+        let parsed = parse_decision(&text);
+        for finding in parsed.findings {
+            findings.push(finding.into_diagnostic(&hint));
+        }
+        if let Some(record) = parsed.record {
+            slug_files.entry(record.slug.clone()).or_default().push(hint.clone());
+            records.push((hint, record));
+        }
+    }
+
+    for (slug, hints) in &slug_files {
+        if hints.len() > 1 {
+            findings.push(Diagnostic::violation(
+                "decision-slug-collision",
+                "Each Decision Record in the slice carries a distinct `slug`",
+                format!("slug `{slug}` is shared by {} records: {}", hints.len(), hints.join(", ")),
+                Artifact::Decisions,
+                None,
+            ));
+        }
+    }
+
+    findings.extend(decision_supersede_orphans(ctx, &records, &slug_files)?);
+    Ok(findings)
+}
+
+/// `decision-supersede-orphan` — every `supersedes:` target must resolve
+/// to a baseline `DEC-NNNN` (for a DEC reference) or to a baseline slug
+/// or sibling slice record (for a slug reference).
+fn decision_supersede_orphans(
+    ctx: &Ctx, records: &[(String, DecisionRecord)], slug_files: &BTreeMap<String, Vec<String>>,
+) -> Result<Vec<Diagnostic>> {
+    let baseline = read_baseline(&ctx.layout().decisions_dir())?;
+    let baseline_ids: BTreeSet<String> = baseline.iter().map(|b| b.id().to_string()).collect();
+    let baseline_slugs: BTreeSet<String> = baseline.iter().map(|b| b.record.slug.clone()).collect();
+
+    let mut findings: Vec<Diagnostic> = Vec::new();
+    for (hint, record) in records {
+        for target in &record.supersedes {
+            let resolved = if is_dec_ref(target) {
+                baseline_ids.contains(target)
+            } else {
+                baseline_slugs.contains(target) || slug_files.contains_key(target)
+            };
+            if !resolved {
+                findings.push(Diagnostic::violation(
+                    "decision-supersede-orphan",
+                    "every `supersedes:` target resolves to a baseline DEC or a sibling record",
+                    format!(
+                        "decision `{}` (slug `{}`) supersedes `{target}`, which resolves to \
+                         neither the baseline catalogue nor a sibling slice record",
+                        record.slug, record.slug
+                    ),
+                    Artifact::Decisions,
+                    Some(specify_diagnostics::FindingLocation {
+                        path: hint.clone(),
+                        line: None,
+                        column: None,
+                        end_line: None,
+                        end_column: None,
+                    }),
+                ));
+            }
+        }
+    }
     Ok(findings)
 }
 
@@ -296,7 +418,7 @@ fn collect_spec_file_location_findings(slice_dir: &Path) -> Vec<Diagnostic> {
     )]
 }
 
-/// Synopsis content-floor advisory (RFC-29b-signal D2.1). Loads
+/// Synopsis content-floor advisory (DECISIONS §Lead reconciliation D2.1). Loads
 /// `<project_dir>/discovery.md` when present and emits one
 /// non-blocking `discovery-lead-synopsis-thin` finding per lead whose
 /// `synopsis` falls below a contentfulness heuristic. Absent
@@ -339,7 +461,7 @@ fn synopsis_thin(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
         .collect())
 }
 
-/// Contentfulness heuristic for a lead `synopsis` (RFC-29b-signal
+/// Contentfulness heuristic for a lead `synopsis` (DECISIONS §Lead reconciliation
 /// D2.1). A synopsis is "thin" when it carries fewer than
 /// [`SYNOPSIS_MIN_WORDS`] whitespace-delimited words OR fewer than
 /// [`SYNOPSIS_MIN_CHARS`] non-whitespace characters once trimmed — too

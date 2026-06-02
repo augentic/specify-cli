@@ -5,6 +5,7 @@
 //! plan. See `docs/standards/architecture.md` for the rationale.
 
 pub mod atomic;
+pub mod decision;
 pub mod discovery;
 pub mod evidence;
 pub mod spec;

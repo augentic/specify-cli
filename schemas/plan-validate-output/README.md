@@ -38,7 +38,7 @@ The same `schema.json` is the source of truth for Rust-side CLI tests (`tests/pl
 `specrun plan validate` emits additional codes when `registry.yaml` is present:
 
 - `project-not-in-registry` (error): a slice's `project` value does not match any `projects[].name` in the registry.
-- `topology-cache-stale` (warning): a workspace slot's `.specify/project.yaml` (target adapter, description, capabilities, or keywords) has drifted from the committed `.specify/topology.lock`. Per [RFC-36](../../../specify/rfcs/rfc-36-registry-projection.md) the slot's `project.yaml` is authoritative; the fix is `specrun workspace sync` to regenerate the cache. Replaces the former registry-authored `adapter-mismatch-workspace` / `description-missing-multi-repo` checks.
+- `topology-cache-stale` (warning): a workspace slot's `.specify/project.yaml` (target adapter, description) or baseline projection (`surface[]`, `decisions[]`, `recent[]`) has drifted from the committed `.specify/topology.lock`. Per [RFC-36](https://github.com/augentic/specify/blob/main/rfcs/rfc-36-project-identity.md) the slot's `project.yaml` is authoritative; the fix is `specrun workspace sync` to regenerate the cache. Replaces the former registry-authored `adapter-mismatch-workspace` / `description-missing-multi-repo` checks.
 - `workspace-slot-config-unreadable` (error): a materialised slot's `project.yaml` could not be loaded or its target adapter could not be resolved.
 
 The three health diagnostics layer additional codes that carry an optional `data` payload describing the offending shape:

@@ -8,6 +8,7 @@ pub mod adapter;
 pub mod change;
 pub mod cmd;
 pub mod config;
+pub mod decisions;
 pub mod design_system;
 pub mod init;
 pub mod journal;

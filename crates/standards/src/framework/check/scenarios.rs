@@ -11,7 +11,9 @@ use walkdir::WalkDir;
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
-use crate::framework::helpers::{relative_display, under_symlink};
+use crate::framework::helpers::{
+    frontmatter_block, frontmatter_split, relative_display, under_symlink,
+};
 use crate::framework::schema::{SchemaId, collect_errors};
 
 pub const RULE_SCHEMA_VIOLATION: &str = "scenarios.schema-violation";
@@ -138,8 +140,10 @@ pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Diagnostic> {
         let Some(JsonValue::String(id)) = sc.frontmatter.get("id") else {
             continue;
         };
-        let body = body_after_frontmatter(&sc.content);
-        let Some(caps) = scenario_id_body_re.captures(&body) else {
+        let Some((_, body)) = frontmatter_split(&sc.content) else {
+            continue;
+        };
+        let Some(caps) = scenario_id_body_re.captures(body) else {
             continue;
         };
         let body_id = caps.get(1).expect("capture group").as_str();
@@ -525,25 +529,8 @@ fn is_contiguous_stages_prefix(stages: &JsonValue) -> bool {
     true
 }
 
-fn frontmatter_block(content: &str) -> Option<&str> {
-    let rest = content.strip_prefix("---\n")?;
-    let end = rest.find("\n---")?;
-    Some(&rest[..end])
-}
-
 fn parse_frontmatter_yaml(body: &str) -> Result<BTreeMap<String, JsonValue>, String> {
     serde_saphyr::from_str(body).map_err(|source| source.to_string())
-}
-
-fn body_after_frontmatter(content: &str) -> String {
-    let Some(block) = content.strip_prefix("---\n") else {
-        return content.to_string();
-    };
-    let Some(end) = block.find("\n---") else {
-        return content.to_string();
-    };
-    let consumed = "---\n".len() + end + "\n---".len();
-    content[consumed..].to_string()
 }
 
 fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Diagnostic {

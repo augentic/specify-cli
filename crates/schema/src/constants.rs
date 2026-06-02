@@ -48,6 +48,16 @@ pub const SYNTHESIS_JSON_SCHEMA: &str =
 pub const PROVENANCE_JSON_SCHEMA: &str =
     include_str!("../../../schemas/slice/provenance.schema.json");
 
+/// Schema for a Decision Record front-matter block (RFC-36).
+///
+/// One schema validates both the slice-authored form under
+/// `.specify/slices/<slice>/decisions/<slug>.md` and the promoted
+/// baseline form under `.specify/decisions/DEC-NNNN-<slug>.md`:
+/// engine-stamped `id` / `slice` / `date` / `superseded-by` are
+/// optional here so the one shape serves both. `specrun slice validate`
+/// gates the slice form; `specrun slice merge` stamps and promotes.
+pub const DECISION_JSON_SCHEMA: &str = include_str!("../../../schemas/decision.schema.json");
+
 /// Schema for `.specify/topology.lock`.
 ///
 /// The committed projection of each member project's `project.yaml`

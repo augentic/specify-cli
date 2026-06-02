@@ -32,7 +32,7 @@ pub fn extract(file: &DiscoveredFile) -> Option<Frontmatter> {
         return None;
     }
     let text = file.text();
-    let frontmatter_body = split(&text)?;
+    let (frontmatter_body, _) = split(&text)?;
     let value: Value = serde_saphyr::from_str(frontmatter_body).ok()?;
     let fields = match value {
         Value::Object(map) => map,
@@ -46,19 +46,27 @@ pub fn extract(file: &DiscoveredFile) -> Option<Frontmatter> {
     })
 }
 
-/// Slice `content` to the bytes between an opening `---\n` (or
-/// `---\r\n`) line and the matching closing `---` line. Mirrors the
-/// codex parser's split rules so authoring conventions agree across
-/// surfaces.
-fn split(content: &str) -> Option<&str> {
+/// Split `content` at its leading `---\n` (or `---\r\n`) block and the
+/// matching closing `---` line, returning both halves as
+/// `(block_before, body_after)`: the YAML block between the delimiters
+/// and the document body following the closing line. Mirrors the codex
+/// parser's split rules so authoring conventions agree across surfaces.
+///
+/// Returns `None` when there is no leading `---` block and when no valid
+/// closing delimiter is found — siblings rely on this to fall back to
+/// the full original text.
+pub(super) fn split(content: &str) -> Option<(&str, &str)> {
     let rest = content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n"))?;
     let mut search_from = 0;
     while let Some(rel) = rest[search_from..].find("\n---") {
         let pos = search_from + rel;
         let after = pos + "\n---".len();
         let tail = &rest[after..];
-        if tail.is_empty() || tail.starts_with('\n') || tail.starts_with("\r\n") {
-            return Some(&rest[..pos]);
+        if tail.is_empty() {
+            return Some((&rest[..pos], ""));
+        }
+        if let Some(body) = tail.strip_prefix('\n').or_else(|| tail.strip_prefix("\r\n")) {
+            return Some((&rest[..pos], body));
         }
         search_from = after;
     }
