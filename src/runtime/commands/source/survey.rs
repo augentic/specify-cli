@@ -284,7 +284,15 @@ fn dispatch_survey_tool(prepared: &prep::SourcePrep) -> Result<()> {
 /// Returns the merged lead ids. The schema check gates the merge, so an
 /// invalid lead set leaves `discovery.md` untouched (RFC-29 D1).
 fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>> {
-    let mut leads = Discovery::parse(raw)?.into_leads();
+    let mut leads = Discovery::parse_lead_set(raw)?.into_leads();
+    if leads.is_empty() && !raw.trim().is_empty() {
+        return Err(Error::Diag {
+            code: "survey-lead-set-empty",
+            detail: "lead-set.md contains text but no leads were parsed; each lead must be a \
+                     `### <lead>` heading followed by `- lead:` and `- synopsis:` bullets"
+                .to_string(),
+        });
+    }
     // Attribution is CLI-owned: a `survey` for `source` produces
     // `source`'s leads, so stamp every lead before the schema check
     // (which requires `source`) and the merge.
