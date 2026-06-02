@@ -289,7 +289,8 @@ fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>>
         return Err(Error::Diag {
             code: "survey-lead-set-empty",
             detail: "lead-set.md contains text but no leads were parsed; each lead must be a \
-                     `### <lead>` heading followed by `- lead:` and `- synopsis:` bullets"
+                     `### <lead>` heading followed by `lead:` and `synopsis:` bullets using \
+                     `-` or `*` markers"
                 .to_string(),
         });
     }
