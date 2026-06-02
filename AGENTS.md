@@ -72,6 +72,27 @@ See [DECISIONS.md §"Exit codes"](./DECISIONS.md#exit-codes) for the long-form r
 | Standing architectural decisions (error layering, exit codes, atomic writes, YAML library, wire compatibility, workflow type renames, plan lifecycle, adapter loader, journal events) | [`DECISIONS.md`](./DECISIONS.md) |
 | Engineering standards layer (`specify-standards` / `specify-schema`, `WorkspaceModel`, deterministic hints, `specrun lint`) | [`DECISIONS.md` §"Standards layer split into `specify-standards` and `specify-schema`](./DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema) |
 
+## Rust quality {#rust-quality}
+
+Read [style.md](./docs/standards/style.md), [coding-standards.md](./docs/standards/coding-standards.md), and [testing.md § Test naming](./docs/standards/testing.md#test-naming) before adding types, suppressions, or tests. Run `cargo make ci` (not bare `cargo test` — CI uses `RUSTFLAGS=-Dwarnings`).
+
+**Naming:** The module path is context — `registry::show`, not `show_registry`. Test function names are short identifiers; put the narrative in the test body ([testing.md](./docs/standards/testing.md#test-naming)).
+
+**Lint suppressions:** Refactor first. Use `#[expect(lint, reason = "…")]` at the smallest scope. `#![allow]` only at module root when the lint applies to every item below and the reason is contract-locked. `#[allow]` without `reason` fails CI.
+
+**Rust-quality CI:** `cargo test --test rust_quality` runs `RustTestNaming` and `RustSourceQuality` over this repo (long test fn names, archaeology in `//!`/`///`, bare `#[allow]`). Findings are burn-down tracked in `docs/quality-debt.md`.
+
+| Do not | Do instead | See |
+| --- | --- | --- |
+| `#[allow]` / `#[expect]` before trying a split or extract | Extract helper or submodule; suppress only if contract-locked | [coding-standards § Lint suppression](./docs/standards/coding-standards.md#lint-suppression-posture) |
+| `trait Foo` + sole `RealFoo` for tests | `CmdRunner`, `AtomicYaml`, or filesystem/tempdir | [style.md § No traits for testability](./docs/standards/style.md#no-traits-for-testability-alone) |
+| `*RenderInput` wrapper for `Render` | `Render` on domain type or `ctx.emit_with` closure | [style.md § One body per command](./docs/standards/style.md#one-body-per-command-no-wrapper-newtype) |
+| `match ctx.format { Json, Text }` in handlers | `ctx.write` / `output::report` | [handler-shape.md](./docs/standards/handler-shape.md) |
+| RFC/Phase/migration history in `//!` / `///` | ≤ 3 lines “what today”; history in [DECISIONS.md](./DECISIONS.md) | [style.md § No archaeology](./docs/standards/style.md#no-archaeology-in-code) |
+| Sentence-length test fn names | Short name + `mod` grouping | [testing.md § Test naming](./docs/standards/testing.md#test-naming) |
+| Nested `struct Body` inside `fn` | Top-level `*Body` + `From` impl | [coding-standards § DTOs](./docs/standards/coding-standards.md#dtos) |
+| New `Error::Diag` for one-off shapes | Typed variant after ≥3 identical call sites | [style.md § Error variants](./docs/standards/style.md#error-variants-budgeted-by-recovery-not-source) |
+
 External references:
 
 - [Parent repo `AGENTS.md`](https://github.com/augentic/specify/blob/main/AGENTS.md) — workflow vocabulary (slice / change), skill family, plan-driven loop, contract skills.
@@ -108,3 +129,4 @@ scripts/build-vectis-local.sh    # build wasi-tools/vectis with sha256 sidecars 
 4. When you remove a symbol, `rg <SymbolName> -- AGENTS.md DECISIONS.md docs/` and update every hit in the same PR.
 5. If you touch `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/model/src/spec/provenance.rs`, `crates/workflow/src/adapter/`, `crates/workflow/src/change/plan/core/propose.rs`, `crates/workflow/src/journal.rs`, `crates/schema/src/`, `crates/standards/src/rules/`, `crates/standards/src/lint/`, the `$CAPABILITY_DIR` env var, or the `adapter--<axis>--<slug>` tool cache scope: `rg <symbol>` across both this repo *and* the parent [`augentic/specify`](https://github.com/augentic/specify) plugin repo, and update every hit in the same PR (workflow §"Note to the implementing agent" applies — the workflow contract spans both repos).
 6. A fresh contributor should be able to reach any rule from this spine in three hops or fewer. If you find yourself adding prose here that isn't navigational, it belongs in one of the standards docs.
+7. For Rust changes, skim [Rust quality](#rust-quality) before adding types, suppressions, or tests; if you add `#[expect]`, state in the PR why a refactor was infeasible.

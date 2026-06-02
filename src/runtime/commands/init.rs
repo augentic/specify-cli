@@ -21,40 +21,50 @@ fn canonical(p: &Path) -> String {
     std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
 }
 
+/// Clap-mapped inputs for `specrun init` (format-only handler).
 #[expect(
-    clippy::too_many_arguments,
-    clippy::fn_params_excessive_bools,
-    reason = "format-only handler mirrors the `Commands::Init` clap variant 1:1; each flag is an \
-              independent, clap-validated init input threaded straight into `InitOptions`."
+    clippy::struct_excessive_bools,
+    reason = "mirrors the `Commands::Init` clap variant: each bool is an independent init flag."
 )]
-pub(super) fn run(
-    format: Format, adapter: Option<&str>, name: Option<&str>, description: Option<&str>,
-    workspace_init: bool, include_framework: bool, check_migration: bool, upgrade: bool,
-) -> Result<()> {
+pub(super) struct Args<'a> {
+    pub format: Format,
+    pub adapter: Option<&'a str>,
+    pub name: Option<&'a str>,
+    pub description: Option<&'a str>,
+    pub workspace: bool,
+    pub include_framework: bool,
+    pub check_migration: bool,
+    pub upgrade: bool,
+}
+
+pub(super) fn run(args: &Args<'_>) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
-    if check_migration {
-        return check_migration_probe(format, &project_dir);
+    if args.check_migration {
+        return check_migration_probe(args.format, &project_dir);
     }
 
     let opts = InitOptions {
         project_dir: &project_dir,
-        adapter,
-        name,
-        description,
-        workspace: workspace_init,
-        include_framework,
-        upgrade,
+        adapter: args.adapter,
+        name: args.name,
+        description: args.description,
+        workspace: args.workspace,
+        include_framework: args.include_framework,
+        upgrade: args.upgrade,
     };
 
     let result = init(opts, Timestamp::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
-    let context_skip_reason = generate_initial_context(format, &current_dir)?;
+    let context_skip_reason = generate_initial_context(args.format, &current_dir)?;
 
-    let workspace_sync_message =
-        if workspace_init && !upgrade { Some(run_workspace_sync(&project_dir)?) } else { None };
+    let workspace_sync_message = if args.workspace && !args.upgrade {
+        Some(run_workspace_sync(&project_dir)?)
+    } else {
+        None
+    };
 
-    emit_init_result(format, &result, context_skip_reason, workspace_sync_message)
+    emit_init_result(args.format, &result, context_skip_reason, workspace_sync_message)
 }
 
 /// Materialise registry slots and regenerate topology after workspace init.

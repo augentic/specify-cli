@@ -261,7 +261,11 @@ fn propose_dry_run_n1_request_golden() {
 fn propose_dry_run_workspace_request_golden() {
     // Workspace: the registry's two projects and four leads across two
     // sources project verbatim into the request envelope.
-    let tmp = workspace_project(PROPOSE_REGISTRY_WORKSPACE, PROPOSE_DISCOVERY_WORKSPACE, PROPOSE_PLAN_WORKSPACE);
+    let tmp = workspace_project(
+        PROPOSE_REGISTRY_WORKSPACE,
+        PROPOSE_DISCOVERY_WORKSPACE,
+        PROPOSE_PLAN_WORKSPACE,
+    );
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -312,7 +316,11 @@ fn propose_from_n1_auto_bind_golden() {
 
 #[test]
 fn propose_from_fan_out_golden() {
-    let tmp = workspace_project(PROPOSE_REGISTRY_WORKSPACE, PROPOSE_DISCOVERY_WORKSPACE, PROPOSE_PLAN_WORKSPACE);
+    let tmp = workspace_project(
+        PROPOSE_REGISTRY_WORKSPACE,
+        PROPOSE_DISCOVERY_WORKSPACE,
+        PROPOSE_PLAN_WORKSPACE,
+    );
 
     let actual = propose_from_ok(tmp.path(), PROPOSE_RESPONSE_FANOUT);
     assert_eq!(actual["plan"]["name"], "identity-revamp");
@@ -352,7 +360,11 @@ fn propose_from_fan_out_golden() {
 
 #[test]
 fn propose_from_emits_single_journal_tail() {
-    let tmp = workspace_project(PROPOSE_REGISTRY_WORKSPACE, PROPOSE_DISCOVERY_WORKSPACE, PROPOSE_PLAN_WORKSPACE);
+    let tmp = workspace_project(
+        PROPOSE_REGISTRY_WORKSPACE,
+        PROPOSE_DISCOVERY_WORKSPACE,
+        PROPOSE_PLAN_WORKSPACE,
+    );
     let response = write_response(tmp.path(), PROPOSE_RESPONSE_FANOUT);
     specrun()
         .current_dir(tmp.path())

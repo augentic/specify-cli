@@ -14,6 +14,23 @@ pub struct Context {
 }
 
 impl Context {
+    /// Construct context for the specify-cli workspace (Rust-quality checks only).
+    pub fn from_specify_cli_root(root: impl AsRef<Path>) -> Result<Self, ToolingError> {
+        let root = root.as_ref();
+        if !is_specify_cli_root(root) {
+            return Err(ToolingError::Infrastructure(format!(
+                "not a specify-cli root: {}",
+                root.display()
+            )));
+        }
+        Ok(Self {
+            framework_root: root.canonicalize().map_err(|source| {
+                ToolingError::Infrastructure(format!("canonicalize path: {source}"))
+            })?,
+            schema_cache: Mutex::new(HashMap::new()),
+        })
+    }
+
     /// Construct context when the framework root is already known (tests).
     pub fn from_framework_root(framework_root: impl AsRef<Path>) -> Result<Self, ToolingError> {
         let framework_root = framework_root.as_ref();
@@ -117,4 +134,8 @@ fn compile(source: &str, key: &Path) -> Result<Arc<Validator>, ToolingError> {
 
 fn is_framework_root(path: &Path) -> bool {
     path.join("plugins").is_dir() && path.join("adapters").is_dir()
+}
+
+fn is_specify_cli_root(path: &Path) -> bool {
+    path.join("crates/workflow").is_dir() && path.join("src/runtime").is_dir()
 }

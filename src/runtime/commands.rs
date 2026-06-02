@@ -46,16 +46,16 @@ pub fn run(cli: Cli) -> Exit {
             check_migration,
             upgrade,
         } => dispatch(format, || {
-            init::run(
+            init::run(&init::Args {
                 format,
-                adapter.as_deref(),
-                name.as_deref(),
-                description.as_deref(),
+                adapter: adapter.as_deref(),
+                name: name.as_deref(),
+                description: description.as_deref(),
                 workspace,
                 include_framework,
                 check_migration,
                 upgrade,
-            )
+            })
         }),
         Commands::Source { action } => dispatch_source(format, action),
         Commands::Target { action } => match action {

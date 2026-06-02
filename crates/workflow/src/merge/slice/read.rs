@@ -45,10 +45,6 @@ pub(super) fn first_three_way(classes: &[ArtifactClass]) -> Option<&ArtifactClas
 /// Per-spec merge or coherence-validation conflicts are aggregated into
 /// a single `Error::Diag { code: "merge-spec-conflicts" }` so callers
 /// can surface every conflict at once instead of bailing on the first.
-#[expect(
-    clippy::too_many_lines,
-    reason = "Single planner walks every artifact class and aggregates conflicts; splitting hides the merge policy."
-)]
 pub(super) fn plan_three_way(
     slice_dir: &Path, classes: &[ArtifactClass],
 ) -> Result<Vec<MergePreviewEntry>, Error> {
@@ -57,142 +53,20 @@ pub(super) fn plan_three_way(
     let mut composition_handled = false;
 
     for class in classes.iter().filter(|c| matches!(c.strategy, MergeStrategy::ThreeWayMerge)) {
-        let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
-
-        if class.staged_dir.is_dir() {
-            for entry in fs::read_dir(&class.staged_dir).map_err(|err| Error::Filesystem {
-                op: "readdir",
-                path: class.staged_dir.clone(),
-                source: err,
-            })? {
-                let entry = entry.map_err(|err| Error::Filesystem {
-                    op: "dir-entry",
-                    path: class.staged_dir.clone(),
-                    source: err,
-                })?;
-                let file_type = entry.file_type().map_err(|err| Error::Filesystem {
-                    op: "file-type",
-                    path: entry.path(),
-                    source: err,
-                })?;
-                if !file_type.is_dir() {
-                    continue;
-                }
-                let delta_path = entry.path().join("spec.md");
-                if !delta_path.is_file() {
-                    continue;
-                }
-                let spec_name = entry
-                    .file_name()
-                    .to_str()
-                    .ok_or_else(|| Error::Diag {
-                        code: "merge-non-utf8-name",
-                        detail: "non-UTF8 spec directory name".into(),
-                    })?
-                    .to_string();
-                let baseline_path = class.baseline_dir.join(&spec_name).join("spec.md");
-                delta_specs.push(DeltaSpecRef {
-                    spec_name,
-                    delta_path,
-                    baseline_path,
-                });
-            }
-        }
-
-        delta_specs.sort_by(|a, b| a.delta_path.cmp(&b.delta_path));
-
+        let delta_specs = list_delta_specs(class)?;
         for spec in delta_specs {
-            let delta_text =
-                fs::read_to_string(&spec.delta_path).map_err(|err| Error::Filesystem {
-                    op: "read",
-                    path: spec.delta_path.clone(),
-                    source: err,
-                })?;
-
-            let baseline_text = if spec.baseline_path.is_file() {
-                Some(fs::read_to_string(&spec.baseline_path).map_err(|err| Error::Filesystem {
-                    op: "read",
-                    path: spec.baseline_path.clone(),
-                    source: err,
-                })?)
-            } else {
-                None
-            };
-
-            let result = match merge(baseline_text.as_deref(), &delta_text) {
-                Ok(r) => r,
-                Err(Error::Diag {
-                    code: "merge-spec-conflicts",
-                    detail,
-                }) => {
-                    aborts.push(format!("{}: {detail}", spec.spec_name));
-                    continue;
-                }
-                Err(other) => return Err(other),
-            };
-
-            for diagnostic in validate_baseline(&result.output, None) {
-                aborts.push(format!("{}: {}", spec.spec_name, diagnostic.impact));
+            match merge_delta_spec(class, &spec)? {
+                Ok(entry) => merged.push(entry),
+                Err(details) => aborts.extend(details),
             }
-
-            merged.push(MergePreviewEntry {
-                class_name: class.name.clone(),
-                name: spec.spec_name,
-                baseline_path: spec.baseline_path,
-                result,
-            });
         }
 
-        // composition.yaml delta — fire once, against the first
-        // ThreeWayMerge class. Subsequent ThreeWayMerge classes (if
-        // any) skip it; the engine never tries to interpret what
-        // composition means for non-omnia/non-vectis domains.
         if !composition_handled {
             composition_handled = true;
-            let composition_delta_path = slice_dir.join(COMPOSITION_FILENAME);
-            if composition_delta_path.is_file() {
-                let delta_text = fs::read_to_string(&composition_delta_path).map_err(|err| {
-                    Error::Filesystem {
-                        op: "read",
-                        path: composition_delta_path.clone(),
-                        source: err,
-                    }
-                })?;
-
-                let baseline_path = class.baseline_dir.join(COMPOSITION_FILENAME);
-                let baseline_text = if baseline_path.is_file() {
-                    Some(fs::read_to_string(&baseline_path).map_err(|err| Error::Filesystem {
-                        op: "read",
-                        path: baseline_path.clone(),
-                        source: err,
-                    })?)
-                } else {
-                    None
-                };
-
-                match crate::merge::composition::merge(baseline_text.as_deref(), &delta_text) {
-                    Ok(comp_result) => {
-                        merged.push(MergePreviewEntry {
-                            class_name: class.name.clone(),
-                            name: "composition".to_string(),
-                            baseline_path,
-                            result: comp_result,
-                        });
-                    }
-                    Err(Error::Diag {
-                        code:
-                            "composition-delta-malformed"
-                            | "composition-delta-empty"
-                            | "composition-delta-not-mapping"
-                            | "composition-baseline-malformed"
-                            | "composition-baseline-no-screens"
-                            | "composition-screen-conflict"
-                            | "composition-serialize-failed",
-                        detail,
-                    }) => {
-                        aborts.push(format!("composition: {detail}"));
-                    }
-                    Err(other) => return Err(other),
+            if let Some(entry) = merge_composition_delta(slice_dir, class)? {
+                match entry {
+                    Ok(preview) => merged.push(preview),
+                    Err(detail) => aborts.push(detail),
                 }
             }
         }
@@ -209,6 +83,137 @@ pub(super) fn plan_three_way(
         (a.class_name.as_str(), a.name.as_str()).cmp(&(b.class_name.as_str(), b.name.as_str()))
     });
     Ok(merged)
+}
+
+fn list_delta_specs(class: &ArtifactClass) -> Result<Vec<DeltaSpecRef>, Error> {
+    let mut delta_specs: Vec<DeltaSpecRef> = Vec::new();
+    if !class.staged_dir.is_dir() {
+        return Ok(delta_specs);
+    }
+    for entry in fs::read_dir(&class.staged_dir).map_err(|err| Error::Filesystem {
+        op: "readdir",
+        path: class.staged_dir.clone(),
+        source: err,
+    })? {
+        let entry = entry.map_err(|err| Error::Filesystem {
+            op: "dir-entry",
+            path: class.staged_dir.clone(),
+            source: err,
+        })?;
+        let file_type = entry.file_type().map_err(|err| Error::Filesystem {
+            op: "file-type",
+            path: entry.path(),
+            source: err,
+        })?;
+        if !file_type.is_dir() {
+            continue;
+        }
+        let delta_path = entry.path().join("spec.md");
+        if !delta_path.is_file() {
+            continue;
+        }
+        let spec_name = entry
+            .file_name()
+            .to_str()
+            .ok_or_else(|| Error::Diag {
+                code: "merge-non-utf8-name",
+                detail: "non-UTF8 spec directory name".into(),
+            })?
+            .to_string();
+        let baseline_path = class.baseline_dir.join(&spec_name).join("spec.md");
+        delta_specs.push(DeltaSpecRef {
+            spec_name,
+            delta_path,
+            baseline_path,
+        });
+    }
+    delta_specs.sort_by(|a, b| a.delta_path.cmp(&b.delta_path));
+    Ok(delta_specs)
+}
+
+fn merge_delta_spec(
+    class: &ArtifactClass, spec: &DeltaSpecRef,
+) -> Result<Result<MergePreviewEntry, Vec<String>>, Error> {
+    let delta_text = fs::read_to_string(&spec.delta_path).map_err(|err| Error::Filesystem {
+        op: "read",
+        path: spec.delta_path.clone(),
+        source: err,
+    })?;
+    let baseline_text = read_optional_file(&spec.baseline_path)?;
+
+    let result = match merge(baseline_text.as_deref(), &delta_text) {
+        Ok(r) => r,
+        Err(Error::Diag {
+            code: "merge-spec-conflicts",
+            detail,
+        }) => return Ok(Err(vec![format!("{}: {detail}", spec.spec_name)])),
+        Err(other) => return Err(other),
+    };
+
+    let issues: Vec<String> = validate_baseline(&result.output, None)
+        .into_iter()
+        .map(|diagnostic| format!("{}: {}", spec.spec_name, diagnostic.impact))
+        .collect();
+    if !issues.is_empty() {
+        return Ok(Err(issues));
+    }
+
+    Ok(Ok(MergePreviewEntry {
+        class_name: class.name.clone(),
+        name: spec.spec_name.clone(),
+        baseline_path: spec.baseline_path.clone(),
+        result,
+    }))
+}
+
+fn merge_composition_delta(
+    slice_dir: &Path, class: &ArtifactClass,
+) -> Result<Option<Result<MergePreviewEntry, String>>, Error> {
+    let composition_delta_path = slice_dir.join(COMPOSITION_FILENAME);
+    if !composition_delta_path.is_file() {
+        return Ok(None);
+    }
+    let delta_text =
+        fs::read_to_string(&composition_delta_path).map_err(|err| Error::Filesystem {
+            op: "read",
+            path: composition_delta_path.clone(),
+            source: err,
+        })?;
+    let baseline_path = class.baseline_dir.join(COMPOSITION_FILENAME);
+    let baseline_text = read_optional_file(&baseline_path)?;
+
+    match crate::merge::composition::merge(baseline_text.as_deref(), &delta_text) {
+        Ok(comp_result) => Ok(Some(Ok(MergePreviewEntry {
+            class_name: class.name.clone(),
+            name: "composition".to_string(),
+            baseline_path,
+            result: comp_result,
+        }))),
+        Err(Error::Diag {
+            code:
+                "composition-delta-malformed"
+                | "composition-delta-empty"
+                | "composition-delta-not-mapping"
+                | "composition-baseline-malformed"
+                | "composition-baseline-no-screens"
+                | "composition-screen-conflict"
+                | "composition-serialize-failed",
+            detail,
+        }) => Ok(Some(Err(format!("composition: {detail}")))),
+        Err(other) => Err(other),
+    }
+}
+
+fn read_optional_file(path: &Path) -> Result<Option<String>, Error> {
+    if path.is_file() {
+        Ok(Some(fs::read_to_string(path).map_err(|err| Error::Filesystem {
+            op: "read",
+            path: path.to_path_buf(),
+            source: err,
+        })?))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Walk every [`MergeStrategy::OpaqueReplace`] class's `staged_dir`

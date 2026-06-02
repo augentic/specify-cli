@@ -1,17 +1,7 @@
-//! Re-entry (`specrun init --upgrade`) init body. Bumps
-//! `project.yaml.specify_version` to the running binary's version over
-//! an already-populated `.specify/` without re-scaffolding (RFC-30
-//! §D5, Wave E).
-//!
-//! The write set is closed: this runner mutates **only**
-//! `project.yaml`, rewriting `specify_version` and preserving every
-//! other field (including `adapter:` / `workspace:`). It never touches
-//! `slices/`, `specs/`, `archive/`, `registry.yaml`,
-//! `.specify/design-system/*`, or the adapter cache, and it never
-//! re-fetches the cache — preservation holds by construction because
-//! nothing here resolves an adapter. `AGENTS.md` regeneration (only
-//! when absent) is owned by the command layer's
-//! `generate_initial_context`, mirroring the fresh-init path.
+//! Re-entry (`specrun init --upgrade`) body: bumps `project.yaml.specify_version`
+//! to the running binary over an existing `.specify/` without re-scaffolding.
+//! Mutates only `project.yaml`; never touches slices, specs, archive, registry,
+//! or the adapter cache.
 //!
 //! One runner serves both regular and workspace projects: the
 //! preservation logic is identical, so the dispatcher routes here ahead

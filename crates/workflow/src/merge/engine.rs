@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use specify_error::Error;
 use specify_model::spec::{
-    REQ_HEADING, Requirement, has_delta_headers, parse_baseline, parse_delta,
+    DeltaSpec, REQ_HEADING, Rename, Requirement, has_delta_headers, parse_baseline, parse_delta,
 };
 
 /// Result of a successful [`merge`] call.
@@ -100,56 +100,53 @@ pub enum MergeOperation {
 /// cannot be applied — a `RENAMED`/`MODIFIED`/`REMOVED` id missing from
 /// the baseline, or an `ADDED` id that already exists. All such
 /// conflicts are aggregated into the one error.
-#[expect(
-    clippy::too_many_lines,
-    reason = "Single-shot merge driver: heading walk + delta classification + conflict aggregation in one pass."
-)]
 pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> {
     let baseline_text = baseline.unwrap_or("");
-    let is_new = baseline_text.trim().is_empty();
-
     let delta_spec = parse_delta(delta);
+    if baseline_text.trim().is_empty() {
+        Ok(merge_into_empty_baseline(delta, &delta_spec))
+    } else {
+        merge_into_existing_baseline(baseline_text, &delta_spec)
+    }
+}
 
-    if is_new {
-        // `specify_model::spec::has_delta_headers` uses a full-line match rather
-        // than Python's substring `.lower() in delta_text.lower()`. See
-        // the spec-crate unit test `has_delta_headers_requires_full_line_match`
-        // for the pinning decision.
-        if !has_delta_headers(delta) {
-            let requirement_count = count_requirement_headings(delta);
-            return Ok(MergeResult {
-                output: delta.to_string(),
-                operations: vec![MergeOperation::CreatedBaseline { requirement_count }],
-            });
-        }
-
-        let mut operations: Vec<MergeOperation> = Vec::new();
-        let mut result_blocks: Vec<String> = Vec::new();
-        for block in &delta_spec.added {
-            result_blocks.push(block.body.clone());
-            operations.push(MergeOperation::Added {
-                id: block.id.clone(),
-                name: block.name.clone(),
-            });
-        }
-        let output = if result_blocks.is_empty() {
-            String::new()
-        } else {
-            let mut joined = result_blocks.join("\n\n");
-            joined.push('\n');
-            joined
+fn merge_into_empty_baseline(delta: &str, delta_spec: &DeltaSpec) -> MergeResult {
+    // `has_delta_headers` uses a full-line match; see
+    // `has_delta_headers_requires_full_line_match` in the spec crate.
+    if !has_delta_headers(delta) {
+        let requirement_count = count_requirement_headings(delta);
+        return MergeResult {
+            output: delta.to_string(),
+            operations: vec![MergeOperation::CreatedBaseline { requirement_count }],
         };
-        return Ok(MergeResult { output, operations });
     }
 
-    // --- Existing-baseline path ---------------------------------------------
+    let mut operations: Vec<MergeOperation> = Vec::new();
+    let mut result_blocks: Vec<String> = Vec::new();
+    for block in &delta_spec.added {
+        result_blocks.push(block.body.clone());
+        operations.push(MergeOperation::Added {
+            id: block.id.clone(),
+            name: block.name.clone(),
+        });
+    }
+    let output = if result_blocks.is_empty() {
+        String::new()
+    } else {
+        let mut joined = result_blocks.join("\n\n");
+        joined.push('\n');
+        joined
+    };
+    MergeResult { output, operations }
+}
 
+fn merge_into_existing_baseline(
+    baseline_text: &str, delta_spec: &DeltaSpec,
+) -> Result<MergeResult, Error> {
     let parsed_baseline = parse_baseline(baseline_text);
     let mut blocks: Vec<Requirement> = parsed_baseline.requirements;
     let preamble = parsed_baseline.preamble;
 
-    // Map id → index into `blocks`. Empty ids are excluded so stray
-    // "missing-id" blocks never match against delta lookups.
     let mut blocks_by_id: HashMap<String, usize> = HashMap::new();
     for (i, block) in blocks.iter().enumerate() {
         if !block.id.is_empty() {
@@ -160,15 +157,43 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
     let mut errors: Vec<String> = Vec::new();
     let mut operations: Vec<MergeOperation> = Vec::new();
 
-    // Step 1 — RENAMED.
-    for entry in &delta_spec.renamed {
+    apply_renamed(&delta_spec.renamed, &mut blocks, &blocks_by_id, &mut operations, &mut errors);
+    let ids_to_remove =
+        apply_removed(&delta_spec.removed, &blocks_by_id, &mut operations, &mut errors);
+    apply_modified(&delta_spec.modified, &mut blocks, &blocks_by_id, &mut operations, &mut errors);
+    apply_added(
+        &delta_spec.added,
+        &mut blocks,
+        &blocks_by_id,
+        &ids_to_remove,
+        &mut operations,
+        &mut errors,
+    );
+
+    if !errors.is_empty() {
+        return Err(Error::Diag {
+            code: "merge-spec-conflicts",
+            detail: errors.join("\n"),
+        });
+    }
+
+    Ok(MergeResult {
+        output: assemble_merged_output(&preamble, &blocks, &ids_to_remove),
+        operations,
+    })
+}
+
+fn apply_renamed(
+    renamed: &[Rename], blocks: &mut [Requirement], blocks_by_id: &HashMap<String, usize>,
+    operations: &mut Vec<MergeOperation>, errors: &mut Vec<String>,
+) {
+    for entry in renamed {
         let Some(&idx) = blocks_by_id.get(&entry.id) else {
             errors.push(format!("RENAMED: ID {} not found in baseline", entry.id));
             continue;
         };
         let old_block = blocks[idx].clone();
         let new_heading = format!("{} {}", REQ_HEADING, entry.new_name);
-        // Python `str.replace(old, new, 1)` = first-occurrence replace.
         let new_body = replace_first(&old_block.body, &old_block.heading, &new_heading);
         operations.push(MergeOperation::Renamed {
             id: old_block.id.clone(),
@@ -180,17 +205,17 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
             name: entry.new_name.clone(),
             id: old_block.id,
             body: new_body,
-            // `specify_model::spec::parse_scenarios` only looks at body text so
-            // we could recompute; keep the old scenarios since rename
-            // doesn't touch scenario text.
             scenarios: old_block.scenarios,
         };
     }
+}
 
-    // Step 2 — REMOVED (collect ids; deletion happens at the end so
-    // MODIFIED/ADDED still see a stable index map).
+fn apply_removed(
+    removed: &[Requirement], blocks_by_id: &HashMap<String, usize>,
+    operations: &mut Vec<MergeOperation>, errors: &mut Vec<String>,
+) -> HashSet<String> {
     let mut ids_to_remove: HashSet<String> = HashSet::new();
-    for block in &delta_spec.removed {
+    for block in removed {
         if blocks_by_id.contains_key(&block.id) {
             ids_to_remove.insert(block.id.clone());
             operations.push(MergeOperation::Removed {
@@ -201,9 +226,14 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
             errors.push(format!("REMOVED: ID {} not found in baseline", block.id));
         }
     }
+    ids_to_remove
+}
 
-    // Step 3 — MODIFIED.
-    for mod_block in &delta_spec.modified {
+fn apply_modified(
+    modified: &[Requirement], blocks: &mut [Requirement], blocks_by_id: &HashMap<String, usize>,
+    operations: &mut Vec<MergeOperation>, errors: &mut Vec<String>,
+) {
+    for mod_block in modified {
         let Some(&idx) = blocks_by_id.get(&mod_block.id) else {
             errors.push(format!("MODIFIED: ID {} not found in baseline", mod_block.id));
             continue;
@@ -214,11 +244,16 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
         });
         blocks[idx] = mod_block.clone();
     }
+}
 
-    // Step 4 — ADDED.
+fn apply_added(
+    added: &[Requirement], blocks: &mut Vec<Requirement>, blocks_by_id: &HashMap<String, usize>,
+    ids_to_remove: &HashSet<String>, operations: &mut Vec<MergeOperation>,
+    errors: &mut Vec<String>,
+) {
     let mut existing_ids: HashSet<String> =
         blocks_by_id.keys().filter(|id| !ids_to_remove.contains(*id)).cloned().collect();
-    for add_block in &delta_spec.added {
+    for add_block in added {
         if !add_block.id.is_empty() && existing_ids.contains(&add_block.id) {
             errors.push(format!("ADDED: ID {} already exists in baseline", add_block.id));
             continue;
@@ -232,20 +267,16 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
             existing_ids.insert(add_block.id.clone());
         }
     }
+}
 
-    if !errors.is_empty() {
-        return Err(Error::Diag {
-            code: "merge-spec-conflicts",
-            detail: errors.join("\n"),
-        });
-    }
-
-    // Assemble result: preamble (if non-empty) + surviving blocks' stripped bodies.
+fn assemble_merged_output(
+    preamble: &str, blocks: &[Requirement], ids_to_remove: &HashSet<String>,
+) -> String {
     let mut parts: Vec<String> = Vec::new();
     if !preamble.trim().is_empty() {
-        parts.push(rstrip(&preamble).to_string());
+        parts.push(rstrip(preamble).to_string());
     }
-    for block in &blocks {
+    for block in blocks {
         if ids_to_remove.contains(&block.id) && !block.id.is_empty() {
             continue;
         }
@@ -253,8 +284,7 @@ pub fn merge(baseline: Option<&str>, delta: &str) -> Result<MergeResult, Error> 
     }
     let mut output = parts.join("\n\n");
     output.push('\n');
-
-    Ok(MergeResult { output, operations })
+    output
 }
 
 fn count_requirement_headings(text: &str) -> usize {

@@ -1,6 +1,6 @@
 use tempfile::tempdir;
 
-use super::*;
+use super::{wire_shapes, *};
 
 fn read_lines(layout: Layout<'_>) -> Vec<String> {
     let raw = std::fs::read_to_string(path(layout)).expect("read journal");
@@ -84,154 +84,11 @@ fn append_batch_empty_slice_is_no_op() {
 }
 
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "Single table pins every payload-bearing variant's wire shape; splitting hides the contract."
-)]
 fn event_wire_shapes_match_contract() {
-    let dir = tempdir().expect("tempdir");
-    let layout = Layout::new(dir.path());
-    let rows: &[(EventKind, &[&str])] = &[
-        (
-            EventKind::SliceExtractCacheHit {
-                slice_name: "identity-user-registration".into(),
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:cafef00d".to_string(),
-            },
-            &[
-                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
-            ],
-        ),
-        (
-            EventKind::SliceExtractCacheMiss {
-                slice_name: "identity-user-registration".into(),
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:beef".to_string(),
-                reason: CacheMissReason::AdapterVersionChanged,
-            },
-            &[
-                r#""event":"slice.extract.cache-miss""#,
-                r#""reason":"adapter-version-changed""#,
-                r#""source":"runtime""#,
-            ],
-        ),
-        (
-            EventKind::SliceReplayCompleted {
-                slice_name: "identity-user-registration".into(),
-                runner: "omnia-target@1.4 (cargo nextest)".to_string(),
-                passed: 47,
-                failed: 0,
-                skipped: 0,
-            },
-            &[
-                r#""event":"slice.replay.completed""#,
-                r#""passed":47"#,
-                r#""failed":0"#,
-                r#""skipped":0"#,
-                r#""runner":"omnia-target@1.4 (cargo nextest)""#,
-            ],
-        ),
-        (
-            EventKind::PlanAmendAuthorityOverride {
-                plan_name: "identity-revamp".into(),
-                slice_name: "identity-user-registration".into(),
-                action: AuthorityOverrideAction::Set,
-                claim_kind: Some("criterion".to_string()),
-                source: Some("runtime".to_string()),
-            },
-            &[
-                r#""event":"plan.amend.authority-override""#,
-                r#""action":"set""#,
-                r#""claim-kind":"criterion""#,
-                r#""source":"runtime""#,
-            ],
-        ),
-        (
-            EventKind::SourceSurveyCacheHit {
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:cafef00d".to_string(),
-            },
-            &[
-                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.cache-hit","payload":{"source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
-            ],
-        ),
-        (
-            EventKind::SourceSurveyCacheMiss {
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:beef".to_string(),
-                reason: CacheMissReason::AdapterOptOut,
-            },
-            &[
-                r#""event":"source.survey.cache-miss""#,
-                r#""reason":"adapter-opt-out""#,
-                r#""source":"runtime""#,
-                r#""fingerprint":"sha256:beef""#,
-            ],
-        ),
-        (
-            EventKind::SourceExecutionAgent {
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                operation: SourceOperation::Survey,
-            },
-            &[
-                r#""event":"source.execution.agent""#,
-                r#""operation":"survey""#,
-                r#""source":"runtime""#,
-                r#""adapter":"captures""#,
-            ],
-        ),
-        (
-            EventKind::PlanReconcileCompleted {
-                plan_name: "identity-revamp".into(),
-                slice_count: 3,
-                slice_names: vec![
-                    "identity-contracts".into(),
-                    "identity-service".into(),
-                    "password-reset".into(),
-                ],
-            },
-            &[
-                r#""event":"plan.reconcile.completed""#,
-                r#""plan-name":"identity-revamp""#,
-                r#""slice-count":3"#,
-                r#""slice-names":["identity-contracts","identity-service","password-reset"]"#,
-            ],
-        ),
-        (
-            EventKind::SliceArchiveCreated {
-                slice_name: "identity-service".into(),
-                touched_specs: vec!["identity".to_string()],
-                outcome_summary: "identity: 2 modified".to_string(),
-                merge_sha: Some("a1b2c3d".to_string()),
-                decisions: Vec::new(),
-            },
-            &[
-                r#""event":"slice.archive.created""#,
-                r#""slice-name":"identity-service""#,
-                r#""touched-specs":["identity"]"#,
-                r#""outcome-summary":"identity: 2 modified""#,
-                r#""merge-sha":"a1b2c3d""#,
-            ],
-        ),
-    ];
-
-    for (kind, required) in rows {
-        let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
-        append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
-        let line = read_lines(layout).pop().expect("at least one line");
-        if required.len() == 1 && required[0].starts_with('{') {
-            assert_eq!(line, required[0]);
-        } else {
-            for needle in *required {
-                assert!(line.contains(needle), "line must contain `{needle}`, got:\n{line}");
-            }
-        }
-    }
+    wire_shapes::check_contract_part1();
+    wire_shapes::check_contract_part2();
+    wire_shapes::check_contract_part3();
+    wire_shapes::check_contract_part4();
 }
 
 #[test]
@@ -250,9 +107,7 @@ fn cache_miss_reason_round_trips() {
 
 #[test]
 fn plan_reconcile_event_round_trips() {
-    // `specrun plan propose --from` emits one `plan.reconcile.completed`
-    // event (RFC-29 review F8 folded the former agent/completed pair
-    // into this single indivisible event); lock its wire shape.
+    // `specrun plan propose --from` emits one `plan.reconcile.completed` event; lock its wire shape.
     let completed = Event::new(
         test_timestamp("2026-05-22T13:15:00Z"),
         EventKind::PlanReconcileCompleted {
@@ -284,10 +139,6 @@ fn plan_reconcile_event_round_trips() {
 
 #[test]
 fn slice_synthesize_events_round_trip() {
-    // RFC-29c §"Wire contracts": the four M2b lifecycle events
-    // serialise to their dotted-kebab ids with kebab-case payload
-    // fields, and round-trip back preserving every field. Distinct
-    // from the per-requirement `slice.synthesis.*` tag events.
     let rows: &[(EventKind, &[&str])] = &[
         (
             EventKind::SliceSynthesizeStarted {
@@ -336,26 +187,11 @@ fn slice_synthesize_events_round_trip() {
             ],
         ),
     ];
-
-    for (kind, required) in rows {
-        let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
-        let json = serde_json::to_string(&event).expect("serialise synthesize event");
-        for needle in *required {
-            assert!(json.contains(needle), "wire form must contain `{needle}`; got:\n{json}");
-        }
-        let round: Event = serde_json::from_str(&json).expect("deserialise synthesize event");
-        assert_eq!(round, event, "synthesize round-trip must preserve every field");
-    }
+    wire_shapes::assert_wire_rows(rows);
 }
 
 #[test]
 fn slice_build_merge_events_round_trip() {
-    // RFC-29d §"Journal events": the M3 build/merge lifecycle
-    // events and `target.execution.agent` serialise to their
-    // dotted-kebab ids with kebab-case payload fields, and
-    // round-trip back preserving every field. The `*.failed`
-    // variants carry a `reason`; `target.execution.agent` carries
-    // the minimal `{ slice, target }` derived at build time.
     let rows: &[(EventKind, &[&str])] = &[
         (
             EventKind::SliceBuildStarted {
@@ -415,24 +251,11 @@ fn slice_build_merge_events_round_trip() {
             ],
         ),
     ];
-
-    for (kind, required) in rows {
-        let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
-        let json = serde_json::to_string(&event).expect("serialise build/merge event");
-        for needle in *required {
-            assert!(json.contains(needle), "wire form must contain `{needle}`; got:\n{json}");
-        }
-        let round: Event = serde_json::from_str(&json).expect("deserialise build/merge event");
-        assert_eq!(round, event, "build/merge round-trip must preserve every field");
-    }
+    wire_shapes::assert_wire_rows(rows);
 }
 
 #[test]
 fn cli_plugins_migration_events_round_trip() {
-    // RFC-30 Change J: the four lifecycle events for `specrun upgrade`,
-    // `specrun plugins refresh`, and `specrun migrate` serialise to
-    // their dotted-kebab ids with kebab-case payload fields, and
-    // round-trip back preserving every field.
     let rows: &[(EventKind, &[&str])] = &[
         (
             EventKind::CliUpgraded {
@@ -486,17 +309,7 @@ fn cli_plugins_migration_events_round_trip() {
             ],
         ),
     ];
-
-    for (kind, required) in rows {
-        let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
-        let json = serde_json::to_string(&event).expect("serialise cli/plugins/migration event");
-        for needle in *required {
-            assert!(json.contains(needle), "wire form must contain `{needle}`; got:\n{json}");
-        }
-        let round: Event =
-            serde_json::from_str(&json).expect("deserialise cli/plugins/migration event");
-        assert_eq!(round, event, "cli/plugins/migration round-trip must preserve every field");
-    }
+    wire_shapes::assert_wire_rows(rows);
 }
 
 #[test]
@@ -561,9 +374,7 @@ fn lint_completed_round_trips() {
         );
     }
 
-    // Guard against an accidental rename_all = "kebab-case" on the
-    // payload structs — those would flip the snake_case fields to
-    // hyphenated names and silently break the RFC example.
+    // Guard against an accidental rename_all = "kebab-case" on the payload structs.
     for forbidden in
         [r#""duration-ms""#, r#""baseline-present""#, r#""false-positive""#, r#""exit-code""#]
     {
@@ -575,121 +386,8 @@ fn lint_completed_round_trips() {
 }
 
 #[test]
-#[expect(
-    clippy::too_many_lines,
-    reason = "Single sweep covers every payload-bearing variant; splitting hides the wire-format coverage discipline."
-)]
 fn no_snake_case_leaks_to_wire() {
-    // workflow §Wire format: snake_case lifecycle values are never
-    // produced on disk. Exercise every variant that carries an
-    // enum-shaped or hyphenable field name.
     let dir = tempdir().expect("tempdir");
     let layout = Layout::new(dir.path());
-    for kind in [
-        EventKind::PlanTransitionApproved {
-            plan_name: "p".into(),
-        },
-        EventKind::PlanAmendDivergence {
-            plan_name: "p".into(),
-            slice_name: "s".into(),
-            from: Divergence::None,
-            to: Divergence::Accepted,
-        },
-        EventKind::SliceTransitionRefined {
-            slice_name: "s".into(),
-        },
-        EventKind::SliceSynthesizeStarted {
-            slice_name: "s".into(),
-        },
-        EventKind::SliceSynthesizeAgent {
-            slice_name: "s".into(),
-        },
-        EventKind::SliceSynthesizeCompleted {
-            slice_name: "s".into(),
-            artifacts: vec!["proposal.md".to_string()],
-        },
-        EventKind::SliceSynthesizeFailed {
-            slice_name: "s".into(),
-            reason: "spec-requirement-missing-sources".to_string(),
-        },
-        EventKind::SliceBuildStarted {
-            slice_name: "s".into(),
-        },
-        EventKind::SliceBuildSucceeded {
-            slice_name: "s".into(),
-        },
-        EventKind::SliceBuildFailed {
-            slice_name: "s".into(),
-            reason: "cargo-check-failed".to_string(),
-        },
-        EventKind::SliceMergeStarted {
-            slice_name: "s".into(),
-        },
-        EventKind::SliceMergeSucceeded {
-            slice_name: "s".into(),
-        },
-        EventKind::SliceMergeFailed {
-            slice_name: "s".into(),
-            reason: "baseline-conflict".to_string(),
-        },
-        EventKind::TargetExecutionAgent {
-            slice: "s".into(),
-            target: "omnia".to_string(),
-        },
-        EventKind::SliceExtractCompleted {
-            slice_name: "s".into(),
-            source: "k".to_string(),
-        },
-        EventKind::SourceSurveyCacheHit {
-            source: "k".to_string(),
-            adapter: "captures".to_string(),
-            fingerprint: "sha256:beef".to_string(),
-        },
-        EventKind::SourceSurveyCacheMiss {
-            source: "k".to_string(),
-            adapter: "captures".to_string(),
-            fingerprint: "sha256:beef".to_string(),
-            reason: CacheMissReason::AdapterOptOut,
-        },
-        EventKind::SourceExecutionAgent {
-            source: "k".to_string(),
-            adapter: "captures".to_string(),
-            operation: SourceOperation::Extract,
-        },
-        EventKind::PlanReconcileCompleted {
-            plan_name: "p".into(),
-            slice_count: 1,
-            slice_names: vec!["s".into()],
-        },
-        EventKind::SliceArchiveCreated {
-            slice_name: "s".into(),
-            touched_specs: vec!["identity".to_string()],
-            outcome_summary: "identity: 1 modified".to_string(),
-            merge_sha: Some("abc1234".to_string()),
-            decisions: Vec::new(),
-        },
-    ] {
-        append_batch(
-            layout,
-            std::slice::from_ref(&Event::new(test_timestamp("2026-05-21T20:05:00Z"), kind)),
-        )
-        .expect("append ok");
-    }
-    let raw = std::fs::read_to_string(path(layout)).expect("read journal");
-    for needle in [
-        "plan_name",
-        "slice_name",
-        "slice_count",
-        "slice_names",
-        "requirement_id",
-        "in_progress",
-        "touched_specs",
-        "outcome_summary",
-        "merge_sha",
-    ] {
-        assert!(
-            !raw.contains(needle),
-            "snake_case `{needle}` must not appear on the wire; raw:\n{raw}"
-        );
-    }
+    wire_shapes::run_snake_case_probe(layout);
 }

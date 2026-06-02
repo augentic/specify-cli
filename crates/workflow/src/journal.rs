@@ -737,3 +737,5 @@ pub(crate) fn test_timestamp(raw: &str) -> Timestamp {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wire_shapes;

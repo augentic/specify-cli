@@ -3,7 +3,7 @@ use tempfile::tempdir;
 use super::*;
 
 #[test]
-fn regular_init_rejects_missing_adapter() {
+fn rejects_missing_adapter() {
     let tmp = tempdir().unwrap();
     let err = init(
         InitOptions {
@@ -31,7 +31,7 @@ fn regular_init_rejects_missing_adapter() {
 }
 
 #[test]
-fn workspace_init_rejects_adapter_argument() {
+fn workspace_rejects_adapter_argument() {
     // `--workspace` and `<adapter>` are mutually exclusive; the
     // orchestrator re-checks even when the CLI layer already
     // filtered.

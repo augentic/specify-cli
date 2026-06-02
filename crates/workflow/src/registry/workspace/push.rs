@@ -138,77 +138,94 @@ fn push_result(
     }
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "Per-project push driver inlines the dirty/clone/branch/push pipeline so each step's failure mode stays local."
-)]
+struct Ready<'a> {
+    rp: &'a RegistryProject,
+    project_path: std::path::PathBuf,
+    branch_name: &'a str,
+    slug: Option<String>,
+    local_head: String,
+    remote_branch: RemoteBranchState,
+    remote_head: Option<String>,
+}
+
 pub(in crate::registry::workspace) fn push_single_project(
     project_dir: &Path, workspace_base: &Path, rp: &RegistryProject, branch_name: &str,
     change_name: &str, dry_run: bool, runner: CmdRunner<'_>,
 ) -> PushResult {
+    let ready = match prepare_push(project_dir, workspace_base, rp, branch_name, runner) {
+        Ok(r) => r,
+        Err(result) => return result,
+    };
+    publish_push(ready, dry_run, runner, change_name)
+}
+
+fn prepare_push<'a>(
+    project_dir: &Path, workspace_base: &Path, rp: &'a RegistryProject, branch_name: &'a str,
+    runner: CmdRunner<'_>,
+) -> Result<Ready<'a>, PushResult> {
     let project_path = project_path(project_dir, workspace_base, rp);
 
     if !is_git_worktree(&project_path) {
-        return push_result(
+        return Err(push_result(
             rp,
             PushOutcome::Failed,
             None,
             None,
             Some(format!("no git worktree found at {}", project_path.display())),
-        );
+        ));
     }
 
     let Some(remote_url) = git_output_ok(&project_path, &["remote", "get-url", "origin"]) else {
-        return push_result(rp, PushOutcome::LocalOnly, None, None, None);
+        return Err(push_result(rp, PushOutcome::LocalOnly, None, None, None));
     };
     let forge_url = git_output_ok(&project_path, &["config", "--get", "remote.origin.url"])
         .unwrap_or(remote_url);
 
     match current_branch(&project_path) {
         Ok(Some(current)) if current == branch_name => {}
-        Ok(_) => return push_result(rp, PushOutcome::NoBranch, None, None, None),
+        Ok(_) => return Err(push_result(rp, PushOutcome::NoBranch, None, None, None)),
         Err(err) => {
-            return push_result(rp, PushOutcome::Failed, None, None, Some(err.to_string()));
+            return Err(push_result(rp, PushOutcome::Failed, None, None, Some(err.to_string())));
         }
     }
 
     match git_status_porcelain(&project_path) {
         Ok(status) if status.is_empty() => {}
         Ok(_) => {
-            return push_result(
+            return Err(push_result(
                 rp,
                 PushOutcome::Failed,
                 Some(branch_name),
                 None,
                 Some("checkout is dirty; commit or clean local work before workspace push".into()),
-            );
+            ));
         }
         Err(err) => {
-            return push_result(
+            return Err(push_result(
                 rp,
                 PushOutcome::Failed,
                 Some(branch_name),
                 None,
                 Some(err.to_string()),
-            );
+            ));
         }
     }
 
     if remote_default_branch_is(&project_path, branch_name) {
-        return push_result(rp, PushOutcome::NoBranch, None, None, None);
+        return Err(push_result(rp, PushOutcome::NoBranch, None, None, None));
     }
 
     let local_head =
         match git_stdout_trimmed(&project_path, &["rev-parse", "HEAD"], "rev-parse HEAD") {
             Ok(sha) => sha,
             Err(err) => {
-                return push_result(
+                return Err(push_result(
                     rp,
                     PushOutcome::Failed,
                     Some(branch_name),
                     None,
                     Some(err.to_string()),
-                );
+                ));
             }
         };
 
@@ -217,47 +234,54 @@ pub(in crate::registry::workspace) fn push_single_project(
         match inspect_remote_branch(runner, &project_path, branch_name, slug.as_deref()) {
             Ok(state) => state,
             Err(err) => {
-                return push_result(
+                return Err(push_result(
                     rp,
                     PushOutcome::Failed,
                     Some(branch_name),
                     None,
                     Some(err.to_string()),
-                );
+                ));
             }
         };
     let remote_head = match &remote_branch {
-        RemoteBranchState::Present(sha) => Some(sha.as_str()),
+        RemoteBranchState::Present(sha) => Some(sha.clone()),
         RemoteBranchState::Absent | RemoteBranchState::RepositoryMissing => None,
     };
 
-    if remote_head == Some(local_head.as_str()) {
-        if dry_run {
-            if let Err(err) =
-                ensure_pr_base_resolves_if_supported(&project_path, slug.as_deref(), branch_name)
-            {
-                return push_result(
-                    rp,
-                    PushOutcome::Failed,
-                    Some(branch_name),
-                    None,
-                    Some(err.to_string()),
-                );
-            }
-            return push_result(rp, PushOutcome::UpToDate, Some(branch_name), None, None);
-        }
-        return ensure_pr_if_supported(
+    Ok(Ready {
+        rp,
+        project_path,
+        branch_name,
+        slug,
+        local_head,
+        remote_branch,
+        remote_head,
+    })
+}
+
+fn publish_push(
+    ready: Ready<'_>, dry_run: bool, runner: CmdRunner<'_>, change_name: &str,
+) -> PushResult {
+    let Ready {
+        rp,
+        project_path,
+        branch_name,
+        slug,
+        local_head,
+        remote_branch,
+        remote_head,
+    } = ready;
+    let remote_head_ref = remote_head.as_deref();
+
+    if remote_head_ref == Some(local_head.as_str()) {
+        return finish_up_to_date(
             runner,
             &project_path,
-            slug.as_deref(),
+            rp,
             branch_name,
             change_name,
-        )
-        .map_or_else(
-            |err| {
-                push_result(rp, PushOutcome::Failed, Some(branch_name), None, Some(err.to_string()))
-            },
-            |pr| push_result(rp, PushOutcome::UpToDate, Some(branch_name), pr, None),
+            slug.as_deref(),
+            dry_run,
         );
     }
 
@@ -294,7 +318,7 @@ pub(in crate::registry::workspace) fn push_single_project(
         return push_result(rp, PushOutcome::Pushed, Some(branch_name), None, None);
     }
 
-    if let Err(e) = push_branch(&project_path, branch_name, remote_head) {
+    if let Err(e) = push_branch(&project_path, branch_name, remote_head_ref) {
         return push_result(rp, PushOutcome::Failed, Some(branch_name), None, Some(e.to_string()));
     }
 
@@ -318,6 +342,27 @@ pub(in crate::registry::workspace) fn push_single_project(
     };
 
     let status = if is_created { PushOutcome::Created } else { PushOutcome::Pushed };
-
     push_result(rp, status, Some(branch_name), pr_number, None)
+}
+
+fn finish_up_to_date(
+    runner: CmdRunner<'_>, project_path: &Path, rp: &RegistryProject, branch_name: &str,
+    change_name: &str, slug: Option<&str>, dry_run: bool,
+) -> PushResult {
+    if dry_run {
+        if let Err(err) = ensure_pr_base_resolves_if_supported(project_path, slug, branch_name) {
+            return push_result(
+                rp,
+                PushOutcome::Failed,
+                Some(branch_name),
+                None,
+                Some(err.to_string()),
+            );
+        }
+        return push_result(rp, PushOutcome::UpToDate, Some(branch_name), None, None);
+    }
+    ensure_pr_if_supported(runner, project_path, slug, branch_name, change_name).map_or_else(
+        |err| push_result(rp, PushOutcome::Failed, Some(branch_name), None, Some(err.to_string())),
+        |pr| push_result(rp, PushOutcome::UpToDate, Some(branch_name), pr, None),
+    )
 }

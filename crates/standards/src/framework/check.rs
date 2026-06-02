@@ -6,6 +6,8 @@ pub mod links;
 mod plugins;
 mod prose;
 pub mod rules;
+mod rust_source;
+mod rust_test_naming;
 pub mod scenarios;
 pub mod schema_alias;
 pub mod schema_links;
@@ -25,6 +27,8 @@ pub use prose::{InvocationPositional, NumericCaps, OperationalVocabulary};
 pub use rules::{
     RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, RulesCheck, run_rules_check,
 };
+pub use rust_source::RustSourceQuality;
+pub use rust_test_naming::RustTestNaming;
 pub use scenarios::{
     RULE_ARTIFACT_PATH_UNSAFE as SCENARIO_RULE_ARTIFACT_PATH_UNSAFE,
     RULE_BODY_ID_MISMATCH as SCENARIO_RULE_BODY_ID_MISMATCH,
@@ -63,6 +67,18 @@ pub trait Check {
     fn run(&self, ctx: &Context) -> Vec<Diagnostic>;
 }
 
+/// Rust-quality predicates for the specify-cli repo (`RustTestNaming`,
+/// `RustSourceQuality`). No-op on plugin framework roots.
+pub fn run_rust_quality(ctx: &Context) -> Vec<Diagnostic> {
+    let checks: [&dyn Check; 2] = [&RustTestNaming, &RustSourceQuality];
+    let mut findings = Vec::new();
+    for check in checks {
+        findings.extend(check.run(ctx));
+    }
+    finalize(&mut findings, ctx.framework_root());
+    findings
+}
+
 /// Run every registered check predicate sequentially, then finalise the
 /// combined batch.
 pub fn run(ctx: &Context) -> Vec<Diagnostic> {
@@ -72,6 +88,8 @@ pub fn run(ctx: &Context) -> Vec<Diagnostic> {
         &BriefCheck,
         &RulesCheck,
         &HistoryCitation,
+        &RustTestNaming,
+        &RustSourceQuality,
         &MissingDiagramAsset,
         &TextPipelineDiagram,
         &LinksCheck,

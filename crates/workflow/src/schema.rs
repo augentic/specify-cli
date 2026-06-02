@@ -102,7 +102,7 @@ pub fn validate_plan_file(path: &Path) -> Result<()> {
 /// Validate a lead-reconciliation envelope against the embedded
 /// `schemas/discovery/proposal.schema.json`.
 ///
-/// Backs `specrun plan propose` (RFC-29 D2): the dry-run request the
+/// Backs `specrun plan propose`: the dry-run request the
 /// CLI emits and the agent grouping response read by `--from` share one
 /// schema, discriminated by the closed `kind: request | response`
 /// `oneOf`. A single call validates either kind — there is no separate
@@ -136,7 +136,7 @@ const MODEL_SCHEMA_URL: &str =
 /// Validate an agent synthesis response against the embedded
 /// `schemas/slice/synthesis.schema.json`.
 ///
-/// Backs `specrun slice synthesize` (RFC-29 D3 / D10): synthesis is
+/// Backs `specrun slice synthesize`: synthesis is
 /// always agent-dispatched, so the only schema-validated wire is the
 /// returned `kind: response`. Its `model` property `$ref`s
 /// `model.schema.json` by a relative URI, so the validator is built
@@ -175,7 +175,7 @@ static SYNTHESIS_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
 });
 
 /// Validate a target build request against the embedded
-/// `schemas/target/build-request.schema.json` (RFC-29d D6).
+/// `schemas/target/build-request.schema.json`.
 ///
 /// Backs `specrun slice build`: the request the CLI assembles
 /// ([`crate::slice::build_request`]) and writes to
@@ -204,7 +204,7 @@ const DIAGNOSTIC_SCHEMA_URL: &str =
     "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json";
 
 /// Validate a target build report against the embedded
-/// `schemas/target/build-report.schema.json` (RFC-29d D6).
+/// `schemas/target/build-report.schema.json`.
 ///
 /// Backs `specrun slice build`: the report a target writes to
 /// `.specify/slices/<slice>/build/report.yaml` is gated against this
@@ -238,7 +238,7 @@ static BUILD_REPORT_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|
 });
 
 /// Validate a [`crate::registry::TopologyLock`] against the embedded
-/// `schemas/topology-lock.schema.json` (RFC-36).
+/// `schemas/topology-lock.schema.json`.
 ///
 /// Returns `Ok(())` on a clean validation; otherwise a payload-free
 /// [`Error::Validation`] keyed on `"topology-lock-schema"`. Used by the
@@ -388,7 +388,7 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
 /// Validate a single Evidence document (already read into `content`)
 /// against the embedded `schemas/evidence.schema.json`.
 ///
-/// This is the `extract` validate-before-visible gate (RFC-29 D1;
+/// This is the `extract` validate-before-visible gate (
 /// DECISIONS.md §"Source operations (D1)"): the runner reads the agent-
 /// or tool-produced Evidence,
 /// runs it through this check, and only persists it to
@@ -424,7 +424,7 @@ pub fn validate_evidence(content: &str, source_path: &Path) -> Result<()> {
 /// Validate every lead in `leads` against the embedded
 /// `schemas/discovery/lead.schema.json`.
 ///
-/// This is the `survey` validate-before-visible gate (RFC-29 D1;
+/// This is the `survey` validate-before-visible gate (
 /// DECISIONS.md §"Source operations (D1)"): the
 /// `survey` runner parses the agent- or tool-produced lead set, runs it
 /// through this check, and only calls
