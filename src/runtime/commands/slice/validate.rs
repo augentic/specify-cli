@@ -65,7 +65,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // on stdout either way; only a blocking diagnostic gates exit.
     //
     // The `discovery-lead-synopsis-thin` content-floor advisory
-    // (RFC-29b-signal D2.1) rides this non-blocking surface — never
+    // (DECISIONS §Lead reconciliation D2.1) rides this non-blocking surface — never
     // the pre-adapter gate above, which hard-fails on any finding —
     // so a thin `synopsis` nudges without ever parking the slice.
     let mut findings = validate_slice(&slice_dir)?;
@@ -418,7 +418,7 @@ fn collect_spec_file_location_findings(slice_dir: &Path) -> Vec<Diagnostic> {
     )]
 }
 
-/// Synopsis content-floor advisory (RFC-29b-signal D2.1). Loads
+/// Synopsis content-floor advisory (DECISIONS §Lead reconciliation D2.1). Loads
 /// `<project_dir>/discovery.md` when present and emits one
 /// non-blocking `discovery-lead-synopsis-thin` finding per lead whose
 /// `synopsis` falls below a contentfulness heuristic. Absent
@@ -461,7 +461,7 @@ fn synopsis_thin(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
         .collect())
 }
 
-/// Contentfulness heuristic for a lead `synopsis` (RFC-29b-signal
+/// Contentfulness heuristic for a lead `synopsis` (DECISIONS §Lead reconciliation
 /// D2.1). A synopsis is "thin" when it carries fewer than
 /// [`SYNOPSIS_MIN_WORDS`] whitespace-delimited words OR fewer than
 /// [`SYNOPSIS_MIN_CHARS`] non-whitespace characters once trimmed — too
