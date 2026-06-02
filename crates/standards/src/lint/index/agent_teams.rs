@@ -69,4 +69,3 @@ fn resolve(link_path: &Path, project_dir: &Path) -> (Option<String>, Option<Stri
     });
     (resolved_target, target_sha256)
 }
-

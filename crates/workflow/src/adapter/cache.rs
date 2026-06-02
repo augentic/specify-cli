@@ -71,7 +71,6 @@ impl CacheFingerprint {
     /// The resulting bytes are stable across runs given identical
     /// inputs and free of accidental sources of entropy (mtime, locale,
     /// hidden env).
-    ///
     #[must_use]
     pub fn canonical_bytes(&self) -> Vec<u8> {
         // `CacheFingerprint` is a closed serde derive over owned `String`s and

@@ -971,4 +971,3 @@ fn create_auto_approve_then_validate_passes() {
         specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
     assert_eq!(assert.get_output().status.code(), Some(0));
 }
-

@@ -408,3 +408,38 @@ fn empty_plan_is_drained_vacuously() {
     assert!(plan.is_drained(), "empty plan reports drained vacuously");
     assert!(!plan.is_executing(), "empty plan is not executing");
 }
+
+/// REVIEW.md A18: a plan-validate [`Finding`] projects onto the canonical
+/// diagnostic currency with a stable `rule_id`, the entry carried as
+/// `slice`, the severity mapped, and a fingerprint that validates.
+#[test]
+fn finding_projects_onto_canonical_diagnostic() {
+    let finding = Finding {
+        level: Severity::Error,
+        code: "plan.cycle",
+        message: "dependency cycle: a -> b -> a".to_string(),
+        entry: Some("checkout".to_string()),
+    };
+    let diagnostic = specify_diagnostics::Diagnostic::from(&finding);
+
+    assert_eq!(diagnostic.rule_id.as_deref(), Some("plan.cycle"));
+    assert_eq!(diagnostic.severity, specify_diagnostics::Severity::Important);
+    assert_eq!(diagnostic.slice.as_deref(), Some("checkout"));
+    assert_eq!(diagnostic.artifact, specify_diagnostics::Artifact::Plan);
+    specify_diagnostics::validate_diagnostic(&diagnostic).expect("projected diagnostic is valid");
+    assert!(specify_diagnostics::verify_fingerprint(&diagnostic), "fingerprint covers slice");
+}
+
+/// A non-blocking `Warning` finding maps to `Suggestion`.
+#[test]
+fn warning_finding_maps_to_suggestion() {
+    let finding = Finding {
+        level: Severity::Warning,
+        code: "plan.orphan-source",
+        message: "source `docs` is unreferenced".to_string(),
+        entry: None,
+    };
+    let diagnostic = specify_diagnostics::Diagnostic::from(&finding);
+    assert_eq!(diagnostic.severity, specify_diagnostics::Severity::Suggestion);
+    assert!(diagnostic.slice.is_none());
+}

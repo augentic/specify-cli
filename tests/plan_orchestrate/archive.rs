@@ -870,4 +870,3 @@ fn plan_amend_divergence_none_refused() {
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
     assert_eq!(stderr["error"], "argument");
 }
-

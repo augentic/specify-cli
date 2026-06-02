@@ -14,7 +14,8 @@ use crate::framework::helpers::{relative_display, skill_body_lines, walk_skill_f
 /// authored in this module, so a compile failure is a programmer error caught
 /// by the unit tests below, not a runtime condition.
 fn cached(pattern: &str) -> Regex {
-    Regex::new(pattern).unwrap_or_else(|err| unreachable!("static skill-body regex must compile: {err}"))
+    Regex::new(pattern)
+        .unwrap_or_else(|err| unreachable!("static skill-body regex must compile: {err}"))
 }
 
 static LIST_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^(?:\d+\.|-)\s+\S"));

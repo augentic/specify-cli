@@ -30,18 +30,17 @@ use specify_standards::framework::check;
 use specify_standards::framework::context::Context as AuthoringContext;
 use specify_standards::lint::diagnostics::map_render_error;
 use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_standards::lint::ignore::blocking_findings_present;
 use specify_standards::lint::producer::DiagnosticProducer;
 use specify_standards::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
 use specify_standards::lint::{ScanProfile, WorkspaceModel};
 use specify_workflow::config::Layout;
-use specify_workflow::journal::{self, LintScope};
+use specify_workflow::journal::LintScope;
 
 use crate::authoring::commands::lint::cli::{LintAction, LintFormat};
 use crate::authoring::exit::Exit;
-use crate::output::Format;
+use crate::output::{Format, LintEmit, emit_diagnostic_report};
 
 /// Handler entry point dispatched from `src/authoring/commands.rs`.
 ///
@@ -55,32 +54,29 @@ pub fn run(format: Format, action: &LintAction) -> Exit {
 
     match build_envelope(action) {
         Ok(BuildOutcome::Envelope { result, project_dir }) => {
-            let rendered = match render(diagnostics_format, &result) {
-                Ok(rendered) => rendered,
-                Err(err) => {
-                    let err = map_render_error(err);
-                    eprintln!("error: {err}");
-                    emit_fallback_envelope(diagnostics_format);
-                    return exit_from_error(&err);
-                }
-            };
-            print!("{rendered}");
-            let blocking = blocking_findings_present(&result.findings);
-            let exit_code: i32 = if blocking { 2 } else { 0 };
             let scope = LintScope {
                 target: None,
                 slice: None,
                 artifact: action.artifacts.first().map(|p| p.display().to_string()),
             };
-            journal::emit_lint_completed(
-                Layout::new(&project_dir),
+            match emit_diagnostic_report(LintEmit {
+                format: diagnostics_format,
+                report: &result,
+                layout: Layout::new(&project_dir),
                 scope,
-                &result.findings,
-                started_at.elapsed().as_millis(),
-                exit_code,
-                "specdev lint",
-            );
-            if blocking { Exit::ValidationFailed } else { Exit::Success }
+                command_label: "specdev lint",
+                elapsed_ms: started_at.elapsed().as_millis(),
+                trailing_newline: false,
+            }) {
+                Ok(true) => Exit::ValidationFailed,
+                Ok(false) => Exit::Success,
+                Err(err) => {
+                    let err = map_render_error(err);
+                    eprintln!("error: {err}");
+                    emit_fallback_envelope(diagnostics_format);
+                    exit_from_error(&err)
+                }
+            }
         }
         Ok(BuildOutcome::DumpedModel) => Exit::Success,
         Err(err) => {

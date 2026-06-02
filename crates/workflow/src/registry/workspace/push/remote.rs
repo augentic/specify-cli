@@ -22,12 +22,15 @@ pub(super) fn is_git_worktree(project_path: &Path) -> bool {
 pub(in crate::registry::workspace) fn current_branch(
     project_path: &Path,
 ) -> Result<Option<String>, Error> {
-    let output =
-        cmd::git(&cmd::real_cmd, Some(project_path), ["symbolic-ref", "--quiet", "--short", "HEAD"])
-            .map_err(|err| Error::Diag {
-                code: "workspace-git-current-branch-failed",
-                detail: format!("failed to inspect current branch: {err}"),
-            })?;
+    let output = cmd::git(
+        &cmd::real_cmd,
+        Some(project_path),
+        ["symbolic-ref", "--quiet", "--short", "HEAD"],
+    )
+    .map_err(|err| Error::Diag {
+        code: "workspace-git-current-branch-failed",
+        detail: format!("failed to inspect current branch: {err}"),
+    })?;
     if !output.status.success() {
         return Ok(None);
     }

@@ -213,7 +213,7 @@ fn scan_slice_specs(
 
 /// Bundle the pre-adapter gates that fire on a single slice:
 ///
-/// 1. RFC-35 D8 — spec file-location check: root `spec.md` exists
+/// 1. Spec file-location check — root `spec.md` exists
 ///    but no canonical `specs/<unit>/spec.md` files found. Fires
 ///    first so the operator sees the structural cause before
 ///    downstream drift noise.
@@ -267,7 +267,7 @@ fn alias_collisions(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
         .collect())
 }
 
-/// RFC-35 D8 file-location gate. Emits a `specs.file-location`
+/// Spec file-location gate. Emits a `specs.file-location`
 /// finding when the slice has no spec files under the canonical
 /// `specs/<unit>/spec.md` layout but does have a root-level
 /// `spec.md`. This fires first among the pre-adapter gates so the

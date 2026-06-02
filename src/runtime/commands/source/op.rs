@@ -53,9 +53,11 @@ pub(super) fn read_artifact(path: &Path, op: SourceOperation) -> Result<String> 
                 SourceOperation::Survey => {
                     ("survey-lead-set-missing", "lead-set.md", "the survey must write the lead set")
                 }
-                SourceOperation::Extract => {
-                    ("extract-evidence-missing", "evidence.yaml", "the extract must write the Evidence")
-                }
+                SourceOperation::Extract => (
+                    "extract-evidence-missing",
+                    "evidence.yaml",
+                    "the extract must write the Evidence",
+                ),
             };
             Error::Diag {
                 code,
@@ -95,9 +97,7 @@ pub(super) fn build_fingerprint(
     let adapter = format!("{}@{}", prepared.manifest.name, prepared.manifest.version);
 
     let (missing_code, read_code, label) = match op {
-        SourceOperation::Survey => {
-            ("survey-brief-missing", "survey-brief-read-failed", "survey")
-        }
+        SourceOperation::Survey => ("survey-brief-missing", "survey-brief-read-failed", "survey"),
         SourceOperation::Extract => {
             ("extract-brief-missing", "extract-brief-read-failed", "extract")
         }

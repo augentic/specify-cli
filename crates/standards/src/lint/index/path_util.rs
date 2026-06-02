@@ -5,7 +5,7 @@
 //! project-relative path strings. The normalisation rule lives here so
 //! the two indexers share one definition.
 
-use std::path::{Path, MAIN_SEPARATOR};
+use std::path::{MAIN_SEPARATOR, Path};
 
 /// Render `p` as a `/`-separated string, or `None` when the path is not
 /// valid UTF-8. On `/`-native platforms this is a borrow-free passthrough.

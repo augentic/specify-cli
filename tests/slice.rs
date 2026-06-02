@@ -713,7 +713,7 @@ fn model_show_fails_without_model() {
 }
 
 // ---------------------------------------------------------------------------
-// RFC-35 D8 — `slice validate` spec file-location gate
+// `slice validate` spec file-location gate
 // ---------------------------------------------------------------------------
 
 #[test]

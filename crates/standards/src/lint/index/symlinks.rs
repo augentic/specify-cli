@@ -66,4 +66,3 @@ pub fn record(path: &Path, project_dir: &Path, mode: FollowMode) -> Option<Symli
         resolved_target,
     })
 }
-

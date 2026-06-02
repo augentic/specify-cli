@@ -96,6 +96,32 @@ pub enum DiagnosticPayload {
     },
 }
 
+impl From<&Diagnostic> for specify_diagnostics::Diagnostic {
+    /// Project a plan-doctor [`Diagnostic`] onto the canonical
+    /// [`specify_diagnostics::Diagnostic`] currency (REVIEW.md A18). The
+    /// stable `code` becomes the `rule_id`, the offending entry (when
+    /// present) populates `slice`, and the finding is classified as a
+    /// deterministic `Plan` artifact violation. The structured `data`
+    /// payload is not re-encoded — the human `message` already states
+    /// it — so the projection stays one-way and lossy-by-design. The
+    /// fingerprint is recomputed after `slice` is set.
+    fn from(diagnostic: &Diagnostic) -> Self {
+        let mut out = Self::finding(
+            diagnostic.code.clone(),
+            diagnostic.message.clone(),
+            diagnostic.message.clone(),
+            diagnostic.severity.to_core(),
+            specify_diagnostics::DiagnosticKind::Violation,
+            specify_diagnostics::DiagnosticSource::Deterministic,
+            specify_diagnostics::Artifact::Plan,
+            None,
+        );
+        out.slice.clone_from(&diagnostic.entry);
+        out.fingerprint = specify_diagnostics::fingerprint(&out);
+        out
+    }
+}
+
 /// Why a workspace clone is classified stale by [`STALE_CLONE`].
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,

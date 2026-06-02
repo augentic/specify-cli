@@ -12,6 +12,7 @@ pub mod design_system;
 pub mod init;
 pub mod journal;
 pub mod merge;
+pub mod name;
 pub mod registry;
 pub mod schema;
 pub mod slice;

@@ -658,6 +658,21 @@ pub enum Severity {
     Warning,
 }
 
+impl Severity {
+    /// Project the plan-local severity onto the canonical
+    /// [`specify_diagnostics::Severity`] currency: a blocking `Error`
+    /// becomes `Important` (the default workflow-gating level) and a
+    /// non-blocking `Warning` becomes `Suggestion` (reviewer judgement,
+    /// never default-blocking).
+    #[must_use]
+    pub const fn to_core(self) -> specify_diagnostics::Severity {
+        match self {
+            Self::Error => specify_diagnostics::Severity::Important,
+            Self::Warning => specify_diagnostics::Severity::Suggestion,
+        }
+    }
+}
+
 /// A single finding reported by [`Plan::validate`].
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -670,6 +685,30 @@ pub struct Finding {
     pub message: String,
     /// Name of the offending entry, when the finding is entry-local.
     pub entry: Option<String>,
+}
+
+impl From<&Finding> for specify_diagnostics::Diagnostic {
+    /// Project a plan-validate [`Finding`] onto the canonical
+    /// [`specify_diagnostics::Diagnostic`] currency (REVIEW.md A18). The
+    /// stable `code` becomes the `rule_id`, the entry name (when
+    /// present) populates `slice`, and the finding is classified as a
+    /// deterministic `Plan` artifact violation. The fingerprint is
+    /// recomputed after `slice` is set so dedup identity covers it.
+    fn from(finding: &Finding) -> Self {
+        let mut diagnostic = Self::finding(
+            finding.code,
+            finding.message.clone(),
+            finding.message.clone(),
+            finding.level.to_core(),
+            specify_diagnostics::DiagnosticKind::Violation,
+            specify_diagnostics::DiagnosticSource::Deterministic,
+            specify_diagnostics::Artifact::Plan,
+            None,
+        );
+        diagnostic.slice.clone_from(&finding.entry);
+        diagnostic.fingerprint = specify_diagnostics::fingerprint(&diagnostic);
+        diagnostic
+    }
 }
 
 #[cfg(test)]
