@@ -87,6 +87,12 @@ impl Discovery {
     /// CLI owns the surrounding `## Lead inventory` frame. This accepts
     /// both framed and unframed lead sets, then delegates to the strict
     /// discovery parser.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Diag`] (`discovery-parse-failed`) when the
+    /// normalized lead set has the same structural defects rejected by
+    /// [`Self::parse`].
     pub fn parse_lead_set(text: &str) -> Result<Self> {
         if text.lines().any(is_inventory_heading) {
             Self::parse(text)
