@@ -423,6 +423,12 @@ pub enum EventKind {
         /// repository; absent otherwise (best-effort, never fatal).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         merge_sha: Option<String>,
+        /// `DEC-NNNN` ids promoted into the Decision Record catalogue by
+        /// this merge (RFC-37), in slug order. Empty stays off the wire;
+        /// this is the durable ledger of promoted decisions alongside git
+        /// history of `.specify/decisions/`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        decisions: Vec<String>,
     },
     /// `specrun lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
@@ -893,6 +899,7 @@ mod tests {
                     touched_specs: vec!["identity".to_string()],
                     outcome_summary: "identity: 2 modified".to_string(),
                     merge_sha: Some("a1b2c3d".to_string()),
+                    decisions: Vec::new(),
                 },
                 &[
                     r#""event":"slice.archive.created""#,
@@ -1293,6 +1300,7 @@ mod tests {
                 touched_specs: vec!["identity".to_string()],
                 outcome_summary: "identity: 1 modified".to_string(),
                 merge_sha: Some("abc1234".to_string()),
+                decisions: Vec::new(),
             },
         ] {
             append_batch(

@@ -1131,3 +1131,62 @@ fn regenerate_topology_lock_projects_baseline_identity() {
     );
     assert_eq!(alpha.recent, vec!["session: 2 added".to_string()]);
 }
+
+#[test]
+fn regenerate_topology_lock_projects_accepted_decisions() {
+    use specify_workflow::registry::topology::TopologyLock;
+    use specify_workflow::registry::workspace::regenerate_topology_lock;
+
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    stage_topology_slot(
+        project_dir,
+        "alpha",
+        "name: alpha\nadapter: omnia@v1\ndescription: Alpha core\n",
+    );
+    let decisions_dir = project_dir.join(".specify/workspace/alpha/.specify/decisions");
+    fs::create_dir_all(&decisions_dir).unwrap();
+    let decision = |id: &str, slug: &str, status: &str, title: &str| {
+        format!(
+            "---\nid: {id}\nslug: {slug}\nstatus: {status}\nslice: s\ndate: 2026-06-02\n---\n\
+             # {title}\n\n## Context\nc\n\n## Decision\nd\n\n## Consequences\ne\n"
+        )
+    };
+    fs::write(
+        decisions_dir.join("DEC-0001-use-postgres.md"),
+        decision("DEC-0001", "use-postgres", "accepted", "Use PostgreSQL"),
+    )
+    .unwrap();
+    fs::write(
+        decisions_dir.join("DEC-0002-drop-redis.md"),
+        decision("DEC-0002", "drop-redis", "rejected", "Drop Redis"),
+    )
+    .unwrap();
+
+    let registry = Registry {
+        version: 1,
+        projects: vec![RegistryProject {
+            name: "alpha".to_string(),
+            url: "git@github.com:org/alpha.git".to_string(),
+            adapter: None,
+            description: None,
+            contracts: None,
+        }],
+    };
+
+    regenerate_topology_lock(project_dir, &registry).expect("regenerate");
+
+    let lock = TopologyLock::load(&project_dir.join(".specify/topology.lock"))
+        .expect("load")
+        .expect("present");
+    let alpha = &lock.projects[0];
+    // Only the accepted record is projected, title-only.
+    assert_eq!(alpha.decisions.len(), 1);
+    assert_eq!(alpha.decisions[0].id, "DEC-0001");
+    assert_eq!(alpha.decisions[0].title, "Use PostgreSQL");
+    assert!(alpha.decisions_more.is_none());
+
+    // The accepted decision round-trips onto the wire under `decisions:`.
+    let yaml = fs::read_to_string(project_dir.join(".specify/topology.lock")).unwrap();
+    assert!(yaml.contains("DEC-0001"), "{yaml}");
+}

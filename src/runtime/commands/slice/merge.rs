@@ -82,7 +82,7 @@ fn commit_run(ctx: &Ctx, name: &str) -> Result<()> {
     // via git plus an outcome ledger"). Best-effort: a journal write
     // failure must not undo a committed merge, so the error is logged,
     // not propagated.
-    emit_archive_created(ctx, name, &merged, now);
+    emit_archive_created(ctx, name, &merged, &merged.decisions, now);
 
     stamp_plan_entry_done(ctx, name)?;
 
@@ -116,7 +116,9 @@ fn emit_merge_event(ctx: &Ctx, kind: EventKind) {
 /// SHA after the merge (best-effort). A journal-write or git failure is
 /// logged and swallowed — the merge has already committed to disk, so a
 /// ledger hiccup must never surface as a non-zero exit.
-fn emit_archive_created(ctx: &Ctx, name: &str, merged: &[MergePreviewEntry], now: Timestamp) {
+fn emit_archive_created(
+    ctx: &Ctx, name: &str, merged: &[MergePreviewEntry], decisions: &[String], now: Timestamp,
+) {
     let touched_specs: Vec<String> = merged.iter().map(|e| e.name.clone()).collect();
     let outcome_summary = if merged.is_empty() {
         "no baseline specs touched".to_string()
@@ -134,6 +136,7 @@ fn emit_archive_created(ctx: &Ctx, name: &str, merged: &[MergePreviewEntry], now
             touched_specs,
             outcome_summary,
             merge_sha: git_head_sha(&ctx.project_dir),
+            decisions: decisions.to_vec(),
         },
     );
     if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {

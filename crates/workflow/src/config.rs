@@ -186,6 +186,16 @@ impl<'a> Layout<'a> {
         self.specify_dir().join(".cache")
     }
 
+    /// Absolute path to `<project_dir>/.specify/decisions/` — the
+    /// append-only Decision Record catalogue promoted by
+    /// `specrun slice merge` (RFC-37). One flat, project-global tree of
+    /// `DEC-NNNN-<slug>.md` files. Machine-written by merge; the single
+    /// permitted post-write mutation is a supersede status flip.
+    #[must_use]
+    pub fn decisions_dir(&self) -> PathBuf {
+        self.specify_dir().join("decisions")
+    }
+
     /// Absolute path to `<project_dir>/.specify/archive/`. Centralised
     /// here so there is exactly one place the convention lives.
     #[must_use]

@@ -62,6 +62,30 @@ pub struct TopologyProject {
     /// slot's journal ledger, in append order. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent: Vec<String>,
+    /// Accepted Decision Records projected from `.specify/decisions/`
+    /// (RFC-37), the most recent `K` in `DEC-NNNN` ascending order.
+    /// The third routing-identity axis — *why* the project is shaped the
+    /// way it is. Empty stays off the wire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<Decision>,
+    /// Count of accepted decisions elided past the `K` cap. Absent when
+    /// the catalogue fits within `K`.
+    #[serde(default, rename = "decisions-more", skip_serializing_if = "Option::is_none")]
+    pub decisions_more: Option<u64>,
+}
+
+/// One accepted Decision Record projected into routing identity.
+///
+/// RFC-37 §"Decision Records as an identity source". Title only — no body,
+/// `Context`, or `Consequences` prose is projected. Shared by
+/// [`TopologyProject`] and the reconciliation envelope's `ProjectRef`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Decision {
+    /// The durable `DEC-NNNN` id.
+    pub id: String,
+    /// The record's H1 heading text.
+    pub title: String,
 }
 
 /// One baseline unit's projected surface (RFC-36 §"Projection contract").
@@ -183,13 +207,15 @@ impl TopologyProject {
         })?;
         let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter_value), slot_dir)?;
         let target = format!("{}@v{}", resolved.manifest.name, resolved.manifest.version);
-        let (surface, recent) = super::identity::project_baseline(slot_dir)?;
+        let projection = super::identity::project_baseline(slot_dir)?;
         Ok(Self {
             name: registry_name.to_string(),
             target,
             description: config.description.clone(),
-            surface,
-            recent,
+            surface: projection.surface,
+            recent: projection.recent,
+            decisions: projection.decisions,
+            decisions_more: projection.decisions_more,
         })
     }
 }
@@ -219,6 +245,8 @@ mod tests {
                     more: None,
                 }],
                 recent: Vec::new(),
+                decisions: Vec::new(),
+                decisions_more: None,
             },
             TopologyProject {
                 name: "identity-service".to_string(),
@@ -226,6 +254,8 @@ mod tests {
                 description: None,
                 surface: Vec::new(),
                 recent: Vec::new(),
+                decisions: Vec::new(),
+                decisions_more: None,
             },
         ]);
 
@@ -247,6 +277,8 @@ mod tests {
             description: None,
             surface: Vec::new(),
             recent: Vec::new(),
+            decisions: Vec::new(),
+            decisions_more: None,
         }]);
 
         lock.save(&path).expect("save");

@@ -21,6 +21,27 @@
       "description": "Target adapter identifier, e.g. `omnia@v1` or `contracts@v1`. Mirrors `plan.schema.json` slice `target` pattern.",
       "pattern": "^[a-z][a-z0-9-]*@v\\d+$"
     },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title"
+      ],
+      "description": "One accepted Decision Record projected into routing identity (RFC-37). Title only — no body, Context, or Consequences prose is projected.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^DEC-\\d{4,}$",
+          "description": "The durable project-global `DEC-NNNN` id."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The record's H1 heading text."
+        }
+      }
+    },
     "surfaceUnit": {
       "type": "object",
       "additionalProperties": false,
@@ -86,6 +107,18 @@
             "minLength": 1
           },
           "description": "Recent per-merge outcome summaries from the project's journal ledger (RFC-36), newest activity last. Empty stays off the wire."
+        },
+        "decisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decision"
+          },
+          "description": "Accepted Decision Records projected from `.specify/decisions/` through `.specify/topology.lock` (RFC-37): the most recent K (default 8) in `DEC-NNNN` ascending order. The third routing-identity axis — why the project is shaped the way it is — so the agent can route a slice on architectural commitment and flag a lead that contradicts an accepted decision before Gate 1. Empty stays off the wire."
+        },
+        "decisions-more": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Count of accepted decisions elided past the K cap. Absent when the catalogue fits within K."
         }
       }
     },

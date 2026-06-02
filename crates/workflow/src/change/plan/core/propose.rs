@@ -41,7 +41,7 @@ use super::validate::entry_dependency_graph;
 use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
 use crate::init::adapter_name_from_value;
-use crate::registry::topology::{Surface, TopologyLock};
+use crate::registry::topology::{Decision, Surface, TopologyLock};
 
 /// Wire version pinned by `schemas/discovery/proposal.schema.json`
 /// (`const: 1` on both envelope kinds).
@@ -116,6 +116,17 @@ pub struct ProjectRef {
     /// ledger (RFC-36), newest activity last. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent: Vec<String>,
+    /// Accepted Decision Records projected from `.specify/decisions/`
+    /// (RFC-37): the third routing-identity axis — *why* the project is
+    /// shaped the way it is, surfaced so the agent can route a slice on
+    /// architectural commitment and flag a lead that contradicts an
+    /// accepted decision before Gate 1. Empty stays off the wire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<Decision>,
+    /// Count of accepted decisions elided past the projection cap.
+    /// Absent when the catalogue fits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decisions_more: Option<u64>,
 }
 
 /// One row in the request's flat lead catalog.
@@ -360,6 +371,8 @@ fn hub_topology(project_dir: &Path) -> Result<Vec<ProjectRef>> {
             description: project.description,
             surface: project.surface,
             recent: project.recent,
+            decisions: project.decisions,
+            decisions_more: project.decisions_more,
         })
         .collect())
 }
@@ -375,13 +388,15 @@ fn regular_topology(config: &ProjectConfig, project_dir: &Path) -> Result<Projec
     })?;
     let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter_value), project_dir)?;
     let target = format!("{}@v{}", resolved.manifest.name, resolved.manifest.version);
-    let (surface, recent) = crate::registry::identity::project_baseline(project_dir)?;
+    let projection = crate::registry::identity::project_baseline(project_dir)?;
     Ok(ProjectRef {
         name: config.name.clone(),
         target,
         description: config.description.clone(),
-        surface,
-        recent,
+        surface: projection.surface,
+        recent: projection.recent,
+        decisions: projection.decisions,
+        decisions_more: projection.decisions_more,
     })
 }
 
@@ -738,6 +753,8 @@ mod tests {
             description: Some(description.to_string()),
             surface: Vec::new(),
             recent: Vec::new(),
+            decisions: Vec::new(),
+            decisions_more: None,
         }
     }
 
@@ -942,6 +959,8 @@ slices:
                         more: None,
                     }],
                     recent: Vec::new(),
+                    decisions: Vec::new(),
+                    decisions_more: None,
                 },
                 ProjectRef {
                     name: "identity-service".to_string(),
@@ -949,6 +968,8 @@ slices:
                     description: None,
                     surface: Vec::new(),
                     recent: Vec::new(),
+                    decisions: Vec::new(),
+                    decisions_more: None,
                 },
             ]
         );

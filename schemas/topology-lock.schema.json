@@ -26,6 +26,24 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*@v\\d+$"
     },
+    "decision": {
+      "type": "object",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "description": "One accepted Decision Record projected into routing identity (RFC-37). Title only — no body, Context, or Consequences prose is projected.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^DEC-\\d{4,}$",
+          "description": "The durable project-global `DEC-NNNN` id."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The record's H1 heading text."
+        }
+      }
+    },
     "surfaceUnit": {
       "type": "object",
       "required": ["unit", "requirements"],
@@ -76,6 +94,16 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "description": "The last M (default 10) `slice.archive.created` outcome summaries from the project's journal ledger, in append order. Empty stays off the wire."
+        },
+        "decisions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/decision" },
+          "description": "Accepted Decision Records projected from `.specify/decisions/` (RFC-37): the most recent K (default 8) in `DEC-NNNN` ascending order. The third routing-identity axis — why the project is shaped the way it is. Empty stays off the wire."
+        },
+        "decisions-more": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Count of accepted decisions elided past the K cap. Absent when the catalogue fits within K."
         }
       }
     }

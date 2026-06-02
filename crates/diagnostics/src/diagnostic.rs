@@ -94,6 +94,9 @@ pub enum Artifact {
     Specs,
     /// Design notes (`design.md`).
     Design,
+    /// Decision Records (`.specify/slices/<slice>/decisions/<slug>.md`,
+    /// promoted to `.specify/decisions/DEC-NNNN-<slug>.md`).
+    Decisions,
     /// Task list (`tasks.md`).
     Tasks,
     /// Asset inventory (`assets.yaml`).

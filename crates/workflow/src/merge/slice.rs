@@ -59,6 +59,28 @@ fn ser_baseline_path<S: serde::Serializer>(v: &PathBuf, s: S) -> Result<S::Ok, S
     s.collect_str(&v.display())
 }
 
+/// Outcome of a [`commit`].
+///
+/// Carries the merged spec entries plus the `DEC-NNNN` ids promoted into
+/// the Decision Record catalogue (RFC-37, empty when the slice authored
+/// none). Derefs to the spec slice so the common `merged.iter()` /
+/// `merged.len()` / `merged[i]` callers keep working unchanged.
+#[derive(Debug, Clone)]
+pub struct MergeCommit {
+    /// The 3-way merged spec/composition entries.
+    pub specs: Vec<MergePreviewEntry>,
+    /// `DEC-NNNN` ids promoted by this merge, in slug order.
+    pub decisions: Vec<String>,
+}
+
+impl std::ops::Deref for MergeCommit {
+    type Target = [MergePreviewEntry];
+
+    fn deref(&self) -> &Self::Target {
+        &self.specs
+    }
+}
+
 /// One opaque-replace file pre-image discovered under a
 /// [`MergeStrategy::OpaqueReplace`] class's `staged_dir`.
 #[derive(Debug, Clone)]
@@ -180,7 +202,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 ///   (`Error::Io`, `Error::YamlSer`).
 pub fn commit(
     slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: Timestamp,
-) -> Result<Vec<MergePreviewEntry>, Error> {
+) -> Result<MergeCommit, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     if metadata.status != LifecycleStatus::Built {
         return Err(Error::Diag {
@@ -190,6 +212,15 @@ pub fn commit(
     }
 
     let merged = plan_three_way(slice_dir, classes)?;
+
+    // RFC-37 decisions pass — core (runs for every target), part of the
+    // same merge. Promotion is keyed on the slice name and writes into
+    // `.specify/decisions/`, derived from `archive_dir` (a sibling under
+    // `.specify/`). The supersede-orphan re-check aborts here before any
+    // baseline write, so a failure leaves the slice `Built` for a clean
+    // retry; the kernel's `(slice, slug)` guard keeps that retry from
+    // double-promoting.
+    let decisions = promote_decisions(slice_dir, archive_dir, now)?;
 
     write_three_way_baselines(&merged)?;
     let opaque_counts = commit_opaque(classes)?;
@@ -219,7 +250,25 @@ pub fn commit(
     output.sort_by(|a, b| {
         (a.class_name.as_str(), a.name.as_str()).cmp(&(b.class_name.as_str(), b.name.as_str()))
     });
-    Ok(output)
+    Ok(MergeCommit {
+        specs: output,
+        decisions,
+    })
+}
+
+/// Promote the slice's Decision Records into the baseline catalogue.
+/// `archive_dir` is `<project>/.specify/archive`, so its grandparent is
+/// the project root and its parent is `.specify`; the catalogue lives at
+/// `.specify/decisions/`. The slice name is the slice directory's final
+/// component.
+fn promote_decisions(
+    slice_dir: &Path, archive_dir: &Path, now: Timestamp,
+) -> Result<Vec<String>, Error> {
+    let Some(project_dir) = archive_dir.parent().and_then(Path::parent) else {
+        return Ok(Vec::new());
+    };
+    let slice_name = slice_dir.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    crate::decisions::promote(slice_dir, project_dir, slice_name, now)
 }
 
 /// Check for baseline drift on the modified `touched_specs` and on
