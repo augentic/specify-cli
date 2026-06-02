@@ -1,8 +1,8 @@
 Specify review — 2 finding(s)
 [IMPORTANT] [ignored] UNI-014 UNI-014 test rule: matched `https?://` (app.rs:2:25)
-  impact: Trigger for UNI-014
-  remediation: See shared/UNI-014.md
+  impact: <prose>
+  remediation: <prose>
 [IMPORTANT] UNI-022 specify-ignore directive missing or short rationale (app.rs:1)
-  impact: Directive for UNI-014 omits rationale or carries fewer than 16 characters of rationale.
-  remediation: Add a rationale of at least 16 characters explaining why the finding is being tolerated at this location.
+  impact: <prose>
+  remediation: <prose>
 Summary: 0 critical, 2 important, 0 suggestion, 0 optional

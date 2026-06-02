@@ -9,7 +9,7 @@
   "properties": {
     "version": {
       "const": 1,
-      "description": "Topology lock schema version. Version 1 is the RFC-36 shape."
+      "description": "Topology lock schema version. Version 1 is the initial shape."
     },
     "projects": {
       "type": "array",

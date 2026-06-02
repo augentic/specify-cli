@@ -1,4 +1,5 @@
 use std::fs;
+use std::sync::LazyLock;
 
 use regex::{Regex, RegexBuilder};
 use specify_diagnostics::Diagnostic;
@@ -8,6 +9,36 @@ use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
 use crate::framework::helpers::{relative_display, skill_body_lines, walk_skill_files};
+
+/// Build a process-wide cached regex. The patterns here are static literals
+/// authored in this module, so a compile failure is a programmer error caught
+/// by the unit tests below, not a runtime condition.
+fn cached(pattern: &str) -> Regex {
+    Regex::new(pattern)
+        .unwrap_or_else(|err| unreachable!("static skill-body regex must compile: {err}"))
+}
+
+static LIST_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^(?:\d+\.|-)\s+\S"));
+static INLINE_JSON_FENCE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^```(json|jsonc)\b"));
+static ENVELOPE_FENCE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^\s*(`{3,})(json|jsonc)\b"));
+static ENVELOPE_VERSION_RE: LazyLock<Regex> =
+    LazyLock::new(|| cached(r#""envelope[-_]version"\s*:"#));
+static ENVELOPE_OK_RE: LazyLock<Regex> = LazyLock::new(|| cached(r#""ok"\s*:\s*(true|false)\b"#));
+static ENVELOPE_DATA_RE: LazyLock<Regex> = LazyLock::new(|| cached(r#""data"\s*:"#));
+static ENVELOPE_ERROR_RE: LazyLock<Regex> = LazyLock::new(|| cached(r#""error"\s*:\s*\{"#));
+static STEP_PREFIX_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^Step\s+\d+\s*[:.\-]\s*"));
+static LIST_PREFIX_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^(?:\d+\.|-|\*)\s+"));
+static HEADING_PREFIX_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^#{2,4}\s+"));
+static WHITESPACE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"\s+"));
+static LIST_LINE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^(?:\d+\.|-|\*)\s+\S"));
+static VAR_DEF_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"(?m)^\$([A-Z_][A-Z_0-9]*)\s*="));
+static VAR_USE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"\$([A-Z_][A-Z_0-9]*)"));
+static ARGS_HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| cached(r"(?m)^## (?:Derived )?Arguments"));
+static TEXT_CODE_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"```text\n([\s\S]*?)```"));
+static FENCE_STRIP_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"```[\s\S]*?```"));
+static INLINE_CODE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"`[^`]+`"));
+static ALL_CAPS_VAR_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^[A-Z][A-Z_]+$"));
 
 const CRITICAL_PATH_MIN_LINES: usize = 150;
 const CRITICAL_PATH_HEADING: &str = "## Critical Path";
@@ -184,7 +215,6 @@ fn check_missing_critical_path(ctx: &Context) -> Result<Vec<Diagnostic>, Tooling
 }
 
 fn check_invalid_critical_path(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
-    let list_item_re = Regex::new(r"^(?:\d+\.|-)\s+\S").expect("list item pattern");
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 
@@ -206,7 +236,7 @@ fn check_invalid_critical_path(ctx: &Context) -> Result<Vec<Diagnostic>, Tooling
         };
 
         let section_lines = critical_path_section_lines(&lines, heading_index);
-        let item_count = count_critical_path_items(section_lines, &list_item_re);
+        let item_count = count_critical_path_items(section_lines, &LIST_ITEM_RE);
 
         if !(5..=7).contains(&item_count) {
             findings.push(finding(
@@ -279,7 +309,7 @@ enum CriticalPathMode {
 }
 
 fn check_inline_json_blocks(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
-    let fence_open_re = Regex::new(r"^```(json|jsonc)\b").expect("json fence pattern");
+    let fence_open_re = &INLINE_JSON_FENCE_RE;
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 
@@ -323,7 +353,7 @@ fn check_inline_json_blocks(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingErr
 }
 
 fn check_no_envelope_examples(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
-    let fence_open_re = Regex::new(r"^\s*(`{3,})(json|jsonc)\b").expect("json fence pattern");
+    let fence_open_re = &ENVELOPE_FENCE_RE;
     let root = ctx.framework_root();
     let mut findings = Vec::new();
 
@@ -384,14 +414,12 @@ fn check_no_envelope_examples(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingE
 
 fn is_envelope_body(body: &[String]) -> bool {
     let text = body.join("\n");
-    let envelope_version =
-        Regex::new(r#""envelope[-_]version"\s*:"#).expect("envelope version pattern");
-    if envelope_version.is_match(&text) {
+    if ENVELOPE_VERSION_RE.is_match(&text) {
         return true;
     }
-    let has_ok = Regex::new(r#""ok"\s*:\s*(true|false)\b"#).expect("ok pattern").is_match(&text);
-    let has_data = Regex::new(r#""data"\s*:"#).expect("data pattern").is_match(&text);
-    let has_error = Regex::new(r#""error"\s*:\s*\{"#).expect("error pattern").is_match(&text);
+    let has_ok = ENVELOPE_OK_RE.is_match(&text);
+    let has_data = ENVELOPE_DATA_RE.is_match(&text);
+    let has_error = ENVELOPE_ERROR_RE.is_match(&text);
     has_ok && (has_data || has_error)
 }
 
@@ -498,23 +526,16 @@ fn find_step_body_duplicates(
 }
 
 fn normalise_entry(text: &str) -> String {
-    let step_prefix = Regex::new(r"^Step\s+\d+\s*[:.\-]\s*").expect("step prefix");
-    let list_prefix = Regex::new(r"^(?:\d+\.|-|\*)\s+").expect("list prefix");
-    let heading_prefix = Regex::new(r"^#{2,4}\s+").expect("heading prefix");
-    let whitespace = Regex::new(r"\s+").expect("whitespace");
-
     let mut out = text.to_string();
-    out = list_prefix.replace_all(&out, "").into_owned();
-    out = heading_prefix.replace_all(&out, "").into_owned();
-    out = step_prefix.replace_all(&out, "").into_owned();
-    out = whitespace.replace_all(out.trim(), " ").into_owned();
+    out = LIST_PREFIX_RE.replace_all(&out, "").into_owned();
+    out = HEADING_PREFIX_RE.replace_all(&out, "").into_owned();
+    out = STEP_PREFIX_RE.replace_all(&out, "").into_owned();
+    out = WHITESPACE_RE.replace_all(out.trim(), " ").into_owned();
     out.to_lowercase()
 }
 
 fn is_list_or_heading_line(line: &str) -> bool {
-    Regex::new(r"^(?:\d+\.|-|\*)\s+\S").expect("list line").is_match(line)
-        || line.starts_with("### ")
-        || line.starts_with("#### ")
+    LIST_LINE_RE.is_match(line) || line.starts_with("### ") || line.starts_with("#### ")
 }
 
 fn check_no_frontmatter_restatement(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
@@ -544,13 +565,13 @@ fn check_no_frontmatter_restatement(ctx: &Context) -> Result<Vec<Diagnostic>, To
 }
 
 fn check_variables(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
-    let def_re = Regex::new(r"(?m)^\$([A-Z_][A-Z_0-9]*)\s*=").expect("def pattern");
-    let use_re = Regex::new(r"\$([A-Z_][A-Z_0-9]*)").expect("use pattern");
-    let args_heading_re = Regex::new(r"(?m)^## (?:Derived )?Arguments").expect("args heading");
-    let code_block_re = Regex::new(r"```text\n([\s\S]*?)```").expect("text code block");
-    let fence_re = Regex::new(r"```[\s\S]*?```").expect("fence strip");
-    let inline_code_re = Regex::new(r"`[^`]+`").expect("inline code strip");
-    let all_caps_var = Regex::new(r"^[A-Z][A-Z_]+$").expect("all caps var");
+    let def_re = &VAR_DEF_RE;
+    let use_re = &VAR_USE_RE;
+    let args_heading_re = &ARGS_HEADING_RE;
+    let code_block_re = &TEXT_CODE_BLOCK_RE;
+    let fence_re = &FENCE_STRIP_RE;
+    let inline_code_re = &INLINE_CODE_RE;
+    let all_caps_var = &ALL_CAPS_VAR_RE;
 
     let root = ctx.framework_root();
     let mut findings = Vec::new();
@@ -599,9 +620,9 @@ fn check_variables(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
         let body = &content[section_end..];
         let body_no_fences = fence_re.replace_all(body, "").into_owned();
 
-        let used_in_body = collect_var_uses(&body_no_fences, &use_re);
+        let used_in_body = collect_var_uses(&body_no_fences, use_re);
         let body_strict = inline_code_re.replace_all(&body_no_fences, "").into_owned();
-        let used_in_body_strict = collect_var_uses(&body_strict, &use_re);
+        let used_in_body_strict = collect_var_uses(&body_strict, use_re);
 
         for var in &defined {
             if !used_in_body.contains(var) && !used_in_defs.contains(var) {

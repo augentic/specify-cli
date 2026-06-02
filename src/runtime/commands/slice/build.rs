@@ -130,7 +130,7 @@ fn prepare(
     emit_event(
         ctx,
         EventKind::TargetExecutionAgent {
-            slice: name.to_string(),
+            slice: name.into(),
             target: manifest.name.clone(),
         },
     );
@@ -158,7 +158,7 @@ fn finalize(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<()> {
     emit_event(
         ctx,
         EventKind::SliceBuildStarted {
-            slice_name: name.to_string(),
+            slice_name: name.into(),
         },
     );
     match finalize_report(name, slice_dir) {
@@ -166,7 +166,7 @@ fn finalize(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<()> {
             emit_event(
                 ctx,
                 EventKind::SliceBuildSucceeded {
-                    slice_name: name.to_string(),
+                    slice_name: name.into(),
                 },
             );
             ctx.write(&body, write_result_text)
@@ -178,7 +178,7 @@ fn finalize(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<()> {
             emit_event(
                 ctx,
                 EventKind::SliceBuildFailed {
-                    slice_name: name.to_string(),
+                    slice_name: name.into(),
                     reason: err.variant_str().into_owned(),
                 },
             );

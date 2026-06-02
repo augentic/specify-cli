@@ -6,6 +6,7 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::config::{ProjectConfig, is_workspace_clone};
 use specify_workflow::init::{InitOptions, InitResult, init};
+use specify_workflow::migrate::{self, MigrationAction};
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::agents;
@@ -18,11 +19,21 @@ fn canonical(p: &Path) -> String {
     std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    clippy::fn_params_excessive_bools,
+    reason = "format-only handler mirrors the `Commands::Init` clap variant 1:1; each flag is an \
+              independent, clap-validated init input threaded straight into `InitOptions`."
+)]
 pub(super) fn run(
     format: Format, adapter: Option<&str>, name: Option<&str>, description: Option<&str>,
-    hub: bool, include_framework: bool,
+    hub: bool, include_framework: bool, check_migration: bool, upgrade: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
+
+    if check_migration {
+        return check_migration_probe(format, &project_dir);
+    }
 
     let opts = InitOptions {
         project_dir: &project_dir,
@@ -31,6 +42,7 @@ pub(super) fn run(
         description,
         hub,
         include_framework,
+        upgrade,
     };
 
     let result = init(opts, Timestamp::now())?;
@@ -58,6 +70,12 @@ struct Body {
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
     specify_version: String,
+    /// `true` when this run wrote `project.yaml.specify_version` — always
+    /// `true` for fresh init and for an `--upgrade` that bumped an older
+    /// pin; `false` on an `--upgrade` no-op where the pin already matched.
+    /// Change G's re-entry template reads this to distinguish "upgraded"
+    /// from "already current".
+    specify_version_changed: bool,
     /// `true` when this run scaffolded `.specify/wasm-pkg.toml`. Stays
     /// `false` on re-init so consumers can distinguish a fresh write
     /// from a preserved operator-edited file.
@@ -84,7 +102,11 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     if !body.directories_created.is_empty() {
         writeln!(w, "  directories created: {}", body.directories_created.join(", "))?;
     }
-    writeln!(w, "  specify_version: {}", body.specify_version)?;
+    if body.specify_version_changed {
+        writeln!(w, "  specify_version: {}", body.specify_version)?;
+    } else {
+        writeln!(w, "  specify_version: {} (already current)", body.specify_version)?;
+    }
     if body.wasm_pkg_config_written {
         writeln!(w, "  wrote .specify/wasm-pkg.toml (edit to add registry mappings)")?;
     }
@@ -117,6 +139,7 @@ fn emit_init_result(
         directories_created: result.directories_created.iter().map(|p| canonical(p)).collect(),
         scaffolded_rule_keys: result.scaffolded_rule_keys.clone(),
         specify_version: result.specify_version.clone(),
+        specify_version_changed: result.specify_version_changed,
         wasm_pkg_config_written: result.wasm_pkg_config_written,
         context_generated: context_skip_reason.is_none(),
         context_skipped: context_skip_reason.is_some(),
@@ -151,4 +174,82 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option
     );
     debug_assert_eq!(outcome.disposition, "create");
     Ok(None)
+}
+
+/// `specrun init --check-migration` read-only probe. Resolves config
+/// through the migration carve-out, runs the registered migrators'
+/// pure plans, and emits the stable probe envelope. Exits `0`
+/// regardless of the outcome (it is a probe, not an enforcement).
+fn check_migration_probe(format: Format, project_dir: &Path) -> Result<()> {
+    let (config, _migration) = ProjectConfig::load_for_migration(project_dir)?;
+    let from = config.specify_version;
+    let to = env!("CARGO_PKG_VERSION").to_string();
+    let body = probe_body(project_dir, from, to)?;
+    output::emit(&mut std::io::stdout().lock(), format, &body, write_probe_text)?;
+    Ok(())
+}
+
+/// Assemble the probe envelope for the `(from, to)` version window.
+fn probe_body(project_dir: &Path, from: Option<String>, to: String) -> Result<ProbeBody> {
+    let plan = match (from.as_deref().and_then(migrate::major), migrate::major(&to)) {
+        (Some(from_major), Some(to_major)) => migrate::probe(project_dir, from_major, to_major)?
+            .into_iter()
+            .map(|probed| ProbeKind {
+                kind: probed.kind.id().to_string(),
+                actions: probed.plan.actions,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let needs_migration = plan.iter().any(|kind| !kind.actions.is_empty());
+    Ok(ProbeBody {
+        version: 1,
+        needs_migration,
+        from,
+        to,
+        plan,
+    })
+}
+
+/// Stable `init --check-migration` JSON envelope. Change G's
+/// `/spec:init` skill parses `needs-migration`; the other fields are
+/// informational. Keys are always present (`from` is `null` when the
+/// project pins no `specify_version`).
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ProbeBody {
+    /// Schema marker; `1` for this shape.
+    version: u32,
+    /// `true` when at least one registered migrator has a non-empty
+    /// plan over the project.
+    needs_migration: bool,
+    /// Pinned `project.yaml.specify_version`; `null` when unset.
+    from: Option<String>,
+    /// This binary's version (the migration target).
+    to: String,
+    /// One entry per registered hop in the `from → to` window.
+    plan: Vec<ProbeKind>,
+}
+
+/// One registered hop's pure plan on the probe envelope.
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+struct ProbeKind {
+    /// Stable migrator id (e.g. `v1-to-v2`).
+    kind: String,
+    /// Planned actions; empty when the project is already at target.
+    actions: Vec<MigrationAction>,
+}
+
+fn write_probe_text(w: &mut dyn Write, body: &ProbeBody) -> std::io::Result<()> {
+    let from = body.from.as_deref().unwrap_or("<unset>");
+    if !body.needs_migration {
+        writeln!(w, "No migration needed ({from} -> {}).", body.to)?;
+        return Ok(());
+    }
+    writeln!(w, "Migration needed: {from} -> {}", body.to)?;
+    for kind in &body.plan {
+        writeln!(w, "  {} ({} actions)", kind.kind, kind.actions.len())?;
+    }
+    Ok(())
 }

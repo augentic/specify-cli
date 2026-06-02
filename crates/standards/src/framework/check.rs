@@ -7,6 +7,7 @@ mod plugins;
 mod prose;
 pub mod rules;
 pub mod scenarios;
+pub mod schema_alias;
 pub mod schema_links;
 mod skill_body;
 pub mod skill_frontmatter;
@@ -32,6 +33,7 @@ pub use scenarios::{
     RULE_STALE_RECORDED_TRACE, ScenariosCheck, check_recorded_trace_freshness,
     validate_scenario_frontmatter,
 };
+pub use schema_alias::SchemaAliasCheck;
 pub use schema_links::SchemaLinksCheck;
 pub use skill_body::{
     EnvelopeJsonInBody, FrontmatterRestatement, InlineJsonTooLong, InvalidCriticalPath,
@@ -95,6 +97,7 @@ pub fn run(ctx: &Context) -> Vec<Diagnostic> {
         &FrontmatterRestatement,
         &VariableCoverage,
         &SchemaLinksCheck,
+        &SchemaAliasCheck,
     ];
     let mut findings = Vec::new();
 

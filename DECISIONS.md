@@ -19,7 +19,7 @@ type here; it was removed when the diagnostic substrate moved to its own
 
 ## Exit codes
 
-The binary commits to a four-slot exit-code table. `Exit::from(&Error)`
+The binary commits to a five-slot exit-code table. `Exit::from(&Error)`
 in `src/runtime/output.rs` is the single source of truth; every dispatcher routes
 its error through it. `Exit::Code(u8)` is reserved for `specrun tool
 run` WASI passthrough.
@@ -30,9 +30,10 @@ run` WASI passthrough.
 | 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
 | 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority, slice-model, and discovery kebab discriminants `slice-authority-override-orphan-source`, `slice-model-source-orphan`, and `discovery-alias-collision`, routed through `Error::validation_failed`. |
 | 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
+| 4    | `EXIT_MIGRATION_REQUIRED` | `Error::ProjectNeedsMigration` — `project.yaml.specify_version` major is older than `CARGO_PKG_VERSION`; run `specrun migrate`. |
 
-The Rust `Exit` enum carries five named variants (plus `Exit::Code(u8)`
-for WASI tool passthrough) which collapse onto these four wire codes
+The Rust `Exit` enum carries six named variants (plus `Exit::Code(u8)`
+for WASI tool passthrough) which collapse onto these five wire codes
 via `Exit::from(&Error)`:
 
 | Variant                  | Code |
@@ -42,15 +43,18 @@ via `Exit::from(&Error)`:
 | `Exit::ValidationFailed` | `2`  |
 | `Exit::ArgumentError`    | `2`  |
 | `Exit::VersionTooOld`    | `3`  |
+| `Exit::MigrationRequired` | `4`  |
 
 `Exit::ArgumentError` and `Exit::ValidationFailed` share code `2` so the
-wire contract stays four-slot; the named distinction exists for
+wire contract stays five-slot; the named distinction exists for
 dispatcher-side clarity (`Error::Argument` flags malformed CLI input
 shape; `Error::Validation` is the payload-free gate-failure signal whose
 `code` is the specific discriminant). The two never need separate exit
 codes — anything actionable by the operator is in the JSON envelope's
 `code` discriminant, and any per-finding detail is on the stdout
 `DiagnosticReport`.
+
+Code `4` (`Exit::MigrationRequired`) is the RFC-30 addition. `Error::ProjectNeedsMigration { from, to }` fires from `ProjectConfig::load` when the pinned `project.yaml.specify_version` MAJOR is **older** than the binary's, instructing the operator to run `specrun migrate` (the variant's `hint()`). It is the asymmetric twin of code `3`: a pin MAJOR **older** than the binary is exit `4` (the project must migrate up), while a pin **newer** than the binary is exit `3` (`Error::CliTooOld` — the binary must catch up). Because `specrun migrate --to` pins `specify_version` **verbatim** to the requested `--to` rather than to the running binary, migrating to a major newer than the running binary legitimately leaves the project on exit `3` until the binary is upgraded. The bootstrap verbs (`migrate`, `upgrade`, `plugins {doctor,refresh}`, `init --upgrade`) sidestep both guards via the `ProjectConfig::load_for_migration` carve-out — they operate on projects that are deliberately in the "needs migration" state. See §"Bootstrap, upgrade, and migration lifecycle (RFC-30)".
 
 `specrun lint run` is the one finding-driven exit slot in the table.
 Its decision is **status-aware severity**: it returns `2` only when a
@@ -516,6 +520,10 @@ variants are `snake_case` and bridge to the wire via
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specrun plan create --authority-override`, `specrun plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
 | `lint-completed` | `specrun lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the journal payload verbatim. |
+| `cli.upgraded` | `specrun upgrade` after the new binary self-updates; payload carries `from`, `to`, and the resolved install `channel` (`cargo \| brew \| binary`). |
+| `plugins.refreshed` | `specrun plugins refresh` after it invalidates the Cursor plugin cache; payload carries the removed `deleted-paths[]` and the resolved `marketplace` file path. |
+| `migration.applied` | `specrun migrate` after a registered migrator applies; payload carries the migrator `kind` and the `files-rewritten` / `files-moved` counts. |
+| `migration.skipped` | `specrun migrate` when a staged migrator left the project untouched (atomic rollback); payload carries the migrator `kind` and a short `reason`. |
 
 Events persist as newline-delimited JSON at
 `<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`
@@ -1411,3 +1419,86 @@ prune` verb (retention policy mirroring the tool-cache GC in
 [`crates/tool/src/cache/gc.rs`](./crates/tool/src/cache/gc.rs)), not the
 system of record. `.specify/specs/` stays committable (init gitignores
 only `.specify/.cache/` and `.specify/workspace/`).
+
+## Bootstrap, upgrade, and migration lifecycle (RFC-30)
+
+The standing record for the three CLI-owned bootstrap concerns — stale
+binary, plugin-cache drift, and project-on-an-old-major — and the policy
+change they carry. The `/spec:init` skill stays the orchestrator; each
+deterministic action is its own CLI verb.
+
+- **CLI owns the deterministic actions.** Channel detection, version
+  comparison, cache invalidation, and schema migration are CLI verbs
+  ([`src/runtime/commands/{upgrade,plugins,migrate}.rs`](./src/runtime/commands),
+  backed by [`crates/workflow/src/{upgrade,plugins,migrate}.rs`](./crates/workflow/src)).
+  Skills orchestrate intent and consent only. Every mutating action
+  requires `--yes` (or an interactive confirmation); `--dry-run` previews
+  without writing, and the read-only probes (`plugins doctor`,
+  `init --check-migration`) never mutate.
+- **Bootstrap carve-out.** `migrate`, `upgrade`, `plugins {doctor,refresh}`,
+  and `init --upgrade` operate on projects that may be in the "needs
+  migration" state, so they MUST resolve config through
+  `ProjectConfig::load_for_migration` (returns the parsed config plus the
+  `(from, to)` window) rather than `ProjectConfig::load`, which would raise
+  `ProjectNeedsMigration` (§"Exit codes"). The standard load path keeps the
+  major-version guard for every other verb.
+- **Migrator-registration discipline.** RFC-30 retires the "every major
+  bump is a flag day" stance: each major bump must register a
+  `MigrationKind` variant **plus** a `Migrator` impl **plus** a golden
+  fixture **before** `specify_version` rolls. Migration becomes a covered
+  routine step. `MigrationKind` (`#[non_exhaustive]`) lives in
+  [`crates/workflow/src/migrate.rs`](./crates/workflow/src/migrate.rs);
+  `MigrationKind::resolve(from, to)` returns the ordered hop chain
+  (composing across majors, empty for same-major), `migrator_for(kind)`
+  dispatches, and `apply_staged` is the staged-write→rename harness whose
+  partial failure leaves the tree untouched and journals
+  `migration.skipped`. `V1ToV2` (`id()` = `v1-to-v2`) covers the five
+  1.x→2.0 structural transforms (pipeline→axis-split briefs; monolithic
+  `adapter.yaml`→axis-split dirs; retired `change:` slash-namespace refs;
+  `discovery.md` legacy→`## Lead inventory`; strip `slices[].target`), with
+  golden fixtures under `crates/workflow/tests/migrate/v1-to-v2/{before,after}/`.
+  `specrun migrate --to` pins `specify_version` **verbatim** to the
+  requested target, not to the running binary. **Pre-1.0 dormancy:** the
+  binary is `0.3.0`, so `MigrationKind::resolve` is empty for the
+  same-major window and the exit-4 / `needs-migration: true` path cannot
+  fire through the real binary until it ships ≥1.0 — `needs-migration:
+  false` is the normal healthy state today. The machinery is fully wired
+  and fixture-tested via explicit cross-major versions.
+- **Channel detection.** `InstallChannel::detect()`
+  ([`crates/workflow/src/upgrade.rs`](./crates/workflow/src/upgrade.rs))
+  classifies the running binary's path: `cargo` (`$CARGO_HOME/bin`, or
+  `~/.cargo/bin`), `brew` (Homebrew Cellar/prefix), `binary`
+  (`/usr/local/bin` or `/opt/specify`), else `unknown` (a structured
+  `unknown-install-channel` diagnostic with manual-upgrade guidance). The
+  latest-release probe order is `SPECRUN_RELEASE_TAG` env override →
+  `gh release view --json tagName -R augentic/specify-cli` →
+  unauthenticated `api.github.com/.../releases/latest`; a probe failure is
+  a **warning** (the upgrade proceeds against HEAD with a journal note),
+  not an error.
+- **Plugin-cache sha derivation.** `plugins doctor`
+  ([`crates/workflow/src/plugins.rs`](./crates/workflow/src/plugins.rs))
+  scans `$CURSOR_HOME/plugins/cache/<name>/<plugin>/<sha>/` (`$CURSOR_HOME`
+  defaults to `~/.cursor`, overridable) against the marketplace discovered
+  via `--marketplace` → `$project/.cursor-plugin/marketplace.json` →
+  `$XDG_CONFIG_HOME/cursor/marketplace.json`. The expected sha for the
+  relative-path sources the augentic marketplace ships is
+  `git -C <marketplace-repo-dir> rev-parse HEAD`, shared by every plugin;
+  an unresolvable expected sha degrades `expected-sha` to `null` and
+  collapses the plugin's `status` to `present` / `missing` rather than
+  asserting unprovable drift. The closed status set is
+  `ok | drifted | present | missing | extra`; `doctor` **never** exits
+  non-zero on drift (drift is a finding), only on FS/parse failure.
+  `plugins refresh` deletes `$CURSOR_HOME/plugins/cache/<name>/`, journals
+  `plugins.refreshed`, prints the restart notice, and exits `0` — it never
+  restarts Cursor or touches IDE state.
+- **Four bootstrap journal events.** §"Journal event names" carries
+  `cli.upgraded {from, to, channel}`, `plugins.refreshed {deleted-paths,
+  marketplace}`, `migration.applied {kind, files-rewritten, files-moved}`,
+  and `migration.skipped {kind, reason}`, all in the dominant dotted
+  `<noun>.<verb>` namespace. `--dry-run` writes nothing and fires no event.
+- **Binary-channel self-replace deferred.** The `cargo` and `brew` upgrade
+  executors are fully wired; the `binary`-channel in-process self-replace
+  (download archive → verify checksum sidecar → atomic swap) is **deferred**
+  to a follow-up gated on the release pipeline's archive / checksum-sidecar
+  naming contract. Today the `binary` channel emits a planned-action plus
+  structured manual-upgrade guidance rather than swapping the binary.

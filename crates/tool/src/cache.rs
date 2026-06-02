@@ -26,8 +26,9 @@ pub const MODULE_FILENAME: &str = "module.wasm";
 /// Filename used for cached tool metadata.
 pub const SIDECAR_FILENAME: &str = "meta.yaml";
 
-/// Embedded JSON Schema for cache sidecars.
-pub const TOOL_SIDECAR_JSON_SCHEMA: &str = include_str!("../schemas/tool-sidecar.schema.json");
+/// Embedded JSON Schema for cache sidecars, re-exported from the
+/// central [`specify_schema`] embed.
+pub use specify_schema::TOOL_SIDECAR_JSON_SCHEMA;
 
 /// Cache reuse state for a declared tool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, strum::Display)]

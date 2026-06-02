@@ -1,0 +1,22 @@
+name: platform-v2
+sources:
+  legacy:
+    adapter: code-typescript
+    path: ./legacy
+slices:
+  - name: user-registration
+    project: app
+    target: omnia@v1
+    status: pending
+    sources:
+      - legacy
+    description: Migrate the registration endpoint.
+  - name: password-reset
+    project: app
+    target: omnia@v1
+    status: pending
+    depends-on:
+      - user-registration
+    sources:
+      - legacy
+    description: Migrate password reset.

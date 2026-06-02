@@ -10,6 +10,10 @@ cargo install --git https://github.com/augentic/specify-cli
 # brew install augentic/tap/specrun         # macOS + Linux (primary)
 ```
 
+Once installed, keep the binary current with `specrun upgrade`. It detects
+its install channel (`cargo` / `brew` / `binary`), resolves the latest
+release, and self-updates after `--yes` (or previews with `--dry-run`).
+
 ## Shell completions
 
 `specrun completions <shell>` writes a completion script to stdout for any

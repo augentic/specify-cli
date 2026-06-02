@@ -12,7 +12,7 @@
 //! so review-team-protocol drift surfaces in the model. Cycle
 //! detection lives in the caller — the recorder is stateless.
 
-use std::path::{MAIN_SEPARATOR, Path};
+use std::path::Path;
 
 use crate::lint::Symlink;
 
@@ -51,13 +51,13 @@ pub enum FollowMode {
 #[must_use]
 pub fn record(path: &Path, project_dir: &Path, mode: FollowMode) -> Option<Symlink> {
     let relative = path.strip_prefix(project_dir).ok()?;
-    let path_str = render(relative)?;
+    let path_str = super::path_util::render(relative)?;
     let target = std::fs::read_link(path).ok()?;
-    let target_str = render(&target)?;
+    let target_str = super::path_util::render(&target)?;
     let broken = !path.exists();
     let resolved_target = match mode {
         FollowMode::Record => None,
-        FollowMode::Follow => canonicalise_into_project(path, project_dir),
+        FollowMode::Follow => super::path_util::canonicalise_into_project(path, project_dir),
     };
     Some(Symlink {
         path: path_str,
@@ -65,20 +65,4 @@ pub fn record(path: &Path, project_dir: &Path, mode: FollowMode) -> Option<Symli
         broken,
         resolved_target,
     })
-}
-
-/// Canonicalise `link` and return its project-relative path when the
-/// endpoint resolves under `project_dir`. Off-tree or unreadable
-/// targets yield `None` so callers can distinguish on-tree endpoints
-/// from documentation-boundary crossings.
-fn canonicalise_into_project(link: &Path, project_dir: &Path) -> Option<String> {
-    let canon_link = std::fs::canonicalize(link).ok()?;
-    let canon_project = std::fs::canonicalize(project_dir).ok()?;
-    let relative = canon_link.strip_prefix(&canon_project).ok()?;
-    render(relative)
-}
-
-fn render(p: &Path) -> Option<String> {
-    let s = p.to_str()?;
-    if MAIN_SEPARATOR == '/' { Some(s.to_owned()) } else { Some(s.replace(MAIN_SEPARATOR, "/")) }
 }

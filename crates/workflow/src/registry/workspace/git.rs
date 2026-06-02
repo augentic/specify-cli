@@ -1,12 +1,13 @@
 //! Thin shells around `git` for workspace materialisation, status, and push.
 
 use std::path::Path;
-use std::process::Command;
 
 use specify_error::Error;
 
+use crate::cmd;
+
 pub(super) fn git_output_ok(tree: &Path, args: &[&str]) -> Option<String> {
-    let output = Command::new("git").arg("-C").arg(tree).args(args).output().ok()?;
+    let output = cmd::git(&cmd::real_cmd, Some(tree), args).ok()?;
     if !output.status.success() {
         return None;
     }
@@ -15,9 +16,7 @@ pub(super) fn git_output_ok(tree: &Path, args: &[&str]) -> Option<String> {
 }
 
 pub(super) fn git_porcelain_non_empty(tree: &Path) -> bool {
-    let Ok(output) =
-        Command::new("git").arg("-C").arg(tree).args(["status", "--porcelain"]).output()
-    else {
+    let Ok(output) = cmd::git(&cmd::real_cmd, Some(tree), ["status", "--porcelain"]) else {
         return false;
     };
     if !output.status.success() {
@@ -27,16 +26,10 @@ pub(super) fn git_porcelain_non_empty(tree: &Path) -> bool {
 }
 
 pub(super) fn run(cwd: &Path, args: &[&str], label: &str) -> Result<(), Error> {
-    let output = Command::new("git")
-        .args(["-c", "user.name=Specify", "-c", "user.email=specify@example.invalid"])
-        .arg("-C")
-        .arg(cwd)
-        .args(args)
-        .output()
-        .map_err(|e| Error::Diag {
-            code: "workspace-git-spawn-failed",
-            detail: format!("{label}: failed to spawn git: {e}"),
-        })?;
+    let output = cmd::git_as_specify(&cmd::real_cmd, cwd, args).map_err(|e| Error::Diag {
+        code: "workspace-git-spawn-failed",
+        detail: format!("{label}: failed to spawn git: {e}"),
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -73,13 +66,10 @@ pub(super) fn git_stdout_trimmed(
 pub(super) fn git_stdout_allow_empty(
     project_path: &Path, args: &[&str], label: &str,
 ) -> Result<String, Error> {
-    let output =
-        Command::new("git").arg("-C").arg(project_path).args(args).output().map_err(|err| {
-            Error::Diag {
-                code: "workspace-git-spawn-failed",
-                detail: format!("{label}: failed to spawn git: {err}"),
-            }
-        })?;
+    let output = cmd::git(&cmd::real_cmd, Some(project_path), args).map_err(|err| Error::Diag {
+        code: "workspace-git-spawn-failed",
+        detail: format!("{label}: failed to spawn git: {err}"),
+    })?;
     if output.status.success() {
         return Ok(String::from_utf8_lossy(&output.stdout).to_string());
     }

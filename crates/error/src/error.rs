@@ -64,6 +64,16 @@ pub enum Error {
         found: String,
     },
 
+    /// The project's pinned `specify_version` has a smaller major than the
+    /// running binary; a migration must run before the CLI can operate.
+    #[error("project pinned to specify {from} but running {to}; run `specrun migrate`")]
+    ProjectNeedsMigration {
+        /// Pinned major the project was last operated at.
+        from: String,
+        /// Running binary version requiring the migration.
+        to: String,
+    },
+
     /// A required artifact was not found at the expected path.
     #[error("{kind} not found at {}", path.display())]
     ArtifactNotFound {
@@ -153,6 +163,9 @@ impl Error {
                 ),
                 _ => None,
             },
+            Self::ProjectNeedsMigration { .. } => {
+                Some("run `specrun migrate` to bring the project up to the running major.")
+            }
             _ => None,
         }
     }
@@ -171,6 +184,7 @@ impl Error {
             Self::Argument { .. } => Cow::Borrowed("argument"),
             Self::Validation { code, .. } => Cow::Owned(code.clone()),
             Self::CliTooOld { .. } => Cow::Borrowed("specify-version-too-old"),
+            Self::ProjectNeedsMigration { .. } => Cow::Borrowed("project-needs-migration"),
             Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
             Self::Filesystem { op, .. } => Cow::Owned(format!("filesystem-{op}")),
             Self::BranchPrepareFailed { .. } => Cow::Borrowed("branch-preparation-failed"),

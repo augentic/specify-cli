@@ -6,6 +6,25 @@
 //! schema" for the standards-layer schemas; the workflow schemas are
 //! pinned by the workflow contract under `docs/standards/workflow.md`.
 
+/// Schema for the shared adapter manifest envelope (axis-agnostic
+/// `adapter.yaml` fields validated before the per-axis split).
+pub const ADAPTER_JSON_SCHEMA: &str = include_str!("../../../schemas/adapter.schema.json");
+
+/// Schema for a source-axis adapter manifest (`survey` / `extract`).
+pub const SOURCE_JSON_SCHEMA: &str = include_str!("../../../schemas/source.schema.json");
+
+/// Schema for a target-axis adapter manifest (`shape` / `build` / `merge`).
+pub const TARGET_JSON_SCHEMA: &str = include_str!("../../../schemas/target.schema.json");
+
+/// Schema for a WASI tool manifest (`tool.schema.json`) declared by an
+/// adapter under `tools[]`.
+pub const TOOL_JSON_SCHEMA: &str = include_str!("../../../schemas/tool.schema.json");
+
+/// Schema for a fetched WASI tool sidecar metadata file
+/// (`<artifact>.sha256` companion manifest).
+pub const TOOL_SIDECAR_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/tool-sidecar.schema.json");
+
 /// Schema for `plan.yaml` (workflow contract — `slices[].sources[]`
 /// bindings, `target`, slice-level `divergence` enum).
 pub const PLAN_JSON_SCHEMA: &str = include_str!("../../../schemas/plan/plan.schema.json");

@@ -436,8 +436,8 @@ fn agent_emit_one_event_per_line() {
         Event::new(
             fixed,
             EventKind::PlanAmendDivergence {
-                plan_name: "platform-v2".to_string(),
-                slice_name: "checkout".to_string(),
+                plan_name: "platform-v2".into(),
+                slice_name: "checkout".into(),
                 from: Divergence::None,
                 to: Divergence::Likely,
             },
@@ -445,7 +445,7 @@ fn agent_emit_one_event_per_line() {
         Event::new(
             fixed,
             EventKind::SliceExtractCompleted {
-                slice_name: "checkout".to_string(),
+                slice_name: "checkout".into(),
                 source: "monolith".to_string(),
             },
         ),

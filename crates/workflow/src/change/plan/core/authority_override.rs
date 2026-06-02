@@ -47,8 +47,8 @@ fn emit_override_events(
             journal::Event::new(
                 now,
                 journal::EventKind::PlanAmendAuthorityOverride {
-                    plan_name: plan_name.to_string(),
-                    slice_name: slice.to_string(),
+                    plan_name: plan_name.into(),
+                    slice_name: slice.into(),
                     action,
                     claim_kind,
                     source: source.map(str::to_owned),

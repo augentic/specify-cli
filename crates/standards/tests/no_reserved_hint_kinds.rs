@@ -123,6 +123,11 @@ fn every_interpreter_maps_to_kind() {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
+        // `tests.rs` is the extracted unit-test submodule for `eval.rs`
+        // itself, not a hint-kind interpreter; skip it.
+        if name == "tests.rs" {
+            continue;
+        }
         assert!(
             module_files.contains(&name),
             "interpreter module `{name}` has no matching hint kind in rule.schema.json; \

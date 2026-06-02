@@ -102,7 +102,12 @@ fn write_canonical(out: &mut String, value: &Value) {
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         Value::Number(n) => out.push_str(&n.to_string()),
         Value::String(s) => {
-            out.push_str(&serde_json::to_string(s).expect("serde_json serialises &str"));
+            // Serialising a `String` to JSON cannot fail; `unreachable!` keeps
+            // fingerprint stability off the `expect` panic path (REVIEW.md A3).
+            out.push_str(
+                &serde_json::to_string(s)
+                    .unwrap_or_else(|_| unreachable!("a JSON string is infallibly serialisable")),
+            );
         }
         Value::Array(items) => {
             out.push('[');
@@ -122,7 +127,9 @@ fn write_canonical(out: &mut String, value: &Value) {
                 if i > 0 {
                     out.push(',');
                 }
-                out.push_str(&serde_json::to_string(key).expect("serde_json serialises key"));
+                out.push_str(&serde_json::to_string(key).unwrap_or_else(|_| {
+                    unreachable!("a JSON object key is infallibly serialisable")
+                }));
                 out.push(':');
                 write_canonical(out, &map[*key]);
             }

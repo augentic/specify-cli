@@ -32,6 +32,7 @@ specify-tool.workspace = true
 specify-digest.workspace = true
 strum.workspace = true
 tempfile.workspace = true
+ureq.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

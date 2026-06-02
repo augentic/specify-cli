@@ -51,7 +51,7 @@
     "execution": {
       "type": "string",
       "enum": ["agent", "tool"],
-      "description": "Closed adapter execution mode per RFC-29 D9."
+      "description": "Closed adapter execution mode (`agent` | `tool`)."
     }
   },
   "$defs": {

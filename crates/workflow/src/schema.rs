@@ -16,6 +16,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use jsonschema::{Registry, Resource};
 use serde_json::Value as JsonValue;
@@ -120,13 +121,11 @@ pub fn validate_plan_file(path: &Path) -> Result<()> {
 /// Returns [`Error::Validation`] keyed on the code `"proposal-schema"`
 /// (exit code 2) when parsing or schema validation fails.
 pub fn validate_proposal_json(content: &str) -> Result<()> {
-    let rule = "proposal envelope conforms to schemas/discovery/proposal.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed("proposal-schema", rule, format!("parse failed: {err}"))
-    })?;
-    err_from_failures(
+    validate_parsed_json(
+        content,
+        PROPOSAL_JSON_SCHEMA,
         "proposal-schema",
-        &validation_failures(&instance, PROPOSAL_JSON_SCHEMA, "proposal-schema", rule),
+        "proposal envelope conforms to schemas/discovery/proposal.schema.json",
     )
 }
 
@@ -155,56 +154,25 @@ const MODEL_SCHEMA_URL: &str =
 /// Returns [`Error::Validation`] keyed on the code `"synthesis-schema"`
 /// (exit code 2) when parsing or schema validation fails.
 pub fn validate_synthesis_json(content: &str) -> Result<()> {
-    let rule = "synthesis response conforms to schemas/slice/synthesis.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed("synthesis-schema", rule, format!("parse failed: {err}"))
-    })?;
-    let validator = compile_synthesis_validator(rule)?;
-    let failures: Vec<String> =
-        validator.iter_errors(&instance).map(|err| err.to_string()).collect();
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Validation {
-            code: "synthesis-schema".to_string(),
-            detail: failures.join("; "),
-        })
-    }
+    validate_with_ref_validator(
+        content,
+        &SYNTHESIS_VALIDATOR,
+        "synthesis-schema",
+        "synthesis response conforms to schemas/slice/synthesis.schema.json",
+    )
 }
 
-/// Build the synthesis validator with the model schema pinned so the
-/// relative `model` `$ref` resolves.
+/// Synthesis validator with the model schema pinned so the relative
+/// `model` `$ref` resolves, compiled once on first use.
 ///
-/// # Errors
-///
-/// Returns [`Error::Validation`] (`synthesis-schema`) when either
-/// embedded schema is unparseable or the registry/validator fails to
-/// build — unreachable in production, surfacing only a corrupted binary.
-fn compile_synthesis_validator(rule: &str) -> Result<jsonschema::Validator> {
-    let synthesis: JsonValue = serde_json::from_str(SYNTHESIS_JSON_SCHEMA).map_err(|err| {
-        Error::validation_failed("synthesis-schema", rule, format!("schema parse failed: {err}"))
-    })?;
-    let model: JsonValue = serde_json::from_str(SLICE_MODEL_JSON_SCHEMA).map_err(|err| {
-        Error::validation_failed(
-            "synthesis-schema",
-            rule,
-            format!("model schema parse failed: {err}"),
-        )
-    })?;
-    let registry = Registry::new()
-        .add(MODEL_SCHEMA_URL, Resource::from_contents(model))
-        .and_then(jsonschema::RegistryBuilder::prepare)
-        .map_err(|err| {
-            Error::validation_failed(
-                "synthesis-schema",
-                rule,
-                format!("registry build failed: {err}"),
-            )
-        })?;
-    jsonschema::options().with_registry(&registry).build(&synthesis).map_err(|err| {
-        Error::validation_failed("synthesis-schema", rule, format!("schema compile failed: {err}"))
-    })
-}
+/// A compile failure here means an embedded schema is corrupt (a broken
+/// binary), so the `expect` is genuinely unreachable in production and
+/// mirrors the `LazyLock<Regex>` pattern used elsewhere for static
+/// schema/regex compilation.
+static SYNTHESIS_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+    compile_ref_validator(SYNTHESIS_JSON_SCHEMA, MODEL_SCHEMA_URL, SLICE_MODEL_JSON_SCHEMA)
+        .expect("embedded synthesis + model schemas compile (corrupt binary otherwise)")
+});
 
 /// Validate a target build request against the embedded
 /// `schemas/target/build-request.schema.json` (RFC-29d D6).
@@ -222,22 +190,11 @@ fn compile_synthesis_validator(rule: &str) -> Result<jsonschema::Validator> {
 /// Returns [`Error::Validation`] keyed on `target-build-request-schema`
 /// (exit code 2) when parsing or schema validation fails.
 pub fn validate_build_request_json(content: &str) -> Result<()> {
-    let rule = "build request conforms to schemas/target/build-request.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed(
-            "target-build-request-schema",
-            rule,
-            format!("parse failed: {err}"),
-        )
-    })?;
-    err_from_failures(
+    validate_parsed_json(
+        content,
+        BUILD_REQUEST_JSON_SCHEMA,
         "target-build-request-schema",
-        &validation_failures(
-            &instance,
-            BUILD_REQUEST_JSON_SCHEMA,
-            "target-build-request-schema",
-            rule,
-        ),
+        "build request conforms to schemas/target/build-request.schema.json",
     )
 }
 
@@ -262,65 +219,23 @@ const DIAGNOSTIC_SCHEMA_URL: &str =
 /// Returns [`Error::Validation`] keyed on `target-build-report-schema`
 /// (exit code 2) when parsing or schema validation fails.
 pub fn validate_build_report_json(content: &str) -> Result<()> {
-    let rule = "build report conforms to schemas/target/build-report.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed("target-build-report-schema", rule, format!("parse failed: {err}"))
-    })?;
-    let validator = compile_build_report_validator(rule)?;
-    let failures: Vec<String> =
-        validator.iter_errors(&instance).map(|err| err.to_string()).collect();
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Validation {
-            code: "target-build-report-schema".to_string(),
-            detail: failures.join("; "),
-        })
-    }
+    validate_with_ref_validator(
+        content,
+        &BUILD_REPORT_VALIDATOR,
+        "target-build-report-schema",
+        "build report conforms to schemas/target/build-report.schema.json",
+    )
 }
 
-/// Build the build-report validator with the diagnostic schema pinned
-/// so the relative `findings[]` `$ref` resolves.
+/// Build-report validator with the diagnostic schema pinned so the
+/// relative `findings[]` `$ref` resolves, compiled once on first use.
 ///
-/// # Errors
-///
-/// Returns [`Error::Validation`] (`target-build-report-schema`) when
-/// either embedded schema is unparseable or the registry/validator
-/// fails to build — unreachable in production, surfacing only a
-/// corrupted binary.
-fn compile_build_report_validator(rule: &str) -> Result<jsonschema::Validator> {
-    let report: JsonValue = serde_json::from_str(BUILD_REPORT_JSON_SCHEMA).map_err(|err| {
-        Error::validation_failed(
-            "target-build-report-schema",
-            rule,
-            format!("schema parse failed: {err}"),
-        )
-    })?;
-    let diagnostic: JsonValue = serde_json::from_str(DIAGNOSTIC_JSON_SCHEMA).map_err(|err| {
-        Error::validation_failed(
-            "target-build-report-schema",
-            rule,
-            format!("diagnostic schema parse failed: {err}"),
-        )
-    })?;
-    let registry = Registry::new()
-        .add(DIAGNOSTIC_SCHEMA_URL, Resource::from_contents(diagnostic))
-        .and_then(jsonschema::RegistryBuilder::prepare)
-        .map_err(|err| {
-            Error::validation_failed(
-                "target-build-report-schema",
-                rule,
-                format!("registry build failed: {err}"),
-            )
-        })?;
-    jsonschema::options().with_registry(&registry).build(&report).map_err(|err| {
-        Error::validation_failed(
-            "target-build-report-schema",
-            rule,
-            format!("schema compile failed: {err}"),
-        )
-    })
-}
+/// See [`SYNTHESIS_VALIDATOR`] for the `expect`-on-corrupt-binary
+/// rationale.
+static BUILD_REPORT_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+    compile_ref_validator(BUILD_REPORT_JSON_SCHEMA, DIAGNOSTIC_SCHEMA_URL, DIAGNOSTIC_JSON_SCHEMA)
+        .expect("embedded build-report + diagnostic schemas compile (corrupt binary otherwise)")
+});
 
 /// Validate a [`crate::registry::TopologyLock`] against the embedded
 /// `schemas/topology-lock.schema.json` (RFC-36).
@@ -574,6 +489,71 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
     summary
 }
 
+/// Parse `content` (JSON or its YAML superset) and validate it against a
+/// `$ref`-free embedded `schema`, folding every schema failure into one
+/// payload-free [`Error::Validation`] keyed on `code`.
+///
+/// This is the shared kernel behind the simple `validate_*_json`
+/// entry points whose schema carries no relative `$ref`.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] (keyed on `code`) when parsing or
+/// schema validation fails.
+fn validate_parsed_json(content: &str, schema: &str, code: &str, rule: &str) -> Result<()> {
+    let instance: JsonValue = serde_saphyr::from_str(content)
+        .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
+    err_from_failures(code, &validation_failures(&instance, schema, code, rule))
+}
+
+/// Parse `content` and validate it against a pre-compiled, registry-backed
+/// `validator` (one whose schema carries a relative `$ref`), folding every
+/// schema failure into one [`Error::Validation`] keyed on `code`.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] (keyed on `code`) when parsing or
+/// schema validation fails.
+fn validate_with_ref_validator(
+    content: &str, validator: &jsonschema::Validator, code: &str, rule: &str,
+) -> Result<()> {
+    let instance: JsonValue = serde_saphyr::from_str(content)
+        .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
+    let failures: Vec<String> =
+        validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            code: code.to_string(),
+            detail: failures.join("; "),
+        })
+    }
+}
+
+/// Compile an embedded `schema` whose relative `$ref` is satisfied by
+/// pinning `ref_schema` under `ref_url` in a [`Registry`].
+///
+/// Returns the joined failure string on any parse/registry/compile
+/// error; callers wrap it in a `LazyLock` and `expect` (a failure means
+/// a corrupt binary).
+fn compile_ref_validator(
+    schema: &str, ref_url: &str, ref_schema: &str,
+) -> std::result::Result<jsonschema::Validator, String> {
+    let schema_value: JsonValue =
+        serde_json::from_str(schema).map_err(|err| format!("schema parse failed: {err}"))?;
+    let ref_value: JsonValue = serde_json::from_str(ref_schema)
+        .map_err(|err| format!("ref schema parse failed: {err}"))?;
+    let registry = Registry::new()
+        .add(ref_url, Resource::from_contents(ref_value))
+        .and_then(jsonschema::RegistryBuilder::prepare)
+        .map_err(|err| format!("registry build failed: {err}"))?;
+    jsonschema::options()
+        .with_registry(&registry)
+        .build(&schema_value)
+        .map_err(|err| format!("schema compile failed: {err}"))
+}
+
 fn validation_failures(
     instance: &JsonValue, schema_source: &str, rule_id: &str, rule: &str,
 ) -> Vec<ValidationSummary> {
@@ -595,303 +575,4 @@ fn err_from_failures(code: &str, results: &[ValidationSummary]) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The `UNI-014` example for the `ResolvedRules` export
-    /// validates cleanly against the resolved-codex schema.
-    #[test]
-    fn resolved_codex_schema_accepts_contract_example() {
-        let instance = serde_json::json!({
-            "version": 1,
-            "target-adapter": "omnia",
-            "source-adapters": ["code-typescript"],
-            "rules": [
-                {
-                    "rule-id": "UNI-014",
-                    "title": "Hardcoded Configuration",
-                    "severity": "important",
-                    "trigger": "Generated code embeds environment-specific configuration instead of routing it through declared configuration.",
-                    "lint-mode": "hybrid",
-                    "origin": "shared",
-                    "path-root": "rules-root",
-                    "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
-                    "applicability": {
-                        "adapters": ["omnia"],
-                        "languages": ["rust"],
-                        "artifacts": ["code"]
-                    },
-                    "deterministic-hints": [
-                        {
-                            "kind": "regex",
-                            "value": "https?://",
-                            "description": "Literal URL in generated code."
-                        }
-                    ],
-                    "references": [
-                        {
-                            "label": "Omnia guardrails",
-                            "path": "adapters/targets/omnia/references/guardrails.md"
-                        }
-                    ],
-                    "body": "## Rule\n\nConfiguration values that vary between deployments must not be hardcoded in generated code.\n",
-                    "deprecated": null
-                }
-            ]
-        });
-        let validator =
-            compile_schema(RESOLVED_RULES_JSON_SCHEMA).expect("resolved codex schema compiles");
-        let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
-        assert!(errors.is_empty(), "UNI-014 example must validate; errors: {errors:?}");
-    }
-
-    /// The `FIND-0001` example for structured lint findings
-    /// schema validates cleanly against the finding schema. The
-    /// fingerprint placeholder `sha256:...` from the contract is
-    /// replaced with a deterministic 64-hex-char digest so the
-    /// fingerprint pattern check passes.
-    #[test]
-    fn review_finding_schema_accepts_contract_example() {
-        let instance = serde_json::json!({
-            "id": "FIND-0001",
-            "rule-id": "UNI-014",
-            "title": "Literal deployment URL in generated handler",
-            "severity": "important",
-            "source": "hybrid",
-            "target-adapter": "omnia",
-            "slice": "billing-invoice-export",
-            "artifact": "code",
-            "location": {
-                "path": "crates/invoice_export/src/config.rs",
-                "line": 18
-            },
-            "evidence": {
-                "kind": "snippet",
-                "value": "const BASE_URL: &str = \"https://api.example.com\";"
-            },
-            "impact": "Generated code will point every deployment at the same external endpoint.",
-            "remediation": "Read the endpoint from Omnia configuration and add a required config key to the design.",
-            "confidence": "high",
-            "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-        });
-        let validator =
-            compile_schema(DIAGNOSTIC_JSON_SCHEMA).expect("review finding schema compiles");
-        let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
-        assert!(errors.is_empty(), "FIND-0001 example must validate; errors: {errors:?}");
-    }
-
-    /// The rule frontmatter example for codex file shape
-    /// validates cleanly against the vendored codex-rule schema.
-    #[test]
-    fn codex_rule_schema_accepts_contract_example() {
-        let instance = serde_json::json!({
-            "id": "UNI-014",
-            "title": "Hardcoded Configuration",
-            "severity": "important",
-            "trigger": "Generated code embeds environment-specific configuration instead of routing it through declared configuration.",
-            "applicability": {
-                "adapters": ["omnia"],
-                "languages": ["rust"],
-                "artifacts": ["code"]
-            },
-            "lint_mode": "hybrid",
-            "deterministic_hints": [
-                {
-                    "kind": "regex",
-                    "value": "https?://",
-                    "description": "Literal URL in generated code."
-                }
-            ]
-        });
-        let validator = compile_schema(RULE_JSON_SCHEMA).expect("codex-rule schema compiles");
-        let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
-        assert!(errors.is_empty(), "UNI-014 frontmatter must validate; errors: {errors:?}");
-    }
-
-    /// An empty evidence directory (or missing one) passes — empty
-    /// extraction is a legal slice state per workflow §Extraction
-    /// reliability.
-    #[test]
-    fn missing_evidence_dir_is_ok() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        validate_evidence_dir(dir.path()).expect("missing evidence dir is ok");
-    }
-
-    /// The embedded proposal envelope schema compiles.
-    #[test]
-    fn proposal_schema_compiles() {
-        compile_schema(PROPOSAL_JSON_SCHEMA).expect("proposal schema compiles");
-    }
-
-    /// The multi-source `kind: request` envelope example validates.
-    #[test]
-    fn proposal_accepts_rfc_request() {
-        let request = r#"
-version: 1
-kind: request
-projects:
-  - name: identity-contracts
-    target: contracts@v1
-    description: "Versioned API contracts crate for the identity domain."
-  - name: identity-service
-    target: omnia@v1
-    description: "Omnia identity service implementing auth and password flows."
-leads:
-  - source: docs
-    lead: identity-api
-    synopsis: "Identity API contract for authentication and account access."
-  - source: legacy
-    lead: identity-api
-    synopsis: "Legacy identity endpoints."
-  - source: docs
-    lead: password-reset
-    synopsis: "Users can request a password reset email."
-  - source: legacy
-    lead: reset-password
-    synopsis: "Legacy reset-password flow."
-"#;
-        validate_proposal_json(request).expect("RFC request example validates");
-    }
-
-    /// The N=1 degenerate `kind: response` envelope example validates.
-    #[test]
-    fn proposal_accepts_rfc_n1_response() {
-        let response = r"
-version: 1
-kind: response
-slices:
-  - name: fix-typo
-    sources:
-      - { source: intent, lead: fix-typo }
-";
-        validate_proposal_json(response).expect("RFC N=1 response example validates");
-    }
-
-    /// The multi-source fan-out `kind: response` envelope example validates.
-    #[test]
-    fn proposal_accepts_rfc_fanout_response() {
-        let response = r#"
-version: 1
-kind: response
-slices:
-  - name: identity-contracts
-    sources:
-      - { source: docs, lead: identity-api }
-      - { source: legacy, lead: identity-api }
-    project: identity-contracts
-    rationale: "identity API surface matched by shared slug across docs + legacy"
-  - name: identity-service
-    sources:
-      - { source: docs, lead: identity-api }
-      - { source: legacy, lead: identity-api }
-    project: identity-service
-    depends-on: [identity-contracts]
-  - name: password-reset
-    sources:
-      - { source: docs, lead: password-reset }
-      - { source: legacy, lead: reset-password }
-    project: identity-service
-    rationale: "password-reset (docs) and reset-password (legacy) are the same flow by summary judgment"
-"#;
-        validate_proposal_json(response).expect("RFC fan-out response example validates");
-    }
-
-    /// The RFC-29d build request example validates.
-    #[test]
-    fn build_request_accepts_rfc_example() {
-        let request = r#"{
-            "version": 1,
-            "slice": "identity-service",
-            "project-dir": "/workspace/.specify/workspace/identity-service",
-            "inputs": {
-                "root": "/workspace/.specify/slices/identity-service",
-                "artifacts": {
-                    "proposal": "proposal.md",
-                    "design": "design.md",
-                    "tasks": "tasks.md",
-                    "specs": ["specs/identity/spec.md"],
-                    "additional": ["tokens.yaml"]
-                }
-            }
-        }"#;
-        validate_build_request_json(request).expect("RFC build request validates");
-    }
-
-    /// A request missing the required `inputs` block is rejected.
-    #[test]
-    fn build_request_rejects_malformed() {
-        let request = r#"{"version": 1, "slice": "identity-service", "project-dir": "/w"}"#;
-        match validate_build_request_json(request) {
-            Err(Error::Validation { code, .. }) => assert_eq!(code, "target-build-request-schema"),
-            other => panic!("expected target-build-request-schema, got {other:?}"),
-        }
-    }
-
-    /// A failure report carrying a full RFC-28 finding validates,
-    /// proving the relative diagnostic `$ref` resolves through the
-    /// registry.
-    #[test]
-    fn build_report_accepts_failure_with_finding() {
-        let report = r#"{
-            "version": 1,
-            "slice": "identity-contracts",
-            "target": "contracts@v1",
-            "status": "failure",
-            "findings": [{
-                "id": "DIAG-0001",
-                "rule-id": "contract.id-unique",
-                "title": "Duplicate info.x-specify-id across baseline",
-                "severity": "critical",
-                "source": "tool",
-                "kind": "violation",
-                "target-adapter": "contracts",
-                "slice": "identity-contracts",
-                "artifact": "contracts",
-                "location": { "path": "contracts/http/user-api.yaml" },
-                "evidence": {
-                    "kind": "structured",
-                    "summary": "x-specify-id user-api collides with legacy-api.yaml",
-                    "data": { "detail": "duplicate id" }
-                },
-                "impact": "Downstream consumers cannot resolve a unique contract id.",
-                "remediation": "Rename or remove the duplicate id before merge.",
-                "fingerprint": "sha256:a2e95674f838eb042eba78e16239f32199def3ca976e29499f8275beb30225e4"
-            }]
-        }"#;
-        validate_build_report_json(report).expect("failure-with-finding report validates");
-    }
-
-    /// A report with an out-of-enum `status` is rejected.
-    #[test]
-    fn build_report_rejects_malformed() {
-        let report = r#"{
-            "version": 1,
-            "slice": "identity-service",
-            "target": "omnia@v1",
-            "status": "partial",
-            "findings": []
-        }"#;
-        match validate_build_report_json(report) {
-            Err(Error::Validation { code, .. }) => assert_eq!(code, "target-build-report-schema"),
-            other => panic!("expected target-build-report-schema, got {other:?}"),
-        }
-    }
-
-    /// A malformed envelope (missing `kind`, which leaves it matching
-    /// neither `oneOf` branch) is rejected with the `proposal-schema`
-    /// code.
-    #[test]
-    fn proposal_rejects_malformed_envelope() {
-        let malformed = r"
-version: 1
-slices:
-  - name: orphan
-    sources:
-      - { source: intent, lead: orphan }
-";
-        match validate_proposal_json(malformed) {
-            Err(Error::Validation { code, .. }) => assert_eq!(code, "proposal-schema"),
-            other => panic!("expected proposal-schema validation error, got {other:?}"),
-        }
-    }
-}
+mod tests;

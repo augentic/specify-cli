@@ -101,7 +101,61 @@ impl ProjectConfig {
             });
         }
 
+        if let Some(pinned) = &cfg.specify_version
+            && let Some((from, to)) = needs_migration(current, pinned)
+        {
+            return Err(Error::ProjectNeedsMigration { from, to });
+        }
+
         Ok(cfg)
+    }
+
+    /// Bootstrap carve-out for the migration-aware commands
+    /// (`specrun migrate` / `specrun upgrade` / `specrun init --upgrade`).
+    ///
+    /// Performs the same read + parse + [`Error::CliTooOld`] floor check as
+    /// [`ProjectConfig::load`], but instead of raising
+    /// [`Error::ProjectNeedsMigration`] it *returns* the parsed config plus
+    /// the `(from, to)` migration tuple (the `needs_migration` result;
+    /// `None` when no migration is required). This is the only legal way to
+    /// observe a project that is itself in the "needs migration" state, since
+    /// those commands exist precisely to resolve it.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::NotInitialized`] if `.specify/project.yaml` is absent.
+    /// - [`Error::Io`] if the file exists but cannot be read.
+    /// - [`Error::YamlDe`] if the file is not valid project YAML.
+    /// - [`Error::CliTooOld`] if the pinned `specify_version` floor is
+    ///   newer than this binary's version.
+    pub fn load_for_migration(
+        project_dir: &Path,
+    ) -> Result<(Self, Option<(String, String)>), Error> {
+        let path = Layout::new(project_dir).config_path();
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Err(Error::NotInitialized);
+            }
+            Err(err) => return Err(Error::Io(err)),
+        };
+
+        let cfg: Self = serde_saphyr::from_str(&text)?;
+
+        let current = env!("CARGO_PKG_VERSION");
+        if let Some(required) = &cfg.specify_version
+            && version_is_older(current, required)
+        {
+            return Err(Error::CliTooOld {
+                required: required.clone(),
+                found: current.to_string(),
+            });
+        }
+
+        let migration =
+            cfg.specify_version.as_deref().and_then(|pinned| needs_migration(current, pinned));
+
+        Ok((cfg, migration))
     }
 
     /// Walk `start_dir` and its ancestors looking for the first directory
@@ -203,6 +257,22 @@ impl<'a> Layout<'a> {
         self.specify_dir().join("archive")
     }
 
+    /// Absolute path to `<project_dir>/.specify/.migrate/<kind>/` — the
+    /// per-migrator scratch root the migration framework owns. `kind`
+    /// is a stable `crate::migrate::MigrationKind::id` (e.g. `v1-to-v2`).
+    #[must_use]
+    pub fn migrate_dir(&self, kind: &str) -> PathBuf {
+        self.specify_dir().join(".migrate").join(kind)
+    }
+
+    /// Absolute path to `<project_dir>/.specify/.migrate/<kind>/staging/`
+    /// — where a migrator stages file writes before renaming them into
+    /// place (RFC-30 §Atomicity).
+    #[must_use]
+    pub fn migrate_staging_dir(&self, kind: &str) -> PathBuf {
+        self.migrate_dir(kind).join("staging")
+    }
+
     /// Absolute path to `<project_dir>/registry.yaml` — the platform
     /// catalogue. Platform-level artifact, lives at the repo root.
     #[must_use]
@@ -262,230 +332,21 @@ fn version_is_older(current: &str, required: &str) -> bool {
     cur < req
 }
 
-#[cfg(test)]
-mod tests {
-    use std::fs;
+/// Parse the major version component; `None` for unparseable input.
+fn major(v: &str) -> Option<u64> {
+    semver::Version::parse(v).ok().map(|x| x.major)
+}
 
-    use tempfile::tempdir;
-
-    use super::*;
-
-    fn write_config(dir: &Path, yaml: &str) {
-        let specify = dir.join(".specify");
-        fs::create_dir_all(&specify).expect("create .specify");
-        fs::write(specify.join("project.yaml"), yaml).expect("write project.yaml");
-    }
-
-    #[test]
-    fn specify_subpaths() {
-        let base = Path::new("/a/b");
-        let layout = Layout::new(base);
-        assert_eq!(layout.project_dir(), base);
-        assert_eq!(layout.specify_dir(), PathBuf::from("/a/b/.specify"));
-        assert_eq!(layout.config_path(), PathBuf::from("/a/b/.specify/project.yaml"));
-        assert_eq!(layout.slices_dir(), PathBuf::from("/a/b/.specify/slices"));
-        assert_eq!(layout.topology_lock_path(), PathBuf::from("/a/b/.specify/topology.lock"));
-        assert_eq!(layout.registry_path(), PathBuf::from("/a/b/registry.yaml"));
-        assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
-        assert_eq!(layout.change_brief_path(), PathBuf::from("/a/b/change.md"));
-        assert_eq!(layout.discovery_path(), PathBuf::from("/a/b/discovery.md"));
-        assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/.cache"));
-        assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
-    }
-
-    fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {
-        ProjectConfig {
-            name: "demo".to_string(),
-            description: None,
-            adapter: Some("omnia".to_string()),
-            specify_version: None,
-            rules,
-            tools: Vec::new(),
-            hub: false,
-        }
-    }
-
-    #[test]
-    fn rule_path_empty_map_is_none() {
-        let cfg = sample_cfg(BTreeMap::new());
-        assert!(cfg.rule_path(Path::new("/proj"), "proposal").is_none());
-    }
-
-    #[test]
-    fn rule_path_empty_value_is_none() {
-        let mut rules = BTreeMap::new();
-        rules.insert("proposal".to_string(), String::new());
-        let cfg = sample_cfg(rules);
-        assert!(cfg.rule_path(Path::new("/proj"), "proposal").is_none());
-    }
-
-    #[test]
-    fn rule_path_resolves_under_specify_dir() {
-        let mut rules = BTreeMap::new();
-        rules.insert("proposal".to_string(), "rules/proposal.md".to_string());
-        let cfg = sample_cfg(rules);
-        assert_eq!(
-            cfg.rule_path(Path::new("/proj"), "proposal"),
-            Some(PathBuf::from("/proj/.specify/rules/proposal.md"))
-        );
-    }
-
-    #[test]
-    fn load_not_initialized_when_missing() {
-        let tmp = tempdir().unwrap();
-        let err = ProjectConfig::load(tmp.path()).expect_err("missing file errs");
-        assert!(matches!(err, Error::NotInitialized));
-    }
-
-    #[test]
-    fn load_refuses_future_specify_version() {
-        let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"99.0.0\"\n");
-        let err = ProjectConfig::load(tmp.path()).expect_err("future version rejected");
-        match err {
-            Error::CliTooOld { required, found } => {
-                assert_eq!(required, "99.0.0");
-                assert_eq!(found, env!("CARGO_PKG_VERSION"));
-            }
-            other => panic!("unexpected error: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn load_accepts_floor_lte_current() {
-        let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
-        ProjectConfig::load(tmp.path()).expect("older version loads");
-
-        let tmp = tempdir().unwrap();
-        let exact = env!("CARGO_PKG_VERSION");
-        write_config(
-            tmp.path(),
-            &format!("name: demo\nadapter: omnia\nspecify_version: \"{exact}\"\n"),
-        );
-        ProjectConfig::load(tmp.path()).expect("exact version loads");
-    }
-
-    #[test]
-    fn load_allows_invalid_pinned_version() {
-        let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: not-a-semver\n");
-        let cfg = ProjectConfig::load(tmp.path()).expect("unparseable version is permissive");
-        assert_eq!(cfg.specify_version.as_deref(), Some("not-a-semver"));
-    }
-
-    #[test]
-    fn hub_field_defaults_false_round_trips() {
-        let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nadapter: omnia\n");
-        let cfg = ProjectConfig::load(tmp.path()).expect("loads");
-        assert!(!cfg.hub, "hub must default to false when absent");
-        assert_eq!(cfg.adapter.as_deref(), Some("omnia"));
-        assert!(cfg.tools.is_empty(), "tools must default empty when absent");
-
-        let tmp = tempdir().unwrap();
-        write_config(tmp.path(), "name: demo\nhub: true\n");
-        let cfg = ProjectConfig::load(tmp.path()).expect("loads");
-        assert!(cfg.hub, "hub: true must round-trip through deserialize");
-        assert!(cfg.adapter.is_none(), "hub project.yaml must omit adapter:");
-    }
-
-    #[test]
-    fn hub_field_omitted_when_false_in_serialise() {
-        let cfg = ProjectConfig {
-            name: "demo".to_string(),
-            description: None,
-            adapter: Some("omnia".to_string()),
-            specify_version: None,
-            rules: BTreeMap::new(),
-            tools: Vec::new(),
-            hub: false,
-        };
-        let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
-        assert!(!yaml.contains("hub:"), "hub: false should be omitted, got:\n{yaml}");
-        assert!(yaml.contains("adapter: omnia"), "adapter: must serialise, got:\n{yaml}");
-    }
-
-    #[test]
-    fn hub_field_serialised_when_true() {
-        let cfg = ProjectConfig {
-            name: "platform".to_string(),
-            description: None,
-            adapter: None,
-            specify_version: None,
-            rules: BTreeMap::new(),
-            tools: Vec::new(),
-            hub: true,
-        };
-        let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
-        assert!(yaml.contains("hub: true"), "hub: true must serialise, got:\n{yaml}");
-        assert!(!yaml.contains("adapter:"), "hub project.yaml must omit `adapter:`, got:\n{yaml}");
-    }
-
-    #[test]
-    fn tools_field_round_trips() {
-        let tmp = tempdir().unwrap();
-        write_config(
-            tmp.path(),
-            "name: demo\nadapter: omnia\ntools:\n  - name: contract\n    version: 1.0.0\n    source: https://example.com/contract.wasm\n",
-        );
-        let cfg = ProjectConfig::load(tmp.path()).expect("loads");
-        assert_eq!(cfg.tools.len(), 1);
-        assert_eq!(cfg.tools[0].name, "contract");
-        assert!(matches!(
-            &cfg.tools[0].source,
-            specify_tool::manifest::ToolSource::HttpsUri(uri) if uri == "https://example.com/contract.wasm"
-        ));
-
-        let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
-        assert!(yaml.contains("tools:"), "tools should serialise when present, got:\n{yaml}");
-        assert!(
-            yaml.contains("source: https://example.com/contract.wasm"),
-            "tool source should stay in string form, got:\n{yaml}"
-        );
-    }
-
-    #[test]
-    fn tools_field_omitted_when_empty() {
-        let cfg = sample_cfg(BTreeMap::new());
-        let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
-        assert!(!yaml.contains("tools:"), "empty tools should be omitted, got:\n{yaml}");
-    }
-
-    #[test]
-    fn workspace_clone_detects_literal_workspace_slot() {
-        let path = Path::new("/repo/.specify/workspace/orders");
-        assert!(is_workspace_clone(path));
-    }
-
-    #[test]
-    fn workspace_clone_detects_nested() {
-        let path = Path::new("/repo/.specify/workspace/orders/src/service");
-        assert!(is_workspace_clone(path));
-    }
-
-    #[test]
-    fn workspace_clone_rejects_non_workspace_paths() {
-        assert!(!is_workspace_clone(Path::new("/repo")));
-        assert!(!is_workspace_clone(Path::new("/repo/.specify")));
-        assert!(!is_workspace_clone(Path::new("/repo/.specify/workspace")));
-    }
-
-    #[test]
-    fn find_root_walks_up_to_specify_project() {
-        let tmp = tempdir().unwrap();
-        let root = tmp.path();
-        let nested = root.join("sub").join("dir");
-        fs::create_dir_all(&nested).expect("mkdir nested");
-        write_config(root, "name: demo\nadapter: omnia\n");
-
-        assert_eq!(ProjectConfig::find_root(root).as_deref(), Some(root));
-        assert_eq!(ProjectConfig::find_root(&nested).as_deref(), Some(root));
-    }
-
-    #[test]
-    fn find_root_none_outside_tree() {
-        let tmp = tempdir().unwrap();
-        assert!(ProjectConfig::find_root(tmp.path()).is_none());
+/// Returns `Some((from, to))` when `pinned`'s major is strictly older than
+/// `current`'s, signalling that a migration must run before the CLI can
+/// operate. Unparseable versions yield `None` (permissive, matching the
+/// [`version_is_older`] stance). Dormant while the binary is pre-1.0.
+fn needs_migration(current: &str, pinned: &str) -> Option<(String, String)> {
+    match (major(pinned), major(current)) {
+        (Some(from), Some(to)) if to > from => Some((pinned.to_string(), current.to_string())),
+        _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

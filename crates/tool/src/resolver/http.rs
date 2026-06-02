@@ -7,7 +7,6 @@ use std::path::Path;
 use std::time::Duration;
 use std::{fs, io};
 
-use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use ureq::ResponseExt;
 
@@ -90,7 +89,7 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
 fn stream_to_tempfile<R: Read>(
     url: &str, reader: &mut R, temp: &NamedTempFile,
 ) -> Result<String, ToolError> {
-    let mut hasher = Sha256::new();
+    let mut hasher = crate::hash::Hasher::new();
     let mut writer = io::BufWriter::with_capacity(STREAM_CHUNK_BYTES, temp.as_file());
     let mut buf = vec![0_u8; STREAM_CHUNK_BYTES];
     let mut total: u64 = 0;
@@ -122,7 +121,7 @@ fn stream_to_tempfile<R: Read>(
     temp.as_file()
         .sync_all()
         .map_err(|err| ToolError::cache_io("sync download tempfile", temp.path(), err))?;
-    Ok(crate::hash::sha256_output_hex(hasher.finalize()))
+    Ok(hasher.finalize_hex())
 }
 
 fn https_agent() -> ureq::Agent {

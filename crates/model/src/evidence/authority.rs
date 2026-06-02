@@ -19,9 +19,7 @@ use serde::{Deserialize, Serialize};
 /// `intent > documentation > behaviour`; Evidence authority override lifts authority
 /// from per-Evidence to per-(Evidence, claim-kind) without widening
 /// the class set. New classes still require a workflow contract update.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display, clap::ValueEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum AuthorityClass {
@@ -53,7 +51,6 @@ pub enum AuthorityClass {
     Deserialize,
     strum::Display,
     strum::EnumString,
-    clap::ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(
@@ -61,7 +58,6 @@ pub enum AuthorityClass {
     parse_err_ty = String,
     parse_err_fn = claim_kind_parse_error
 )]
-#[clap(rename_all = "kebab-case")]
 pub enum ClaimKind {
     /// `kind: intent` — operator-stated intent (e.g. `change.md`).
     Intent,
@@ -101,58 +97,4 @@ fn claim_kind_parse_error(other: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn authority_class_round_trips_kebab_case() {
-        for (variant, wire) in [
-            (AuthorityClass::Intent, "intent"),
-            (AuthorityClass::Documentation, "documentation"),
-            (AuthorityClass::Behaviour, "behaviour"),
-        ] {
-            let json = serde_json::to_string(&variant).expect("serialise");
-            assert_eq!(json, format!("\"{wire}\""));
-            let reparsed: AuthorityClass = serde_json::from_str(&json).expect("reparse");
-            assert_eq!(variant, reparsed);
-        }
-    }
-
-    #[test]
-    fn claim_kind_round_trips_kebab_case() {
-        let json = serde_json::to_string(&ClaimKind::Example).expect("serialise");
-        assert_eq!(json, "\"example\"");
-        let reparsed: ClaimKind = serde_json::from_str(&json).expect("reparse");
-        assert_eq!(reparsed, ClaimKind::Example);
-    }
-
-    #[test]
-    fn claim_kind_from_str_round_trips() {
-        for variant in [
-            ClaimKind::Intent,
-            ClaimKind::Requirement,
-            ClaimKind::Criterion,
-            ClaimKind::Decision,
-            ClaimKind::Section,
-            ClaimKind::Diagram,
-            ClaimKind::Contract,
-            ClaimKind::Example,
-            ClaimKind::Excerpt,
-            ClaimKind::Type,
-            ClaimKind::Call,
-            ClaimKind::Region,
-            ClaimKind::Container,
-            ClaimKind::Leaf,
-        ] {
-            let wire = variant.to_string();
-            let parsed: ClaimKind = wire.parse().expect("round-trip");
-            assert_eq!(parsed, variant, "ClaimKind round-trip failed for {wire}");
-        }
-    }
-
-    #[test]
-    fn claim_kind_from_str_rejects_unknown() {
-        let err = "bogus".parse::<ClaimKind>().expect_err("must reject unknown");
-        assert!(err.contains("bogus"), "error must mention input, got: {err}");
-    }
-}
+mod tests;

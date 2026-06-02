@@ -46,7 +46,7 @@
     },
     "inputs": {
       "type": "array",
-      "description": "RFC-29d \u2014 adapter-declared build inputs. Each entry is a path (relative to the build request's `inputs.root`, i.e. the slice tree) that the `build` operation consumes, flagged `required`. The CLI assembles `inputs.artifacts.additional[]` from this list and raises `target-build-input-missing` when a `required` path is absent. v1 keeps the declaration a flat path list; globs / conditional inputs are deferred.",
+      "description": "Optional adapter-declared build inputs. Each entry is a path (relative to the build request's `inputs.root`, i.e. the slice tree) that the `build` operation consumes, flagged `required`. The CLI assembles `inputs.artifacts.additional[]` from this list and raises `target-build-input-missing` when a `required` path is absent. v1 keeps the declaration a flat path list; globs / conditional inputs are deferred.",
       "items": { "$ref": "#/$defs/buildInputDeclaration" }
     },
     "description": {
@@ -61,7 +61,7 @@
     "execution": {
       "type": "string",
       "enum": ["agent", "tool"],
-      "description": "Closed adapter execution mode per RFC-29 D9."
+      "description": "Closed adapter execution mode (`agent` | `tool`)."
     }
   },
   "$defs": {

@@ -2,12 +2,11 @@
 //! discovery, default-branch resolution, and PR-base preflight.
 
 use std::path::Path;
-use std::process::Command;
 
 use specify_error::Error;
 
 use super::forge::{ensure_pull_request, repo_exists};
-use crate::cmd::CmdRunner;
+use crate::cmd::{self, CmdRunner};
 use crate::registry::workspace::git::git_output_ok;
 
 pub(super) enum RemoteBranchState {
@@ -23,15 +22,15 @@ pub(super) fn is_git_worktree(project_path: &Path) -> bool {
 pub(in crate::registry::workspace) fn current_branch(
     project_path: &Path,
 ) -> Result<Option<String>, Error> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
-        .args(["symbolic-ref", "--quiet", "--short", "HEAD"])
-        .output()
-        .map_err(|err| Error::Diag {
-            code: "workspace-git-current-branch-failed",
-            detail: format!("failed to inspect current branch: {err}"),
-        })?;
+    let output = cmd::git(
+        &cmd::real_cmd,
+        Some(project_path),
+        ["symbolic-ref", "--quiet", "--short", "HEAD"],
+    )
+    .map_err(|err| Error::Diag {
+        code: "workspace-git-current-branch-failed",
+        detail: format!("failed to inspect current branch: {err}"),
+    })?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -101,27 +100,21 @@ pub(super) fn remote_default_branch_is(project_path: &Path, branch_name: &str) -
         return true;
     }
 
-    drop(
-        Command::new("git")
-            .arg("-C")
-            .arg(project_path)
-            .args(["remote", "set-head", "origin", "--auto"])
-            .output(),
-    );
+    drop(cmd::git(&cmd::real_cmd, Some(project_path), ["remote", "set-head", "origin", "--auto"]));
 
     origin_head_branch(project_path).as_deref() == Some(branch_name)
 }
 
 fn remote_branch_head(project_path: &Path, branch_name: &str) -> Result<Option<String>, Error> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
-        .args(["ls-remote", "--heads", "origin", &format!("refs/heads/{branch_name}")])
-        .output()
-        .map_err(|err| Error::Diag {
-            code: "workspace-git-ls-remote-spawn-failed",
-            detail: format!("failed to inspect remote branch: {err}"),
-        })?;
+    let output = cmd::git(
+        &cmd::real_cmd,
+        Some(project_path),
+        ["ls-remote", "--heads", "origin", &format!("refs/heads/{branch_name}")],
+    )
+    .map_err(|err| Error::Diag {
+        code: "workspace-git-ls-remote-spawn-failed",
+        detail: format!("failed to inspect remote branch: {err}"),
+    })?;
     if !output.status.success() {
         return Err(Error::Diag {
             code: "workspace-git-ls-remote-failed",
@@ -140,13 +133,7 @@ fn resolve_remote_default_branch(project_path: &Path) -> Result<String, Error> {
         return Ok(branch);
     }
 
-    drop(
-        Command::new("git")
-            .arg("-C")
-            .arg(project_path)
-            .args(["remote", "set-head", "origin", "--auto"])
-            .output(),
-    );
+    drop(cmd::git(&cmd::real_cmd, Some(project_path), ["remote", "set-head", "origin", "--auto"]));
 
     origin_head_branch(project_path).ok_or_else(|| Error::Diag {
         code: "workspace-origin-head-unresolved",
@@ -166,12 +153,9 @@ pub(in crate::registry::workspace) fn origin_head_branch(project_path: &Path) ->
             .map(ToString::to_string);
     }
 
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(project_path)
-        .args(["ls-remote", "--symref", "origin", "HEAD"])
-        .output()
-        .ok()?;
+    let output =
+        cmd::git(&cmd::real_cmd, Some(project_path), ["ls-remote", "--symref", "origin", "HEAD"])
+            .ok()?;
     if !output.status.success() {
         return None;
     }

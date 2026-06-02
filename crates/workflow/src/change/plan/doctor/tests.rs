@@ -427,3 +427,27 @@ fn diagnostic_serialises_kebab_case() {
     assert_eq!(v["data"]["kind"], "orphan-source");
     assert_eq!(v["data"]["key"], "monolith");
 }
+
+/// REVIEW.md A18: a plan-doctor [`Diagnostic`] projects onto the
+/// canonical diagnostic currency with the code as `rule_id`, the entry
+/// as `slice`, the severity mapped, and a fingerprint that validates.
+#[test]
+fn doctor_diagnostic_projects_onto_canonical_diagnostic() {
+    let doctor = Diagnostic {
+        severity: Severity::Error,
+        code: CYCLE.to_string(),
+        message: "dependency cycle detected".to_string(),
+        entry: Some("identity-service".to_string()),
+        data: Some(DiagnosticPayload::Cycle {
+            cycle: vec!["a".to_string(), "b".to_string(), "a".to_string()],
+        }),
+    };
+    let diagnostic = specify_diagnostics::Diagnostic::from(&doctor);
+
+    assert_eq!(diagnostic.rule_id.as_deref(), Some(CYCLE));
+    assert_eq!(diagnostic.severity, specify_diagnostics::Severity::Important);
+    assert_eq!(diagnostic.slice.as_deref(), Some("identity-service"));
+    assert_eq!(diagnostic.artifact, specify_diagnostics::Artifact::Plan);
+    specify_diagnostics::validate_diagnostic(&diagnostic).expect("projected diagnostic is valid");
+    assert!(specify_diagnostics::verify_fingerprint(&diagnostic), "fingerprint covers slice");
+}

@@ -135,8 +135,8 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
                 journal_events.push(journal::Event::new(
                     now,
                     journal::EventKind::PlanAmendDivergence {
-                        plan_name,
-                        slice_name: amended.name.clone(),
+                        plan_name: plan_name.into(),
+                        slice_name: amended.name.clone().into(),
                         from: previous_divergence.unwrap_or(Divergence::None),
                         to,
                     },

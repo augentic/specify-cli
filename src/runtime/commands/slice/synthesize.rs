@@ -90,7 +90,7 @@ fn dry_run_inputs(ctx: &Ctx, name: &str) -> Result<()> {
     emit(
         ctx,
         EventKind::SliceSynthesizeAgent {
-            slice_name: name.to_string(),
+            slice_name: name.into(),
         },
     )?;
     ctx.write(&inputs, write_inputs_text)
@@ -103,7 +103,7 @@ fn from_response(ctx: &Ctx, name: &str, response_path: &Path) -> Result<()> {
     emit(
         ctx,
         EventKind::SliceSynthesizeStarted {
-            slice_name: name.to_string(),
+            slice_name: name.into(),
         },
     )?;
     match synthesize_from(ctx, name, response_path) {
@@ -111,7 +111,7 @@ fn from_response(ctx: &Ctx, name: &str, response_path: &Path) -> Result<()> {
             emit(
                 ctx,
                 EventKind::SliceSynthesizeCompleted {
-                    slice_name: name.to_string(),
+                    slice_name: name.into(),
                     artifacts: written.clone(),
                 },
             )?;
@@ -125,7 +125,7 @@ fn from_response(ctx: &Ctx, name: &str, response_path: &Path) -> Result<()> {
             emit(
                 ctx,
                 EventKind::SliceSynthesizeFailed {
-                    slice_name: name.to_string(),
+                    slice_name: name.into(),
                     reason: failure_reason(&err),
                 },
             )?;

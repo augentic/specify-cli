@@ -45,17 +45,14 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::atomic::bytes_write;
-use specify_workflow::adapter::cache::{
-    self, CacheFingerprint, CacheIndexEntry, FingerprintSource, FingerprintToolVersion,
-    LookupOutcome,
-};
+use specify_workflow::adapter::cache::{self, LookupOutcome};
 use specify_workflow::adapter::{CacheLayout, Execution, SourceOperation};
 use specify_workflow::change::{Plan, SourceBinding};
 use specify_workflow::journal::{self, CacheMissReason, Event, EventKind};
 use specify_workflow::schema;
 
 use crate::runtime::commands::source::cli::Phase;
-use crate::runtime::commands::source::prep;
+use crate::runtime::commands::source::{op, prep};
 use crate::runtime::context::Ctx;
 
 /// Extract handoff envelope printed by the agent `prepare` phase
@@ -175,7 +172,7 @@ struct ExtractCtx<'a> {
 /// and print the extract handoff envelope. The CLI returns control to
 /// the agent and does not block.
 fn prepare(cx: &ExtractCtx<'_>) -> Result<()> {
-    let scratch = scratch_path(cx.prepared);
+    let scratch = op::scratch_path(cx.prepared, SourceOperation::Extract)?;
     std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
 
     let event = Event::new(
@@ -208,16 +205,16 @@ fn prepare(cx: &ExtractCtx<'_>) -> Result<()> {
 /// Agent `finalize` phase: validate the agent-produced Evidence, persist
 /// it, then record the cache outcome.
 fn finalize(cx: &ExtractCtx<'_>) -> Result<()> {
-    let scratch = scratch_path(cx.prepared);
+    let scratch = op::scratch_path(cx.prepared, SourceOperation::Extract)?;
     let staged = scratch.join(SourceOperation::Extract.artifact_name());
-    let raw = read_evidence(&staged)?;
+    let raw = op::read_artifact(&staged, SourceOperation::Extract)?;
     complete(cx, &raw, &staged)
 }
 
 /// Single-phase `tool` execution: probe the cache, produce the Evidence
 /// (cached hit or freshly dispatched), validate, and persist.
 fn run_tool(cx: &ExtractCtx<'_>) -> Result<()> {
-    let scratch = scratch_path(cx.prepared);
+    let scratch = op::scratch_path(cx.prepared, SourceOperation::Extract)?;
     std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
 
     let fingerprint = extract_fingerprint(cx)?;
@@ -236,12 +233,12 @@ fn run_tool(cx: &ExtractCtx<'_>) -> Result<()> {
     let (raw, source) = match &lookup.outcome {
         LookupOutcome::Hit { cache_dir } => {
             let path = cache_dir.join(artifact);
-            (read_evidence(&path)?, path)
+            (op::read_artifact(&path, SourceOperation::Extract)?, path)
         }
         LookupOutcome::Miss { .. } => {
             dispatch_extract_tool(cx.prepared)?;
             let path = scratch.join(artifact);
-            (read_evidence(&path)?, path)
+            (op::read_artifact(&path, SourceOperation::Extract)?, path)
         }
     };
 
@@ -305,50 +302,16 @@ fn persist(cx: &ExtractCtx<'_>, bytes: &[u8]) -> Result<()> {
     bytes_write(&path, bytes)
 }
 
-/// Build the closed extract [`CacheFingerprint`] (RFC-27, with `lead`):
-/// source identity, `<name>@<version>`, the `extract` brief sha256, the
-/// declared tool versions, and the `<lead>` being extracted.
-fn extract_fingerprint(cx: &ExtractCtx<'_>) -> Result<CacheFingerprint> {
-    let source = match cx.source_path {
-        Some(path) => FingerprintSource::from_path(path)?,
-        None => FingerprintSource::from_value(
-            cx.binding.value.as_deref().unwrap_or_default().as_bytes(),
-        ),
-    };
-    let adapter = format!("{}@{}", cx.prepared.manifest.name, cx.prepared.manifest.version);
-
-    let brief_relative =
-        cx.prepared.manifest.briefs.get(&SourceOperation::Extract).ok_or_else(|| Error::Diag {
-            code: "extract-brief-missing",
-            detail: format!(
-                "source adapter `{}` declares no `extract` brief",
-                cx.prepared.manifest.name
-            ),
-        })?;
-    let brief_path = cx.prepared.adapter_dir.join(brief_relative);
-    let brief_bytes = std::fs::read(&brief_path).map_err(|err| Error::Diag {
-        code: "extract-brief-read-failed",
-        detail: format!("failed to read extract brief {}: {err}", brief_path.display()),
-    })?;
-
-    let tool_versions = cx
-        .prepared
-        .manifest
-        .tools
-        .iter()
-        .map(|tool| FingerprintToolVersion {
-            name: tool.name.clone(),
-            version: tool.version.clone(),
-        })
-        .collect();
-
-    Ok(CacheFingerprint::new(
-        source,
-        adapter,
-        cache::sha256_prefixed(&brief_bytes),
-        tool_versions,
+/// Build the closed extract [`CacheFingerprint`] (RFC-27, with `lead`)
+/// via the shared [`op::build_fingerprint`] kernel.
+fn extract_fingerprint(cx: &ExtractCtx<'_>) -> Result<cache::CacheFingerprint> {
+    op::build_fingerprint(
+        cx.prepared,
+        cx.source_path,
+        cx.binding,
+        SourceOperation::Extract,
         Some(cx.lead.to_string()),
-    ))
+    )
 }
 
 /// Emit the `slice.extract.cache-hit` / `cache-miss` journal event for
@@ -357,13 +320,13 @@ fn emit_cache_event(cx: &ExtractCtx<'_>, lookup: &cache::CacheLookup) -> Result<
     let adapter = cx.prepared.manifest.name.clone();
     let kind = match &lookup.outcome {
         LookupOutcome::Hit { .. } => EventKind::SliceExtractCacheHit {
-            slice_name: cx.slice.to_string(),
+            slice_name: cx.slice.into(),
             source: cx.source.to_string(),
             adapter,
             fingerprint: lookup.digest.clone(),
         },
         LookupOutcome::Miss { reason } => EventKind::SliceExtractCacheMiss {
-            slice_name: cx.slice.to_string(),
+            slice_name: cx.slice.into(),
             source: cx.source.to_string(),
             adapter,
             fingerprint: lookup.digest.clone(),
@@ -374,28 +337,23 @@ fn emit_cache_event(cx: &ExtractCtx<'_>, lookup: &cache::CacheLookup) -> Result<
     journal::append_batch(cx.ctx.layout(), std::slice::from_ref(&event))
 }
 
-/// Write the cache artifact + `fingerprint.json` + index row. Under the
-/// forced opt-out the cache layer skips the directory body and appends
-/// only the audit index row.
+/// Write the cache artifact + `fingerprint.json` + index row via the
+/// shared [`op::write_cache_entry`] kernel.
 fn write_cache_entry(
-    cx: &ExtractCtx<'_>, layout: CacheLayout<'_>, fingerprint: &CacheFingerprint,
+    cx: &ExtractCtx<'_>, layout: CacheLayout<'_>, fingerprint: &cache::CacheFingerprint,
     artifact_bytes: &[u8], cache_mode: Option<specify_workflow::adapter::CacheMode>,
 ) -> Result<()> {
-    let entry = CacheIndexEntry {
-        timestamp: Timestamp::now(),
-        fingerprint: fingerprint.digest(),
-        slice: cx.slice.to_string(),
-        source: cx.source.to_string(),
-        adapter: cx.prepared.manifest.name.clone(),
-        operation: SourceOperation::Extract,
-    };
-    cache::write(
-        layout,
+    op::write_cache_entry(
+        &op::CacheEntry {
+            layout,
+            cache_mode,
+            slice_lane: cx.slice,
+            source: cx.source,
+            adapter: &cx.prepared.manifest.name,
+            op: SourceOperation::Extract,
+        },
         fingerprint,
         artifact_bytes,
-        SourceOperation::Extract.artifact_name(),
-        cache_mode,
-        &entry,
     )
 }
 
@@ -414,37 +372,6 @@ fn extract_result(cx: &ExtractCtx<'_>, lookup: &cache::CacheLookup) -> ExtractRe
         reason,
         evidence: evidence_dir(cx.prepared).join(format!("{}.yaml", cx.source)),
     }
-}
-
-/// Read the agent- or tool-produced Evidence, mapping a missing file to
-/// the `extract-evidence-missing` diagnostic.
-fn read_evidence(path: &Path) -> Result<String> {
-    std::fs::read_to_string(path).map_err(|err| {
-        if err.kind() == std::io::ErrorKind::NotFound {
-            Error::Diag {
-                code: "extract-evidence-missing",
-                detail: format!(
-                    "no `evidence.yaml` at {}; the extract must write the Evidence into \
-                     $SCRATCH_DIR before finalize",
-                    path.display()
-                ),
-            }
-        } else {
-            Error::Io(err)
-        }
-    })
-}
-
-/// The `$SCRATCH_DIR` host path the prep mounted for this extract.
-/// Always `Some` for the extract op (preflight §1); the `expect` pins
-/// that invariant.
-fn scratch_path(prepared: &prep::SourcePrep) -> PathBuf {
-    prepared
-        .layout
-        .scratch
-        .path
-        .clone()
-        .expect("extract prep always mounts a $SCRATCH_DIR host path")
 }
 
 /// The scaffolded `.specify/slices/<slice>/evidence/` directory. Always

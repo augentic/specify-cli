@@ -5,10 +5,10 @@
 //! sparse set so codex distribution (RM-07) can copy it from the same
 //! checkout without a second clone.
 
-use std::process::Command;
-
 use specify_error::Error;
 use tempfile::TempDir;
+
+use crate::cmd;
 
 /// Shared codex tree path, fetched alongside the adapter so
 /// `cache_codex` can distribute `UNI-*` / `CORE-*` packs from the same
@@ -29,10 +29,10 @@ pub(super) fn sparse_checkout_github(
     }
     clone_args.push(repo_url);
     clone_args.push(&checkout_arg);
-    cmd(&clone_args, "clone adapter repository")?;
+    run_git(&clone_args, "clone adapter repository")?;
 
     let sparse_path = sparse_checkout_path(adapter_path);
-    cmd(
+    run_git(
         &["-C", &checkout_arg, "sparse-checkout", "set", "--", sparse_path, SHARED_RULES_PATH],
         "sparse-checkout adapter and shared-codex paths",
     )?;
@@ -46,8 +46,8 @@ fn sparse_checkout_path(adapter_path: &str) -> &str {
     }
 }
 
-fn cmd(args: &[&str], action: &str) -> Result<(), Error> {
-    let output = Command::new("git").args(args).output().map_err(|err| Error::Diag {
+fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
+    let output = cmd::git(&cmd::real_cmd, None, args).map_err(|err| Error::Diag {
         code: "adapter-git-spawn-failed",
         detail: format!("failed to spawn `git` to {action}: {err}"),
     })?;
@@ -62,13 +62,4 @@ fn cmd(args: &[&str], action: &str) -> Result<(), Error> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn github_sparse_checkout_uses_adapter_parent() {
-        assert_eq!(sparse_checkout_path("adapters/omnia"), "adapters");
-        assert_eq!(sparse_checkout_path("schemas/omnia"), "schemas");
-        assert_eq!(sparse_checkout_path("omnia"), "omnia");
-    }
-}
+mod tests;

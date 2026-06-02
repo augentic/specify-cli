@@ -7,6 +7,7 @@ mod cache;
 mod git;
 mod hub;
 mod regular;
+mod upgrade;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,11 +53,27 @@ pub struct InitOptions<'a> {
     /// consumer projects carry only `UNI-*` rules. Ignored for hub init
     /// (hubs resolve no adapter and so distribute no codex).
     pub include_framework: bool,
+    /// When `true`, run the re-entry **upgrade** path instead of a
+    /// fresh scaffold: bump `project.yaml.specify_version` to the
+    /// running binary's version over an already-populated `.specify/`,
+    /// preserving every other field (including `adapter:` / `hub:`) and
+    /// every operator artifact (`slices/`, `specs/`, `archive/`,
+    /// `registry.yaml`, `.specify/design-system/*`, the adapter cache).
+    /// `AGENTS.md` is regenerated only when absent (handled at the
+    /// command layer). Mutually exclusive with the `<adapter>`
+    /// positional, `--hub`, `--name`, `--description`,
+    /// `--include-framework`, and `--check-migration` at the clap
+    /// surface.
+    pub upgrade: bool,
 }
 
 /// Structured summary of what `init` did, returned for downstream
 /// rendering by both the JSON and text CLI paths.
 #[derive(Debug, Clone)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each bool is an independent on-disk fact the renderer surfaces separately on the init result."
+)]
 pub struct InitResult {
     /// Path to the written `project.yaml`.
     pub config_path: PathBuf,
@@ -76,8 +93,16 @@ pub struct InitResult {
     pub directories_created: Vec<PathBuf>,
     /// Brief IDs scaffolded into the `rules:` map.
     pub scaffolded_rule_keys: Vec<String>,
-    /// The `specify_version` value written into `project.yaml`.
+    /// The `specify_version` value recorded in `project.yaml` after
+    /// this run (the running binary's version).
     pub specify_version: String,
+    /// `true` when this run actually wrote `project.yaml.specify_version`
+    /// — always `true` for fresh init (the file is minted) and for an
+    /// `--upgrade` that bumped an older pin; `false` only on an
+    /// `--upgrade` no-op where the pin already matched the running
+    /// version. Lets the renderer distinguish "upgraded" from "already
+    /// current".
+    pub specify_version_changed: bool,
     /// `true` when this run wrote `.specify/wasm-pkg.toml` for the
     /// first time; `false` when an operator-edited file was preserved.
     /// Lets the JSON envelope distinguish a fresh scaffold from a
@@ -90,6 +115,12 @@ pub struct InitResult {
 /// Idempotent: a second call with identical options succeeds, creates no
 /// new directories, doesn't duplicate the `.gitignore` entry, and writes
 /// byte-identical `project.yaml` contents.
+///
+/// When [`InitOptions::upgrade`] is `true`, dispatches to the private
+/// upgrade runner (the re-entry version bump) ahead of the hub /
+/// regular branch — one runner serves both regular and hub projects
+/// because the preservation logic is identical (preserve every field,
+/// touch only `specify_version`).
 ///
 /// When [`InitOptions::hub`] is `true`, dispatches to the private hub
 /// runner for the platform-hub on-disk shape.
@@ -106,6 +137,9 @@ pub struct InitResult {
 /// filesystem, adapter resolution, and serialisation errors from
 /// the underlying calls.
 pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
+    if opts.upgrade {
+        return upgrade::run(opts);
+    }
     if opts.hub {
         return hub::run(opts);
     }
@@ -189,65 +223,4 @@ pub(super) fn fixed_now() -> Timestamp {
 }
 
 #[cfg(test)]
-mod tests {
-    use tempfile::tempdir;
-
-    use super::*;
-
-    #[test]
-    fn regular_init_rejects_missing_adapter() {
-        let tmp = tempdir().unwrap();
-        let err = init(
-            InitOptions {
-                project_dir: tmp.path(),
-                adapter: None,
-                name: Some("demo"),
-                description: None,
-                hub: false,
-                include_framework: false,
-            },
-            fixed_now(),
-        )
-        .expect_err("missing adapter must error");
-        assert!(
-            matches!(
-                &err,
-                Error::Diag {
-                    code: "init-requires-adapter-or-hub",
-                    ..
-                }
-            ),
-            "got: {err:?}"
-        );
-    }
-
-    #[test]
-    fn hub_init_rejects_adapter_argument() {
-        // `--hub` and `<adapter>` are mutually exclusive; the
-        // orchestrator re-checks even when the CLI layer already
-        // filtered.
-        let tmp = tempdir().unwrap();
-        let err = init(
-            InitOptions {
-                project_dir: tmp.path(),
-                adapter: Some("omnia"),
-                name: Some("platform-hub"),
-                description: None,
-                hub: true,
-                include_framework: false,
-            },
-            fixed_now(),
-        )
-        .expect_err("hub + adapter must error");
-        assert!(
-            matches!(
-                &err,
-                Error::Diag {
-                    code: "init-requires-adapter-or-hub",
-                    ..
-                }
-            ),
-            "got: {err:?}"
-        );
-    }
-}
+mod tests;

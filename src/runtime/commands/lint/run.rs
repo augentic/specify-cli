@@ -25,20 +25,21 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_diagnostics::{Format as DiagnosticsFormat, render};
+use specify_diagnostics::Format as DiagnosticsFormat;
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::diagnostics::map_render_error;
 use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_standards::lint::ignore::{blocking_findings_present, deny_blocking_findings};
+use specify_standards::lint::ignore::deny_blocking_findings;
 use specify_standards::lint::runner::{
     PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
 };
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
-use specify_workflow::journal::{self, LintScope};
+use specify_workflow::journal::LintScope;
 
+use crate::output::{LintEmit, emit_diagnostic_report};
 use crate::runtime::commands::lint::cli::RunArgs;
 use crate::runtime::commands::tool::{Inventory, ScopedTool, build_inventory};
 use crate::runtime::context::Ctx;
@@ -92,10 +93,6 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
         RunOutcome::Report(result) => result,
     };
 
-    let rendered = render(format, &result).map_err(map_render_error)?;
-    println!("{rendered}");
-
-    let exit_code: i32 = if blocking_findings_present(&result.findings) { 2 } else { 0 };
     let scope = LintScope {
         target: (!target.is_empty()).then(|| target.to_string()),
         slice: slice.map(str::to_string),
@@ -104,14 +101,16 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
         // field `null` per the variant doc.
         artifact: (artifacts.len() == 1).then(|| artifacts[0].display().to_string()),
     };
-    journal::emit_lint_completed(
-        ctx.layout(),
+    emit_diagnostic_report(LintEmit {
+        format,
+        report: &result,
+        layout: ctx.layout(),
         scope,
-        &result.findings,
-        started_at.elapsed().as_millis(),
-        exit_code,
-        "specrun lint",
-    );
+        command_label: "specrun lint",
+        elapsed_ms: started_at.elapsed().as_millis(),
+        trailing_newline: true,
+    })
+    .map_err(map_render_error)?;
     deny_blocking_findings(&result)
 }
 

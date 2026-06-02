@@ -135,9 +135,14 @@ fn emit_reconcile_event(ctx: &Ctx, projected: &Projected) -> Result<()> {
     let event = Event::new(
         Timestamp::now(),
         EventKind::PlanReconcileCompleted {
-            plan_name: projected.plan.name.clone(),
+            plan_name: projected.plan.name.clone().into(),
             slice_count: projected.outcome.slice_names.len(),
-            slice_names: projected.outcome.slice_names.clone(),
+            slice_names: projected
+                .outcome
+                .slice_names
+                .iter()
+                .map(specify_workflow::name::SliceName::from)
+                .collect(),
         },
     );
     journal::append_batch(ctx.layout(), std::slice::from_ref(&event))
