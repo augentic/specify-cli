@@ -3,7 +3,7 @@
 //! files and workflow §Requirement block contract validation of
 //! `spec.md` provenance metadata.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;

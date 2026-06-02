@@ -254,7 +254,7 @@ mod tests {
                 journal::Event::new(
                     ts,
                     EventKind::SliceArchiveCreated {
-                        slice_name: format!("s{n}"),
+                        slice_name: format!("s{n}").into(),
                         touched_specs: vec![format!("u{n}")],
                         outcome_summary: format!("u{n}: 1 modified"),
                         merge_sha: None,
@@ -267,7 +267,7 @@ mod tests {
         events.push(journal::Event::new(
             ts,
             EventKind::PlanTransitionApproved {
-                plan_name: "p".to_string(),
+                plan_name: "p".into(),
             },
         ));
         journal::append_batch(layout, &events).expect("append journal");
