@@ -13,6 +13,7 @@ fn regular_init_rejects_missing_adapter() {
             description: None,
             hub: false,
             include_framework: false,
+            upgrade: false,
         },
         fixed_now(),
     )
@@ -43,6 +44,7 @@ fn hub_init_rejects_adapter_argument() {
             description: None,
             hub: true,
             include_framework: false,
+            upgrade: false,
         },
         fixed_now(),
     )

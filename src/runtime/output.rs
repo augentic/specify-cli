@@ -13,6 +13,9 @@ pub enum Exit {
     GenericFailure,
     ValidationFailed,
     VersionTooOld,
+    /// The project's pinned `specify_version` major is older than the
+    /// running binary; the operator must run `specrun migrate` first.
+    MigrationRequired,
     /// Argument-shape failure: `clap` exits 2 for unknown flags / missing
     /// arguments; we mirror that for argument errors discovered after
     /// parsing (kebab-case checks, mutually exclusive payloads, etc.).
@@ -29,6 +32,7 @@ impl Exit {
             Self::GenericFailure => 1,
             Self::ArgumentError | Self::ValidationFailed => 2,
             Self::VersionTooOld => 3,
+            Self::MigrationRequired => 4,
             Self::Code(code) => code,
         }
     }
@@ -44,6 +48,7 @@ impl From<&Error> for Exit {
     fn from(err: &Error) -> Self {
         match err {
             Error::CliTooOld { .. } => Self::VersionTooOld,
+            Error::ProjectNeedsMigration { .. } => Self::MigrationRequired,
             Error::Validation { .. } => Self::ValidationFailed,
             Error::Argument { .. } => Self::ArgumentError,
             _ => Self::GenericFailure,

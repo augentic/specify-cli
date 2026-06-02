@@ -425,6 +425,53 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         merge_sha: Option<String>,
     },
+    /// `specrun upgrade` self-updated the CLI binary. The new binary
+    /// writes the event; `from` is the version observed before the
+    /// upgrade, `to` the version now running, `channel` the resolved
+    /// install channel (`cargo | brew | binary`).
+    #[serde(rename = "cli.upgraded", rename_all = "kebab-case")]
+    CliUpgraded {
+        /// Version observed before the upgrade.
+        from: String,
+        /// Version now running.
+        to: String,
+        /// Resolved install channel (`cargo | brew | binary`).
+        channel: String,
+    },
+    /// `specrun plugins refresh` invalidated the Cursor plugin cache.
+    /// `deleted_paths` are the cache directories removed (wire:
+    /// `deleted-paths`); `marketplace` is the resolved marketplace file
+    /// path whose top-level `name` scoped the deletion.
+    #[serde(rename = "plugins.refreshed", rename_all = "kebab-case")]
+    PluginsRefreshed {
+        /// Cache directories removed (wire: `deleted-paths`).
+        deleted_paths: Vec<String>,
+        /// Resolved marketplace file path whose top-level `name` scoped
+        /// the deletion.
+        marketplace: String,
+    },
+    /// `specrun migrate` applied a registered migrator. `kind` is the
+    /// stable migrator id (e.g. `v1-to-v2`); the counts (wire:
+    /// `files-rewritten`, `files-moved`) summarise the applied plan.
+    #[serde(rename = "migration.applied", rename_all = "kebab-case")]
+    MigrationApplied {
+        /// Stable migrator id (e.g. `v1-to-v2`).
+        kind: String,
+        /// Count of files rewritten in place (wire: `files-rewritten`).
+        files_rewritten: usize,
+        /// Count of files moved (wire: `files-moved`).
+        files_moved: usize,
+    },
+    /// `specrun migrate` staged a migrator but left the project
+    /// untouched (atomic rollback). `kind` is the migrator id; `reason`
+    /// is a short diagnostic (e.g. `staged-validation-failed`).
+    #[serde(rename = "migration.skipped", rename_all = "kebab-case")]
+    MigrationSkipped {
+        /// Stable migrator id (e.g. `v1-to-v2`).
+        kind: String,
+        /// Short diagnostic (e.g. `staged-validation-failed`).
+        reason: String,
+    },
     /// `specrun lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
     /// `baseline_present` flag (hard-coded `false` until RFC-33b

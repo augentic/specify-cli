@@ -102,6 +102,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         directories_created,
         scaffolded_rule_keys,
         specify_version,
+        specify_version_changed: true,
         wasm_pkg_config_written,
     })
 }

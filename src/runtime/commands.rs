@@ -3,13 +3,16 @@ pub mod archive;
 mod init;
 pub mod journal;
 pub mod lint;
+mod migrate;
 pub mod plan;
+pub mod plugins;
 pub mod registry;
 pub mod rules;
 pub mod slice;
 pub mod source;
 pub mod target;
 pub mod tool;
+mod upgrade;
 pub mod workspace;
 
 use std::io::Write;
@@ -40,6 +43,8 @@ pub fn run(cli: Cli) -> Exit {
             description,
             hub,
             include_framework,
+            check_migration,
+            upgrade,
         } => dispatch(format, || {
             init::run(
                 format,
@@ -48,6 +53,8 @@ pub fn run(cli: Cli) -> Exit {
                 description.as_deref(),
                 hub,
                 include_framework,
+                check_migration,
+                upgrade,
             )
         }),
         Commands::Source { action } => dispatch_source(format, action),
@@ -87,6 +94,20 @@ pub fn run(cli: Cli) -> Exit {
             clap_complete::generate(shell, &mut cmd, "specrun", &mut std::io::stdout());
             Exit::Success
         }
+        Commands::Migrate {
+            from,
+            to,
+            dry_run,
+            yes,
+        } => {
+            dispatch(format, || migrate::run(format, from.as_deref(), to.as_deref(), dry_run, yes))
+        }
+        Commands::Upgrade {
+            channel,
+            yes,
+            dry_run,
+        } => dispatch(format, || upgrade::run(format, channel, yes, dry_run)),
+        Commands::Plugins { action } => dispatch(format, || plugins::run(format, action)),
         Commands::Workspace { action } => match action {
             WorkspaceAction::Sync { projects } => {
                 scoped(format, |ctx| workspace::sync(ctx, &projects))

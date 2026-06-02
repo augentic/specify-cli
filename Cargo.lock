@@ -4725,6 +4725,7 @@ dependencies = [
  "specify-validate",
  "strum 0.28.0",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]

@@ -427,6 +427,78 @@ fn slice_build_merge_events_round_trip() {
 }
 
 #[test]
+fn cli_plugins_migration_events_round_trip() {
+    // RFC-30 Change J: the four lifecycle events for `specrun upgrade`,
+    // `specrun plugins refresh`, and `specrun migrate` serialise to
+    // their dotted-kebab ids with kebab-case payload fields, and
+    // round-trip back preserving every field.
+    let rows: &[(EventKind, &[&str])] = &[
+        (
+            EventKind::CliUpgraded {
+                from: "1.4.0".to_string(),
+                to: "1.5.0".to_string(),
+                channel: "brew".to_string(),
+            },
+            &[
+                r#""event":"cli.upgraded""#,
+                r#""from":"1.4.0""#,
+                r#""to":"1.5.0""#,
+                r#""channel":"brew""#,
+            ],
+        ),
+        (
+            EventKind::PluginsRefreshed {
+                deleted_paths: vec![
+                    ".cursor/plugins/cache/augentic/spec".to_string(),
+                    ".cursor/plugins/cache/augentic/capture".to_string(),
+                ],
+                marketplace: ".cursor-plugin/marketplace.json".to_string(),
+            },
+            &[
+                r#""event":"plugins.refreshed""#,
+                r#""deleted-paths":[".cursor/plugins/cache/augentic/spec",".cursor/plugins/cache/augentic/capture"]"#,
+                r#""marketplace":".cursor-plugin/marketplace.json""#,
+            ],
+        ),
+        (
+            EventKind::MigrationApplied {
+                kind: "v1-to-v2".to_string(),
+                files_rewritten: 7,
+                files_moved: 3,
+            },
+            &[
+                r#""event":"migration.applied""#,
+                r#""kind":"v1-to-v2""#,
+                r#""files-rewritten":7"#,
+                r#""files-moved":3"#,
+            ],
+        ),
+        (
+            EventKind::MigrationSkipped {
+                kind: "v1-to-v2".to_string(),
+                reason: "staged-validation-failed".to_string(),
+            },
+            &[
+                r#""event":"migration.skipped""#,
+                r#""kind":"v1-to-v2""#,
+                r#""reason":"staged-validation-failed""#,
+            ],
+        ),
+    ];
+
+    for (kind, required) in rows {
+        let event = Event::new(test_timestamp("2026-05-22T13:15:00Z"), kind.clone());
+        let json = serde_json::to_string(&event).expect("serialise cli/plugins/migration event");
+        for needle in *required {
+            assert!(json.contains(needle), "wire form must contain `{needle}`; got:\n{json}");
+        }
+        let round: Event =
+            serde_json::from_str(&json).expect("deserialise cli/plugins/migration event");
+        assert_eq!(round, event, "cli/plugins/migration round-trip must preserve every field");
+    }
+}
+
+#[test]
 fn slice_synthesize_completed_omits_empty_artifacts() {
     // `artifacts` carries `skip_serializing_if = "Vec::is_empty"`
     // so an empty list does not reach the wire at all.

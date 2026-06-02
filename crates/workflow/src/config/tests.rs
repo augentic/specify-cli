@@ -103,6 +103,57 @@ fn load_accepts_floor_lte_current() {
 }
 
 #[test]
+fn major_parses_or_none() {
+    assert_eq!(major("1.2.3"), Some(1));
+    assert_eq!(major("nope"), None);
+}
+
+#[test]
+fn needs_migration_detects_older_major() {
+    assert_eq!(needs_migration("2.0.0", "1.5.0"), Some(("1.5.0".to_string(), "2.0.0".to_string())));
+}
+
+#[test]
+fn needs_migration_none_for_same_major() {
+    assert_eq!(needs_migration("2.3.0", "2.0.0"), None);
+}
+
+#[test]
+fn needs_migration_none_for_newer_pin() {
+    assert_eq!(needs_migration("1.0.0", "2.0.0"), None);
+}
+
+#[test]
+fn needs_migration_none_for_unparseable_pin() {
+    assert_eq!(needs_migration("2.0.0", "not-a-semver"), None);
+}
+
+#[test]
+fn needs_migration_none_for_unparseable_current() {
+    assert_eq!(needs_migration("not-a-semver", "1.0.0"), None);
+}
+
+#[test]
+fn load_does_not_raise_migration_for_same_or_newer_major_pin() {
+    let tmp = tempdir().unwrap();
+    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
+    let cfg = ProjectConfig::load(tmp.path()).expect("same-major pin loads");
+    assert_eq!(cfg.specify_version.as_deref(), Some("0.0.1"));
+}
+
+#[test]
+fn load_for_migration_returns_no_tuple_for_same_major_pin() {
+    let tmp = tempdir().unwrap();
+    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
+    let (cfg, migration) =
+        ProjectConfig::load_for_migration(tmp.path()).expect("loads for migration");
+    assert!(migration.is_none(), "same-major pin needs no migration");
+    assert_eq!(cfg.name, "demo");
+    assert_eq!(cfg.adapter.as_deref(), Some("omnia"));
+    assert_eq!(cfg.specify_version.as_deref(), Some("0.0.1"));
+}
+
+#[test]
 fn load_allows_invalid_pinned_version() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: not-a-semver\n");

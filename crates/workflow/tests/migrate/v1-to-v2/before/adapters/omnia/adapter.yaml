@@ -1,0 +1,7 @@
+name: omnia
+version: 1
+pipeline:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+description: Omnia WASM target.

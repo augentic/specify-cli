@@ -4,8 +4,11 @@
 //! the clap-level invariants around the positional `<adapter>`
 //! argument and the `--hub` flag.
 
+use std::collections::BTreeMap;
 use std::fs;
+use std::path::{Path, PathBuf};
 
+use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
 mod common;
@@ -261,6 +264,187 @@ fn init_hub_refuses_when_present() {
 
     let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).unwrap();
     assert_eq!(on_disk, "name: existing\nadapter: omnia\n");
+}
+
+// ---- `specrun init --upgrade` (RFC-30 §D5 re-entry version bump) ----
+
+/// Recursively snapshot every regular file under `root` as a
+/// `relative-path -> bytes` map, so an upgrade's write set can be
+/// asserted by diffing two snapshots.
+fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
+        for entry in fs::read_dir(dir).expect("read_dir") {
+            let entry = entry.expect("dir entry");
+            let path = entry.path();
+            if entry.file_type().expect("file_type").is_dir() {
+                walk(root, &path, out);
+            } else {
+                let rel = path.strip_prefix(root).expect("strip prefix").to_path_buf();
+                out.insert(rel, fs::read(&path).expect("read file"));
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(root, root, &mut out);
+    out
+}
+
+/// Populate a brownfield regular project: an older-but-same-major pin
+/// (`0.2.0`; the binary is `0.3.0`, same major `0`, so no migration),
+/// a bare `adapter:`, a spread of operator artifacts, and a sentinel
+/// `AGENTS.md`.
+fn seed_brownfield_regular(root: &Path) {
+    let specify = root.join(".specify");
+    fs::create_dir_all(specify.join("slices/my-slice")).unwrap();
+    fs::create_dir_all(specify.join("specs")).unwrap();
+    fs::create_dir_all(specify.join("archive")).unwrap();
+    fs::create_dir_all(specify.join("design-system")).unwrap();
+    fs::write(
+        specify.join("project.yaml"),
+        "name: brownfield\ndescription: existing project\nadapter: omnia\nspecify_version: 0.2.0\nrules:\n  specs: specs.md\n",
+    )
+    .unwrap();
+    fs::write(specify.join("slices/my-slice/spec.md"), "# operator slice\n").unwrap();
+    fs::write(specify.join("specs/baseline.md"), "# baseline spec\n").unwrap();
+    fs::write(specify.join("archive/old.md"), "# archived\n").unwrap();
+    fs::write(
+        specify.join("design-system/components.yaml"),
+        "components:\n  - id: button\n    status: confirmed\n",
+    )
+    .unwrap();
+    fs::write(root.join("AGENTS.md"), "# Sentinel AGENTS.md — operator authored\n").unwrap();
+}
+
+#[test]
+fn init_upgrade_bumps_only_version_and_preserves_artifacts() {
+    let tmp = tempdir().unwrap();
+    seed_brownfield_regular(tmp.path());
+
+    let before = snapshot_tree(tmp.path());
+    let before_cfg: ProjectConfig = serde_saphyr::from_str(
+        std::str::from_utf8(&before[Path::new(".specify/project.yaml")]).unwrap(),
+    )
+    .expect("parse before");
+
+    let assert = specrun()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "init", "--upgrade"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["specify-version"], "0.3.0");
+    assert_eq!(value["specify-version-changed"], true);
+    assert_eq!(value["adapter-name"], "omnia");
+
+    let after = snapshot_tree(tmp.path());
+
+    // Every path other than project.yaml is byte-identical, and the
+    // path set is unchanged (nothing added, nothing removed).
+    let project_yaml = PathBuf::from(".specify/project.yaml");
+    let before_keys: Vec<_> = before.keys().filter(|k| **k != project_yaml).collect();
+    let after_keys: Vec<_> = after.keys().filter(|k| **k != project_yaml).collect();
+    assert_eq!(before_keys, after_keys, "upgrade must not add or remove files");
+    for key in before_keys {
+        assert_eq!(before[key], after[key], "file {} must be byte-identical", key.display());
+    }
+
+    // Within project.yaml only `specify_version` changed.
+    let after_cfg: ProjectConfig =
+        serde_saphyr::from_str(std::str::from_utf8(&after[&project_yaml]).unwrap())
+            .expect("parse after");
+    assert_eq!(after_cfg.specify_version.as_deref(), Some("0.3.0"));
+    let normalised = ProjectConfig {
+        specify_version: before_cfg.specify_version.clone(),
+        ..after_cfg
+    };
+    assert_eq!(normalised, before_cfg, "only specify_version may change in project.yaml");
+
+    // Second run is a byte-stable no-op.
+    let snapshot_after_first = snapshot_tree(tmp.path());
+    let assert2 = specrun()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "init", "--upgrade"])
+        .assert()
+        .success();
+    let value2: serde_json::Value =
+        serde_json::from_slice(&assert2.get_output().stdout).expect("json");
+    assert_eq!(value2["specify-version-changed"], false, "re-run must be a no-op");
+    assert_eq!(
+        snapshot_tree(tmp.path()),
+        snapshot_after_first,
+        "second --upgrade must leave the tree byte-identical"
+    );
+}
+
+#[test]
+fn init_upgrade_preserves_hub_and_registry() {
+    let tmp = tempdir().unwrap();
+    let specify = tmp.path().join(".specify");
+    fs::create_dir_all(&specify).unwrap();
+    fs::write(
+        specify.join("project.yaml"),
+        "name: platform-hub\nspecify_version: 0.2.0\nhub: true\n",
+    )
+    .unwrap();
+    fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
+    fs::write(tmp.path().join("AGENTS.md"), "# Hub sentinel\n").unwrap();
+
+    let registry_before = fs::read(tmp.path().join("registry.yaml")).unwrap();
+
+    let assert = specrun()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "init", "--upgrade"])
+        .assert()
+        .success();
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("json");
+    assert_eq!(value["specify-version"], "0.3.0");
+    assert_eq!(value["specify-version-changed"], true);
+    assert_eq!(value["adapter-name"], "hub");
+
+    let cfg: ProjectConfig =
+        serde_saphyr::from_str(&fs::read_to_string(specify.join("project.yaml")).unwrap())
+            .expect("parse hub project.yaml");
+    assert!(cfg.hub, "hub discriminator must survive");
+    assert!(cfg.adapter.is_none(), "hub upgrade must not synthesise an adapter");
+    assert_eq!(cfg.specify_version.as_deref(), Some("0.3.0"));
+    assert_eq!(
+        fs::read(tmp.path().join("registry.yaml")).unwrap(),
+        registry_before,
+        "registry.yaml must be byte-identical after a hub upgrade"
+    );
+
+    // Second run no-op.
+    let project_after_first = fs::read(specify.join("project.yaml")).unwrap();
+    specrun().current_dir(tmp.path()).args(["init", "--upgrade"]).assert().success();
+    assert_eq!(
+        fs::read(specify.join("project.yaml")).unwrap(),
+        project_after_first,
+        "second hub --upgrade must be byte-stable"
+    );
+}
+
+#[test]
+fn init_upgrade_conflicts_with_adapter_hub_and_check_migration() {
+    for extra in [vec!["omnia"], vec!["--hub"], vec!["--check-migration"]] {
+        let tmp = tempdir().unwrap();
+        let mut cmd = specrun();
+        cmd.current_dir(tmp.path()).args(["init", "--upgrade"]).args(&extra);
+        let assert = cmd.assert().failure();
+        assert_eq!(
+            assert.get_output().status.code(),
+            Some(2),
+            "clap conflict for `init --upgrade {}` maps to exit 2",
+            extra.join(" ")
+        );
+        let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
+        assert!(
+            stderr.contains("cannot be used with"),
+            "diagnostic must surface clap's conflict for `--upgrade {}`, got:\n{stderr}",
+            extra.join(" ")
+        );
+    }
 }
 
 /// Tiny YAML→JSON helper — we only need it for the hub on-disk shape

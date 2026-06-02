@@ -70,6 +70,7 @@ fn base_opts<'a>(project_dir: &'a Path, target_dir: &'a Path) -> InitOptions<'a>
         description: None,
         hub: false,
         include_framework: false,
+        upgrade: false,
     }
 }
 
@@ -133,6 +134,7 @@ fn init_distributes_shared_codex() {
             description: None,
             hub: false,
             include_framework: false,
+            upgrade: false,
         },
         fixed_now(),
     )
@@ -171,6 +173,7 @@ fn init_include_framework_distributes_core_pack() {
             description: None,
             hub: false,
             include_framework: true,
+            upgrade: false,
         },
         fixed_now(),
     )
@@ -377,6 +380,7 @@ fn default_name_is_dir_basename() {
             description: None,
             hub: false,
             include_framework: false,
+            upgrade: false,
         },
         fixed_now(),
     )

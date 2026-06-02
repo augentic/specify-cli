@@ -116,6 +116,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         directories_created,
         scaffolded_rule_keys: Vec::new(),
         specify_version,
+        specify_version_changed: true,
         wasm_pkg_config_written,
     })
 }

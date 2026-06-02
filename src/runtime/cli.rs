@@ -4,7 +4,7 @@
 
 use std::str::FromStr;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use specify_model::evidence::ClaimKind;
 
@@ -13,6 +13,7 @@ use crate::runtime::commands::archive::cli::ArchiveAction;
 use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
+use crate::runtime::commands::plugins::cli::PluginsAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
 use crate::runtime::commands::rules::cli::RulesAction;
 use crate::runtime::commands::slice::cli::SliceAction;
@@ -50,8 +51,12 @@ pub enum Commands {
     Init {
         /// Adapter identifier or URL (e.g. `omnia`,
         /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`).
-        /// Required unless `--hub` is set; mutually exclusive with `--hub`.
-        #[arg(conflicts_with = "hub", required_unless_present = "hub")]
+        /// Required unless `--hub`, `--check-migration`, or `--upgrade`
+        /// is set; mutually exclusive with `--hub`.
+        #[arg(
+            conflicts_with = "hub",
+            required_unless_present_any = ["hub", "check_migration", "upgrade"]
+        )]
         adapter: Option<String>,
         /// Project name (defaults to the project directory name)
         #[arg(long)]
@@ -70,6 +75,29 @@ pub enum Commands {
         /// `--hub`.
         #[arg(long, conflicts_with = "hub")]
         include_framework: bool,
+        /// Read-only migration probe used by the `/spec:init` skill.
+        /// Emits a `{ needs-migration, from, to, plan }` JSON envelope
+        /// (exit `0`) without scaffolding anything. Mutually exclusive
+        /// with every other `init` argument.
+        #[arg(
+            long,
+            conflicts_with_all = ["adapter", "hub", "name", "description", "include_framework"]
+        )]
+        check_migration: bool,
+        /// Re-entry version bump: over an already-populated `.specify/`,
+        /// rewrite `project.yaml.specify_version` to this binary's
+        /// version (preserving every other field) and regenerate
+        /// `AGENTS.md` only when absent — scaffolding nothing else and
+        /// never re-fetching the adapter cache. A project already at the
+        /// running version is a no-op. Refuses with exit `4` when the
+        /// project's major is older than this binary's (run `specrun
+        /// migrate` first). Mutually exclusive with every other `init`
+        /// argument.
+        #[arg(
+            long,
+            conflicts_with_all = ["adapter", "hub", "name", "description", "include_framework", "check_migration"]
+        )]
+        upgrade: bool,
     },
 
     /// Source adapter operations (workflow contract). Source adapters provide
@@ -165,6 +193,88 @@ pub enum Commands {
         /// Target shell — one of `bash`, `elvish`, `fish`, `powershell`, `zsh`.
         shell: Shell,
     },
+
+    /// Migrate a `.specify/` project across a major version boundary.
+    ///
+    /// Bootstrap verb: reads `project.yaml` through the migration
+    /// carve-out (the only verb that may operate on a project in the
+    /// "needs migration" state). `--from` defaults to the pinned
+    /// `specify_version`; `--to` defaults to this binary's version.
+    /// `--dry-run` previews the planned actions and the journal events
+    /// that would fire without writing; applying requires `--yes`
+    /// (the verb never prompts).
+    Migrate {
+        /// Source version to migrate from (`X.Y[.Z]`). Defaults to the
+        /// pinned `project.yaml.specify_version`.
+        #[arg(long)]
+        from: Option<String>,
+        /// Target version to migrate to (`X.Y[.Z]`). Defaults to this
+        /// binary's version.
+        #[arg(long)]
+        to: Option<String>,
+        /// Preview the planned actions and the journal events that
+        /// would fire without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+        /// Apply the migration. Required to write; the verb never
+        /// prompts interactively.
+        #[arg(long)]
+        yes: bool,
+    },
+
+    /// Self-update the `specrun` binary across its install channel.
+    ///
+    /// Bootstrap verb: operates on the binary, not a project, so it
+    /// never loads project config. `--channel auto` (the default)
+    /// detects how the binary was installed (`cargo`, Homebrew, or a
+    /// pre-built release archive); pass `--channel` to override. The
+    /// target version is the latest GitHub release when reachable,
+    /// otherwise a HEAD install for the `cargo` channel. `--dry-run`
+    /// reports the detected channel, the target version, and the exact
+    /// command(s) that would run without changing anything; applying
+    /// requires `--yes` (the verb never prompts).
+    Upgrade {
+        /// Install channel to upgrade. `auto` detects it from the
+        /// running binary's path; `cargo` / `brew` / `binary` force a
+        /// specific strategy.
+        #[arg(long, value_enum, default_value = "auto")]
+        channel: ChannelArg,
+        /// Apply the upgrade. Required to mutate the binary; the verb
+        /// never prompts interactively.
+        #[arg(long)]
+        yes: bool,
+        /// Report the detected channel, target version, and the
+        /// command(s) that would run without changing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Inspect and invalidate the Cursor plugin cache.
+    ///
+    /// Bootstrap verb: operates on `$CURSOR_HOME/plugins/cache/<name>/`
+    /// and the marketplace manifest, not a project, so it never loads
+    /// project config. `doctor` reports per-plugin drift (read-only);
+    /// `refresh` clears the marketplace-scoped cache after `--yes` and
+    /// prints a restart instruction. The CLI never restarts Cursor.
+    Plugins {
+        #[command(subcommand)]
+        action: PluginsAction,
+    },
+}
+
+/// `specrun upgrade --channel` value. `Auto` resolves to
+/// [`specify_workflow::upgrade::InstallChannel::detect`] at the handler
+/// boundary; the other variants force the matching channel.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+pub enum ChannelArg {
+    /// Detect the install channel from the running binary's path.
+    Auto,
+    /// Force the `cargo install --git` strategy.
+    Cargo,
+    /// Force the `brew upgrade` strategy.
+    Brew,
+    /// Force the release-archive (binary) strategy.
+    Binary,
 }
 
 /// Typed `--source <key>=<adapter>:<binding>` CLI value (top-level
