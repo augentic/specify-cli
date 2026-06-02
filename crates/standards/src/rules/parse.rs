@@ -42,16 +42,16 @@ use std::path::Path;
 use std::{fs, io};
 
 use serde_json::{Map as JsonMap, Value as JsonValue};
-use specify_schema::{ValidationStatus, validate_value};
+use specify_schema::{RULE_JSON_SCHEMA, ValidationStatus, validate_value};
 
 use super::Rule;
 
-/// Canonical codex-rule frontmatter schema, also exposed at
+/// Canonical codex-rule frontmatter schema, sourced from
 /// [`specify_schema::RULE_JSON_SCHEMA`]. Per the standards-layer contract
-/// §"Eliminates the vendored codex-rule schema", this is the single
-/// source of truth — `specdev lint`'s codex predicate compiles the
-/// same constant via `specify_standards::framework`.
-const RULE_SCHEMA: &str = include_str!("../../../../schemas/rules/rule.schema.json");
+/// §"Eliminates the vendored codex-rule schema", that constant is the
+/// single embedded source of truth — `specdev lint`'s codex predicate
+/// compiles the same constant via `specify_standards::framework`.
+const RULE_SCHEMA: &str = RULE_JSON_SCHEMA;
 
 /// Failure modes for [`parse_rule`] / [`parse_rule_file`].
 ///

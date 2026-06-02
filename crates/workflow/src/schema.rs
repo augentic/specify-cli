@@ -16,6 +16,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use jsonschema::{Registry, Resource};
 use serde_json::Value as JsonValue;
@@ -120,13 +121,11 @@ pub fn validate_plan_file(path: &Path) -> Result<()> {
 /// Returns [`Error::Validation`] keyed on the code `"proposal-schema"`
 /// (exit code 2) when parsing or schema validation fails.
 pub fn validate_proposal_json(content: &str) -> Result<()> {
-    let rule = "proposal envelope conforms to schemas/discovery/proposal.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed("proposal-schema", rule, format!("parse failed: {err}"))
-    })?;
-    err_from_failures(
+    validate_parsed_json(
+        content,
+        PROPOSAL_JSON_SCHEMA,
         "proposal-schema",
-        &validation_failures(&instance, PROPOSAL_JSON_SCHEMA, "proposal-schema", rule),
+        "proposal envelope conforms to schemas/discovery/proposal.schema.json",
     )
 }
 
@@ -155,56 +154,25 @@ const MODEL_SCHEMA_URL: &str =
 /// Returns [`Error::Validation`] keyed on the code `"synthesis-schema"`
 /// (exit code 2) when parsing or schema validation fails.
 pub fn validate_synthesis_json(content: &str) -> Result<()> {
-    let rule = "synthesis response conforms to schemas/slice/synthesis.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed("synthesis-schema", rule, format!("parse failed: {err}"))
-    })?;
-    let validator = compile_synthesis_validator(rule)?;
-    let failures: Vec<String> =
-        validator.iter_errors(&instance).map(|err| err.to_string()).collect();
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Validation {
-            code: "synthesis-schema".to_string(),
-            detail: failures.join("; "),
-        })
-    }
+    validate_with_ref_validator(
+        content,
+        &SYNTHESIS_VALIDATOR,
+        "synthesis-schema",
+        "synthesis response conforms to schemas/slice/synthesis.schema.json",
+    )
 }
 
-/// Build the synthesis validator with the model schema pinned so the
-/// relative `model` `$ref` resolves.
+/// Synthesis validator with the model schema pinned so the relative
+/// `model` `$ref` resolves, compiled once on first use.
 ///
-/// # Errors
-///
-/// Returns [`Error::Validation`] (`synthesis-schema`) when either
-/// embedded schema is unparseable or the registry/validator fails to
-/// build — unreachable in production, surfacing only a corrupted binary.
-fn compile_synthesis_validator(rule: &str) -> Result<jsonschema::Validator> {
-    let synthesis: JsonValue = serde_json::from_str(SYNTHESIS_JSON_SCHEMA).map_err(|err| {
-        Error::validation_failed("synthesis-schema", rule, format!("schema parse failed: {err}"))
-    })?;
-    let model: JsonValue = serde_json::from_str(SLICE_MODEL_JSON_SCHEMA).map_err(|err| {
-        Error::validation_failed(
-            "synthesis-schema",
-            rule,
-            format!("model schema parse failed: {err}"),
-        )
-    })?;
-    let registry = Registry::new()
-        .add(MODEL_SCHEMA_URL, Resource::from_contents(model))
-        .and_then(jsonschema::RegistryBuilder::prepare)
-        .map_err(|err| {
-            Error::validation_failed(
-                "synthesis-schema",
-                rule,
-                format!("registry build failed: {err}"),
-            )
-        })?;
-    jsonschema::options().with_registry(&registry).build(&synthesis).map_err(|err| {
-        Error::validation_failed("synthesis-schema", rule, format!("schema compile failed: {err}"))
-    })
-}
+/// A compile failure here means an embedded schema is corrupt (a broken
+/// binary), so the `expect` is genuinely unreachable in production and
+/// mirrors the `LazyLock<Regex>` pattern used elsewhere for static
+/// schema/regex compilation.
+static SYNTHESIS_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+    compile_ref_validator(SYNTHESIS_JSON_SCHEMA, MODEL_SCHEMA_URL, SLICE_MODEL_JSON_SCHEMA)
+        .expect("embedded synthesis + model schemas compile (corrupt binary otherwise)")
+});
 
 /// Validate a target build request against the embedded
 /// `schemas/target/build-request.schema.json` (RFC-29d D6).
@@ -222,22 +190,11 @@ fn compile_synthesis_validator(rule: &str) -> Result<jsonschema::Validator> {
 /// Returns [`Error::Validation`] keyed on `target-build-request-schema`
 /// (exit code 2) when parsing or schema validation fails.
 pub fn validate_build_request_json(content: &str) -> Result<()> {
-    let rule = "build request conforms to schemas/target/build-request.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed(
-            "target-build-request-schema",
-            rule,
-            format!("parse failed: {err}"),
-        )
-    })?;
-    err_from_failures(
+    validate_parsed_json(
+        content,
+        BUILD_REQUEST_JSON_SCHEMA,
         "target-build-request-schema",
-        &validation_failures(
-            &instance,
-            BUILD_REQUEST_JSON_SCHEMA,
-            "target-build-request-schema",
-            rule,
-        ),
+        "build request conforms to schemas/target/build-request.schema.json",
     )
 }
 
@@ -262,65 +219,23 @@ const DIAGNOSTIC_SCHEMA_URL: &str =
 /// Returns [`Error::Validation`] keyed on `target-build-report-schema`
 /// (exit code 2) when parsing or schema validation fails.
 pub fn validate_build_report_json(content: &str) -> Result<()> {
-    let rule = "build report conforms to schemas/target/build-report.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed("target-build-report-schema", rule, format!("parse failed: {err}"))
-    })?;
-    let validator = compile_build_report_validator(rule)?;
-    let failures: Vec<String> =
-        validator.iter_errors(&instance).map(|err| err.to_string()).collect();
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(Error::Validation {
-            code: "target-build-report-schema".to_string(),
-            detail: failures.join("; "),
-        })
-    }
+    validate_with_ref_validator(
+        content,
+        &BUILD_REPORT_VALIDATOR,
+        "target-build-report-schema",
+        "build report conforms to schemas/target/build-report.schema.json",
+    )
 }
 
-/// Build the build-report validator with the diagnostic schema pinned
-/// so the relative `findings[]` `$ref` resolves.
+/// Build-report validator with the diagnostic schema pinned so the
+/// relative `findings[]` `$ref` resolves, compiled once on first use.
 ///
-/// # Errors
-///
-/// Returns [`Error::Validation`] (`target-build-report-schema`) when
-/// either embedded schema is unparseable or the registry/validator
-/// fails to build — unreachable in production, surfacing only a
-/// corrupted binary.
-fn compile_build_report_validator(rule: &str) -> Result<jsonschema::Validator> {
-    let report: JsonValue = serde_json::from_str(BUILD_REPORT_JSON_SCHEMA).map_err(|err| {
-        Error::validation_failed(
-            "target-build-report-schema",
-            rule,
-            format!("schema parse failed: {err}"),
-        )
-    })?;
-    let diagnostic: JsonValue = serde_json::from_str(DIAGNOSTIC_JSON_SCHEMA).map_err(|err| {
-        Error::validation_failed(
-            "target-build-report-schema",
-            rule,
-            format!("diagnostic schema parse failed: {err}"),
-        )
-    })?;
-    let registry = Registry::new()
-        .add(DIAGNOSTIC_SCHEMA_URL, Resource::from_contents(diagnostic))
-        .and_then(jsonschema::RegistryBuilder::prepare)
-        .map_err(|err| {
-            Error::validation_failed(
-                "target-build-report-schema",
-                rule,
-                format!("registry build failed: {err}"),
-            )
-        })?;
-    jsonschema::options().with_registry(&registry).build(&report).map_err(|err| {
-        Error::validation_failed(
-            "target-build-report-schema",
-            rule,
-            format!("schema compile failed: {err}"),
-        )
-    })
-}
+/// See [`SYNTHESIS_VALIDATOR`] for the `expect`-on-corrupt-binary
+/// rationale.
+static BUILD_REPORT_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+    compile_ref_validator(BUILD_REPORT_JSON_SCHEMA, DIAGNOSTIC_SCHEMA_URL, DIAGNOSTIC_JSON_SCHEMA)
+        .expect("embedded build-report + diagnostic schemas compile (corrupt binary otherwise)")
+});
 
 /// Validate a [`crate::registry::TopologyLock`] against the embedded
 /// `schemas/topology-lock.schema.json` (RFC-36).
@@ -572,6 +487,71 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
         format!("{}: {}", path.display(), detail)
     });
     summary
+}
+
+/// Parse `content` (JSON or its YAML superset) and validate it against a
+/// `$ref`-free embedded `schema`, folding every schema failure into one
+/// payload-free [`Error::Validation`] keyed on `code`.
+///
+/// This is the shared kernel behind the simple `validate_*_json`
+/// entry points whose schema carries no relative `$ref`.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] (keyed on `code`) when parsing or
+/// schema validation fails.
+fn validate_parsed_json(content: &str, schema: &str, code: &str, rule: &str) -> Result<()> {
+    let instance: JsonValue = serde_saphyr::from_str(content)
+        .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
+    err_from_failures(code, &validation_failures(&instance, schema, code, rule))
+}
+
+/// Parse `content` and validate it against a pre-compiled, registry-backed
+/// `validator` (one whose schema carries a relative `$ref`), folding every
+/// schema failure into one [`Error::Validation`] keyed on `code`.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] (keyed on `code`) when parsing or
+/// schema validation fails.
+fn validate_with_ref_validator(
+    content: &str, validator: &jsonschema::Validator, code: &str, rule: &str,
+) -> Result<()> {
+    let instance: JsonValue = serde_saphyr::from_str(content)
+        .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
+    let failures: Vec<String> =
+        validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Validation {
+            code: code.to_string(),
+            detail: failures.join("; "),
+        })
+    }
+}
+
+/// Compile an embedded `schema` whose relative `$ref` is satisfied by
+/// pinning `ref_schema` under `ref_url` in a [`Registry`].
+///
+/// Returns the joined failure string on any parse/registry/compile
+/// error; callers wrap it in a `LazyLock` and `expect` (a failure means
+/// a corrupt binary).
+fn compile_ref_validator(
+    schema: &str, ref_url: &str, ref_schema: &str,
+) -> std::result::Result<jsonschema::Validator, String> {
+    let schema_value: JsonValue =
+        serde_json::from_str(schema).map_err(|err| format!("schema parse failed: {err}"))?;
+    let ref_value: JsonValue = serde_json::from_str(ref_schema)
+        .map_err(|err| format!("ref schema parse failed: {err}"))?;
+    let registry = Registry::new()
+        .add(ref_url, Resource::from_contents(ref_value))
+        .and_then(jsonschema::RegistryBuilder::prepare)
+        .map_err(|err| format!("registry build failed: {err}"))?;
+    jsonschema::options()
+        .with_registry(&registry)
+        .build(&schema_value)
+        .map_err(|err| format!("schema compile failed: {err}"))
 }
 
 fn validation_failures(

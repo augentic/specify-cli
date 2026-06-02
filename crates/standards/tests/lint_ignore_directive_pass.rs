@@ -252,9 +252,31 @@ fn assert_json_golden(result: &DiagnosticReport, golden_name: &str) {
     );
 }
 
+/// Collapse the wording-sensitive prose on `  impact:` / `  remediation:`
+/// lines to a fixed token (REVIEW.md A13). The pretty goldens then pin
+/// the structural skeleton — finding order, severity tags, rule ids,
+/// location and status tokens, header, and summary — without breaking
+/// every time an `impact`/`remediation` sentence is reworded.
+fn normalise_pretty(rendered: &str) -> String {
+    let mut out = rendered
+        .lines()
+        .map(|line| {
+            for prefix in ["  impact:", "  remediation:"] {
+                if line.starts_with(prefix) {
+                    return format!("{prefix} <prose>");
+                }
+            }
+            line.to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    out.push('\n');
+    out
+}
+
 #[track_caller]
 fn assert_pretty_golden(result: &DiagnosticReport, golden_name: &str) {
-    let rendered = render(Format::Pretty, result).expect("render pretty");
+    let rendered = normalise_pretty(&render(Format::Pretty, result).expect("render pretty"));
 
     let golden = pretty_goldens_dir().join(golden_name);
     if std::env::var_os("REGENERATE_GOLDENS").is_some() {

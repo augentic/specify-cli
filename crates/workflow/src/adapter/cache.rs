@@ -72,14 +72,14 @@ impl CacheFingerprint {
     /// inputs and free of accidental sources of entropy (mtime, locale,
     /// hidden env).
     ///
-    /// # Panics
-    ///
-    /// Panics if `serde_json::to_vec` fails. The fingerprint is a
-    /// closed serde derive whose fields are owned `String`s and small
-    /// enums; this branch is unreachable in normal operation.
     #[must_use]
     pub fn canonical_bytes(&self) -> Vec<u8> {
-        serde_json::to_vec(self).expect("CacheFingerprint serialises as JSON")
+        // `CacheFingerprint` is a closed serde derive over owned `String`s and
+        // small enums with no map keys or floats, so `to_vec` cannot fail;
+        // `unreachable!` keeps digest stability from depending on `expect`'s
+        // panic-message policy (REVIEW.md A3).
+        serde_json::to_vec(self)
+            .unwrap_or_else(|_| unreachable!("CacheFingerprint is infallibly JSON-serialisable"))
     }
 
     /// `sha256:<hex>` digest over [`Self::canonical_bytes`].

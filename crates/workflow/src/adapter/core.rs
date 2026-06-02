@@ -19,7 +19,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
-use specify_schema::ValidationStatus;
+use specify_schema::{
+    ADAPTER_JSON_SCHEMA, SOURCE_JSON_SCHEMA, TARGET_JSON_SCHEMA, ValidationStatus,
+};
 
 use crate::adapter::operation::{SourceOperation, TargetOperation};
 use crate::schema::validate_value;
@@ -56,10 +58,6 @@ pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 ///
 /// [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
 pub const EXTRACTIONS_CACHE_DIR: &str = "extractions";
-
-const ADAPTER_JSON_SCHEMA: &str = include_str!("../../../../schemas/adapter.schema.json");
-const SOURCE_JSON_SCHEMA: &str = include_str!("../../../../schemas/source.schema.json");
-const TARGET_JSON_SCHEMA: &str = include_str!("../../../../schemas/target.schema.json");
 
 /// Axis discriminator for an adapter manifest.
 ///
@@ -413,12 +411,19 @@ impl SourceAdapter {
     /// consumes this rather than the raw [`Self::cache`] field.
     #[must_use]
     pub const fn effective_cache_mode(&self) -> Option<CacheMode> {
-        if matches!(self.execution, Some(Execution::Agent)) {
-            Some(CacheMode::OptOut)
-        } else {
-            self.cache
-        }
+        effective_cache_mode(self.execution, self.cache)
     }
+}
+
+/// Shared `execution: agent` forced-opt-out rule (RFC-29 D9) behind
+/// both [`SourceAdapter::effective_cache_mode`] and
+/// [`TargetAdapter::effective_cache_mode`] (REVIEW.md A9): an
+/// `agent`-dispatched adapter always bypasses the cache regardless of
+/// the declared `cache:` field; otherwise the declared mode applies.
+const fn effective_cache_mode(
+    execution: Option<Execution>, cache: Option<CacheMode>,
+) -> Option<CacheMode> {
+    if matches!(execution, Some(Execution::Agent)) { Some(CacheMode::OptOut) } else { cache }
 }
 
 impl TargetAdapter {
@@ -467,11 +472,7 @@ impl TargetAdapter {
     /// will consume it once `build` / `merge` become CLI-owned.
     #[must_use]
     pub const fn effective_cache_mode(&self) -> Option<CacheMode> {
-        if matches!(self.execution, Some(Execution::Agent)) {
-            Some(CacheMode::OptOut)
-        } else {
-            self.cache
-        }
+        effective_cache_mode(self.execution, self.cache)
     }
 }
 

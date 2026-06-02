@@ -182,3 +182,120 @@ pub(crate) fn child_pointer(parent: &str, property: &str) -> String {
     let property = property.replace('~', "~0").replace('/', "~1");
     if parent.is_empty() { format!("/{property}") } else { format!("{parent}/{property}") }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde::Serialize;
+    use serde_json::json;
+    use specify_error::Error;
+
+    use super::{
+        ValidationStatus, child_pointer, compile_schema, join_details, validate_serialisable,
+        validate_value,
+    };
+
+    const OBJECT_SCHEMA: &str = r#"{
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": { "name": { "type": "string" } }
+    }"#;
+
+    #[test]
+    fn compile_schema_rejects_non_json_source() {
+        let err = compile_schema("{ not json").expect_err("garbage source fails to parse");
+        match err {
+            Error::Diag { code, .. } => assert_eq!(code, "schema-meta-loadable"),
+            other => panic!("expected schema-meta-loadable Diag, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compile_schema_rejects_valid_json_that_is_not_a_schema() {
+        let err = compile_schema(r#"{ "type": "frobnicate" }"#)
+            .expect_err("unknown type keyword fails to compile");
+        match err {
+            Error::Diag { code, .. } => assert_eq!(code, "schema-meta-compilable"),
+            other => panic!("expected schema-meta-compilable Diag, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_value_passes_a_conforming_instance() {
+        let summaries =
+            validate_value(&json!({ "name": "ok" }), OBJECT_SCHEMA, "object", "object shape");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].status, ValidationStatus::Pass);
+        assert!(summaries[0].detail.is_none(), "pass carries no detail");
+    }
+
+    #[test]
+    fn validate_value_reports_additional_property_with_child_pointer() {
+        let summaries = validate_value(
+            &json!({ "name": "ok", "extra": 1 }),
+            OBJECT_SCHEMA,
+            "object",
+            "object shape",
+        );
+        assert_eq!(summaries[0].status, ValidationStatus::Fail);
+        let detail = summaries[0].detail.as_deref().expect("fail carries detail");
+        assert!(detail.starts_with("/extra:"), "pointer names the offending key, got {detail:?}");
+    }
+
+    #[test]
+    fn validate_value_surfaces_meta_failure_for_bad_schema() {
+        let summaries = validate_value(&json!({}), "{ not json", "bad", "bad schema");
+        assert_eq!(summaries[0].status, ValidationStatus::Fail);
+    }
+
+    #[derive(Serialize)]
+    struct Doc {
+        name: String,
+    }
+
+    #[derive(Serialize)]
+    struct Wrong {
+        name: u32,
+    }
+
+    #[test]
+    fn validate_serialisable_ok_on_pass_and_validation_error_on_fail() {
+        validate_serialisable(
+            &Doc { name: "ok".into() },
+            OBJECT_SCHEMA,
+            "object",
+            "object shape",
+            "doc-serialise",
+            "doc",
+        )
+        .expect("conforming value passes");
+
+        let err = validate_serialisable(
+            &Wrong { name: 7 },
+            OBJECT_SCHEMA,
+            "object",
+            "object shape",
+            "doc-serialise",
+            "doc",
+        )
+        .expect_err("type mismatch fails");
+        match err {
+            Error::Validation { code, .. } => assert_eq!(code, "object"),
+            other => panic!("expected Validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn join_details_concatenates_only_fail_details() {
+        let summaries = validate_value(&json!({}), OBJECT_SCHEMA, "object", "object shape");
+        let joined = join_details(&summaries);
+        assert!(joined.contains("name"), "missing required field appears in joined detail");
+    }
+
+    #[test]
+    fn child_pointer_escapes_json_pointer_metacharacters() {
+        assert_eq!(child_pointer("", "a"), "/a");
+        assert_eq!(child_pointer("/parent", "child"), "/parent/child");
+        assert_eq!(child_pointer("", "a/b~c"), "/a~1b~0c", "/ -> ~1 and ~ -> ~0");
+    }
+}

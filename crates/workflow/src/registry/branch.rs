@@ -3,8 +3,6 @@
 //! `specify/<change-name>`, and reports the action taken.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
-
 use serde::Serialize;
 
 use crate::registry::catalog::RegistryProject;
@@ -148,7 +146,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let output = Command::new("git").arg("-C").arg(cwd).args(args).output().map_err(|err| {
+    let output = crate::cmd::git(&crate::cmd::real_cmd, Some(cwd), args).map_err(|err| {
         Diagnostic::new(
             "git-command-failed",
             project,
@@ -174,7 +172,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let output = Command::new("git").arg("-C").arg(cwd).args(args).output().map_err(|err| {
+    let output = crate::cmd::git(&crate::cmd::real_cmd, Some(cwd), args).map_err(|err| {
         Diagnostic::new(
             "git-command-failed",
             project,
@@ -201,7 +199,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    let output = Command::new("git").arg("-C").arg(cwd).args(args).output().ok()?;
+    let output = crate::cmd::git(&crate::cmd::real_cmd, Some(cwd), args).ok()?;
     if !output.status.success() {
         return None;
     }
@@ -214,10 +212,6 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<std::ffi::OsStr>,
 {
-    Command::new("git")
-        .arg("-C")
-        .arg(cwd)
-        .args(args)
-        .output()
+    crate::cmd::git(&crate::cmd::real_cmd, Some(cwd), args)
         .is_ok_and(|output| output.status.success())
 }

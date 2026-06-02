@@ -33,17 +33,14 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
-use specify_workflow::adapter::cache::{
-    self, CacheFingerprint, CacheIndexEntry, FingerprintSource, FingerprintToolVersion,
-    LookupOutcome,
-};
+use specify_workflow::adapter::cache::{self, LookupOutcome};
 use specify_workflow::adapter::{CacheLayout, Execution, SourceOperation};
 use specify_workflow::change::{Plan, SourceBinding};
 use specify_workflow::journal::{self, CacheMissReason, Event, EventKind};
 use specify_workflow::schema;
 
 use crate::runtime::commands::source::cli::Phase;
-use crate::runtime::commands::source::prep;
+use crate::runtime::commands::source::{op, prep};
 use crate::runtime::context::Ctx;
 
 /// Cache-index `slice` lane for the slice-less `survey` operation —
@@ -134,7 +131,7 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
 fn prepare(
     ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
 ) -> Result<()> {
-    let scratch = scratch_path(prepared);
+    let scratch = op::scratch_path(prepared, SourceOperation::Survey)?;
     std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
 
     let event = Event::new(
@@ -165,12 +162,16 @@ fn finalize(
     ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
     binding: &SourceBinding,
 ) -> Result<()> {
-    let scratch = scratch_path(prepared);
-    let raw = read_lead_set(&scratch.join(SourceOperation::Survey.artifact_name()))?;
+    let scratch = op::scratch_path(prepared, SourceOperation::Survey)?;
+    let raw = op::read_artifact(
+        &scratch.join(SourceOperation::Survey.artifact_name()),
+        SourceOperation::Survey,
+    )?;
 
     // Fingerprint first so a missing source path aborts before any
     // discovery.md write; the lookup itself has no side effects.
-    let fingerprint = survey_fingerprint(prepared, source_path, binding)?;
+    let fingerprint =
+        op::build_fingerprint(prepared, source_path, binding, SourceOperation::Survey, None)?;
     let layout = CacheLayout::new(&ctx.project_dir, &prepared.manifest.name);
     let cache_mode = prepared.manifest.effective_cache_mode();
     let lookup = cache::lookup(
@@ -187,13 +188,17 @@ fn finalize(
     let lead_ids = validate_and_merge(ctx, source, &raw)?;
 
     emit_cache_event(ctx, source, &prepared.manifest.name, &lookup)?;
-    write_cache_entry(
-        layout,
+    op::write_cache_entry(
+        &op::CacheEntry {
+            layout,
+            cache_mode,
+            slice_lane: SURVEY_LANE,
+            source,
+            adapter: &prepared.manifest.name,
+            op: SourceOperation::Survey,
+        },
         &fingerprint,
         raw.as_bytes(),
-        cache_mode,
-        source,
-        &prepared.manifest.name,
     )?;
 
     ctx.write(
@@ -214,10 +219,11 @@ fn run_tool(
     ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
     binding: &SourceBinding,
 ) -> Result<()> {
-    let scratch = scratch_path(prepared);
+    let scratch = op::scratch_path(prepared, SourceOperation::Survey)?;
     std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
 
-    let fingerprint = survey_fingerprint(prepared, source_path, binding)?;
+    let fingerprint =
+        op::build_fingerprint(prepared, source_path, binding, SourceOperation::Survey, None)?;
     let layout = CacheLayout::new(&ctx.project_dir, &prepared.manifest.name);
     let cache_mode = prepared.manifest.effective_cache_mode();
     let lookup = cache::lookup(
@@ -231,23 +237,29 @@ fn run_tool(
 
     let artifact = SourceOperation::Survey.artifact_name();
     let raw = match &lookup.outcome {
-        LookupOutcome::Hit { cache_dir } => read_lead_set(&cache_dir.join(artifact))?,
+        LookupOutcome::Hit { cache_dir } => {
+            op::read_artifact(&cache_dir.join(artifact), SourceOperation::Survey)?
+        }
         LookupOutcome::Miss { .. } => {
             dispatch_survey_tool(prepared)?;
-            read_lead_set(&scratch.join(artifact))?
+            op::read_artifact(&scratch.join(artifact), SourceOperation::Survey)?
         }
     };
 
     let lead_ids = validate_and_merge(ctx, source, &raw)?;
     emit_cache_event(ctx, source, &prepared.manifest.name, &lookup)?;
     if matches!(lookup.outcome, LookupOutcome::Miss { .. }) {
-        write_cache_entry(
-            layout,
+        op::write_cache_entry(
+            &op::CacheEntry {
+                layout,
+                cache_mode,
+                slice_lane: SURVEY_LANE,
+                source,
+                adapter: &prepared.manifest.name,
+                op: SourceOperation::Survey,
+            },
             &fingerprint,
             raw.as_bytes(),
-            cache_mode,
-            source,
-            &prepared.manifest.name,
         )?;
     }
 
@@ -309,53 +321,6 @@ fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>>
     Ok(lead_ids)
 }
 
-/// Build the closed survey [`CacheFingerprint`] (RFC-27, no `lead`):
-/// source identity, `<name>@<version>`, the `survey` brief sha256, and
-/// the declared tool versions.
-fn survey_fingerprint(
-    prepared: &prep::SourcePrep, source_path: Option<&Path>, binding: &SourceBinding,
-) -> Result<CacheFingerprint> {
-    let source = match source_path {
-        Some(path) => FingerprintSource::from_path(path)?,
-        None => {
-            FingerprintSource::from_value(binding.value.as_deref().unwrap_or_default().as_bytes())
-        }
-    };
-    let adapter = format!("{}@{}", prepared.manifest.name, prepared.manifest.version);
-
-    let brief_relative =
-        prepared.manifest.briefs.get(&SourceOperation::Survey).ok_or_else(|| Error::Diag {
-            code: "survey-brief-missing",
-            detail: format!(
-                "source adapter `{}` declares no `survey` brief",
-                prepared.manifest.name
-            ),
-        })?;
-    let brief_path = prepared.adapter_dir.join(brief_relative);
-    let brief_bytes = std::fs::read(&brief_path).map_err(|err| Error::Diag {
-        code: "survey-brief-read-failed",
-        detail: format!("failed to read survey brief {}: {err}", brief_path.display()),
-    })?;
-
-    let tool_versions = prepared
-        .manifest
-        .tools
-        .iter()
-        .map(|tool| FingerprintToolVersion {
-            name: tool.name.clone(),
-            version: tool.version.clone(),
-        })
-        .collect();
-
-    Ok(CacheFingerprint::new(
-        source,
-        adapter,
-        cache::sha256_prefixed(&brief_bytes),
-        tool_versions,
-        None,
-    ))
-}
-
 /// Emit the `source.survey.cache-hit` / `cache-miss` journal event for
 /// `lookup`.
 fn emit_cache_event(
@@ -376,31 +341,6 @@ fn emit_cache_event(
     };
     let event = Event::new(Timestamp::now(), kind);
     journal::append_batch(ctx.layout(), std::slice::from_ref(&event))
-}
-
-/// Write the cache artifact + `fingerprint.json` + index row. Under the
-/// forced opt-out the cache layer skips the directory body and appends
-/// only the audit index row.
-fn write_cache_entry(
-    layout: CacheLayout<'_>, fingerprint: &CacheFingerprint, artifact_bytes: &[u8],
-    cache_mode: Option<specify_workflow::adapter::CacheMode>, source: &str, adapter: &str,
-) -> Result<()> {
-    let entry = CacheIndexEntry {
-        timestamp: Timestamp::now(),
-        fingerprint: fingerprint.digest(),
-        slice: SURVEY_LANE.to_string(),
-        source: source.to_string(),
-        adapter: adapter.to_string(),
-        operation: SourceOperation::Survey,
-    };
-    cache::write(
-        layout,
-        fingerprint,
-        artifact_bytes,
-        SourceOperation::Survey.artifact_name(),
-        cache_mode,
-        &entry,
-    )
 }
 
 fn survey_result(
@@ -444,25 +384,6 @@ fn load_or_empty_discovery(path: &Path) -> Result<Discovery> {
     if path.exists() { Discovery::load(path) } else { Discovery::parse("") }
 }
 
-/// Read the `lead-set.md` artifact, mapping a missing file to the
-/// `survey-lead-set-missing` diagnostic.
-fn read_lead_set(path: &Path) -> Result<String> {
-    std::fs::read_to_string(path).map_err(|err| {
-        if err.kind() == std::io::ErrorKind::NotFound {
-            Error::Diag {
-                code: "survey-lead-set-missing",
-                detail: format!(
-                    "no `lead-set.md` at {}; the survey must write the lead set into \
-                     $SCRATCH_DIR before finalize",
-                    path.display()
-                ),
-            }
-        } else {
-            Error::Io(err)
-        }
-    })
-}
-
 fn load_plan(ctx: &Ctx, plan_name: Option<&str>) -> Result<Plan> {
     let plan = Plan::load(&ctx.layout().plan_path())?;
     if let Some(name) = plan_name
@@ -477,18 +398,6 @@ fn load_plan(ctx: &Ctx, plan_name: Option<&str>) -> Result<Plan> {
         });
     }
     Ok(plan)
-}
-
-/// The `$SCRATCH_DIR` host path the prep mounted for this survey.
-/// Always `Some` for the survey op (preflight §1); the `expect` pins
-/// that invariant.
-fn scratch_path(prepared: &prep::SourcePrep) -> PathBuf {
-    prepared
-        .layout
-        .scratch
-        .path
-        .clone()
-        .expect("survey prep always mounts a $SCRATCH_DIR host path")
 }
 
 fn write_handoff_text(w: &mut dyn Write, body: &SurveyHandoff) -> std::io::Result<()> {

@@ -65,3 +65,57 @@ fn compile_envelope_validator() -> Result<jsonschema::Validator, RenderError> {
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use super::{render, render_value};
+    use crate::diagnostic::{DiagnosticReport, DiagnosticSummary};
+    use crate::render::RenderError;
+    use crate::test_support::sample_diagnostic;
+
+    const VALID_FINGERPRINT: &str =
+        "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+    /// [`sample_diagnostic`] leaves `fingerprint` empty for the
+    /// fingerprint tests; the JSON envelope schema requires the
+    /// `sha256:<64 hex>` shape, so stamp a valid placeholder here.
+    fn fingerprinted() -> crate::diagnostic::Diagnostic {
+        let mut finding = sample_diagnostic();
+        finding.fingerprint = VALID_FINGERPRINT.into();
+        finding
+    }
+
+    fn report(findings: Vec<crate::diagnostic::Diagnostic>) -> DiagnosticReport {
+        DiagnosticReport {
+            version: crate::diagnostic::DiagnosticReportVersion,
+            summary: DiagnosticSummary::from_diagnostics(&findings),
+            findings,
+        }
+    }
+
+    #[test]
+    fn valid_report_round_trips_through_schema_to_pretty_json() {
+        let out = render(&report(vec![fingerprinted()])).expect("valid envelope renders");
+        assert!(out.ends_with('\n'), "single trailing newline");
+        let parsed: Value = serde_json::from_str(&out).expect("output is valid JSON");
+        assert_eq!(parsed["version"], json!(1));
+        assert_eq!(parsed["summary"]["important"], json!(1));
+        assert_eq!(parsed["findings"][0]["rule-id"], json!("UNI-014"));
+    }
+
+    #[test]
+    fn empty_report_renders_valid_envelope() {
+        let out = render(&report(vec![])).expect("empty envelope renders");
+        let parsed: Value = serde_json::from_str(&out).expect("valid JSON");
+        assert_eq!(parsed["findings"], json!([]));
+    }
+
+    #[test]
+    fn schema_violation_surfaces_as_render_error() {
+        let bogus = json!({ "version": 1, "summary": {}, "findings": [{ "id": "x" }] });
+        let err = render_value(&bogus).expect_err("incomplete finding must fail the schema");
+        assert!(matches!(err, RenderError::JsonSchemaValidation { .. }));
+    }
+}

@@ -1,11 +1,11 @@
 Specify review — 3 finding(s)
 [CRITICAL] UNI-014 Literal deployment URL in generated handler (crates/invoice_export/src/config.rs:18:5)
-  impact: Generated code points every deployment at one endpoint.
-  remediation: Route the endpoint through Omnia configuration.
+  impact: <prose>
+  remediation: <prose>
 [IMPORTANT] Bundle digest, with comma, exceeds policy (tests/fixtures/blob.bin:42)
-  impact: Cached digest drift breaks downstream reproducers.
-  remediation: Regenerate the fixture via scripts/regen-wasm-fixtures.sh.
+  impact: <prose>
+  remediation: <prose>
 [OPTIONAL] ORG-001 Optional housekeeping note
-  impact: One doc section lags behind the rest of the slice.
-  remediation: Backfill the missing doc section in the next refine.
+  impact: <prose>
+  remediation: <prose>
 Summary: 1 critical, 1 important, 0 suggestion, 1 optional

@@ -246,12 +246,13 @@ pub(super) fn materialise_git_remote(
             }
             ensure_origin_matches(dest, url)?;
             if dest.join(".specify").join("project.yaml").exists() {
+                // A failed fetch leaves a stale registry clone; surface it rather
+                // than masking it with `.or(Ok(()))` (REVIEW.md A2).
                 git::run(
                     dest,
                     &["fetch", "--depth", "1"],
                     &format!("git fetch in {}", dest.display()),
                 )
-                .or(Ok(()))
             } else {
                 greenfield_init(dest, require_seed(adapter, dest)?, initiating_project_dir, true)
             }

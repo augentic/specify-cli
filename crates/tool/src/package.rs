@@ -4,7 +4,6 @@ use std::path::Path;
 
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use tempfile::NamedTempFile;
 use tokio::io::AsyncWriteExt;
 use wasm_pkg_client::{Client, Config, PackageRef, Registry, RegistryMapping, Version};
@@ -137,7 +136,7 @@ async fn fetch_async(
         tokio::fs::File::from_std(temp.reopen().map_err(|err| {
             ToolError::cache_io("open package download tempfile", temp.path(), err)
         })?);
-    let mut hasher = sha2::Sha256::new();
+    let mut hasher = crate::hash::Hasher::new();
     let mut total = 0_u64;
     while let Some(chunk) = stream
         .try_next()
@@ -167,7 +166,7 @@ async fn fetch_async(
 
     Ok(AcquiredBytes {
         temp,
-        sha256: crate::hash::sha256_output_hex(hasher.finalize()),
+        sha256: hasher.finalize_hex(),
         package_metadata: Some(PackageMetadata {
             name: request.name_ref(),
             version: request.version.clone(),

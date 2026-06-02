@@ -10,7 +10,7 @@
 //! raw `read_link` target so downstream rules can flag the
 //! divergence rather than silently dropping the entry.
 
-use std::path::{MAIN_SEPARATOR, Path};
+use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
@@ -31,9 +31,9 @@ pub fn record(link_path: &Path, project_dir: &Path) -> Option<AgentTeam> {
         return None;
     }
     let relative = link_path.strip_prefix(project_dir).ok()?;
-    let path = render(relative)?;
+    let path = super::path_util::render(relative)?;
     let target = std::fs::read_link(link_path).ok()?;
-    let target_raw = render(&target)?;
+    let target_raw = super::path_util::render(&target)?;
     let (resolved_target, target_sha256) = resolve(link_path, project_dir);
     Some(AgentTeam {
         path,
@@ -55,7 +55,7 @@ fn resolve(link_path: &Path, project_dir: &Path) -> (Option<String>, Option<Stri
     let resolved_target = std::fs::canonicalize(project_dir)
         .ok()
         .and_then(|root| canon_link.strip_prefix(&root).ok().map(Path::to_path_buf))
-        .and_then(|relative| render(&relative));
+        .and_then(|relative| super::path_util::render(&relative));
     let target_sha256 = std::fs::read(&canon_link).ok().map(|bytes| {
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
@@ -70,7 +70,3 @@ fn resolve(link_path: &Path, project_dir: &Path) -> (Option<String>, Option<Stri
     (resolved_target, target_sha256)
 }
 
-fn render(p: &Path) -> Option<String> {
-    let s = p.to_str()?;
-    if MAIN_SEPARATOR == '/' { Some(s.to_owned()) } else { Some(s.replace(MAIN_SEPARATOR, "/")) }
-}

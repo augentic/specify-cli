@@ -16,6 +16,7 @@
 pub mod cache;
 pub mod cli;
 pub mod extract;
+pub mod op;
 pub mod prep;
 pub mod preview;
 pub mod survey;

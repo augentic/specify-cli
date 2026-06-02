@@ -10,8 +10,9 @@ use crate::manifest::{
     looks_like_windows_absolute,
 };
 
-/// Canonical JSON Schema for the two `tools:` declaration sites.
-pub const TOOL_JSON_SCHEMA: &str = include_str!("../../../schemas/tool.schema.json");
+/// Canonical JSON Schema for the two `tools:` declaration sites,
+/// re-exported from the central [`specify_schema`] embed.
+pub use specify_schema::TOOL_JSON_SCHEMA;
 
 const RULE_NAME_FORMAT: &str = "tool.name-format";
 const RULE_VERSION_SEMVER: &str = "tool.version-is-semver";

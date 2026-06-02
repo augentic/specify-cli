@@ -26,22 +26,49 @@ fn goldens_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("goldens")
 }
 
+/// Collapse the wording-sensitive prose on `  impact:` / `  remediation:`
+/// lines to a fixed token (REVIEW.md A13). The golden then pins the
+/// structural skeleton — finding order, severity tags, rule ids,
+/// locations, header, and summary — without breaking on prose rewording.
+fn normalise_pretty(rendered: &str) -> String {
+    let mut out = rendered
+        .lines()
+        .map(|line| {
+            for prefix in ["  impact:", "  remediation:"] {
+                if line.starts_with(prefix) {
+                    return format!("{prefix} <prose>");
+                }
+            }
+            line.to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    out.push('\n');
+    out
+}
+
 #[track_caller]
 fn assert_golden(actual: &str, name: &str) {
+    let normalised = normalise_pretty(actual);
     let golden_path = goldens_dir().join(name);
     if env::var_os("REGENERATE_GOLDENS").is_some() {
         fs::create_dir_all(golden_path.parent().expect("golden parent")).expect("mkdir golden");
-        fs::write(&golden_path, actual).expect("write golden");
+        fs::write(&golden_path, &normalised).expect("write golden");
         return;
     }
     let expected = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
         panic!(
             "golden {} missing ({err}); regenerate via \
-             REGENERATE_GOLDENS=1 cargo test --test review_diagnostics_pretty",
+             REGENERATE_GOLDENS=1 cargo test --test lint_diagnostics_pretty",
             golden_path.display()
         )
     });
-    assert_eq!(actual, expected, "pretty golden drift; see golden at {}", golden_path.display());
+    assert_eq!(
+        normalise_pretty(&expected),
+        normalised,
+        "pretty golden drift; see golden at {}",
+        golden_path.display()
+    );
 }
 
 /// One test per binary — `NO_COLOR` is process-wide and parallel test

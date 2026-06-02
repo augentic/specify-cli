@@ -21,6 +21,7 @@
 //! their fully-qualified path so the `rules` (authoring) and
 //! `review` (enforcement) surfaces cannot collide.
 
+pub mod adapter_briefs;
 pub mod diagnostics;
 pub mod eval;
 pub mod ignore;

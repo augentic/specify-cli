@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use serde_json::Value;
@@ -86,18 +86,17 @@ const RETIRED_HELPER_PATTERNS: &[RetiredHelperPattern] = &[
 ];
 
 fn retired_helper_regexes() -> &'static [(&'static RetiredHelperPattern, Regex)] {
-    static CACHE: OnceLock<Vec<(&'static RetiredHelperPattern, Regex)>> = OnceLock::new();
-    CACHE.get_or_init(|| {
+    static CACHE: LazyLock<Vec<(&'static RetiredHelperPattern, Regex)>> = LazyLock::new(|| {
         RETIRED_HELPER_PATTERNS
             .iter()
             .map(|helper| {
-                let regex = Regex::new(helper.pattern).unwrap_or_else(|error| {
-                    panic!("retired helper regex {}: {error}", helper.token)
-                });
+                let regex = Regex::new(helper.pattern)
+                    .expect("retired helper pattern is a valid static regex");
                 (helper, regex)
             })
             .collect()
-    })
+    });
+    &CACHE
 }
 
 /// Validate first-party WASM tool declarations in target adapter manifests.

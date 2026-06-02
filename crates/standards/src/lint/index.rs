@@ -28,6 +28,7 @@ pub mod frontmatter;
 pub mod ignore_directives;
 pub mod markdown;
 pub mod marketplace;
+pub mod path_util;
 pub mod skill;
 pub mod symlinks;
 

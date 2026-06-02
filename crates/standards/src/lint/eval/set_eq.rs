@@ -55,16 +55,6 @@ const SOURCE_ADAPTER_BRIEFS_EQUAL_OPERATIONS: &str = "adapter-briefs-equal-opera
 const DIVERGENCE_MISSING: &str = "missing";
 const DIVERGENCE_UNEXPECTED: &str = "unexpected";
 
-/// Closed source-adapter operation set kept in sync with
-/// `specify_workflow::adapter::SourceOperation` (kebab-case wire
-/// form). Held inline here so the standards-layer crate does not
-/// take a workflow-layer dependency.
-const SOURCE_OPERATIONS: &[&str] = &["extract", "survey"];
-
-/// Closed target-adapter operation set kept in sync with
-/// `specify_workflow::adapter::TargetOperation`.
-const TARGET_OPERATIONS: &[&str] = &["build", "merge", "shape"];
-
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
@@ -86,10 +76,7 @@ pub(crate) fn evaluate(
         if !candidate_set.contains(&manifest.path) {
             continue;
         }
-        let expected: BTreeSet<&'static str> = match manifest.axis {
-            AdapterAxis::Sources => SOURCE_OPERATIONS.iter().copied().collect(),
-            AdapterAxis::Targets => TARGET_OPERATIONS.iter().copied().collect(),
-        };
+        let expected = crate::lint::adapter_briefs::expected_operations(manifest.axis);
         let actual: BTreeSet<&str> = manifest.brief_keys.iter().map(String::as_str).collect();
 
         // Two-sided diff: expected\actual are `missing`, actual\expected

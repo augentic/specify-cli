@@ -42,3 +42,43 @@ pub(super) const PROPOSAL_RULES: &[Rule] = &[
         check: None,
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{proposal_units_listed, proposal_why_has_content};
+    use crate::{BriefContext, RuleOutcome};
+
+    fn ctx(content: &str) -> BriefContext<'_> {
+        BriefContext {
+            id: "proposal",
+            content,
+            parsed_spec: None,
+            tasks: None,
+            slice_dir: Path::new("."),
+            specs_dir: Path::new("."),
+        }
+    }
+
+    #[test]
+    fn why_rule_passes_with_prose_and_fails_when_empty() {
+        assert_eq!(
+            proposal_why_has_content(&ctx("## Why\n\nbecause it matters\n")),
+            RuleOutcome::Pass
+        );
+        assert!(matches!(
+            proposal_why_has_content(&ctx("## Why\n\n## Units\n- a\n")),
+            RuleOutcome::Fail { .. }
+        ));
+    }
+
+    #[test]
+    fn units_rule_passes_with_entries_and_fails_when_absent() {
+        assert_eq!(proposal_units_listed(&ctx("## Units\n\n- login\n")), RuleOutcome::Pass);
+        assert!(matches!(
+            proposal_units_listed(&ctx("## Why\n\nbecause\n")),
+            RuleOutcome::Fail { .. }
+        ));
+    }
+}

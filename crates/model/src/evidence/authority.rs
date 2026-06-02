@@ -19,9 +19,7 @@ use serde::{Deserialize, Serialize};
 /// `intent > documentation > behaviour`; Evidence authority override lifts authority
 /// from per-Evidence to per-(Evidence, claim-kind) without widening
 /// the class set. New classes still require a workflow contract update.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display, clap::ValueEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum AuthorityClass {
@@ -53,7 +51,6 @@ pub enum AuthorityClass {
     Deserialize,
     strum::Display,
     strum::EnumString,
-    clap::ValueEnum,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(
@@ -61,7 +58,6 @@ pub enum AuthorityClass {
     parse_err_ty = String,
     parse_err_fn = claim_kind_parse_error
 )]
-#[clap(rename_all = "kebab-case")]
 pub enum ClaimKind {
     /// `kind: intent` — operator-stated intent (e.g. `change.md`).
     Intent,

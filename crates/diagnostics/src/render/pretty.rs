@@ -87,3 +87,95 @@ fn format_location(loc: &FindingLocation) -> String {
         _ => loc.path.clone(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::diagnostic::{
+        DiagnosticReport, DiagnosticSummary, FindingLocation, FindingStatus, Severity,
+    };
+    use crate::render::{Format, render};
+    use crate::test_support::sample_diagnostic;
+
+    fn report(findings: Vec<crate::diagnostic::Diagnostic>) -> DiagnosticReport {
+        DiagnosticReport {
+            version: crate::diagnostic::DiagnosticReportVersion,
+            summary: DiagnosticSummary::from_diagnostics(&findings),
+            findings,
+        }
+    }
+
+    /// Render and strip ANSI escape sequences so assertions match the
+    /// uncoloured text regardless of whether `NO_COLOR` is set in the
+    /// test environment — avoiding a racy `set_var` across parallel
+    /// tests.
+    fn render_plain(report: &DiagnosticReport) -> String {
+        let raw = render(Format::Pretty, report).expect("pretty never errors");
+        strip_ansi(&raw)
+    }
+
+    fn strip_ansi(input: &str) -> String {
+        let mut out = String::with_capacity(input.len());
+        let mut chars = input.chars();
+        while let Some(ch) = chars.next() {
+            if ch == '\x1b' {
+                // Skip the CSI introducer `[` and everything up to and
+                // including the terminating `m`.
+                for esc in chars.by_ref() {
+                    if esc == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn header_and_summary_footer_reflect_counts() {
+        let out = render_plain(&report(vec![sample_diagnostic()]));
+        assert!(out.starts_with("Specify review — 1 finding(s)\n"));
+        assert!(out.contains("Summary: 0 critical, 1 important, 0 suggestion, 0 optional"));
+    }
+
+    #[test]
+    fn finding_line_carries_tag_rule_title_location_impact_remediation() {
+        let out = render_plain(&report(vec![sample_diagnostic()]));
+        assert!(out.contains("[IMPORTANT] UNI-014 Literal deployment URL in generated handler"));
+        assert!(out.contains("(crates/invoice_export/src/config.rs:18:5)"));
+        assert!(out.contains("  impact: "));
+        assert!(out.contains("  remediation: "));
+    }
+
+    #[test]
+    fn status_tag_renders_for_non_open_findings() {
+        let mut finding = sample_diagnostic();
+        finding.status = Some(FindingStatus::Ignored);
+        let out = render_plain(&report(vec![finding]));
+        assert!(out.contains("[IMPORTANT] [ignored]"), "ignored status appears, got {out:?}");
+    }
+
+    #[test]
+    fn open_status_and_no_status_render_no_tag() {
+        let mut open = sample_diagnostic();
+        open.status = Some(FindingStatus::Open);
+        let out = render_plain(&report(vec![open]));
+        assert!(!out.contains("[open]"), "open status is not tagged, got {out:?}");
+    }
+
+    #[test]
+    fn line_only_location_omits_column() {
+        let mut finding = sample_diagnostic();
+        finding.severity = Severity::Critical;
+        finding.location = Some(FindingLocation {
+            path: "x/y.rs".into(),
+            line: Some(3),
+            column: None,
+            end_line: None,
+            end_column: None,
+        });
+        let out = render_plain(&report(vec![finding]));
+        assert!(out.contains("(x/y.rs:3)"), "line-only location omits column, got {out:?}");
+    }
+}

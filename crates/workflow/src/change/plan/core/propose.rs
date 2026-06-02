@@ -542,39 +542,46 @@ fn check_coverage(source_sets: &[SliceMembership], catalog: &LeadCatalog) -> Res
     Ok(())
 }
 
-/// Bind each slice to a project: an explicit `project` must exist in the
-/// topology (`plan-reconcile-project-orphan`); an omitted `project`
-/// auto-binds the sole project or fails when several exist
-/// (`plan-reconcile-project-binding-required`).
+/// Bind a single slice to its project in `topology`: an explicit
+/// `project` must exist (`plan-reconcile-project-orphan`); an omitted
+/// `project` auto-binds the sole project or fails when several exist
+/// (`plan-reconcile-project-binding-required`). `slice_name` labels the
+/// diagnostics.
+///
+/// This is the single project-binding rule shared by the propose kernel
+/// ([`bind_projects`]) and the read-time target resolver
+/// ([`resolve_target`]) so the two cannot drift (REVIEW.md A8).
+fn resolve_project_binding<'a>(
+    slice_name: &str, project: Option<&str>, topology: &'a [ProjectRef],
+) -> Result<&'a ProjectRef> {
+    match project {
+        Some(name) => topology.iter().find(|p| p.name.as_str() == name).ok_or_else(|| {
+            Error::validation_failed(
+                "plan-reconcile-project-orphan",
+                "a bound project must exist in the request topology",
+                format!("slice '{slice_name}' binds unknown project '{name}'"),
+            )
+        }),
+        None if topology.len() == 1 => Ok(&topology[0]),
+        None => Err(Error::validation_failed(
+            "plan-reconcile-project-binding-required",
+            "a slice may omit project only when exactly one project exists",
+            format!(
+                "slice '{slice_name}' omits project but {} projects are available",
+                topology.len()
+            ),
+        )),
+    }
+}
+
+/// Bind each slice to a project via [`resolve_project_binding`].
 fn bind_projects<'a>(
     slices: &[ResponseSlice], topology: &'a [ProjectRef],
 ) -> Result<Vec<&'a ProjectRef>> {
-    let mut bound = Vec::with_capacity(slices.len());
-    for slice in slices {
-        let project = match &slice.project {
-            Some(name) => topology.iter().find(|p| &p.name == name).ok_or_else(|| {
-                Error::validation_failed(
-                    "plan-reconcile-project-orphan",
-                    "a bound project must exist in the request topology",
-                    format!("slice '{}' binds unknown project '{name}'", slice.name),
-                )
-            })?,
-            None if topology.len() == 1 => &topology[0],
-            None => {
-                return Err(Error::validation_failed(
-                    "plan-reconcile-project-binding-required",
-                    "a slice may omit project only when exactly one project exists",
-                    format!(
-                        "slice '{}' omits project but {} projects are available",
-                        slice.name,
-                        topology.len()
-                    ),
-                ));
-            }
-        };
-        bound.push(project);
-    }
-    Ok(bound)
+    slices
+        .iter()
+        .map(|slice| resolve_project_binding(&slice.name, slice.project.as_deref(), topology))
+        .collect()
 }
 
 /// Resolve a single slice [`Entry`]'s target adapter from the project
@@ -600,27 +607,7 @@ fn bind_projects<'a>(
 ///   parse as `name@vN` (an internal inconsistency — topology targets
 ///   are pre-validated).
 pub fn resolve_target(entry: &Entry, topology: &[ProjectRef]) -> Result<TargetRef> {
-    let project = match &entry.project {
-        Some(name) => topology.iter().find(|p| &p.name == name).ok_or_else(|| {
-            Error::validation_failed(
-                "plan-reconcile-project-orphan",
-                "a bound project must exist in the topology",
-                format!("slice '{}' binds unknown project '{name}'", entry.name),
-            )
-        })?,
-        None if topology.len() == 1 => &topology[0],
-        None => {
-            return Err(Error::validation_failed(
-                "plan-reconcile-project-binding-required",
-                "a slice may omit project only when exactly one project exists",
-                format!(
-                    "slice '{}' omits project but {} projects are available",
-                    entry.name,
-                    topology.len()
-                ),
-            ));
-        }
-    };
+    let project = resolve_project_binding(&entry.name, entry.project.as_deref(), topology)?;
     parse_project_target(project)
 }
 
