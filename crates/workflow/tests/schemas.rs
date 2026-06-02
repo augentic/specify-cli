@@ -332,6 +332,14 @@ synopsis: A lead carrying the retired tentative field.
 tentative: true
 ";
 
+const LEAD_INVALID_ALIASES_REMOVED: &str = r"
+lead: user-registration
+source: legacy-monolith
+synopsis: A lead carrying the retired aliases field.
+aliases:
+  - account-registration
+";
+
 #[test]
 fn lead_accepts_minimal_shape() {
     let v = load("discovery/lead.schema.json");
@@ -346,6 +354,9 @@ fn lead_rejects_missing_source_bad_id_and_retired_tentative() {
     // `tentative` was retired (DECISIONS §Lead reconciliation D2.3); the schema is
     // `additionalProperties: false`, so a lead carrying it now fails.
     assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_REMOVED), "lead/retired-tentative");
+    // `aliases` was retired; the schema is `additionalProperties: false`, so a lead
+    // carrying it now fails.
+    assert_invalid(&v, &yaml(LEAD_INVALID_ALIASES_REMOVED), "lead/retired-aliases");
 }
 
 // --- plan/plan.schema.json (source/target adapter split deltas) -------------------------

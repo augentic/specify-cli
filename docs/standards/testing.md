@@ -10,7 +10,7 @@ Use `cargo make test` rather than `cargo test`. It runs `cargo nextest run --all
 
 ## Integration-first policy
 
-Integration tests under `tests/` use `assert_cmd::Command::cargo_bin("specrun")`, drive the binary through clap, and assert against stdout JSON or filesystem state. Test-binary names are `tests/<area>.rs` (`cache`, `cli`, `contract_tool`, `cross_repo`, `discovery_aliases`, `e2e`, `init`, `journal`, `plan`, `plan_orchestrate`, `registry`, `slice`, `slice_merge`, `source`, `source_preview`, `target`, `tool`, `tool_schema`, `workspace`).
+Integration tests under `tests/` use `assert_cmd::Command::cargo_bin("specrun")`, drive the binary through clap, and assert against stdout JSON or filesystem state. Test-binary names are `tests/<area>.rs` (`cache`, `cli`, `contract_tool`, `cross_repo`, `e2e`, `init`, `journal`, `plan`, `plan_orchestrate`, `registry`, `slice`, `slice_merge`, `source`, `source_preview`, `target`, `tool`, `tool_schema`, `workspace`).
 
 One file per integration binary is the intentional layout — `tests/it.rs` consolidation was measured and dropped, see [DECISIONS.md "Integration tests"](../../DECISIONS.md#integration-tests--keep-per-file-binaries-no-testsitrs-umbrella). The cold-build win was 7.3 % cargo-reported (well below the 20 % bar we apply to "Idiomatic Rust Cleanup" chunks) and the per-binary split keeps `cargo test --test <area>` cheap for local iteration.
 

@@ -3,13 +3,10 @@
 //! Mirrors `schemas/discovery/lead.schema.json` — one raw, unmerged
 //! lead as surfaced by one source: the `source` that produced
 //! it, the kebab-case `lead` (unique only within that
-//! `source`), the content-bearing per-source `synopsis`, and
-//! (discovery alias contract) the optional `aliases[]` list. Identity
-//! is the `(source, lead)`
-//! pair; cross-source unification is deferred to plan time, where
-//! `/spec:plan`'s `propose` sub-step reads these leads but never edits
-//! `discovery.md`. Operator additions through `specrun plan amend
-//! --add-alias` survive re-survey.
+//! `source`), and the content-bearing per-source `synopsis`. Identity
+//! is the `(source, lead)` pair; cross-source unification is deferred
+//! to plan time, where `/spec:plan`'s `propose` sub-step reads these
+//! leads but never edits `discovery.md`.
 
 use serde::{Deserialize, Serialize};
 
@@ -32,149 +29,7 @@ pub struct Lead {
     /// line. Plan-time headline material only — never slice-time
     /// `Evidence`.
     pub synopsis: String,
-    /// Optional alias list (discovery alias contract).
-    /// `slices[].sources[].lead` resolves first against `lead`,
-    /// then against any entry in `aliases`, within this lead's
-    /// `source`. Empty list and missing field are equivalent on
-    /// the wire.
-    #[serde(default, skip_serializing_if = "LeadAliases::is_empty")]
-    pub aliases: LeadAliases,
 }
-
-/// Optional kebab-case alias list on a [`Lead`].
-///
-/// `#[serde(transparent)]` over `Vec<String>` so the on-disk shape is
-/// the bare YAML list under `aliases:`. Alias collisions with other
-/// leads' `id` or `aliases[]` are caught by `specrun slice
-/// validate` (`discovery-alias-collision`); this type carries only
-/// the per-lead slot.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct LeadAliases {
-    /// Backing storage. Order is significant for byte-stable diffs;
-    /// the schema enforces uniqueness via `uniqueItems: true`.
-    pub names: Vec<String>,
-}
-
-impl LeadAliases {
-    /// `true` when the alias list is empty (used by serde's
-    /// `skip_serializing_if` to keep absent fields off the wire).
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.names.is_empty()
-    }
-
-    /// `true` when `needle` matches any alias entry (case-sensitive
-    /// per discovery alias contract).
-    #[must_use]
-    pub fn contains(&self, needle: &str) -> bool {
-        self.names.iter().any(|alias| alias == needle)
-    }
-}
-
-impl<S> FromIterator<S> for LeadAliases
-where
-    S: Into<String>,
-{
-    fn from_iter<I: IntoIterator<Item = S>>(iter: I) -> Self {
-        Self {
-            names: iter.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
-impl Lead {
-    /// `true` when `token` equals this lead's `lead` or any entry
-    /// in `aliases[]`.
-    ///
-    /// discovery alias contract — `slices[].sources[].lead`
-    /// resolves first against `lead`, then against `aliases[]`;
-    /// case-sensitive. Resolution is scoped to this lead's
-    /// `source` by the caller.
-    #[must_use]
-    pub fn resolves(&self, token: &str) -> bool {
-        self.lead == token || self.aliases.contains(token)
-    }
-
-    /// Append `alias` to this lead's `aliases[]`. Refuses when
-    /// the value equals the lead's own `id` (a no-op edit with
-    /// no operator value); idempotent when `alias` is already
-    /// present.
-    ///
-    /// Idempotency on exact-duplicate is the operator-ergonomic
-    /// choice — `specrun plan amend --add-alias` is the operator's
-    /// front door, and silently re-asserting a known alias is the
-    /// least surprising shape there. Refusal on `id` collision is a
-    /// clean signal: the operator either typed the wrong lead
-    /// or means to remove a stale alias, and either resolution
-    /// belongs at the keyboard, not in the writer.
-    ///
-    /// Cross-lead collisions (alias of this lead equals
-    /// some other lead's `id` or alias) are NOT caught here —
-    /// the caller resolves that via
-    /// [`super::Discovery::check_alias_collisions`] before
-    /// persisting, so a single CLI invocation can refuse the whole
-    /// edit when any cross-lead constraint trips.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AliasCollision::EqualsOwnId`] when `alias` equals
-    /// `self.lead`.
-    pub fn add_alias(&mut self, alias: String) -> Result<(), AliasCollision> {
-        if alias == self.lead {
-            return Err(AliasCollision::EqualsOwnId {
-                lead: self.lead.clone(),
-                alias,
-            });
-        }
-        if self.aliases.contains(&alias) {
-            return Ok(());
-        }
-        self.aliases.names.push(alias);
-        Ok(())
-    }
-
-    /// Remove `alias` from this lead's `aliases[]`. Idempotent
-    /// — silently returns when the alias is not present so
-    /// `specrun plan amend --remove-alias` can be issued without a
-    /// prior probe.
-    pub fn remove_alias(&mut self, alias: &str) {
-        self.aliases.names.retain(|existing| existing != alias);
-    }
-}
-
-/// Outcome of [`Lead::add_alias`] when the operator-supplied
-/// value cannot be appended.
-///
-/// Only the local "alias equals my own id" case lives here; whole-
-/// document collisions are surfaced through
-/// [`super::DiscoveryAliasCollision`] so callers see the same wire
-/// shape whether the conflict was self-shadow or cross-lead.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AliasCollision {
-    /// The supplied alias equals the lead's own `lead`. No-op
-    /// edit; the operator likely typed the wrong target.
-    EqualsOwnId {
-        /// Lead whose `add_alias` refused.
-        lead: String,
-        /// Alias value that collided with the lead's `lead`.
-        alias: String,
-    },
-}
-
-impl std::fmt::Display for AliasCollision {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::EqualsOwnId { lead, alias } => write!(
-                f,
-                "alias `{alias}` equals lead `{lead}`'s own lead; aliases must name a \
-                 different surface form"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for AliasCollision {}
 
 #[cfg(test)]
 mod tests;

@@ -147,10 +147,6 @@ pub struct LeadCatalogEntry {
     /// and its salient constraint so a same-slug lead from another
     /// source can be matched or distinguished on content.
     pub synopsis: String,
-    /// Optional alias hints from `discovery.md`. Empty list stays off
-    /// the wire and is equivalent to absent.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub aliases: Vec<String>,
 }
 
 /// `kind: response` envelope — the agent's slice grouping.
@@ -221,10 +217,8 @@ pub struct ResponseMember {
 /// checks every agent-supplied `{ source, lead }` against to
 /// reject orphan bindings and to prove every surveyed lead is covered by
 /// at least one slice. Identities are deduplicated — a well-formed
-/// `discovery.md` carries a unique `(source, lead)` per lead (the
-/// per-source single namespace is enforced by
-/// `Discovery::check_alias_collisions`), so [`LeadCatalog::len`] equals
-/// the surveyed lead count.
+/// `discovery.md` carries a unique `(source, lead)` per lead, so
+/// [`LeadCatalog::len`] equals the surveyed lead count.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LeadCatalog {
     identities: BTreeSet<(String, String)>,
@@ -272,7 +266,7 @@ pub fn build_catalog(discovery: &Discovery) -> LeadCatalog {
 /// and an already-resolved project topology.
 ///
 /// `leads[]` is one [`LeadCatalogEntry`] per `discovery.leads()` row,
-/// carrying `source`, `lead`, `synopsis`, and any alias hints.
+/// carrying `source`, `lead`, and `synopsis`.
 /// `projects` (produced by [`resolve_topology`]) is embedded verbatim.
 ///
 /// # Errors
@@ -288,7 +282,6 @@ pub fn build_request(discovery: &Discovery, projects: &[ProjectRef]) -> Result<P
             source: lead.source.clone(),
             lead: lead.lead.clone(),
             synopsis: lead.synopsis.clone(),
-            aliases: lead.aliases.names.clone(),
         })
         .collect();
 

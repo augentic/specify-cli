@@ -221,14 +221,9 @@ fn scan_slice_specs(
 ///    downstream drift noise.
 /// 2. per-slice authority override — orphan source keys on the slice's
 ///    `plan.yaml.slices[].authority-override` map.
-/// 3. discovery alias contract — candidate `id` ↔ `aliases[]` collisions in
-///    `<project_dir>/discovery.md`. A discovery-level check (not
-///    per-slice) but evaluated here because `specrun slice validate`
-///    is the single CLI surface skills shell out to between
-///    `/spec:refine` and `/spec:build`.
-/// 4. component catalog contract — catalog drift between Evidence `component:`
+/// 3. component catalog contract — catalog drift between Evidence `component:`
 ///    directives and `.specify/design-system/components.yaml`.
-/// 5. typed-model drift — the seven RFC-29c §"Drift validation"
+/// 4. typed-model drift — the seven RFC-29c §"Drift validation"
 ///    findings over `<slice>/model.yaml` (skipped when absent).
 ///
 /// Provenance no longer has a file-drift gate: it is carried inline in
@@ -243,7 +238,6 @@ fn collect_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<
     let mut findings: Vec<Diagnostic> = Vec::new();
     findings.extend(collect_spec_file_location_findings(slice_dir));
     findings.extend(override_orphans(ctx, name)?);
-    findings.extend(alias_collisions(ctx)?);
     findings.extend(collect_catalog_drift_findings(ctx, slice_dir)?);
     findings.extend(model_drift_findings(slice_dir, &ctx.layout().plan_path(), name)?);
     findings.extend(collect_decision_gates(ctx, slice_dir)?);
@@ -367,26 +361,6 @@ fn decision_supersede_orphans(
         }
     }
     Ok(findings)
-}
-
-/// discovery alias contract alias-collision gate. Loads
-/// `<project_dir>/discovery.md` when present and emits one
-/// `discovery-alias-collision` finding per name that resolves to
-/// more than one candidate. Absent `discovery.md` skips the check
-/// silently — older slices and projects without an authored
-/// inventory remain valid (this is the read-only counterpart to
-/// the per-amend gate in `specrun plan amend --add-alias`).
-fn alias_collisions(ctx: &Ctx) -> Result<Vec<Diagnostic>> {
-    let path = ctx.layout().discovery_path();
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let discovery = Discovery::load(&path)?;
-    Ok(discovery
-        .check_alias_collisions()
-        .iter()
-        .map(specify_model::discovery::DiscoveryAliasCollision::to_diagnostic)
-        .collect())
 }
 
 /// Spec file-location gate. Emits a `specs.file-location`

@@ -402,42 +402,6 @@ pub struct AuthorityOverrideKindAssign {
     pub(crate) source: String,
 }
 
-/// Typed value for `specrun plan amend --add-alias` /
-/// `--remove-alias` (discovery alias contract). Wire form is
-/// `<lead>=<alias>`; both sides must be non-empty
-/// kebab-case strings. The closed [`specify_error::is_kebab`]
-/// check runs at the handler boundary so the parser stays focused
-/// on the `=` split.
-#[derive(Clone, Debug)]
-pub struct AliasAssign {
-    /// Lead id (left of `=`). The lead must exist in
-    /// `discovery.md`; the handler refuses with
-    /// `discovery-lead-unknown` otherwise.
-    pub(crate) lead: String,
-    /// Alias value (right of `=`).
-    pub(crate) alias: String,
-}
-
-impl FromStr for AliasAssign {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (lead, alias) = s
-            .split_once('=')
-            .ok_or_else(|| format!("alias flag must be <lead>=<alias>, got `{s}`"))?;
-        if lead.is_empty() || alias.is_empty() {
-            return Err(format!("alias flag lead and alias must both be non-empty, got `{s}`"));
-        }
-        if alias.contains('=') {
-            return Err(format!("alias flag value `{s}` must contain exactly one `=` separator"));
-        }
-        Ok(Self {
-            lead: lead.to_string(),
-            alias: alias.to_string(),
-        })
-    }
-}
-
 impl FromStr for AuthorityOverrideKindAssign {
     type Err = String;
 

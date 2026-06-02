@@ -38,7 +38,6 @@ fn build_request_n1_validates_as_request() {
     assert_eq!(request.leads.len(), 1);
     assert_eq!(request.leads[0].source, "intent");
     assert_eq!(request.leads[0].lead, "fix-typo");
-    assert!(request.leads[0].aliases.is_empty());
 
     let json = serde_json::to_string(&request).expect("serialise request");
     assert!(json.contains(r#""kind":"request""#), "kind must render as request: {json}");
@@ -52,7 +51,6 @@ fn build_request_hub_validates_as_request() {
              ### docs:identity-api\n\n\
              - lead: identity-api\n\
              - source: docs\n\
-             - aliases: [auth-api]\n\
              - synopsis: Identity API contract.\n\n\
              ### legacy:identity-api\n\n\
              - lead: identity-api\n\
@@ -70,7 +68,6 @@ fn build_request_hub_validates_as_request() {
 
     let request = build_request(&doc, &topology).expect("request builds");
     assert_eq!(request.leads.len(), 3);
-    assert_eq!(request.leads[0].aliases, vec!["auth-api"]);
 
     let json = serde_json::to_string(&request).expect("serialise request");
     validate_proposal_json(&json).expect("hub request validates against the schema");

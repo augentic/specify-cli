@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Args, Subcommand};
 
-use crate::runtime::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
+use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 
 /// Plan-authoring verbs (`specrun plan *`).
 #[derive(Subcommand)]
@@ -300,23 +300,4 @@ pub struct AmendArgs {
         action = ArgAction::Append,
     )]
     pub clear_authority_overrides: Vec<String>,
-    /// Append an alias to a lead in `<project_dir>/discovery.md`
-    /// (discovery alias contract). Wire form is `<lead>=<alias>`; both
-    /// sides are kebab-case. Repeatable. Mutates `discovery.md`
-    /// (NOT `plan.yaml`); the whole amend is refused at exit 2
-    /// (`discovery-alias-collision`) when the new alias would
-    /// collide with any other lead's `id` or `aliases[]` in
-    /// the same `discovery.md`. Operator additions through this
-    /// flag survive re-survey so long as the source adapter
-    /// keeps emitting the bearing lead's `id` (discovery alias contract).
-    #[arg(long = "add-alias", action = ArgAction::Append)]
-    pub add_alias: Vec<AliasAssign>,
-    /// Remove an alias from a lead in
-    /// `<project_dir>/discovery.md` (discovery alias contract). Wire form is
-    /// `<lead>=<alias>`; idempotent (no-op when the
-    /// alias is already absent). Repeatable. The whole amend
-    /// fails at exit 2 (`discovery-lead-unknown`) when no
-    /// lead has the named id.
-    #[arg(long = "remove-alias", action = ArgAction::Append)]
-    pub remove_alias: Vec<AliasAssign>,
 }

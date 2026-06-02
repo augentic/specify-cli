@@ -36,12 +36,9 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
         check_project(&ctx.project_dir, proj)?;
     }
 
-    // discovery alias contract — resolve `--sources <key>=<alias>` to the
-    // canonical lead `id` before persisting; the on-disk
-    // `plan.yaml.slices[].sources[].lead` always carries the
-    // canonical id. Absence of `discovery.md` short-circuits to the
-    // legacy (verbatim) path so existing tests and pre-authority and reconciliation contract
-    // projects continue to work.
+    // When `discovery.md` exists, resolve `--sources <key>=<lead>` to the
+    // canonical lead id before persisting. Absence of `discovery.md`
+    // short-circuits to the verbatim path.
     let discovery = load_discovery(ctx.layout())?;
     let sources = bindings_from_args(sources, name, discovery.as_ref())?;
     let authority_override_map = SliceAuthorityOverride {

@@ -43,7 +43,7 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Discovery handshake
 
-`survey` writes `## Lead inventory` blocks — one **raw, unmerged** lead per source, each identified by its `(source, lead)` pair (`survey` stamps `source` from the surveyed source). A re-survey of one source replaces only that source's blocks by `(source, lead)`; the same `lead` may appear under different source keys, and the lead/alias namespace is scoped per `source`. The operator stamps `approved`; `extract` resolves `slices[].sources[].lead` against `lead`-then-`aliases[]` within the binding's `source`. Cross-source unification is deferred to plan-time reconciliation (D2). Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
+`survey` writes `## Lead inventory` blocks — one **raw, unmerged** lead per source, each identified by its `(source, lead)` pair (`survey` stamps `source` from the surveyed source). A re-survey of one source replaces only that source's blocks by `(source, lead)`; the same `lead` may appear under different source keys. The operator stamps `approved`; `extract` resolves `slices[].sources[].lead` against the canonical `lead` id within the binding's `source`. Cross-source unification is deferred to plan-time reconciliation (D2). Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
 
 ## The Plan
 
@@ -159,10 +159,6 @@ Provenance is carried inline in the single `model.yaml` artifact; `spec.md` is t
 ## D5 — Operator-driven `divergence`
 
 The CLI is the single writer of every `Divergence` variant, all through `specrun plan amend --divergence`. Operators flip `accepted | rejected`; the `/spec:plan` agent stages `likely` after `specrun plan propose --from`. `plan create` scaffolds an empty plan and never stamps divergence. See [`crates/workflow/src/change/plan/core/model.rs`](../../crates/workflow/src/change/plan/core/model.rs).
-
-## D6 — Discovery aliases
-
-Leads carry an optional `aliases[]` bullet. `slices[].sources[].lead` resolves first against `id`, then against any entry in `aliases[]`. Aliases live in a single namespace per `discovery.md`. Parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs); collision discriminant `discovery-alias-collision`.
 
 ## D7 — `--auto-approve`
 
