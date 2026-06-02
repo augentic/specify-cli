@@ -424,7 +424,7 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         merge_sha: Option<String>,
         /// `DEC-NNNN` ids promoted into the Decision Record catalogue by
-        /// this merge (RFC-37), in slug order. Empty stays off the wire;
+        /// this merge (RFC-36), in slug order. Empty stays off the wire;
         /// this is the durable ledger of promoted decisions alongside git
         /// history of `.specify/decisions/`.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]

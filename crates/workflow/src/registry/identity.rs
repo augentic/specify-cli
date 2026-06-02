@@ -30,13 +30,13 @@ pub const SURFACE_TITLE_CAP: usize = 8;
 pub const RECENT_TAIL: usize = 10;
 
 /// Maximum accepted Decision Records projected into `decisions[]`
-/// (RFC-37 §"Projection contract", `K`). A catalogue with more emits a
+/// (RFC-36 §"Projection contract", `K`). A catalogue with more emits a
 /// `decisions-more` count of the elided remainder.
 pub const DECISIONS_CAP: usize = 8;
 
 /// The deterministic identity projection of a project's baseline: the
 /// `surface[]` / `recent[]` (RFC-36) plus the accepted-decision
-/// `decisions[]` axis (RFC-37) with its overflow count.
+/// `decisions[]` axis (RFC-36) with its overflow count.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IdentityProjection {
     /// Owned units + bounded requirement titles.
@@ -76,7 +76,7 @@ pub fn project_baseline(project_dir: &Path) -> Result<IdentityProjection, Error>
 }
 
 /// Project `.specify/decisions/` into the bounded `decisions[]` axis
-/// (RFC-37 §"Projection contract"). Only `status: accepted` records
+/// (RFC-36 §"Projection contract"). Only `status: accepted` records
 /// contribute; superseded and rejected records describe past or
 /// not-taken posture and are excluded from *current* identity. The most
 /// recent [`DECISIONS_CAP`] (highest `DEC` ids) are kept, then emitted in

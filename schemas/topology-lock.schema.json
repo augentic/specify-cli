@@ -30,7 +30,7 @@
       "type": "object",
       "required": ["id", "title"],
       "additionalProperties": false,
-      "description": "One accepted Decision Record projected into routing identity (RFC-37). Title only — no body, Context, or Consequences prose is projected.",
+      "description": "One accepted Decision Record projected into routing identity (RFC-36). Title only — no body, Context, or Consequences prose is projected.",
       "properties": {
         "id": {
           "type": "string",
@@ -98,7 +98,7 @@
         "decisions": {
           "type": "array",
           "items": { "$ref": "#/$defs/decision" },
-          "description": "Accepted Decision Records projected from `.specify/decisions/` (RFC-37): the most recent K (default 8) in `DEC-NNNN` ascending order. The third routing-identity axis — why the project is shaped the way it is. Empty stays off the wire."
+          "description": "Accepted Decision Records projected from `.specify/decisions/` (RFC-36): the most recent K (default 8) in `DEC-NNNN` ascending order. The third routing-identity axis — why the project is shaped the way it is. Empty stays off the wire."
         },
         "decisions-more": {
           "type": "integer",

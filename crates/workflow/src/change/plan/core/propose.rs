@@ -117,7 +117,7 @@ pub struct ProjectRef {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent: Vec<String>,
     /// Accepted Decision Records projected from `.specify/decisions/`
-    /// (RFC-37): the third routing-identity axis — *why* the project is
+    /// (RFC-36): the third routing-identity axis — *why* the project is
     /// shaped the way it is, surfaced so the agent can route a slice on
     /// architectural commitment and flag a lead that contradicts an
     /// accepted decision before Gate 1. Empty stays off the wire.

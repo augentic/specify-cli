@@ -141,7 +141,7 @@ fn decision_schema_compiles() {
     compile_schema(DECISION_JSON_SCHEMA).expect("decision schema compiles");
 }
 
-/// The RFC-37 §"Record shape" slice-authored example validates without
+/// The RFC-36 §"Record shape" slice-authored example validates without
 /// the engine-stamped `id` / `slice` / `date` fields — proving the
 /// optional-field design that lets one schema serve both the slice form
 /// and the persisted baseline form.
@@ -165,7 +165,7 @@ fn decision_schema_accepts_slice_authored_form() {
     );
 }
 
-/// The RFC-37 §"Record shape" promoted baseline example validates with
+/// The RFC-36 §"Record shape" promoted baseline example validates with
 /// the engine-stamped header fields present.
 #[test]
 fn decision_schema_accepts_promoted_baseline_form() {

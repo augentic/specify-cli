@@ -48,7 +48,7 @@ pub const SYNTHESIS_JSON_SCHEMA: &str =
 pub const PROVENANCE_JSON_SCHEMA: &str =
     include_str!("../../../schemas/slice/provenance.schema.json");
 
-/// Schema for a Decision Record front-matter block (RFC-37).
+/// Schema for a Decision Record front-matter block (RFC-36).
 ///
 /// One schema validates both the slice-authored form under
 /// `.specify/slices/<slice>/decisions/<slug>.md` and the promoted

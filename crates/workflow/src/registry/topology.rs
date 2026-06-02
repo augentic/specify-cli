@@ -63,7 +63,7 @@ pub struct TopologyProject {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent: Vec<String>,
     /// Accepted Decision Records projected from `.specify/decisions/`
-    /// (RFC-37), the most recent `K` in `DEC-NNNN` ascending order.
+    /// (RFC-36), the most recent `K` in `DEC-NNNN` ascending order.
     /// The third routing-identity axis — *why* the project is shaped the
     /// way it is. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -76,7 +76,7 @@ pub struct TopologyProject {
 
 /// One accepted Decision Record projected into routing identity.
 ///
-/// RFC-37 §"Decision Records as an identity source". Title only — no body,
+/// RFC-36 §"Decision Records as an identity source". Title only — no body,
 /// `Context`, or `Consequences` prose is projected. Shared by
 /// [`TopologyProject`] and the reconciliation envelope's `ProjectRef`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

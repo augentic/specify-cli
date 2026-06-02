@@ -1,4 +1,4 @@
-//! Decision Record parser (RFC-37) — front-matter + Nygard body.
+//! Decision Record parser (RFC-36) — front-matter + Nygard body.
 //!
 //! A Decision Record is a YAML front-matter header (schema-shaped via
 //! [`DecisionRecord`]) plus a Markdown body carrying `## Context` /
@@ -22,7 +22,7 @@ use specify_diagnostics::{Artifact, Diagnostic, FindingLocation};
 #[cfg(test)]
 mod tests;
 
-/// Maximum length of a Decision Record `slug` (RFC-37 §"Validation
+/// Maximum length of a Decision Record `slug` (RFC-36 §"Validation
 /// findings", `decision-slug-grammar`).
 pub const SLUG_MAX_LEN: usize = 64;
 
@@ -196,7 +196,7 @@ pub fn parse_decision(text: &str) -> ParsedDecision {
 }
 
 /// `true` when `slug` matches `^[a-z][a-z0-9-]*$` and is at most
-/// [`SLUG_MAX_LEN`] characters (RFC-37 `decision-slug-grammar`).
+/// [`SLUG_MAX_LEN`] characters (RFC-36 `decision-slug-grammar`).
 #[must_use]
 pub fn is_valid_slug(slug: &str) -> bool {
     if slug.is_empty() || slug.len() > SLUG_MAX_LEN {

@@ -1,4 +1,4 @@
-//! Integration tests for the RFC-37 Decision Record gate in
+//! Integration tests for the RFC-36 Decision Record gate in
 //! `specrun slice validate` — the five `decision-*` findings over
 //! `<slice>/decisions/*.md`.
 //!

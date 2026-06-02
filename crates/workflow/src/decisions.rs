@@ -1,4 +1,4 @@
-//! Decision Record catalogue (RFC-37).
+//! Decision Record catalogue (RFC-36).
 //!
 //! The append-only baseline catalogue at `.specify/decisions/` is the
 //! durable home for design *decisions* — the immutable "why" plus the

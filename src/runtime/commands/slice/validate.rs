@@ -252,7 +252,7 @@ fn collect_pre_adapter_gates(ctx: &Ctx, slice_dir: &Path, name: &str) -> Result<
     Ok(findings)
 }
 
-/// Decision Record gate (RFC-37 §"Validation findings"). Over
+/// Decision Record gate (RFC-36 §"Validation findings"). Over
 /// `<slice>/decisions/*.md` it raises the per-file findings owned by the
 /// `specify-model` parser — `decision-record-schema`,
 /// `decision-record-section-missing`, `decision-slug-grammar` (the same

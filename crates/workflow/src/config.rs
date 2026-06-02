@@ -188,7 +188,7 @@ impl<'a> Layout<'a> {
 
     /// Absolute path to `<project_dir>/.specify/decisions/` — the
     /// append-only Decision Record catalogue promoted by
-    /// `specrun slice merge` (RFC-37). One flat, project-global tree of
+    /// `specrun slice merge` (RFC-36). One flat, project-global tree of
     /// `DEC-NNNN-<slug>.md` files. Machine-written by merge; the single
     /// permitted post-write mutation is a supersede status flip.
     #[must_use]
