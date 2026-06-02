@@ -61,8 +61,6 @@ fn journal_events(project: &Project) -> Vec<Value> {
 // so the runner stamps `legacy` onto every lead before the schema
 // check and the merge.
 const VALID_LEAD_SET: &str = "\
-## Lead inventory
-
 ### user-registration
 
 - lead: user-registration
@@ -162,6 +160,40 @@ fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
     assert_eq!(miss["payload"]["adapter"], "code-typescript");
     assert_eq!(miss["payload"]["reason"], "adapter-opt-out");
     assert_eq!(miss["payload"]["fingerprint"], fingerprint);
+}
+
+#[test]
+fn agent_finalize_unparseable_non_empty_lead_set_errors() {
+    let project = Project::init();
+    stage_code_typescript(&project);
+    seed_plan_with_legacy_source(&project);
+    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
+
+    let scratch = survey_scratch_dir(&project);
+    fs::create_dir_all(&scratch).expect("create scratch dir");
+    fs::write(scratch.join("lead-set.md"), "The survey found registration behavior.\n")
+        .expect("write unparseable lead-set.md");
+
+    let assert = specrun()
+        .current_dir(project.root())
+        .args(["--format", "json", "source", "survey", "legacy", "--phase", "finalize"])
+        .assert()
+        .failure();
+
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "survey-lead-set-empty");
+    assert_eq!(stderr["exit-code"], 1);
+    assert!(
+        !project.root().join("discovery.md").exists(),
+        "an unparseable lead set must leave discovery.md untouched"
+    );
+    assert!(
+        !project.root().join(".specify/journal.jsonl").exists()
+            || !journal_events(&project).iter().any(|e| {
+                e["event"] == "source.survey.cache-miss" || e["event"] == "source.survey.cache-hit"
+            }),
+        "unparseable lead set must not emit a cache event"
+    );
 }
 
 #[test]
