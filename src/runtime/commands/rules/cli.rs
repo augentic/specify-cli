@@ -49,7 +49,7 @@ pub struct SyncArgs {
 
     /// Adapter source to pull the codex from (bare name or URL).
     /// Defaults to the project's recorded `adapter:` value; required
-    /// for hub projects, which declare no adapter.
+    /// for workspace-root projects, which declare no adapter.
     #[arg(long)]
     pub source: Option<String>,
 }

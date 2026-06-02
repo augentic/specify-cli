@@ -30,8 +30,8 @@ pub struct ProjectConfig {
     pub description: Option<String>,
 
     /// Adapter identifier — either a bare name (`omnia`) or a URL.
-    /// Absent for registry-only platform hubs (`hub: true`); see the
-    /// `hub` field for the discriminator.
+    /// Absent for registry-only workspace roots (`workspace: true`); see the
+    /// `workspace` field for the discriminator.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adapter: Option<String>,
 
@@ -53,16 +53,17 @@ pub struct ProjectConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<specify_tool::manifest::Tool>,
 
-    /// `true` when this project is a registry-only **platform hub**.
-    /// Hubs hold platform-level state — `registry.yaml`, `change.md`,
-    /// `plan.yaml`, `workspace/` — but never appear in their own
-    /// `registry.yaml` and have phase pipelines disabled. Hubs **omit**
-    /// the `adapter:` field entirely; the absence of `adapter:`
-    /// together with `hub: true` is the discriminator.
-    /// Defaults to `false`; serialised only when `true` so non-hub
+    /// `true` when this project is a registry-only **workspace root**.
+    /// Workspace roots hold platform-level state — `registry.yaml`,
+    /// `change.md`, `plan.yaml`, workspace slots under `.specify/workspace/`
+    /// — but never appear in their own `registry.yaml` and have phase
+    /// pipelines disabled. Workspace roots **omit** the `adapter:` field
+    /// entirely; the absence of `adapter:` together with `workspace: true`
+    /// is the discriminator. Legacy `hub:` deserialises as an alias.
+    /// Defaults to `false`; serialised only when `true` so regular
     /// `project.yaml` files round-trip byte-stable.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub hub: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not", alias = "hub")]
+    pub workspace: bool,
 }
 
 impl ProjectConfig {

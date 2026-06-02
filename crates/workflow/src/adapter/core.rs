@@ -558,7 +558,7 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
     // Cross-axis uniqueness invariant — see DECISIONS.md
     // §"Adapter name uniqueness". `specrun` is fork-and-exit, so the
     // pair of `is_file` probes below is cheaper than memoising them
-    // behind process-global state; `init` / `init --hub` and the
+    // behind process-global state; `init` / `init --workspace` and the
     // manifest-cache write boundary call [`check_axis_unique_for_name`]
     // eagerly on the same invariant.
     if let Some(sibling) = sibling_manifest_path(axis.opposite(), name, project_dir) {

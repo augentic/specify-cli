@@ -1,13 +1,13 @@
 //! Orchestration for `specrun init`. Scaffolds `.specify/`, resolves
 //! the requested adapter, writes `project.yaml`, and upserts
-//! `.gitignore` lines. Hub mode additionally mints `registry.yaml`.
+//! `.gitignore` lines. Workspace-root mode additionally mints `registry.yaml`.
 
 mod adapter_uri;
 mod cache;
 mod git;
-mod hub;
 mod regular;
 mod upgrade;
+mod workspace;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,7 +24,7 @@ use crate::config::Layout;
 ///
 /// Borrow-shaped so callers (the CLI and tests) can build the struct
 /// without cloning path buffers. All fields are `Copy` references or
-/// scalars, so the struct is `Copy` and threads through the hub /
+/// scalars, so the struct is `Copy` and threads through the workspace /
 /// regular runners by value without a clone.
 #[derive(Debug, Clone, Copy)]
 pub struct InitOptions<'a> {
@@ -32,36 +32,35 @@ pub struct InitOptions<'a> {
     pub project_dir: &'a Path,
     /// Adapter identifier (bare name like `omnia` or a URL) to fetch
     /// or copy into `.specify/.cache/`. Required for regular init; must
-    /// be `None` when [`InitOptions::hub`] is `true` (hubs do not
-    /// resolve a adapter at init time).
+    /// be `None` when [`InitOptions::workspace`] is `true` (workspace
+    /// roots do not resolve an adapter at init time).
     pub adapter: Option<&'a str>,
     /// Project name; defaults to the project directory name when `None`.
     pub name: Option<&'a str>,
     /// Optional free-text project description (tech stack, architecture,
     /// testing approach).
     pub description: Option<&'a str>,
-    /// When `true`, scaffold a registry-only platform **hub** instead
+    /// When `true`, scaffold a registry-only **workspace root** instead
     /// of a regular project: writes `registry.yaml` at the repo root
-    /// and `project.yaml { hub: true }` (with `adapter:` omitted)
-    /// under `.specify/`. Hub init refuses to run when `.specify/`
-    /// already exists so it never clobbers a regular single-repo
-    /// project.
-    pub hub: bool,
+    /// and `project.yaml { workspace: true }` (with `adapter:` omitted)
+    /// under `.specify/`. Workspace init refuses to run when `.specify/`
+    /// already exists so it never clobbers a regular single-repo project.
+    pub workspace: bool,
     /// When `true`, also distribute the framework `core/` pack
     /// (`adapters/shared/rules/core/`) into the project codex cache
     /// alongside the always-distributed `universal/` pack. Default off:
-    /// consumer projects carry only `UNI-*` rules. Ignored for hub init
-    /// (hubs resolve no adapter and so distribute no codex).
+    /// consumer projects carry only `UNI-*` rules. Ignored for workspace
+    /// init (workspace roots resolve no adapter and so distribute no codex).
     pub include_framework: bool,
     /// When `true`, run the re-entry **upgrade** path instead of a
     /// fresh scaffold: bump `project.yaml.specify_version` to the
     /// running binary's version over an already-populated `.specify/`,
-    /// preserving every other field (including `adapter:` / `hub:`) and
-    /// every operator artifact (`slices/`, `specs/`, `archive/`,
+    /// preserving every other field (including `adapter:` / `workspace:`)
+    /// and every operator artifact (`slices/`, `specs/`, `archive/`,
     /// `registry.yaml`, `.specify/design-system/*`, the adapter cache).
     /// `AGENTS.md` is regenerated only when absent (handled at the
     /// command layer). Mutually exclusive with the `<adapter>`
-    /// positional, `--hub`, `--name`, `--description`,
+    /// positional, `--workspace`, `--name`, `--description`,
     /// `--include-framework`, and `--check-migration` at the clap
     /// surface.
     pub upgrade: bool,
@@ -77,8 +76,8 @@ pub struct InitOptions<'a> {
 pub struct InitResult {
     /// Path to the written `project.yaml`.
     pub config_path: PathBuf,
-    /// Resolved adapter name from the adapter root. For hub init
-    /// this is the literal `"hub"` so the JSON envelope stays stable
+    /// Resolved adapter name from the adapter root. For workspace init
+    /// this is the literal `"workspace"` so the JSON envelope stays stable
     /// for downstream consumers.
     pub adapter_name: String,
     /// Whether `.specify/.cache/cache_meta.yaml` exists.
@@ -87,7 +86,7 @@ pub struct InitResult {
     /// `.specify/.cache/codex/` during this run. `false` when the
     /// adapter source tree carries no `adapters/shared/rules/universal/`
     /// pack (the consumer then relies on `--rules-root` or a monorepo
-    /// checkout) and for hub init.
+    /// checkout) and for workspace init.
     pub codex_present: bool,
     /// Directories that were newly created (empty on re-init).
     pub directories_created: Vec<PathBuf>,
@@ -117,22 +116,22 @@ pub struct InitResult {
 /// byte-identical `project.yaml` contents.
 ///
 /// When [`InitOptions::upgrade`] is `true`, dispatches to the private
-/// upgrade runner (the re-entry version bump) ahead of the hub /
-/// regular branch — one runner serves both regular and hub projects
-/// because the preservation logic is identical (preserve every field,
-/// touch only `specify_version`).
+/// upgrade runner (the re-entry version bump) ahead of the workspace /
+/// regular branch — one runner serves both regular and workspace-root
+/// projects because the preservation logic is identical (preserve every
+/// field, touch only `specify_version`).
 ///
-/// When [`InitOptions::hub`] is `true`, dispatches to the private hub
-/// runner for the platform-hub on-disk shape.
+/// When [`InitOptions::workspace`] is `true`, dispatches to the private
+/// workspace runner for the workspace-root on-disk shape.
 ///
 /// `now` records the `cache_meta.yaml::fetched_at` stamp; the dispatcher
 /// passes `Timestamp::now` and tests pin a deterministic value.
 ///
 /// # Errors
 ///
-/// Pre-condition: regular (non-hub) init requires
+/// Pre-condition: regular (non-workspace) init requires
 /// [`InitOptions::adapter`] to be set; the CLI dispatcher enforces
-/// the `init-requires-adapter-or-hub` invariant ahead of this call,
+/// the `init-requires-adapter-or-workspace` invariant ahead of this call,
 /// but `init` re-validates as a defence in depth. Bubbles up
 /// filesystem, adapter resolution, and serialisation errors from
 /// the underlying calls.
@@ -140,8 +139,8 @@ pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> 
     if opts.upgrade {
         return upgrade::run(opts);
     }
-    if opts.hub {
-        return hub::run(opts);
+    if opts.workspace {
+        return workspace::run(opts);
     }
     regular::run(opts, now)
 }

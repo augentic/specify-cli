@@ -68,7 +68,7 @@ fn base_opts<'a>(project_dir: &'a Path, target_dir: &'a Path) -> InitOptions<'a>
         adapter: Some(target_dir.to_str().expect("target path utf8")),
         name: Some("demo"),
         description: None,
-        hub: false,
+        workspace: false,
         include_framework: false,
         upgrade: false,
     }
@@ -110,7 +110,7 @@ fn init_creates_specify_tree() {
     let cap = cfg.adapter.as_deref().expect("adapter set on regular init");
     assert!(cap.starts_with("file://"), "adapter: {cap}");
     assert!(cap.ends_with("/adapters/targets/omnia"), "adapter: {cap}");
-    assert!(!cfg.hub, "regular init must not set hub");
+    assert!(!cfg.workspace, "regular init must not set workspace");
     assert_eq!(cfg.specify_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
     let mut rule_keys: Vec<_> = cfg.rules.keys().cloned().collect();
     rule_keys.sort();
@@ -132,7 +132,7 @@ fn init_distributes_shared_codex() {
             adapter: Some(omnia.to_str().expect("adapter path utf8")),
             name: Some("demo"),
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             upgrade: false,
         },
@@ -171,7 +171,7 @@ fn init_include_framework_distributes_core_pack() {
             adapter: Some(omnia.to_str().expect("adapter path utf8")),
             name: Some("demo"),
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: true,
             upgrade: false,
         },
@@ -378,7 +378,7 @@ fn default_name_is_dir_basename() {
             adapter: Some(target_dir.to_str().expect("target path utf8")),
             name: None,
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             upgrade: false,
         },

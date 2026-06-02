@@ -1,4 +1,4 @@
-//! Regular (non-hub) init body. Scaffolds the per-project `.specify/`
+//! Regular (non-workspace-root) init body. Scaffolds the per-project `.specify/`
 //! tree, resolves the requested adapter into the cache, and writes
 //! `project.yaml`.
 
@@ -28,8 +28,8 @@ const SCAFFOLDED_RULE_KEYS: &[&str] = &["proposal", "specs", "design", "tasks"];
 
 pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {
     let adapter = opts.adapter.ok_or_else(|| Error::Diag {
-        code: "init-requires-adapter-or-hub",
-        detail: "pass <adapter> or --hub".to_string(),
+        code: "init-requires-adapter-or-workspace",
+        detail: "pass <adapter> or --workspace".to_string(),
     })?;
     let name = resolved_name(opts.project_dir, opts.name);
     let layout = Layout::new(opts.project_dir);
@@ -79,7 +79,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         specify_version: Some(specify_version.clone()),
         rules,
         tools: Vec::new(),
-        hub: false,
+        workspace: false,
     };
 
     let config_path = layout.config_path();

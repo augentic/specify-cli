@@ -44,18 +44,18 @@ pub enum Commands {
     /// Initialize .specify/ in a project.
     ///
     /// Pass `<adapter>` (bare name or URL) for a regular project, or
-    /// `--hub` for a registry-only platform hub. The two are mutually
-    /// exclusive — clap enforces the `<adapter>` xor `--hub` shape
+    /// `--workspace` for a registry-only workspace root. The two are mutually
+    /// exclusive — clap enforces the `<adapter>` xor `--workspace` shape
     /// and exits `2` with its standard parse-error diagnostic when the
     /// invariant is violated.
     Init {
         /// Adapter identifier or URL (e.g. `omnia`,
         /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`).
-        /// Required unless `--hub`, `--check-migration`, or `--upgrade`
-        /// is set; mutually exclusive with `--hub`.
+        /// Required unless `--workspace`, `--check-migration`, or `--upgrade`
+        /// is set; mutually exclusive with `--workspace`.
         #[arg(
-            conflicts_with = "hub",
-            required_unless_present_any = ["hub", "check_migration", "upgrade"]
+            conflicts_with = "workspace",
+            required_unless_present_any = ["workspace", "check_migration", "upgrade"]
         )]
         adapter: Option<String>,
         /// Project name (defaults to the project directory name)
@@ -64,16 +64,16 @@ pub enum Commands {
         /// Project description (tech stack, architecture, testing)
         #[arg(long)]
         description: Option<String>,
-        /// Scaffold a registry-only platform hub instead of a regular
+        /// Scaffold a registry-only workspace root instead of a regular
         /// project. Refuses to run when `.specify/` already exists.
         #[arg(long)]
-        hub: bool,
+        workspace: bool,
         /// Also distribute the framework `core/` pack
         /// (`adapters/shared/rules/core/`) into the project codex cache
         /// alongside the shared `universal/` pack. Default off —
         /// consumer projects carry only `UNI-*` rules. Ignored with
-        /// `--hub`.
-        #[arg(long, conflicts_with = "hub")]
+        /// `--workspace`.
+        #[arg(long, conflicts_with = "workspace")]
         include_framework: bool,
         /// Read-only migration probe used by the `/spec:init` skill.
         /// Emits a `{ needs-migration, from, to, plan }` JSON envelope
@@ -81,7 +81,7 @@ pub enum Commands {
         /// with every other `init` argument.
         #[arg(
             long,
-            conflicts_with_all = ["adapter", "hub", "name", "description", "include_framework"]
+            conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework"]
         )]
         check_migration: bool,
         /// Re-entry version bump: over an already-populated `.specify/`,
@@ -95,7 +95,7 @@ pub enum Commands {
         /// argument.
         #[arg(
             long,
-            conflicts_with_all = ["adapter", "hub", "name", "description", "include_framework", "check_migration"]
+            conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework", "check_migration"]
         )]
         upgrade: bool,
     },

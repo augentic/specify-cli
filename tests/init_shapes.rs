@@ -10,7 +10,7 @@
 //!   project bumps only the pin, keeps operator artifacts byte-stable,
 //!   and re-runs as a no-op.
 //! - `hub` — the same re-entry over a populated hub project, with the
-//!   `hub: true` discriminator and `registry.yaml` preserved.
+//!   `workspace: true` discriminator and `registry.yaml` preserved.
 //! - `migrated` — the new end-to-end: `specrun migrate` transforms a v1
 //!   tree into the golden v2 tree, then `specrun init --upgrade`
 //!   re-enters the migrated artifact set.
@@ -69,7 +69,7 @@ fn greenfield() {
         "greenfield must persist the omnia adapter, got {:?}",
         cfg.adapter,
     );
-    assert!(!cfg.hub, "greenfield must not write the hub discriminator");
+    assert!(!cfg.workspace, "greenfield must not write the workspace discriminator");
 }
 
 // ---- brownfield ----
@@ -109,10 +109,10 @@ fn brownfield() {
     assert_second_run_is_noop(tmp.path());
 }
 
-// ---- hub ----
+// ---- workspace ----
 
 #[test]
-fn hub() {
+fn workspace() {
     // Concise matrix view of the hub re-entry upgrade. Exhaustive
     // coverage: tests/init.rs::init_upgrade_preserves_hub_and_registry
     // (Change E).
@@ -121,7 +121,7 @@ fn hub() {
     fs::create_dir_all(&specify).unwrap();
     fs::write(
         specify.join("project.yaml"),
-        "name: platform-hub\nspecify_version: 0.2.0\nhub: true\n",
+        "name: platform-workspace\nspecify_version: 0.2.0\nhub: true\n",
     )
     .unwrap();
     fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
@@ -136,11 +136,11 @@ fn hub() {
     let body = parse_json(&assert.get_output().stdout);
     assert_eq!(body["specify-version"], BINARY_VERSION);
     assert_eq!(body["specify-version-changed"], true);
-    assert_eq!(body["adapter-name"], "hub");
+    assert_eq!(body["adapter-name"], "workspace");
 
     assert_only_project_yaml_changed(&before, &snapshot(tmp.path()));
     let cfg = load_cfg(tmp.path());
-    assert!(cfg.hub, "hub discriminator must survive the upgrade");
+    assert!(cfg.workspace, "workspace discriminator must survive the upgrade");
     assert!(cfg.adapter.is_none(), "hub upgrade must not synthesise an adapter");
     assert_eq!(cfg.specify_version.as_deref(), Some(BINARY_VERSION));
 

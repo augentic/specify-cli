@@ -175,7 +175,7 @@ fn hub_config() -> ProjectConfig {
         specify_version: None,
         rules: std::collections::BTreeMap::new(),
         tools: Vec::new(),
-        hub: true,
+        workspace: true,
     }
 }
 
@@ -250,7 +250,7 @@ fn resolve_topology_regular_missing_adapter_errors() {
         specify_version: None,
         rules: std::collections::BTreeMap::new(),
         tools: Vec::new(),
-        hub: false,
+        workspace: false,
     };
     match resolve_topology(&config, Path::new("/unused")) {
         Err(Error::Validation { code, .. }) => {

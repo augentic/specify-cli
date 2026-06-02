@@ -89,7 +89,7 @@ pub enum PlanAction {
     ///
     /// - `--dry-run` is read-only. It reads the surveyed `discovery.md`
     ///   lead inventory and the resolved project topology (`registry.yaml`
-    ///   for a hub, or the sole project synthesised from `project.yaml`)
+    ///   for a workspace root, or the sole project synthesised from `project.yaml`)
     ///   and emits the `kind: request` envelope for the agent to group.
     ///   Aborts with `plan-reconcile-empty-catalog` when `discovery.md`
     ///   carries no leads.

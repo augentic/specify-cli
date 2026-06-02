@@ -152,8 +152,8 @@ impl Error {
                 "plan-has-outstanding-work" => Some(
                     "complete or drop the listed entries, or rerun with --force to archive anyway.",
                 ),
-                "init-requires-adapter-or-hub" => Some(
-                    "`specrun init <adapter>` for a regular project, or `specrun init --hub` for a platform hub.\nsee: docs/init.md",
+                "init-requires-adapter-or-workspace" => Some(
+                    "`specrun init <adapter>` for a regular project, or `specrun init --workspace` for a workspace root.\nsee: docs/init.md",
                 ),
                 "context-existing-unfenced-agents-md" => {
                     Some("rerun with --force to rewrite AGENTS.md.")

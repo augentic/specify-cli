@@ -9,21 +9,21 @@ use crate::runtime::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let path = Registry::path(&ctx.project_dir).display().to_string();
-    // Hub repos opt into the stricter shape via `project.yaml:hub:
+    // Workspace roots opt into the stricter shape via `project.yaml:workspace:
     // true`. Tolerate a missing/unparseable project.yaml here —
     // `specrun registry validate` is allowed to run before `specify
-    // init`, in which case there is no hub flag to honour and the base
+    // init`, in which case there is no workspace flag to honour and the base
     // shape check is the right behaviour.
-    let hub_mode = ProjectConfig::load(&ctx.project_dir).is_ok_and(|cfg| cfg.hub);
+    let workspace_mode = ProjectConfig::load(&ctx.project_dir).is_ok_and(|cfg| cfg.workspace);
     let registry = Registry::load(&ctx.project_dir)?;
-    if hub_mode && let Some(reg) = registry.as_ref() {
-        reg.validate_shape_hub()?;
+    if workspace_mode && let Some(reg) = registry.as_ref() {
+        reg.validate_shape_workspace()?;
     }
     ctx.write(
         &ValidateBody {
             registry,
             path,
-            hub_mode,
+            workspace_mode,
         },
         write_validate_text,
     )?;

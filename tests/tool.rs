@@ -112,7 +112,7 @@ fn tool_entry(
 }
 
 fn project_manifest(tools: &str) -> String {
-    format!("name: tools-test\nhub: true\ntools:\n{tools}")
+    format!("name: tools-test\nworkspace: true\ntools:\n{tools}")
 }
 
 fn adapter_project_manifest(tools: Option<&str>) -> String {

@@ -130,14 +130,14 @@ flag is additive, removing or renaming a flag is breaking. One
 non-additive input change has shipped under the version reflected
 above:
 
-- `specrun init` enforces the `<adapter>` xor `--hub` invariant
+- `specrun init` enforces the `<adapter>` xor `--workspace` invariant
   through clap. The historical post-parse
-  `init-requires-adapter-or-hub` envelope is gone on the CLI
+  `init-requires-adapter-or-workspace` envelope is gone on the CLI
   surface; clap parse errors exit `2` with the standard "required
   arguments were not provided" / "the argument cannot be used with"
   diagnostics. The discriminant survives in the domain library
-  (`crates/workflow/src/init/`) as defence-in-depth for embedders that
-  call `init()` directly.
+  (`crates/workflow/src/init/`) as `init-requires-adapter-or-workspace`
+  for embedders that call `init()` directly.
 
 ## Shell completions
 
@@ -282,7 +282,7 @@ crate project-scope and adapter-scope tool declarations.
   `.specify/wasm-pkg.toml` (when present), (3) the `WKG_CONFIG`
   override, (4) an embedded `specify -> augentic.io` namespace
   fallback applied only when no earlier layer mapped the `specify`
-  namespace. `specrun init` (regular and hub modes) scaffolds
+  namespace. `specrun init` (regular and workspace-root modes) scaffolds
   `.specify/wasm-pkg.toml` with the canonical wasm-pkg namespace mapping; the
   file is checked in and operators edit it to register internal
   mirrors. Re-init never overwrites an operator-edited file. The
@@ -305,7 +305,7 @@ crate project-scope and adapter-scope tool declarations.
 
 The output-role domain types are spelled `Target*`
 (`Target`, `Slice.target`, the `slice-create-target-missing` /
-`init-requires-adapter-or-hub`
+`init-requires-adapter-or-workspace`
 discriminants, plus every fixture, JSON envelope, and call site). The
 shared manifest *shape* is loaded by the axis-aware module
 `crates/workflow/src/adapter/` (`SourceAdapter` / `TargetAdapter` /
@@ -693,7 +693,7 @@ resolved target *does* appear (`specrun plan next`, the slice
 
 - The slice's `project` is optional on disk. An omitted `project`
   resolves to the sole project in the topology (a single regular
-  project synthesised from `project.yaml`); a multi-project hub
+  project synthesised from `project.yaml`); a multi-project workspace root
   requires an explicit `project`. `schemas/plan/plan.schema.json` no
   longer carries a `target` property or the old "at least one of
   `project` / `target`" `anyOf` — a slice may legitimately carry
@@ -871,7 +871,7 @@ RFC-29d build-request schema — is introduced.
 
 `specrun plan propose` wraps agent-led cross-source lead reconciliation in a CLI-owned projection kernel (RFC-29 D2). The envelope DTOs, the deterministic `build_request` / `build_catalog` / `resolve_topology` assembly, and the `Plan::propose_from` kernel live in [`crates/workflow/src/change/plan/core/propose.rs`](./crates/workflow/src/change/plan/core/propose.rs); the CLI handler is [`src/runtime/commands/plan/propose.rs`](./src/runtime/commands/plan/propose.rs). The verb has two mutually-exclusive modes, exactly one of which is required (`propose` with neither fails `plan-propose-mode-required`; the clap layer rejects passing both):
 
-- **`--dry-run [--format json]`** is read-only. It reads `plan.yaml.sources`, the surveyed `discovery.md` lead inventory, and the resolved project topology (a hub's `registry.yaml`, or the sole project synthesised from `project.yaml`), then emits the `kind: request` envelope — a flat `(source, lead)` lead catalog plus the `projects[]` topology — for the agent to group. It writes nothing and fires no journal event; an empty inventory aborts with `plan-reconcile-empty-catalog`.
+- **`--dry-run [--format json]`** is read-only. It reads `plan.yaml.sources`, the surveyed `discovery.md` lead inventory, and the resolved project topology (a workspace root's committed `.specify/topology.lock`, or the sole project synthesised from `project.yaml`), then emits the `kind: request` envelope — a flat `(source, lead)` lead catalog plus the `projects[]` topology — for the agent to group. It writes nothing and fires no journal event; an empty inventory aborts with `plan-reconcile-empty-catalog`.
 - **`--from <response.json> [--format json]`** is the **only** slice writer. It schema-gates the raw response bytes (`validate_proposal_json`, code `proposal-schema`), re-reads `discovery.md` and the topology (never trusting a prior dry-run snapshot), rebuilds the lead catalog, validates the agent's `slices[]` grouping, enforces total lead coverage, validates the explicit slice names, binds projects, derives each slice's `target` from the bound project, and replaces `plan.yaml.slices[]` atomically through the existing plan writers — then emits one journal event.
 
 **Replaceable gate.** `--from` may replace slices only while the plan is replaceable — `lifecycle: pending` AND every entry still `pending` (reuses `Plan::is_replaceable`). An approved plan, or any `in-progress` / `done` entry, fails `plan-reconcile-plan-not-replaceable`. Re-propose on a still-pending plan wholesale-replaces all slices: it is a fresh projection, not a merge, so any prior per-slice operator edit (a relabel, a `--divergence likely` stamp) is discarded.
@@ -911,13 +911,36 @@ RFC-29d build-request schema — is introduced.
 
 **Acceptance proof (D7).** RFC-29 is complete only when one end-to-end fixture proves fan-in twice (Lead sets, then per-source Evidence) and fan-out once (multiple slices from a shared source-claim set) together. The deterministic integration test lives at [`tests/fan_in_fan_out.rs`](./tests/fan_in_fan_out.rs) over `tests/fixtures/rfc-29/fan-in-fan-out/` — it asserts envelope/ordering/determinism (survey → propose → extract → synthesize → build → merge, `depends-on` ordering, byte-identical kernel re-projection). The separate *generated-output-correctness* release gate — each target build passing its replay/golden suite plus `cargo check` / `cargo test` for generated crates — is a manual/CI acceptance step, not part of the deterministic test.
 
+## Workspace root terminology
+
+The word **workspace** overloads three related concepts. Use them verbatim in operator-facing prose:
+
+| Term | Meaning |
+| --- | --- |
+| **Workspace root** | Registry-only platform repo: `workspace: true` in `project.yaml`, `registry.yaml`, plan artifacts at the repo root |
+| **Workspace slot** | Materialised peer at `.specify/workspace/<project>/` |
+| **Workspace sync** | `specrun workspace sync` — materialise slots and regenerate `topology.lock` |
+
+Retire **platform hub** / **hub mode**. `/spec:init workspace` and `specrun init --workspace` scaffold a workspace root; init chains an initial workspace sync before returning.
+
+**Wire rename (within 2.0, no major bump):**
+
+| Before | After |
+| --- | --- |
+| `specrun init --hub` | `specrun init --workspace` |
+| `hub: true` in `project.yaml` | `workspace: true` (legacy `hub:` deserialises via serde alias) |
+| Init JSON `adapter-name: "hub"` | `"workspace"` |
+| `hub-cannot-be-project` | `workspace-cannot-be-project` |
+
+No change to the `specrun workspace` command group or `.specify/workspace/` slot path — intentional overload handled by the vocabulary table above. `specrun init --upgrade` canonicalises a legacy `hub:` key to `workspace:` on round-trip even when `specify_version` is unchanged.
+
 ## Registry projection and topology cache (RFC-36)
 
 Give every fact one writer; derive everything else. A project's *authored intent* — target `adapter` and `description` — lives only in its `.specify/project.yaml`. Its *routing identity* is **derived, not authored**: a deterministic structural projection of the project's own baseline. The retired `capabilities` / `keywords` facets are gone — they added a second writer and duplicated what the baseline already states. `registry.yaml` carries membership + location (`name`, `url`), the cross-project `contracts` wiring, and an **optional** `adapter` used solely as a greenfield scaffold seed. The registry no longer authors a project's adapter/description for plan-time topology — the earlier "registry is the topology ledger" framing (and the `registry-project-adapter-empty` / `registry-description-missing-multi-repo` shape invariants) is superseded. `RegistryProject.adapter` is therefore `Option<String>`; pre-RFC-36 registries with an `adapter:` still parse (the value becomes the seed). `ProjectConfig` does not `deny_unknown_fields`, so a stale `capabilities:` / `keywords:` key in an existing `project.yaml` loads cleanly and goes inert — no migration script.
 
-**Derived identity cache.** Hub plan-time topology is projected through a committed `.specify/topology.lock` (`TopologyLock` in [`crates/workflow/src/registry/topology.rs`](./crates/workflow/src/registry/topology.rs), schema `schemas/topology-lock.schema.json` / `TOPOLOGY_LOCK_JSON_SCHEMA`). `specrun workspace sync` regenerates it after materialisation by loading each slot's `project.yaml`, resolving its `adapter` to `name@vN`, and recording `{ name, target, description?, surface[], recent[] }`, where `surface` / `recent` are the deterministic baseline projection ([`crates/workflow/src/registry/identity.rs`](./crates/workflow/src/registry/identity.rs)): `surface[]` is one entry per `.specify/specs/<unit>/spec.md` (unit slug + up to `SURFACE_TITLE_CAP = 8` requirement-block titles in `REQ-NNN` id order, with a `more:` count past the cap), and `recent[]` is the last `RECENT_TAIL = 10` `slice.archive.created` `outcome_summary` lines from `.specify/journal.jsonl` (via `journal::read`). The projection is structural and byte-stable, never an LLM summary, so the committed lock verifies by regenerate-and-compare. It is machine-written write-if-changed (mirroring `.specify/context.lock`); operators never hand-edit it. `Layout::topology_lock_path()` resolves `.specify/topology.lock`. `TopologyProject` *does* `deny_unknown_fields`, so a pre-upgrade lock still carrying `capabilities:` / `keywords:` fails `TopologyLock::load` until `workspace sync` rewrites it `surface`-only — the ordinary machine-rewrite fix; a hub operator should run `workspace sync` before the first post-upgrade `plan` reads the cache.
+**Derived identity cache.** Workspace-root plan-time topology is projected through a committed `.specify/topology.lock` (`TopologyLock` in [`crates/workflow/src/registry/topology.rs`](./crates/workflow/src/registry/topology.rs), schema `schemas/topology-lock.schema.json` / `TOPOLOGY_LOCK_JSON_SCHEMA`). `specrun workspace sync` regenerates it after materialisation by loading each slot's `project.yaml`, resolving its `adapter` to `name@vN`, and recording `{ name, target, description?, surface[], recent[] }`, where `surface` / `recent` are the deterministic baseline projection ([`crates/workflow/src/registry/identity.rs`](./crates/workflow/src/registry/identity.rs)): `surface[]` is one entry per `.specify/specs/<unit>/spec.md` (unit slug + up to `SURFACE_TITLE_CAP = 8` requirement-block titles in `REQ-NNN` id order, with a `more:` count past the cap), and `recent[]` is the last `RECENT_TAIL = 10` `slice.archive.created` `outcome_summary` lines from `.specify/journal.jsonl` (via `journal::read`). The projection is structural and byte-stable, never an LLM summary, so the committed lock verifies by regenerate-and-compare. It is machine-written write-if-changed (mirroring `.specify/context.lock`); operators never hand-edit it. `Layout::topology_lock_path()` resolves `.specify/topology.lock`. `TopologyProject` *does* `deny_unknown_fields`, so a pre-upgrade lock still carrying `capabilities:` / `keywords:` fails `TopologyLock::load` until `workspace sync` rewrites it `surface`-only — the ordinary machine-rewrite fix; a workspace-root operator should run `workspace sync` before the first post-upgrade `plan` reads the cache.
 
-**Read path.** `hub_topology` builds `ProjectRef[]` from `topology.lock`, not `registry.yaml`; an absent cache fails `topology-cache-missing` (directs the operator to `workspace sync`). `ProjectRef` carries `surface[]` / `recent[]` (the shared `Surface` type from `registry::topology`), threaded into the reconciliation `projects[]` so the agent binds slices on *actual owned behaviour*, not description prose or a hand-authored tag. Empty `surface` / `recent` stay off the wire, so a greenfield project degrades cleanly to `description` only. A single regular (non-hub) project is unchanged in spirit: `regular_topology` reads `project.yaml` plus its own baseline projection live, as its single source of truth.
+**Read path.** `workspace_topology` builds `ProjectRef[]` from `topology.lock`, not `registry.yaml`; an absent cache fails `topology-cache-missing` (directs the operator to `workspace sync`). `ProjectRef` carries `surface[]` / `recent[]` (the shared `Surface` type from `registry::topology`), threaded into the reconciliation `projects[]` so the agent binds slices on *actual owned behaviour*, not description prose or a hand-authored tag. Empty `surface` / `recent` stay off the wire, so a greenfield project degrades cleanly to `description` only. A single regular (non-workspace-root) project is unchanged in spirit: `regular_topology` reads `project.yaml` plus its own baseline projection live, as its single source of truth.
 
 **Staleness, not synchronisation.** `specrun plan validate` emits `topology-cache-stale` (warning) when a slot's current `project.yaml` *or baseline projection* (`target` / `description` / `surface` / `recent`) diverges from the committed cache, replacing the former registry-authored `adapter-mismatch-workspace`. Because the projection is deterministic, this is a regenerate-and-compare check. The fix is `workspace sync`. There is no top-down overwrite of `project.yaml` and no `--check` flag — CI uses the exit-2 gate of `plan validate`, regeneration is `workspace sync`. Both `topology-cache-missing` and `topology-cache-stale` are `Error::Validation` / plan-doctor findings on `EXIT_VALIDATION_FAILED = 2`.
 

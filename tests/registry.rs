@@ -1,7 +1,7 @@
 //! Integration tests for `specrun registry` (registry add/remove).
 //!
 //! Covers `registry add`, `registry remove`, the hub-mode `registry
-//! validate` invariants surfaced after a fresh `init --hub`, and the
+//! validate` invariants surfaced after a fresh `init --workspace`, and the
 //! schema-level `registry {show,validate}` matrix (registry show/validate) on
 //! single- and multi-project layouts.
 
@@ -19,7 +19,7 @@ fn init_hub_validate_succeeds_on_empty() {
     specrun()
         .current_dir(tmp.path())
         .args(["init"])
-        .args(["--name", "platform-hub", "--hub"])
+        .args(["--name", "platform-workspace", "--workspace"])
         .assert()
         .success();
 
@@ -38,13 +38,13 @@ fn init_hub_validate_rejects_dot_url() {
     specrun()
         .current_dir(tmp.path())
         .args(["init"])
-        .args(["--name", "platform-hub", "--hub"])
+        .args(["--name", "platform-workspace", "--workspace"])
         .assert()
         .success();
 
     // Stomp the registry to pretend the operator hand-edited a `url: .`
     // entry. Hub-mode validation must surface the
-    // `hub-cannot-be-project` diagnostic.
+    // `workspace-cannot-be-project` diagnostic.
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
@@ -63,7 +63,7 @@ fn init_hub_validate_rejects_dot_url() {
     assert_eq!(assert.get_output().status.code(), Some(1));
     let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
     assert_eq!(
-        value["error"], "hub-cannot-be-project",
+        value["error"], "workspace-cannot-be-project",
         "error must carry the stable diagnostic code, got: {value}"
     );
     let msg = value["message"].as_str().expect("message string");
@@ -75,9 +75,9 @@ fn init_hub_validate_rejects_dot_url() {
 #[test]
 fn add_round_trips_through_show() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_hub(&tmp, "platform-workspace");
 
-    // Hub registries reject `url: .` (hub-cannot-be-project) but accept
+    // Hub registries reject `url: .` (workspace-cannot-be-project) but accept
     // remote-url entries — the canonical multi-repo shape.
     let assert = specrun()
         .current_dir(tmp.path())
@@ -116,7 +116,7 @@ fn add_succeeds_without_adapter() {
     // RFC-36: `--adapter` is an optional greenfield seed. Omitting it is
     // legal — the project's own `project.yaml` authors its target adapter.
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_hub(&tmp, "platform-workspace");
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -142,7 +142,7 @@ fn add_succeeds_without_adapter() {
 #[test]
 fn add_rejects_dot_url_in_hub_mode() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_hub(&tmp, "platform-workspace");
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -160,10 +160,10 @@ fn add_rejects_dot_url_in_hub_mode() {
         .assert()
         .failure();
     let value: Value = serde_json::from_slice(&assert.get_output().stderr).expect("json");
-    assert_eq!(value["error"], "hub-cannot-be-project");
+    assert_eq!(value["error"], "workspace-cannot-be-project");
     let msg = value["message"].as_str().expect("message");
     assert!(
-        msg.contains("hub-cannot-be-project"),
+        msg.contains("workspace-cannot-be-project"),
         "diagnostic must carry the stable code, got: {msg}"
     );
 }
@@ -171,7 +171,7 @@ fn add_rejects_dot_url_in_hub_mode() {
 #[test]
 fn add_rejects_non_kebab() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_hub(&tmp, "platform-workspace");
 
     let assert = specrun()
         .current_dir(tmp.path())
@@ -198,7 +198,7 @@ fn add_rejects_non_kebab() {
 #[test]
 fn remove_succeeds_and_round_trips() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_hub(&tmp, "platform-workspace");
 
     // Seed two entries — both descriptions present so the registry is
     // multi-repo–valid.
@@ -244,7 +244,7 @@ fn remove_succeeds_and_round_trips() {
 #[test]
 fn remove_warns_on_plan_ref() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_hub(&tmp, "platform-workspace");
 
     for (name, url) in
         [("alpha", "git@github.com:org/alpha.git"), ("beta", "git@github.com:org/beta.git")]
@@ -299,7 +299,7 @@ fn remove_warns_on_plan_ref() {
 #[test]
 fn remove_unknown_project_errors() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_hub(&tmp, "platform-workspace");
 
     let assert = specrun()
         .current_dir(tmp.path())

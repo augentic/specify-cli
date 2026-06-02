@@ -82,34 +82,34 @@ impl Registry {
         Ok(())
     }
 
-    /// Hub-only shape check.
+    /// Workspace-root-only shape check.
     ///
     /// Runs the base [`Registry::validate_shape`] first, then layers on
-    /// the additional invariant that a **registry-only platform hub**
+    /// the additional invariant that a **registry-only workspace root**
     /// must never list itself as a project: any entry with `url: .` is
-    /// rejected with a `hub-cannot-be-project` diagnostic. The hub
-    /// holds platform-level state (registry, change brief, plan,
-    /// workspace clones) but is never a code project.
+    /// rejected with a `workspace-cannot-be-project` diagnostic. The
+    /// workspace root holds platform-level state (registry, change brief,
+    /// plan, workspace slots) but is never a code project.
     ///
-    /// Callers opt in by checking `project.yaml:hub: true` and
+    /// Callers opt in by checking `project.yaml:workspace: true` and
     /// invoking this method in addition to (or instead of) the base
-    /// [`Registry::validate_shape`]. Non-hub callers continue to use
+    /// [`Registry::validate_shape`]. Non-workspace callers continue to use
     /// the base method unchanged — this is a strictly additive API.
     ///
     /// # Errors
     ///
     /// Returns the first base-shape error if `validate_shape` fails,
-    /// or a `hub-cannot-be-project` config error if any entry's `url`
+    /// or a `workspace-cannot-be-project` config error if any entry's `url`
     /// equals `.`.
-    pub fn validate_shape_hub(&self) -> Result<(), Error> {
+    pub fn validate_shape_workspace(&self) -> Result<(), Error> {
         self.validate_shape()?;
         for (idx, project) in self.projects.iter().enumerate() {
             if project.url == "." {
                 return Err(Error::Diag {
-                    code: "hub-cannot-be-project",
+                    code: "workspace-cannot-be-project",
                     detail: format!(
                         "registry.yaml: projects[{idx}] (`{}`).url is `.`; \
-                         a registry-only platform hub must not appear in its own \
+                         a registry-only workspace root must not appear in its own \
                          registry — code projects always live in their own repos",
                         project.name
                     ),

@@ -4,7 +4,7 @@
 //! Lifted from `crates/adapter/src/tests.rs` as part of the workspace split
 //! 2.1 (extract platform-component artefacts out of the adapter
 //! crate). The tests cover `Registry::load`, `validate_shape`,
-//! `validate_shape_hub`, URL classification, and the contract-roles
+//! `validate_shape_workspace`, URL classification, and the contract-roles
 //! invariants (registry-layer invariants).
 
 use std::path::{Path, PathBuf};
@@ -530,16 +530,16 @@ fn rejects_url_with_leading_whitespace() {
 // ---------- Registry hub-mode validation (registry hub-mode validation) ----------
 
 #[test]
-fn validate_shape_hub_accepts_empty_projects() {
+fn validate_shape_workspace_accepts_empty_projects() {
     let reg = Registry {
         version: 1,
         projects: vec![],
     };
-    reg.validate_shape_hub().expect("empty hub registry must pass");
+    reg.validate_shape_workspace().expect("empty workspace registry must pass");
 }
 
 #[test]
-fn validate_shape_hub_accepts_non_dot_urls() {
+fn validate_shape_workspace_accepts_non_dot_urls() {
     let reg = Registry {
         version: 1,
         projects: vec![
@@ -559,11 +559,11 @@ fn validate_shape_hub_accepts_non_dot_urls() {
             },
         ],
     };
-    reg.validate_shape_hub().expect("non-`.` urls must pass hub-mode validation");
+    reg.validate_shape_workspace().expect("non-`.` urls must pass hub-mode validation");
 }
 
 #[test]
-fn validate_shape_hub_rejects_dot_url_entry() {
+fn validate_shape_workspace_rejects_dot_url_entry() {
     let reg = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -574,11 +574,11 @@ fn validate_shape_hub_rejects_dot_url_entry() {
             contracts: None,
         }],
     };
-    let err = reg.validate_shape_hub().expect_err("hub mode must reject url: .");
+    let err = reg.validate_shape_workspace().expect_err("workspace mode must reject url: .");
     match err {
         Error::Diag { code, detail: msg } => {
             assert_eq!(
-                code, "hub-cannot-be-project",
+                code, "workspace-cannot-be-project",
                 "diagnostic must carry the stable code, got: {msg}"
             );
             assert!(msg.contains("platform"), "diagnostic must name the offending project: {msg}");
@@ -589,7 +589,7 @@ fn validate_shape_hub_rejects_dot_url_entry() {
 }
 
 #[test]
-fn validate_shape_hub_rejects_dot_url_multi() {
+fn validate_shape_workspace_rejects_dot_url_multi() {
     let reg = Registry {
         version: 1,
         projects: vec![
@@ -609,10 +609,12 @@ fn validate_shape_hub_rejects_dot_url_multi() {
             },
         ],
     };
-    let err = reg.validate_shape_hub().expect_err("hub mode rejects `.` even alongside peers");
+    let err = reg
+        .validate_shape_workspace()
+        .expect_err("workspace mode rejects `.` even alongside peers");
     match err {
         Error::Diag { code, detail: msg } => {
-            assert_eq!(code, "hub-cannot-be-project", "msg: {msg}");
+            assert_eq!(code, "workspace-cannot-be-project", "msg: {msg}");
             assert!(msg.contains("self-as-project"), "msg should name the offender: {msg}");
         }
         other => panic!("wrong error variant: {other:?}"),
@@ -620,19 +622,19 @@ fn validate_shape_hub_rejects_dot_url_multi() {
 }
 
 #[test]
-fn validate_shape_hub_inherits_base_errors() {
-    // version != 1 is a base-shape error; hub mode must surface it
-    // without ever reaching the `hub-cannot-be-project` check.
+fn validate_shape_workspace_inherits_base_errors() {
+    // version != 1 is a base-shape error; workspace mode must surface it
+    // without ever reaching the `workspace-cannot-be-project` check.
     let reg = Registry {
         version: 2,
         projects: vec![],
     };
-    let err = reg.validate_shape_hub().expect_err("base shape error must propagate through");
+    let err = reg.validate_shape_workspace().expect_err("base shape error must propagate through");
     match err {
         Error::Diag { code, detail: msg } => {
             assert!(msg.contains("version"), "msg: {msg}");
             assert_ne!(
-                code, "hub-cannot-be-project",
+                code, "workspace-cannot-be-project",
                 "must not short-circuit base-shape errors with the hub diagnostic: {msg}"
             );
         }

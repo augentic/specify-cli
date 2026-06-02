@@ -35,7 +35,7 @@ fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {
         specify_version: None,
         rules,
         tools: Vec::new(),
-        hub: false,
+        workspace: false,
     }
 }
 
@@ -160,23 +160,23 @@ fn load_allows_invalid_pinned_version() {
 }
 
 #[test]
-fn hub_field_defaults_false_round_trips() {
+fn workspace_field_defaults_false_round_trips() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("loads");
-    assert!(!cfg.hub, "hub must default to false when absent");
+    assert!(!cfg.workspace, "workspace must default to false when absent");
     assert_eq!(cfg.adapter.as_deref(), Some("omnia"));
     assert!(cfg.tools.is_empty(), "tools must default empty when absent");
 
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nhub: true\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("loads");
-    assert!(cfg.hub, "hub: true must round-trip through deserialize");
-    assert!(cfg.adapter.is_none(), "hub project.yaml must omit adapter:");
+    assert!(cfg.workspace, "legacy hub: true must deserialize as workspace");
+    assert!(cfg.adapter.is_none(), "workspace project.yaml must omit adapter:");
 }
 
 #[test]
-fn hub_field_omitted_when_false_in_serialise() {
+fn workspace_field_omitted_when_false_in_serialise() {
     let cfg = ProjectConfig {
         name: "demo".to_string(),
         description: None,
@@ -184,15 +184,15 @@ fn hub_field_omitted_when_false_in_serialise() {
         specify_version: None,
         rules: BTreeMap::new(),
         tools: Vec::new(),
-        hub: false,
+        workspace: false,
     };
     let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
-    assert!(!yaml.contains("hub:"), "hub: false should be omitted, got:\n{yaml}");
+    assert!(!yaml.contains("workspace:"), "workspace: false should be omitted, got:\n{yaml}");
     assert!(yaml.contains("adapter: omnia"), "adapter: must serialise, got:\n{yaml}");
 }
 
 #[test]
-fn hub_field_serialised_when_true() {
+fn workspace_field_serialised_when_true() {
     let cfg = ProjectConfig {
         name: "platform".to_string(),
         description: None,
@@ -200,11 +200,14 @@ fn hub_field_serialised_when_true() {
         specify_version: None,
         rules: BTreeMap::new(),
         tools: Vec::new(),
-        hub: true,
+        workspace: true,
     };
     let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
-    assert!(yaml.contains("hub: true"), "hub: true must serialise, got:\n{yaml}");
-    assert!(!yaml.contains("adapter:"), "hub project.yaml must omit `adapter:`, got:\n{yaml}");
+    assert!(yaml.contains("workspace: true"), "workspace: true must serialise, got:\n{yaml}");
+    assert!(
+        !yaml.contains("adapter:"),
+        "workspace project.yaml must omit `adapter:`, got:\n{yaml}"
+    );
 }
 
 #[test]

@@ -98,8 +98,11 @@ fn schema_undeclared_tool_exits_two() {
     let tmp = tempdir().expect("tempdir");
     let project = tmp.path();
     fs::create_dir_all(project.join(".specify")).expect("create .specify");
-    fs::write(project.join(".specify/project.yaml"), "name: schema-test\nhub: true\ntools: []\n")
-        .expect("write project.yaml");
+    fs::write(
+        project.join(".specify/project.yaml"),
+        "name: schema-test\nworkspace: true\ntools: []\n",
+    )
+    .expect("write project.yaml");
 
     let cache =
         std::env::temp_dir().join(format!("specify-tool-schema-undeclared-{}", std::process::id()));

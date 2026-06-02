@@ -104,7 +104,7 @@ fn rules_sync_on_hub_without_source_errors() {
     let tmp = tempdir().unwrap();
     specrun()
         .current_dir(tmp.path())
-        .args(["init", "--name", "platform-hub", "--hub"])
+        .args(["init", "--name", "platform-workspace", "--workspace"])
         .assert()
         .success();
 

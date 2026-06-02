@@ -11,7 +11,7 @@ fn regular_init_rejects_missing_adapter() {
             adapter: None,
             name: Some("demo"),
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             upgrade: false,
         },
@@ -22,7 +22,7 @@ fn regular_init_rejects_missing_adapter() {
         matches!(
             &err,
             Error::Diag {
-                code: "init-requires-adapter-or-hub",
+                code: "init-requires-adapter-or-workspace",
                 ..
             }
         ),
@@ -42,7 +42,7 @@ fn hub_init_rejects_adapter_argument() {
             adapter: Some("omnia"),
             name: Some("platform-hub"),
             description: None,
-            hub: true,
+            workspace: true,
             include_framework: false,
             upgrade: false,
         },
@@ -53,7 +53,7 @@ fn hub_init_rejects_adapter_argument() {
         matches!(
             &err,
             Error::Diag {
-                code: "init-requires-adapter-or-hub",
+                code: "init-requires-adapter-or-workspace",
                 ..
             }
         ),

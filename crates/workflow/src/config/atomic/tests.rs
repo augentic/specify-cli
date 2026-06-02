@@ -96,7 +96,7 @@ fn load_round_trips_when_present() {
         specify_version: None,
         rules: BTreeMap::new(),
         tools: Vec::new(),
-        hub: false,
+        workspace: false,
     };
     fs::create_dir_all(layout.specify_dir()).expect("create .specify");
     yaml_write(&layout.config_path(), &cfg).expect("seed project.yaml");

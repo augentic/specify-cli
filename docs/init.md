@@ -2,11 +2,11 @@
 
 `specrun init` scaffolds the per-project `.specify/` tree plus
 `project.yaml`. It has two mutually exclusive shapes; missing both
-surfaces as `init-requires-adapter-or-hub`.
+surfaces as `init-requires-adapter-or-workspace`.
 
 ## Regular project — `specrun init <adapter>`
 
-Pass a adapter identifier or a directory/URL that resolves to one:
+Pass an adapter identifier or a directory/URL that resolves to one:
 
 ```bash
 specrun init omnia
@@ -25,26 +25,33 @@ the project will use. The CLI writes:
   mirror or to register additional namespaces. The file is checked
   in; re-running `init` never overwrites operator edits.
 
-## Platform hub — `specrun init --hub`
+## Workspace root — `specrun init --workspace`
 
 ```bash
-specrun init --hub --name <hub-name>
+specrun init --workspace --name <workspace-name>
 ```
 
-A hub is a registry-only project: it owns `registry.yaml` and the
-cross-repo workspace, but does not itself host adapter artifacts.
+A workspace root is a registry-only project: it owns `registry.yaml` and
+the cross-repo workspace slots, but does not itself host adapter artifacts.
 Use this for the platform repo that orchestrates a fleet of adapter
-projects. Hub init also writes `.specify/wasm-pkg.toml` so hub
-operators can publish or pull packages with `wkg --config
-.specify/wasm-pkg.toml` against the same registry config the runtime
-honours.
+projects. Workspace init writes `workspace: true` in `project.yaml`,
+seeds an empty `registry.yaml`, and chains `specrun workspace sync`
+before returning (no-op when `projects: []`, but still upserts
+`.gitignore` and canonicalises an empty `topology.lock`). Workspace init
+also writes `.specify/wasm-pkg.toml` so workspace operators can publish or
+pull packages with `wkg --config .specify/wasm-pkg.toml` against the same
+registry config the runtime honours.
+
+Legacy `hub: true` in existing `project.yaml` files still deserialises
+(read alias); any re-serialisation or `specrun init --upgrade` emits
+`workspace: true`.
 
 ## Why the two shapes are exclusive
 
-A adapter project pins one adapter identifier; a hub pins none
-(it owns the registry of many). Mixing the two would produce a
+An adapter project pins one adapter identifier; a workspace root pins
+none (it owns the registry of many). Mixing the two would produce a
 `project.yaml` whose semantics depend on whether downstream verbs
-treat the project as a adapter source or as a registry root, and
+treat the project as an adapter source or as a registry root, and
 different verbs would disagree. The CLI refuses the ambiguous shape
-at the entry point with the `init-requires-adapter-or-hub`
+at the entry point with the `init-requires-adapter-or-workspace`
 discriminant.

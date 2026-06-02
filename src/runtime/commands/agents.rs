@@ -103,7 +103,7 @@ mod tests {
             specify_version: None,
             rules,
             tools: Vec::new(),
-            hub: false,
+            workspace: false,
         }
     }
 
@@ -164,11 +164,11 @@ mod tests {
     }
 
     #[test]
-    fn render_input_skips_for_hubs() {
+    fn render_input_skips_for_workspace_roots() {
         let tmp = tempdir().expect("tempdir");
         let cfg_path = Layout::new(tmp.path()).config_path();
         fs::create_dir_all(cfg_path.parent().expect("config parent")).expect("create .specify");
-        fs::write(&cfg_path, "name: platform\nhub: true\n").expect("write project config");
+        fs::write(&cfg_path, "name: platform\nworkspace: true\n").expect("write project config");
         let ctx = Ctx {
             format: Format::Text,
             project_dir: tmp.path().to_path_buf(),
@@ -179,14 +179,14 @@ mod tests {
                 specify_version: None,
                 rules: BTreeMap::new(),
                 tools: Vec::new(),
-                hub: true,
+                workspace: true,
             },
         };
 
-        let assembly = assemble::render_input(&ctx).expect("hub assembly");
+        let assembly = assemble::render_input(&ctx).expect("workspace assembly");
         let input = &assembly.input;
 
-        assert!(input.is_hub);
+        assert!(input.is_workspace_root);
         assert!(input.adapter.is_none());
         assert!(input.dependencies.is_empty());
         assert_eq!(

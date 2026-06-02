@@ -5,7 +5,7 @@
 //!
 //! The write set is closed: this runner mutates **only**
 //! `project.yaml`, rewriting `specify_version` and preserving every
-//! other field (including `adapter:` / `hub:`). It never touches
+//! other field (including `adapter:` / `workspace:`). It never touches
 //! `slices/`, `specs/`, `archive/`, `registry.yaml`,
 //! `.specify/design-system/*`, or the adapter cache, and it never
 //! re-fetches the cache — preservation holds by construction because
@@ -13,11 +13,9 @@
 //! when absent) is owned by the command layer's
 //! `generate_initial_context`, mirroring the fresh-init path.
 //!
-//! One runner serves both regular and hub projects: the preservation
-//! logic is identical, so the dispatcher routes here ahead of the
-//! hub / regular branch (an intentional deviation from the plan's
-//! literal "route through regular/hub" wording — sharing the runner is
-//! simpler and avoids duplicating the same bump twice).
+//! One runner serves both regular and workspace-root projects: the
+//! preservation logic is identical, so the dispatcher routes here ahead
+//! of the workspace / regular branch.
 
 use std::fs;
 
@@ -35,7 +33,8 @@ use crate::init::{InitOptions, InitResult, resolve_version};
 /// [`Error::ProjectNeedsMigration`]), refuses if a migration is owed,
 /// then bumps `specify_version` to the running binary's version — but
 /// only when it differs, so an already-current project is a true no-op
-/// (no `project.yaml` write).
+/// (no `project.yaml` write) unless the on-disk file still carries the
+/// legacy `hub:` key (canonicalised to `workspace:` on round-trip).
 ///
 /// # Errors
 ///
@@ -57,16 +56,23 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let layout = Layout::new(opts.project_dir);
     let config_path = layout.config_path();
     let target = resolve_version();
+    let raw = fs::read_to_string(&config_path)?;
+    let legacy_hub_key = raw.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with("hub:") && !trimmed.starts_with("hub::")
+    });
 
     let specify_version_changed = cfg.specify_version.as_deref() != Some(target.as_str());
     if specify_version_changed {
         cfg.specify_version = Some(target.clone());
+    }
+    if specify_version_changed || legacy_hub_key {
         let serialised = serde_saphyr::to_string(&cfg)?;
         fs::write(&config_path, serialised)?;
     }
 
-    let adapter_name = if cfg.hub {
-        "hub".to_string()
+    let adapter_name = if cfg.workspace {
+        "workspace".to_string()
     } else {
         cfg.adapter
             .as_deref()
@@ -81,7 +87,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         directories_created: Vec::new(),
         scaffolded_rule_keys: Vec::new(),
         specify_version: target,
-        specify_version_changed,
+        specify_version_changed: specify_version_changed || legacy_hub_key,
         wasm_pkg_config_written: false,
     })
 }

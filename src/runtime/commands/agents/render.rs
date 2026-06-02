@@ -10,7 +10,7 @@ use super::detect::Detection;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Input {
     pub(super) project_name: String,
-    pub(super) is_hub: bool,
+    pub(super) is_workspace_root: bool,
     pub(super) detection: Detection,
     pub(super) description: Option<String>,
     pub(super) adapter: Option<Adapter>,
@@ -90,7 +90,7 @@ pub(super) fn render_document_with_fingerprint(input: &Input, fingerprint: &str)
 #[must_use]
 pub(super) fn render_body(input: &Input) -> String {
     let mut sections = Vec::new();
-    if !input.is_hub {
+    if !input.is_workspace_root {
         sections.push(render_section("Runtime", input.detection.runtime_bullets()));
         sections.push(render_section("Tests", input.detection.test_bullets()));
         sections.push(render_section("Linting", input.detection.lint_bullets()));
@@ -238,7 +238,7 @@ mod tests {
     fn regular_input() -> Input {
         Input {
             project_name: "demo".to_string(),
-            is_hub: false,
+            is_workspace_root: false,
             detection: Detection::default(),
             description: Some("Rust services".to_string()),
             adapter: Some(Adapter {
@@ -295,9 +295,9 @@ mod tests {
     }
 
     #[test]
-    fn hub_project_omits_detection_sections() {
+    fn workspace_root_project_omits_detection_sections() {
         let mut input = regular_input();
-        input.is_hub = true;
+        input.is_workspace_root = true;
         input.adapter = None;
 
         let rendered = render_body(&input);

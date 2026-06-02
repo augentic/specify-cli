@@ -1,6 +1,6 @@
-//! Hub variant of `init` — scaffolds a registry-only platform hub
-//! (`registry.yaml` plus `project.yaml { hub: true }`). Refuses to run
-//! when `.specify/` already exists.
+//! Workspace-root variant of `init` — scaffolds a registry-only platform
+//! workspace (`registry.yaml` plus `project.yaml { workspace: true }`).
+//! Refuses to run when `.specify/` already exists.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -16,7 +16,7 @@ use crate::init::{
 };
 use crate::registry::Registry;
 
-/// Scaffold a registry-only platform hub.
+/// Scaffold a registry-only workspace root.
 ///
 /// On-disk shape after success:
 ///
@@ -24,28 +24,28 @@ use crate::registry::Registry;
 /// <project_dir>/
 /// ├── registry.yaml     # { version: 1, projects: [] }
 /// └── .specify/
-///     └── project.yaml  # { name: …, hub: true }
+///     └── project.yaml  # { name: …, workspace: true }
 /// ```
 ///
 /// `registry.yaml` is the one platform-component artefact init
-/// scaffolds — bootstrapping a hub *is* bootstrapping its registry.
-/// `change.md` and `plan.yaml` stay operator-managed even on a hub;
-/// the operator runs `/spec:plan <name>`
+/// scaffolds — bootstrapping a workspace root *is* bootstrapping its
+/// registry. `change.md` and `plan.yaml` stay operator-managed even on
+/// a workspace root; the operator runs `/spec:plan <name>`
 /// (which scaffolds both files atomically) when the work itself begins.
 ///
 /// Adapter resolution is intentionally skipped — there is no
-/// `pipeline.define` for a hub to walk.
+/// `pipeline.define` for a workspace root to walk.
 ///
 /// # Errors
 ///
 /// Returns an error if [`InitOptions::adapter`] is set (mutually
-/// exclusive with `--hub`), if the project name is not kebab-case, if
-/// `.specify/` already exists, or if any filesystem write fails.
+/// exclusive with `--workspace`), if the project name is not kebab-case,
+/// if `.specify/` already exists, or if any filesystem write fails.
 pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     if opts.adapter.is_some() {
         return Err(Error::Diag {
-            code: "init-requires-adapter-or-hub",
-            detail: "pass <adapter> or --hub".to_string(),
+            code: "init-requires-adapter-or-workspace",
+            detail: "pass <adapter> or --workspace".to_string(),
         });
     }
 
@@ -53,10 +53,10 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let specify_dir = layout.specify_dir();
     if specify_dir.exists() {
         return Err(Error::Diag {
-            code: "hub-init-specify-dir-exists",
+            code: "workspace-init-specify-dir-exists",
             detail: format!(
-                "init --hub: refusing to scaffold over an existing `.specify/` at {}; \
-                 remove it first or run without --hub for a regular project",
+                "init --workspace: refusing to scaffold over an existing `.specify/` at {}; \
+                 remove it first or run without --workspace for a regular project",
                 specify_dir.display()
             ),
         });
@@ -65,9 +65,9 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let name = resolved_name(opts.project_dir, opts.name);
     if !is_kebab(&name) {
         return Err(Error::Diag {
-            code: "hub-init-name-not-kebab",
+            code: "workspace-init-name-not-kebab",
             detail: format!(
-                "init --hub: project name `{name}` must be kebab-case \
+                "init --workspace: project name `{name}` must be kebab-case \
                  (lowercase ascii, digits, single hyphens; no leading/trailing/doubled hyphens). \
                  Pass --name <kebab-name> to override the directory basename."
             ),
@@ -86,7 +86,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         specify_version: Some(specify_version.clone()),
         rules: BTreeMap::new(),
         tools: Vec::new(),
-        hub: true,
+        workspace: true,
     };
     let config_path = layout.config_path();
     let serialised = serde_saphyr::to_string(&cfg)?;
@@ -108,7 +108,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
 
     Ok(InitResult {
         config_path,
-        adapter_name: "hub".to_string(),
+        adapter_name: "workspace".to_string(),
         cache_present,
         codex_present: false,
         directories_created,

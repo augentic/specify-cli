@@ -22,7 +22,7 @@ pub(super) fn run(
 
     let registry_path = Registry::path(&ctx.project_dir);
     let path = registry_path.display().to_string();
-    let hub_mode = ctx.config.hub;
+    let workspace_mode = ctx.config.workspace;
     // RFC-36: `--adapter` is an optional greenfield scaffold seed only.
     let candidate = RegistryProject {
         name,
@@ -51,13 +51,13 @@ pub(super) fn run(
     let added = candidate.clone();
     registry.projects.push(candidate);
 
-    // Surface validate_shape / validate_shape_hub errors verbatim —
+    // Surface validate_shape / validate_shape_workspace errors verbatim —
     // their diagnostic codes (`description-missing-multi-repo`,
-    // `hub-cannot-be-project`, etc.) are the documented contract.
+    // `workspace-cannot-be-project`, etc.) are the documented contract.
     // Returning Err here aborts before the atomic write, so the
     // on-disk registry is never left in a shape-invalid state.
-    if hub_mode {
-        registry.validate_shape_hub()?;
+    if workspace_mode {
+        registry.validate_shape_workspace()?;
     } else {
         registry.validate_shape()?;
     }

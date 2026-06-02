@@ -198,18 +198,23 @@ pub fn copy_dir(src: &Path, dst: &Path) {
     }
 }
 
-/// Scaffold an empty hub-mode project in `tmp` via `specrun init --hub`.
+/// Scaffold an empty workspace-root project in `tmp` via `specrun init --workspace`.
 ///
 /// # Panics
 ///
 /// Panics if the `specrun init` invocation does not exit 0.
-pub fn init_hub(tmp: &TempDir, name: &str) {
+pub fn init_workspace(tmp: &TempDir, name: &str) {
     specrun()
         .current_dir(tmp.path())
         .args(["init"])
-        .args(["--name", name, "--hub"])
+        .args(["--name", name, "--workspace"])
         .assert()
         .success();
+}
+
+/// Back-compat alias for tests migrating from `init_hub`.
+pub fn init_hub(tmp: &TempDir, name: &str) {
+    init_workspace(tmp, name);
 }
 
 /// Placeholder substituted in for the test's tempdir path before
