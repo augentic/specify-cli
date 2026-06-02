@@ -127,10 +127,9 @@ fn write_canonical(out: &mut String, value: &Value) {
                 if i > 0 {
                     out.push(',');
                 }
-                out.push_str(
-                    &serde_json::to_string(key)
-                        .unwrap_or_else(|_| unreachable!("a JSON object key is infallibly serialisable")),
-                );
+                out.push_str(&serde_json::to_string(key).unwrap_or_else(|_| {
+                    unreachable!("a JSON object key is infallibly serialisable")
+                }));
                 out.push(':');
                 write_canonical(out, &map[*key]);
             }

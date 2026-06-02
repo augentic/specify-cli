@@ -51,9 +51,13 @@ mod tests {
 
     #[test]
     fn some_serialises_as_canonical_stamp() {
-        let doc =
-            MaybeStamped { at: Some("2026-06-02T01:02:03Z".parse().expect("parse")) };
-        assert_eq!(serde_json::to_string(&doc).expect("serialise"), r#"{"at":"2026-06-02T01:02:03Z"}"#);
+        let doc = MaybeStamped {
+            at: Some("2026-06-02T01:02:03Z".parse().expect("parse")),
+        };
+        assert_eq!(
+            serde_json::to_string(&doc).expect("serialise"),
+            r#"{"at":"2026-06-02T01:02:03Z"}"#
+        );
     }
 
     #[test]

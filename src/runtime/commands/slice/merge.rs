@@ -29,7 +29,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     emit_merge_event(
         ctx,
         EventKind::SliceMergeStarted {
-            slice_name: name.to_string(),
+            slice_name: name.into(),
         },
     );
     match commit_run(ctx, name) {
@@ -37,7 +37,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
             emit_merge_event(
                 ctx,
                 EventKind::SliceMergeSucceeded {
-                    slice_name: name.to_string(),
+                    slice_name: name.into(),
                 },
             );
             Ok(())
@@ -50,7 +50,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
             emit_merge_event(
                 ctx,
                 EventKind::SliceMergeFailed {
-                    slice_name: name.to_string(),
+                    slice_name: name.into(),
                     reason: err.variant_str().into_owned(),
                 },
             );
@@ -130,7 +130,7 @@ fn emit_archive_created(ctx: &Ctx, name: &str, merged: &[MergePreviewEntry], now
     let event = Event::new(
         now,
         EventKind::SliceArchiveCreated {
-            slice_name: name.to_string(),
+            slice_name: name.into(),
             touched_specs,
             outcome_summary,
             merge_sha: git_head_sha(&ctx.project_dir),

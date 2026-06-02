@@ -1,4 +1,3 @@
-
 use super::*;
 
 const SAMPLE: &str = "\

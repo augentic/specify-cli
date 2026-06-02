@@ -44,14 +44,18 @@ mod tests {
 
     #[test]
     fn serialises_to_canonical_z_suffixed_second_precision() {
-        let doc = Stamped { at: "2026-06-02T01:02:03Z".parse().expect("parse") };
+        let doc = Stamped {
+            at: "2026-06-02T01:02:03Z".parse().expect("parse"),
+        };
         let json = serde_json::to_string(&doc).expect("serialise");
         assert_eq!(json, r#"{"at":"2026-06-02T01:02:03Z"}"#);
     }
 
     #[test]
     fn truncates_sub_second_precision_on_serialise() {
-        let doc = Stamped { at: "2026-06-02T01:02:03.987654Z".parse().expect("parse") };
+        let doc = Stamped {
+            at: "2026-06-02T01:02:03.987654Z".parse().expect("parse"),
+        };
         let json = serde_json::to_string(&doc).expect("serialise");
         assert_eq!(json, r#"{"at":"2026-06-02T01:02:03Z"}"#, "writer drops to second precision");
     }

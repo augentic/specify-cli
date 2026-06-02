@@ -16,7 +16,7 @@ fn append_creates_specify_dir_when_missing() {
     let event = Event::new(
         test_timestamp("2026-05-21T20:02:00Z"),
         EventKind::SliceTransitionRefined {
-            slice_name: "checkout".to_string(),
+            slice_name: "checkout".into(),
         },
     );
     append_batch(layout, std::slice::from_ref(&event)).expect("append ok");
@@ -37,14 +37,14 @@ fn append_batch_writes_in_order() {
         Event::new(
             test_timestamp("2026-05-22T13:30:00Z"),
             EventKind::PlanTransitionApproved {
-                plan_name: "fresh".to_string(),
+                plan_name: "fresh".into(),
             },
         ),
         Event::new(
             test_timestamp("2026-05-22T13:30:00Z"),
             EventKind::PlanAmendAuthorityOverride {
-                plan_name: "fresh".to_string(),
-                slice_name: "checkout".to_string(),
+                plan_name: "fresh".into(),
+                slice_name: "checkout".into(),
                 action: AuthorityOverrideAction::Set,
                 claim_kind: Some("criterion".to_string()),
                 source: Some("runtime".to_string()),
@@ -94,7 +94,7 @@ fn event_wire_shapes_match_contract() {
     let rows: &[(EventKind, &[&str])] = &[
         (
             EventKind::SliceExtractCacheHit {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
                 source: "runtime".to_string(),
                 adapter: "captures".to_string(),
                 fingerprint: "sha256:cafef00d".to_string(),
@@ -105,7 +105,7 @@ fn event_wire_shapes_match_contract() {
         ),
         (
             EventKind::SliceExtractCacheMiss {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
                 source: "runtime".to_string(),
                 adapter: "captures".to_string(),
                 fingerprint: "sha256:beef".to_string(),
@@ -119,7 +119,7 @@ fn event_wire_shapes_match_contract() {
         ),
         (
             EventKind::SliceReplayCompleted {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
                 runner: "omnia-target@1.4 (cargo nextest)".to_string(),
                 passed: 47,
                 failed: 0,
@@ -135,8 +135,8 @@ fn event_wire_shapes_match_contract() {
         ),
         (
             EventKind::PlanAmendAuthorityOverride {
-                plan_name: "identity-revamp".to_string(),
-                slice_name: "identity-user-registration".to_string(),
+                plan_name: "identity-revamp".into(),
+                slice_name: "identity-user-registration".into(),
                 action: AuthorityOverrideAction::Set,
                 claim_kind: Some("criterion".to_string()),
                 source: Some("runtime".to_string()),
@@ -187,12 +187,12 @@ fn event_wire_shapes_match_contract() {
         ),
         (
             EventKind::PlanReconcileCompleted {
-                plan_name: "identity-revamp".to_string(),
+                plan_name: "identity-revamp".into(),
                 slice_count: 3,
                 slice_names: vec![
-                    "identity-contracts".to_string(),
-                    "identity-service".to_string(),
-                    "password-reset".to_string(),
+                    "identity-contracts".into(),
+                    "identity-service".into(),
+                    "password-reset".into(),
                 ],
             },
             &[
@@ -204,7 +204,7 @@ fn event_wire_shapes_match_contract() {
         ),
         (
             EventKind::SliceArchiveCreated {
-                slice_name: "identity-service".to_string(),
+                slice_name: "identity-service".into(),
                 touched_specs: vec!["identity".to_string()],
                 outcome_summary: "identity: 2 modified".to_string(),
                 merge_sha: Some("a1b2c3d".to_string()),
@@ -255,12 +255,12 @@ fn plan_reconcile_event_round_trips() {
     let completed = Event::new(
         test_timestamp("2026-05-22T13:15:00Z"),
         EventKind::PlanReconcileCompleted {
-            plan_name: "identity-revamp".to_string(),
+            plan_name: "identity-revamp".into(),
             slice_count: 3,
             slice_names: vec![
-                "identity-contracts".to_string(),
-                "identity-service".to_string(),
-                "password-reset".to_string(),
+                "identity-contracts".into(),
+                "identity-service".into(),
+                "password-reset".into(),
             ],
         },
     );
@@ -290,7 +290,7 @@ fn slice_synthesize_events_round_trip() {
     let rows: &[(EventKind, &[&str])] = &[
         (
             EventKind::SliceSynthesizeStarted {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
             },
             &[
                 r#""event":"slice.synthesize.started""#,
@@ -299,7 +299,7 @@ fn slice_synthesize_events_round_trip() {
         ),
         (
             EventKind::SliceSynthesizeAgent {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
             },
             &[
                 r#""event":"slice.synthesize.agent""#,
@@ -308,7 +308,7 @@ fn slice_synthesize_events_round_trip() {
         ),
         (
             EventKind::SliceSynthesizeCompleted {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
                 artifacts: vec![
                     "proposal.md".to_string(),
                     "specs/identity/spec.md".to_string(),
@@ -325,7 +325,7 @@ fn slice_synthesize_events_round_trip() {
         ),
         (
             EventKind::SliceSynthesizeFailed {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
                 reason: "spec-requirement-missing-sources".to_string(),
             },
             &[
@@ -358,19 +358,19 @@ fn slice_build_merge_events_round_trip() {
     let rows: &[(EventKind, &[&str])] = &[
         (
             EventKind::SliceBuildStarted {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
             },
             &[r#""event":"slice.build.started""#, r#""slice-name":"identity-user-registration""#],
         ),
         (
             EventKind::SliceBuildSucceeded {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
             },
             &[r#""event":"slice.build.succeeded""#, r#""slice-name":"identity-user-registration""#],
         ),
         (
             EventKind::SliceBuildFailed {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
                 reason: "cargo-check-failed".to_string(),
             },
             &[
@@ -381,19 +381,19 @@ fn slice_build_merge_events_round_trip() {
         ),
         (
             EventKind::SliceMergeStarted {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
             },
             &[r#""event":"slice.merge.started""#, r#""slice-name":"identity-user-registration""#],
         ),
         (
             EventKind::SliceMergeSucceeded {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
             },
             &[r#""event":"slice.merge.succeeded""#, r#""slice-name":"identity-user-registration""#],
         ),
         (
             EventKind::SliceMergeFailed {
-                slice_name: "identity-user-registration".to_string(),
+                slice_name: "identity-user-registration".into(),
                 reason: "baseline-conflict".to_string(),
             },
             &[
@@ -404,7 +404,7 @@ fn slice_build_merge_events_round_trip() {
         ),
         (
             EventKind::TargetExecutionAgent {
-                slice: "identity-user-registration".to_string(),
+                slice: "identity-user-registration".into(),
                 target: "omnia".to_string(),
             },
             &[
@@ -433,7 +433,7 @@ fn slice_synthesize_completed_omits_empty_artifacts() {
     let event = Event::new(
         test_timestamp("2026-05-22T13:15:00Z"),
         EventKind::SliceSynthesizeCompleted {
-            slice_name: "identity-user-registration".to_string(),
+            slice_name: "identity-user-registration".into(),
             artifacts: vec![],
         },
     );
@@ -514,57 +514,57 @@ fn no_snake_case_leaks_to_wire() {
     let layout = Layout::new(dir.path());
     for kind in [
         EventKind::PlanTransitionApproved {
-            plan_name: "p".to_string(),
+            plan_name: "p".into(),
         },
         EventKind::PlanAmendDivergence {
-            plan_name: "p".to_string(),
-            slice_name: "s".to_string(),
+            plan_name: "p".into(),
+            slice_name: "s".into(),
             from: Divergence::None,
             to: Divergence::Accepted,
         },
         EventKind::SliceTransitionRefined {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
         },
         EventKind::SliceSynthesizeStarted {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
         },
         EventKind::SliceSynthesizeAgent {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
         },
         EventKind::SliceSynthesizeCompleted {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
             artifacts: vec!["proposal.md".to_string()],
         },
         EventKind::SliceSynthesizeFailed {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
             reason: "spec-requirement-missing-sources".to_string(),
         },
         EventKind::SliceBuildStarted {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
         },
         EventKind::SliceBuildSucceeded {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
         },
         EventKind::SliceBuildFailed {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
             reason: "cargo-check-failed".to_string(),
         },
         EventKind::SliceMergeStarted {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
         },
         EventKind::SliceMergeSucceeded {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
         },
         EventKind::SliceMergeFailed {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
             reason: "baseline-conflict".to_string(),
         },
         EventKind::TargetExecutionAgent {
-            slice: "s".to_string(),
+            slice: "s".into(),
             target: "omnia".to_string(),
         },
         EventKind::SliceExtractCompleted {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
             source: "k".to_string(),
         },
         EventKind::SourceSurveyCacheHit {
@@ -584,12 +584,12 @@ fn no_snake_case_leaks_to_wire() {
             operation: SourceOperation::Extract,
         },
         EventKind::PlanReconcileCompleted {
-            plan_name: "p".to_string(),
+            plan_name: "p".into(),
             slice_count: 1,
-            slice_names: vec!["s".to_string()],
+            slice_names: vec!["s".into()],
         },
         EventKind::SliceArchiveCreated {
-            slice_name: "s".to_string(),
+            slice_name: "s".into(),
             touched_specs: vec!["identity".to_string()],
             outcome_summary: "identity: 1 modified".to_string(),
             merge_sha: Some("abc1234".to_string()),

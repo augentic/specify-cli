@@ -65,8 +65,12 @@ pub fn transition(
         let slice_name =
             slice_dir.file_name().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
         if let Some(project_root) = project_root_from_slice_dir(slice_dir) {
-            let event =
-                Event::new(now, EventKind::SliceTransitionRefined { slice_name: slice_name.into() });
+            let event = Event::new(
+                now,
+                EventKind::SliceTransitionRefined {
+                    slice_name: slice_name.into(),
+                },
+            );
             append_batch(Layout::new(&project_root), std::slice::from_ref(&event))?;
         }
     }

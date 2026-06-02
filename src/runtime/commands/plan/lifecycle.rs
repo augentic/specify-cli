@@ -232,7 +232,7 @@ pub(super) fn transition(
             let event = specify_workflow::journal::Event::new(
                 Timestamp::now(),
                 specify_workflow::journal::EventKind::PlanTransitionApproved {
-                    plan_name: body.name.clone(),
+                    plan_name: body.name.clone().into(),
                 },
             );
             specify_workflow::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
@@ -245,8 +245,8 @@ pub(super) fn transition(
             let event = specify_workflow::journal::Event::new(
                 Timestamp::now(),
                 specify_workflow::journal::EventKind::PlanTransitionUndone {
-                    plan_name: body.plan.name.clone(),
-                    slice_name: body.name.clone(),
+                    plan_name: body.plan.name.clone().into(),
+                    slice_name: body.name.clone().into(),
                     from: pair.from,
                     to: pair.to,
                 },

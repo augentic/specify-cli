@@ -134,15 +134,15 @@ fn append_synthesis_journal(
         .map(|(requirement_id, tag)| {
             let kind = match tag {
                 RequirementTag::Unknown => EventKind::SliceSynthesisUnknown {
-                    slice_name: slice_name.to_string(),
+                    slice_name: slice_name.into(),
                     requirement_id,
                 },
                 RequirementTag::Conflict => EventKind::SliceSynthesisConflict {
-                    slice_name: slice_name.to_string(),
+                    slice_name: slice_name.into(),
                     requirement_id,
                 },
                 RequirementTag::Divergence => EventKind::SliceSynthesisDivergence {
-                    slice_name: slice_name.to_string(),
+                    slice_name: slice_name.into(),
                     requirement_id,
                 },
             };

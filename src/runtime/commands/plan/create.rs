@@ -86,7 +86,7 @@ pub(super) fn create(
         events.push(journal::Event::new(
             now,
             journal::EventKind::PlanTransitionApproved {
-                plan_name: plan_name.clone(),
+                plan_name: plan_name.clone().into(),
             },
         ));
     }

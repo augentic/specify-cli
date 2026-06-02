@@ -62,13 +62,4 @@ fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn github_sparse_checkout_uses_adapter_parent() {
-        assert_eq!(sparse_checkout_path("adapters/omnia"), "adapters");
-        assert_eq!(sparse_checkout_path("schemas/omnia"), "schemas");
-        assert_eq!(sparse_checkout_path("omnia"), "omnia");
-    }
-}
+mod tests;

@@ -320,13 +320,13 @@ fn emit_cache_event(cx: &ExtractCtx<'_>, lookup: &cache::CacheLookup) -> Result<
     let adapter = cx.prepared.manifest.name.clone();
     let kind = match &lookup.outcome {
         LookupOutcome::Hit { .. } => EventKind::SliceExtractCacheHit {
-            slice_name: cx.slice.to_string(),
+            slice_name: cx.slice.into(),
             source: cx.source.to_string(),
             adapter,
             fingerprint: lookup.digest.clone(),
         },
         LookupOutcome::Miss { reason } => EventKind::SliceExtractCacheMiss {
-            slice_name: cx.slice.to_string(),
+            slice_name: cx.slice.into(),
             source: cx.source.to_string(),
             adapter,
             fingerprint: lookup.digest.clone(),

@@ -4,15 +4,14 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use specify_diagnostics::{Artifact, Diagnostic};
+/// Canonical JSON Schema for the two `tools:` declaration sites,
+/// re-exported from the central [`specify_schema`] embed.
+pub use specify_schema::TOOL_JSON_SCHEMA;
 
 use crate::manifest::{
     Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions, looks_like_sha256_hex,
     looks_like_windows_absolute,
 };
-
-/// Canonical JSON Schema for the two `tools:` declaration sites,
-/// re-exported from the central [`specify_schema`] embed.
-pub use specify_schema::TOOL_JSON_SCHEMA;
 
 const RULE_NAME_FORMAT: &str = "tool.name-format";
 const RULE_VERSION_SEMVER: &str = "tool.version-is-semver";

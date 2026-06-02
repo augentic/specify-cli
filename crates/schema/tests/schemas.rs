@@ -94,11 +94,7 @@ fn embedded_schemas_match_on_disk_sources() {
         ("SOURCE_JSON_SCHEMA", SOURCE_JSON_SCHEMA, "schemas/source.schema.json"),
         ("TARGET_JSON_SCHEMA", TARGET_JSON_SCHEMA, "schemas/target.schema.json"),
         ("TOOL_JSON_SCHEMA", TOOL_JSON_SCHEMA, "schemas/tool.schema.json"),
-        (
-            "TOOL_SIDECAR_JSON_SCHEMA",
-            TOOL_SIDECAR_JSON_SCHEMA,
-            "schemas/tool-sidecar.schema.json",
-        ),
+        ("TOOL_SIDECAR_JSON_SCHEMA", TOOL_SIDECAR_JSON_SCHEMA, "schemas/tool-sidecar.schema.json"),
         ("PLAN_JSON_SCHEMA", PLAN_JSON_SCHEMA, "schemas/plan/plan.schema.json"),
         ("EVIDENCE_JSON_SCHEMA", EVIDENCE_JSON_SCHEMA, "schemas/evidence.schema.json"),
         ("LEAD_JSON_SCHEMA", LEAD_JSON_SCHEMA, "schemas/discovery/lead.schema.json"),

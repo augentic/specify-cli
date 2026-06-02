@@ -99,7 +99,10 @@ mod tests {
         assert!(out.contains("file=crates/invoice_export/src/config.rs"));
         assert!(out.contains("line=18"));
         assert!(out.contains("col=5"));
-        assert!(out.contains("%0A  Impact: "), "body newline is escaped, colon is not, got {out:?}");
+        assert!(
+            out.contains("%0A  Impact: "),
+            "body newline is escaped, colon is not, got {out:?}"
+        );
     }
 
     #[test]
@@ -110,8 +113,8 @@ mod tests {
         suggestion.severity = Severity::Suggestion;
         let mut optional = sample_diagnostic();
         optional.severity = Severity::Optional;
-        let out = render(Format::Github, &report(vec![critical, suggestion, optional]))
-            .expect("renders");
+        let out =
+            render(Format::Github, &report(vec![critical, suggestion, optional])).expect("renders");
         assert!(out.contains("::error "), "critical -> error");
         assert!(out.contains("::warning "), "suggestion -> warning");
         assert!(out.contains("::notice "), "optional -> notice");
