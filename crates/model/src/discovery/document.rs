@@ -81,6 +81,29 @@ impl Discovery {
         Parser::new(text).run()
     }
 
+    /// Parse a survey `lead-set.md` artifact.
+    ///
+    /// Survey briefs ask agents to write only `### <lead>` blocks; the
+    /// CLI owns the surrounding `## Lead inventory` frame. This accepts
+    /// both framed and unframed lead sets, then delegates to the strict
+    /// discovery parser.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Diag`] (`discovery-parse-failed`) when the
+    /// normalized lead set has the same structural defects rejected by
+    /// [`Self::parse`].
+    pub fn parse_lead_set(text: &str) -> Result<Self> {
+        if text.lines().any(is_inventory_heading) {
+            Self::parse(text)
+        } else {
+            let mut normalized = String::with_capacity("## Lead inventory\n\n".len() + text.len());
+            normalized.push_str("## Lead inventory\n\n");
+            normalized.push_str(text);
+            Self::parse(&normalized)
+        }
+    }
+
     /// Load and parse `discovery.md` at `path`. Returns
     /// [`Error::ArtifactNotFound`] when the file is absent.
     ///
@@ -805,6 +828,48 @@ Some trailing prose.
         assert_eq!(doc.leads[0].aliases.names, vec!["account-registration", "user-signup"]);
         assert_eq!(doc.leads[1].lead, "password-reset-request");
         assert_eq!(doc.leads[1].aliases.names, vec!["password-reset"]);
+    }
+
+    #[test]
+    fn parse_lead_set_accepts_headingless_blocks() {
+        let doc = Discovery::parse_lead_set(
+            "\
+### user-registration
+
+- lead: user-registration
+- aliases: [signup]
+- synopsis: Registration endpoint.
+",
+        )
+        .expect("parse ok");
+
+        assert_eq!(doc.leads.len(), 1);
+        assert_eq!(doc.leads[0].lead, "user-registration");
+        assert_eq!(doc.leads[0].source, "");
+        assert_eq!(doc.leads[0].aliases.names, vec!["signup"]);
+    }
+
+    #[test]
+    fn parse_lead_set_accepts_existing_inventory_heading() {
+        let lead_set = "\
+## Lead inventory
+
+### user-registration
+
+- lead: user-registration
+- synopsis: Registration endpoint.
+";
+        let framed = Discovery::parse(lead_set).expect("parse ok");
+        let lead_set = Discovery::parse_lead_set(lead_set).expect("parse lead set ok");
+
+        assert_eq!(lead_set, framed);
+    }
+
+    #[test]
+    fn parse_lead_set_accepts_whitespace_only_content() {
+        let doc = Discovery::parse_lead_set("\n  \n").expect("parse ok");
+
+        assert!(doc.leads.is_empty());
     }
 
     #[test]
