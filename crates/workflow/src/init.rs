@@ -68,7 +68,7 @@ pub struct InitOptions<'a> {
     /// command layer). Mutually exclusive with the `<adapter>`
     /// positional, `--workspace`, `--name`, `--description`,
     /// `--include-framework`, and `--check-migration` at the clap
-    /// surface.
+    /// surface. `--platforms` is legal alongside `--upgrade`.
     pub upgrade: bool,
 }
 
