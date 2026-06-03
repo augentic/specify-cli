@@ -822,7 +822,7 @@ pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
 /// hiccup must not fail an otherwise-successful slice merge / build). The
 /// lifecycle brackets in `slice merge` / `slice build` emit through this.
 ///
-/// The swallow is intentional but **not silent**: [`record_dropped`]
+/// The swallow is intentional but **not silent**: `record_dropped`
 /// routes a structured `warning:` line to stderr (naming `scope`, the
 /// journal path, and the I/O error) through the same operator-warning
 /// surface other best-effort failures use, and appends the dropped event
@@ -891,7 +891,7 @@ fn append_dropped(layout: Layout<'_>, event: &Event) -> Result<(), Error> {
 ///
 /// Best-effort: a serialise/IO failure is intentionally swallowed so it
 /// never overrides the scan's exit code. The swallow is not silent —
-/// [`record_dropped`] warns on stderr under `command_label` and records
+/// `record_dropped` warns on stderr under `command_label` and records
 /// the dropped event in the `.specify/journal.dropped` sidecar.
 pub fn emit_lint_completed(
     layout: Layout<'_>, scope: LintScope, findings: &[Diagnostic], duration_ms: u128,
