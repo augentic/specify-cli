@@ -11,7 +11,7 @@ const CLOSE_MARKER: &[u8] = b"<!-- specify:context end -->";
 
 /// Parsed representation of a single fenced context block.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::runtime::commands::agents) struct FencedDocument<'a> {
+pub struct FencedDocument<'a> {
     source: &'a [u8],
     block_start: usize,
     body_start: usize,
@@ -23,25 +23,25 @@ pub(in crate::runtime::commands::agents) struct FencedDocument<'a> {
 impl<'a> FencedDocument<'a> {
     /// Bytes before the opening fence.
     #[must_use]
-    pub(super) fn prefix(&self) -> &'a [u8] {
+    pub fn prefix(&self) -> &'a [u8] {
         &self.source[..self.block_start]
     }
 
     /// Bytes from the opening fence through the closing fence.
     #[must_use]
-    pub(super) fn generated_block(&self) -> &'a [u8] {
+    pub fn generated_block(&self) -> &'a [u8] {
         &self.source[self.block_start..self.close_end]
     }
 
     /// Bytes between the completed opening fence and the closing fence.
     #[must_use]
-    pub(in crate::runtime::commands::agents) fn body(&self) -> &'a [u8] {
+    pub fn body(&self) -> &'a [u8] {
         &self.source[self.body_start..self.close_start]
     }
 
     /// Bytes after the closing fence.
     #[must_use]
-    pub(super) fn suffix(&self) -> &'a [u8] {
+    pub fn suffix(&self) -> &'a [u8] {
         &self.source[self.close_end..]
     }
 
@@ -55,7 +55,7 @@ impl<'a> FencedDocument<'a> {
 
 /// Reason a fenced document could not be parsed or planned.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(in crate::runtime::commands::agents) enum FenceError {
+pub enum FenceError {
     /// The existing `AGENTS.md` has no context fences and `--force` was not set.
     #[error(
         "context-existing-unfenced-agents-md: AGENTS.md exists without Specify context fences; rerun with --force to rewrite it"
@@ -92,9 +92,7 @@ pub(in crate::runtime::commands::agents) enum FenceError {
 /// Parse a document that may contain a Specify context fence.
 ///
 /// Returns `Ok(None)` only when no context fence markers are present at all.
-pub(in crate::runtime::commands::agents) fn parse_document(
-    bytes: &[u8],
-) -> Result<Option<FencedDocument<'_>>, FenceError> {
+pub fn parse_document(bytes: &[u8]) -> Result<Option<FencedDocument<'_>>, FenceError> {
     let Some(block_start) = find_subslice(bytes, OPEN_MARKER, 0) else {
         if find_valid_closing_fences(bytes, 0)?.is_empty() {
             return Ok(None);

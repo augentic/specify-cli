@@ -1,7 +1,9 @@
 use specify_diagnostics::{
-    Artifact, Confidence, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
-    Severity, fingerprint as compute_fingerprint,
+    Artifact, Confidence, DiagnosticKind, DiagnosticReport, DiagnosticReportVersion,
+    DiagnosticSource, DiagnosticSummary, FindingEvidence, FindingLocation, Severity,
+    fingerprint as compute_fingerprint,
 };
+use specify_error::Error;
 
 use super::*;
 use crate::rules::{Origin, PathRoot};
@@ -328,4 +330,67 @@ fn blocking_present_respects_status() {
 
     // Empty: no blocking.
     assert!(!blocking_findings_present(&[]));
+}
+
+fn report(findings: Vec<Diagnostic>) -> DiagnosticReport {
+    DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
+        findings,
+    }
+}
+
+fn blocking_finding(severity: Severity, status: Option<FindingStatus>) -> Diagnostic {
+    let mut f = finding("UNI-014", "src/lib.rs", 1);
+    f.severity = severity;
+    f.status = status;
+    f
+}
+
+/// The `Result`-returning gate wraps [`blocking_findings_present`]:
+/// non-blocking sets pass; an open critical/important set returns
+/// `Error::Validation { review-findings-present }`.
+#[test]
+fn deny_blocking_findings_maps_to_validation() {
+    // Empty / ignored / false-positive / sub-threshold → Ok.
+    deny_blocking_findings(&report(vec![])).expect("empty envelope must exit 0");
+    deny_blocking_findings(&report(vec![blocking_finding(
+        Severity::Critical,
+        Some(FindingStatus::Ignored),
+    )]))
+    .expect("ignored critical must not block");
+    deny_blocking_findings(&report(vec![blocking_finding(
+        Severity::Important,
+        Some(FindingStatus::FalsePositive),
+    )]))
+    .expect("false-positive important must not block");
+    deny_blocking_findings(&report(vec![blocking_finding(
+        Severity::Suggestion,
+        Some(FindingStatus::Open),
+    )]))
+    .expect("suggestion severity must not block");
+
+    // Open critical → Err with the stable code.
+    let err = deny_blocking_findings(&report(vec![blocking_finding(
+        Severity::Critical,
+        Some(FindingStatus::Open),
+    )]))
+    .expect_err("open critical blocks");
+    match err {
+        Error::Validation { code, .. } => assert_eq!(code, "review-findings-present"),
+        other => panic!("expected Validation, got {other:?}"),
+    }
+
+    // Unset status + important → treated as open → Err.
+    let err = deny_blocking_findings(&report(vec![blocking_finding(Severity::Important, None)]))
+        .expect_err("unset status treated as open");
+    assert!(matches!(err, Error::Validation { .. }));
+
+    // Mixed: one open important hidden among non-blocking → Err.
+    let mixed = vec![
+        blocking_finding(Severity::Critical, Some(FindingStatus::Ignored)),
+        blocking_finding(Severity::Important, Some(FindingStatus::FalsePositive)),
+        blocking_finding(Severity::Important, Some(FindingStatus::Open)),
+    ];
+    assert!(matches!(deny_blocking_findings(&report(mixed)), Err(Error::Validation { .. })));
 }

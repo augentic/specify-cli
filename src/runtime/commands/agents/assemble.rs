@@ -7,13 +7,13 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
+use specify_agents::{detect, fingerprint, render};
 use specify_error::{Error, Result};
 use specify_workflow::adapter::{ADAPTER_FILENAME, ResolvedTargetAdapter};
 use specify_workflow::config::{Layout, ProjectConfig};
 use specify_workflow::registry::{Registry, TopologyLock, TopologyProject};
 use specify_workflow::slice::SliceMetadata;
 
-use super::{detect, fingerprint, render};
 use crate::runtime::context::Ctx;
 
 pub(super) struct RenderAssembly {

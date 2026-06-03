@@ -8,36 +8,36 @@ use specify_error::Error;
 
 /// One renderer input file and its content digest.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct InputFingerprint {
+pub struct InputFingerprint {
     /// Repo-relative path, using `/` separators.
-    pub(super) path: String,
+    pub path: String,
     /// Lowercase hex SHA-256 digest of the input bytes.
-    pub(super) sha256: String,
+    pub sha256: String,
 }
 
 /// Fingerprint values persisted in `.specify/context.lock`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ContextFingerprint {
+pub struct ContextFingerprint {
     /// `sha256:<hex>` digest over the canonical aggregate input.
-    pub(super) fingerprint: String,
+    pub fingerprint: String,
     /// CLI version included as the first line of the aggregate input.
-    pub(super) cli_version: String,
+    pub cli_version: String,
     /// Sorted per-file inputs.
-    pub(super) inputs: Vec<InputFingerprint>,
+    pub inputs: Vec<InputFingerprint>,
     /// `sha256:<hex>` digest of the bytes between the context fences.
-    pub(super) body_sha256: String,
+    pub body_sha256: String,
 }
 
 /// Collects candidate paths and hashes their bytes in deterministic order.
 #[derive(Debug, Clone)]
-pub(super) struct InputCollector {
+pub struct InputCollector {
     project_dir: PathBuf,
     paths: BTreeMap<String, PathBuf>,
 }
 
 impl InputCollector {
     /// Start collecting inputs for a project root.
-    pub(super) fn new(project_dir: &Path) -> Self {
+    pub fn new(project_dir: &Path) -> Self {
         Self {
             project_dir: project_dir.to_path_buf(),
             paths: BTreeMap::new(),
@@ -45,14 +45,14 @@ impl InputCollector {
     }
 
     /// Add a required input file.
-    pub(super) fn add_file(&mut self, path: &Path) -> Result<(), Error> {
+    pub fn add_file(&mut self, path: &Path) -> Result<(), Error> {
         let relative = repo_relative_path(&self.project_dir, path)?;
         self.paths.entry(relative).or_insert_with(|| path.to_path_buf());
         Ok(())
     }
 
     /// Add an input file only when it exists as a regular file.
-    pub(super) fn add_file_if_present(&mut self, path: &Path) -> Result<(), Error> {
+    pub fn add_file_if_present(&mut self, path: &Path) -> Result<(), Error> {
         match path.try_exists() {
             Ok(true) if path.is_file() => self.add_file(path),
             Ok(_) => Ok(()),
@@ -61,7 +61,7 @@ impl InputCollector {
     }
 
     /// Add repo-relative input paths captured by another renderer component.
-    pub(super) fn add_relative_files<I, S>(&mut self, paths: I) -> Result<(), Error>
+    pub fn add_relative_files<I, S>(&mut self, paths: I) -> Result<(), Error>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
@@ -73,7 +73,7 @@ impl InputCollector {
     }
 
     /// Read and hash every collected input in repo-relative path order.
-    pub(super) fn finalize(&self) -> Result<Vec<InputFingerprint>, Error> {
+    pub fn finalize(&self) -> Result<Vec<InputFingerprint>, Error> {
         self.paths
             .iter()
             .map(|(relative, absolute)| {
@@ -88,7 +88,7 @@ impl InputCollector {
 }
 
 /// Build the lock-ready fingerprint structure from input hashes and body bytes.
-pub(super) fn for_context(
+pub fn for_context(
     cli_version: &str, inputs: Vec<InputFingerprint>, body: &[u8],
 ) -> ContextFingerprint {
     ContextFingerprint {
@@ -100,7 +100,7 @@ pub(super) fn for_context(
 }
 
 /// Hash the canonical aggregate encoding used by `.specify/context.lock`.
-pub(super) fn aggregate(cli_version: &str, mut inputs: Vec<InputFingerprint>) -> String {
+pub fn aggregate(cli_version: &str, mut inputs: Vec<InputFingerprint>) -> String {
     inputs.sort_by(|left, right| left.path.cmp(&right.path));
 
     let mut canonical = String::new();
@@ -117,7 +117,7 @@ pub(super) fn aggregate(cli_version: &str, mut inputs: Vec<InputFingerprint>) ->
 }
 
 /// Hash fenced body bytes with the `sha256:` prefix used by the lock file.
-pub(super) fn body_sha256(body: &[u8]) -> String {
+pub fn body_sha256(body: &[u8]) -> String {
     prefixed_sha256(body)
 }
 

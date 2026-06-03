@@ -16,33 +16,33 @@ const CURRENT_LOCK_VERSION: u64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct ContextLock {
-    pub(super) version: u64,
-    pub(super) fingerprint: String,
-    pub(super) cli_version: String,
-    pub(super) inputs: Vec<Input>,
-    pub(super) fences: Fences,
+pub struct ContextLock {
+    pub version: u64,
+    pub fingerprint: String,
+    pub cli_version: String,
+    pub inputs: Vec<Input>,
+    pub fences: Fences,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Input {
-    pub(super) path: String,
-    pub(super) sha256: String,
+pub struct Input {
+    pub path: String,
+    pub sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct Fences {
-    pub(super) body_sha256: String,
+pub struct Fences {
+    pub body_sha256: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg(test)]
-pub(super) struct InputDiff {
-    pub(super) changed: Vec<String>,
-    pub(super) added: Vec<String>,
-    pub(super) removed: Vec<String>,
+pub struct InputDiff {
+    pub changed: Vec<String>,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,7 +53,7 @@ struct Version {
 impl ContextLock {
     // YAML sidecar persisted to disk — not a wire DTO. Kept as a named
     // constructor; R6's `From`-for-Body/Row migration does not apply.
-    pub(super) fn from_fingerprint(fingerprint: &ContextFingerprint) -> Self {
+    pub fn from_fingerprint(fingerprint: &ContextFingerprint) -> Self {
         Self {
             version: CURRENT_LOCK_VERSION,
             fingerprint: fingerprint.fingerprint.clone(),
@@ -73,7 +73,7 @@ impl ContextLock {
     }
 }
 
-pub(super) fn load(path: &Path) -> Result<Option<ContextLock>, Error> {
+pub fn load(path: &Path) -> Result<Option<ContextLock>, Error> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
@@ -112,7 +112,7 @@ pub(super) fn load(path: &Path) -> Result<Option<ContextLock>, Error> {
     Ok(Some(lock))
 }
 
-pub(super) fn save(path: &Path, lock: &ContextLock) -> Result<(), Error> {
+pub fn save(path: &Path, lock: &ContextLock) -> Result<(), Error> {
     // ContextLock isn't a Plan/Registry/ProjectConfig sibling; its load
     // path returns a typed Validation envelope rather than `Option<Self>`,
     // so it doesn't fit the AtomicYaml shape.
@@ -120,7 +120,7 @@ pub(super) fn save(path: &Path, lock: &ContextLock) -> Result<(), Error> {
 }
 
 #[cfg(test)]
-pub(super) fn diff_inputs(expected: &[Input], actual: &[Input]) -> InputDiff {
+pub fn diff_inputs(expected: &[Input], actual: &[Input]) -> InputDiff {
     let expected_by_path = inputs_by_path(expected);
     let actual_by_path = inputs_by_path(actual);
 

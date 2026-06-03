@@ -57,35 +57,3 @@ fn require_json(format: Format) -> Result<()> {
         }),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use super::*;
-
-    /// `--format text` must fail with `Error::Argument` so
-    /// `Exit::from` lands on exit 2 (argument shape).
-    #[test]
-    fn rejects_text_format_with_argument_error() {
-        let args = ExportArgs {
-            rules_root: None,
-            target: "omnia".to_string(),
-            sources: Vec::new(),
-            artifacts: Vec::new(),
-            languages: Vec::new(),
-            include_deprecated: false,
-            include_unmatched: false,
-            include_core: false,
-            project_dir: PathBuf::from("."),
-        };
-        let err = run(Format::Text, &args).expect_err("text format must be rejected");
-        match err {
-            Error::Argument { flag, detail } => {
-                assert_eq!(flag, "--format");
-                assert!(detail.contains("--format json"), "detail missing hint: {detail}");
-            }
-            other => panic!("expected Error::Argument, got {other:?}"),
-        }
-    }
-}

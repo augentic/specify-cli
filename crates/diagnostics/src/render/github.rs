@@ -115,6 +115,7 @@ mod tests {
         optional.severity = Severity::Optional;
         let out =
             render(Format::Github, &report(vec![critical, suggestion, optional])).expect("renders");
+        assert_eq!(out.lines().count(), 3, "one annotation line per finding");
         assert!(out.contains("::error "), "critical -> error");
         assert!(out.contains("::warning "), "suggestion -> warning");
         assert!(out.contains("::notice "), "optional -> notice");

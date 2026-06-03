@@ -5,12 +5,12 @@
 use std::path::Path;
 
 #[derive(Debug, Clone, Default)]
-pub(super) struct TomlMarker {
+pub struct TomlMarker {
     values: Vec<TomlValue>,
 }
 
 impl TomlMarker {
-    pub(super) fn parse(contents: &str) -> Result<Self, String> {
+    pub fn parse(contents: &str) -> Result<Self, String> {
         let mut marker = Self::default();
         let mut section: Vec<String> = Vec::new();
         let mut multiline_depth = 0_usize;
@@ -48,7 +48,7 @@ impl TomlMarker {
         Ok(marker)
     }
 
-    pub(super) fn value<const N: usize>(&self, section: [&str; N], key: &str) -> Option<&str> {
+    pub fn value<const N: usize>(&self, section: [&str; N], key: &str) -> Option<&str> {
         self.values
             .iter()
             .find(|value| {
@@ -111,7 +111,7 @@ fn strip_toml_comment(line: &str) -> String {
     strip_comment(line, '#')
 }
 
-pub(super) fn strip_json_comments(contents: &str) -> String {
+pub fn strip_json_comments(contents: &str) -> String {
     contents.lines().map(|line| strip_comment(line, '/')).collect::<Vec<_>>().join("\n")
 }
 
@@ -182,12 +182,12 @@ fn update_delimiter_depth(mut depth: usize, value: &str) -> Result<usize, String
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub(super) struct MakeTargets {
-    pub(super) has_test: bool,
-    pub(super) has_checks: bool,
+pub struct MakeTargets {
+    pub has_test: bool,
+    pub has_checks: bool,
 }
 
-pub(super) fn parse_make_targets(contents: &str) -> MakeTargets {
+pub fn parse_make_targets(contents: &str) -> MakeTargets {
     let mut targets = MakeTargets::default();
     for raw_line in contents.lines() {
         let line = raw_line.trim_end();
@@ -211,7 +211,7 @@ pub(super) fn parse_make_targets(contents: &str) -> MakeTargets {
     targets
 }
 
-pub(super) fn parse_go_version(contents: &str) -> Option<String> {
+pub fn parse_go_version(contents: &str) -> Option<String> {
     contents.lines().find_map(|line| {
         let trimmed = line.trim();
         trimmed
@@ -222,7 +222,7 @@ pub(super) fn parse_go_version(contents: &str) -> Option<String> {
     })
 }
 
-pub(super) fn relative_marker_path(project_dir: &Path, path: &Path) -> String {
+pub fn relative_marker_path(project_dir: &Path, path: &Path) -> String {
     path.strip_prefix(project_dir)
         .unwrap_or(path)
         .components()

@@ -371,6 +371,36 @@ fn rule_id(rule: &Value) -> &str {
     rule.pointer("/rule-id").and_then(Value::as_str).unwrap_or("")
 }
 
+/// Negative scenario: the global `--format text` default is rejected
+/// before any resolution work — v1 export emits JSON only, so the
+/// handler returns `Error::Argument` (exit 2) with a hint to rerun
+/// with `--format json`. Exercises the CLI plumbing end-to-end so the
+/// JSON-only contract stays pinned at the wire boundary.
+#[test]
+fn negative_text_format_rejected() {
+    let project = tempdir().expect("project tempdir");
+
+    let output = Command::cargo_bin("specrun")
+        .expect("cargo_bin(specrun)")
+        .args(["--format", "text", "rules", "export", "--target", "omnia"])
+        .args(["--project-dir".as_ref(), project.path().as_os_str()])
+        .output()
+        .expect("specrun invocation");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "expected exit 2; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--format json"),
+        "stderr must hint the JSON-only contract; got:\n{stderr}"
+    );
+}
+
 /// Negative scenario: a project dir with no shared rules tree, no
 /// `--rules-root`, must exit `2` (validation) with `rules-root-required`
 /// surfaced through the error envelope. Exercises the CH-17 CLI

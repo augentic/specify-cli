@@ -5,35 +5,35 @@
 mod markers;
 mod runtimes;
 
-pub(super) use runtimes::detect_root_markers;
+pub use runtimes::detect_root_markers;
 
 const NOT_DETECTED: &str = "not detected";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(super) struct Detection {
-    pub(super) runtimes: Vec<RuntimeDetection>,
-    pub(super) tests: Vec<CommandDetection>,
-    pub(super) linting: Vec<LintDetection>,
-    pub(super) warnings: Vec<DetectionWarning>,
-    pub(super) input_paths: Vec<String>,
+pub struct Detection {
+    pub runtimes: Vec<RuntimeDetection>,
+    pub tests: Vec<CommandDetection>,
+    pub linting: Vec<LintDetection>,
+    pub warnings: Vec<DetectionWarning>,
+    pub input_paths: Vec<String>,
 }
 
 impl Detection {
-    pub(super) fn runtime_bullets(&self) -> Vec<String> {
+    pub fn runtime_bullets(&self) -> Vec<String> {
         if self.runtimes.is_empty() {
             return vec![NOT_DETECTED.to_string()];
         }
         self.runtimes.iter().map(RuntimeDetection::bullet).collect()
     }
 
-    pub(super) fn test_bullets(&self) -> Vec<String> {
+    pub fn test_bullets(&self) -> Vec<String> {
         if self.tests.is_empty() {
             return vec![NOT_DETECTED.to_string()];
         }
         self.tests.iter().map(CommandDetection::bullet).collect()
     }
 
-    pub(super) fn lint_bullets(&self) -> Vec<String> {
+    pub fn lint_bullets(&self) -> Vec<String> {
         if self.linting.is_empty() {
             return vec![NOT_DETECTED.to_string()];
         }
@@ -42,13 +42,13 @@ impl Detection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct DetectionWarning {
-    pub(super) path: String,
-    pub(super) message: String,
+pub struct DetectionWarning {
+    pub path: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct RuntimeDetection {
+pub struct RuntimeDetection {
     id: &'static str,
     label: String,
 }
@@ -64,7 +64,7 @@ impl RuntimeDetection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct CommandDetection {
+pub struct CommandDetection {
     id: &'static str,
     command: &'static str,
 }
@@ -80,7 +80,7 @@ impl CommandDetection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum LintDetection {
+pub enum LintDetection {
     Command(CommandDetection),
     Workflow(String),
 }

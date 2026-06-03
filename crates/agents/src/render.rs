@@ -8,70 +8,70 @@ use super::detect::Detection;
 
 /// Complete input needed to render repository context.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Input {
-    pub(super) project_name: String,
-    pub(super) is_workspace: bool,
-    pub(super) detection: Detection,
-    pub(super) description: Option<String>,
-    pub(super) adapter: Option<Adapter>,
-    pub(super) rule_overrides: Vec<Rule>,
-    pub(super) declared_tools: Vec<Tool>,
-    pub(super) active_slices: Vec<String>,
-    pub(super) workspace_peers: Vec<Peer>,
-    pub(super) dependencies: Vec<Dep>,
+pub struct Input {
+    pub project_name: String,
+    pub is_workspace: bool,
+    pub detection: Detection,
+    pub description: Option<String>,
+    pub adapter: Option<Adapter>,
+    pub rule_overrides: Vec<Rule>,
+    pub declared_tools: Vec<Tool>,
+    pub active_slices: Vec<String>,
+    pub workspace_peers: Vec<Peer>,
+    pub dependencies: Vec<Dep>,
 }
 
 /// Adapter details surfaced without embedding adapter-specific prose in
 /// the binary.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Adapter {
-    pub(super) name: String,
-    pub(super) version: u32,
-    pub(super) description: String,
-    pub(super) briefs: Vec<Brief>,
+pub struct Adapter {
+    pub name: String,
+    pub version: u32,
+    pub description: String,
+    pub briefs: Vec<Brief>,
 }
 
 /// One resolved adapter brief.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Brief {
-    pub(super) phase: String,
-    pub(super) id: String,
-    pub(super) description: String,
+pub struct Brief {
+    pub phase: String,
+    pub id: String,
+    pub description: String,
 }
 
 /// One `project.yaml.rules` override.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Rule {
-    pub(super) brief_id: String,
-    pub(super) path: String,
+pub struct Rule {
+    pub brief_id: String,
+    pub path: String,
 }
 
 /// One project-scoped WASI tool declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Tool {
-    pub(super) name: String,
-    pub(super) version: String,
+pub struct Tool {
+    pub name: String,
+    pub version: String,
 }
 
 /// One materialized registry workspace slot.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Peer {
-    pub(super) name: String,
-    pub(super) path: String,
+pub struct Peer {
+    pub name: String,
+    pub path: String,
 }
 
 /// One registry peer dependency.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Dep {
-    pub(super) name: String,
-    pub(super) adapter: String,
-    pub(super) url: String,
-    pub(super) description: Option<String>,
+pub struct Dep {
+    pub name: String,
+    pub adapter: String,
+    pub url: String,
+    pub description: Option<String>,
 }
 
 /// Render a complete fenced `AGENTS.md` document with a computed fingerprint.
 #[must_use]
-pub(super) fn render_document_with_fingerprint(input: &Input, fingerprint: &str) -> String {
+pub fn render_document_with_fingerprint(input: &Input, fingerprint: &str) -> String {
     format!(
         "# {name} - Agent Instructions\n\n\
          <!-- specify:context begin\n\
@@ -88,7 +88,7 @@ pub(super) fn render_document_with_fingerprint(input: &Input, fingerprint: &str)
 
 /// Render only the managed Markdown body between context fences.
 #[must_use]
-pub(super) fn render_body(input: &Input) -> String {
+pub fn render_body(input: &Input) -> String {
     let mut sections = Vec::new();
     if !input.is_workspace {
         sections.push(render_section("Runtime", input.detection.runtime_bullets()));

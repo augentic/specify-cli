@@ -119,6 +119,19 @@ mod tests {
         assert!(matches!(err, RenderError::JsonSchemaValidation { .. }));
     }
 
+    /// A summary object missing one of its four tally keys fails the
+    /// envelope schema before any bytes are emitted.
+    #[test]
+    fn rejects_missing_summary_key() {
+        let bad = json!({
+            "version": 1,
+            "summary": { "critical": 0, "important": 0, "suggestion": 0 },
+            "findings": []
+        });
+        let err = render_value(&bad).expect_err("missing summary key must be rejected");
+        assert!(matches!(err, RenderError::JsonSchemaValidation { .. }));
+    }
+
     /// The envelope preserves the producer's input order — the JSON
     /// `findings` array mirrors the slice order rather than re-sorting.
     #[test]

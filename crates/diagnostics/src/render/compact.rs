@@ -110,4 +110,25 @@ mod tests {
         let out = render(Format::Compact, &report(vec![finding])).expect("renders");
         assert!(out.contains("a/b.rs:7:-\t"), "column-less location uses dash, got {out:?}");
     }
+
+    /// Tab separation means a comma in the title needs no escaping — it
+    /// survives verbatim in the title field.
+    #[test]
+    fn comma_in_title_is_not_escaped() {
+        let mut finding = sample_diagnostic();
+        finding.title = "Bundle digest, with comma, exceeds policy".into();
+        let out = render(Format::Compact, &report(vec![finding])).expect("renders");
+        assert!(
+            out.contains("\tBundle digest, with comma, exceeds policy\n"),
+            "comma survives unescaped, got {out:?}"
+        );
+    }
+
+    /// One tab-separated line per finding, terminated by a newline.
+    #[test]
+    fn one_line_per_finding() {
+        let out = render(Format::Compact, &report(vec![sample_diagnostic(), sample_diagnostic()]))
+            .expect("renders");
+        assert_eq!(out.lines().count(), 2, "one line per finding");
+    }
 }

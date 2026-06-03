@@ -21,10 +21,11 @@ use crate::diagnostic::{Diagnostic, DiagnosticReport, FindingLocation, FindingSt
 /// Never errors — the [`Result`] return mirrors the uniform
 /// [`super::render`] dispatch signature.
 pub fn render(report: &DiagnosticReport) -> Result<String, RenderError> {
+    let color = std::env::var_os("NO_COLOR").is_none();
     let mut out = String::new();
     let _ = writeln!(out, "Specify review — {} finding(s)", report.findings.len());
     for finding in &report.findings {
-        write_finding(&mut out, finding);
+        write_finding(&mut out, finding, color);
     }
     let s = &report.summary;
     let _ = writeln!(
@@ -35,8 +36,8 @@ pub fn render(report: &DiagnosticReport) -> Result<String, RenderError> {
     Ok(out)
 }
 
-fn write_finding(out: &mut String, finding: &Diagnostic) {
-    let tag = paint(finding.severity, severity_tag(finding.severity));
+fn write_finding(out: &mut String, finding: &Diagnostic, color: bool) {
+    let tag = paint(finding.severity, severity_tag(finding.severity), color);
     let status = status_tag(finding.status);
     let rule = finding.rule_id.as_deref().map_or(String::new(), |id| format!(" {id}"));
     let location = finding
@@ -67,8 +68,8 @@ const fn severity_tag(severity: Severity) -> &'static str {
     }
 }
 
-fn paint(severity: Severity, text: &str) -> String {
-    if std::env::var_os("NO_COLOR").is_some() {
+fn paint(severity: Severity, text: &str, color: bool) -> String {
+    if !color {
         return text.to_owned();
     }
     let code = match severity {
@@ -218,5 +219,26 @@ mod tests {
         let out = render_plain(&report(vec![]));
         assert!(out.starts_with("Specify review — 0 finding(s)\n"));
         assert!(out.contains("Summary: 0 critical, 0 important, 0 suggestion, 0 optional"));
+    }
+
+    /// With colour enabled each severity wraps its tag in the matching
+    /// ANSI escape and resets it; the `color` seam keeps this
+    /// deterministic without touching the process `NO_COLOR` env.
+    #[test]
+    fn paint_wraps_tag_in_ansi_when_color_enabled() {
+        assert_eq!(
+            super::paint(Severity::Critical, "[CRITICAL]", true),
+            "\x1b[31m[CRITICAL]\x1b[0m"
+        );
+        assert_eq!(
+            super::paint(Severity::Important, "[IMPORTANT]", true),
+            "\x1b[33m[IMPORTANT]\x1b[0m"
+        );
+    }
+
+    /// With colour disabled the tag passes through untouched.
+    #[test]
+    fn paint_passes_through_when_color_disabled() {
+        assert_eq!(super::paint(Severity::Critical, "[CRITICAL]", false), "[CRITICAL]");
     }
 }
