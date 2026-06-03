@@ -31,6 +31,12 @@ use crate::name::{PlanName, SliceName};
 /// Project-relative path the journal lives at.
 const JOURNAL_FILE_NAME: &str = "journal.jsonl";
 
+/// Project-relative path of the dropped-event sidecar. A best-effort
+/// append failure (see [`emit_best_effort`]) gets a second, recoverable
+/// home here so an `O_APPEND` hiccup to the primary journal is never a
+/// silent loss.
+const DROPPED_FILE_NAME: &str = "journal.dropped";
+
 /// One row of the journal. Serialises as `{ timestamp, event,
 /// payload }` — workflow §Wire format pins `timestamp` first so a
 /// `head -1` on the file is enough to confirm the run window.
@@ -810,22 +816,83 @@ pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
 
 /// Best-effort append of a single lifecycle [`Event`] carrying `kind`.
 ///
-/// Timestamped `Timestamp::now()`. Mirrors [`emit_lint_completed`]'s
-/// posture: a journal-write failure is logged under `scope` (the dotted
-/// event family, e.g. `slice.merge` / `slice.build`) and swallowed so it
-/// can never change the calling verb's exit code. The lifecycle
-/// brackets in `slice merge` / `slice build` emit through this.
+/// Timestamped `Timestamp::now()`. The journal is observability, not the
+/// source of truth, so a failed append is **intentionally swallowed** —
+/// it can never change the calling verb's exit code (a journaling I/O
+/// hiccup must not fail an otherwise-successful slice merge / build). The
+/// lifecycle brackets in `slice merge` / `slice build` emit through this.
+///
+/// The swallow is intentional but **not silent**: [`record_dropped`]
+/// routes a structured `warning:` line to stderr (naming `scope`, the
+/// journal path, and the I/O error) through the same operator-warning
+/// surface other best-effort failures use, and appends the dropped event
+/// to the `<project_dir>/.specify/journal.dropped` sidecar as a
+/// recoverable audit trail. The mitigation is itself best-effort and
+/// never panics.
 pub fn emit_best_effort(layout: Layout<'_>, kind: EventKind, scope: &str) {
     let event = Event::new(Timestamp::now(), kind);
     if let Err(err) = append_batch(layout, std::slice::from_ref(&event)) {
-        eprintln!("warning: {scope} journal append: {err}");
+        record_dropped(layout, scope, &event, &err);
     }
+}
+
+/// Surface a dropped journal [`Event`] so the best-effort swallow in
+/// [`emit_best_effort`] / [`emit_lint_completed`] is observable and
+/// recoverable rather than silent.
+///
+/// Emits an operator-visible `warning:` line to stderr — matching the
+/// repo's established best-effort warning idiom — and attempts to append
+/// the event to the `<project_dir>/.specify/journal.dropped` sidecar (a
+/// second chance at durability when the primary append failed for a
+/// path-local reason). The sidecar write is itself best-effort: if it
+/// too fails the stderr warning still surfaces the drop, and neither path
+/// changes the calling verb's exit code or panics.
+fn record_dropped(layout: Layout<'_>, scope: &str, event: &Event, err: &Error) {
+    let journal = path(layout);
+    let sidecar = layout.specify_dir().join(DROPPED_FILE_NAME);
+    if append_dropped(layout, event).is_ok() {
+        eprintln!(
+            "warning: {scope}: failed to append journal event to {} ({err}); \
+             recorded the dropped event in {} for recovery",
+            journal.display(),
+            sidecar.display(),
+        );
+    } else {
+        eprintln!(
+            "warning: {scope}: failed to append journal event to {} ({err}); \
+             the dropped event could not be written to the {} sidecar either",
+            journal.display(),
+            sidecar.display(),
+        );
+    }
+}
+
+/// Append `event` as one newline-terminated JSON line to the
+/// `<project_dir>/.specify/journal.dropped` sidecar.
+///
+/// Mirrors [`append_batch`]'s open/append shape but is reserved for
+/// events the primary journal append dropped. Returns the I/O or
+/// serialisation error to the caller, which discards it ([`record_dropped`]
+/// has already warned on stderr) — the helper itself never panics.
+fn append_dropped(layout: Layout<'_>, event: &Event) -> Result<(), Error> {
+    let line = serde_json::to_string(event).map_err(|err| Error::Diag {
+        code: "journal-event-serialise-failed",
+        detail: format!("failed to serialise dropped journal event: {err}"),
+    })?;
+    std::fs::create_dir_all(layout.specify_dir())?;
+    let sidecar = layout.specify_dir().join(DROPPED_FILE_NAME);
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&sidecar)?;
+    file.write_all(line.as_bytes())?;
+    file.write_all(b"\n")?;
+    Ok(())
 }
 
 /// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`.
 ///
-/// Best-effort: serialise/IO failures log to stderr with the supplied
-/// `command_label` prefix and never override the scan's exit code.
+/// Best-effort: a serialise/IO failure is intentionally swallowed so it
+/// never overrides the scan's exit code. The swallow is not silent —
+/// [`record_dropped`] warns on stderr under `command_label` and records
+/// the dropped event in the `.specify/journal.dropped` sidecar.
 pub fn emit_lint_completed(
     layout: Layout<'_>, scope: LintScope, findings: &[Diagnostic], duration_ms: u128,
     exit_code: i32, command_label: &str,
@@ -844,7 +911,7 @@ pub fn emit_lint_completed(
     };
     let event = Event::new(Timestamp::now(), EventKind::LintCompleted(payload));
     if let Err(err) = append_batch(layout, std::slice::from_ref(&event)) {
-        eprintln!("{command_label}: failed to append lint-completed journal event: {err}");
+        record_dropped(layout, command_label, &event, &err);
     }
 }
 

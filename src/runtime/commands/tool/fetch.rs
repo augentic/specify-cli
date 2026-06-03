@@ -5,8 +5,7 @@ use specify_error::Result;
 use specify_tool::cache::Status as CacheStatus;
 
 use super::dto::{FetchBody, ToolFetchRow, cache_status_for, row_for, write_fetch_text};
-use super::{build_inventory, emit_warnings_to_stderr, select};
-use crate::runtime::cli::Format;
+use super::{build_inventory, select};
 use crate::runtime::context::Ctx;
 
 pub fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
@@ -32,8 +31,5 @@ pub fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
         warnings: inventory.warnings,
     };
     ctx.write(&body, write_fetch_text)?;
-    if matches!(ctx.format, Format::Text) {
-        emit_warnings_to_stderr(&body.warnings);
-    }
     Ok(())
 }

@@ -84,6 +84,56 @@ fn append_batch_empty_slice_is_no_op() {
 }
 
 #[test]
+fn append_failure_records_dropped_sidecar() {
+    // Journal events are observability, not the source of truth: a failed
+    // primary append must not crash the verb, but it must not vanish either.
+    // Force `append_batch` to fail by making `journal.jsonl` a directory so
+    // the append `open()` errors, then assert `emit_best_effort` swallowed
+    // the failure AND captured the event in the `.specify/journal.dropped`
+    // sidecar.
+    let dir = tempdir().expect("tempdir");
+    let layout = Layout::new(dir.path());
+    std::fs::create_dir_all(path(layout)).expect("create journal.jsonl as a directory");
+
+    emit_best_effort(
+        layout,
+        EventKind::SliceMergeSucceeded {
+            slice_name: "checkout".into(),
+        },
+        "slice.merge",
+    );
+
+    let sidecar = layout.specify_dir().join(DROPPED_FILE_NAME);
+    let raw = std::fs::read_to_string(&sidecar).expect("dropped sidecar written on append failure");
+    assert!(
+        raw.contains(r#""event":"slice.merge.succeeded""#),
+        "sidecar must capture the dropped event line; got:\n{raw}"
+    );
+    assert!(raw.ends_with('\n'), "sidecar line must be newline-terminated; got:\n{raw}");
+}
+
+#[test]
+fn dropped_sidecar_appends_event_lines() {
+    // The sidecar writer is append-only: repeated drops accumulate one
+    // newline-terminated JSON line each, so the recovery trail preserves
+    // every dropped event in order.
+    let dir = tempdir().expect("tempdir");
+    let layout = Layout::new(dir.path());
+    let event = Event::new(
+        test_timestamp("2026-05-21T20:02:00Z"),
+        EventKind::SliceTransitionRefined {
+            slice_name: "checkout".into(),
+        },
+    );
+    append_dropped(layout, &event).expect("first sidecar append");
+    append_dropped(layout, &event).expect("second sidecar append");
+
+    let raw = std::fs::read_to_string(layout.specify_dir().join(DROPPED_FILE_NAME))
+        .expect("read sidecar");
+    assert_eq!(raw.lines().count(), 2, "two appends must yield two sidecar lines; got:\n{raw}");
+}
+
+#[test]
 fn event_wire_shapes_match_contract() {
     wire_shapes::check_contract_part1();
     wire_shapes::check_contract_part2();

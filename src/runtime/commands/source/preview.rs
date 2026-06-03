@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_error::{Error, Result};
+use specify_workflow::adapter::SourceOperation;
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::source::prep;
@@ -31,7 +32,7 @@ const DEFAULT_OUT_DIR: &str = ".specify-preview";
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct BriefEntry {
-    operation: String,
+    operation: SourceOperation,
     path: PathBuf,
 }
 
@@ -75,7 +76,7 @@ pub fn preview(
         .briefs
         .iter()
         .map(|(op, relative)| BriefEntry {
-            operation: op.to_string(),
+            operation: *op,
             path: prepared.adapter_dir.join(relative),
         })
         .collect();

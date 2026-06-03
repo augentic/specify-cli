@@ -30,3 +30,6 @@ pub fn archive(slice_dir: &Path, archive_dir: &Path, today: Timestamp) -> Result
     move_atomic(slice_dir, &target)?;
     Ok(target)
 }
+
+#[cfg(test)]
+mod tests;

@@ -9,13 +9,13 @@ mod regular;
 mod upgrade;
 mod workspace;
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use adapter_uri::adapter_name_from_value;
 pub use cache::{CodexMeta, codex_cache_root};
 use jiff::Timestamp;
 use specify_error::Error;
+use specify_model::atomic::bytes_write;
 use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
 
 use crate::config::Layout;
@@ -206,13 +206,11 @@ pub(crate) fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
 /// Propagates filesystem errors from creating `.specify/` or writing
 /// the file.
 pub(crate) fn scaffold_wasm_pkg_config(layout: &Layout<'_>) -> Result<bool, Error> {
-    let specify_dir = layout.specify_dir();
-    let path = specify_dir.join(WASM_PKG_CONFIG_FILENAME);
+    let path = layout.specify_dir().join(WASM_PKG_CONFIG_FILENAME);
     if path.exists() {
         return Ok(false);
     }
-    fs::create_dir_all(&specify_dir)?;
-    fs::write(&path, DEFAULT_WASM_PKG_CONFIG)?;
+    bytes_write(&path, DEFAULT_WASM_PKG_CONFIG.as_bytes())?;
     Ok(true)
 }
 

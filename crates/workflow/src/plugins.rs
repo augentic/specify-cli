@@ -169,10 +169,10 @@ pub struct DoctorReport {
     /// Schema marker; `1` for this shape.
     pub version: u32,
     /// Absolute path to the resolved marketplace file.
-    pub marketplace: String,
+    pub marketplace: PathBuf,
     /// Absolute path to the cache root
     /// (`$CURSOR_HOME/plugins/cache/<name>`).
-    pub cache_root: String,
+    pub cache_root: PathBuf,
     /// Per-plugin rows: declared plugins in manifest order, then any
     /// `extra` cache entries sorted by name.
     pub plugins: Vec<PluginReport>,
@@ -188,11 +188,11 @@ pub struct DoctorReport {
 #[derive(Debug, Clone)]
 pub struct RefreshOutcome {
     /// Absolute path to the resolved marketplace file.
-    pub marketplace: String,
+    pub marketplace: PathBuf,
     /// Absolute path to the cache root that was (or would be) deleted.
-    pub cache_root: String,
+    pub cache_root: PathBuf,
     /// Cache directories actually removed; empty when nothing existed.
-    pub deleted_paths: Vec<String>,
+    pub deleted_paths: Vec<PathBuf>,
 }
 
 /// Resolve the expected sha for a marketplace plugin.
@@ -492,8 +492,8 @@ pub fn build_report(
     let summary = Summary::tally(&plugins);
     Ok(DoctorReport {
         version: 1,
-        marketplace: marketplace_path.display().to_string(),
-        cache_root: cache_root.display().to_string(),
+        marketplace: marketplace_path.to_path_buf(),
+        cache_root: cache_root.to_path_buf(),
         plugins,
         summary,
     })
@@ -509,13 +509,13 @@ pub fn build_report(
 pub fn refresh(marketplace_path: &Path, cache_root: &Path) -> Result<RefreshOutcome> {
     let mut deleted_paths = Vec::new();
     match fs::remove_dir_all(cache_root) {
-        Ok(()) => deleted_paths.push(cache_root.display().to_string()),
+        Ok(()) => deleted_paths.push(cache_root.to_path_buf()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
         Err(err) => return Err(Error::Io(err)),
     }
     Ok(RefreshOutcome {
-        marketplace: marketplace_path.display().to_string(),
-        cache_root: cache_root.display().to_string(),
+        marketplace: marketplace_path.to_path_buf(),
+        cache_root: cache_root.to_path_buf(),
         deleted_paths,
     })
 }
