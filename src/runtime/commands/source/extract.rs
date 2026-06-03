@@ -184,7 +184,7 @@ impl<'a> op::Flow<'a> for ExtractFlow<'a> {
             source_dir,
             value_inline,
             scratch_dir: scratch,
-            evidence_dir: evidence_dir(c.prepared),
+            evidence_dir: evidence_dir(c.prepared)?,
             leads: vec![self.lead.to_string()],
             execution: "agent",
         })
@@ -199,7 +199,7 @@ impl<'a> op::Flow<'a> for ExtractFlow<'a> {
     ) -> Result<ExtractResult> {
         let c = &self.common;
         schema::validate_evidence(raw, artifact_source)?;
-        let path = evidence_dir(c.prepared).join(format!("{}.yaml", c.source));
+        let path = evidence_dir(c.prepared)?.join(format!("{}.yaml", c.source));
         bytes_write(&path, raw.as_bytes())?;
         Ok(self.extract_result(lookup, path))
     }
@@ -265,13 +265,19 @@ impl ExtractFlow<'_> {
 }
 
 /// The scaffolded `.specify/slices/<slice>/evidence/` directory. Always
-/// `Some` for the extract op (prep was handed `evidence_root: Some`);
-/// the `expect` pins that invariant.
-fn evidence_dir(prepared: &prep::SourcePrep) -> PathBuf {
-    prepared
-        .evidence_dir
-        .clone()
-        .expect("extract prep always scaffolds the slice evidence/ directory")
+/// `Some` for the extract op (prep was handed `evidence_root: Some`).
+/// Fails closed with a diagnostic rather than panicking if that prep
+/// invariant ever regresses.
+fn evidence_dir(prepared: &prep::SourcePrep) -> Result<PathBuf> {
+    let Some(dir) = prepared.evidence_dir.clone() else {
+        return Err(Error::Diag {
+            code: "source-extract-prep-missing",
+            detail: "extract prep did not scaffold the slice evidence/ directory \
+                (evidence_root was None)"
+                .to_string(),
+        });
+    };
+    Ok(dir)
 }
 
 fn write_handoff_text(w: &mut dyn Write, body: &ExtractHandoff) -> std::io::Result<()> {

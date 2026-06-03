@@ -81,14 +81,21 @@ pub fn preview(
         })
         .collect();
 
+    let Some(evidence_dir) = prepared.evidence_dir else {
+        return Err(Error::Diag {
+            code: "source-preview-dir-missing",
+            detail: "preview prep did not scaffold the evidence/ directory \
+                (evidence_root was None)"
+                .to_string(),
+        });
+    };
+
     let body = PreviewBody {
         adapter: prepared.manifest.name,
         version: prepared.manifest.version,
         source: source.to_path_buf(),
         out: out_dir,
-        evidence_dir: prepared
-            .evidence_dir
-            .expect("evidence_root: Some(..) => evidence_dir present"),
+        evidence_dir,
         leads: prepared.leads,
         briefs,
     };

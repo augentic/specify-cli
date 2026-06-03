@@ -11,27 +11,10 @@ use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 mod common;
-use common::{parse_json, repo_root, sha256_hex, specrun};
+use common::{copy_dir, parse_json, repo_root, sha256_hex, specrun};
 
 fn fixtures_root() -> PathBuf {
     repo_root().join("tests").join("fixtures")
-}
-
-fn copy_dir(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create dst");
-    for entry in fs::read_dir(src).expect("read src") {
-        let entry = entry.expect("dir entry");
-        if entry.file_name() == "target" {
-            continue;
-        }
-        let kind = entry.file_type().expect("file type");
-        let target = dst.join(entry.file_name());
-        if kind.is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else if kind.is_file() {
-            fs::copy(entry.path(), target).expect("copy file");
-        }
-    }
 }
 
 struct ToolFixtures {

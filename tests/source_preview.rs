@@ -4,31 +4,17 @@ use std::fs;
 use std::path::PathBuf;
 
 mod common;
-use common::{parse_stderr, parse_stdout, repo_root, specrun};
+use common::{copy_dir, parse_stderr, parse_stdout, repo_root, specrun};
 use tempfile::tempdir;
 
 fn plugin_fixtures_root() -> PathBuf {
     repo_root().join("crates/workflow/tests/fixtures/plugins")
 }
 
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
-    fs::create_dir_all(dst).expect("create dst");
-    for entry in fs::read_dir(src).expect("read fixture dir") {
-        let entry = entry.expect("dir entry");
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if from.is_dir() {
-            copy_dir_recursive(&from, &to);
-        } else {
-            fs::copy(&from, &to).expect("copy fixture file");
-        }
-    }
-}
-
 fn stage_source_adapter(root: &std::path::Path, name: &str) {
     let src = plugin_fixtures_root().join("adapters").join("sources").join(name);
     let dst = root.join("adapters").join("sources").join(name);
-    copy_dir_recursive(&src, &dst);
+    copy_dir(&src, &dst);
 }
 
 #[test]

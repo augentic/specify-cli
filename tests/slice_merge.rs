@@ -6,12 +6,31 @@
 //! list without touching disk; `conflict-check` flags `type: modified`
 //! baselines that have drifted since `defined_at`.
 
-use std::fs;
-use std::thread::sleep;
-use std::time::Duration;
+use std::fs::{self, File, FileTimes};
+use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 mod common;
 use common::{Project, copy_dir, parse_json, repo_root, specrun};
+
+/// Stamp `path` with a fixed mtime comfortably after the 2020
+/// `defined_at` the drift tests seed, so `slice merge conflict-check`'s
+/// `mtime > defined_at` comparison fires deterministically — regardless
+/// of filesystem mtime granularity or host clock. Replaces the former
+/// `sleep`-then-rewrite, which leaned on the live clock advancing past a
+/// coarse fs mtime resolution (flaky on fast machines / coarse FSes).
+fn stamp_mtime_after_defined_at(path: &Path) {
+    // 2023-11-14T22:13:20Z — strictly after the seeded `defined_at`
+    // of 2020-01-01 and before the far-future 2099 used by the
+    // "older" no-drift case.
+    let when = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    File::options()
+        .write(true)
+        .open(path)
+        .expect("open baseline to set mtime")
+        .set_times(FileTimes::new().set_modified(when))
+        .expect("set explicit baseline mtime");
+}
 
 /// Stage the two-spec fixture content into a fresh slice and drive it to
 /// `refined` through the real CLI verbs (`slice create` →
@@ -160,11 +179,10 @@ fn conflict_check_flags_modified_newer() {
     )
     .unwrap();
 
-    // Nudge mtime forward — on macOS the setup above already yields a
-    // post-2020 mtime, but be explicit so the test is insensitive to
-    // clock skew or filesystem resolution.
-    sleep(Duration::from_millis(10));
-    fs::write(&baseline, "# Login baseline (touched)\n").unwrap();
+    // Set an explicit baseline mtime after `defined_at` so the drift
+    // check fires deterministically, insensitive to clock skew or
+    // filesystem mtime resolution.
+    stamp_mtime_after_defined_at(&baseline);
 
     let assert = specrun()
         .current_dir(project.root())
@@ -232,9 +250,9 @@ fn conflict_check_detects_drift_when_newer() {
     fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
     fs::write(&baseline_contract, "type: object\n").unwrap();
 
-    // Nudge mtime forward.
-    sleep(Duration::from_millis(10));
-    fs::write(&baseline_contract, "type: object # touched\n").unwrap();
+    // Set an explicit baseline mtime after `defined_at` so the opaque
+    // drift walker reports a conflict deterministically.
+    stamp_mtime_after_defined_at(&baseline_contract);
 
     let slice_contract = slice_dir.join("contracts/schemas/test.yaml");
     fs::create_dir_all(slice_contract.parent().unwrap()).unwrap();
