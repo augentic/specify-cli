@@ -5,9 +5,9 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::config::{ProjectConfig, is_slot};
-use specify_workflow::platform::parse_platforms_csv;
 use specify_workflow::init::{InitOptions, InitResult, init};
 use specify_workflow::migrate::{self, MigrationAction};
+use specify_workflow::platform::parse_platforms_csv;
 use specify_workflow::registry::Registry;
 use specify_workflow::registry::workspace::{regenerate_topology_lock, sync_projects};
 

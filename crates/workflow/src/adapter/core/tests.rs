@@ -248,7 +248,7 @@ platforms:
 }
 
 #[test]
-fn target_platforms_not_required_round_trips() {
+fn platforms_optional_round_trip() {
     let yaml = r"name: contracts
 version: 1
 axis: target

@@ -65,19 +65,19 @@ fn workspace_rejects_adapter_argument() {
 }
 
 #[test]
-fn validate_platforms_no_capability_passes_through() {
+fn validate_no_capability_passthrough() {
     let result = validate_platforms(Some(&[Platform::Core, Platform::Ios]), None, "test");
     assert_eq!(result.unwrap(), vec![Platform::Core, Platform::Ios]);
 }
 
 #[test]
-fn validate_platforms_no_capability_no_operator_returns_empty() {
+fn validate_no_cap_no_op_empty() {
     let result = validate_platforms(None, None, "test");
     assert!(result.unwrap().is_empty());
 }
 
 #[test]
-fn validate_platforms_required_but_none_fails() {
+fn validate_required_none_fails() {
     let cap = PlatformsCapability {
         required: true,
         allowed: vec![Platform::Core, Platform::Ios],

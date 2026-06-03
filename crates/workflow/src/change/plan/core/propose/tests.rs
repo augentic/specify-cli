@@ -1,7 +1,15 @@
+use std::path::Path;
+
 use specify_error::Error;
+use specify_model::discovery::Discovery;
 
 use super::super::model::{Lifecycle, SourceBinding};
 use super::*;
+use crate::change::{Plan, SliceSourceBinding, Status};
+use crate::config::ProjectConfig;
+use crate::name::{PlanName, SliceName};
+use crate::platform::Platform;
+use crate::registry::Surface;
 use crate::schema::validate_proposal_json;
 
 fn discovery(body: &str) -> Discovery {
@@ -39,7 +47,6 @@ fn build_request_n1_validates_as_request() {
     assert_eq!(request.leads.len(), 1);
     assert_eq!(request.leads[0].source, "intent");
     assert_eq!(request.leads[0].lead, "fix-typo");
-    assert!(request.leads[0].aliases.is_empty());
 
     let json = serde_json::to_string(&request).expect("serialise request");
     assert!(json.contains(r#""kind":"request""#), "kind must render as request: {json}");
@@ -53,7 +60,6 @@ fn build_request_hub_validates_as_request() {
              ### docs:identity-api\n\n\
              - lead: identity-api\n\
              - source: docs\n\
-             - aliases: [auth-api]\n\
              - synopsis: Identity API contract.\n\n\
              ### legacy:identity-api\n\n\
              - lead: identity-api\n\
@@ -71,7 +77,6 @@ fn build_request_hub_validates_as_request() {
 
     let request = build_request(&doc, &topology).expect("request builds");
     assert_eq!(request.leads.len(), 3);
-    assert_eq!(request.leads[0].aliases, vec!["auth-api"]);
 
     let json = serde_json::to_string(&request).expect("serialise request");
     validate_proposal_json(&json).expect("hub request validates against the schema");
@@ -114,7 +119,7 @@ fn build_catalog_membership_and_size() {
 }
 
 #[test]
-fn response_round_trips_rfc_multi_source_example() {
+fn response_rfc_multi_source() {
     // Multi-source fan-out response (the proposal-schema envelope example).
     // Fan-out is two ordinary slices that reference the same lead and
     // are joined by `depends-on` — there is no `scope` grouping.
@@ -240,7 +245,7 @@ fn resolve_topology_hub_reads_topology_lock() {
 }
 
 #[test]
-fn resolve_topology_hub_missing_cache_errors() {
+fn topology_hub_missing_cache() {
     let dir = tempfile::tempdir().expect("tempdir");
     match resolve_topology(&hub_config(), dir.path()) {
         Err(Error::Validation { code, .. }) => assert_eq!(code, "topology-cache-missing"),
@@ -249,7 +254,7 @@ fn resolve_topology_hub_missing_cache_errors() {
 }
 
 #[test]
-fn resolve_topology_regular_missing_adapter_errors() {
+fn topology_regular_no_adapter() {
     let config = ProjectConfig {
         name: "demo".to_string(),
         description: None,
@@ -311,7 +316,7 @@ fn discovery_with(leads: &[(&str, &str)]) -> Discovery {
 
 fn plan_with_sources(lifecycle: Lifecycle, keys: &[&str]) -> Plan {
     Plan {
-        name: "p".to_string(),
+        name: PlanName::new("p"),
         lifecycle,
         sources: keys
             .iter()
@@ -321,7 +326,7 @@ fn plan_with_sources(lifecycle: Lifecycle, keys: &[&str]) -> Plan {
     }
 }
 
-fn assert_code(result: Result<ProposeOutcome>, expected: &str) {
+fn assert_code(result: specify_error::Result<ProposeOutcome>, expected: &str) {
     match result {
         Err(Error::Validation { code, .. }) => assert_eq!(code, expected),
         other => panic!("expected {expected} validation error, got {other:?}"),
@@ -544,7 +549,7 @@ fn propose_single_slice(plan: &mut Plan) -> ProposeOutcome {
 }
 
 #[test]
-fn reconcile_greenfield_inserts_app_foundation() {
+fn reconcile_greenfield_foundation() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
     propose_single_slice(&mut plan);
     assert_eq!(plan.entries.len(), 1);
@@ -569,7 +574,7 @@ fn reconcile_greenfield_inserts_app_foundation() {
 }
 
 #[test]
-fn reconcile_incremental_inserts_bootstrap_per_platform() {
+fn reconcile_incremental_bootstrap() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
     propose_single_slice(&mut plan);
 
@@ -633,8 +638,8 @@ fn reconcile_incremental_two_missing() {
     assert_eq!(plan.entries[0].name, "bootstrap-ios");
     assert_eq!(plan.entries[1].name, "bootstrap-android");
     assert_eq!(plan.entries[2].name, "add-feature");
-    assert!(plan.entries[2].depends_on.contains(&"bootstrap-ios".to_string()));
-    assert!(plan.entries[2].depends_on.contains(&"bootstrap-android".to_string()));
+    assert!(plan.entries[2].depends_on.contains(&SliceName::new("bootstrap-ios")));
+    assert!(plan.entries[2].depends_on.contains(&SliceName::new("bootstrap-android")));
 }
 
 #[test]
@@ -658,8 +663,8 @@ fn reconcile_preserves_existing_depends_on() {
     plan.reconcile_platforms(&missing).expect("reconcile ok");
 
     assert_eq!(plan.entries[2].name, "slice-b");
-    assert!(plan.entries[2].depends_on.contains(&"slice-a".to_string()));
-    assert!(plan.entries[2].depends_on.contains(&"bootstrap-android".to_string()));
+    assert!(plan.entries[2].depends_on.contains(&SliceName::new("slice-a")));
+    assert!(plan.entries[2].depends_on.contains(&SliceName::new("bootstrap-android")));
 }
 
 #[test]
@@ -684,7 +689,7 @@ fn reconcile_rejects_name_collision() {
 }
 
 #[test]
-fn reconcile_multi_project_wires_only_own_bootstraps() {
+fn reconcile_multi_project_bootstraps() {
     let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
     let doc = discovery_with(&[("intent", "feat-a"), ("intent", "feat-b")]);
     let topo = vec![
@@ -714,12 +719,12 @@ fn reconcile_multi_project_wires_only_own_bootstraps() {
     // feat-a is bound to app-one: should depend only on its own bootstrap.
     let feat_a = plan.entries.iter().find(|e| e.name == "feat-a").unwrap();
     assert_eq!(feat_a.depends_on, vec!["app-one-bootstrap-ios"]);
-    assert!(!feat_a.depends_on.contains(&"app-two-bootstrap-android".to_string()));
+    assert!(!feat_a.depends_on.contains(&SliceName::new("app-two-bootstrap-android")));
 
     // feat-b is bound to app-two: should depend only on its own bootstrap.
     let feat_b = plan.entries.iter().find(|e| e.name == "feat-b").unwrap();
     assert_eq!(feat_b.depends_on, vec!["app-two-bootstrap-android"]);
-    assert!(!feat_b.depends_on.contains(&"app-one-bootstrap-ios".to_string()));
+    assert!(!feat_b.depends_on.contains(&SliceName::new("app-one-bootstrap-ios")));
 }
 
 // --- detect_missing_platforms tests --------------------------------

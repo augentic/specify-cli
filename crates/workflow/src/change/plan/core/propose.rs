@@ -20,14 +20,14 @@
 
 mod catalog;
 mod kernel;
+mod platforms;
 mod topology;
 mod wire;
-mod platforms;
 
 pub use catalog::{LeadCatalog, build_catalog, build_request};
 pub use kernel::{ProposeOutcome, resolve_target};
-pub use topology::resolve_topology;
 pub use platforms::{ProjectMissingPlatforms, detect_missing_platforms};
+pub use topology::resolve_topology;
 pub use wire::{
     LeadCatalogEntry, ProjectRef, ProposalKind, ProposalRequest, ProposalResponse, ResponseMember,
     ResponseSlice,

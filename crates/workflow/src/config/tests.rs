@@ -128,12 +128,12 @@ fn needs_migration_none_for_unparseable_pin() {
 }
 
 #[test]
-fn needs_migration_none_for_unparseable_current() {
+fn needs_migration_unparseable_current() {
     assert_eq!(needs_migration("not-a-semver", "1.0.0"), None);
 }
 
 #[test]
-fn load_does_not_raise_migration_for_same_or_newer_major_pin() {
+fn load_no_migration_same_major() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("same-major pin loads");
@@ -141,7 +141,7 @@ fn load_does_not_raise_migration_for_same_or_newer_major_pin() {
 }
 
 #[test]
-fn load_for_migration_returns_no_tuple_for_same_major_pin() {
+fn load_for_migration_same_major() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
     let (cfg, migration) =
@@ -165,19 +165,19 @@ fn hub_field_defaults_false_round_trips() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("loads");
-    assert!(!cfg.hub, "hub must default to false when absent");
+    assert!(!cfg.workspace, "workspace must default to false when absent");
     assert_eq!(cfg.adapter.as_deref(), Some("omnia"));
     assert!(cfg.tools.is_empty(), "tools must default empty when absent");
 
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nworkspace: true\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("loads");
-    assert!(cfg.hub, "workspace: true must round-trip through deserialize");
+    assert!(cfg.workspace, "workspace: true must round-trip through deserialize");
     assert!(cfg.adapter.is_none(), "hub project.yaml must omit adapter:");
 }
 
 #[test]
-fn hub_field_omitted_when_false_in_serialise() {
+fn workspace_omitted_when_false() {
     let cfg = ProjectConfig {
         name: "demo".to_string(),
         description: None,
@@ -241,22 +241,22 @@ fn tools_field_omitted_when_empty() {
 }
 
 #[test]
-fn workspace_clone_detects_literal_workspace_slot() {
+fn slot_detects_literal_path() {
     let path = Path::new("/repo/.specify/workspace/orders");
-    assert!(is_workspace_clone(path));
+    assert!(is_slot(path));
 }
 
 #[test]
 fn workspace_clone_detects_nested() {
     let path = Path::new("/repo/.specify/workspace/orders/src/service");
-    assert!(is_workspace_clone(path));
+    assert!(is_slot(path));
 }
 
 #[test]
-fn workspace_clone_rejects_non_workspace_paths() {
-    assert!(!is_workspace_clone(Path::new("/repo")));
-    assert!(!is_workspace_clone(Path::new("/repo/.specify")));
-    assert!(!is_workspace_clone(Path::new("/repo/.specify/workspace")));
+fn slot_rejects_non_slot_paths() {
+    assert!(!is_slot(Path::new("/repo")));
+    assert!(!is_slot(Path::new("/repo/.specify")));
+    assert!(!is_slot(Path::new("/repo/.specify/workspace")));
 }
 
 #[test]
@@ -278,7 +278,7 @@ fn find_root_none_outside_tree() {
 }
 
 #[test]
-fn platforms_field_absent_deserialises_as_empty() {
+fn platforms_absent_is_empty() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("loads without platforms");
@@ -305,7 +305,7 @@ fn platforms_field_round_trips() {
 }
 
 #[test]
-fn platforms_field_omitted_when_empty_in_serialise() {
+fn platforms_omitted_when_empty() {
     let cfg = sample_cfg(BTreeMap::new());
     let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
     assert!(!yaml.contains("platforms:"), "empty platforms should be omitted, got:\n{yaml}");

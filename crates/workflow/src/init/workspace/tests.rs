@@ -15,6 +15,7 @@ fn workspace_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
         description: None,
         workspace: true,
         include_framework: false,
+        platforms: None,
         upgrade: false,
     }
 }

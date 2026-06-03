@@ -577,7 +577,7 @@ fn build_report_failure_no_findings() {
 /// A success report with `outputs[]` validates, proving the new
 /// `buildOutput` `$def` and `platform` enum resolve correctly.
 #[test]
-fn build_report_schema_accepts_success_with_outputs() {
+fn build_report_success_outputs() {
     let validator = build_report_validator();
     let instance = json!({
         "version": 1,
@@ -597,7 +597,7 @@ fn build_report_schema_accepts_success_with_outputs() {
 
 /// A report without `outputs` validates (backward compatibility).
 #[test]
-fn build_report_schema_accepts_report_without_outputs() {
+fn build_report_no_outputs() {
     let validator = build_report_validator();
     let instance = json!({
         "version": 1,

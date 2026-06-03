@@ -276,9 +276,4 @@ pub(super) fn fixed_now() -> Timestamp {
 }
 
 #[cfg(test)]
-pub(super) fn fixed_now() -> Timestamp {
-    "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
-}
-
-#[cfg(test)]
 mod tests;

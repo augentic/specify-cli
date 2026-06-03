@@ -226,6 +226,7 @@ fn init_vendors_spec_runtime_in_cache() {
             description: None,
             workspace: false,
             include_framework: false,
+            platforms: None,
             upgrade: false,
         },
         fixed_now(),
@@ -462,7 +463,7 @@ fn platforms_opts<'a>(
         adapter: Some(target_dir.to_str().expect("target path utf8")),
         name: Some("demo"),
         description: None,
-        hub: false,
+        workspace: false,
         include_framework: false,
         platforms,
         upgrade: false,
@@ -470,7 +471,7 @@ fn platforms_opts<'a>(
 }
 
 #[test]
-fn init_platforms_required_target_without_flag_fails() {
+fn init_required_no_platforms_fails() {
     let tmp = tempdir().unwrap();
     let target_dir = vectis_stub_target_dir();
     let err = init(platforms_opts(tmp.path(), &target_dir, None), fixed_now())
@@ -520,7 +521,7 @@ fn init_platforms_not_allowed_fails() {
             adapter: Some(target_dir.to_str().unwrap()),
             name: Some("demo"),
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             platforms: Some(&platforms),
             upgrade: false,
@@ -536,7 +537,7 @@ fn init_platforms_not_allowed_fails() {
 }
 
 #[test]
-fn init_with_platforms_writes_to_project_yaml() {
+fn init_platforms_writes_yaml() {
     use crate::Platform;
 
     let tmp = tempdir().unwrap();
@@ -551,7 +552,7 @@ fn init_with_platforms_writes_to_project_yaml() {
 }
 
 #[test]
-fn init_without_platforms_on_optional_target_succeeds() {
+fn init_optional_no_platforms_ok() {
     let tmp = tempdir().unwrap();
     let target_dir = omnia_target_dir();
     let result = init(platforms_opts(tmp.path(), &target_dir, None), fixed_now())

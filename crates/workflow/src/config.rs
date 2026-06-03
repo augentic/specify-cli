@@ -73,7 +73,6 @@ pub struct ProjectConfig {
     /// `true` so regular `project.yaml` files round-trip byte-stable.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub workspace: bool,
-
 }
 impl ProjectConfig {
     /// Load `.specify/project.yaml` from `project_dir`.

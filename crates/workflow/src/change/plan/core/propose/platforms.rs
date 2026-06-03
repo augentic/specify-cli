@@ -5,7 +5,7 @@ use std::path::Path;
 
 use specify_error::{Error, Result};
 
-use super::super::model::{Entry, Plan, Status};
+use super::super::model::{Entry, Plan, SliceAuthorityOverride, Status};
 use crate::Platform;
 
 ///
@@ -13,7 +13,7 @@ use crate::Platform;
 /// Built by [`detect_missing_platforms`] from a project directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectMissingPlatforms {
-    /// Project name from the topology (matches [`ProjectRef::name`]).
+    /// Project name from the topology (matches `ProjectRef.name`).
     pub project: String,
     /// Supported platforms (`core`, `ios`, `android`) declared in
     /// `project.yaml.platforms` but absent on disk.
@@ -161,7 +161,6 @@ impl Plan {
 
         Ok(bootstrap_names)
     }
-
 }
 
 /// Compute a bootstrap slice name. In single-project mode, the raw
@@ -189,6 +188,6 @@ fn bootstrap_entry(name: &str, project: &str, platforms: &[Platform]) -> Entry {
         context: Vec::new(),
         description: Some(format!("Bootstrap shell trees for: {}", platform_list.join(", "))),
         divergence: None,
-        authority_override: Default::default(),
+        authority_override: SliceAuthorityOverride::default(),
     }
 }

@@ -142,7 +142,7 @@ fn upgrade_with_platforms_updates_config() {
             adapter: None,
             name: None,
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             platforms: Some(&platforms),
             upgrade: true,
@@ -157,7 +157,7 @@ fn upgrade_with_platforms_updates_config() {
 }
 
 #[test]
-fn upgrade_with_platforms_missing_core_fails() {
+fn upgrade_platforms_no_core_fails() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(tmp.path(), "name: demo\nadapter: vectis-stub\nspecify_version: 0.2.0\n");
     seed_adapter_cache(tmp.path(), "vectis-stub");
@@ -169,7 +169,7 @@ fn upgrade_with_platforms_missing_core_fails() {
             adapter: None,
             name: None,
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             platforms: Some(&platforms),
             upgrade: true,
@@ -184,7 +184,7 @@ fn upgrade_with_platforms_missing_core_fails() {
 }
 
 #[test]
-fn upgrade_without_platforms_preserves_existing() {
+fn upgrade_preserves_platforms() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(
         tmp.path(),
