@@ -19,9 +19,8 @@ pub use authority_override::{
     reject_orphan_overrides, unknown_slice_err,
 };
 pub use model::{
-    Divergence, Entry, EntryPatch, Finding, Lifecycle, Patch, Plan, Severity,
-    SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status, TargetRef,
-    TargetRefParseError,
+    Divergence, Entry, EntryPatch, Lifecycle, Patch, Plan, SliceAuthorityOverride,
+    SliceSourceBinding, SourceBinding, Status, TargetRef, TargetRefParseError,
 };
 pub use propose::{
     LeadCatalog, LeadCatalogEntry, ProjectRef, ProposalKind, ProposalRequest, ProposalResponse,
@@ -30,7 +29,7 @@ pub use propose::{
 };
 #[cfg(test)]
 pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
-pub use validate::orphan_authority_override_keys;
+pub use validate::{orphan_authority_override_keys, plan_finding, plan_finding_structured};
 
 #[cfg(test)]
 mod test_fixtures {

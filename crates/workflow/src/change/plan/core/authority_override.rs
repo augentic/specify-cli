@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use specify_error::{Error, Result};
 use specify_model::evidence::ClaimKind;
 
-use super::model::{Entry, Plan, Severity};
+use super::model::{Entry, Plan};
 use super::validate::orphan_authority_override_keys;
 use crate::journal::{self, AuthorityOverrideAction};
 
@@ -189,18 +189,18 @@ pub fn emit_seed_events(
 /// # Errors
 ///
 /// Returns `Error::Validation` when at least one orphan-source
-/// finding has `Severity::Error`.
+/// finding blocks (a `critical`/`important` violation).
 pub fn reject_orphan_overrides(plan: &Plan) -> Result<()> {
     let findings: Vec<_> = orphan_authority_override_keys(&plan.entries)
         .into_iter()
-        .filter(|f| f.level == Severity::Error)
+        .filter(specify_diagnostics::blocking)
         .collect();
     let Some(first) = findings.first() else {
         return Ok(());
     };
-    let detail = findings.iter().map(|f| f.message.clone()).collect::<Vec<_>>().join("; ");
+    let detail = findings.iter().map(|f| f.impact.clone()).collect::<Vec<_>>().join("; ");
     Err(Error::Validation {
-        code: first.code.to_string(),
+        code: first.rule_id.clone().unwrap_or_default(),
         detail,
     })
 }

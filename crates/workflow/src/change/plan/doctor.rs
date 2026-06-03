@@ -6,8 +6,9 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use specify_diagnostics::Diagnostic;
 
-use super::core::{Finding, Plan, Severity};
+use super::core::Plan;
 use crate::registry::Registry;
 
 mod cycle;
@@ -27,100 +28,6 @@ pub const ORPHAN_SOURCE: &str = "orphan-source";
 /// Stable code for the stale-workspace-clone diagnostic. See
 /// [`StaleReason`] for the two ways a clone is classified stale.
 pub const STALE_CLONE: &str = "stale-workspace-clone";
-
-/// One row in the doctor diagnostic stream.
-///
-/// Wire shape (kebab-case):
-///
-/// ```json
-/// {
-///   "severity": "error" | "warning",
-///   "code": "<stable code>",
-///   "message": "<human readable>",
-///   "entry": null | "<plan entry name>",
-///   "data": null | { ... payload ... }
-/// }
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct Diagnostic {
-    /// Severity bucket.
-    pub severity: Severity,
-    /// Stable machine-readable code. The four doctor-only codes are the
-    /// constants on this module ; validate's codes come
-    /// through unchanged.
-    pub code: String,
-    /// Human-readable description.
-    pub message: String,
-    /// Offending plan entry name when the finding is entry-local;
-    /// `None` for plan-wide findings.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub entry: Option<String>,
-    /// Structured payload — `Some` only on the three doctor-specific
-    /// codes; `None` for findings forwarded from `Plan::validate`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<DiagnosticPayload>,
-}
-
-/// Structured payload carried by the three doctor-only diagnostics.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum DiagnosticPayload {
-    /// Payload for [`CYCLE`].
-    ///
-    /// `cycle` is the dependency cycle in stable, alphabetically-sorted
-    /// order with the first node repeated at the end so reviewers can
-    /// read the loop without mentally closing it.
-    Cycle {
-        /// Cycle path: `[a, b, c, a]`.
-        cycle: Vec<String>,
-    },
-    /// Payload for [`ORPHAN_SOURCE`].
-    OrphanSource {
-        /// Top-level `sources:` key that no entry references.
-        key: String,
-    },
-    /// Payload for [`STALE_CLONE`].
-    StaleClone {
-        /// Registry project name whose `.specify/workspace/<project>/`
-        /// slot is out of sync.
-        project: String,
-        /// Why the slot is classified stale.
-        reason: StaleReason,
-        /// Registry's expected signature for the slot.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        expected: Option<CloneSignature>,
-        /// Slot's observed signature, when inspectable.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        observed: Option<CloneSignature>,
-    },
-}
-
-impl From<&Diagnostic> for specify_diagnostics::Diagnostic {
-    /// Project a plan-doctor [`Diagnostic`] onto the canonical
-    /// [`specify_diagnostics::Diagnostic`] currency (REVIEW.md A18). The
-    /// stable `code` becomes the `rule_id`, the offending entry (when
-    /// present) populates `slice`, and the finding is classified as a
-    /// deterministic `Plan` artifact violation. The structured `data`
-    /// payload is not re-encoded — the human `message` already states
-    /// it — so the projection stays one-way and lossy-by-design. The
-    /// fingerprint is recomputed after `slice` is set.
-    fn from(diagnostic: &Diagnostic) -> Self {
-        let mut out = Self::finding(
-            diagnostic.code.clone(),
-            diagnostic.message.clone(),
-            diagnostic.message.clone(),
-            diagnostic.severity.to_core(),
-            specify_diagnostics::DiagnosticKind::Violation,
-            specify_diagnostics::DiagnosticSource::Deterministic,
-            specify_diagnostics::Artifact::Plan,
-            None,
-        );
-        out.slice.clone_from(&diagnostic.entry);
-        out.fingerprint = specify_diagnostics::fingerprint(&out);
-        out
-    }
-}
 
 /// Why a workspace clone is classified stale by [`STALE_CLONE`].
 #[derive(
@@ -154,21 +61,6 @@ pub struct CloneSignature {
     pub target: Option<String>,
 }
 
-impl Diagnostic {
-    /// Forward a `Plan::validate` finding to the doctor stream
-    /// without payload data, preserving the original code and
-    /// severity.
-    fn from_finding(f: &Finding) -> Self {
-        Self {
-            severity: f.level,
-            code: f.code.to_string(),
-            message: f.message.clone(),
-            entry: f.entry.clone(),
-            data: None,
-        }
-    }
-}
-
 /// Run every `Plan::validate` check, then layer the three doctor-only
 /// diagnostics on top.
 ///
@@ -177,6 +69,10 @@ impl Diagnostic {
 /// `specrun plan validate`. `project_dir` is consulted only by the
 /// stale-workspace-clone check; pass `None` to skip that check
 /// (`Plan::doctor_pure` does the same — see the unit tests).
+///
+/// Every check already emits the neutral [`Diagnostic`] currency, so
+/// the validate-level findings pass through unchanged and the three
+/// health checks append their structured-evidence findings after them.
 ///
 /// The order in the returned vector is stable:
 ///
@@ -188,8 +84,7 @@ impl Diagnostic {
 pub fn doctor(
     plan: &Plan, slices_dir: Option<&Path>, registry: Option<&Registry>, project_dir: Option<&Path>,
 ) -> Vec<Diagnostic> {
-    let mut out: Vec<Diagnostic> =
-        plan.validate(slices_dir, registry).iter().map(Diagnostic::from_finding).collect();
+    let mut out: Vec<Diagnostic> = plan.validate(slices_dir, registry);
 
     out.extend(detect(&plan.entries));
     out.extend(orphan_source::detect(plan));

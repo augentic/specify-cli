@@ -846,10 +846,10 @@ fn override_orphans(layout: Layout<'_>, name: &str) -> Result<Vec<Diagnostic>> {
         .into_iter()
         .map(|f| {
             Diagnostic::violation(
-                f.code,
+                f.rule_id.clone().unwrap_or_default(),
                 "Per-slice `authority-override` source key must appear in the slice's \
                  `sources[]` list",
-                f.message,
+                f.impact,
                 Artifact::Plan,
                 None,
             )

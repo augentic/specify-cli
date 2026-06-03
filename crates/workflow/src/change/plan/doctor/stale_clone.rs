@@ -3,7 +3,10 @@
 
 use std::path::Path;
 
-use super::{CloneSignature, Diagnostic, DiagnosticPayload, STALE_CLONE, Severity, StaleReason};
+use specify_diagnostics::{Diagnostic, Severity};
+
+use super::{CloneSignature, STALE_CLONE, StaleReason};
+use crate::change::plan::core::validate::plan_finding_structured;
 use crate::registry::workspace::{SlotProblem, SlotProblemReason, slot_problem};
 use crate::registry::{Registry, RegistryProject};
 
@@ -46,20 +49,21 @@ fn diag(project: &RegistryProject, problem: &SlotProblem) -> Diagnostic {
     } else {
         StaleReason::SlotMismatch
     };
-    Diagnostic {
-        severity: Severity::Warning,
-        code: STALE_CLONE.to_string(),
-        message: format!(
+    plan_finding_structured(
+        STALE_CLONE,
+        Severity::Suggestion,
+        format!(
             "workspace slot '{}' is out of sync with `registry.yaml`: {}",
             project.name,
             problem.message()
         ),
-        entry: None,
-        data: Some(DiagnosticPayload::StaleClone {
-            project: project.name.clone(),
-            reason,
-            expected: Some(expected),
-            observed: Some(observed),
+        None,
+        "stale workspace clone",
+        serde_json::json!({
+            "project": project.name,
+            "reason": reason,
+            "expected": expected,
+            "observed": observed,
         }),
-    }
+    )
 }

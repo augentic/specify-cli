@@ -2,10 +2,14 @@ use std::io::Write;
 
 use jiff::Timestamp;
 use serde::Serialize;
+use specify_diagnostics::{
+    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Severity, blocking,
+    blocking_present, renumber,
+};
 use specify_error::{Error, Result};
 use specify_workflow::change::{
-    Lifecycle, Plan, PlanDoctorDiagnostic, Severity, SliceSourceBinding, Status, detect,
-    plan_doctor, resolve_target, resolve_topology,
+    Lifecycle, Plan, SliceSourceBinding, Status, detect, plan_doctor, plan_finding, resolve_target,
+    resolve_topology,
 };
 use specify_workflow::config::{ProjectConfig, with_state};
 use specify_workflow::registry::{Registry, TopologyLock, TopologyProject};
@@ -23,34 +27,18 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         Err(err) => (None, Some(err)),
     };
 
-    let mut results: Vec<PlanDoctorDiagnostic> =
+    let mut results: Vec<Diagnostic> =
         plan_doctor(&plan, Some(&slices_dir), registry.as_ref(), Some(&ctx.project_dir));
 
     if let Some(err) = registry_err {
-        results.push(PlanDoctorDiagnostic {
-            severity: Severity::Error,
-            code: "registry-shape".to_string(),
-            message: err.to_string(),
-            entry: None,
-            data: None,
-        });
+        results.push(plan_finding("registry-shape", Severity::Important, err.to_string(), None));
     }
     if let Some(reg) = &registry {
         topology_cache_staleness(ctx, reg, &mut results);
     }
 
-    let has_errors = results.iter().any(|r| matches!(r.severity, Severity::Error));
-    ctx.write(
-        &PlanValidateBody {
-            plan: Ref {
-                name: plan.name.to_string(),
-                path: plan_path.display().to_string(),
-            },
-            results: &results,
-            passed: !has_errors,
-        },
-        write_plan_validate_text,
-    )?;
+    let has_errors = blocking_present(&results);
+    render_validate_report(ctx, results)?;
     if has_errors {
         Err(Error::validation_failed(
             "plan-structural-errors",
@@ -73,9 +61,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 /// registry-authored `adapter-mismatch-workspace` check — the project's
 /// `project.yaml` plus its baseline are now authoritative and the cache
 /// is the derived projection of them.
-fn topology_cache_staleness(
-    ctx: &Ctx, registry: &Registry, results: &mut Vec<PlanDoctorDiagnostic>,
-) {
+fn topology_cache_staleness(ctx: &Ctx, registry: &Registry, results: &mut Vec<Diagnostic>) {
     let workspace_base = ctx.layout().specify_dir().join("workspace");
     let lock = TopologyLock::load(&ctx.layout().topology_lock_path()).ok().flatten();
     let cached: std::collections::HashMap<&str, &TopologyProject> = lock
@@ -93,32 +79,27 @@ fn topology_cache_staleness(
         {
             Ok(fresh) => fresh,
             Err(err) => {
-                results.push(PlanDoctorDiagnostic {
-                    severity: Severity::Error,
-                    code: "workspace-slot-config-unreadable".to_string(),
-                    message: format!(
-                        "workspace slot '{}' topology could not be derived: {err}",
-                        rp.name
-                    ),
-                    entry: None,
-                    data: None,
-                });
+                results.push(plan_finding(
+                    "workspace-slot-config-unreadable",
+                    Severity::Important,
+                    format!("workspace slot '{}' topology could not be derived: {err}", rp.name),
+                    None,
+                ));
                 continue;
             }
         };
         let stale = cached.get(rp.name.as_str()).is_none_or(|cached| **cached != fresh);
         if stale {
-            results.push(PlanDoctorDiagnostic {
-                severity: Severity::Warning,
-                code: "topology-cache-stale".to_string(),
-                message: format!(
+            results.push(plan_finding(
+                "topology-cache-stale",
+                Severity::Suggestion,
+                format!(
                     "workspace slot '{}' has drifted from .specify/topology.lock; \
                      run `specrun workspace sync` to regenerate the topology cache",
                     rp.name
                 ),
-                entry: None,
-                data: None,
-            });
+                None,
+            ));
         }
     }
 }
@@ -144,7 +125,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
         let validate_results = plan.validate(Some(&slices_dir), None);
-        if validate_results.iter().any(|r| matches!(r.level, Severity::Error)) {
+        if blocking_present(&validate_results) {
             return Err(Error::validation_failed(
                 "plan-structural-errors",
                 "plan must be free of structural errors",
@@ -420,28 +401,37 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct PlanValidateBody<'a> {
-    plan: Ref,
-    results: &'a [PlanDoctorDiagnostic],
-    passed: bool,
-}
-
-fn write_plan_validate_text(w: &mut dyn Write, body: &PlanValidateBody<'_>) -> std::io::Result<()> {
-    if body.results.is_empty() {
-        return writeln!(w, "Plan OK");
-    }
-    for row in body.results {
-        write_validate_row_text(w, row)?;
-    }
+/// Render the plan-validate findings as a neutral [`DiagnosticReport`]
+/// on stdout in the active `Ctx` format. JSON serialises the wire
+/// envelope (`{ version, summary, findings }`); text renders a
+/// PASS/FAIL banner plus one `ERROR`/`WARNING` row per finding. Ids are
+/// assigned sequentially at render time.
+fn render_validate_report(ctx: &Ctx, mut results: Vec<Diagnostic>) -> Result<()> {
+    renumber(&mut results);
+    let blocking = blocking_present(&results);
+    let report = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&results),
+        findings: results,
+    };
+    ctx.write(&report, move |w, report| {
+        if report.findings.is_empty() {
+            return writeln!(w, "Plan OK");
+        }
+        writeln!(w, "{}", if blocking { "FAIL" } else { "PASS" })?;
+        for finding in &report.findings {
+            write_validate_row_text(w, finding)?;
+        }
+        Ok(())
+    })?;
     Ok(())
 }
 
-fn write_validate_row_text(w: &mut dyn Write, row: &PlanDoctorDiagnostic) -> std::io::Result<()> {
-    let label = if matches!(row.severity, Severity::Error) { "ERROR  " } else { "WARNING" };
-    let entry_col = row.entry.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
-    writeln!(w, "{label} {:<32} {:<24} {}", row.code, entry_col, row.message)
+fn write_validate_row_text(w: &mut dyn Write, finding: &Diagnostic) -> std::io::Result<()> {
+    let label = if blocking(finding) { "ERROR  " } else { "WARNING" };
+    let code = finding.rule_id.as_deref().unwrap_or("<unknown>");
+    let entry_col = finding.slice.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
+    writeln!(w, "{label} {:<32} {:<24} {}", code, entry_col, finding.impact)
 }
 
 #[derive(Serialize, Default)]

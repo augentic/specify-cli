@@ -8,11 +8,12 @@
 use std::collections::{BTreeSet, HashSet};
 
 use petgraph::algo::tarjan_scc;
+use specify_diagnostics::blocking;
 use specify_error::{Error, Result, is_kebab};
 use specify_model::discovery::Discovery;
 
 use super::super::model::{
-    Entry, Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, Status, TargetRef,
+    Entry, Plan, SliceAuthorityOverride, SliceSourceBinding, Status, TargetRef,
 };
 use super::super::validate::entry_dependency_graph;
 use super::catalog::{LeadCatalog, build_catalog};
@@ -91,11 +92,13 @@ impl Plan {
         // Bulk replace, run the backstop validate, and roll back on any
         // blocking finding (e.g. unknown depends-on names).
         let previous = std::mem::replace(&mut self.entries, new_entries);
-        if let Some(finding) =
-            self.validate(None, None).into_iter().find(|f| f.level == Severity::Error)
-        {
+        if let Some(finding) = self.validate(None, None).into_iter().find(blocking) {
             self.entries = previous;
-            return Err(Error::validation_failed(finding.code, String::new(), finding.message));
+            return Err(Error::validation_failed(
+                finding.rule_id.clone().unwrap_or_default(),
+                String::new(),
+                finding.impact,
+            ));
         }
 
         Ok(ProposeOutcome { slice_names: names })

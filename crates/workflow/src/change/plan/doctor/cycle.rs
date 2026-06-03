@@ -1,17 +1,20 @@
 //! Cycle detection for the `cycle-in-depends-on` diagnostic.
 
 use petgraph::algo::tarjan_scc;
+use specify_diagnostics::{Diagnostic, Severity};
 
-use super::{CYCLE, Diagnostic, DiagnosticPayload, Severity};
+use super::CYCLE;
 use crate::change::plan::core::Entry;
-use crate::change::plan::core::validate::entry_dependency_graph;
+use crate::change::plan::core::validate::{entry_dependency_graph, plan_finding_structured};
 
 /// One [`CYCLE`] diagnostic per cycle in the depends-on graph.
 ///
 /// Self-loops are emitted too. Cycles are deduplicated by sorted
 /// node-set so every distinct cycle surfaces exactly once. The cycle
 /// path is sorted alphabetically with the first node repeated at the
-/// end — matches the convention used by the doctor message text.
+/// end — matches the convention used by the doctor message text — and
+/// is carried verbatim on the diagnostic's structured evidence under
+/// `cycle`.
 #[must_use]
 pub fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
     let graph = entry_dependency_graph(changes);
@@ -37,13 +40,14 @@ pub fn detect(changes: &[Entry]) -> Vec<Diagnostic> {
             }
         };
         let pretty = cycle_names.join(" → ");
-        out.push(Diagnostic {
-            severity: Severity::Error,
-            code: CYCLE.to_string(),
-            message: format!("dependency cycle: {pretty}"),
-            entry: None,
-            data: Some(DiagnosticPayload::Cycle { cycle: cycle_names }),
-        });
+        out.push(plan_finding_structured(
+            CYCLE,
+            Severity::Important,
+            format!("dependency cycle: {pretty}"),
+            None,
+            "dependency cycle",
+            serde_json::json!({ "cycle": cycle_names }),
+        ));
     }
     out
 }

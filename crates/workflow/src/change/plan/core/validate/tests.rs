@@ -1,14 +1,20 @@
 use std::collections::{BTreeMap, HashSet};
 
+use specify_diagnostics::{Severity, blocking};
 use specify_model::evidence::ClaimKind;
 use tempfile::tempdir;
 
 use super::super::model::{
-    Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
+    Plan, SliceAuthorityOverride, SliceSourceBinding, SourceBinding, Status,
 };
 use super::super::{PLAN_EXAMPLE_YAML, change, plan_with_changes};
 use crate::change::{CYCLE, detect};
 use crate::registry::{Registry, RegistryProject};
+
+/// Match a neutral diagnostic on its stable check code (`rule_id`).
+fn has_code(d: &specify_diagnostics::Diagnostic, code: &str) -> bool {
+    d.rule_id.as_deref() == Some(code)
+}
 
 #[test]
 fn clean_plan_validates() {
@@ -24,10 +30,10 @@ fn clean_plan_validates() {
 fn duplicate_name_error() {
     let plan = plan_with_changes(vec![change("foo", Status::Done), change("foo", Status::Pending)]);
     let results = plan.validate(None, None);
-    let dupes: Vec<_> = results.iter().filter(|r| r.code == "duplicate-name").collect();
+    let dupes: Vec<_> = results.iter().filter(|r| has_code(r, "duplicate-name")).collect();
     assert_eq!(dupes.len(), 1, "expected one duplicate-name result, got {results:#?}");
-    assert_eq!(dupes[0].level, Severity::Error);
-    assert_eq!(dupes[0].entry.as_deref(), Some("foo"));
+    assert_eq!(dupes[0].severity, Severity::Important);
+    assert_eq!(dupes[0].slice.as_deref(), Some("foo"));
 }
 
 #[test]
@@ -39,9 +45,9 @@ fn cycle_error() {
     let mut c = change("c", Status::Pending);
     c.depends_on = vec!["b".into()];
     let plan = plan_with_changes(vec![a, b, c]);
-    let cycles: Vec<_> = detect(&plan.entries).into_iter().filter(|d| d.code == CYCLE).collect();
+    let cycles: Vec<_> = detect(&plan.entries).into_iter().filter(|d| has_code(d, CYCLE)).collect();
     assert!(!cycles.is_empty(), "expected at least one {CYCLE}, got {cycles:#?}");
-    let msg = &cycles[0].message;
+    let msg = &cycles[0].impact;
     assert!(msg.contains('a'), "cycle message should name a: {msg}");
     assert!(msg.contains('b'), "cycle message should name b: {msg}");
     assert!(msg.contains('c'), "cycle message should name c: {msg}");
@@ -54,7 +60,7 @@ fn self_cycle_error() {
     let plan = plan_with_changes(vec![a]);
     let cycles = detect(&plan.entries);
     assert!(
-        cycles.iter().any(|d| d.code == CYCLE),
+        cycles.iter().any(|d| has_code(d, CYCLE)),
         "expected a {CYCLE} result for self-edge, got: {cycles:#?}"
     );
 }
@@ -65,10 +71,10 @@ fn unknown_depends_on_error() {
     entry.depends_on = vec!["bogus".into()];
     let plan = plan_with_changes(vec![entry]);
     let results = plan.validate(None, None);
-    let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-depends-on").collect();
+    let hits: Vec<_> = results.iter().filter(|r| has_code(r, "unknown-depends-on")).collect();
     assert_eq!(hits.len(), 1, "expected one unknown-depends-on, got {results:#?}");
-    assert_eq!(hits[0].entry.as_deref(), Some("depends-on-ghost"));
-    assert!(hits[0].message.contains("bogus"));
+    assert_eq!(hits[0].slice.as_deref(), Some("depends-on-ghost"));
+    assert!(hits[0].impact.contains("bogus"));
 }
 
 #[test]
@@ -77,10 +83,10 @@ fn unknown_source_error() {
     entry.sources = vec![SliceSourceBinding::bare("monolith")];
     let plan = plan_with_changes(vec![entry]);
     let results = plan.validate(None, None);
-    let hits: Vec<_> = results.iter().filter(|r| r.code == "unknown-source").collect();
+    let hits: Vec<_> = results.iter().filter(|r| has_code(r, "unknown-source")).collect();
     assert_eq!(hits.len(), 1, "expected one unknown-source, got {results:#?}");
-    assert_eq!(hits[0].entry.as_deref(), Some("source-ghost"));
-    assert!(hits[0].message.contains("monolith"));
+    assert_eq!(hits[0].slice.as_deref(), Some("source-ghost"));
+    assert!(hits[0].impact.contains("monolith"));
 }
 
 #[test]
@@ -90,9 +96,9 @@ fn multiple_in_progress_error() {
         change("second-in-progress", Status::InProgress),
     ]);
     let results = plan.validate(None, None);
-    let hits: Vec<_> = results.iter().filter(|r| r.code == "multiple-in-progress").collect();
+    let hits: Vec<_> = results.iter().filter(|r| has_code(r, "multiple-in-progress")).collect();
     assert_eq!(hits.len(), 2, "expected one result per offender, got {results:#?}");
-    let names: HashSet<&str> = hits.iter().filter_map(|r| r.entry.as_deref()).collect();
+    let names: HashSet<&str> = hits.iter().filter_map(|r| r.slice.as_deref()).collect();
     assert!(
         names.contains("first-in-progress") && names.contains("second-in-progress"),
         "names = {names:?}"
@@ -107,7 +113,7 @@ fn single_in_progress_is_fine() {
     ]);
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.code == "multiple-in-progress"),
+        !results.iter().any(|r| has_code(r, "multiple-in-progress")),
         "single in-progress entry should not trip multiple-in-progress: {results:#?}"
     );
 }
@@ -118,10 +124,10 @@ fn orphan_dir_warning() {
     std::fs::create_dir(tmp.path().join("stale-slice")).expect("mkdir");
     let plan = plan_with_changes(vec![change("other", Status::Pending)]);
     let results = plan.validate(Some(tmp.path()), None);
-    let hits: Vec<_> = results.iter().filter(|r| r.code == "orphan-slice-dir").collect();
+    let hits: Vec<_> = results.iter().filter(|r| has_code(r, "orphan-slice-dir")).collect();
     assert_eq!(hits.len(), 1, "expected one orphan-slice-dir, got {results:#?}");
-    assert_eq!(hits[0].level, Severity::Warning);
-    assert_eq!(hits[0].entry.as_deref(), Some("stale-slice"));
+    assert_eq!(hits[0].severity, Severity::Suggestion);
+    assert_eq!(hits[0].slice.as_deref(), Some("stale-slice"));
 }
 
 #[test]
@@ -130,10 +136,10 @@ fn missing_dir_for_in_progress_warning() {
     let plan = plan_with_changes(vec![change("alpha", Status::InProgress)]);
     let results = plan.validate(Some(tmp.path()), None);
     let hits: Vec<_> =
-        results.iter().filter(|r| r.code == "missing-slice-dir-for-in-progress").collect();
+        results.iter().filter(|r| has_code(r, "missing-slice-dir-for-in-progress")).collect();
     assert_eq!(hits.len(), 1, "expected one missing-dir warning, got {results:#?}");
-    assert_eq!(hits[0].level, Severity::Warning);
-    assert_eq!(hits[0].entry.as_deref(), Some("alpha"));
+    assert_eq!(hits[0].severity, Severity::Suggestion);
+    assert_eq!(hits[0].slice.as_deref(), Some("alpha"));
 }
 
 #[test]
@@ -143,9 +149,10 @@ fn present_dir_for_in_progress_silent() {
     let plan = plan_with_changes(vec![change("alpha", Status::InProgress)]);
     let results = plan.validate(Some(tmp.path()), None);
     assert!(
-        !results.iter().any(|r| r.code.ends_with("-slice-dir")
-            || r.code == "orphan-slice-dir"
-            || r.code == "missing-slice-dir-for-in-progress"),
+        !results
+            .iter()
+            .any(|r| has_code(r, "orphan-slice-dir")
+                || has_code(r, "missing-slice-dir-for-in-progress")),
         "no directory warnings expected, got: {results:#?}"
     );
 }
@@ -157,7 +164,8 @@ fn no_slices_dir_skips_consistency() {
     assert!(
         !results
             .iter()
-            .any(|r| r.code == "orphan-slice-dir" || r.code == "missing-slice-dir-for-in-progress"),
+            .any(|r| has_code(r, "orphan-slice-dir")
+                || has_code(r, "missing-slice-dir-for-in-progress")),
         "passing None for slices_dir must skip directory consistency checks: {results:#?}"
     );
 }
@@ -171,7 +179,7 @@ fn no_short_circuit() {
     let plan = plan_with_changes(vec![a, b]);
     let results = plan.validate(None, None);
 
-    let codes: HashSet<&'static str> = results.iter().map(|r| r.code).collect();
+    let codes: HashSet<&str> = results.iter().filter_map(|r| r.rule_id.as_deref()).collect();
     for expected in ["duplicate-name", "unknown-depends-on", "unknown-source"] {
         assert!(
             codes.contains(expected),
@@ -196,7 +204,7 @@ fn project_not_in_registry() {
         }],
     };
     let results = plan.validate(None, Some(&registry));
-    assert!(results.iter().any(|r| r.code == "project-not-in-registry"));
+    assert!(results.iter().any(|r| has_code(r, "project-not-in-registry")));
 }
 
 #[test]
@@ -224,7 +232,7 @@ fn project_matches_registry() {
         ],
     };
     let results = plan.validate(None, Some(&registry));
-    assert!(!results.iter().any(|r| r.level == Severity::Error));
+    assert!(!results.iter().any(blocking));
 }
 
 #[test]
@@ -237,7 +245,7 @@ fn omitted_project_passes_without_registry() {
     let plan = plan_with_changes(vec![e]);
     let results = plan.validate(None, None);
     assert!(
-        !results.iter().any(|r| r.level == Severity::Error),
+        !results.iter().any(blocking),
         "an omitted project must validate cleanly without a registry, got: {results:#?}"
     );
 }
@@ -270,8 +278,7 @@ fn omitted_project_flagged_in_multi_project_registry() {
     assert!(
         results
             .iter()
-            .any(|r| r.code == "plan-reconcile-project-binding-required"
-                && r.level == Severity::Error),
+            .any(|r| has_code(r, "plan-reconcile-project-binding-required") && blocking(r)),
         "a multi-project registry must flag an omitted project, got: {results:#?}"
     );
 }
@@ -293,7 +300,7 @@ fn omitted_project_ok_in_single_project_registry() {
     };
     let results = plan.validate(None, Some(&registry));
     assert!(
-        !results.iter().any(|r| r.code == "plan-reconcile-project-binding-required"),
+        !results.iter().any(|r| has_code(r, "plan-reconcile-project-binding-required")),
         "a single-project registry must auto-resolve an omitted project, got: {results:#?}"
     );
 }
@@ -306,10 +313,10 @@ fn context_rejects_dotdot() {
     let errors: Vec<_> = plan
         .validate(None, None)
         .into_iter()
-        .filter(|r| r.code == "plan.context-path-invalid")
+        .filter(|r| has_code(r, "plan.context-path-invalid"))
         .collect();
     assert_eq!(errors.len(), 1, "expected exactly one context-path-invalid error");
-    assert!(errors[0].message.contains(".."), "message should mention '..'");
+    assert!(errors[0].impact.contains(".."), "message should mention '..'");
 }
 
 #[test]
@@ -320,10 +327,10 @@ fn context_rejects_absolute() {
     let errors: Vec<_> = plan
         .validate(None, None)
         .into_iter()
-        .filter(|r| r.code == "plan.context-path-invalid")
+        .filter(|r| has_code(r, "plan.context-path-invalid"))
         .collect();
     assert_eq!(errors.len(), 1, "expected exactly one context-path-invalid error");
-    assert!(errors[0].message.contains("/absolute/path"));
+    assert!(errors[0].impact.contains("/absolute/path"));
 }
 
 #[test]
@@ -341,14 +348,14 @@ fn override_orphan_key_rejected() {
     let hits: Vec<_> = plan
         .validate(None, None)
         .into_iter()
-        .filter(|r| r.code == "slice-authority-override-orphan-source")
+        .filter(|r| has_code(r, "slice-authority-override-orphan-source"))
         .collect();
     assert_eq!(hits.len(), 1, "expected one orphan finding, got: {hits:#?}");
-    assert_eq!(hits[0].entry.as_deref(), Some("identity-user-registration"));
+    assert_eq!(hits[0].slice.as_deref(), Some("identity-user-registration"));
     assert!(
-        hits[0].message.contains("requirement") && hits[0].message.contains("phantom"),
+        hits[0].impact.contains("requirement") && hits[0].impact.contains("phantom"),
         "message must name kind + bad source key, got: {}",
-        hits[0].message
+        hits[0].impact
     );
 }
 
@@ -362,7 +369,7 @@ fn authority_override_empty_passes() {
         !plan
             .validate(None, None)
             .iter()
-            .any(|r| r.code == "slice-authority-override-orphan-source"),
+            .any(|r| has_code(r, "slice-authority-override-orphan-source")),
         "empty override map must not trip orphan check"
     );
 }
@@ -384,7 +391,7 @@ fn authority_override_valid_keys_pass() {
         !plan
             .validate(None, None)
             .iter()
-            .any(|r| r.code == "slice-authority-override-orphan-source"),
+            .any(|r| has_code(r, "slice-authority-override-orphan-source")),
         "all-valid overrides must pass"
     );
 }
@@ -406,10 +413,10 @@ fn authority_overrides_sort() {
     let codes: Vec<&str> = plan
         .validate(None, None)
         .iter()
-        .filter(|r| r.code == "slice-authority-override-orphan-source")
+        .filter(|r| has_code(r, "slice-authority-override-orphan-source"))
         .map(|r| {
             // Pull the kind out of the message (between "kind '" and "'").
-            let msg = &r.message;
+            let msg = &r.impact;
             let start = msg.find("kind '").unwrap() + "kind '".len();
             let end = start + msg[start..].find('\'').unwrap();
             &msg[start..end]
@@ -435,7 +442,7 @@ fn context_accepts_valid() {
         vec!["contracts/http/user-api.yaml".into(), "specs/user-registration/spec.md".into()];
     let plan = plan_with_changes(vec![entry]);
     assert!(
-        !plan.validate(None, None).into_iter().any(|r| r.code == "plan.context-path-invalid"),
+        !plan.validate(None, None).into_iter().any(|r| has_code(&r, "plan.context-path-invalid")),
         "valid relative paths must not produce errors"
     );
 }

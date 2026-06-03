@@ -140,31 +140,6 @@ impl Diagnostic {
     }
 }
 
-impl From<&Diagnostic> for specify_diagnostics::Diagnostic {
-    /// Project a branch-mutation [`Diagnostic`] onto the canonical
-    /// [`specify_diagnostics::Diagnostic`] currency (REVIEW.md A18). A
-    /// branch diagnostic is always a blocking failure raised before an
-    /// unsafe mutation, so it maps to a deterministic `Important`
-    /// violation; the stable `key` becomes the `rule_id` and the
-    /// registry `project` populates `change`. The fingerprint is
-    /// recomputed after `change` is set.
-    fn from(diagnostic: &Diagnostic) -> Self {
-        let mut out = Self::finding(
-            diagnostic.key.clone(),
-            diagnostic.message.clone(),
-            diagnostic.message.clone(),
-            specify_diagnostics::Severity::Important,
-            specify_diagnostics::DiagnosticKind::Violation,
-            specify_diagnostics::DiagnosticSource::Deterministic,
-            specify_diagnostics::Artifact::Plan,
-            None,
-        );
-        out.change = Some(diagnostic.project.clone());
-        out.fingerprint = specify_diagnostics::fingerprint(&out);
-        out
-    }
-}
-
 fn run_git<I, S>(
     cwd: &Path, args: I, project: &RegistryProject, branch: Option<&str>, label: &str,
 ) -> Result<(), Diagnostic>
@@ -241,6 +216,3 @@ where
     crate::cmd::git(&crate::cmd::real_cmd, Some(cwd), args)
         .is_ok_and(|output| output.status.success())
 }
-
-#[cfg(test)]
-mod tests;

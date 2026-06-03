@@ -33,9 +33,12 @@ fn plan_validate_clean_json() {
         .success();
     assert_eq!(assert.get_output().status.code(), Some(0));
 
+    // The wire shape is the neutral `DiagnosticReport` envelope:
+    // `{ version, summary, findings }`. A clean plan carries no
+    // findings and an all-zero summary; the exit code (0) signals pass.
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["passed"], true);
-    assert_eq!(actual["results"], Value::Array(vec![]));
+    assert_eq!(actual["version"], 1);
+    assert_eq!(actual["findings"], Value::Array(vec![]));
     assert_golden("validate-clean.json", actual);
 }
 
@@ -60,20 +63,18 @@ fn plan_validate_tolerates_in_progress() {
     );
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(
-        actual["passed"], true,
-        "in-progress-without-slice-dir is a warning, so passed must be true: {actual}"
-    );
-    let results = actual["results"].as_array().expect("results array");
+    let findings = actual["findings"].as_array().expect("findings array");
     let matching: Vec<&Value> =
-        results.iter().filter(|r| r["code"] == "missing-slice-dir-for-in-progress").collect();
+        findings.iter().filter(|r| r["rule-id"] == "missing-slice-dir-for-in-progress").collect();
     assert_eq!(
         matching.len(),
         1,
-        "expected exactly one missing-slice-dir-for-in-progress result, got: {results:#?}"
+        "expected exactly one missing-slice-dir-for-in-progress finding, got: {findings:#?}"
     );
-    assert_eq!(matching[0]["severity"], "warning");
-    assert_eq!(matching[0]["entry"], "a");
+    // A missing-slice-dir-for-in-progress finding is a non-blocking
+    // `suggestion`, so exit 0 above already proves it does not gate.
+    assert_eq!(matching[0]["severity"], "suggestion");
+    assert_eq!(matching[0]["slice"], "a");
 }
 
 #[test]
@@ -93,11 +94,10 @@ fn plan_validate_with_errors_json() {
     );
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(actual["passed"], false);
-    let results = actual["results"].as_array().expect("results array");
+    let findings = actual["findings"].as_array().expect("findings array");
     assert!(
-        results.iter().any(|r| r["code"] == "duplicate-name" && r["severity"] == "error"),
-        "expected a duplicate-name error, got: {results:#?}"
+        findings.iter().any(|r| r["rule-id"] == "duplicate-name" && r["severity"] == "important"),
+        "expected a blocking duplicate-name finding, got: {findings:#?}"
     );
     assert_golden("validate-duplicate-name.json", actual);
 }
@@ -124,18 +124,17 @@ fn plan_validate_surfaces_registry_errors() {
         .assert()
         .failure();
     let value = parse_stdout(&assert.get_output().stdout, project.root());
-    let results = value["results"].as_array().expect("results array");
+    let findings = value["findings"].as_array().expect("findings array");
     let registry_findings: Vec<&Value> =
-        results.iter().filter(|r| r["code"] == "registry-shape").collect();
+        findings.iter().filter(|r| r["rule-id"] == "registry-shape").collect();
     assert_eq!(
         registry_findings.len(),
         1,
-        "expected one registry-shape finding, got: {results:#?}"
+        "expected one registry-shape finding, got: {findings:#?}"
     );
-    assert_eq!(registry_findings[0]["severity"], "error");
-    let msg = registry_findings[0]["message"].as_str().expect("message string");
-    assert!(msg.contains("version"), "expected version in message, got: {msg}");
-    assert_eq!(value["passed"], false);
+    assert_eq!(registry_findings[0]["severity"], "important");
+    let msg = registry_findings[0]["impact"].as_str().expect("impact string");
+    assert!(msg.contains("version"), "expected version in impact, got: {msg}");
 }
 
 // ---- planning-path workspace smoke — planning-path smoke (Stage A/B, manifest, Layer 2) ----
@@ -238,9 +237,9 @@ fn validate_reports_all_health_diagnostics() {
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
 
-    let results = value["results"].as_array().expect("results array");
-    assert!(!results.is_empty(), "validate with broken plan must surface results: {value}");
-    let codes: Vec<&str> = results.iter().filter_map(|r| r["code"].as_str()).collect();
+    let findings = value["findings"].as_array().expect("findings array");
+    assert!(!findings.is_empty(), "validate with broken plan must surface findings: {value}");
+    let codes: Vec<&str> = findings.iter().filter_map(|r| r["rule-id"].as_str()).collect();
 
     for expected in ["cycle-in-depends-on", "orphan-source", "stale-workspace-clone"] {
         assert!(
@@ -310,15 +309,19 @@ fn validate_reports_topology_cache_stale() {
     let value: Value =
         serde_json::from_str(&String::from_utf8(assert.get_output().stdout.clone()).expect("utf8"))
             .expect("stdout is JSON");
-    let results = value["results"].as_array().expect("results array");
+    let findings = value["findings"].as_array().expect("findings array");
     let stale: Vec<&Value> =
-        results.iter().filter(|r| r["code"] == "topology-cache-stale").collect();
-    assert_eq!(stale.len(), 1, "expected one topology-cache-stale finding, got: {results:#?}");
-    assert_eq!(stale[0]["severity"], "warning");
-    let msg = stale[0]["message"].as_str().expect("message string");
-    assert!(msg.contains("alpha"), "expected slot name in message, got: {msg}");
-    assert!(msg.contains("workspace sync"), "expected the fix command in message, got: {msg}");
-    assert_eq!(value["passed"], true, "stale cache is warning-only");
+        findings.iter().filter(|r| r["rule-id"] == "topology-cache-stale").collect();
+    assert_eq!(stale.len(), 1, "expected one topology-cache-stale finding, got: {findings:#?}");
+    assert_eq!(stale[0]["severity"], "suggestion");
+    let msg = stale[0]["impact"].as_str().expect("impact string");
+    assert!(msg.contains("alpha"), "expected slot name in impact, got: {msg}");
+    assert!(msg.contains("workspace sync"), "expected the fix command in impact, got: {msg}");
+    assert_eq!(
+        assert.get_output().status.code(),
+        Some(0),
+        "stale cache is a suggestion-only finding, so validate must exit 0"
+    );
 }
 
 #[test]
@@ -352,13 +355,18 @@ fn plan_validate_payloads_round_trip_typed() {
         specrun().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    let results = value["results"].as_array().expect("results array");
+    let findings = value["findings"].as_array().expect("findings array");
 
-    let cycle = results
+    // The health checks carry their machine-readable payload on the
+    // neutral diagnostic's structured evidence (`evidence.data`) rather
+    // than a bespoke `data` field — unified onto the currency without
+    // loss.
+    let cycle = findings
         .iter()
-        .find(|d| d["code"] == "cycle-in-depends-on")
+        .find(|d| d["rule-id"] == "cycle-in-depends-on")
         .expect("expected cycle-in-depends-on diagnostic");
-    let cycle_path = cycle["data"]["cycle"].as_array().expect("cycle path is array");
+    assert_eq!(cycle["evidence"]["kind"], "structured");
+    let cycle_path = cycle["evidence"]["data"]["cycle"].as_array().expect("cycle path is array");
     let names: Vec<String> =
         cycle_path.iter().filter_map(|v| v.as_str().map(String::from)).collect();
     assert_eq!(
@@ -366,15 +374,14 @@ fn plan_validate_payloads_round_trip_typed() {
         vec!["cyc-a".to_string(), "cyc-b".to_string(), "cyc-a".to_string()],
         "cycle path must close on the first node"
     );
-    assert_eq!(cycle["data"]["kind"], "cycle");
 
-    let orphan = results
+    let orphan = findings
         .iter()
-        .find(|d| d["code"] == "orphan-source")
+        .find(|d| d["rule-id"] == "orphan-source")
         .expect("expected orphan-source diagnostic");
-    assert_eq!(orphan["data"]["kind"], "orphan-source");
-    assert_eq!(orphan["data"]["key"], "orphan-key");
-    assert_eq!(orphan["severity"], "warning");
+    assert_eq!(orphan["evidence"]["kind"], "structured");
+    assert_eq!(orphan["evidence"]["data"]["key"], "orphan-key");
+    assert_eq!(orphan["severity"], "suggestion");
 }
 
 #[test]
@@ -395,9 +402,8 @@ fn plan_validate_healthy_exits_zero() {
         .success();
     let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(
-        value["results"].as_array().unwrap().len(),
+        value["findings"].as_array().unwrap().len(),
         0,
-        "empty plan must emit zero results: {value}"
+        "empty plan must emit zero findings: {value}"
     );
-    assert_eq!(value["passed"], true, "empty plan must pass: {value}");
 }
