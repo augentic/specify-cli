@@ -51,6 +51,7 @@ use specify_workflow::schema::{validate_build_report_json, validate_build_reques
 use specify_workflow::slice::{
     BuildReport, BuildRequest, BuildStatus, LifecycleStatus, SliceMetadata,
     actions as slice_actions, build_request, enforce_report_no_blocking_on_success,
+    enforce_report_outputs_exist,
 };
 
 use crate::runtime::commands::source::cli::Phase;
@@ -98,6 +99,7 @@ struct BuildResult {
 ///   the agent `prepare` phase).
 /// - `target-build-report-missing` / `target-build-report-schema` /
 ///   `target-build-success-with-blocking-finding` /
+///   `target-build-output-missing` /
 ///   `target-build-report-slice-mismatch` / `target-build-failed` and
 ///   the `lifecycle` gate error from the agent `finalize` phase.
 /// - `target-build-tool-unsupported` from the `execution: tool` seam.
@@ -161,7 +163,7 @@ fn finalize(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<()> {
             slice_name: name.into(),
         },
     );
-    match finalize_report(name, slice_dir) {
+    match finalize_report(name, slice_dir, &ctx.project_dir) {
         Ok(body) => {
             emit_event(
                 ctx,
@@ -187,10 +189,11 @@ fn finalize(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<()> {
     }
 }
 
-/// Validate the report, enforce the success-blocking gate, reject a
-/// failed report, and gate the `Refined → Built` transition. Wrapped by
-/// [`finalize`] so the `slice.build.*` pair brackets it.
-fn finalize_report(name: &str, slice_dir: &Path) -> Result<BuildResult> {
+/// Validate the report, enforce the success-blocking gate and the
+/// output-existence gate, reject a failed report, and gate the
+/// `Refined → Built` transition. Wrapped by [`finalize`] so the
+/// `slice.build.*` pair brackets it.
+fn finalize_report(name: &str, slice_dir: &Path, project_dir: &Path) -> Result<BuildResult> {
     let raw = read_report(&report_path(slice_dir))?;
     validate_build_report_json(&raw)?;
     let report: BuildReport = serde_saphyr::from_str(&raw)?;
@@ -204,6 +207,7 @@ fn finalize_report(name: &str, slice_dir: &Path) -> Result<BuildResult> {
     }
 
     enforce_report_no_blocking_on_success(&report)?;
+    enforce_report_outputs_exist(&report, project_dir)?;
     if report.status == BuildStatus::Failure {
         return Err(Error::Diag {
             code: "target-build-failed",
@@ -215,10 +219,6 @@ fn finalize_report(name: &str, slice_dir: &Path) -> Result<BuildResult> {
         });
     }
 
-    // The gate missing today: a validated `success` report is the only
-    // legal entry into `Built`. An illegal edge (slice not `Refined`)
-    // surfaces as the `lifecycle` diagnostic and routes to the failed
-    // event above.
     slice_actions::transition(slice_dir, LifecycleStatus::Built, Timestamp::now())?;
 
     Ok(BuildResult {

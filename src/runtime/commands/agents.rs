@@ -103,6 +103,7 @@ mod tests {
             specify_version: None,
             rules,
             tools: Vec::new(),
+            platforms: Vec::new(),
             hub: false,
         }
     }
@@ -179,6 +180,7 @@ mod tests {
                 specify_version: None,
                 rules: BTreeMap::new(),
                 tools: Vec::new(),
+                platforms: Vec::new(),
                 hub: true,
             },
         };

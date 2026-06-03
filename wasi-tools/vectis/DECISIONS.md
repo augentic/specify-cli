@@ -230,3 +230,25 @@ _Codified in:
 `crates/vectis/src/validate/engine/shared.rs::escape_pointer_token`
 and the path-construction call sites under `engine/assets.rs`,
 `engine/layout.rs`, and `engine/composition.rs`._
+
+## Verify subcommand
+
+### §J — Platform shell verification
+
+> `vectis verify` reads `project.yaml.platforms` as authority and
+> inspects on-disk shell trees to determine which declared platforms
+> are present. Only three platforms have on-disk interpretations
+> today: `core` → `shared/src/app.rs`; `ios` → `iOS/` with ≥ 1
+> `.swift` file; `android` → `Android/` with ≥ 1 `.kt` file.
+> `web` and `desktop` are accepted but have no on-disk
+> interpretation — they emit a `platform-not-yet-supported` info
+> finding and are treated as present.
+>
+> Two modes: `detect` returns the missing set (plan-time bootstrap
+> insertion, always exits 0); `verify` emits `diagnostic.schema.json`-
+> shaped findings with `severity: error` for missing supported
+> platforms and exits non-zero (1) on any miss. Both modes exit 2
+> on runtime failures (missing `project.yaml`, parse errors).
+
+_Codified in: `src/verify.rs` (`run`, `check_platform`,
+`render_detect`, `render_verify`, `verify_exit_code`)._

@@ -155,6 +155,29 @@
       "trigger": "Swift, Kotlin, or another Vectis shell handles Crux Effects, calls CoreFfi update/view/resolve methods, manages async platform work, or updates rendered ViewModel state."
     },
     {
+      "body": "\n## Rule\n\nEvery platform declared in `project.yaml.platforms` and carried through `proposal.md ## Platforms` must have a corresponding on-disk shell tree by the time the slice reaches `built`. The vectis verify tool (`specrun tool run vectis -- verify --mode verify`) is the deterministic authority: `core` requires `shared/src/app.rs`, `ios` requires the `iOS/` tree with at least one `.swift` file and the Crux bridge, `android` requires the `Android/` tree with at least one `.kt` file and the Gradle/Cargo bridge.\n\n`web` and `desktop` are valid platform tokens but have no on-disk interpretation yet — the tool emits a `platform-not-yet-supported` info finding and treats them as present.\n\n## Look For\n\n- A `proposal.md ## Platforms` section that lists platforms not present on disk (no shell tree or an empty scaffold).\n- A build report with `status: success` but missing `outputs[]` entries for declared supported platforms.\n- A slice that reaches `built` without the verify gate having run.\n\n## Spec Guidance\n\nPlatforms are an app-level fact carried to every slice. When a declared platform's shell tree is absent, plan-time reconciliation should have inserted a bootstrap slice to stand it up. If the shell is still missing at build time, the verify gate prevents the slice from reaching `built`.\n",
+      "deprecated": null,
+      "deterministic-hints": [
+        {
+          "description": "Any proposal that carries a",
+          "kind": "path-pattern",
+          "value": "**/proposal.md"
+        },
+        {
+          "description": "The vectis verify tool detects declared-but-absent shell trees.",
+          "kind": "tool",
+          "value": "vectis"
+        }
+      ],
+      "origin": "target",
+      "path": "adapters/targets/vectis/rules/platform-shell-presence.md",
+      "path-root": "rules-root",
+      "rule-id": "VECTIS-005",
+      "severity": "important",
+      "title": "Declared Platform Shells Must Be Present",
+      "trigger": "A Vectis project declares platforms in project.yaml and a proposal.md carries the platform set."
+    },
+    {
       "body": "\n## Rule\n\nDo not let language defaults or ambiguous sentinel values represent meaningful domain state unless that state is explicitly valid. Model unknown, unloaded, empty, and intentionally absent values distinctly when the distinction affects behavior.\n\n## Look For\n\n- Struct fields whose default value is used at runtime but has no domain meaning, such as `count: 0` where zero is indistinguishable from \"unknown\".\n- Optional or nullable fields accessed before the value is populated by an async load, with no guard or loading-state check.\n- Default enum variants that silently swallow missing data rather than representing a genuine initial state.\n",
       "deprecated": null,
       "origin": "shared",

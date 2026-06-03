@@ -96,6 +96,7 @@ fn load_round_trips_when_present() {
         specify_version: None,
         rules: BTreeMap::new(),
         tools: Vec::new(),
+        platforms: Vec::new(),
         hub: false,
     };
     fs::create_dir_all(layout.specify_dir()).expect("create .specify");

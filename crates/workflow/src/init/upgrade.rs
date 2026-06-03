@@ -23,10 +23,11 @@ use std::fs;
 
 use specify_error::Error;
 
+use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
 use crate::init::adapter_uri::adapter_name_from_value;
 use crate::init::cache::{CacheMeta, CodexMeta};
-use crate::init::{InitOptions, InitResult, resolve_version};
+use crate::init::{InitOptions, InitResult, resolve_version, validate_platforms};
 
 /// Run the re-entry version bump.
 ///
@@ -58,9 +59,30 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
     let config_path = layout.config_path();
     let target = resolve_version();
 
+    let platforms_changed = if let Some(incoming) = opts.platforms {
+        let adapter_name =
+            cfg.adapter.as_deref().map(adapter_name_from_value).ok_or_else(|| Error::Diag {
+                code: "upgrade-platforms-no-adapter",
+                detail: "--platforms requires a project with a bound target adapter (hub projects \
+                         have no adapter)"
+                    .to_string(),
+            })?;
+        let resolved = TargetAdapter::resolve(adapter_name, opts.project_dir)?;
+        let validated =
+            validate_platforms(Some(incoming), resolved.manifest.platforms.as_ref(), adapter_name)?;
+        let changed = cfg.platforms != validated;
+        cfg.platforms = validated;
+        changed
+    } else {
+        false
+    };
+
     let specify_version_changed = cfg.specify_version.as_deref() != Some(target.as_str());
+    let needs_write = specify_version_changed || platforms_changed;
     if specify_version_changed {
         cfg.specify_version = Some(target.clone());
+    }
+    if needs_write {
         let serialised = serde_saphyr::to_string(&cfg)?;
         fs::write(&config_path, serialised)?;
     }

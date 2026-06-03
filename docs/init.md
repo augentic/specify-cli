@@ -10,6 +10,7 @@ Pass a adapter identifier or a directory/URL that resolves to one:
 
 ```bash
 specrun init omnia
+specrun init vectis --platforms core,ios,android
 specrun init https://github.com/augentic/omnia.git
 specrun init ./path/to/adapter
 ```
@@ -17,13 +18,19 @@ specrun init ./path/to/adapter
 The adapter supplies the schemas, plan template, and registry hooks
 the project will use. The CLI writes:
 
-- `project.yaml` (adapter identifier, `specify_version` floor).
+- `project.yaml` (adapter identifier, `specify_version` floor, and
+  `platforms` when the target declares a platform capability).
 - `.specify/` (slices, archive, plans, cache, workspace, plan.lock).
 - `.specify/wasm-pkg.toml` — project-local wasm-pkg registry config,
   prefilled with the canonical `specify -> augentic.io` namespace
   mapping. Edit it to point first-party tool fetches at an internal
   mirror or to register additional namespaces. The file is checked
   in; re-running `init` never overwrites operator edits.
+
+When the resolved target adapter declares `platforms.required` (e.g.
+vectis), `--platforms <csv>` is mandatory. The set must include `core`
+and stay within the target's `allowed` list. To change the platform
+set after init, re-run `specrun init --upgrade --platforms <csv>`.
 
 ## Platform hub — `specrun init --hub`
 

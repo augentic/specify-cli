@@ -30,6 +30,12 @@
       "default": [],
       "items": { "$ref": "../diagnostics/diagnostic.schema.json" },
       "description": "RFC-28 diagnostics; default `[]`. On `success`, only non-blocking findings (or empty). On `failure`, populated with blocking (`critical` / `important`) violations when the target can map them."
+    },
+    "outputs": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/buildOutput" },
+      "description": "Per-platform build outputs produced by the target adapter. Each entry declares a platform and a relative path (from project-dir) to the produced artifact. The CLI finalize gate verifies every declared path exists and is non-empty (`target-build-output-missing`)."
     }
   },
   "$defs": {
@@ -40,6 +46,27 @@
     "adapterRef": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*(?:@v[1-9][0-9]*)?$"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["core", "ios", "android", "web", "desktop"],
+      "description": "Closed target platform enum. Mirrors the `platform` $def in `target.schema.json`."
+    },
+    "buildOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "path"],
+      "properties": {
+        "platform": {
+          "$ref": "#/$defs/platform",
+          "description": "Platform this output was produced for."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative path (from project-dir) to the produced artifact. The CLI finalize gate verifies each path exists and is non-empty."
+        }
+      }
     }
   }
 }

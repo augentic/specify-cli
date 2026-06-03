@@ -22,7 +22,7 @@ fn write_adapter(root: &Path, adapter: &str, contents: &str) {
 
 fn valid_adapters(root: &Path) {
     write_adapter(root, "contracts", "tools:\n  - name: contract\n    version: 0.3.0\n");
-    write_adapter(root, "vectis", "tools:\n  - name: vectis\n    version: 0.3.0\n");
+    write_adapter(root, "vectis", "tools:\n  - name: vectis\n    version: 0.4.0\n");
 }
 
 fn ctx_for(root: &Path) -> Context {
@@ -38,7 +38,7 @@ fn invalid_tool_entry_shape_fails() {
         "contracts",
         "tools:\n  - not-an-object\n  - name: contract\n    version: 0.3.0-rc.1\n",
     );
-    write_adapter(&root, "vectis", "tools:\n  - name: vectis\n    version: 0.3.0\n");
+    write_adapter(&root, "vectis", "tools:\n  - name: vectis\n    version: 0.4.0\n");
 
     let findings = check_first_party_tools(&ctx_for(&root));
     assert_eq!(findings.len(), 2);

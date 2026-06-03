@@ -23,6 +23,7 @@ use specify_schema::{
     ADAPTER_JSON_SCHEMA, SOURCE_JSON_SCHEMA, TARGET_JSON_SCHEMA, ValidationStatus,
 };
 
+use crate::Platform;
 use crate::adapter::operation::{SourceOperation, TargetOperation};
 use crate::schema::validate_value;
 
@@ -144,6 +145,27 @@ pub struct BuildInputDeclaration {
     /// Whether `build` requires this input; a missing `required` path
     /// is a build-time abort once the matching check lands.
     pub required: bool,
+}
+
+/// Declarative platforms capability for a target adapter manifest.
+///
+/// When a target declares `platforms` in its `adapter.yaml`, the CLI
+/// uses this to enforce platform requirements at `specrun init` time
+/// and to scaffold defaults for greenfield workspace members.
+///
+/// - `required` — if true, `specrun init` demands `--platforms`.
+/// - `allowed` — the closed set of [`Platform`] tokens the target
+///   accepts; any project token outside the set is rejected.
+/// - `default` — the platform set scaffolded when the operator does
+///   not specify (used by greenfield workspace sync).
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PlatformsCapability {
+    /// Whether projects using this target must declare platforms.
+    pub required: bool,
+    /// Platforms this target accepts.
+    pub allowed: Vec<Platform>,
+    /// Default platform set for greenfield scaffolding.
+    pub default: Vec<Platform>,
 }
 
 /// Closed enum for the optional `cache:` field on an adapter manifest
@@ -333,6 +355,12 @@ pub struct TargetAdapter {
     /// Optional cache opt-out switch (extraction cache fingerprint contract).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<CacheMode>,
+    /// Optional platforms capability. When present the target declares
+    /// the closed set of [`Platform`] tokens it accepts, whether
+    /// projects must declare platforms, and the default set for
+    /// greenfield scaffolding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platforms: Option<PlatformsCapability>,
 }
 
 /// A parsed [`SourceAdapter`] paired with the [`AdapterLocation`] it

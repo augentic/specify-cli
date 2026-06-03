@@ -17,6 +17,7 @@ fn project(name: &str, target: &str, description: &str) -> ProjectRef {
         recent: Vec::new(),
         decisions: Vec::new(),
         decisions_more: None,
+        platforms: Vec::new(),
     }
 }
 
@@ -178,6 +179,7 @@ fn hub_config() -> ProjectConfig {
         specify_version: None,
         rules: std::collections::BTreeMap::new(),
         tools: Vec::new(),
+        platforms: Vec::new(),
         hub: true,
     }
 }
@@ -221,6 +223,7 @@ fn resolve_topology_hub_reads_topology_lock() {
                 recent: Vec::new(),
                 decisions: Vec::new(),
                 decisions_more: None,
+                platforms: Vec::new(),
             },
             ProjectRef {
                 name: "identity-service".to_string(),
@@ -230,6 +233,7 @@ fn resolve_topology_hub_reads_topology_lock() {
                 recent: Vec::new(),
                 decisions: Vec::new(),
                 decisions_more: None,
+                platforms: Vec::new(),
             },
         ]
     );
@@ -253,6 +257,7 @@ fn resolve_topology_regular_missing_adapter_errors() {
         specify_version: None,
         rules: std::collections::BTreeMap::new(),
         tools: Vec::new(),
+        platforms: Vec::new(),
         hub: false,
     };
     match resolve_topology(&config, Path::new("/unused")) {
@@ -527,4 +532,242 @@ slices:
 
     assert!(plan.entries[0].depends_on.is_empty());
     assert_eq!(plan.entries[1].depends_on, vec!["identity-contracts"]);
+}
+
+// --- reconcile_platforms tests ------------------------------------
+
+fn propose_single_slice(plan: &mut Plan) -> ProposeOutcome {
+    let doc = discovery_with(&[("intent", "add-feature")]);
+    let topo = vec![project("my-app", "vectis@v1", "Crux app.")];
+    let resp = response(vec![slice("add-feature", vec![member("intent", "add-feature")])]);
+    plan.propose_from(resp, &doc, &topo).expect("propose succeeds")
+}
+
+#[test]
+fn reconcile_greenfield_inserts_app_foundation() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    propose_single_slice(&mut plan);
+    assert_eq!(plan.entries.len(), 1);
+    assert_eq!(plan.entries[0].name, "add-feature");
+
+    let missing = vec![ProjectMissingPlatforms {
+        project: "my-app".to_string(),
+        missing: vec![Platform::Core, Platform::Ios, Platform::Android],
+    }];
+
+    let names = plan.reconcile_platforms(&missing).expect("reconcile succeeds");
+    assert_eq!(names, vec!["app-foundation"]);
+
+    assert_eq!(plan.entries.len(), 2);
+    assert_eq!(plan.entries[0].name, "app-foundation");
+    assert_eq!(plan.entries[0].project.as_deref(), Some("my-app"));
+    assert!(plan.entries[0].depends_on.is_empty());
+    assert!(plan.entries[0].description.is_some());
+
+    assert_eq!(plan.entries[1].name, "add-feature");
+    assert_eq!(plan.entries[1].depends_on, vec!["app-foundation"]);
+}
+
+#[test]
+fn reconcile_incremental_inserts_bootstrap_per_platform() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    propose_single_slice(&mut plan);
+
+    let missing = vec![ProjectMissingPlatforms {
+        project: "my-app".to_string(),
+        missing: vec![Platform::Android],
+    }];
+
+    let names = plan.reconcile_platforms(&missing).expect("reconcile succeeds");
+    assert_eq!(names, vec!["bootstrap-android"]);
+
+    assert_eq!(plan.entries.len(), 2);
+    assert_eq!(plan.entries[0].name, "bootstrap-android");
+    assert_eq!(plan.entries[0].project.as_deref(), Some("my-app"));
+
+    assert_eq!(plan.entries[1].name, "add-feature");
+    assert_eq!(plan.entries[1].depends_on, vec!["bootstrap-android"]);
+}
+
+#[test]
+fn reconcile_all_present_inserts_nothing() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    propose_single_slice(&mut plan);
+
+    let missing = vec![ProjectMissingPlatforms {
+        project: "my-app".to_string(),
+        missing: vec![],
+    }];
+
+    let names = plan.reconcile_platforms(&missing).expect("reconcile succeeds");
+    assert!(names.is_empty());
+    assert_eq!(plan.entries.len(), 1);
+    assert_eq!(plan.entries[0].name, "add-feature");
+    assert!(plan.entries[0].depends_on.is_empty());
+}
+
+#[test]
+fn reconcile_empty_missing_list_is_noop() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    propose_single_slice(&mut plan);
+
+    let names = plan.reconcile_platforms(&[]).expect("reconcile succeeds");
+    assert!(names.is_empty());
+    assert_eq!(plan.entries.len(), 1);
+}
+
+#[test]
+fn reconcile_incremental_two_missing() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    propose_single_slice(&mut plan);
+
+    let missing = vec![ProjectMissingPlatforms {
+        project: "my-app".to_string(),
+        missing: vec![Platform::Ios, Platform::Android],
+    }];
+
+    let names = plan.reconcile_platforms(&missing).expect("reconcile succeeds");
+    assert_eq!(names, vec!["bootstrap-ios", "bootstrap-android"]);
+
+    assert_eq!(plan.entries.len(), 3);
+    assert_eq!(plan.entries[0].name, "bootstrap-ios");
+    assert_eq!(plan.entries[1].name, "bootstrap-android");
+    assert_eq!(plan.entries[2].name, "add-feature");
+    assert!(plan.entries[2].depends_on.contains(&"bootstrap-ios".to_string()));
+    assert!(plan.entries[2].depends_on.contains(&"bootstrap-android".to_string()));
+}
+
+#[test]
+fn reconcile_preserves_existing_depends_on() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    let doc = discovery_with(&[("intent", "a"), ("intent", "b")]);
+    let topo = vec![project("my-app", "vectis@v1", "Crux app.")];
+    let mut s1 = slice("slice-a", vec![member("intent", "a")]);
+    s1.project = Some("my-app".to_string());
+    let mut s2 = slice("slice-b", vec![member("intent", "b")]);
+    s2.project = Some("my-app".to_string());
+    s2.depends_on = vec!["slice-a".to_string()];
+    plan.propose_from(response(vec![s1, s2]), &doc, &topo).expect("propose ok");
+    assert_eq!(plan.entries[1].depends_on, vec!["slice-a"]);
+
+    let missing = vec![ProjectMissingPlatforms {
+        project: "my-app".to_string(),
+        missing: vec![Platform::Android],
+    }];
+
+    plan.reconcile_platforms(&missing).expect("reconcile ok");
+
+    assert_eq!(plan.entries[2].name, "slice-b");
+    assert!(plan.entries[2].depends_on.contains(&"slice-a".to_string()));
+    assert!(plan.entries[2].depends_on.contains(&"bootstrap-android".to_string()));
+}
+
+#[test]
+fn reconcile_rejects_name_collision() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    let doc = discovery_with(&[("intent", "app-foundation")]);
+    let topo = vec![project("my-app", "vectis@v1", "Crux app.")];
+    let resp = response(vec![slice("app-foundation", vec![member("intent", "app-foundation")])]);
+    plan.propose_from(resp, &doc, &topo).expect("propose ok");
+
+    let missing = vec![ProjectMissingPlatforms {
+        project: "my-app".to_string(),
+        missing: vec![Platform::Core, Platform::Ios, Platform::Android],
+    }];
+
+    match plan.reconcile_platforms(&missing) {
+        Err(Error::Validation { code, .. }) => {
+            assert_eq!(code, "plan-reconcile-bootstrap-name-collision");
+        }
+        other => panic!("expected plan-reconcile-bootstrap-name-collision, got {other:?}"),
+    }
+}
+
+#[test]
+fn reconcile_multi_project_wires_only_own_bootstraps() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    let doc = discovery_with(&[("intent", "feat-a"), ("intent", "feat-b")]);
+    let topo = vec![
+        project("app-one", "vectis@v1", "First Crux app."),
+        project("app-two", "vectis@v1", "Second Crux app."),
+    ];
+    let mut s1 = slice("feat-a", vec![member("intent", "feat-a")]);
+    s1.project = Some("app-one".to_string());
+    let mut s2 = slice("feat-b", vec![member("intent", "feat-b")]);
+    s2.project = Some("app-two".to_string());
+    plan.propose_from(response(vec![s1, s2]), &doc, &topo).expect("propose ok");
+
+    let missing = vec![
+        ProjectMissingPlatforms {
+            project: "app-one".to_string(),
+            missing: vec![Platform::Ios],
+        },
+        ProjectMissingPlatforms {
+            project: "app-two".to_string(),
+            missing: vec![Platform::Android],
+        },
+    ];
+
+    let names = plan.reconcile_platforms(&missing).expect("reconcile succeeds");
+    assert_eq!(names, vec!["app-one-bootstrap-ios", "app-two-bootstrap-android"]);
+
+    // feat-a is bound to app-one: should depend only on its own bootstrap.
+    let feat_a = plan.entries.iter().find(|e| e.name == "feat-a").unwrap();
+    assert_eq!(feat_a.depends_on, vec!["app-one-bootstrap-ios"]);
+    assert!(!feat_a.depends_on.contains(&"app-two-bootstrap-android".to_string()));
+
+    // feat-b is bound to app-two: should depend only on its own bootstrap.
+    let feat_b = plan.entries.iter().find(|e| e.name == "feat-b").unwrap();
+    assert_eq!(feat_b.depends_on, vec!["app-two-bootstrap-android"]);
+    assert!(!feat_b.depends_on.contains(&"app-one-bootstrap-ios".to_string()));
+}
+
+// --- detect_missing_platforms tests --------------------------------
+
+#[test]
+fn detect_missing_no_shells() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
+    let missing = detect_missing_platforms(dir.path(), &platforms);
+    assert_eq!(missing, vec![Platform::Core, Platform::Ios, Platform::Android]);
+}
+
+#[test]
+fn detect_missing_core_present() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let shared = dir.path().join("shared/src");
+    std::fs::create_dir_all(&shared).expect("mkdir");
+    std::fs::write(shared.join("app.rs"), "fn main() {}").expect("write");
+
+    let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
+    let missing = detect_missing_platforms(dir.path(), &platforms);
+    assert_eq!(missing, vec![Platform::Ios, Platform::Android]);
+}
+
+#[test]
+fn detect_missing_all_present() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let shared = dir.path().join("shared/src");
+    std::fs::create_dir_all(&shared).expect("mkdir");
+    std::fs::write(shared.join("app.rs"), "fn main() {}").expect("write");
+
+    let ios = dir.path().join("iOS");
+    std::fs::create_dir_all(&ios).expect("mkdir");
+    std::fs::write(ios.join("App.swift"), "import SwiftUI").expect("write");
+
+    let android = dir.path().join("Android");
+    std::fs::create_dir_all(&android).expect("mkdir");
+    std::fs::write(android.join("App.kt"), "package com.example").expect("write");
+
+    let platforms = vec![Platform::Core, Platform::Ios, Platform::Android];
+    let missing = detect_missing_platforms(dir.path(), &platforms);
+    assert!(missing.is_empty());
+}
+
+#[test]
+fn detect_missing_skips_web_desktop() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let platforms = vec![Platform::Core, Platform::Web, Platform::Desktop];
+    let missing = detect_missing_platforms(dir.path(), &platforms);
+    assert_eq!(missing, vec![Platform::Core]);
 }

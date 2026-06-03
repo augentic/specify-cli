@@ -15,7 +15,7 @@ use crate::init::adapter_uri::adapter_name_from_value;
 use crate::init::cache::{CacheMeta, cache_adapter, cache_codex};
 use crate::init::{
     InitOptions, InitResult, resolve_version, resolved_name, scaffold_wasm_pkg_config,
-    upsert_gitignore,
+    upsert_gitignore, validate_platforms,
 };
 
 /// canonical refine-time artifact set. Hardcoded because target
@@ -62,7 +62,9 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
     let adapter_value = source.adapter_value;
     let adapter_name_in_value = adapter_name_from_value(&adapter_value).to_string();
     let resolved = TargetAdapter::resolve(&adapter_name_in_value, opts.project_dir)?;
-    let adapter_name = resolved.manifest.name;
+    let adapter_name = resolved.manifest.name.clone();
+    let validated_platforms =
+        validate_platforms(opts.platforms, resolved.manifest.platforms.as_ref(), &adapter_name)?;
     let scaffolded_rule_keys: Vec<String> =
         SCAFFOLDED_RULE_KEYS.iter().map(|key| (*key).to_string()).collect();
 
@@ -79,6 +81,7 @@ pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, E
         specify_version: Some(specify_version.clone()),
         rules,
         tools: Vec::new(),
+        platforms: validated_platforms,
         hub: false,
     };
 

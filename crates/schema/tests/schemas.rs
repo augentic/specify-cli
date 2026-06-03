@@ -574,6 +574,42 @@ fn build_report_schema_accepts_failure_without_findings() {
     assert!(errors.is_empty(), "failure report must validate; errors: {errors:?}");
 }
 
+/// A success report with `outputs[]` validates, proving the new
+/// `buildOutput` `$def` and `platform` enum resolve correctly.
+#[test]
+fn build_report_schema_accepts_success_with_outputs() {
+    let validator = build_report_validator();
+    let instance = json!({
+        "version": 1,
+        "slice": "identity-service",
+        "target": "vectis@v1",
+        "status": "success",
+        "findings": [],
+        "outputs": [
+            { "platform": "core", "path": "shared/src/app.rs" },
+            { "platform": "ios", "path": "iOS/MyApp/ContentView.swift" },
+            { "platform": "android", "path": "Android/app/src/main/kotlin/Main.kt" }
+        ]
+    });
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    assert!(errors.is_empty(), "success report with outputs must validate; errors: {errors:?}");
+}
+
+/// A report without `outputs` validates (backward compatibility).
+#[test]
+fn build_report_schema_accepts_report_without_outputs() {
+    let validator = build_report_validator();
+    let instance = json!({
+        "version": 1,
+        "slice": "identity-service",
+        "target": "omnia@v1",
+        "status": "success",
+        "findings": []
+    });
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    assert!(errors.is_empty(), "report without outputs must validate; errors: {errors:?}");
+}
+
 /// The RFC-29d §"Build report" failure-with-findings example validates,
 /// proving the relative diagnostic `$ref` accepts a full RFC-28 finding.
 #[test]
