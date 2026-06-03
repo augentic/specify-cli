@@ -30,7 +30,7 @@ fn write_rule(root: &Path, rel: &str, id: &str) {
     let path = root.join(rel);
     fs::create_dir_all(path.parent().expect("rule parent dir")).expect("create parent");
     let body = format!(
-        "---\nid: {id}\ntitle: Test Rule\nseverity: important\ntrigger: When testing codex validation in specdev lint.\n---\n\n## Rule\n\nBody.\n"
+        "---\nid: {id}\ntitle: Test Rule\nseverity: important\ntrigger: When testing codex validation in specify lint framework.\n---\n\n## Rule\n\nBody.\n"
     );
     fs::write(path, body).expect("write rule");
 }
@@ -84,7 +84,7 @@ fn src_rule_on_source_passes() {
 }
 
 #[test]
-fn non_src_rule_under_source_adapter_rejected() {
+fn non_src_rule_under_source_rejected() {
     let temp = TempDir::new().expect("tempdir");
     scaffold_framework(temp.path());
     write_rule(temp.path(), "adapters/sources/documentation/rules/wrong-namespace.md", "OMNIA-001");

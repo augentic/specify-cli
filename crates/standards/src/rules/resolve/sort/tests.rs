@@ -14,7 +14,7 @@ fn rule(id: &str, severity: Severity, deprecated: bool) -> Rule {
         trigger: "Synthetic CH-14 sort fixture trigger sentence long enough for schema.".into(),
         lint_mode: None,
         applicability: None,
-        deterministic_hints: None,
+        rule_hints: None,
         references: None,
         deprecated: deprecated.then(|| Deprecated {
             reason: "fixture deprecation".into(),

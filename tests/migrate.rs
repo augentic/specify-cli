@@ -1,5 +1,5 @@
-//! Integration tests for `specrun migrate` and the
-//! `specrun init --check-migration` probe (RFC-30 §D3, Wave B items 2,
+//! Integration tests for `specify migrate` and the
+//! `specify init --check-migration` probe (RFC-30 §D3, Wave B items 2,
 //! 5).
 //!
 //! The migrator's golden behaviour is covered in the workflow crate
@@ -19,7 +19,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 mod common;
-use common::{copy_dir, parse_json, repo_root, specrun};
+use common::{copy_dir, parse_json, repo_root, specify_cmd};
 
 /// Root of the checked-in B2 fixture (`before/` + `after/`).
 fn fixture_dir(leaf: &str) -> PathBuf {
@@ -71,11 +71,11 @@ fn journal_lines(root: &Path) -> Vec<Value> {
 }
 
 #[test]
-fn migrate_applies_fixture_and_journals_counts() {
+fn applies_fixture_journals_counts() {
     let tmp = stage_before();
     let root = tmp.path();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "migrate", "--from", "1.0.0", "--to", "2.0.0", "--yes"])
         .assert()
@@ -136,7 +136,7 @@ fn migrate_dry_run_writes_nothing() {
     let root = tmp.path();
     let before = collect_files(root);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "migrate", "--from", "1.0.0", "--to", "2.0.0", "--dry-run"])
         .assert()
@@ -164,7 +164,7 @@ fn migrate_without_consent_refuses() {
     let tmp = stage_before();
     let root = tmp.path();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "migrate", "--from", "1.0.0", "--to", "2.0.0"])
         .assert()
@@ -186,7 +186,7 @@ fn check_migration_probe_v1_tree() {
     let tmp = stage_before();
     let root = tmp.path();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "init", "--check-migration"])
         .assert()
@@ -212,7 +212,7 @@ fn check_migration_probe_v2_tree() {
     )
     .expect("seed project.yaml");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "init", "--check-migration"])
         .assert()

@@ -151,7 +151,7 @@ fn apply_staged_removes_and_reports() {
 }
 
 #[test]
-fn apply_staged_missing_removal_target_leaves_tree_untouched() {
+fn apply_staged_missing_removal_untouched() {
     let tmp = tempdir().unwrap();
     let root = tmp.path();
     fs::write(root.join("data.yaml"), b"original").unwrap();
@@ -186,7 +186,7 @@ fn apply_staged_missing_removal_target_leaves_tree_untouched() {
 }
 
 #[test]
-fn apply_staged_precondition_failure_leaves_tree_untouched() {
+fn apply_staged_precondition_untouched() {
     let tmp = tempdir().unwrap();
     let root = tmp.path();
     fs::write(root.join("data.yaml"), b"original").unwrap();

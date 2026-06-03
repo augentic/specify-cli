@@ -115,7 +115,7 @@ fn report_with_outputs_round_trips() {
 }
 
 #[test]
-fn gate_rejects_success_with_blocking_finding() {
+fn gate_success_blocks_finding() {
     let report = report("success", &[finding("critical")]);
     match enforce_report_no_blocking_on_success(&report) {
         Err(Error::Validation { code, .. }) => {
@@ -126,13 +126,13 @@ fn gate_rejects_success_with_blocking_finding() {
 }
 
 #[test]
-fn gate_accepts_success_with_only_non_blocking_findings() {
+fn gate_success_non_blocking_ok() {
     let report = report("success", &[finding("suggestion")]);
     enforce_report_no_blocking_on_success(&report).expect("non-blocking success passes");
 }
 
 #[test]
-fn gate_accepts_failure_with_blocking_finding() {
+fn gate_failure_blocking_ok() {
     let report = report("failure", &[finding("critical")]);
     enforce_report_no_blocking_on_success(&report).expect("failure may carry blocking findings");
 }

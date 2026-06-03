@@ -8,8 +8,10 @@
 //! runs the same check; [`read_yaml_as_json`] is the YAML-to-JSON
 //! bridge used by file-driven validators.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::{Arc, LazyLock, RwLock};
 
 use jsonschema::Validator;
 use jsonschema::error::{ValidationError, ValidationErrorKind};
@@ -120,17 +122,77 @@ pub fn join_details(failures: &[ValidationSummary]) -> String {
 pub fn validate_value(
     instance: &JsonValue, schema_source: &str, rule_id: &str, rule: &str,
 ) -> Vec<ValidationSummary> {
-    let validator = match compile_schema(schema_source) {
-        Ok(v) => v,
-        Err(err) => {
-            return vec![ValidationSummary {
-                status: ValidationStatus::Fail,
-                rule_id: rule_id.into(),
-                rule: rule.into(),
-                detail: Some(err.to_string()),
-            }];
-        }
-    };
+    match compile_schema(schema_source) {
+        Ok(validator) => summarise(&validator, instance, rule_id, rule),
+        Err(err) => vec![meta_failure(rule_id, rule, &err.to_string())],
+    }
+}
+
+/// Cache-backed twin of [`validate_value`] for the embedded `&'static`
+/// schema constants on hot validation paths (per-`evidence/*.yaml`,
+/// per-lead, per-manifest, plan/proposal/build-request).
+///
+/// The compiled [`Validator`] is built once per process per schema and
+/// reused on every subsequent call; behaviour is byte-identical to
+/// [`validate_value`], only the validator is no longer recompiled.
+/// Requiring `&'static str` is what makes the pointer-identity cache key
+/// sound: a `'static` schema's backing bytes never move or get freed, so
+/// its address is stable and collision-free for the program's lifetime
+/// (distinct schema sources have distinct addresses; the compiler may
+/// merge byte-identical constants, which is harmless).
+///
+/// `$ref`-bearing schemas (synthesis, build-report) are *not* served
+/// here — they need a [`jsonschema::Registry`] and keep their dedicated
+/// `LazyLock<Validator>` statics in the workflow layer.
+#[must_use]
+pub fn validate_value_cached(
+    instance: &JsonValue, schema_source: &'static str, rule_id: &str, rule: &str,
+) -> Vec<ValidationSummary> {
+    match cached_validator(schema_source) {
+        Ok(validator) => summarise(&validator, instance, rule_id, rule),
+        Err(err) => vec![meta_failure(rule_id, rule, &err.to_string())],
+    }
+}
+
+/// Process-lifetime cache of compiled validators keyed by the
+/// `&'static str` schema source's address.
+///
+/// An [`RwLock`] guards a pointer-keyed map of [`Arc<Validator>`]: reads
+/// (the steady state after warmup) take the shared lock; a miss upgrades
+/// to the write lock, double-checks, then compiles under the lock so a
+/// schema is compiled at most once even under concurrent first use.
+static VALIDATOR_CACHE: LazyLock<RwLock<HashMap<usize, Arc<Validator>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Fetch (or compile-and-insert) the validator for a `&'static` schema.
+///
+/// # Errors
+///
+/// Propagates the [`compile_schema`] meta-failure ([`Error::Diag`]) when
+/// the embedded schema cannot be parsed or compiled — unreachable in
+/// production (it signals a corrupt binary) but kept honest rather than
+/// `expect`ed so the meta-failure still surfaces as a `Fail` summary.
+fn cached_validator(schema_source: &'static str) -> Result<Arc<Validator>> {
+    let key = schema_source.as_ptr() as usize;
+    if let Some(validator) = VALIDATOR_CACHE.read().expect("validator cache not poisoned").get(&key)
+    {
+        return Ok(Arc::clone(validator));
+    }
+    let mut cache = VALIDATOR_CACHE.write().expect("validator cache not poisoned");
+    if let Some(validator) = cache.get(&key) {
+        return Ok(Arc::clone(validator));
+    }
+    let validator = Arc::new(compile_schema(schema_source)?);
+    cache.insert(key, Arc::clone(&validator));
+    drop(cache);
+    Ok(validator)
+}
+
+/// Run a compiled `validator` over `instance` and fold its errors into
+/// the single-entry [`ValidationSummary`] vector both entry points return.
+fn summarise(
+    validator: &Validator, instance: &JsonValue, rule_id: &str, rule: &str,
+) -> Vec<ValidationSummary> {
     let errors: Vec<String> =
         validator.iter_errors(instance).map(|err| validation_error_detail(&err)).collect();
     if errors.is_empty() {
@@ -147,6 +209,17 @@ pub fn validate_value(
             rule: rule.into(),
             detail: Some(errors.join("; ")),
         }]
+    }
+}
+
+/// The `Fail` summary emitted when the embedded schema itself cannot be
+/// parsed or compiled (a corrupt-binary meta-failure).
+fn meta_failure(rule_id: &str, rule: &str, detail: &str) -> ValidationSummary {
+    ValidationSummary {
+        status: ValidationStatus::Fail,
+        rule_id: rule_id.into(),
+        rule: rule.into(),
+        detail: Some(detail.to_string()),
     }
 }
 
@@ -190,8 +263,8 @@ mod tests {
     use specify_error::Error;
 
     use super::{
-        ValidationStatus, child_pointer, compile_schema, join_details, validate_serialisable,
-        validate_value,
+        ValidationStatus, cached_validator, child_pointer, compile_schema, join_details,
+        validate_serialisable, validate_value, validate_value_cached,
     };
 
     const OBJECT_SCHEMA: &str = r#"{
@@ -211,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_schema_rejects_valid_json_that_is_not_a_schema() {
+    fn rejects_non_schema_json() {
         let err = compile_schema(r#"{ "type": "frobnicate" }"#)
             .expect_err("unknown type keyword fails to compile");
         match err {
@@ -221,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_value_passes_a_conforming_instance() {
+    fn passes_conforming_instance() {
         let summaries =
             validate_value(&json!({ "name": "ok" }), OBJECT_SCHEMA, "object", "object shape");
         assert_eq!(summaries.len(), 1);
@@ -230,7 +303,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_value_reports_additional_property_with_child_pointer() {
+    fn reports_additional_property() {
         let summaries = validate_value(
             &json!({ "name": "ok", "extra": 1 }),
             OBJECT_SCHEMA,
@@ -243,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_value_surfaces_meta_failure_for_bad_schema() {
+    fn surfaces_meta_failure() {
         let summaries = validate_value(&json!({}), "{ not json", "bad", "bad schema");
         assert_eq!(summaries[0].status, ValidationStatus::Fail);
     }
@@ -259,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_serialisable_ok_on_pass_and_validation_error_on_fail() {
+    fn serialisable_ok_and_err() {
         validate_serialisable(
             &Doc { name: "ok".into() },
             OBJECT_SCHEMA,
@@ -286,14 +359,56 @@ mod tests {
     }
 
     #[test]
-    fn join_details_concatenates_only_fail_details() {
+    fn join_details_only_fail_details() {
         let summaries = validate_value(&json!({}), OBJECT_SCHEMA, "object", "object shape");
         let joined = join_details(&summaries);
         assert!(joined.contains("name"), "missing required field appears in joined detail");
     }
 
     #[test]
-    fn child_pointer_escapes_json_pointer_metacharacters() {
+    fn cached_validator_compiles_once_per_schema() {
+        let first = cached_validator(OBJECT_SCHEMA).expect("first compile succeeds");
+        let second = cached_validator(OBJECT_SCHEMA).expect("cache hit on second call");
+        assert!(
+            std::sync::Arc::ptr_eq(&first, &second),
+            "the same `&'static` schema yields one cached validator, not a recompile"
+        );
+    }
+
+    #[test]
+    fn cached_matches_uncached_behaviour() {
+        let pass = validate_value_cached(
+            &json!({ "name": "ok" }),
+            OBJECT_SCHEMA,
+            "object",
+            "object shape",
+        );
+        assert_eq!(
+            pass,
+            validate_value(&json!({ "name": "ok" }), OBJECT_SCHEMA, "object", "object shape")
+        );
+        assert_eq!(pass[0].status, ValidationStatus::Pass);
+
+        let fail = validate_value_cached(
+            &json!({ "name": "ok", "extra": 1 }),
+            OBJECT_SCHEMA,
+            "object",
+            "object shape",
+        );
+        assert_eq!(
+            fail,
+            validate_value(
+                &json!({ "name": "ok", "extra": 1 }),
+                OBJECT_SCHEMA,
+                "object",
+                "object shape"
+            )
+        );
+        assert_eq!(fail[0].status, ValidationStatus::Fail);
+    }
+
+    #[test]
+    fn child_pointer_escapes_metachars() {
         assert_eq!(child_pointer("", "a"), "/a");
         assert_eq!(child_pointer("/parent", "child"), "/parent/child");
         assert_eq!(child_pointer("", "a/b~c"), "/a~1b~0c", "/ -> ~1 and ~ -> ~0");

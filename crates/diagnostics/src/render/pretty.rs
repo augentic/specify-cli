@@ -21,10 +21,11 @@ use crate::diagnostic::{Diagnostic, DiagnosticReport, FindingLocation, FindingSt
 /// Never errors — the [`Result`] return mirrors the uniform
 /// [`super::render`] dispatch signature.
 pub fn render(report: &DiagnosticReport) -> Result<String, RenderError> {
+    let color = std::env::var_os("NO_COLOR").is_none();
     let mut out = String::new();
     let _ = writeln!(out, "Specify review — {} finding(s)", report.findings.len());
     for finding in &report.findings {
-        write_finding(&mut out, finding);
+        write_finding(&mut out, finding, color);
     }
     let s = &report.summary;
     let _ = writeln!(
@@ -35,8 +36,8 @@ pub fn render(report: &DiagnosticReport) -> Result<String, RenderError> {
     Ok(out)
 }
 
-fn write_finding(out: &mut String, finding: &Diagnostic) {
-    let tag = paint(finding.severity, severity_tag(finding.severity));
+fn write_finding(out: &mut String, finding: &Diagnostic, color: bool) {
+    let tag = paint(finding.severity, severity_tag(finding.severity), color);
     let status = status_tag(finding.status);
     let rule = finding.rule_id.as_deref().map_or(String::new(), |id| format!(" {id}"));
     let location = finding
@@ -67,8 +68,8 @@ const fn severity_tag(severity: Severity) -> &'static str {
     }
 }
 
-fn paint(severity: Severity, text: &str) -> String {
-    if std::env::var_os("NO_COLOR").is_some() {
+fn paint(severity: Severity, text: &str, color: bool) -> String {
+    if !color {
         return text.to_owned();
     }
     let code = match severity {
@@ -140,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn finding_line_carries_tag_rule_title_location_impact_remediation() {
+    fn finding_line_fields() {
         let out = render_plain(&report(vec![sample_diagnostic()]));
         assert!(out.contains("[IMPORTANT] UNI-014 Literal deployment URL in generated handler"));
         assert!(out.contains("(crates/invoice_export/src/config.rs:18:5)"));
@@ -177,5 +178,67 @@ mod tests {
         });
         let out = render_plain(&report(vec![finding]));
         assert!(out.contains("(x/y.rs:3)"), "line-only location omits column, got {out:?}");
+    }
+
+    /// Each demoted status renders its own bracketed tag — the `ignored`
+    /// arm is covered above, so pin the remaining three.
+    #[test]
+    fn each_non_open_status_tag_renders() {
+        for (status, tag) in [
+            (FindingStatus::Fixed, "[fixed]"),
+            (FindingStatus::Accepted, "[accepted]"),
+            (FindingStatus::FalsePositive, "[false-positive]"),
+        ] {
+            let mut finding = sample_diagnostic();
+            finding.status = Some(status);
+            let out = render_plain(&report(vec![finding]));
+            assert!(out.contains(tag), "expected {tag} for {status:?}, got {out:?}");
+        }
+    }
+
+    /// A finding with neither location nor rule id renders the bare
+    /// title line — no parenthesised location, no rule token.
+    #[test]
+    fn no_location_no_rule_renders_bare_title() {
+        let mut finding = sample_diagnostic();
+        finding.location = None;
+        finding.rule_id = None;
+        let out = render_plain(&report(vec![finding]));
+        assert!(!out.contains("config.rs"), "no location rendered, got {out:?}");
+        assert!(!out.contains("UNI-014"), "no rule token, got {out:?}");
+        assert!(
+            out.contains("[IMPORTANT] Literal deployment URL in generated handler"),
+            "bare title still present, got {out:?}"
+        );
+    }
+
+    /// The summary footer is emitted even for an empty report so callers
+    /// always get the tally line.
+    #[test]
+    fn empty_report_prints_header() {
+        let out = render_plain(&report(vec![]));
+        assert!(out.starts_with("Specify review — 0 finding(s)\n"));
+        assert!(out.contains("Summary: 0 critical, 0 important, 0 suggestion, 0 optional"));
+    }
+
+    /// With colour enabled each severity wraps its tag in the matching
+    /// ANSI escape and resets it; the `color` seam keeps this
+    /// deterministic without touching the process `NO_COLOR` env.
+    #[test]
+    fn paint_wraps_tag_in_ansi() {
+        assert_eq!(
+            super::paint(Severity::Critical, "[CRITICAL]", true),
+            "\x1b[31m[CRITICAL]\x1b[0m"
+        );
+        assert_eq!(
+            super::paint(Severity::Important, "[IMPORTANT]", true),
+            "\x1b[33m[IMPORTANT]\x1b[0m"
+        );
+    }
+
+    /// With colour disabled the tag passes through untouched.
+    #[test]
+    fn paint_passes_through_when_color_disabled() {
+        assert_eq!(super::paint(Severity::Critical, "[CRITICAL]", false), "[CRITICAL]");
     }
 }

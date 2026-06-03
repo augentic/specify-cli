@@ -265,12 +265,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn survey_segment_matches_operation_wire_name() {
+    fn survey_segment_matches_wire_name() {
         assert_eq!(SURVEY_SCRATCH_SEGMENT, SourceOperation::Survey.to_string());
     }
 
     #[test]
-    fn survey_scratch_keys_under_literal_survey_segment() {
+    fn scratch_keys_under_survey_segment() {
         let scratch = scratch_dir(Path::new("/proj"), "documentation", &SourceOp::Survey);
         assert_eq!(
             scratch,
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn path_bound_layout_mounts_four_roots_with_modes() {
+    fn path_bound_mounts_four_roots() {
         let source = PathBuf::from("/repo/legacy");
         let capability = PathBuf::from("/proj/adapters/sources/code-typescript");
         let scratch = PathBuf::from("/proj/.specify/.cache/extractions/code-typescript/s/scratch");
@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn value_bound_source_leaves_source_dir_absent() {
+    fn value_bound_source_dir_absent() {
         let capability = PathBuf::from("/proj/adapters/sources/intent");
         let scratch = PathBuf::from("/proj/.specify/.cache/extractions/intent/survey/scratch");
         let layout = SandboxLayout::new(None, &capability, scratch);

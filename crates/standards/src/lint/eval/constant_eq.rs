@@ -35,21 +35,20 @@
 //! [`super::HintError::Unsupported`] so authoring drift surfaces at
 //! hint-evaluation time rather than silently passing.
 
-use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
+use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
 const SOURCE_ADAPTER_MANIFEST_VERSION_EQUALS_V1: &str = "adapter-manifest-version-equals-v1";
 const ADAPTER_MANIFEST_EXPECTED_VERSION: &str = "1";
 const ABSENT_VERSION_TOKEN: &str = "(absent)";
 
 pub(crate) fn evaluate(
-    rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
+    rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
@@ -61,8 +60,7 @@ pub(crate) fn evaluate(
         });
     }
 
-    let candidate_set: BTreeSet<String> =
-        candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let candidate_set = super::candidate_set(candidates);
 
     let mut out: Vec<Diagnostic> = Vec::new();
     for manifest in &model.adapter_manifests {

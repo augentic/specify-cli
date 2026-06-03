@@ -7,7 +7,7 @@
 //! header fields are optional so the kernel re-derives/stamps them on
 //! projection (normalize, never reject). Provenance is carried inline
 //! on each requirement, so the provenance view is *projected* on
-//! demand by `specrun slice provenance` rather than persisted as a
+//! demand by `specify slice provenance` rather than persisted as a
 //! second file. See [`DECISIONS.md` §"Single slice-model artifact"][model-artifact].
 //!
 //! [model-artifact]: ../../../../DECISIONS.md#single-slice-model-artifact-rfc-29-m2b-simplification

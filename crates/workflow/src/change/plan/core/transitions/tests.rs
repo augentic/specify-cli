@@ -16,7 +16,7 @@ fn transition_in_progress_to_done() {
 }
 
 #[test]
-fn lifecycle_pending_to_approved_then_terminal() {
+fn pending_to_approved_then_terminal() {
     let mut plan = plan_with_changes(vec![change("a", Status::Pending)]);
     plan.transition_lifecycle(Lifecycle::Approved).expect("pending -> approved ok");
     assert_eq!(plan.lifecycle, Lifecycle::Approved);

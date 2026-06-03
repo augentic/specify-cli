@@ -1,4 +1,4 @@
-//! Integration tests for `specrun workspace *` (workspace orchestration contract).
+//! Integration tests for `specify workspace *` (workspace orchestration contract).
 //!
 //! Covers `workspace sync`, `workspace push`, and the hidden
 //! `workspace prepare` executor helper. Selector
@@ -10,11 +10,11 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_hub, omnia_schema_dir, parse_stdout, run_git, specrun};
+use common::{Project, init_workspace, omnia_schema_dir, parse_stdout, run_git, specify_cmd};
 
 #[test]
 fn workspace_help_lists_active_subcommands() {
-    let assert = specrun().args(["workspace", "--help"]).assert().success();
+    let assert = specify_cmd().args(["workspace", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["sync", "push"] {
         assert!(
@@ -27,7 +27,7 @@ fn workspace_help_lists_active_subcommands() {
 #[test]
 fn c01_sync_unknown_selector_preflight() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
     fs::write(
         tmp.path().join("registry.yaml"),
         "version: 1\n\
@@ -39,7 +39,7 @@ fn c01_sync_unknown_selector_preflight() {
     .unwrap();
     let gitignore_before = fs::read_to_string(tmp.path().join(".gitignore")).ok();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "sync", "ghost"])
         .assert()
@@ -51,20 +51,24 @@ fn c01_sync_unknown_selector_preflight() {
     assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
-        !tmp.path().join(".specify/workspace").exists(),
-        "unknown selector must fail before workspace materialisation"
+        !tmp.path().join(".specify/workspace/ghost").exists(),
+        "unknown selector must fail before materialising the requested slot"
+    );
+    assert!(
+        !tmp.path().join(".specify/workspace/alpha").exists(),
+        "unknown selector must fail before syncing any registry project"
     );
     assert_eq!(
         fs::read_to_string(tmp.path().join(".gitignore")).ok(),
         gitignore_before,
-        "unknown selector must fail before sync mutates .gitignore"
+        "unknown selector must fail before sync mutates .gitignore again"
     );
 }
 
 #[test]
 fn c01_sync_skips_unselected_slots() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
     for name in ["billing", "orders", "inventory"] {
         fs::create_dir_all(tmp.path().join(name)).unwrap();
     }
@@ -87,7 +91,7 @@ fn c01_sync_skips_unselected_slots() {
     )
     .unwrap();
 
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["workspace", "sync", "orders", "billing"])
         .assert()
@@ -103,7 +107,7 @@ fn c01_sync_skips_unselected_slots() {
 #[test]
 fn c01_push_unknown_selector_preflight() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
     fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
     fs::write(
         tmp.path().join("registry.yaml"),
@@ -115,7 +119,7 @@ fn c01_push_unknown_selector_preflight() {
     )
     .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "push", "ghost", "--dry-run"])
         .assert()
@@ -127,15 +131,19 @@ fn c01_push_unknown_selector_preflight() {
     assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
-        !tmp.path().join(".specify/workspace").exists(),
-        "unknown selector must fail before workspace paths are touched"
+        !tmp.path().join(".specify/workspace/ghost").exists(),
+        "unknown selector must fail before materialising the requested slot"
+    );
+    assert!(
+        !tmp.path().join(".specify/workspace/alpha").exists(),
+        "unknown selector must fail before push touches registry project slots"
     );
 }
 
 #[test]
 fn c04_prepare_returns_json() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
 
     let alpha = tmp.path().join("alpha");
     fs::create_dir_all(&alpha).unwrap();
@@ -158,14 +166,14 @@ fn c04_prepare_returns_json() {
     )
     .unwrap();
 
-    let help = specrun().args(["workspace", "--help"]).assert().success();
+    let help = specify_cmd().args(["workspace", "--help"]).assert().success();
     let help_stdout = String::from_utf8(help.get_output().stdout.clone()).expect("help utf8");
     assert!(
         !help_stdout.contains("prepare"),
         "executor helper must stay hidden from human workspace help, got:\n{help_stdout}"
     );
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "prepare", "alpha", "--change", "demo-change"])
         .assert()
@@ -189,7 +197,7 @@ fn c04_prepare_returns_json() {
 #[test]
 fn c04_prepare_origin_head_diagnostic() {
     let tmp = tempdir().unwrap();
-    init_hub(&tmp, "platform-hub");
+    init_workspace(&tmp, "platform-workspace");
 
     let remote = tmp.path().join("headless.git");
     run_git(tmp.path(), &["init", "--bare", remote.to_str().unwrap()]);
@@ -213,7 +221,7 @@ fn c04_prepare_origin_head_diagnostic() {
     )
     .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "prepare", "alpha", "--change", "demo-change"])
         .assert()
@@ -236,7 +244,7 @@ fn c04_prepare_origin_head_diagnostic() {
 #[test]
 fn planning_sync_no_registry_exits_zero() {
     let project = Project::init();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "workspace", "sync"])
         .assert()
@@ -253,7 +261,7 @@ fn planning_sync_two_symlink_peers() {
     fs::create_dir_all(peer.join(".specify")).expect("peer .specify");
     let root = tmp.path().join("root");
     fs::create_dir_all(&root).expect("root");
-    specrun()
+    specify_cmd()
         .current_dir(&root)
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -275,7 +283,7 @@ projects:
 ";
     fs::write(root.join("registry.yaml"), reg).expect("registry");
 
-    specrun().current_dir(&root).args(["workspace", "sync"]).assert().success();
+    specify_cmd().current_dir(&root).args(["workspace", "sync"]).assert().success();
 
     assert!(root.join(".specify/workspace/alpha").exists());
     assert!(root.join(".specify/workspace/beta").exists());

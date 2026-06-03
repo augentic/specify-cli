@@ -4,10 +4,12 @@ use std::path::{Path, PathBuf};
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
-use specify_workflow::config::{ProjectConfig, is_workspace_clone};
+use specify_workflow::config::{ProjectConfig, is_slot};
 use specify_workflow::init::{InitOptions, InitResult, init};
 use specify_workflow::migrate::{self, MigrationAction};
 use specify_workflow::platform::parse_platforms_csv;
+use specify_workflow::registry::Registry;
+use specify_workflow::registry::workspace::{regenerate_topology_lock, sync_projects};
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::agents;
@@ -20,44 +22,71 @@ fn canonical(p: &Path) -> String {
     std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
 }
 
+/// Clap-mapped inputs for `specify init` (format-only handler).
 #[expect(
-    clippy::too_many_arguments,
-    clippy::fn_params_excessive_bools,
-    reason = "format-only handler mirrors the `Commands::Init` clap variant 1:1; each flag is an \
-              independent, clap-validated init input threaded straight into `InitOptions`."
+    clippy::struct_excessive_bools,
+    reason = "mirrors the `Commands::Init` clap variant: each bool is an independent init flag."
 )]
-pub(super) fn run(
-    format: Format, adapter: Option<&str>, name: Option<&str>, description: Option<&str>,
-    hub: bool, include_framework: bool, platforms: Option<&str>, check_migration: bool,
-    upgrade: bool,
-) -> Result<()> {
+pub(super) struct Args<'a> {
+    pub format: Format,
+    pub adapter: Option<&'a str>,
+    pub name: Option<&'a str>,
+    pub description: Option<&'a str>,
+    pub workspace: bool,
+    pub include_framework: bool,
+    pub platforms: Option<&'a str>,
+    pub check_migration: bool,
+    pub upgrade: bool,
+}
+
+pub(super) fn run(args: &Args<'_>) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
-    if check_migration {
-        return check_migration_probe(format, &project_dir);
+    if args.check_migration {
+        return check_migration_probe(args.format, &project_dir);
     }
 
     let parsed_platforms =
-        platforms.map(parse_platforms_csv).transpose().map_err(|e| Error::Argument {
+        args.platforms.map(parse_platforms_csv).transpose().map_err(|e| Error::Argument {
             flag: "--platforms",
             detail: e,
         })?;
 
     let opts = InitOptions {
         project_dir: &project_dir,
-        adapter,
-        name,
-        description,
-        hub,
-        include_framework,
+        adapter: args.adapter,
+        name: args.name,
+        description: args.description,
+        workspace: args.workspace,
+        include_framework: args.include_framework,
         platforms: parsed_platforms.as_deref(),
-        upgrade,
+        upgrade: args.upgrade,
     };
 
     let result = init(opts, Timestamp::now())?;
     let current_dir = std::env::current_dir().map_err(Error::Io)?;
-    let context_skip_reason = generate_initial_context(format, &current_dir)?;
-    emit_init_result(format, &result, context_skip_reason)
+    let context_skip_reason = generate_initial_context(args.format, &current_dir)?;
+
+    let workspace_sync_message = if args.workspace && !args.upgrade {
+        Some(run_workspace_sync(&project_dir)?)
+    } else {
+        None
+    };
+
+    emit_init_result(args.format, &result, context_skip_reason, workspace_sync_message)
+}
+
+/// Materialise registry slots and regenerate topology after workspace init.
+/// Returns the human-readable sync outcome for the init envelope.
+fn run_workspace_sync(project_dir: &Path) -> Result<String> {
+    let registry = Registry::load(project_dir)?;
+    let Some(reg) = registry.as_ref() else {
+        return Ok("no registry declared at registry.yaml; nothing to sync".to_string());
+    };
+    let selected = reg.select(&[])?;
+    sync_projects(project_dir, &selected)?;
+    regenerate_topology_lock(project_dir, reg)?;
+    Ok("workspace sync complete".to_string())
 }
 
 #[derive(Serialize)]
@@ -68,13 +97,13 @@ pub(super) fn run(
 )]
 struct Body {
     config_path: String,
-    /// Resolved adapter name (or `"hub"` for hub init — both
+    /// Resolved adapter name (or `"workspace"` for workspace init — both
     /// renderers dispatch on this value).
     adapter_name: String,
     cache_present: bool,
     /// `true` when the shared codex was distributed into
     /// `.specify/.cache/codex/` (RM-07). `false` when the adapter source
-    /// carries no shared pack, and always `false` for hub init.
+    /// carries no shared pack, and always `false` for workspace init.
     codex_present: bool,
     directories_created: Vec<String>,
     scaffolded_rule_keys: Vec<String>,
@@ -93,19 +122,23 @@ struct Body {
     context_skipped: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     context_skip_reason: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_synced: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    workspace_sync_message: Option<String>,
 }
 
 fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
-    let hub = body.adapter_name == "hub";
-    if hub {
-        writeln!(w, "Initialized .specify/ as a registry-only platform hub")?;
+    let is_workspace = body.adapter_name == "workspace";
+    if is_workspace {
+        writeln!(w, "Initialized .specify/ as a registry-only workspace")?;
     } else {
         writeln!(w, "Initialized .specify/")?;
     }
     writeln!(w, "  adapter: {}", body.adapter_name)?;
     writeln!(w, "  config: {}", body.config_path)?;
     writeln!(w, "  cache present: {}", body.cache_present)?;
-    if !hub {
+    if !is_workspace {
         writeln!(w, "  codex present: {}", body.codex_present)?;
     }
     if !body.directories_created.is_empty() {
@@ -122,16 +155,19 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     if body.context_skipped && body.context_skip_reason == Some("existing-agents-md") {
         writeln!(w, "AGENTS.md already present; skipping context generate")?;
     }
+    if let Some(message) = body.workspace_sync_message.as_deref() {
+        writeln!(w, "  {message}")?;
+    }
     writeln!(w)?;
-    if hub {
+    if is_workspace {
         writeln!(
             w,
-            "Next: run `specrun registry add <id> <url>` to declare the projects this hub coordinates."
+            "Next: run `specify registry add <id> <url>` to declare projects, then `/spec:plan <name>`."
         )?;
     } else {
         writeln!(
             w,
-            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specrun plan create <name>` followed by `specrun plan add` and `specrun plan transition <name> approved`."
+            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specify plan create <name>` followed by `specify plan add` and `specify plan transition <name> approved`."
         )?;
     }
     Ok(())
@@ -139,7 +175,9 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
 
 fn emit_init_result(
     format: Format, result: &InitResult, context_skip_reason: Option<&'static str>,
+    workspace_sync_message: Option<String>,
 ) -> Result<()> {
+    let workspace_synced = workspace_sync_message.as_ref().map(|msg| msg.contains("complete"));
     let body = Body {
         config_path: canonical(&result.config_path),
         adapter_name: result.adapter_name.clone(),
@@ -153,6 +191,8 @@ fn emit_init_result(
         context_generated: context_skip_reason.is_none(),
         context_skipped: context_skip_reason.is_some(),
         context_skip_reason,
+        workspace_synced,
+        workspace_sync_message,
     };
     output::emit(&mut std::io::stdout().lock(), format, &body, write_text)?;
     Ok(())
@@ -160,7 +200,7 @@ fn emit_init_result(
 
 /// Returns `None` when initial context generation ran, `Some(reason)` when it was skipped.
 fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option<&'static str>> {
-    if is_workspace_clone(project_dir) {
+    if is_slot(project_dir) {
         return Ok(Some("workspace-clone"));
     }
     match project_dir.join("AGENTS.md").try_exists() {
@@ -185,7 +225,7 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option
     Ok(None)
 }
 
-/// `specrun init --check-migration` read-only probe. Resolves config
+/// `specify init --check-migration` read-only probe. Resolves config
 /// through the migration carve-out, runs the registered migrators'
 /// pure plans, and emits the stable probe envelope. Exits `0`
 /// regardless of the outcome (it is a probe, not an enforcement).

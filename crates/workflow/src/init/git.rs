@@ -15,6 +15,10 @@ use crate::cmd;
 /// checkout. Harmless when the source repo carries no such tree —
 /// `sparse-checkout set` simply materialises nothing for it.
 const SHARED_RULES_PATH: &str = "adapters/shared/rules";
+/// Shared spec runtime mirror (symlinks into `plugins/spec/references/`).
+const SHARED_RUNTIME_PATH: &str = "adapters/shared/references";
+/// Plugin references tree symlink targets for sparse GitHub checkouts.
+const PLUGINS_SPEC_REFERENCES_PATH: &str = "plugins/spec/references";
 
 pub(super) fn sparse_checkout_github(
     repo_url: &str, checkout_ref: Option<&str>, adapter_path: &str,
@@ -33,8 +37,18 @@ pub(super) fn sparse_checkout_github(
 
     let sparse_path = sparse_checkout_path(adapter_path);
     run_git(
-        &["-C", &checkout_arg, "sparse-checkout", "set", "--", sparse_path, SHARED_RULES_PATH],
-        "sparse-checkout adapter and shared-codex paths",
+        &[
+            "-C",
+            &checkout_arg,
+            "sparse-checkout",
+            "set",
+            "--",
+            sparse_path,
+            SHARED_RULES_PATH,
+            SHARED_RUNTIME_PATH,
+            PLUGINS_SPEC_REFERENCES_PATH,
+        ],
+        "sparse-checkout adapter, shared-codex, and spec-runtime paths",
     )?;
     Ok(checkout)
 }

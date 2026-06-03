@@ -3,7 +3,7 @@ use super::*;
 /// The `UNI-014` example for the `ResolvedRules` export
 /// validates cleanly against the resolved-codex schema.
 #[test]
-fn resolved_codex_schema_accepts_contract_example() {
+fn resolved_codex_accepts_example() {
     let instance = serde_json::json!({
         "version": 1,
         "target-adapter": "omnia",
@@ -23,7 +23,7 @@ fn resolved_codex_schema_accepts_contract_example() {
                     "languages": ["rust"],
                     "artifacts": ["code"]
                 },
-                "deterministic-hints": [
+                "rule-hints": [
                     {
                         "kind": "regex",
                         "value": "https?://",
@@ -53,7 +53,7 @@ fn resolved_codex_schema_accepts_contract_example() {
 /// replaced with a deterministic 64-hex-char digest so the
 /// fingerprint pattern check passes.
 #[test]
-fn review_finding_schema_accepts_contract_example() {
+fn review_finding_accepts_example() {
     let instance = serde_json::json!({
         "id": "FIND-0001",
         "rule-id": "UNI-014",
@@ -84,7 +84,7 @@ fn review_finding_schema_accepts_contract_example() {
 /// The rule frontmatter example for codex file shape
 /// validates cleanly against the vendored codex-rule schema.
 #[test]
-fn codex_rule_schema_accepts_contract_example() {
+fn codex_rule_accepts_example() {
     let instance = serde_json::json!({
         "id": "UNI-014",
         "title": "Hardcoded Configuration",
@@ -96,7 +96,7 @@ fn codex_rule_schema_accepts_contract_example() {
             "artifacts": ["code"]
         },
         "lint_mode": "hybrid",
-        "deterministic_hints": [
+        "rule_hints": [
             {
                 "kind": "regex",
                 "value": "https?://",
@@ -232,7 +232,7 @@ fn build_request_rejects_malformed() {
 /// proving the relative diagnostic `$ref` resolves through the
 /// registry.
 #[test]
-fn build_report_accepts_failure_with_finding() {
+fn build_report_accepts_failure() {
     let report = r#"{
             "version": 1,
             "slice": "identity-contracts",

@@ -4,7 +4,7 @@
 //! [`DecisionRecord`]) plus a Markdown body carrying `## Context` /
 //! `## Decision` / `## Consequences`. The slice authors `slug` plus
 //! `status: accepted | rejected` (and optional `supersedes:` /
-//! `related:`); `specrun slice merge` stamps the durable `id` / `slice`
+//! `related:`); `specify slice merge` stamps the durable `id` / `slice`
 //! / `date` and promotes the record into the append-only baseline
 //! catalogue at `.specify/decisions/DEC-NNNN-<slug>.md`.
 //!

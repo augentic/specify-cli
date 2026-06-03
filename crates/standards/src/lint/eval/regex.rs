@@ -1,40 +1,38 @@
 //! `kind: regex` evaluator per the executable hint-kind contract.
-//!
-//! Compiles the hint's `value` once and walks each text candidate
-//! line by line, emitting one [`specify_diagnostics::Diagnostic`] per
-//! match with a 1-indexed `line` / `column` location and the matched
-//! line clipped to a bounded char count in the `Snippet` evidence
-//! payload.
-//!
-//! Binary files are skipped (`WorkspaceModel` file scan says regex hints "skip
-//! binary files unless `applicability.binary: true`" — the
-//! reserved-binary flag is rejected as `unsupported` until
-//! reserved-kinds policy lands, so v1 always skips). Each candidate
-//! file is re-read from disk; v1 does not carry file bytes through
-//! [`crate::lint::WorkspaceModel`]. A future optimisation could
-//! either persist bytes on the model or share a precomputed regex
-//! index — neither is required for Phase 2 correctness.
+
+mod config;
+pub mod logical_lines;
 
 use std::path::{Path, PathBuf};
 
 use ::regex::Regex;
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
+use self::config::RegexHintConfig;
 use super::{HintError, make_finding};
 use crate::lint::{FileKind, WorkspaceModel};
-use crate::rules::{DeterministicHint, ResolvedRule};
+use crate::rules::{ResolvedRule, RuleHint};
 
 const SNIPPET_MAX_CHARS: usize = 240;
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "regex eval handles normal, capture, and slash-skill modes in one pass"
+)]
 pub(crate) fn evaluate(
-    rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], project_dir: &Path,
+    rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], project_dir: &Path,
     model: &WorkspaceModel, next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
-    let pattern = Regex::new(&hint.value).map_err(|err| HintError::RegexCompile {
-        rule_id: rule.rule_id.clone(),
-        pattern: hint.value.clone(),
-        source: err,
-    })?;
+    let cfg = RegexHintConfig::parse(rule, hint)?;
+    let pattern = if cfg.slash_skill_positional {
+        None
+    } else {
+        Some(Regex::new(&hint.value).map_err(|err| HintError::RegexCompile {
+            rule_id: rule.rule_id.clone(),
+            pattern: hint.value.clone(),
+            source: err,
+        })?)
+    };
 
     let mut out: Vec<Diagnostic> = Vec::new();
     for candidate in candidates {
@@ -55,32 +53,149 @@ pub(crate) fn evaluate(
             }
         };
         let text = String::from_utf8_lossy(&bytes);
-        for (line_idx, line) in text.lines().enumerate() {
-            for capture in pattern.find_iter(line) {
-                let line_no = u32::try_from(line_idx + 1).unwrap_or(u32::MAX);
-                let column_no = u32::try_from(capture.start() + 1).unwrap_or(u32::MAX);
-                let location = FindingLocation {
-                    path: candidate_str.to_string(),
-                    line: Some(line_no),
-                    column: Some(column_no),
-                    end_line: None,
-                    end_column: None,
+        if cfg.slash_skill_positional {
+            let line_iter: Vec<(usize, String)> = if cfg.join_backslash_continuations {
+                logical_lines::logical_lines_with_starts(&text)
+            } else {
+                text.lines().enumerate().map(|(idx, line)| (idx + 1, line.to_string())).collect()
+            };
+            for (start_line, logical) in line_iter {
+                if !logical_lines::violates_slash_skill_positional(&logical) {
+                    continue;
+                }
+                let end_line = if cfg.join_backslash_continuations && logical.contains('\n') {
+                    start_line + logical.lines().count().saturating_sub(1)
+                } else {
+                    start_line
                 };
-                let evidence = FindingEvidence::Snippet {
-                    value: clip_snippet(line),
-                };
-                let title = format!(
-                    "{}: matched `{}`",
-                    rule.title,
-                    hint.description.as_deref().unwrap_or(&hint.value)
+                let line_suffix =
+                    if end_line > start_line { format!("-{end_line}") } else { String::new() };
+                push_finding(
+                    rule,
+                    hint,
+                    &mut out,
+                    next_id,
+                    &candidate_str,
+                    start_line,
+                    1,
+                    &format!(
+                        "Slash skill invocation uses flag-style arguments at line {start_line}{line_suffix}"
+                    ),
                 );
-                let finding = make_finding(rule, *next_id, title, Some(location), evidence);
-                *next_id += 1;
-                out.push(finding);
+            }
+            continue;
+        }
+
+        let pattern = pattern.as_ref().expect("slash-skill branch continues above");
+        for (line_idx, line) in text.lines().enumerate() {
+            if cfg.negative_match {
+                if !pattern.is_match(line) {
+                    push_finding(
+                        rule,
+                        hint,
+                        &mut out,
+                        next_id,
+                        &candidate_str,
+                        line_idx + 1,
+                        1,
+                        line,
+                    );
+                }
+                continue;
+            }
+
+            if cfg.capture_group.is_some() {
+                for capture in pattern.captures_iter(line) {
+                    let m = capture.get(0).expect("captures_iter yields match 0");
+                    if !match_passes(&cfg, line, m, &capture) {
+                        continue;
+                    }
+                    push_finding(
+                        rule,
+                        hint,
+                        &mut out,
+                        next_id,
+                        &candidate_str,
+                        line_idx + 1,
+                        m.start() + 1,
+                        line,
+                    );
+                }
+            } else {
+                for m in pattern.find_iter(line) {
+                    if !match_passes_find(&cfg, line, m) {
+                        continue;
+                    }
+                    push_finding(
+                        rule,
+                        hint,
+                        &mut out,
+                        next_id,
+                        &candidate_str,
+                        line_idx + 1,
+                        m.start() + 1,
+                        line,
+                    );
+                }
             }
         }
     }
     Ok(out)
+}
+
+fn match_passes_find(cfg: &RegexHintConfig, line: &str, m: ::regex::Match<'_>) -> bool {
+    if let Some(prefix) = cfg.suffix_must_not_start_with.as_deref()
+        && line[m.end()..].starts_with(prefix)
+    {
+        return false;
+    }
+    true
+}
+
+fn match_passes(
+    cfg: &RegexHintConfig, line: &str, m: ::regex::Match<'_>, capture: &::regex::Captures<'_>,
+) -> bool {
+    if !match_passes_find(cfg, line, m) {
+        return false;
+    }
+    let Some(group) = cfg.capture_group else {
+        return true;
+    };
+    let Some(cap) = capture.get(group as usize) else {
+        return false;
+    };
+    let digits: i64 = cap
+        .as_str()
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .unwrap_or(i64::MAX);
+    cfg.capture_passes(digits)
+}
+
+#[expect(clippy::too_many_arguments, reason = "finding builder mirrors eval call sites")]
+fn push_finding(
+    rule: &ResolvedRule, hint: &RuleHint, out: &mut Vec<Diagnostic>, next_id: &mut u64, path: &str,
+    line: usize, column: usize, line_text: &str,
+) {
+    let line_no = u32::try_from(line).unwrap_or(u32::MAX);
+    let column_no = u32::try_from(column).unwrap_or(u32::MAX);
+    let location = FindingLocation {
+        path: path.to_string(),
+        line: Some(line_no),
+        column: Some(column_no),
+        end_line: None,
+        end_column: None,
+    };
+    let evidence = FindingEvidence::Snippet {
+        value: clip_snippet(line_text),
+    };
+    let title =
+        format!("{}: matched `{}`", rule.title, hint.description.as_deref().unwrap_or(&hint.value));
+    let finding = make_finding(rule, *next_id, title, Some(location), evidence);
+    *next_id += 1;
+    out.push(finding);
 }
 
 fn is_text_file(model: &WorkspaceModel, candidate: &str) -> bool {
@@ -101,4 +216,61 @@ fn clip_snippet(line: &str) -> String {
     }
     out.push('…');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::evaluate;
+    use crate::lint::{File, FileKind, WorkspaceModel};
+    use crate::rules::{HintKind, Origin, PathRoot, ResolvedRule, RuleHint};
+
+    fn rule() -> ResolvedRule {
+        ResolvedRule {
+            rule_id: "CORE-050".to_string(),
+            title: "fixture".to_string(),
+            severity: specify_diagnostics::Severity::Important,
+            trigger: "t".to_string(),
+            lint_mode: None,
+            applicability: None,
+            rule_hints: None,
+            references: None,
+            origin: Origin::Core,
+            path_root: PathRoot::RulesRoot,
+            path: "adapters/shared/rules/core/CORE-050.md".to_string(),
+            body: String::new(),
+            deprecated: None,
+        }
+    }
+
+    #[test]
+    fn suffix_guard_skips_validate_suffix() {
+        let hint = RuleHint {
+            kind: HintKind::Regex,
+            value: r"\bspecify-contract\b".to_string(),
+            description: None,
+            config: Some(serde_json::json!({ "suffix-must-not-start-with": "-validate" })),
+        };
+        let mut model = WorkspaceModel::default();
+        model.files.push(File {
+            path: "plugins/spec/skills/x/SKILL.md".into(),
+            kind: FileKind::Text,
+            language: None,
+            sha256: None,
+        });
+        let dir = tempfile::tempdir().expect("tempdir");
+        let skill = dir.path().join("plugins/spec/skills/x/SKILL.md");
+        std::fs::create_dir_all(skill.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&skill, "Run specify-contract-validate here\nAlso specify-contract alone\n")
+            .expect("write");
+
+        let rel = PathBuf::from("plugins/spec/skills/x/SKILL.md");
+        let mut next_id = 0_u64;
+        let findings =
+            evaluate(&rule(), &hint, &[rel], dir.path(), &model, &mut next_id).expect("eval");
+        let lines: Vec<u32> = findings.iter().filter_map(|f| f.location.as_ref()?.line).collect();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], 2);
+    }
 }

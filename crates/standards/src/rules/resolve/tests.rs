@@ -185,7 +185,7 @@ fn monorepo_wins_over_codex_cache() {
 /// Probe precedence: an explicit `--rules-root` (step 1) wins over
 /// a distributed codex cache (step 3).
 #[test]
-fn explicit_rules_root_wins_over_codex_cache() {
+fn explicit_root_wins_over_codex_cache() {
     let rules_root = TempDir::new().expect("rules root");
     let project = TempDir::new().expect("project");
     write_rule(

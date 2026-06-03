@@ -155,9 +155,12 @@
       "trigger": "Swift, Kotlin, or another Vectis shell handles Crux Effects, calls CoreFfi update/view/resolve methods, manages async platform work, or updates rendered ViewModel state."
     },
     {
-      "body": "\n## Rule\n\nEvery platform declared in `project.yaml.platforms` and carried through `proposal.md ## Platforms` must have a corresponding on-disk shell tree by the time the slice reaches `built`. The vectis verify tool (`specrun tool run vectis -- verify --mode verify`) is the deterministic authority: `core` requires `shared/src/app.rs`, `ios` requires the `iOS/` tree with at least one `.swift` file and the Crux bridge, `android` requires the `Android/` tree with at least one `.kt` file and the Gradle/Cargo bridge.\n\n`web` and `desktop` are valid platform tokens but have no on-disk interpretation yet — the tool emits a `platform-not-yet-supported` info finding and treats them as present.\n\n## Look For\n\n- A `proposal.md ## Platforms` section that lists platforms not present on disk (no shell tree or an empty scaffold).\n- A build report with `status: success` but missing `outputs[]` entries for declared supported platforms.\n- A slice that reaches `built` without the verify gate having run.\n\n## Spec Guidance\n\nPlatforms are an app-level fact carried to every slice. When a declared platform's shell tree is absent, plan-time reconciliation should have inserted a bootstrap slice to stand it up. If the shell is still missing at build time, the verify gate prevents the slice from reaching `built`.\n",
+      "body": "\n## Rule\n\nEvery platform declared in `project.yaml.platforms` and carried through `proposal.md ## Platforms` must have a corresponding on-disk shell tree by the time the slice reaches `built`. The vectis verify tool (`specrun tool run vectis -- verify --mode verify \"${PROJECT_DIR}\"`) is the deterministic authority: `core` requires `shared/src/app.rs`, `ios` requires the `iOS/` tree with at least one `.swift` file and the Crux bridge, `android` requires the `Android/` tree with at least one `.kt` file and the Gradle/Cargo bridge.\n\n`web` and `desktop` are valid platform tokens but have no on-disk interpretation yet — the tool emits a `platform-not-yet-supported` info finding and treats them as present.\n\n## Look For\n\n- A `proposal.md ## Platforms` section that lists platforms not present on disk (no shell tree or an empty scaffold).\n- A build report with `status: success` but missing `outputs[]` entries for declared supported platforms.\n- A slice that reaches `built` without the verify gate having run.\n\n## Spec Guidance\n\nPlatforms are an app-level fact carried to every slice. When a declared platform's shell tree is absent, plan-time reconciliation should have inserted a bootstrap slice to stand it up. If the shell is still missing at build time, the verify gate prevents the slice from reaching `built`.\n",
       "deprecated": null,
-      "deterministic-hints": [
+      "origin": "target",
+      "path": "adapters/targets/vectis/rules/platform-shell-presence.md",
+      "path-root": "rules-root",
+      "rule-hints": [
         {
           "description": "Any proposal that carries a",
           "kind": "path-pattern",
@@ -169,9 +172,6 @@
           "value": "vectis"
         }
       ],
-      "origin": "target",
-      "path": "adapters/targets/vectis/rules/platform-shell-presence.md",
-      "path-root": "rules-root",
       "rule-id": "VECTIS-005",
       "severity": "important",
       "title": "Declared Platform Shells Must Be Present",
@@ -246,7 +246,10 @@
     {
       "body": "\n## Rule\n\nKeep operational parameters discoverable and reviewable. Timeouts, URLs, retry counts, buffer sizes, page sizes, polling intervals, and similar values should be named constants or configuration rather than unexplained literals in behavior code.\n\n## Look For\n\n- Numeric literals in function calls that represent tunable parameters, such as timeout durations, retry counts, page sizes, or polling intervals.\n- URL strings embedded directly in handler code rather than sourced from configuration.\n- Magic numbers that require domain knowledge to understand, such as `42`, `1000`, or `86400`.\n- The same literal value repeated in multiple locations where a shared constant should be used.\n\n## Spec Guidance\n\nWhen the spec does not define operational parameters such as timeouts, page sizes, retry limits, or polling intervals, propose adding them as explicit design decisions so they are reviewed and documented.\n",
       "deprecated": null,
-      "deterministic-hints": [
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
+      "path-root": "rules-root",
+      "rule-hints": [
         {
           "description": "Restrict the URL-literal scan to Rust source files.",
           "kind": "path-pattern",
@@ -258,9 +261,6 @@
           "value": "\\bhttps?://\\S+"
         }
       ],
-      "origin": "shared",
-      "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
-      "path-root": "rules-root",
       "rule-id": "UNI-014",
       "severity": "important",
       "title": "Hardcoded Configuration Values",

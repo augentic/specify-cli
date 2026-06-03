@@ -1,7 +1,7 @@
 # iOS Assembly Template Manifest
 
 Human reference for the iOS assembly templates. The canonical source-to-target
-registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.ios`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specrun tool run vectis -- scaffold ios`.
+registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.ios`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specify tool run vectis -- scaffold ios`.
 
 Source filenames are flat under `templates/vectis/ios/`. Nested target paths (especially the `iOS/__APP_NAME__/...` segment) are declared in `manifest.yaml`. The `__APP_NAME__` segment in target paths is substituted by the engine when writing each file, the same as inside file contents (e.g. `__APP_NAME__App.swift` becomes `CounterApp.swift`).
 

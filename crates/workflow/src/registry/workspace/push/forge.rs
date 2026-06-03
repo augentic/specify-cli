@@ -1,4 +1,4 @@
-//! Forge-side surface of `specrun workspace push` — `repo_exists`,
+//! Forge-side surface of `specify workspace push` — `repo_exists`,
 //! `create_repo`, and `ensure_pull_request` shell out to `gh` through
 //! an explicit [`CmdRunner`] for testability.
 
@@ -108,7 +108,7 @@ pub(in crate::registry::workspace) fn ensure_pull_request(
 
     let pr_title = format!("specify: {change_name}");
     let pr_body = format!(
-        "Automated push from specrun workspace push for change \
+        "Automated push from specify workspace push for change \
          `{change_name}`."
     );
     let mut create_cmd = Command::new("gh");

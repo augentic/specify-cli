@@ -87,7 +87,7 @@ impl WasiRunner {
     /// Mirrors [`Self::run`] but redirects the guest's stdout and stderr
     /// into capped [`MemoryOutputPipe`] buffers so the host can examine
     /// the output without printing to the inherited terminal. Used by
-    /// `specrun lint`'s `kind: tool` evaluator to fold a tool's
+    /// `specify lint`'s `kind: tool` evaluator to fold a tool's
     /// `DiagnosticReport` envelope into the scan output (`kind: tool` evaluator contract).
     ///
     /// # Errors

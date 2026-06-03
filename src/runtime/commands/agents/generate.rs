@@ -1,9 +1,10 @@
 //! Init-time fenced AGENTS.md writer.
 
+use specify_agents::{fences, fingerprint, lock};
 use specify_error::{Error, Result};
 use specify_model::atomic::bytes_write;
 
-use super::{context_lock_path, error_from_fence, fences, lock, read_optional, render_document};
+use super::{context_lock_path, error_from_fence, read_optional, render_document};
 use crate::runtime::context::Ctx;
 
 pub fn for_init(ctx: &Ctx) -> Result<Outcome> {
@@ -64,7 +65,7 @@ fn refuse_modified_fenced_body(
     let Some(current) = fences::parse_document(agents).map_err(error_from_fence)? else {
         return Ok(());
     };
-    let actual_body = super::fingerprint::body_sha256(current.body());
+    let actual_body = fingerprint::body_sha256(current.body());
     if actual_body != existing_lock.fences.body_sha256 {
         return Err(Error::Diag {
             code: "context-fenced-content-modified",

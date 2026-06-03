@@ -111,7 +111,7 @@ fn parses_and_validates_projected_model() {
 }
 
 #[test]
-fn projects_single_value_agreement_and_reads_evidence_value() {
+fn projects_single_value_agreement() {
     let dir = stage_slice_dir();
     let model = SliceModel::parse_yaml(PROJECTED_MODEL).expect("parse");
     let index = project(&model, dir.path()).expect("projection succeeds");
@@ -162,7 +162,7 @@ fn projection_rejects_pre_projection_draft() {
 }
 
 #[test]
-fn rejects_document_missing_required_sections() {
+fn rejects_missing_required_sections() {
     let err = SliceModel::parse_yaml("version: 1\nslice: x\nrequirements: []\n")
         .expect_err("a document missing the required `tasks` section must fail the schema");
     assert!(matches!(err, Error::Validation { .. }));

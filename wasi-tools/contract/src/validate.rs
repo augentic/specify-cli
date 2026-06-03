@@ -7,7 +7,7 @@
 //! shared `specify-validate` crate alongside the host CLI; collapsing
 //! them into the carve-out preserves the adapter-extension
 //! invariant (a adapter's logic is reachable from the host only
-//! through `specrun tool run <name>`).
+//! through `specify tool run <name>`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

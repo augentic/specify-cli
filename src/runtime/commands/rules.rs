@@ -1,4 +1,4 @@
-//! `specrun rules {export, sync}` — codex resolution surface.
+//! `specify rules {export, sync}` — codex resolution surface.
 //!
 //! `export` is the read-only `ResolvedRules` export contract CLI entry
 //! point. It does not require an initialised `.specify/` tree:

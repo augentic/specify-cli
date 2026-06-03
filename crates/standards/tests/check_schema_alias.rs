@@ -1,5 +1,5 @@
 //! Integration coverage for the cross-repo rule-schema-alias parity
-//! check. `specdev` carries the canonical `rule.schema.json` embedded in
+//! check. `specify lint framework` carries the canonical `rule.schema.json` embedded in
 //! the binary and lints a framework root that owns the editor mirror at
 //! `.cursor/schemas/rule.schema.json`; this check is the seam that keeps
 //! their hint-kind vocabularies in lockstep across the two repos.
@@ -17,7 +17,7 @@ use specify_standards::framework::snippet;
 fn canonical_kinds() -> Vec<String> {
     let schema: Value = serde_json::from_str(specify_schema::RULE_JSON_SCHEMA).expect("parses");
     let kind = schema
-        .pointer("/properties/deterministic_hints/items/properties/kind/oneOf")
+        .pointer("/properties/rule_hints/items/properties/kind/oneOf")
         .and_then(Value::as_array)
         .expect("canonical kind oneOf");
     kind.iter().filter_map(|b| b.get("const").and_then(Value::as_str)).map(str::to_owned).collect()
@@ -27,7 +27,7 @@ fn canonical_kinds() -> Vec<String> {
 fn write_alias(root: &Path, kinds: &[String]) {
     let body = serde_json::json!({
         "properties": {
-            "deterministic_hints": {
+            "rule_hints": {
                 "items": { "properties": { "kind": { "enum": kinds } } }
             }
         }

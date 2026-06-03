@@ -126,7 +126,7 @@ fn extractors_emit_facts() {
 }
 
 #[test]
-fn agent_teams_symlink_records_endpoint_pair_and_sha256() {
+fn symlink_records_endpoint_and_sha256() {
     let tempdir = stage_fixture();
     let model = build(tempdir.path(), ScanProfile::Framework, &[], &[]).expect("build ok");
 

@@ -5,7 +5,7 @@
 //! The `kind: tool` evaluator contract `tool` evaluator is exercised through a fake
 //! [`specify_standards::lint::eval::ToolRunner`] that simulates the
 //! contract WASI tool's stdout. The standards crate does not depend on
-//! `specify-tool` (Wasmtime stays at the `specrun lint` CLI boundary);
+//! `specify-tool` (Wasmtime stays at the `specify lint` CLI boundary);
 //! the CLI integration is S9's responsibility.
 
 mod eval_support;
@@ -57,7 +57,7 @@ fn tool_findings_thread_through() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -84,7 +84,7 @@ fn tool_undeclared_emits_synthetic_finding() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -114,7 +114,7 @@ fn tool_failure_truncates_stderr() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,

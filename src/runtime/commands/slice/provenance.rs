@@ -49,7 +49,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
             "slice-model-missing",
             "a synthesized slice carries model.yaml",
             format!(
-                "slice `{name}` has no model.yaml at {}; run `specrun slice synthesize {name}` first",
+                "slice `{name}` has no model.yaml at {}; run `specify slice synthesize {name}` first",
                 model_path.display()
             ),
         ));

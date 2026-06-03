@@ -1,24 +1,24 @@
-//! Acceptance matrix for the four `specrun init` shapes (RFC-30 Wave E
-//! item 6): `greenfield`, `brownfield`, `hub`, and `migrated`.
+//! Acceptance matrix for the four `specify init` shapes (RFC-30 Wave E
+//! item 6): `greenfield`, `brownfield`, `workspace`, and `migrated`.
 //!
-//! Each test drives the real `specrun` binary over a throwaway tempdir
+//! Each test drives the real `specify` binary over a throwaway tempdir
 //! and asserts the on-disk + JSON-envelope contract for one shape:
 //!
-//! - `greenfield` — a fresh `specrun init <adapter>` over an empty dir
+//! - `greenfield` — a fresh `specify init <adapter>` over an empty dir
 //!   scaffolds `.specify/` and pins the current `specify_version`.
-//! - `brownfield` — `specrun init --upgrade` over a populated regular
+//! - `brownfield` — `specify init --upgrade` over a populated regular
 //!   project bumps only the pin, keeps operator artifacts byte-stable,
 //!   and re-runs as a no-op.
-//! - `hub` — the same re-entry over a populated hub project, with the
-//!   `hub: true` discriminator and `registry.yaml` preserved.
-//! - `migrated` — the new end-to-end: `specrun migrate` transforms a v1
-//!   tree into the golden v2 tree, then `specrun init --upgrade`
+//! - `workspace` — the same re-entry over a populated workspace,
+//!   with the `workspace: true` discriminator and `registry.yaml` preserved.
+//! - `migrated` — the new end-to-end: `specify migrate` transforms a v1
+//!   tree into the golden v2 tree, then `specify init --upgrade`
 //!   re-enters the migrated artifact set.
 //!
-//! The `brownfield` / `hub` headline invariants are also covered with an
+//! The `brownfield` / `workspace` headline invariants are also covered with an
 //! exhaustive byte-level write-set diff by Change E's
 //! `init_upgrade_bumps_only_version_and_preserves_artifacts` and
-//! `init_upgrade_preserves_hub_and_registry` in `tests/init.rs`; the
+//! `init_upgrade_preserves_workspace_and_registry` in `tests/init.rs`; the
 //! versions here keep all four shapes co-located as one readable matrix.
 
 use std::collections::BTreeMap;
@@ -30,9 +30,9 @@ use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
 mod common;
-use common::{copy_dir, omnia_schema_dir, parse_json, repo_root, specrun};
+use common::{copy_dir, omnia_schema_dir, parse_json, repo_root, specify_cmd};
 
-/// Version this binary stamps into `specify_version` (the `specrun`
+/// Version this binary stamps into `specify_version` (the `specify`
 /// crate and this test crate share the workspace version).
 const BINARY_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -41,7 +41,7 @@ const BINARY_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[test]
 fn greenfield() {
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init"])
         .arg(omnia_schema_dir())
@@ -69,7 +69,7 @@ fn greenfield() {
         "greenfield must persist the omnia adapter, got {:?}",
         cfg.adapter,
     );
-    assert!(!cfg.hub, "greenfield must not write the hub discriminator");
+    assert!(!cfg.workspace, "greenfield must not write the workspace discriminator");
 }
 
 // ---- brownfield ----
@@ -91,7 +91,7 @@ fn brownfield() {
     fs::write(tmp.path().join("AGENTS.md"), "# operator AGENTS.md\n").unwrap();
 
     let before = snapshot(tmp.path());
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -109,26 +109,26 @@ fn brownfield() {
     assert_second_run_is_noop(tmp.path());
 }
 
-// ---- hub ----
+// ---- workspace ----
 
 #[test]
-fn hub() {
-    // Concise matrix view of the hub re-entry upgrade. Exhaustive
-    // coverage: tests/init.rs::init_upgrade_preserves_hub_and_registry
+fn workspace() {
+    // Concise matrix view of the workspace re-entry upgrade. Exhaustive
+    // coverage: tests/init.rs::init_upgrade_preserves_workspace_and_registry
     // (Change E).
     let tmp = tempdir().unwrap();
     let specify = tmp.path().join(".specify");
     fs::create_dir_all(&specify).unwrap();
     fs::write(
         specify.join("project.yaml"),
-        "name: platform-hub\nspecify_version: 0.2.0\nhub: true\n",
+        "name: platform-workspace\nspecify_version: 0.2.0\nworkspace: true\n",
     )
     .unwrap();
     fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
-    fs::write(tmp.path().join("AGENTS.md"), "# hub sentinel\n").unwrap();
+    fs::write(tmp.path().join("AGENTS.md"), "# workspace sentinel\n").unwrap();
 
     let before = snapshot(tmp.path());
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -136,12 +136,12 @@ fn hub() {
     let body = parse_json(&assert.get_output().stdout);
     assert_eq!(body["specify-version"], BINARY_VERSION);
     assert_eq!(body["specify-version-changed"], true);
-    assert_eq!(body["adapter-name"], "hub");
+    assert_eq!(body["adapter-name"], "workspace");
 
     assert_only_project_yaml_changed(&before, &snapshot(tmp.path()));
     let cfg = load_cfg(tmp.path());
-    assert!(cfg.hub, "hub discriminator must survive the upgrade");
-    assert!(cfg.adapter.is_none(), "hub upgrade must not synthesise an adapter");
+    assert!(cfg.workspace, "workspace discriminator must survive the upgrade");
+    assert!(cfg.adapter.is_none(), "workspace upgrade must not synthesise an adapter");
     assert_eq!(cfg.specify_version.as_deref(), Some(BINARY_VERSION));
 
     assert_second_run_is_noop(tmp.path());
@@ -164,7 +164,7 @@ fn migrated() {
     fs::write(root.join(".specify/project.yaml"), "name: legacy\nadapter: code-typescript\n")
         .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "migrate", "--from", "1.0.0", "--to", "2.0.0", "--yes"])
         .assert()
@@ -211,7 +211,7 @@ fn migrated() {
     // is exercised green in section C below. This arm locks the honest
     // behavior of `migrate` followed by `init --upgrade` on the same
     // tree under a stale binary.
-    let floor = specrun()
+    let floor = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -237,7 +237,7 @@ fn migrated() {
     .unwrap();
 
     let before = snapshot(root2);
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root2)
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -323,7 +323,7 @@ fn assert_only_project_yaml_changed(
 /// byte-stable no-op (`specify-version-changed: false`, tree unchanged).
 fn assert_second_run_is_noop(root: &Path) {
     let before = snapshot(root);
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "init", "--upgrade"])
         .assert()

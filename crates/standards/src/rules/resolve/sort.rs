@@ -57,7 +57,7 @@ pub fn sort_resolved(entries: &mut [ResolvedRuleEntry]) {
 /// Compose [`super::resolve`], [`super::filter`], and [`sort_resolved`]
 /// to assemble the [`ResolvedRules`] wire envelope.
 ///
-/// This is the top-level entry point CH-17 (the `specrun rules
+/// This is the top-level entry point CH-17 (the `specify rules
 /// export` CLI) will call. The returned envelope is fully ordered and
 /// ready for serialisation against `resolved.schema.json`.
 ///
@@ -97,7 +97,7 @@ fn entry_into_resolved_rule(entry: ResolvedRuleEntry) -> ResolvedRule {
         trigger,
         lint_mode,
         applicability,
-        deterministic_hints,
+        rule_hints,
         references,
         deprecated,
         body,
@@ -109,7 +109,7 @@ fn entry_into_resolved_rule(entry: ResolvedRuleEntry) -> ResolvedRule {
         trigger,
         lint_mode,
         applicability,
-        deterministic_hints,
+        rule_hints,
         references,
         origin,
         path_root,

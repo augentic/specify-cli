@@ -1,4 +1,4 @@
-//! End-to-end binary tests for `specrun lint run` (`specrun
+//! End-to-end binary tests for `specify lint run` (`specify
 //! review` (Phase 2 CLI)").
 //!
 //! Exercises the wired clap surface, `--rules-root` resolution per rules-root resolution,
@@ -103,7 +103,7 @@ fn build_fixture() -> Fixture {
             "severity: important\n",
             "trigger: TODO comments leak development scaffolding into shipped artefacts.\n",
             "lint_mode: deterministic\n",
-            "deterministic_hints:\n",
+            "rule_hints:\n",
             "  - kind: regex\n",
             "    value: TODO\n",
             "---\n",
@@ -122,7 +122,7 @@ fn build_fixture() -> Fixture {
 }
 
 fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::process::Output {
-    let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
+    let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
     // The global `--format` toggles the error-envelope shape; the
     // per-subcommand `--output-format` selects the the diagnostics formatter set closed set.
     cmd.arg("--format").arg("json");
@@ -137,14 +137,14 @@ fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::proc
     for arg in extra {
         cmd.arg(arg);
     }
-    cmd.output().expect("specrun invocation")
+    cmd.output().expect("specify invocation")
 }
 
 /// Happy path: a single `important` finding from the UNI-100 regex
 /// hint lands stdout on a schema-valid review envelope and exits 2 per
 /// lint exit mapping.
 #[test]
-fn review_emits_important_finding_and_exits_2() {
+fn review_emits_important_exits_2() {
     let fx = build_fixture();
     let output = run_review(&fx.project, Some(&fx.codex), &[]);
 
@@ -185,7 +185,7 @@ fn review_run_byte_stable() {
     let second = run_review(&fx.project, Some(&fx.codex), &[]);
     assert_eq!(
         first.stdout, second.stdout,
-        "consecutive specrun lint runs must emit byte-identical stdout"
+        "consecutive specify lint runs must emit byte-identical stdout"
     );
 }
 
@@ -251,7 +251,7 @@ fn emits_lint_completed_event() {
             "severity: important\n",
             "trigger: TODO comments leak development scaffolding into shipped artefacts.\n",
             "lint_mode: deterministic\n",
-            "deterministic_hints:\n",
+            "rule_hints:\n",
             "  - kind: regex\n",
             "    value: TODO\n",
             "---\n",
@@ -333,7 +333,7 @@ fn review_missing_rules_root_exits_2() {
     // stderr (with the kebab-case `rule-id` field). The text branch
     // collapses to `error: validation failed: N errors` and would
     // hide the closed `rules-root-required` discriminant.
-    let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
+    let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
     cmd.arg("--format")
         .arg("json")
         .arg("lint")
@@ -345,7 +345,7 @@ fn review_missing_rules_root_exits_2() {
         .arg("--output-format")
         .arg("json")
         .env_remove("RULES_ROOT");
-    let output = cmd.output().expect("specrun invocation");
+    let output = cmd.output().expect("specify invocation");
 
     assert_eq!(
         output.status.code(),

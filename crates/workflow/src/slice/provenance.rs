@@ -2,7 +2,7 @@
 //!
 //! The provenance view is **not** a persisted file. It is projected on
 //! demand from a slice's single `model.yaml` (which carries provenance
-//! inline) by `specrun slice provenance`. Because the model and its
+//! inline) by `specify slice provenance`. Because the model and its
 //! provenance share one source of truth, the two can never drift — the
 //! former `model.yaml`-vs-`provenance.yaml` drift gate retires. The
 //! projection round-trips against `schemas/slice/provenance.schema.json`

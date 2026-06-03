@@ -1,4 +1,4 @@
-//! Clap derive surface for `specrun plugins {doctor, refresh}`. The
+//! Clap derive surface for `specify plugins {doctor, refresh}`. The
 //! umbrella `cli.rs` re-exports [`PluginsAction`].
 
 use std::path::PathBuf;

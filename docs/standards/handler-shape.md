@@ -37,6 +37,12 @@ For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"
 
 Check surfaces that gate on findings — `slice validate`, the lint sentinels — own their rendering. They collect `Vec<Diagnostic>`, assemble a `DiagnosticReport`, and render it on **stdout** via `ctx.write` (the success sink), then, if any diagnostic blocks, return a payload-free `Error::validation_failed(code, detail)` purely to carry exit 2 and the discriminant on stderr. `Error::Validation` is `{ code, detail }` with no findings payload — the rich report already went to stdout. Single operational errors that are not findings (e.g. `tool-not-declared`, `discovery-lead-unknown`) take the same payload-free shape but render no report. The blocking decision uses the uniform predicate (`kind == violation && status == open && severity ∈ {critical, important}`); `kind: review` diagnostics surface but never block. See [DECISIONS.md §"Drained `Error::Validation` and the `Diagnostic` substrate"](../../DECISIONS.md#drained-errorvalidation-and-the-diagnostic-substrate).
 
+### The two lint handlers share one tail
+
+`specify lint run` and `specify lint framework` are the same handler shape with different pipeline config. Both return `Result<()>` and call the one `run_lint` kernel in [`src/output.rs`](../../src/output.rs), passing the format plus a `build` closure that assembles surface-specific `ResolveInputs` + `PipelineConfig` and calls `emit_lint_report`. Inside the kernel: `emit_lint_report` runs the pipeline and renders the envelope on stdout; the internal `finish_lint` collapses the outcome into the terminal `Result<()>` — `deny_blocking_findings` on success, the empty-envelope stdout fallback on a pre-emit abort. The fallback owns only the **stdout** side (an all-zero `DiagnosticReport`, JSON only, so CI consumers keep a stable shape); the stderr `error: …` line is the dispatcher's `output::report`, so the two sinks compose without double-printing. Neither handler writes its own `println!`/`eprintln!`.
+
+`specify lint framework` (the framework authoring lint, formerly the separate `specdev` binary) is just another action on the one `specify` binary: it obeys this same `Result<()>` contract and maps its terminal error through the one `Exit::from(&Error)` table in [`src/runtime/output.rs`](../../src/runtime/output.rs) exactly as every other verb does. Only bootstrap verbs (`migrate`, `upgrade`) justify a bespoke exit subset; lint does not.
+
 ## Exit codes
 
 The five-slot CLI exit-code table is fixed:
@@ -105,6 +111,6 @@ Anything else is an `Error::Argument` (exit 2). The journal append
 runs *after* `with_state` returns so the plan write and the journal
 append cannot interleave on failure.
 
-## Gotcha — `specrun init` and the version floor
+## Gotcha — `specify init` and the version floor
 
-`specrun init` bypasses the `specify_version` floor check (the file doesn't exist yet); every other project-aware verb inherits it for free via `ProjectConfig::load`. Don't reimplement the floor check at a subcommand site.
+`specify init` bypasses the `specify_version` floor check (the file doesn't exist yet); every other project-aware verb inherits it for free via `ProjectConfig::load`. Don't reimplement the floor check at a subcommand site.

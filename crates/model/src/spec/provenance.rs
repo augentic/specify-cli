@@ -175,7 +175,7 @@ pub struct ParsedSpec {
 impl ParsedSpec {
     /// `true` when no requirement carries any `Sources:` or `Status:`
     /// metadata — interpreted as a pre-synthesis (refining) state.
-    /// Callers in `specrun slice validate` skip the per-requirement
+    /// Callers in `specify slice validate` skip the per-requirement
     /// provenance gate in this state to keep the `refining` lifecycle
     /// observable without spurious failures.
     #[must_use]

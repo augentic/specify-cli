@@ -9,7 +9,7 @@
 //! stable kebab-case id; concrete [`Migrator`] impls echo it from
 //! [`Migrator::id`] and stamp it onto every plan and report they emit.
 //! This module owns the framework only — the concrete `V1ToV2`
-//! transforms and the `specrun migrate` command land in their own
+//! transforms and the `specify migrate` command land in their own
 //! changes and do not emit journal events from here (the command layer
 //! derives `migration.applied` / `migration.skipped` from the returned
 //! [`MigrationReport`]).
@@ -111,7 +111,7 @@ pub trait Migrator {
     fn id(&self) -> &'static str;
 
     /// Inspect the project and return the file actions WITHOUT applying
-    /// them. Used by `--dry-run` and by `specrun init --check-migration`.
+    /// them. Used by `--dry-run` and by `specify init --check-migration`.
     ///
     /// # Errors
     ///
@@ -131,7 +131,7 @@ pub trait Migrator {
 
 /// Resolve a [`MigrationKind`] to its registered [`Migrator`].
 ///
-/// The command layer (`specrun migrate`, `specrun init
+/// The command layer (`specify migrate`, `specify init
 /// --check-migration`) maps each kind [`MigrationKind::resolve`]
 /// returns through this function to drive `plan` / `apply`. The match
 /// is exhaustive over the closed [`MigrationKind`] enum, so a new hop
@@ -164,9 +164,9 @@ pub struct ProbedMigration {
 /// migrator's pure [`Migrator::plan`] (no writes), returning one
 /// [`ProbedMigration`] per hop. Empty when no contiguous chain of
 /// registered migrators reaches `to` (including `to <= from`), which
-/// the `specrun init --check-migration` command maps to
+/// the `specify init --check-migration` command maps to
 /// `needs-migration: false`. Used only by that probe; the
-/// `specrun migrate` command drives `plan` / `apply` directly.
+/// `specify migrate` command drives `plan` / `apply` directly.
 ///
 /// # Errors
 ///

@@ -16,7 +16,7 @@ pub const RULE_MISSING_MANIFEST: &str = "adapter.missing-manifest";
 /// pass only ever runs against the framework repo's own adapter tree,
 /// so the finding is scoped to first-party adapters by construction;
 /// third-party adapters in consumer projects are scanned by the
-/// declarative `specrun lint` pass, which never runs this predicate.
+/// declarative `specify lint` pass, which never runs this predicate.
 pub const RULE_EXECUTION_AGENT: &str = "adapter.execution-agent";
 
 const ADAPTER_FILENAME: &str = "adapter.yaml";

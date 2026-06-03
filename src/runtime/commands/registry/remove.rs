@@ -1,4 +1,4 @@
-//! `specrun registry remove` handler.
+//! `specify registry remove` handler.
 
 use std::path::Path;
 
@@ -13,7 +13,7 @@ use crate::runtime::context::Ctx;
 pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
     let path_buf = Registry::path(&ctx.project_dir);
     let path = path_buf.display().to_string();
-    let hub_mode = ctx.config.hub;
+    let workspace_mode = ctx.config.workspace;
 
     // Pre-flight: surface the legacy `registry-remove-no-registry`
     // diagnostic when the file is absent. `with_state` would
@@ -37,8 +37,8 @@ pub(super) fn run(ctx: &Ctx, name: String) -> Result<()> {
         // A removal can only relax the multi-repo description
         // invariant, so the post-write check should always
         // succeed; we run it anyway to pin the contract.
-        if hub_mode {
-            registry.validate_shape_hub()?;
+        if workspace_mode {
+            registry.validate_shape_workspace()?;
         } else {
             registry.validate_shape()?;
         }
@@ -80,7 +80,7 @@ pub(super) fn plan_refs(project_dir: &Path, removed: &str) -> Vec<String> {
             } else {
                 vec![format!(
                     "plan.yaml has {n} entry(ies) still referencing project `{removed}`: {entries}. \
-                     Run `specrun plan amend <change> --project <other>` to rewire them.",
+                     Run `specify plan amend <change> --project <other>` to rewire them.",
                     n = referencing.len(),
                     entries = referencing.join(", "),
                 )]

@@ -101,7 +101,7 @@ fn adapter_opt_out_misses() {
 }
 
 #[test]
-fn adapter_version_bump_reports_changed_reason() {
+fn version_bump_reports_changed_reason() {
     let dir = tempdir().expect("tempdir");
     let layout = CacheLayout::new(dir.path(), "code-typescript");
     let v1 = fp("code-typescript@1");

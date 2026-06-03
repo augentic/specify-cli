@@ -25,7 +25,7 @@ use specify_schema::{
 
 use crate::Platform;
 use crate::adapter::operation::{SourceOperation, TargetOperation};
-use crate::schema::validate_value;
+use crate::schema::validate_value_cached;
 
 /// Filename of an adapter manifest.
 ///
@@ -150,10 +150,10 @@ pub struct BuildInputDeclaration {
 /// Declarative platforms capability for a target adapter manifest.
 ///
 /// When a target declares `platforms` in its `adapter.yaml`, the CLI
-/// uses this to enforce platform requirements at `specrun init` time
+/// uses this to enforce platform requirements at `specify init` time
 /// and to scaffold defaults for greenfield workspace members.
 ///
-/// - `required` — if true, `specrun init` demands `--platforms`.
+/// - `required` — if true, `specify init` demands `--platforms`.
 /// - `allowed` — the closed set of [`Platform`] tokens the target
 ///   accepts; any project token outside the set is rejected.
 /// - `default` — the platform set scaffolded when the operator does
@@ -444,8 +444,7 @@ impl SourceAdapter {
 }
 
 /// Shared `execution: agent` forced-opt-out rule (RFC-29 D9) behind
-/// both [`SourceAdapter::effective_cache_mode`] and
-/// [`TargetAdapter::effective_cache_mode`] (REVIEW.md A9): an
+/// [`SourceAdapter::effective_cache_mode`] (REVIEW.md A9): an
 /// `agent`-dispatched adapter always bypasses the cache regardless of
 /// the declared `cache:` field; otherwise the declared mode applies.
 const fn effective_cache_mode(
@@ -492,15 +491,6 @@ impl TargetAdapter {
     /// `briefs.keys()` is the canonical typed operation source.
     pub fn operations(&self) -> impl Iterator<Item = &TargetOperation> {
         self.briefs.keys()
-    }
-
-    /// Effective extraction-cache mode after applying the
-    /// `execution: agent` forced opt-out (RFC-29 D9). Mirrors
-    /// [`SourceAdapter::effective_cache_mode`]; target dispatch (M3)
-    /// will consume it once `build` / `merge` become CLI-owned.
-    #[must_use]
-    pub const fn effective_cache_mode(&self) -> Option<CacheMode> {
-        effective_cache_mode(self.execution, self.cache)
     }
 }
 
@@ -584,9 +574,9 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
         });
     };
     // Cross-axis uniqueness invariant — see DECISIONS.md
-    // §"Adapter name uniqueness". `specrun` is fork-and-exit, so the
+    // §"Adapter name uniqueness". `specify` is fork-and-exit, so the
     // pair of `is_file` probes below is cheaper than memoising them
-    // behind process-global state; `init` / `init --hub` and the
+    // behind process-global state; `init` / `init --workspace` and the
     // manifest-cache write boundary call [`check_axis_unique_for_name`]
     // eagerly on the same invariant.
     if let Some(sibling) = sibling_manifest_path(axis.opposite(), name, project_dir) {
@@ -632,7 +622,7 @@ fn axis_collision_error(
 /// Validate that installing or resolving `name` on `axis` does not
 /// collide with an existing declaration on the opposite axis.
 ///
-/// Used at `specrun init` time (with `axis = Axis::Target`, since
+/// Used at `specify init` time (with `axis = Axis::Target`, since
 /// `init` only caches target adapters) before the per-axis manifest
 /// cache directory at
 /// `.specify/.cache/manifests/{sources,targets}/<name>/` is rewritten,
@@ -705,8 +695,7 @@ fn check_axis_and_name(
 ///   manifest can declare a non-opt-out cache mode — the arm cannot
 ///   fire until the cache enum widens. The runtime "agent forces
 ///   opt-out" behaviour itself is modelled by
-///   [`SourceAdapter::effective_cache_mode`] /
-///   [`TargetAdapter::effective_cache_mode`], not here.
+///   [`SourceAdapter::effective_cache_mode`], not here.
 fn check_execution(
     execution: Option<Execution>, cache: Option<CacheMode>, manifest_path: &Path,
 ) -> Result<(), Error> {
@@ -750,10 +739,11 @@ fn validate_schema(
 }
 
 fn run_schema(
-    schema_source: &str, manifest_path: &Path, instance: &serde_json::Value, label: &str,
+    schema_source: &'static str, manifest_path: &Path, instance: &serde_json::Value, label: &str,
 ) -> Result<(), Error> {
     let rule = format!("{} conforms to embedded {label} schema", manifest_path.display());
-    for summary in validate_value(instance, schema_source, "adapter-schema-violation", &rule) {
+    for summary in validate_value_cached(instance, schema_source, "adapter-schema-violation", &rule)
+    {
         if summary.status == ValidationStatus::Fail {
             return Err(Error::Diag {
                 code: "adapter-schema-violation",

@@ -33,3 +33,12 @@ pub(crate) fn expected_operations(axis: AdapterAxis) -> BTreeSet<&'static str> {
         AdapterAxis::Targets => TARGET_OPERATIONS.iter().copied().collect(),
     }
 }
+
+/// Kebab-case axis token surfaced in the `set-coverage` / `set-eq`
+/// structured evidence payloads.
+pub(crate) const fn axis_token(axis: AdapterAxis) -> &'static str {
+    match axis {
+        AdapterAxis::Sources => "sources",
+        AdapterAxis::Targets => "targets",
+    }
+}

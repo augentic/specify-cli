@@ -6,7 +6,7 @@
 //! This crate is a deliberate carve-out from the workspace's
 //! `Render` / `emit` / `specify-error` discipline. It builds a
 //! self-contained `wasm32-wasip2` artifact distributed independently
-//! of the `specrun` runtime binary, so it owns its own JSON envelope, exit-code
+//! of the `specify` runtime binary, so it owns its own JSON envelope, exit-code
 //! mapping, and error rendering rather than routing through the shared
 //! CLI plumbing. Future changes here MUST preserve that boundary —
 //! do not introduce a dependency on `specify-error`, `Render`, or the
@@ -115,7 +115,7 @@ fn main() -> ExitCode {
 
 /// No-op `schema` handler — the contract tool declares no embedded
 /// schemas. Returns exit 2 with a structured error body so the host
-/// CLI's `specrun tool schema` can report the absence uniformly.
+/// CLI's `specify tool schema` can report the absence uniformly.
 fn schema_stub(name: Option<&str>) -> ExitCode {
     let body = serde_json::json!({
         "error": "no-schemas-declared",

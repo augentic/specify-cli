@@ -1,4 +1,4 @@
-//! Clap derive surface for `specrun rules *`. The umbrella `cli.rs`
+//! Clap derive surface for `specify rules *`. The umbrella `cli.rs`
 //! re-exports `RulesAction`.
 
 use std::path::PathBuf;
@@ -37,7 +37,7 @@ pub enum RulesAction {
     Sync(SyncArgs),
 }
 
-/// Flag surface for `specrun rules sync`.
+/// Flag surface for `specify rules sync`.
 #[derive(Args)]
 pub struct SyncArgs {
     /// Also distribute the framework `core/` pack
@@ -49,12 +49,12 @@ pub struct SyncArgs {
 
     /// Adapter source to pull the codex from (bare name or URL).
     /// Defaults to the project's recorded `adapter:` value; required
-    /// for hub projects, which declare no adapter.
+    /// for workspace projects, which declare no adapter.
     #[arg(long)]
     pub source: Option<String>,
 }
 
-/// Flag surface for `specrun rules export`. Grouped into one struct so
+/// Flag surface for `specify rules export`. Grouped into one struct so
 /// the handler threads a single reference instead of a positional
 /// argument list.
 #[derive(Args)]
@@ -63,8 +63,8 @@ pub struct ExportArgs {
     /// fallback overlays (codex root resolution (v1)). When omitted the
     /// resolver probes the project-local monorepo
     /// `adapters/shared/rules/universal/` tree, then the distributed
-    /// codex cache `.specify/.cache/codex/` (populated by `specrun init`
-    /// / `specrun rules sync`); failing both, exits with
+    /// codex cache `.specify/.cache/codex/` (populated by `specify init`
+    /// / `specify rules sync`); failing both, exits with
     /// `rules-root-required`.
     #[arg(long)]
     pub rules_root: Option<PathBuf>,

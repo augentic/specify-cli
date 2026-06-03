@@ -1,5 +1,5 @@
 name: tools-test
-hub: true
+workspace: true
 tools:
   - name: echo
     version: 0.1.0

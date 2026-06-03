@@ -83,7 +83,7 @@ fn slug_grammar_rules() {
 }
 
 #[test]
-fn section_heading_allows_trailing_text_but_not_deeper_heading() {
+fn heading_allows_trailing_not_deeper() {
     let text = "---\nslug: ok\nstatus: accepted\n---\n# T\n\n## Context (forces)\nx\n\n## Decision\ny\n\n### Consequences\nz\n";
     let parsed = parse_decision(text);
     // `## Context (forces)` satisfies Context; `### Consequences` is a

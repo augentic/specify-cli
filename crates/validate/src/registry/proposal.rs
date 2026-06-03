@@ -62,7 +62,7 @@ mod tests {
     }
 
     #[test]
-    fn why_rule_passes_with_prose_and_fails_when_empty() {
+    fn why_passes_prose_fails_empty() {
         assert_eq!(
             proposal_why_has_content(&ctx("## Why\n\nbecause it matters\n")),
             RuleOutcome::Pass
@@ -74,7 +74,7 @@ mod tests {
     }
 
     #[test]
-    fn units_rule_passes_with_entries_and_fails_when_absent() {
+    fn units_passes_entries_fails_absent() {
         assert_eq!(proposal_units_listed(&ctx("## Units\n\n- login\n")), RuleOutcome::Pass);
         assert!(matches!(
             proposal_units_listed(&ctx("## Why\n\nbecause\n")),

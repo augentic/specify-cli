@@ -115,7 +115,7 @@ fn planned_outcome(project_dir: &Path, kind: MigrationKind) -> Result<KindOutcom
     Ok(KindOutcome::planned(kind, &plan))
 }
 
-/// Wire-stable `specrun migrate` envelope (text + JSON).
+/// Wire-stable `specify migrate` envelope (text + JSON).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct MigrateBody {
@@ -157,7 +157,7 @@ impl MigrateBody {
     }
 }
 
-/// One migrator's outcome on the `specrun migrate` envelope.
+/// One migrator's outcome on the `specify migrate` envelope.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct KindOutcome {

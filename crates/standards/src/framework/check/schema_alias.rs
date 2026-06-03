@@ -5,8 +5,8 @@
 //! hint kind cannot land without an interpreter, the editor mirror uses
 //! a flat `enum` so Cursor's JSON tooling completes the value — but the
 //! closed hint-kind vocabulary they accept MUST stay identical. This
-//! check is the only place that observes both at once: `specdev`
-//! carries the canonical schema embedded in the binary, and lints the
+//! check is the only place that observes both at once: `specify lint
+//! framework` carries the canonical schema embedded in the binary, and lints the
 //! framework root that owns the alias, so it enforces the cross-repo
 //! seam at lint time. See REVIEW.md Part C.
 
@@ -100,13 +100,12 @@ pub fn run_on_root(root: &Path) -> Vec<Diagnostic> {
     )]
 }
 
-/// Extract the closed `deterministic_hints[].kind` vocabulary from a
+/// Extract the closed `rule_hints[].kind` vocabulary from a
 /// rule schema, accepting either the canonical `oneOf` of `const` shape
 /// or the editor mirror's flat `enum` shape.
 fn hint_kinds(schema: &Value) -> BTreeSet<String> {
-    let kind = schema
-        .pointer("/properties/deterministic_hints/items/properties/kind")
-        .unwrap_or(&Value::Null);
+    let kind =
+        schema.pointer("/properties/rule_hints/items/properties/kind").unwrap_or(&Value::Null);
 
     let mut out = BTreeSet::new();
 

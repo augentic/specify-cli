@@ -1,4 +1,4 @@
-//! Golden tests for `specrun rules export`.
+//! Golden tests for `specify rules export`.
 //!
 //! Exercises the runtime rules export contract — `ResolvedRules` export
 //! rules export" and §"Codex root resolution (v1)" — via the
@@ -29,7 +29,7 @@
 //! the export shape or sibling-repo codex content:
 //!
 //! ```text
-//! REGENERATE_GOLDENS=1 cargo test --test codex_export
+//! REGENERATE_GOLDENS=1 cargo nextest run --test rules_export
 //! ```
 //!
 //! Regeneration only writes files for tests that ran (sibling repo
@@ -101,7 +101,7 @@ fn assert_golden(actual: &Value, name: &str) {
     let expected = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
         panic!(
             "golden {} missing ({err}); regenerate via \
-             REGENERATE_GOLDENS=1 cargo test --test codex_export",
+             REGENERATE_GOLDENS=1 cargo nextest run --test rules_export",
             golden_path.display()
         )
     });
@@ -282,7 +282,7 @@ fn omnia_agent_consumable_assertions() {
 
 /// CLI smoke test: a hand-built rules-root tree with
 /// a `CORE-*` rule under `adapters/shared/rules/core/` excludes that
-/// rule from `specrun rules export` by default and includes it under
+/// rule from `specify rules export` by default and includes it under
 /// `--include-core`. Uses `assert_cmd` so the closed CLI plumbing
 /// (clap struct → handler → resolver) is exercised end-to-end.
 #[test]
@@ -343,21 +343,21 @@ fn write_rule_fixture(path: &Path, id: &str, title: &str) {
     fs::write(path, body).expect("write rule fixture");
 }
 
-/// Invoke `specrun rules export` against an explicit rules root and
+/// Invoke `specify rules export` against an explicit rules root and
 /// parse the JSON envelope on stdout. `include_core` toggles the
 /// closed `--include-core` flag.
 fn export_via_cli(rules_root: &Path, project: &Path, include_core: bool) -> Value {
-    let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
+    let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
     cmd.args(["--format", "json", "rules", "export", "--target", "omnia"])
         .args(["--rules-root".as_ref(), rules_root.as_os_str()])
         .args(["--project-dir".as_ref(), project.as_os_str()]);
     if include_core {
         cmd.arg("--include-core");
     }
-    let output = cmd.output().expect("specrun invocation");
+    let output = cmd.output().expect("specify invocation");
     assert!(
         output.status.success(),
-        "specrun rules export failed (status: {:?}); stderr:\n{}\nstdout:\n{}",
+        "specify rules export failed (status: {:?}); stderr:\n{}\nstdout:\n{}",
         output.status,
         String::from_utf8_lossy(&output.stderr),
         String::from_utf8_lossy(&output.stdout),
@@ -371,6 +371,36 @@ fn rule_id(rule: &Value) -> &str {
     rule.pointer("/rule-id").and_then(Value::as_str).unwrap_or("")
 }
 
+/// Negative scenario: the global `--format text` default is rejected
+/// before any resolution work — v1 export emits JSON only, so the
+/// handler returns `Error::Argument` (exit 2) with a hint to rerun
+/// with `--format json`. Exercises the CLI plumbing end-to-end so the
+/// JSON-only contract stays pinned at the wire boundary.
+#[test]
+fn negative_text_format_rejected() {
+    let project = tempdir().expect("project tempdir");
+
+    let output = Command::cargo_bin("specify")
+        .expect("cargo_bin(specify)")
+        .args(["--format", "text", "rules", "export", "--target", "omnia"])
+        .args(["--project-dir".as_ref(), project.path().as_os_str()])
+        .output()
+        .expect("specify invocation");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "expected exit 2; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--format json"),
+        "stderr must hint the JSON-only contract; got:\n{stderr}"
+    );
+}
+
 /// Negative scenario: a project dir with no shared rules tree, no
 /// `--rules-root`, must exit `2` (validation) with `rules-root-required`
 /// surfaced through the error envelope. Exercises the CH-17 CLI
@@ -380,12 +410,12 @@ fn rule_id(rule: &Value) -> &str {
 fn negative_rules_root_required() {
     let project = tempdir().expect("project tempdir");
 
-    let output = Command::cargo_bin("specrun")
-        .expect("cargo_bin(specrun)")
+    let output = Command::cargo_bin("specify")
+        .expect("cargo_bin(specify)")
         .args(["--format", "json", "rules", "export", "--target", "omnia"])
         .args(["--project-dir".as_ref(), project.path().as_os_str()])
         .output()
-        .expect("specrun invocation");
+        .expect("specify invocation");
 
     assert_eq!(
         output.status.code(),

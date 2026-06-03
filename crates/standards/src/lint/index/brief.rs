@@ -44,19 +44,8 @@ pub fn extract(file: &DiscoveredFile) -> Option<Brief> {
 /// Split `adapters/{sources,targets}/<adapter>/briefs/<op>.md` into
 /// the `(axis, adapter, operation)` tuple.
 fn parse_brief_path(relative: &str) -> Option<(AdapterAxis, &str, &str)> {
-    let rest = relative.strip_prefix("adapters/")?;
-    let (axis_str, rest) = rest.split_once('/')?;
-    let axis = match axis_str {
-        "sources" => AdapterAxis::Sources,
-        "targets" => AdapterAxis::Targets,
-        _ => return None,
-    };
-    let (adapter, rest) = rest.split_once('/')?;
-    if adapter.is_empty() {
-        return None;
-    }
-    let rest = rest.strip_prefix("briefs/")?;
-    let operation = rest.strip_suffix(".md")?;
+    let (axis, adapter, tail) = super::path_util::parse_adapter_prefix(relative)?;
+    let operation = tail.strip_prefix("briefs/")?.strip_suffix(".md")?;
     if operation.is_empty() || operation.contains('/') {
         return None;
     }

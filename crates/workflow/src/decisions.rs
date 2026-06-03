@@ -2,7 +2,7 @@
 //!
 //! The append-only baseline catalogue at `.specify/decisions/` is the
 //! durable home for design *decisions* — the immutable "why" plus the
-//! rejected alternatives. `specrun slice merge` promotes each
+//! rejected alternatives. `specify slice merge` promotes each
 //! slice-authored record under `.specify/slices/<slice>/decisions/` into
 //! `.specify/decisions/DEC-NNNN-<slug>.md` by whole-file add (the same
 //! opaque-add strategy contracts use), assigning the durable
@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use specify_error::Error;
+use specify_model::atomic::bytes_write;
 use specify_model::decision::{self, DecisionRecord, DecisionStatus};
 
 use crate::config::Layout;
@@ -76,6 +77,34 @@ fn is_ascii_digits(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// List every `*.md` file directly under `dir`, sorted by path for
+/// deterministic iteration. The caller is responsible for confirming the
+/// directory exists (an absent `decisions/` is an opt-out, not an error).
+///
+/// # Errors
+///
+/// Surfaces I/O errors reading the directory or one of its entries.
+pub(crate) fn list_md_files(dir: &Path) -> Result<Vec<PathBuf>, Error> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(dir).map_err(|source| Error::Filesystem {
+        op: "readdir",
+        path: dir.to_path_buf(),
+        source,
+    })? {
+        let entry = entry.map_err(|source| Error::Filesystem {
+            op: "readdir-entry",
+            path: dir.to_path_buf(),
+            source,
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            out.push(path);
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
 /// Read the baseline catalogue at `.specify/decisions/`, returning every
 /// record sorted by `DEC-NNNN` ascending. A missing directory yields an
 /// empty vector.
@@ -91,20 +120,7 @@ pub fn read_baseline(decisions_dir: &Path) -> Result<Vec<BaselineDecision>, Erro
         return Ok(Vec::new());
     }
     let mut out: Vec<BaselineDecision> = Vec::new();
-    for entry in std::fs::read_dir(decisions_dir).map_err(|source| Error::Filesystem {
-        op: "readdir",
-        path: decisions_dir.to_path_buf(),
-        source,
-    })? {
-        let entry = entry.map_err(|source| Error::Filesystem {
-            op: "readdir-entry",
-            path: decisions_dir.to_path_buf(),
-            source,
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
+    for path in list_md_files(decisions_dir)? {
         let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
             op: "read",
             path: path.clone(),
@@ -145,20 +161,7 @@ fn read_slice_records(src: &Path) -> Result<Vec<SliceRecord>, Error> {
         return Ok(Vec::new());
     }
     let mut out: Vec<SliceRecord> = Vec::new();
-    for entry in std::fs::read_dir(src).map_err(|source| Error::Filesystem {
-        op: "readdir",
-        path: src.to_path_buf(),
-        source,
-    })? {
-        let entry = entry.map_err(|source| Error::Filesystem {
-            op: "readdir-entry",
-            path: src.to_path_buf(),
-            source,
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
+    for path in list_md_files(src)? {
         let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
             op: "read",
             path: path.clone(),
@@ -167,7 +170,7 @@ fn read_slice_records(src: &Path) -> Result<Vec<SliceRecord>, Error> {
         let (record, body) = parse_file(&text).ok_or_else(|| Error::Diag {
             code: "decision-record-malformed",
             detail: format!(
-                "slice decision `{}` could not be parsed; run `specrun slice validate` first",
+                "slice decision `{}` could not be parsed; run `specify slice validate` first",
                 path.display()
             ),
         })?;
@@ -316,11 +319,6 @@ pub fn promote(
         }
     }
 
-    std::fs::create_dir_all(&decisions_dir).map_err(|source| Error::Filesystem {
-        op: "mkdir",
-        path: decisions_dir.clone(),
-        source,
-    })?;
     for w in &writes {
         let path = decisions_dir.join(format!("{}-{}.md", w.id, w.slug));
         write_record(&path, &w.record, &w.body)?;
@@ -352,15 +350,21 @@ fn resolve_target(
 }
 
 /// Serialise a record's front-matter and write `---\n<yaml>---\n<body>`
-/// to `path` (plain write, mirroring the spec baseline promotion which
-/// is part of the same atomic merge).
+/// to `path` via [`bytes_write`] (temp-file + rename, creating the parent
+/// chain) so a crash mid-merge never leaves a half-written record.
+/// Atomicity is per file, not across the promotion set: the caller flips
+/// the slice metadata only after every write returns, so an interrupted
+/// promotion is safely re-runnable.
 fn write_record(path: &Path, record: &DecisionRecord, body: &str) -> Result<(), Error> {
     let yaml = serde_saphyr::to_string(record)?;
     let yaml = if yaml.ends_with('\n') { yaml } else { format!("{yaml}\n") };
     let content = format!("---\n{yaml}---\n{body}");
-    std::fs::write(path, content).map_err(|source| Error::Filesystem {
-        op: "write",
-        path: path.to_path_buf(),
-        source,
+    bytes_write(path, content.as_bytes()).map_err(|err| match err {
+        Error::Io(source) => Error::Filesystem {
+            op: "write",
+            path: path.to_path_buf(),
+            source,
+        },
+        other => other,
     })
 }

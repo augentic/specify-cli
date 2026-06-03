@@ -23,8 +23,8 @@
 //! 3. Else if the distributed codex cache
 //!    `{project_dir}/.specify/.cache/codex/adapters/shared/rules/universal/`
 //!    exists, treat `{project_dir}/.specify/.cache/codex/` as the rules
-//!    root. Populated by codex distribution (RM-07) at `specrun init`
-//!    or `specrun rules sync`. Like the monorepo case this is a derived
+//!    root. Populated by codex distribution (RM-07) at `specify init`
+//!    or `specify rules sync`. Like the monorepo case this is a derived
 //!    (non-explicit) root, so the rules-root fallback overlay step is
 //!    **skipped**.
 //! 4. Else → [`ResolveError::RulesRootRequired`].
@@ -143,7 +143,7 @@ pub enum ResolveError {
     /// `rules-root-required` per codex root resolution and the §490
     /// golden.
     #[error(
-        "rules-root-required: shared UNI-* rules require --rules-root pointing at a tree containing adapters/shared/rules/universal/, a monorepo adapters/shared/rules/universal/ tree, or a distributed codex cache (run `specrun rules sync`)"
+        "rules-root-required: shared UNI-* rules require --rules-root pointing at a tree containing adapters/shared/rules/universal/, a monorepo adapters/shared/rules/universal/ tree, or a distributed codex cache (run `specify rules sync`)"
     )]
     RulesRootRequired,
     /// A rule id appeared in more than one discovered file. Per
@@ -188,7 +188,7 @@ pub fn map_resolve_error(err: ResolveError) -> Error {
             "shared UNI-* rules require --rules-root, a project-local \
              adapters/shared/rules/universal/ tree, or a distributed \
              codex cache under .specify/.cache/codex/",
-            "run `specrun rules sync` to distribute the shared codex, or \
+            "run `specify rules sync` to distribute the shared codex, or \
              pass --rules-root pointing at a tree containing \
              adapters/shared/rules/universal/",
         ),

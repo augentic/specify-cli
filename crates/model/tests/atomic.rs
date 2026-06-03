@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use specify_model::atomic::{bytes_write, yaml_write};
 
 #[test]
-fn yaml_write_round_trips_and_appends_trailing_newline() {
+fn write_round_trips_appends_newline() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("out.yaml");
     let mut value = BTreeMap::new();
@@ -23,7 +23,7 @@ fn yaml_write_round_trips_and_appends_trailing_newline() {
 }
 
 #[test]
-fn yaml_write_creates_missing_parent_directories() {
+fn write_creates_parent_dirs() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("nested").join("deeper").join("out.yaml");
     let value = vec![1_u32, 2, 3];
@@ -34,7 +34,7 @@ fn yaml_write_creates_missing_parent_directories() {
 }
 
 #[test]
-fn yaml_write_overwrites_existing_file_atomically() {
+fn write_overwrites_atomically() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("out.yaml");
     yaml_write(&path, &vec!["first"]).expect("first write");

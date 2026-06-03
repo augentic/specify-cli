@@ -1,4 +1,4 @@
-//! Clap derive surface for `specrun workspace *`. The umbrella
+//! Clap derive surface for `specify workspace *`. The umbrella
 //! `cli.rs` re-exports `WorkspaceAction`.
 
 use std::path::PathBuf;

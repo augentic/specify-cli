@@ -15,7 +15,7 @@ fn upgrade_opts(project_dir: &Path) -> InitOptions<'_> {
         adapter: None,
         name: None,
         description: None,
-        hub: false,
+        workspace: false,
         include_framework: false,
         platforms: None,
         upgrade: true,
@@ -30,7 +30,7 @@ fn seed_project_yaml(project_dir: &Path, contents: &str) {
 }
 
 #[test]
-fn upgrade_bumps_older_same_major_pin_preserving_fields() {
+fn bumps_older_major_preserving_fields() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(
         tmp.path(),
@@ -50,11 +50,11 @@ fn upgrade_bumps_older_same_major_pin_preserving_fields() {
     assert_eq!(cfg.description.as_deref(), Some("a project"));
     assert_eq!(cfg.adapter.as_deref(), Some("omnia"));
     assert_eq!(cfg.rules.get("specs").map(String::as_str), Some("specs.md"));
-    assert!(!cfg.hub);
+    assert!(!cfg.workspace);
 }
 
 #[test]
-fn upgrade_is_byte_stable_noop_when_already_current() {
+fn byte_stable_noop_when_current() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(
         tmp.path(),
@@ -71,18 +71,27 @@ fn upgrade_is_byte_stable_noop_when_already_current() {
 }
 
 #[test]
-fn upgrade_preserves_hub_discriminator() {
+fn preserves_workspace_discriminator() {
     let tmp = tempdir().unwrap();
-    seed_project_yaml(tmp.path(), "name: platform-hub\nspecify_version: 0.2.0\nhub: true\n");
+    seed_project_yaml(
+        tmp.path(),
+        "name: platform-workspace\nspecify_version: 0.2.0\nworkspace: true\n",
+    );
 
     let result = init(upgrade_opts(tmp.path()), fixed_now()).expect("upgrade ok");
     assert!(result.specify_version_changed);
-    assert_eq!(result.adapter_name, "hub");
+    assert_eq!(result.adapter_name, "workspace");
 
     let cfg = ProjectConfig::load(tmp.path()).expect("reload");
-    assert!(cfg.hub, "hub discriminator must survive an upgrade");
-    assert!(cfg.adapter.is_none(), "hub upgrade must not synthesise an adapter");
+    assert!(cfg.workspace, "workspace discriminator must survive an upgrade");
+    assert!(cfg.adapter.is_none(), "workspace upgrade must not synthesise an adapter");
     assert_eq!(cfg.specify_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+
+    let on_disk = fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read");
+    assert!(
+        on_disk.contains("workspace: true"),
+        "upgrade must preserve workspace:, got:\n{on_disk}"
+    );
 }
 
 #[test]
@@ -133,7 +142,7 @@ fn upgrade_with_platforms_updates_config() {
             adapter: None,
             name: None,
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             platforms: Some(&platforms),
             upgrade: true,
@@ -148,7 +157,7 @@ fn upgrade_with_platforms_updates_config() {
 }
 
 #[test]
-fn upgrade_with_platforms_missing_core_fails() {
+fn upgrade_platforms_no_core_fails() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(tmp.path(), "name: demo\nadapter: vectis-stub\nspecify_version: 0.2.0\n");
     seed_adapter_cache(tmp.path(), "vectis-stub");
@@ -160,7 +169,7 @@ fn upgrade_with_platforms_missing_core_fails() {
             adapter: None,
             name: None,
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             platforms: Some(&platforms),
             upgrade: true,
@@ -175,7 +184,7 @@ fn upgrade_with_platforms_missing_core_fails() {
 }
 
 #[test]
-fn upgrade_without_platforms_preserves_existing() {
+fn upgrade_preserves_platforms() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(
         tmp.path(),

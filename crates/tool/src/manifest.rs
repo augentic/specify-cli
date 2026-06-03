@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "ToolForm")]
 pub struct Tool {
-    /// Tool name used by `specrun tool run <name>`.
+    /// Tool name used by `specify tool run <name>`.
     pub name: String,
     /// Exact SemVer version string. Parsed during structural validation.
     pub version: String,

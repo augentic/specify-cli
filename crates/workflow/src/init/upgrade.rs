@@ -1,23 +1,11 @@
-//! Re-entry (`specrun init --upgrade`) init body. Bumps
-//! `project.yaml.specify_version` to the running binary's version over
-//! an already-populated `.specify/` without re-scaffolding (RFC-30
-//! §D5, Wave E).
+//! Re-entry (`specify init --upgrade`) body: bumps `project.yaml.specify_version`
+//! to the running binary over an existing `.specify/` without re-scaffolding.
+//! Mutates only `project.yaml`; never touches slices, specs, archive, registry,
+//! or the adapter cache.
 //!
-//! The write set is closed: this runner mutates **only**
-//! `project.yaml`, rewriting `specify_version` and preserving every
-//! other field (including `adapter:` / `hub:`). It never touches
-//! `slices/`, `specs/`, `archive/`, `registry.yaml`,
-//! `.specify/design-system/*`, or the adapter cache, and it never
-//! re-fetches the cache — preservation holds by construction because
-//! nothing here resolves an adapter. `AGENTS.md` regeneration (only
-//! when absent) is owned by the command layer's
-//! `generate_initial_context`, mirroring the fresh-init path.
-//!
-//! One runner serves both regular and hub projects: the preservation
-//! logic is identical, so the dispatcher routes here ahead of the
-//! hub / regular branch (an intentional deviation from the plan's
-//! literal "route through regular/hub" wording — sharing the runner is
-//! simpler and avoids duplicating the same bump twice).
+//! One runner serves both regular and workspace projects: the
+//! preservation logic is identical, so the dispatcher routes here ahead
+//! of the workspace / regular branch.
 
 use std::fs;
 
@@ -45,7 +33,7 @@ use crate::init::{InitOptions, InitResult, resolve_version, validate_platforms};
 /// - [`Error::CliTooOld`] when the pinned floor is newer than this
 ///   binary (propagated by the loader).
 /// - [`Error::ProjectNeedsMigration`] when the pinned major is older
-///   than this binary's (exit 4 — the operator must run `specrun
+///   than this binary's (exit 4 — the operator must run `specify
 ///   migrate` first). Dormant while the binary is pre-1.0: the
 ///   migration tuple is always `None` at major `0`.
 /// - filesystem / serialisation errors from rewriting `project.yaml`.
@@ -63,7 +51,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         let adapter_name =
             cfg.adapter.as_deref().map(adapter_name_from_value).ok_or_else(|| Error::Diag {
                 code: "upgrade-platforms-no-adapter",
-                detail: "--platforms requires a project with a bound target adapter (hub projects \
+                detail: "--platforms requires a project with a bound target adapter (workspace projects \
                          have no adapter)"
                     .to_string(),
             })?;
@@ -87,8 +75,8 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         fs::write(&config_path, serialised)?;
     }
 
-    let adapter_name = if cfg.hub {
-        "hub".to_string()
+    let adapter_name = if cfg.workspace {
+        "workspace".to_string()
     } else {
         cfg.adapter
             .as_deref()

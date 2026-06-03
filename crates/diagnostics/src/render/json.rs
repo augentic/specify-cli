@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn valid_report_round_trips_through_schema_to_pretty_json() {
+    fn round_trips_to_pretty_json() {
         let out = render(&report(vec![fingerprinted()])).expect("valid envelope renders");
         assert!(out.ends_with('\n'), "single trailing newline");
         let parsed: Value = serde_json::from_str(&out).expect("output is valid JSON");
@@ -113,9 +113,39 @@ mod tests {
     }
 
     #[test]
-    fn schema_violation_surfaces_as_render_error() {
+    fn schema_violation_render_error() {
         let bogus = json!({ "version": 1, "summary": {}, "findings": [{ "id": "x" }] });
         let err = render_value(&bogus).expect_err("incomplete finding must fail the schema");
         assert!(matches!(err, RenderError::JsonSchemaValidation { .. }));
+    }
+
+    /// A summary object missing one of its four tally keys fails the
+    /// envelope schema before any bytes are emitted.
+    #[test]
+    fn rejects_missing_summary_key() {
+        let bad = json!({
+            "version": 1,
+            "summary": { "critical": 0, "important": 0, "suggestion": 0 },
+            "findings": []
+        });
+        let err = render_value(&bad).expect_err("missing summary key must be rejected");
+        assert!(matches!(err, RenderError::JsonSchemaValidation { .. }));
+    }
+
+    /// The envelope preserves the producer's input order — the JSON
+    /// `findings` array mirrors the slice order rather than re-sorting.
+    #[test]
+    fn preserves_input_finding_order() {
+        let mut first = fingerprinted();
+        first.id = "FIND-0001".into();
+        first.title = "first".into();
+        let mut second = fingerprinted();
+        second.id = "FIND-0002".into();
+        second.title = "second".into();
+
+        let out = render(&report(vec![first, second])).expect("renders");
+        let parsed: Value = serde_json::from_str(&out).expect("valid JSON");
+        assert_eq!(parsed["findings"][0]["title"], json!("first"));
+        assert_eq!(parsed["findings"][1]["title"], json!("second"));
     }
 }

@@ -1,4 +1,4 @@
-//! Response DTOs for `specrun registry *` handlers.
+//! Response DTOs for `specify registry *` handlers.
 
 use std::io::Write;
 
@@ -11,7 +11,7 @@ pub(super) struct ValidateBody {
     pub(super) registry: Option<Registry>,
     pub(super) path: String,
     #[serde(skip)]
-    pub(super) hub_mode: bool,
+    pub(super) workspace_mode: bool,
 }
 
 pub(super) fn write_validate_text(w: &mut dyn Write, body: &ValidateBody) -> std::io::Result<()> {
@@ -19,8 +19,8 @@ pub(super) fn write_validate_text(w: &mut dyn Write, body: &ValidateBody) -> std
         return writeln!(w, "no registry declared at registry.yaml");
     };
     let count = reg.projects.len();
-    if body.hub_mode {
-        writeln!(w, "registry.yaml is well-formed in hub mode ({count} project(s))")
+    if body.workspace_mode {
+        writeln!(w, "registry.yaml is well-formed in workspace mode ({count} project(s))")
     } else {
         writeln!(w, "registry.yaml is well-formed ({count} project(s))")
     }

@@ -84,6 +84,10 @@ const UNIVERSAL_RULES_REL: &str = "adapters/shared/rules/universal";
 /// Project-relative path to the framework `core/` pack (distributed
 /// only under `--include-framework`).
 const CORE_RULES_REL: &str = "adapters/shared/rules/core";
+/// Shared spec-runtime mirror (symlinks to plugin canonical references).
+const SHARED_RUNTIME_REL: &str = "adapters/shared/references/runtime";
+/// Vendored into each cached target adapter for brief-local links.
+const SPEC_RUNTIME_REL: &str = "references/spec-runtime";
 
 /// Absolute path to the project codex cache root,
 /// `<project_dir>/.specify/.cache/codex/`. Shared/core packs land
@@ -189,7 +193,130 @@ fn refresh_cached_adapter(source: &Path, target: &Path) -> Result<(), Error> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
-    copy_dir_recursive(source, target)
+    copy_dir_recursive(source, target)?;
+    vendor_spec_runtime(source, target)
+}
+
+/// Walk up from a resolved adapter `source_dir` to the nearest ancestor that
+/// carries the shared spec-runtime mirror tree.
+fn repo_root_with_runtime(source_dir: &Path) -> Option<PathBuf> {
+    source_dir.ancestors().find(|dir| dir.join(SHARED_RUNTIME_REL).is_dir()).map(Path::to_path_buf)
+}
+
+/// Materialise dereferenced runtime reference files under
+/// `<cached-adapter>/references/spec-runtime/` so adapter briefs can link
+/// with `../references/spec-runtime/…` without escaping the cached tree.
+fn vendor_spec_runtime(source_adapter_dir: &Path, cached_adapter_dir: &Path) -> Result<(), Error> {
+    let Some(repo_root) = repo_root_with_runtime(source_adapter_dir) else {
+        return Ok(());
+    };
+    let dest = cached_adapter_dir.join(SPEC_RUNTIME_REL);
+    if dest.exists() {
+        fs::remove_dir_all(&dest)?;
+    }
+    let prebuilt = source_adapter_dir.join(SPEC_RUNTIME_REL);
+    if prebuilt.is_dir() {
+        copy_dir_recursive(&prebuilt, &dest)?;
+        return Ok(());
+    }
+    vendor_runtime_tree(&repo_root.join(SHARED_RUNTIME_REL), &dest)?;
+    augment_spec_runtime_from_plugins(&repo_root, &dest)
+}
+
+fn augment_spec_runtime_from_plugins(repo_root: &Path, dest: &Path) -> Result<(), Error> {
+    let plugins_ref = repo_root.join("plugins/spec/references");
+    if !plugins_ref.is_dir() {
+        return Ok(());
+    }
+    let synthesis_dest = dest.join("synthesis");
+    fs::create_dir_all(&synthesis_dest)?;
+    for name in ["authority.md", "tags.md", "provenance.md", "claim-reconciliation.md"] {
+        let src = plugins_ref.join("synthesis").join(name);
+        if src.is_file() {
+            fs::copy(&src, synthesis_dest.join(name))?;
+        }
+    }
+    let cli_dest = dest.join("cli");
+    fs::create_dir_all(&cli_dest)?;
+    let plan_propose = plugins_ref.join("cli/plan-propose.md");
+    if plan_propose.is_file() {
+        fs::copy(&plan_propose, cli_dest.join("plan-propose.md"))?;
+    }
+    let stop_src = repo_root.join("plugins/spec/skills/execute/references/stop-conditions.md");
+    if stop_src.is_file() {
+        fs::copy(&stop_src, dest.join("stop-conditions.md"))?;
+        rewrite_stop_conditions_plan_lock(dest)?;
+    }
+    let plan_lock = plugins_ref.join("plan-lock.md");
+    if plan_lock.is_file() {
+        fs::copy(&plan_lock, dest.join("plan-lock.md"))?;
+    }
+    let review = repo_root.join("docs/reference/review-team-protocol.md");
+    if review.is_file() {
+        fs::copy(&review, dest.join("review-team-protocol.md"))?;
+    }
+    Ok(())
+}
+
+fn rewrite_stop_conditions_plan_lock(dest: &Path) -> Result<(), Error> {
+    let path = dest.join("stop-conditions.md");
+    let content = fs::read_to_string(&path)?;
+    let patched = content.replace("../../../references/plan-lock.md", "./plan-lock.md");
+    if patched != content {
+        fs::write(path, patched)?;
+    }
+    Ok(())
+}
+
+fn vendor_runtime_tree(src: &Path, dest: &Path) -> Result<(), Error> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == "README.md" {
+            continue;
+        }
+        let source_path = entry.path();
+        let target_path = dest.join(&name);
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            vendor_runtime_tree(&source_path, &target_path)?;
+            continue;
+        }
+        if file_type.is_symlink() {
+            let link_target = fs::read_link(&source_path).map_err(|err| Error::Diag {
+                code: "adapter-runtime-symlink-read-failed",
+                detail: format!(
+                    "failed to read spec-runtime symlink {}: {err}",
+                    source_path.display()
+                ),
+            })?;
+            let resolved = if link_target.is_absolute() {
+                link_target
+            } else {
+                source_path.parent().unwrap_or(src).join(link_target)
+            };
+            let resolved = fs::canonicalize(&resolved).map_err(|err| Error::Diag {
+                code: "adapter-runtime-symlink-unresolved",
+                detail: format!(
+                    "spec-runtime symlink {} does not resolve to a regular file: {err}",
+                    source_path.display()
+                ),
+            })?;
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&resolved, &target_path)?;
+            continue;
+        }
+        if file_type.is_file() {
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&source_path, &target_path)?;
+        }
+    }
+    Ok(())
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), Error> {

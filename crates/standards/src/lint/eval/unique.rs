@@ -28,12 +28,12 @@ use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
+use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
 const SOURCE_SKILL_NAME: &str = "skill-name";
 
 pub(crate) fn evaluate(
-    rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
+    rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
@@ -45,8 +45,7 @@ pub(crate) fn evaluate(
         });
     }
 
-    let candidate_set: BTreeSet<String> =
-        candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let candidate_set = super::candidate_set(candidates);
 
     let mut groups: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for skill in &model.skills {
@@ -62,7 +61,10 @@ pub(crate) fn evaluate(
             continue;
         }
         let sorted: Vec<String> = paths.into_iter().collect();
-        let first = sorted.first().cloned().expect("len >= 2");
+        debug_assert!(sorted.len() >= 2, "duplicate group filtered to < 2 paths");
+        let Some(first) = sorted.first().cloned() else {
+            continue;
+        };
         let location = FindingLocation {
             path: first,
             line: Some(1),

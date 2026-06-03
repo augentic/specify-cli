@@ -1,4 +1,4 @@
-//! Top-level clap derive surface for the `specrun` binary. Owns the
+//! Top-level clap derive surface for the `specify` binary. Owns the
 //! umbrella types ([`Cli`], [`Commands`], [`Format`], [`SourceArg`],
 //! [`SliceSourceArg`]) and re-exports the per-verb action enums.
 
@@ -24,7 +24,7 @@ use crate::runtime::commands::workspace::cli::WorkspaceAction;
 
 #[derive(Parser)]
 #[command(
-    name = "specrun",
+    name = "specify",
     version,
     about = "Deterministic primitives for spec-driven development"
 )]
@@ -33,9 +33,9 @@ pub struct Cli {
     pub(crate) command: Commands,
 
     /// Output format. `text` by default; pass `--format json` (or set
-    /// `SPECRUN_FORMAT=json`) for structured envelopes when shelling
+    /// `SPECIFY_FORMAT=json`) for structured envelopes when shelling
     /// out from skills.
-    #[arg(long, env = "SPECRUN_FORMAT", default_value = "text", global = true)]
+    #[arg(long, env = "SPECIFY_FORMAT", default_value = "text", global = true)]
     pub(crate) format: Format,
 }
 
@@ -44,18 +44,18 @@ pub enum Commands {
     /// Initialize .specify/ in a project.
     ///
     /// Pass `<adapter>` (bare name or URL) for a regular project, or
-    /// `--hub` for a registry-only platform hub. The two are mutually
-    /// exclusive — clap enforces the `<adapter>` xor `--hub` shape
+    /// `--workspace` for a registry-only workspace. The two are mutually
+    /// exclusive — clap enforces the `<adapter>` xor `--workspace` shape
     /// and exits `2` with its standard parse-error diagnostic when the
     /// invariant is violated.
     Init {
         /// Adapter identifier or URL (e.g. `omnia`,
         /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`).
-        /// Required unless `--hub`, `--check-migration`, or `--upgrade`
-        /// is set; mutually exclusive with `--hub`.
+        /// Required unless `--workspace`, `--check-migration`, or `--upgrade`
+        /// is set; mutually exclusive with `--workspace`.
         #[arg(
-            conflicts_with = "hub",
-            required_unless_present_any = ["hub", "check_migration", "upgrade"]
+            conflicts_with = "workspace",
+            required_unless_present_any = ["workspace", "check_migration", "upgrade"]
         )]
         adapter: Option<String>,
         /// Project name (defaults to the project directory name)
@@ -64,16 +64,16 @@ pub enum Commands {
         /// Project description (tech stack, architecture, testing)
         #[arg(long)]
         description: Option<String>,
-        /// Scaffold a registry-only platform hub instead of a regular
+        /// Scaffold a registry-only workspace instead of a regular
         /// project. Refuses to run when `.specify/` already exists.
         #[arg(long)]
-        hub: bool,
+        workspace: bool,
         /// Also distribute the framework `core/` pack
         /// (`adapters/shared/rules/core/`) into the project codex cache
         /// alongside the shared `universal/` pack. Default off —
         /// consumer projects carry only `UNI-*` rules. Ignored with
-        /// `--hub`.
-        #[arg(long, conflicts_with = "hub")]
+        /// `--workspace`.
+        #[arg(long, conflicts_with = "workspace")]
         include_framework: bool,
         /// Read-only migration probe used by the `/spec:init` skill.
         /// Emits a `{ needs-migration, from, to, plan }` JSON envelope
@@ -81,14 +81,14 @@ pub enum Commands {
         /// with every other `init` argument.
         #[arg(
             long,
-            conflicts_with_all = ["adapter", "hub", "name", "description", "include_framework"]
+            conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework"]
         )]
         check_migration: bool,
         /// Comma-separated target platforms (e.g. core,ios,android).
         /// Required when the target adapter declares platforms as mandatory.
-        /// Run `specrun init <adapter>` without --platforms to see the
+        /// Run `specify init <adapter>` without --platforms to see the
         /// target's allowed and default sets.
-        #[arg(long, conflicts_with_all = ["hub", "check_migration"])]
+        #[arg(long, conflicts_with_all = ["workspace", "check_migration"])]
         platforms: Option<String>,
         /// Re-entry version bump: over an already-populated `.specify/`,
         /// rewrite `project.yaml.specify_version` to this binary's
@@ -96,12 +96,12 @@ pub enum Commands {
         /// `AGENTS.md` only when absent — scaffolding nothing else and
         /// never re-fetching the adapter cache. A project already at the
         /// running version is a no-op. Refuses with exit `4` when the
-        /// project's major is older than this binary's (run `specrun
+        /// project's major is older than this binary's (run `specify
         /// migrate` first). Mutually exclusive with every other `init`
         /// argument except `--platforms`.
         #[arg(
             long,
-            conflicts_with_all = ["adapter", "hub", "name", "description", "include_framework", "check_migration"]
+            conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework", "check_migration"]
         )]
         upgrade: bool,
     },
@@ -139,7 +139,7 @@ pub enum Commands {
         action: ToolAction,
     },
 
-    /// Deterministic lint (`specrun lint` v1). Resolves applicable codex
+    /// Deterministic lint (`specify lint` v1). Resolves applicable codex
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
     /// and emits the `DiagnosticReport` envelope. Read-only.
     Lint {
@@ -192,7 +192,7 @@ pub enum Commands {
     /// Print a shell-completion script for `<shell>` to stdout.
     ///
     /// Pipe into your shell's completion directory (e.g.
-    /// `specrun completions zsh > ~/.zsh/_specrun`). Generated via
+    /// `specify completions zsh > ~/.zsh/_specify`). Generated via
     /// `clap_complete`; the output tracks the live clap surface so
     /// every new verb is auto-discovered.
     Completions {
@@ -228,7 +228,7 @@ pub enum Commands {
         yes: bool,
     },
 
-    /// Self-update the `specrun` binary across its install channel.
+    /// Self-update the `specify` binary across its install channel.
     ///
     /// Bootstrap verb: operates on the binary, not a project, so it
     /// never loads project config. `--channel auto` (the default)
@@ -268,7 +268,7 @@ pub enum Commands {
     },
 }
 
-/// `specrun upgrade --channel` value. `Auto` resolves to
+/// `specify upgrade --channel` value. `Auto` resolves to
 /// [`specify_workflow::upgrade::InstallChannel::detect`] at the handler
 /// boundary; the other variants force the matching channel.
 #[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
@@ -393,12 +393,12 @@ pub struct SliceSourceArg {
 }
 
 /// Typed value for the per-slice `--authority-override <kind>=<key>`
-/// flag on `specrun plan add` (where the slice context is implicit
+/// flag on `specify plan add` (where the slice context is implicit
 /// from the command's positional `name`).
 ///
 /// Wire form is `<claim-kind>=<source>`; both sides must be
 /// non-empty and kebab-case (`source` is validated at the
-/// `specrun slice validate` stage via the orphan-key check).
+/// `specify slice validate` stage via the orphan-key check).
 /// `claim-kind` is parsed at the CLI boundary against the closed
 /// [`ClaimKind`] enum so misspellings fail before any plan mutation
 /// runs (clap exits 2 with its standard usage diagnostic).
@@ -406,42 +406,6 @@ pub struct SliceSourceArg {
 pub struct AuthorityOverrideKindAssign {
     pub(crate) kind: ClaimKind,
     pub(crate) source: String,
-}
-
-/// Typed value for `specrun plan amend --add-alias` /
-/// `--remove-alias` (discovery alias contract). Wire form is
-/// `<lead>=<alias>`; both sides must be non-empty
-/// kebab-case strings. The closed [`specify_error::is_kebab`]
-/// check runs at the handler boundary so the parser stays focused
-/// on the `=` split.
-#[derive(Clone, Debug)]
-pub struct AliasAssign {
-    /// Lead id (left of `=`). The lead must exist in
-    /// `discovery.md`; the handler refuses with
-    /// `discovery-lead-unknown` otherwise.
-    pub(crate) lead: String,
-    /// Alias value (right of `=`).
-    pub(crate) alias: String,
-}
-
-impl FromStr for AliasAssign {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (lead, alias) = s
-            .split_once('=')
-            .ok_or_else(|| format!("alias flag must be <lead>=<alias>, got `{s}`"))?;
-        if lead.is_empty() || alias.is_empty() {
-            return Err(format!("alias flag lead and alias must both be non-empty, got `{s}`"));
-        }
-        if alias.contains('=') {
-            return Err(format!("alias flag value `{s}` must contain exactly one `=` separator"));
-        }
-        Ok(Self {
-            lead: lead.to_string(),
-            alias: alias.to_string(),
-        })
-    }
 }
 
 impl FromStr for AuthorityOverrideKindAssign {

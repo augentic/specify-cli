@@ -1,5 +1,5 @@
 //! Integration tests for the RFC-29c §"Drift validation" gate in
-//! `specrun slice validate` (C9) — the seven typed-model findings over
+//! `specify slice validate` (C9) — the seven typed-model findings over
 //! `<slice>/model.yaml`.
 //!
 //! Each test crafts a slice that trips exactly one finding and asserts
@@ -11,7 +11,7 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_json, specrun};
+use common::{Project, parse_json, specify_cmd};
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -81,12 +81,16 @@ slices:
 /// Stage `my-slice` with a `model.yaml`, optional Evidence files
 /// (`<key>` → body), optional `specs/<unit>/spec.md` files, and an
 /// optional `plan.yaml`. Returns the project handle for driving
-/// `specrun slice validate`.
+/// `specify slice validate`.
 fn drift_stage(
     model: &str, evidence: &[(&str, &str)], specs: &[(&str, &str)], plan: Option<&str>,
 ) -> Project {
     let project = Project::init().with_schemas();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let slice_dir = project.slices_dir().join("my-slice");
     fs::write(slice_dir.join("model.yaml"), model).expect("write model.yaml");
 
@@ -108,9 +112,9 @@ fn drift_stage(
     project
 }
 
-/// Run `specrun slice validate my-slice` and return the process output.
+/// Run `specify slice validate my-slice` and return the process output.
 fn drift_validate(project: &Project) -> std::process::Output {
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()

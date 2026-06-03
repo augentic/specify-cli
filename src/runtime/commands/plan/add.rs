@@ -1,4 +1,4 @@
-//! `specrun plan add` handler — append one slice entry to an
+//! `specify plan add` handler — append one slice entry to an
 //! existing `plan.yaml`. Authority-override seeding is delegated to
 //! the shared domain helper so the journal events match `plan create`
 //! and `plan amend` byte-for-byte.
@@ -36,12 +36,9 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
         check_project(&ctx.project_dir, proj)?;
     }
 
-    // discovery alias contract — resolve `--sources <key>=<alias>` to the
-    // canonical lead `id` before persisting; the on-disk
-    // `plan.yaml.slices[].sources[].lead` always carries the
-    // canonical id. Absence of `discovery.md` short-circuits to the
-    // legacy (verbatim) path so existing tests and pre-authority and reconciliation contract
-    // projects continue to work.
+    // When `discovery.md` exists, resolve `--sources <key>=<lead>` to the
+    // canonical lead id before persisting. Absence of `discovery.md`
+    // short-circuits to the verbatim path.
     let discovery = load_discovery(ctx.layout())?;
     let sources = bindings_from_args(sources, name, discovery.as_ref())?;
     let authority_override_map = SliceAuthorityOverride {
@@ -51,10 +48,10 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
             .collect::<BTreeMap<_, _>>(),
     };
     let entry = Entry {
-        name: name.to_string(),
+        name: name.into(),
         project,
         status: Status::Pending,
-        depends_on,
+        depends_on: depends_on.into_iter().map(Into::into).collect(),
         sources,
         context,
         description,

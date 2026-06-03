@@ -56,7 +56,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
 }
 
 #[test]
-fn resolves_source_adapter_from_local_directory() {
+fn resolves_source_from_local_dir() {
     let (_tmp, project) = local_project();
     let resolved = SourceAdapter::resolve("code-typescript", &project)
         .expect("resolve source adapter from adapters/sources/<name>/adapter.yaml");
@@ -75,7 +75,7 @@ fn resolves_source_adapter_from_local_directory() {
 }
 
 #[test]
-fn resolves_target_adapter_from_local_directory() {
+fn resolves_target_from_local_dir() {
     let (_tmp, project) = local_project();
     let resolved = TargetAdapter::resolve("omnia", &project)
         .expect("resolve target adapter from adapters/targets/<name>/adapter.yaml");
@@ -194,7 +194,7 @@ description: Cached source adapter fixture.
 }
 
 #[test]
-fn missing_adapter_reports_adapter_not_found() {
+fn missing_adapter_reports_not_found() {
     let (_tmp, project) = local_project();
     let err =
         SourceAdapter::resolve("nonexistent", &project).expect_err("missing adapter must fail");
@@ -348,7 +348,7 @@ fn target_adapter_inputs_default_empty() {
 }
 
 #[test]
-fn malformed_input_entry_rejected_at_load_time() {
+fn malformed_input_rejected_at_load() {
     // An `inputs` entry missing the required `required` flag must fail
     // the target-axis schema before the typed manifest materialises —
     // confirming the new field flows through `TargetAdapter::resolve`.
@@ -383,7 +383,7 @@ description: Target adapter with a malformed input entry.
 }
 
 #[test]
-fn axis_mismatch_reports_dedicated_diagnostic() {
+fn axis_mismatch_reports_diagnostic() {
     // Adapter file lives under `adapters/sources/<name>/` but declares
     // `axis: target` — should fall through to the source schema and
     // ultimately the axis-mismatch check.

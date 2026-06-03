@@ -1,21 +1,21 @@
-//! Orchestration for `specrun init`. Scaffolds `.specify/`, resolves
+//! Orchestration for `specify init`. Scaffolds `.specify/`, resolves
 //! the requested adapter, writes `project.yaml`, and upserts
-//! `.gitignore` lines. Hub mode additionally mints `registry.yaml`.
+//! `.gitignore` lines. Workspace mode additionally mints `registry.yaml`.
 
 mod adapter_uri;
 mod cache;
 mod git;
-mod hub;
 mod regular;
 mod upgrade;
+mod workspace;
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use adapter_uri::adapter_name_from_value;
 pub use cache::{CodexMeta, codex_cache_root};
 use jiff::Timestamp;
 use specify_error::Error;
+use specify_model::atomic::bytes_write;
 use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
 
 use crate::config::Layout;
@@ -24,51 +24,49 @@ use crate::platform::Platform;
 /// Inputs to [`init`].
 ///
 /// Borrow-shaped so callers (the CLI and tests) can build the struct
-/// without cloning path buffers. All non-scalar fields are `Copy`
-/// references, so the struct threads through the hub / regular
-/// runners by value without a clone.
+/// without cloning path buffers. All fields are `Copy` references or
+/// scalars, so the struct is `Copy` and threads through the workspace /
+/// regular runners by value without a clone.
 #[derive(Debug, Clone, Copy)]
 pub struct InitOptions<'a> {
     /// Root of the project being initialised.
     pub project_dir: &'a Path,
     /// Adapter identifier (bare name like `omnia` or a URL) to fetch
     /// or copy into `.specify/.cache/`. Required for regular init; must
-    /// be `None` when [`InitOptions::hub`] is `true` (hubs do not
-    /// resolve a adapter at init time).
+    /// be `None` when [`InitOptions::workspace`] is `true` (workspace
+    /// roots do not resolve an adapter at init time).
     pub adapter: Option<&'a str>,
     /// Project name; defaults to the project directory name when `None`.
     pub name: Option<&'a str>,
     /// Optional free-text project description (tech stack, architecture,
     /// testing approach).
     pub description: Option<&'a str>,
-    /// When `true`, scaffold a registry-only platform **hub** instead
+    /// When `true`, scaffold a registry-only **workspace** instead
     /// of a regular project: writes `registry.yaml` at the repo root
-    /// and `project.yaml { hub: true }` (with `adapter:` omitted)
-    /// under `.specify/`. Hub init refuses to run when `.specify/`
-    /// already exists so it never clobbers a regular single-repo
-    /// project.
-    pub hub: bool,
+    /// and `project.yaml { workspace: true }` (with `adapter:` omitted)
+    /// under `.specify/`. Workspace init refuses to run when `.specify/`
+    /// already exists so it never clobbers a regular single-repo project.
+    pub workspace: bool,
     /// When `true`, also distribute the framework `core/` pack
     /// (`adapters/shared/rules/core/`) into the project codex cache
     /// alongside the always-distributed `universal/` pack. Default off:
-    /// consumer projects carry only `UNI-*` rules. Ignored for hub init
-    /// (hubs resolve no adapter and so distribute no codex).
+    /// consumer projects carry only `UNI-*` rules. Ignored for workspace
+    /// init (workspaces resolve no adapter and so distribute no codex).
     pub include_framework: bool,
     /// Target platforms to declare in `project.yaml`. Parsed from the
     /// `--platforms` CLI flag (comma-separated). `None` means the
-    /// operator did not pass `--platforms`; `Some(&[])` is impossible
-    /// (the parser rejects empty input). When the resolved target
+    /// operator did not pass `--platforms`. When the resolved target
     /// adapter declares `platforms.required`, this must be `Some`.
     pub platforms: Option<&'a [Platform]>,
     /// When `true`, run the re-entry **upgrade** path instead of a
     /// fresh scaffold: bump `project.yaml.specify_version` to the
     /// running binary's version over an already-populated `.specify/`,
-    /// preserving every other field (including `adapter:` / `hub:`) and
-    /// every operator artifact (`slices/`, `specs/`, `archive/`,
+    /// preserving every other field (including `adapter:` / `workspace:`)
+    /// and every operator artifact (`slices/`, `specs/`, `archive/`,
     /// `registry.yaml`, `.specify/design-system/*`, the adapter cache).
     /// `AGENTS.md` is regenerated only when absent (handled at the
     /// command layer). Mutually exclusive with the `<adapter>`
-    /// positional, `--hub`, `--name`, `--description`,
+    /// positional, `--workspace`, `--name`, `--description`,
     /// `--include-framework`, and `--check-migration` at the clap
     /// surface. `--platforms` is legal alongside `--upgrade`.
     pub upgrade: bool,
@@ -84,8 +82,8 @@ pub struct InitOptions<'a> {
 pub struct InitResult {
     /// Path to the written `project.yaml`.
     pub config_path: PathBuf,
-    /// Resolved adapter name from the adapter root. For hub init
-    /// this is the literal `"hub"` so the JSON envelope stays stable
+    /// Resolved adapter name from the adapter root. For workspace init
+    /// this is the literal `"workspace"` so the JSON envelope stays stable
     /// for downstream consumers.
     pub adapter_name: String,
     /// Whether `.specify/.cache/cache_meta.yaml` exists.
@@ -94,7 +92,7 @@ pub struct InitResult {
     /// `.specify/.cache/codex/` during this run. `false` when the
     /// adapter source tree carries no `adapters/shared/rules/universal/`
     /// pack (the consumer then relies on `--rules-root` or a monorepo
-    /// checkout) and for hub init.
+    /// checkout) and for workspace init.
     pub codex_present: bool,
     /// Directories that were newly created (empty on re-init).
     pub directories_created: Vec<PathBuf>,
@@ -124,22 +122,22 @@ pub struct InitResult {
 /// byte-identical `project.yaml` contents.
 ///
 /// When [`InitOptions::upgrade`] is `true`, dispatches to the private
-/// upgrade runner (the re-entry version bump) ahead of the hub /
-/// regular branch — one runner serves both regular and hub projects
-/// because the preservation logic is identical (preserve every field,
-/// touch only `specify_version`).
+/// upgrade runner (the re-entry version bump) ahead of the workspace /
+/// regular branch — one runner serves both regular and workspace
+/// projects because the preservation logic is identical (preserve every
+/// field, touch only `specify_version`).
 ///
-/// When [`InitOptions::hub`] is `true`, dispatches to the private hub
-/// runner for the platform-hub on-disk shape.
+/// When [`InitOptions::workspace`] is `true`, dispatches to the private
+/// workspace runner for the workspace on-disk shape.
 ///
 /// `now` records the `cache_meta.yaml::fetched_at` stamp; the dispatcher
 /// passes `Timestamp::now` and tests pin a deterministic value.
 ///
 /// # Errors
 ///
-/// Pre-condition: regular (non-hub) init requires
+/// Pre-condition: regular (non-workspace) init requires
 /// [`InitOptions::adapter`] to be set; the CLI dispatcher enforces
-/// the `init-requires-adapter-or-hub` invariant ahead of this call,
+/// the `init-requires-adapter-or-workspace` invariant ahead of this call,
 /// but `init` re-validates as a defence in depth. Bubbles up
 /// filesystem, adapter resolution, and serialisation errors from
 /// the underlying calls.
@@ -147,8 +145,8 @@ pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> 
     if opts.upgrade {
         return upgrade::run(opts);
     }
-    if opts.hub {
-        return hub::run(opts);
+    if opts.workspace {
+        return workspace::run(opts);
     }
     regular::run(opts, now)
 }
@@ -161,7 +159,7 @@ pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> 
 /// mirrors `adapters/shared/rules/universal/` (and, when
 /// `include_framework`, `core/`) into `.specify/.cache/codex/`.
 ///
-/// This is the engine behind `specrun rules sync`. `init` distributes
+/// This is the engine behind `specify rules sync`. `init` distributes
 /// the codex inline via the private `cache::cache_codex` path; this
 /// entry point lets a refresh run stand alone without re-running init.
 ///
@@ -214,26 +212,14 @@ pub(crate) fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
 /// Propagates filesystem errors from creating `.specify/` or writing
 /// the file.
 pub(crate) fn scaffold_wasm_pkg_config(layout: &Layout<'_>) -> Result<bool, Error> {
-    let specify_dir = layout.specify_dir();
-    let path = specify_dir.join(WASM_PKG_CONFIG_FILENAME);
+    let path = layout.specify_dir().join(WASM_PKG_CONFIG_FILENAME);
     if path.exists() {
         return Ok(false);
     }
-    fs::create_dir_all(&specify_dir)?;
-    fs::write(&path, DEFAULT_WASM_PKG_CONFIG)?;
+    bytes_write(&path, DEFAULT_WASM_PKG_CONFIG.as_bytes())?;
     Ok(true)
 }
 
-/// Validate the operator-supplied platforms against the resolved target
-/// adapter's [`PlatformsCapability`]. Three rules, all exit 2:
-///
-/// - `project-platforms-required` — target requires platforms but none passed.
-/// - `project-platforms-must-include-core` — set omits `Platform::Core`.
-/// - `project-platforms-not-allowed` — token outside the manifest's allowed set.
-///
-/// Returns the validated platform set on success. When the target
-/// declares no `platforms` capability, the operator's set (or empty)
-/// passes through unchanged.
 pub(crate) fn validate_platforms(
     operator: Option<&[Platform]>, capability: Option<&crate::adapter::PlatformsCapability>,
     target_name: &str,

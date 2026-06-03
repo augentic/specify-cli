@@ -1,4 +1,4 @@
-//! Clap derive surface for `specrun plan *` and the nested
+//! Clap derive surface for `specify plan *` and the nested
 //! `plan lock *` verbs. The umbrella `cli.rs` re-exports both action
 //! enums.
 
@@ -6,9 +6,9 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Args, Subcommand};
 
-use crate::runtime::cli::{AliasAssign, AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
+use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg};
 
-/// Plan-authoring verbs (`specrun plan *`).
+/// Plan-authoring verbs (`specify plan *`).
 #[derive(Subcommand)]
 pub enum PlanAction {
     /// Scaffold an empty `plan.yaml` at the repo root. Refuses to
@@ -43,7 +43,7 @@ pub enum PlanAction {
         /// `(slice, kind)` tuple. The slice MUST already exist in
         /// the plan being created (unknown names short-circuit with
         /// `plan-authority-override-unknown-slice`); the source key
-        /// is validated at `specrun slice validate` time via the
+        /// is validated at `specify slice validate` time via the
         /// orphan-key check. One
         /// `plan.amend.authority-override` journal event fires per
         /// resolved entry in the same batched append as
@@ -89,7 +89,7 @@ pub enum PlanAction {
     ///
     /// - `--dry-run` is read-only. It reads the surveyed `discovery.md`
     ///   lead inventory and the resolved project topology (`registry.yaml`
-    ///   for a hub, or the sole project synthesised from `project.yaml`)
+    ///   for a workspace, or the sole project synthesised from `project.yaml`)
     ///   and emits the `kind: request` envelope for the agent to group.
     ///   Aborts with `plan-reconcile-empty-catalog` when `discovery.md`
     ///   carries no leads.
@@ -117,7 +117,7 @@ pub enum PlanAction {
     /// - **Plan-level Gate 1 stamp** — `<name>` is the plan name and
     ///   `<target>` is `approved`. Operator-only — `/spec:plan` MUST
     ///   NOT call this verb; skill bodies stop at `pending` and print
-    ///   the literal `specrun plan transition <name> approved`
+    ///   the literal `specify plan transition <name> approved`
     ///   command in their closing hint for the operator to run.
     /// - **Per-entry close** — `<name>` is a plan-entry name and
     ///   `<target>` is `done`. The `/spec:merge` skill is the
@@ -154,7 +154,7 @@ pub enum PlanAction {
     },
 }
 
-/// Flag surface for `specrun plan propose`. The two flags are mutually
+/// Flag surface for `specify plan propose`. The two flags are mutually
 /// exclusive (`--from` `conflicts_with` `--dry-run`); the handler
 /// rejects passing neither with `plan-propose-mode-required`.
 #[derive(Args)]
@@ -172,7 +172,7 @@ pub struct ProposeArgs {
     pub reconcile_platforms: bool,
 }
 
-/// Flag surface for `specrun plan add`. Grouped into one struct so the
+/// Flag surface for `specify plan add`. Grouped into one struct so the
 /// handler threads a single owned value instead of a positional list.
 #[derive(Args)]
 pub struct AddArgs {
@@ -204,14 +204,14 @@ pub struct AddArgs {
     /// and the kind is checked against the closed [`ClaimKind`]
     /// enum at parse time. Repeatable; later occurrences win on
     /// the same `(kind)` key. Orphan source keys are caught by
-    /// `specrun slice validate`. One
+    /// `specify slice validate`. One
     /// `plan.amend.authority-override` event fires per resolved
     /// entry.
     #[arg(long = "authority-override", action = ArgAction::Append)]
     pub authority_override: Vec<AuthorityOverrideKindAssign>,
 }
 
-/// Flag surface for `specrun plan amend`. Grouped into one struct so the
+/// Flag surface for `specify plan amend`. Grouped into one struct so the
 /// handler threads a single owned value instead of a positional list.
 #[derive(Args)]
 pub struct AmendArgs {
@@ -243,7 +243,7 @@ pub struct AmendArgs {
     /// reconciliation; divergence and writer-ownership contract). Accepts `likely`, `accepted`, or
     /// `rejected` — the CLI is the single writer of this field
     /// across every value of the closed enum, so use
-    /// `specrun plan amend <plan> <slice> --divergence likely`
+    /// `specify plan amend <plan> <slice> --divergence likely`
     /// (or `--divergence accepted|rejected`) instead of editing
     /// `plan.yaml` by hand. `none` (absent) is the implicit
     /// default; omit this flag to leave the field unchanged.
@@ -268,7 +268,7 @@ pub struct AmendArgs {
     /// appears in `--clear-authority-override`, the clear
     /// wins (clears apply after sets). Validated against the
     /// closed [`ClaimKind`] enum at parse time; orphan source
-    /// keys are caught by `specrun slice validate`.
+    /// keys are caught by `specify slice validate`.
     #[arg(
         long = "authority-override",
         value_names = ["SLICE", "KIND=KEY"],
@@ -305,23 +305,4 @@ pub struct AmendArgs {
         action = ArgAction::Append,
     )]
     pub clear_authority_overrides: Vec<String>,
-    /// Append an alias to a lead in `<project_dir>/discovery.md`
-    /// (discovery alias contract). Wire form is `<lead>=<alias>`; both
-    /// sides are kebab-case. Repeatable. Mutates `discovery.md`
-    /// (NOT `plan.yaml`); the whole amend is refused at exit 2
-    /// (`discovery-alias-collision`) when the new alias would
-    /// collide with any other lead's `id` or `aliases[]` in
-    /// the same `discovery.md`. Operator additions through this
-    /// flag survive re-survey so long as the source adapter
-    /// keeps emitting the bearing lead's `id` (discovery alias contract).
-    #[arg(long = "add-alias", action = ArgAction::Append)]
-    pub add_alias: Vec<AliasAssign>,
-    /// Remove an alias from a lead in
-    /// `<project_dir>/discovery.md` (discovery alias contract). Wire form is
-    /// `<lead>=<alias>`; idempotent (no-op when the
-    /// alias is already absent). Repeatable. The whole amend
-    /// fails at exit 2 (`discovery-lead-unknown`) when no
-    /// lead has the named id.
-    #[arg(long = "remove-alias", action = ArgAction::Append)]
-    pub remove_alias: Vec<AliasAssign>,
 }

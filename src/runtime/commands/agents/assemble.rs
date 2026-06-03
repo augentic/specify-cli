@@ -7,13 +7,13 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
+use specify_agents::{detect, fingerprint, render};
 use specify_error::{Error, Result};
 use specify_workflow::adapter::{ADAPTER_FILENAME, ResolvedTargetAdapter};
 use specify_workflow::config::{Layout, ProjectConfig};
 use specify_workflow::registry::{Registry, TopologyLock, TopologyProject};
 use specify_workflow::slice::SliceMetadata;
 
-use super::{detect, fingerprint, render};
 use crate::runtime::context::Ctx;
 
 pub(super) struct RenderAssembly {
@@ -29,14 +29,14 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
     let registry = Registry::load(&ctx.project_dir)?;
     collector.add_file_if_present(&layout.registry_path())?;
 
-    let adapter = if ctx.config.hub {
+    let adapter = if ctx.config.workspace {
         None
     } else {
         let resolved = ctx.resolve_target_adapter()?;
         collect_adapter_inputs(&mut collector, &resolved)?;
         Some(adapter_summary(&resolved))
     };
-    let detection = if ctx.config.hub {
+    let detection = if ctx.config.workspace {
         detect::Detection::default()
     } else {
         detect::detect_root_markers(&ctx.project_dir)
@@ -51,7 +51,7 @@ pub(super) fn render_input(ctx: &Ctx) -> Result<RenderAssembly> {
 
     let input = render::Input {
         project_name: ctx.config.name.clone(),
-        is_hub: ctx.config.hub,
+        is_workspace: ctx.config.workspace,
         detection,
         description: ctx.config.description.clone(),
         adapter,
@@ -151,7 +151,7 @@ fn dependency_peers(registry: Option<&Registry>, project_dir: &Path) -> Vec<rend
 
     // RFC-36: peer adapter/description come from the committed
     // `.specify/topology.lock` (each member project's authored
-    // `project.yaml`). A fresh hub may not have synced a cache yet, so
+    // `project.yaml`). A fresh workspace may not have synced a cache yet, so
     // fall back to the registry's optional greenfield seed.
     let lock = TopologyLock::load(&Layout::new(project_dir).topology_lock_path()).ok().flatten();
     let facets: HashMap<&str, &TopologyProject> = lock

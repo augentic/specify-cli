@@ -4,7 +4,7 @@
 //! Lifted from `crates/adapter/src/tests.rs` as part of the workspace split
 //! 2.1 (extract platform-component artefacts out of the adapter
 //! crate). The tests cover `Registry::load`, `validate_shape`,
-//! `validate_shape_hub`, URL classification, and the contract-roles
+//! `validate_shape_workspace`, URL classification, and the contract-roles
 //! invariants (registry-layer invariants).
 
 use std::path::{Path, PathBuf};
@@ -334,7 +334,7 @@ fn registry_project_order_preserved() {
 }
 
 #[test]
-fn multi_project_with_descriptions_validates() {
+fn multi_project_with_descriptions() {
     let yaml = "\
 version: 1
 projects:
@@ -355,7 +355,7 @@ projects:
 }
 
 #[test]
-fn multi_project_missing_description_accepted() {
+fn multi_project_missing_description() {
     // RFC-36: the registry no longer authors descriptions, so the former
     // `registry-description-missing-multi-repo` invariant is retired —
     // descriptions live in each project's `project.yaml`.
@@ -527,19 +527,19 @@ fn rejects_url_with_leading_whitespace() {
     }
 }
 
-// ---------- Registry hub-mode validation (registry hub-mode validation) ----------
+// ---------- Registry workspace validation (registry workspace validation) ----------
 
 #[test]
-fn validate_shape_hub_accepts_empty_projects() {
+fn workspace_accepts_empty_projects() {
     let reg = Registry {
         version: 1,
         projects: vec![],
     };
-    reg.validate_shape_hub().expect("empty hub registry must pass");
+    reg.validate_shape_workspace().expect("empty workspace registry must pass");
 }
 
 #[test]
-fn validate_shape_hub_accepts_non_dot_urls() {
+fn workspace_accepts_non_dot_urls() {
     let reg = Registry {
         version: 1,
         projects: vec![
@@ -559,11 +559,11 @@ fn validate_shape_hub_accepts_non_dot_urls() {
             },
         ],
     };
-    reg.validate_shape_hub().expect("non-`.` urls must pass hub-mode validation");
+    reg.validate_shape_workspace().expect("non-`.` urls must pass workspace validation");
 }
 
 #[test]
-fn validate_shape_hub_rejects_dot_url_entry() {
+fn workspace_rejects_dot_url_entry() {
     let reg = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -574,11 +574,11 @@ fn validate_shape_hub_rejects_dot_url_entry() {
             contracts: None,
         }],
     };
-    let err = reg.validate_shape_hub().expect_err("hub mode must reject url: .");
+    let err = reg.validate_shape_workspace().expect_err("workspace mode must reject url: .");
     match err {
         Error::Diag { code, detail: msg } => {
             assert_eq!(
-                code, "hub-cannot-be-project",
+                code, "workspace-cannot-be-project",
                 "diagnostic must carry the stable code, got: {msg}"
             );
             assert!(msg.contains("platform"), "diagnostic must name the offending project: {msg}");
@@ -589,7 +589,7 @@ fn validate_shape_hub_rejects_dot_url_entry() {
 }
 
 #[test]
-fn validate_shape_hub_rejects_dot_url_multi() {
+fn workspace_rejects_dot_url_multi() {
     let reg = Registry {
         version: 1,
         projects: vec![
@@ -604,15 +604,17 @@ fn validate_shape_hub_rejects_dot_url_multi() {
                 name: "self-as-project".into(),
                 url: ".".into(),
                 adapter: Some("omnia@v1".into()),
-                description: Some("Should be the hub, not an entry".into()),
+                description: Some("Should be the workspace, not an entry".into()),
                 contracts: None,
             },
         ],
     };
-    let err = reg.validate_shape_hub().expect_err("hub mode rejects `.` even alongside peers");
+    let err = reg
+        .validate_shape_workspace()
+        .expect_err("workspace mode rejects `.` even alongside peers");
     match err {
         Error::Diag { code, detail: msg } => {
-            assert_eq!(code, "hub-cannot-be-project", "msg: {msg}");
+            assert_eq!(code, "workspace-cannot-be-project", "msg: {msg}");
             assert!(msg.contains("self-as-project"), "msg should name the offender: {msg}");
         }
         other => panic!("wrong error variant: {other:?}"),
@@ -620,20 +622,20 @@ fn validate_shape_hub_rejects_dot_url_multi() {
 }
 
 #[test]
-fn validate_shape_hub_inherits_base_errors() {
-    // version != 1 is a base-shape error; hub mode must surface it
-    // without ever reaching the `hub-cannot-be-project` check.
+fn workspace_inherits_base_errors() {
+    // version != 1 is a base-shape error; workspace mode must surface it
+    // without ever reaching the `workspace-cannot-be-project` check.
     let reg = Registry {
         version: 2,
         projects: vec![],
     };
-    let err = reg.validate_shape_hub().expect_err("base shape error must propagate through");
+    let err = reg.validate_shape_workspace().expect_err("base shape error must propagate through");
     match err {
         Error::Diag { code, detail: msg } => {
             assert!(msg.contains("version"), "msg: {msg}");
             assert_ne!(
-                code, "hub-cannot-be-project",
-                "must not short-circuit base-shape errors with the hub diagnostic: {msg}"
+                code, "workspace-cannot-be-project",
+                "must not short-circuit base-shape errors with the workspace diagnostic: {msg}"
             );
         }
         other => panic!("wrong error variant: {other:?}"),
@@ -643,7 +645,7 @@ fn validate_shape_hub_inherits_base_errors() {
 #[test]
 fn validate_shape_unchanged_for_dot_url() {
     // The base `validate_shape` continues to accept `url: .` — only
-    // the new hub-only mode rejects it. This pins the additive-API
+    // the new workspace-only mode rejects it. This pins the additive-API
     // contract from the registry design.
     let reg = Registry {
         version: 1,

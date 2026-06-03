@@ -36,7 +36,7 @@ fn with_state_propagates_error_skips_write() {
 }
 
 #[test]
-fn with_state_require_existing_errors_on_absence() {
+fn with_state_missing_errors() {
     let tmp = tempdir().expect("tempdir");
     let layout = Layout::new(tmp.path());
     let err = with_state::<Registry, (), _>(layout, "registry.yaml", |_| Ok(()))
@@ -97,7 +97,7 @@ fn load_round_trips_when_present() {
         rules: BTreeMap::new(),
         tools: Vec::new(),
         platforms: Vec::new(),
-        hub: false,
+        workspace: false,
     };
     fs::create_dir_all(layout.specify_dir()).expect("create .specify");
     yaml_write(&layout.config_path(), &cfg).expect("seed project.yaml");

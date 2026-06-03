@@ -1,7 +1,7 @@
 //! Integration tests for shared codex distribution (RM-07).
 //!
-//! Cover `specrun init` populating the project codex cache, `specrun
-//! rules sync` refreshing it, and `specrun rules export` resolving the
+//! Cover `specify init` populating the project codex cache, `specify
+//! rules sync` refreshing it, and `specify rules export` resolving the
 //! distributed shared rules without a `--rules-root` flag.
 
 use std::fs;
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 
 mod common;
-use common::{copy_dir, omnia_schema_dir, parse_json, specrun};
+use common::{copy_dir, omnia_schema_dir, parse_json, specify_cmd};
 
 /// Write a schema-valid shared rule under
 /// `<root>/adapters/shared/rules/universal/<id>.md`.
@@ -36,12 +36,12 @@ fn synthetic_source(root: &Path) -> PathBuf {
 }
 
 #[test]
-fn init_populates_codex_cache_and_export_resolves_without_rules_root() {
+fn codex_cache_export_no_rules_root() {
     let src = tempdir().unwrap();
     let omnia = synthetic_source(src.path());
     let project = tempdir().unwrap();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.path())
         .args(["init"])
         .arg(&omnia)
@@ -55,7 +55,7 @@ fn init_populates_codex_cache_and_export_resolves_without_rules_root() {
 
     // `rules export` resolves the distributed shared rule with NO
     // `--rules-root`: the resolver picks up the codex cache rung.
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.path())
         .args(["--format", "json", "rules", "export", "--target", "omnia"])
         .assert()
@@ -74,7 +74,7 @@ fn rules_sync_refreshes_codex_cache() {
     let omnia = synthetic_source(src.path());
     let project = tempdir().unwrap();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.path())
         .args(["init"])
         .arg(&omnia)
@@ -86,7 +86,7 @@ fn rules_sync_refreshes_codex_cache() {
     // (which re-resolves the recorded adapter source).
     fs::remove_dir_all(project.path().join(".specify/.cache/codex")).expect("rm codex cache");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.path())
         .args(["--format", "json", "rules", "sync"])
         .assert()
@@ -102,16 +102,16 @@ fn rules_sync_refreshes_codex_cache() {
 #[test]
 fn rules_sync_on_hub_without_source_errors() {
     let tmp = tempdir().unwrap();
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
-        .args(["init", "--name", "platform-hub", "--hub"])
+        .args(["init", "--name", "platform-workspace", "--workspace"])
         .assert()
         .success();
 
-    let assert = specrun().current_dir(tmp.path()).args(["rules", "sync"]).assert().failure();
+    let assert = specify_cmd().current_dir(tmp.path()).args(["rules", "sync"]).assert().failure();
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
         stderr.contains("declares no adapter") || stderr.contains("rules-sync-no-adapter"),
-        "hub `rules sync` must explain the missing adapter, got stderr:\n{stderr}"
+        "workspace `rules sync` must explain the missing adapter, got stderr:\n{stderr}"
     );
 }

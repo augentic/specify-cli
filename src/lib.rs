@@ -1,6 +1,5 @@
-//! Specify CLI library — hosts the `specrun` and `specdev` dispatch trees.
+//! Specify CLI library — hosts the `specify` dispatch tree.
 
-pub mod authoring;
 mod output;
 pub mod runtime;
 

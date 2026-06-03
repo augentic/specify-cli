@@ -53,6 +53,7 @@ fn empty_model_round_trips() {
         ignore_directives: vec![],
         briefs: vec![],
         agent_teams: vec![],
+        fenced_blocks: vec![],
     };
 
     let value = serde_json::to_value(&model).expect("serialise empty model");
@@ -187,6 +188,7 @@ fn populated_model_round_trips() {
             resolved_target: Some("docs/reference/review-team-protocol.md".into()),
             target_sha256: Some("0".repeat(64)),
         }],
+        fenced_blocks: vec![],
     };
 
     let value = serde_json::to_value(&model).expect("serialise populated model");

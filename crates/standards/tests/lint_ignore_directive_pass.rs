@@ -132,7 +132,7 @@ fn validation_rule(rule_id: &str) -> ResolvedRule {
         trigger: format!("Trigger for {rule_id}"),
         lint_mode: None,
         applicability: None,
-        deterministic_hints: None,
+        rule_hints: None,
         references: None,
         origin: Origin::Shared,
         path_root: PathRoot::RulesRoot,
@@ -171,7 +171,7 @@ fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
     let runner: &dyn ToolRunner = &NoToolRunner;
     let outcome = evaluate(
         &url_rule,
-        url_rule.deterministic_hints.as_deref().unwrap_or_default(),
+        url_rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -382,7 +382,7 @@ fn scenario_1_no_directives_stable_fp() {
 /// not a substring check, so the snapshot reviewer is the source of
 /// truth.
 #[test]
-fn scenario_2_directive_match_flips_finding_to_ignored() {
+fn scenario_2_match_flips_to_ignored() {
     let scenario = Scenario {
         fixture_body: URL_WITH_DIRECTIVE_FIXTURE_BODY,
         primary_rule_id: "UNI-014",
@@ -450,7 +450,7 @@ fn scenario_3_false_positive_prefix() {
 /// `UNI-022`. The synthetic carries the rule's authored
 /// severity (`important`).
 #[test]
-fn scenario_4_missing_rationale_mints_uni_022_synthetic() {
+fn scenario_4_missing_rationale_uni_022() {
     let scenario = Scenario {
         fixture_body: URL_WITH_UNRATIONED_DIRECTIVE_FIXTURE_BODY,
         primary_rule_id: "UNI-014",
@@ -480,7 +480,7 @@ fn scenario_4_missing_rationale_mints_uni_022_synthetic() {
 /// captured verbatim; the validation pass still mints `UNI-022`
 /// because the rationale is below the 16-character floor.
 #[test]
-fn scenario_5_short_rationale_mints_uni_022_synthetic() {
+fn scenario_5_short_rationale_uni_022() {
     let scenario = Scenario {
         fixture_body: URL_WITH_SHORT_DIRECTIVE_FIXTURE_BODY,
         primary_rule_id: "UNI-014",
@@ -528,7 +528,7 @@ fn scenario_5_short_rationale_mints_uni_022_synthetic() {
 /// (no match) and the directive pass mints a `UNI-023` synthetic
 /// per the ignore-directive scope rules.
 #[test]
-fn scenario_6_orphan_directive_mints_uni_023_synthetic() {
+fn scenario_6_orphan_mints_uni_023() {
     let scenario = Scenario {
         fixture_body: URL_WITH_ORPHAN_DIRECTIVE_FIXTURE_BODY,
         primary_rule_id: "UNI-014",

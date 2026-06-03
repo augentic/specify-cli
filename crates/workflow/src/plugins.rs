@@ -1,6 +1,6 @@
 //! Cursor plugin cache inspection and invalidation (RFC-30 §D2, Wave D).
 //!
-//! Owns the deterministic primitives the `specrun plugins {doctor,
+//! Owns the deterministic primitives the `specify plugins {doctor,
 //! refresh}` commands drive: marketplace discovery, `$CURSOR_HOME`
 //! detection, the cache scan under
 //! `$CURSOR_HOME/plugins/cache/<name>/<plugin>/<sha>/`, expected-sha
@@ -21,7 +21,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -83,7 +82,7 @@ struct RawMetadata {
     plugin_root: String,
 }
 
-/// Per-plugin drift classification (RFC §"specrun plugins doctor").
+/// Per-plugin drift classification (RFC §"specify plugins doctor").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PluginStatus {
@@ -162,7 +161,7 @@ impl Summary {
     }
 }
 
-/// Wire-stable `specrun plugins doctor` envelope (text + JSON). Change
+/// Wire-stable `specify plugins doctor` envelope (text + JSON). Change
 /// G's `/spec:init` skill parses this from `--format json`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -170,10 +169,10 @@ pub struct DoctorReport {
     /// Schema marker; `1` for this shape.
     pub version: u32,
     /// Absolute path to the resolved marketplace file.
-    pub marketplace: String,
+    pub marketplace: PathBuf,
     /// Absolute path to the cache root
     /// (`$CURSOR_HOME/plugins/cache/<name>`).
-    pub cache_root: String,
+    pub cache_root: PathBuf,
     /// Per-plugin rows: declared plugins in manifest order, then any
     /// `extra` cache entries sorted by name.
     pub plugins: Vec<PluginReport>,
@@ -181,7 +180,7 @@ pub struct DoctorReport {
     pub summary: Summary,
 }
 
-/// Outcome of a `specrun plugins refresh`.
+/// Outcome of a `specify plugins refresh`.
 ///
 /// The deleted cache scope and the marketplace that scoped it. Drives
 /// the `plugins.refreshed` journal event and the command's confirmation
@@ -189,11 +188,11 @@ pub struct DoctorReport {
 #[derive(Debug, Clone)]
 pub struct RefreshOutcome {
     /// Absolute path to the resolved marketplace file.
-    pub marketplace: String,
+    pub marketplace: PathBuf,
     /// Absolute path to the cache root that was (or would be) deleted.
-    pub cache_root: String,
+    pub cache_root: PathBuf,
     /// Cache directories actually removed; empty when nothing existed.
-    pub deleted_paths: Vec<String>,
+    pub deleted_paths: Vec<PathBuf>,
 }
 
 /// Resolve the expected sha for a marketplace plugin.
@@ -218,17 +217,14 @@ pub struct GitCli;
 
 impl ShaResolver for GitCli {
     fn head(&self, repo_dir: &Path) -> Option<String> {
-        let output = Command::new("git")
-            .arg("-C")
-            .arg(repo_dir)
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .ok()?;
+        let output =
+            crate::cmd::git(&crate::cmd::real_cmd, Some(repo_dir), ["rev-parse", "HEAD"]).ok()?;
         first_sha(&output)
     }
 
     fn ls_remote(&self, url: &str, git_ref: &str) -> Option<String> {
-        let output = Command::new("git").args(["ls-remote", url, git_ref]).output().ok()?;
+        let output =
+            crate::cmd::git(&crate::cmd::real_cmd, None, ["ls-remote", url, git_ref]).ok()?;
         first_sha(&output)
     }
 }
@@ -375,7 +371,7 @@ fn home_dir() -> Option<PathBuf> {
 
 /// Classify a plugin from its cached and expected shas.
 ///
-/// The pure drift kernel (RFC §"specrun plugins doctor"); `Extra` is
+/// The pure drift kernel (RFC §"specify plugins doctor"); `Extra` is
 /// decided separately by [`build_report`] (a cache dir not declared by
 /// the marketplace).
 #[must_use]
@@ -496,8 +492,8 @@ pub fn build_report(
     let summary = Summary::tally(&plugins);
     Ok(DoctorReport {
         version: 1,
-        marketplace: marketplace_path.display().to_string(),
-        cache_root: cache_root.display().to_string(),
+        marketplace: marketplace_path.to_path_buf(),
+        cache_root: cache_root.to_path_buf(),
         plugins,
         summary,
     })
@@ -513,13 +509,13 @@ pub fn build_report(
 pub fn refresh(marketplace_path: &Path, cache_root: &Path) -> Result<RefreshOutcome> {
     let mut deleted_paths = Vec::new();
     match fs::remove_dir_all(cache_root) {
-        Ok(()) => deleted_paths.push(cache_root.display().to_string()),
+        Ok(()) => deleted_paths.push(cache_root.to_path_buf()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
         Err(err) => return Err(Error::Io(err)),
     }
     Ok(RefreshOutcome {
-        marketplace: marketplace_path.display().to_string(),
-        cache_root: cache_root.display().to_string(),
+        marketplace: marketplace_path.to_path_buf(),
+        cache_root: cache_root.to_path_buf(),
         deleted_paths,
     })
 }
@@ -710,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn load_marketplace_rejects_schema_violation() {
+    fn marketplace_rejects_schema_violation() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("marketplace.json");
         fs::write(&path, r#"{ "name": "augentic" }"#).unwrap();

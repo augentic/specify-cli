@@ -1,7 +1,9 @@
 use specify_diagnostics::{
-    Artifact, Confidence, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
-    Severity, fingerprint as compute_fingerprint,
+    Artifact, Confidence, DiagnosticKind, DiagnosticReport, DiagnosticReportVersion,
+    DiagnosticSource, DiagnosticSummary, FindingEvidence, FindingLocation, Severity,
+    fingerprint as compute_fingerprint,
 };
+use specify_error::Error;
 
 use super::*;
 use crate::rules::{Origin, PathRoot};
@@ -66,7 +68,7 @@ fn rule(rule_id: &str, severity: Severity) -> ResolvedRule {
         trigger: format!("Trigger for {rule_id}"),
         lint_mode: None,
         applicability: None,
-        deterministic_hints: None,
+        rule_hints: None,
         references: None,
         origin: Origin::Shared,
         path_root: PathRoot::RulesRoot,
@@ -133,7 +135,7 @@ fn false_positive_prefix_promotes_status() {
 /// Test 3a: directive with `rationale = None` mints UNI-022 when
 /// the rule is resolved.
 #[test]
-fn missing_rationale_mints_uni_022_when_resolved() {
+fn mints_uni_022_when_resolved() {
     let mut findings = vec![finding("UNI-014", "src/lib.rs", 18)];
     let dirs = vec![directive("src/lib.rs", 17, "UNI-014", 18, None)];
     let outcome = apply(&mut findings, &dirs, &validation_rules(), 100);
@@ -160,7 +162,7 @@ fn missing_rationale_mints_uni_022_when_resolved() {
 /// tree is absent). The match-and-demote step still runs against
 /// the matched finding.
 #[test]
-fn missing_rationale_silent_when_uni_022_absent() {
+fn silent_when_uni_022_absent() {
     let mut findings = vec![finding("UNI-014", "src/lib.rs", 18)];
     let dirs = vec![directive("src/lib.rs", 17, "UNI-014", 18, None)];
     // Only UNI-023 is resolved; UNI-022 absent.
@@ -328,4 +330,67 @@ fn blocking_present_respects_status() {
 
     // Empty: no blocking.
     assert!(!blocking_findings_present(&[]));
+}
+
+fn report(findings: Vec<Diagnostic>) -> DiagnosticReport {
+    DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
+        findings,
+    }
+}
+
+fn blocking_finding(severity: Severity, status: Option<FindingStatus>) -> Diagnostic {
+    let mut f = finding("UNI-014", "src/lib.rs", 1);
+    f.severity = severity;
+    f.status = status;
+    f
+}
+
+/// The `Result`-returning gate wraps [`blocking_findings_present`]:
+/// non-blocking sets pass; an open critical/important set returns
+/// `Error::Validation { review-findings-present }`.
+#[test]
+fn deny_blocking_maps_to_validation() {
+    // Empty / ignored / false-positive / sub-threshold → Ok.
+    deny_blocking_findings(&report(vec![])).expect("empty envelope must exit 0");
+    deny_blocking_findings(&report(vec![blocking_finding(
+        Severity::Critical,
+        Some(FindingStatus::Ignored),
+    )]))
+    .expect("ignored critical must not block");
+    deny_blocking_findings(&report(vec![blocking_finding(
+        Severity::Important,
+        Some(FindingStatus::FalsePositive),
+    )]))
+    .expect("false-positive important must not block");
+    deny_blocking_findings(&report(vec![blocking_finding(
+        Severity::Suggestion,
+        Some(FindingStatus::Open),
+    )]))
+    .expect("suggestion severity must not block");
+
+    // Open critical → Err with the stable code.
+    let err = deny_blocking_findings(&report(vec![blocking_finding(
+        Severity::Critical,
+        Some(FindingStatus::Open),
+    )]))
+    .expect_err("open critical blocks");
+    match err {
+        Error::Validation { code, .. } => assert_eq!(code, "review-findings-present"),
+        other => panic!("expected Validation, got {other:?}"),
+    }
+
+    // Unset status + important → treated as open → Err.
+    let err = deny_blocking_findings(&report(vec![blocking_finding(Severity::Important, None)]))
+        .expect_err("unset status treated as open");
+    assert!(matches!(err, Error::Validation { .. }));
+
+    // Mixed: one open important hidden among non-blocking → Err.
+    let mixed = vec![
+        blocking_finding(Severity::Critical, Some(FindingStatus::Ignored)),
+        blocking_finding(Severity::Important, Some(FindingStatus::FalsePositive)),
+        blocking_finding(Severity::Important, Some(FindingStatus::Open)),
+    ];
+    assert!(matches!(deny_blocking_findings(&report(mixed)), Err(Error::Validation { .. })));
 }

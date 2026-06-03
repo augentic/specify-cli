@@ -1,4 +1,4 @@
-//! Response DTOs and row builders for `specrun tool *` handlers.
+//! Response DTOs and row builders for `specify tool *` handlers.
 
 use std::io::Write;
 
@@ -83,17 +83,21 @@ pub(super) struct FetchBody {
 pub(super) fn write_fetch_text(w: &mut dyn Write, body: &FetchBody) -> std::io::Result<()> {
     if body.tools.is_empty() {
         writeln!(w, "No declared tools to fetch.")?;
-        return Ok(());
+    } else {
+        for row in &body.tools {
+            let action = if row.fetched { "fetched" } else { "cached" };
+            writeln!(
+                w,
+                "{action}: {} {} [{}:{}] {}",
+                row.row.name,
+                row.row.version,
+                row.row.scope,
+                row.row.scope_detail,
+                row.row.cached_path
+            )?;
+        }
     }
-    for row in &body.tools {
-        let action = if row.fetched { "fetched" } else { "cached" };
-        writeln!(
-            w,
-            "{action}: {} {} [{}:{}] {}",
-            row.row.name, row.row.version, row.row.scope, row.row.scope_detail, row.row.cached_path
-        )?;
-    }
-    Ok(())
+    write_warnings(w, &body.warnings)
 }
 
 #[derive(Serialize)]
@@ -111,6 +115,17 @@ pub(super) fn write_gc_text(w: &mut dyn Write, body: &GcBody) -> std::io::Result
     )?;
     for path in &body.removed {
         writeln!(w, "  {path}")?;
+    }
+    write_warnings(w, &body.warnings)
+}
+
+/// Render the `tool-name-collision` warning rows to the text writer.
+/// JSON carries the same rows on each body's `warnings` field, so both
+/// formats surface the notice through the renderer rather than a
+/// format-branched stderr side channel.
+pub(super) fn write_warnings(w: &mut dyn Write, warnings: &[WarningRow]) -> std::io::Result<()> {
+    for warning in warnings {
+        writeln!(w, "warning: {}: {}", warning.code, warning.message)?;
     }
     Ok(())
 }

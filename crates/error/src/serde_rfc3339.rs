@@ -43,7 +43,7 @@ mod tests {
     }
 
     #[test]
-    fn serialises_to_canonical_z_suffixed_second_precision() {
+    fn serialises_canonical_z_second() {
         let doc = Stamped {
             at: "2026-06-02T01:02:03Z".parse().expect("parse"),
         };
@@ -52,7 +52,7 @@ mod tests {
     }
 
     #[test]
-    fn truncates_sub_second_precision_on_serialise() {
+    fn truncates_sub_second() {
         let doc = Stamped {
             at: "2026-06-02T01:02:03.987654Z".parse().expect("parse"),
         };
@@ -61,7 +61,7 @@ mod tests {
     }
 
     #[test]
-    fn deserialises_z_and_offset_suffixes_to_the_same_instant() {
+    fn z_and_offset_same_instant() {
         let z: Stamped =
             serde_json::from_str(r#"{"at":"2026-06-02T01:02:03Z"}"#).expect("parse Z form");
         let offset: Stamped = serde_json::from_str(r#"{"at":"2026-06-02T01:02:03+00:00"}"#)

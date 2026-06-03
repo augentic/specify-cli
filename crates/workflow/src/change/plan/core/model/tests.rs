@@ -78,14 +78,14 @@ fn lifecycle_round_trips() {
 #[test]
 fn serializes_kebab_case() {
     let plan = Plan {
-        name: "demo".to_string(),
+        name: "demo".into(),
         lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
-            name: "entry-one".to_string(),
+            name: "entry-one".into(),
             project: Some("default".into()),
             status: Status::InProgress,
-            depends_on: vec!["entry-zero".to_string()],
+            depends_on: vec!["entry-zero".into()],
             sources: vec![],
             context: vec![],
             description: None,
@@ -228,10 +228,10 @@ slices:
 ";
     let plan: Plan = serde_saphyr::from_str(yaml).expect("parse");
     let bare = &plan.entries[0].sources[0];
-    assert!(bare.is_bare(), "expected bare shorthand, got {bare:?}");
+    assert!(bare.lead.is_none(), "expected bare shorthand, got {bare:?}");
     assert_eq!(bare.source(), "intent");
     let structured = &plan.entries[1].sources[0];
-    assert!(!structured.is_bare(), "expected structured form, got {structured:?}");
+    assert!(structured.lead.is_some(), "expected structured form, got {structured:?}");
     assert_eq!(structured.source(), "docs");
     assert_eq!(structured.lead("ignored-slice-name"), "account-pwd-reset");
     let rendered = serde_saphyr::to_string(&plan).expect("serialize");
@@ -244,12 +244,12 @@ fn binding_normalises_shorthand() {
     let bare = SliceSourceBinding::bare("intent");
     assert_eq!(bare.source(), "intent");
     assert_eq!(bare.lead("add-search-filter"), "add-search-filter");
-    assert!(bare.is_bare());
+    assert!(bare.lead.is_none());
 
     let structured = SliceSourceBinding::structured("docs", "user-reg");
     assert_eq!(structured.source(), "docs");
     assert_eq!(structured.lead("ignored-slice-name"), "user-reg");
-    assert!(!structured.is_bare());
+    assert!(structured.lead.is_some());
 }
 
 #[test]
@@ -409,37 +409,40 @@ fn empty_plan_is_drained_vacuously() {
     assert!(!plan.is_executing(), "empty plan is not executing");
 }
 
-/// REVIEW.md A18: a plan-validate [`Finding`] projects onto the canonical
-/// diagnostic currency with a stable `rule_id`, the entry carried as
-/// `slice`, the severity mapped, and a fingerprint that validates.
+/// A2/A13: plan validation findings are built directly on the neutral
+/// [`specify_diagnostics::Diagnostic`] currency via `plan_finding`. The
+/// stable check code becomes the `rule_id`, the offending entry is
+/// carried as `slice`, the artifact is `Plan`, and the fingerprint
+/// validates.
 #[test]
-fn finding_projects_onto_canonical_diagnostic() {
-    let finding = Finding {
-        level: Severity::Error,
-        code: "plan.cycle",
-        message: "dependency cycle: a -> b -> a".to_string(),
-        entry: Some("checkout".to_string()),
-    };
-    let diagnostic = specify_diagnostics::Diagnostic::from(&finding);
+fn plan_finding_builds_canonical_diagnostic() {
+    let diagnostic = crate::change::plan::core::plan_finding(
+        "plan.cycle",
+        specify_diagnostics::Severity::Important,
+        "dependency cycle: a -> b -> a",
+        Some("checkout".to_string()),
+    );
 
     assert_eq!(diagnostic.rule_id.as_deref(), Some("plan.cycle"));
     assert_eq!(diagnostic.severity, specify_diagnostics::Severity::Important);
     assert_eq!(diagnostic.slice.as_deref(), Some("checkout"));
     assert_eq!(diagnostic.artifact, specify_diagnostics::Artifact::Plan);
-    specify_diagnostics::validate_diagnostic(&diagnostic).expect("projected diagnostic is valid");
+    assert_eq!(diagnostic.impact, "dependency cycle: a -> b -> a");
+    specify_diagnostics::validate_diagnostic(&diagnostic).expect("plan finding is valid");
     assert!(specify_diagnostics::verify_fingerprint(&diagnostic), "fingerprint covers slice");
 }
 
-/// A non-blocking `Warning` finding maps to `Suggestion`.
+/// A non-blocking `Suggestion` finding never gates per
+/// [`specify_diagnostics::blocking`].
 #[test]
-fn warning_finding_maps_to_suggestion() {
-    let finding = Finding {
-        level: Severity::Warning,
-        code: "plan.orphan-source",
-        message: "source `docs` is unreferenced".to_string(),
-        entry: None,
-    };
-    let diagnostic = specify_diagnostics::Diagnostic::from(&finding);
+fn plan_finding_suggestion_is_non_blocking() {
+    let diagnostic = crate::change::plan::core::plan_finding(
+        "plan.orphan-source",
+        specify_diagnostics::Severity::Suggestion,
+        "source `docs` is unreferenced",
+        None,
+    );
     assert_eq!(diagnostic.severity, specify_diagnostics::Severity::Suggestion);
     assert!(diagnostic.slice.is_none());
+    assert!(!specify_diagnostics::blocking(&diagnostic));
 }

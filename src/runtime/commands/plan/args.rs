@@ -19,11 +19,6 @@ use crate::runtime::cli::{AuthorityOverrideKindAssign, SliceSourceArg, SourceArg
 /// collapse them into the structured [`SourceBinding`] map
 /// `Plan::init` expects. Refuses duplicate keys with the stable
 /// `plan-source-duplicate-key` diagnostic.
-///
-/// Wire grammar (parsed in [`crate::runtime::cli::SourceArg::from_str`]):
-///
-/// - `<key>=<adapter>:<path>` → `SourceBinding { adapter, path: Some(_), value: None }`.
-/// - `<key>=<adapter>:value:<literal>` → `SourceBinding { adapter, path: None, value: Some(_) }`.
 pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, SourceBinding>> {
     let mut map: BTreeMap<String, SourceBinding> = BTreeMap::new();
     for SourceArg {
@@ -49,14 +44,11 @@ pub fn build_source_map(sources: Vec<SourceArg>) -> Result<BTreeMap<String, Sour
 /// shorthand when the lead id equals the slice's name
 /// (workflow §`Slice.sources`).
 ///
-/// discovery alias contract — when `discovery` is `Some(_)`, the operator-supplied
-/// lead value is resolved against the loaded `discovery.md` so
-/// aliases rewrite to the canonical `id` before persisting. Unknown
-/// tokens or alias collisions surface as `Error::validation_failed`
-/// (exit 2) with the discriminants `discovery-lead-unknown` and
-/// `discovery-alias-collision` respectively. With `discovery` `None`
-/// (no `discovery.md` on disk) the discovery-absent passthrough
-/// applies — the supplied value is used verbatim.
+/// When `discovery` is `Some(_)`, the operator-supplied lead value
+/// must match a canonical `lead` id in `discovery.md`. Unknown tokens
+/// surface as `Error::validation_failed` (exit 2) with the discriminant
+/// `discovery-lead-unknown`. With `discovery` `None` (no `discovery.md`
+/// on disk) the supplied value is used verbatim.
 pub fn bindings_from_args(
     args: Vec<SliceSourceArg>, slice_name: &str, discovery: Option<&Discovery>,
 ) -> Result<Vec<SliceSourceBinding>> {
@@ -77,12 +69,11 @@ fn binding_from_arg(
     })
 }
 
-/// Rewrite a `--sources <key>=<value>` lead token to the
-/// canonical `id` discovered in `discovery.md`.
+/// Rewrite a `--sources <key>=<value>` lead token to the canonical
+/// `lead` id discovered in `discovery.md`.
 ///
-/// When `discovery` is `None` (no `discovery.md` on disk), the
-/// token round-trips unchanged — the legacy path predates
-/// discovery alias contract and many tests operate without a discovery file.
+/// When `discovery` is `None` (no `discovery.md` on disk), the token
+/// round-trips unchanged.
 fn resolve_lead_token(token: &str, discovery: Option<&Discovery>) -> Result<String> {
     let Some(discovery) = discovery else {
         return Ok(token.to_string());
@@ -93,17 +84,8 @@ fn resolve_lead_token(token: &str, discovery: Option<&Discovery>) -> Result<Stri
             "discovery-lead-unknown",
             "--sources <key>=<value> must resolve to a lead in discovery.md",
             format!(
-                "no lead in discovery.md has an id or alias matching `{token}`; inspect \
-                 discovery.md directly to review the inventory"
-            ),
-        )),
-        Err(DiscoveryResolveError::Collision { token, leads }) => Err(Error::validation_failed(
-            "discovery-alias-collision",
-            "lead id and aliases share a single namespace per discovery.md",
-            format!(
-                "`{token}` resolves to multiple leads in discovery.md: {}; run \
-                     `specrun slice validate` to enumerate every collision",
-                leads.join(", ")
+                "no lead in discovery.md has an id matching `{token}`; inspect discovery.md \
+                 directly to review the inventory"
             ),
         )),
     }

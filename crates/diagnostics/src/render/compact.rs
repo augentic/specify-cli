@@ -78,7 +78,7 @@ mod tests {
     }
 
     #[test]
-    fn finding_renders_tab_separated_fields_with_location() {
+    fn renders_tab_separated_fields() {
         let out = render(Format::Compact, &report(vec![sample_diagnostic()])).expect("renders");
         assert_eq!(
             out,
@@ -87,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_rule_id_and_location_collapse_to_dashes() {
+    fn missing_id_and_location_dashes() {
         let mut finding = sample_diagnostic();
         finding.rule_id = None;
         finding.location = None;
@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_location_fills_missing_coordinates_with_dashes() {
+    fn partial_location_fills_dashes() {
         let mut finding = sample_diagnostic();
         finding.location = Some(FindingLocation {
             path: "a/b.rs".into(),
@@ -109,5 +109,26 @@ mod tests {
         });
         let out = render(Format::Compact, &report(vec![finding])).expect("renders");
         assert!(out.contains("a/b.rs:7:-\t"), "column-less location uses dash, got {out:?}");
+    }
+
+    /// Tab separation means a comma in the title needs no escaping — it
+    /// survives verbatim in the title field.
+    #[test]
+    fn comma_in_title_is_not_escaped() {
+        let mut finding = sample_diagnostic();
+        finding.title = "Bundle digest, with comma, exceeds policy".into();
+        let out = render(Format::Compact, &report(vec![finding])).expect("renders");
+        assert!(
+            out.contains("\tBundle digest, with comma, exceeds policy\n"),
+            "comma survives unescaped, got {out:?}"
+        );
+    }
+
+    /// One tab-separated line per finding, terminated by a newline.
+    #[test]
+    fn one_line_per_finding() {
+        let out = render(Format::Compact, &report(vec![sample_diagnostic(), sample_diagnostic()]))
+            .expect("renders");
+        assert_eq!(out.lines().count(), 2, "one line per finding");
     }
 }

@@ -42,7 +42,7 @@ isolation: fresh-project
 ";
 
 #[test]
-fn schema_violation_on_missing_required_field() {
+fn schema_violation_missing_field() {
     let tmp = TempDir::new().expect("tempdir");
     let root = scaffold_framework_root(tmp.path());
     write_scenario(
@@ -85,7 +85,7 @@ fn stages_not_contiguous_emits_finding() {
 }
 
 #[test]
-fn artifact_path_unsafe_rejects_parent_escape() {
+fn path_unsafe_rejects_parent_escape() {
     let tmp = TempDir::new().expect("tempdir");
     let root = scaffold_framework_root(tmp.path());
     write_scenario(

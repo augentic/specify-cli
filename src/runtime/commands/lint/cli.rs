@@ -1,10 +1,10 @@
-//! Clap derive surface for `specrun lint *`. Mirrors the
+//! Clap derive surface for `specify lint *`. Mirrors the
 //! `RulesAction` shape in `src/runtime/commands/rules/cli.rs`.
 //!
 //! The per-subcommand `--format` flag is intentionally distinct from
 //! the global `Cli::format` flag: global `--format` toggles JSON vs
 //! text for envelope-emitting handlers and the failure path, while
-//! `specrun lint --format` selects the closed the diagnostics formatter set set
+//! `specify lint --format` selects the closed the diagnostics formatter set set
 //! (`{ json, pretty, github, compact }`). The handler reads its own
 //! per-subcommand flag and ignores the global one for the success
 //! body.
@@ -20,9 +20,91 @@ pub enum LintAction {
     /// evaluate deterministic hints, and emit the structured review
     /// envelope.
     Run(RunArgs),
+    /// Framework authoring lint over the `augentic/specify` repo.
+    ///
+    /// Composes the imperative `Check` predicates with the declarative
+    /// deterministic-hint interpreter and emits one structured
+    /// envelope per run. Defaults `--framework-root` to `.`, hard-codes
+    /// the framework scan profile, and always evaluates `CORE-*` rules.
+    /// Contributor surface — operators reach for `lint run`.
+    Framework(FrameworkArgs),
 }
 
-/// Flag surface for `specrun lint run`. Grouped into one struct so the
+/// Flag surface for `specify lint framework`. Mirrors [`RunArgs`]
+/// modulo these pinned defaults:
+///
+/// - `--framework-root` defaults to `.` (the framework repo itself
+///   carries the codex tree); also reachable as the legacy
+///   `--rules-root` alias.
+/// - the scan profile is hard-coded to `framework`; no flag.
+/// - `--target` is optional and defaults to the sentinel `none`
+///   string (framework scans don't have a single target adapter).
+/// - `--include-core` does not exist — `CORE-*` rules are always
+///   visible to the framework run.
+#[derive(Args)]
+pub struct FrameworkArgs {
+    /// Framework repo root used as both rules-root and scan-root.
+    /// Defaults to the current directory so a contributor in a
+    /// fresh clone can run bare `specify lint framework`.
+    #[arg(long, env = "SPECIFY_FRAMEWORK_ROOT", alias = "rules-root", default_value = ".")]
+    pub framework_root: PathBuf,
+
+    /// Target-adapter name (kebab, optionally `<name>@v<major>`).
+    /// Defaults to the literal `none` because framework scans rarely
+    /// scope to one target adapter; when supplied, narrows the
+    /// applicability filter the same way `lint run --target` does.
+    #[arg(long, default_value = "none")]
+    pub target: String,
+
+    /// Source-adapter name; repeatable. Each occurrence contributes
+    /// one source overlay to the resolved codex.
+    #[arg(long = "source", value_name = "NAME")]
+    pub sources: Vec<String>,
+
+    /// Restrict the declarative pass to specific rule ids (debug
+    /// surface: `specify lint framework --rule CORE-001`).
+    /// Repeatable; empty means "evaluate every applicable rule".
+    /// Does not filter the imperative pass — authoring rule ids
+    /// (`rules.schema-violation`, `skill.unknown-tool`, …) do not
+    /// match the closed codex `rule-id` regex.
+    #[arg(long = "rule", value_name = "RULE_ID")]
+    pub rules: Vec<String>,
+
+    /// Restrict the scan to specific artifact paths (lint scope
+    /// resolution). Repeatable. Project-relative to `framework-root`.
+    #[arg(long = "artifact", value_name = "PATH")]
+    pub artifacts: Vec<PathBuf>,
+
+    /// Lowercase language token; repeatable. Passed to both
+    /// `build_resolved_rules` and the framework indexer.
+    #[arg(long = "language", value_name = "TOKEN")]
+    pub languages: Vec<String>,
+
+    /// Emit the `WorkspaceModel` only (debug). Validates the model
+    /// against `WORKSPACE_MODEL_JSON_SCHEMA` before stdout emit;
+    /// skips hint evaluation entirely.
+    #[arg(long)]
+    pub dump_model: bool,
+
+    /// Upgrade the reserved-hint diagnostics summary finding's
+    /// severity from `optional` to `important`, contributing to a
+    /// non-zero exit code per the lint exit map.
+    #[arg(long)]
+    pub strict_hints: bool,
+
+    /// Output format. Closed Phase 2 set per the diagnostics
+    /// formatter set: `{ json, pretty, github, compact }`. When
+    /// unset, derived from the global `--format` flag: `json` →
+    /// `Json`, `text` → `Pretty`.
+    ///
+    /// Spelled `--output-format` rather than `--format` to avoid a
+    /// clap conflict with the global `--format` flag on `Cli`
+    /// (text vs JSON for the failure envelope).
+    #[arg(long, value_enum)]
+    pub output_format: Option<LintFormat>,
+}
+
+/// Flag surface for `specify lint run`. Grouped into one struct so the
 /// handler threads a single reference instead of a positional argument
 /// list.
 #[derive(Args)]
@@ -31,7 +113,7 @@ pub struct RunArgs {
     /// order (rules-root resolution): this flag / `$RULES_ROOT` env →
     /// monorepo `adapters/shared/rules/universal/` under the project →
     /// distributed codex cache `.specify/.cache/codex/` (populated by
-    /// `specrun init` / `specrun rules sync`). Missing every rung exits
+    /// `specify init` / `specify rules sync`). Missing every rung exits
     /// 2 with `rules-root-required`.
     #[arg(long, env = "RULES_ROOT")]
     pub rules_root: Option<PathBuf>,
@@ -57,7 +139,7 @@ pub struct RunArgs {
     pub artifacts: Vec<PathBuf>,
 
     /// Lowercase language token; repeatable. Passed to both
-    /// `specrun rules export` and the consumer indexer.
+    /// `specify rules export` and the consumer indexer.
     #[arg(long = "language", value_name = "TOKEN")]
     pub languages: Vec<String>,
 

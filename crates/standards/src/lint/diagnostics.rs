@@ -180,3 +180,179 @@ pub fn map_render_error(err: RenderError) -> Error {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use specify_diagnostics::{RenderError, Severity};
+    use specify_error::Error;
+
+    use super::{map_hint_error, map_index_error, map_render_error};
+    use crate::lint::ScanProfile;
+    use crate::lint::eval::HintError;
+    use crate::lint::index::IndexError;
+    use crate::rules::{HintKind, Origin, PathRoot, ResolvedRule};
+
+    const RULE_ID: &str = "UNI-001";
+
+    fn fake_rule() -> ResolvedRule {
+        ResolvedRule {
+            rule_id: RULE_ID.into(),
+            title: "t".into(),
+            severity: Severity::Important,
+            trigger: "trigger".into(),
+            lint_mode: None,
+            applicability: None,
+            rule_hints: None,
+            references: None,
+            origin: Origin::Shared,
+            path_root: PathRoot::RulesRoot,
+            path: "shared/UNI-001.md".into(),
+            body: String::new(),
+            deprecated: None,
+        }
+    }
+
+    struct ValidationCase<E> {
+        err: fn() -> E,
+        rule_id: &'static str,
+    }
+
+    struct DiagCase {
+        err: fn() -> RenderError,
+        code: &'static str,
+    }
+
+    fn hint_regex_compile() -> HintError {
+        let pattern = "(".to_string();
+        let source = ::regex::Regex::new(&pattern).expect_err("invalid regex");
+        HintError::RegexCompile {
+            rule_id: RULE_ID.into(),
+            pattern,
+            source,
+        }
+    }
+
+    const INDEX_CASES: &[ValidationCase<IndexError>] = &[
+        ValidationCase {
+            err: || IndexError::UnsupportedScanProfile(ScanProfile::Framework),
+            rule_id: "review-unsupported-scan-profile",
+        },
+        ValidationCase {
+            err: || IndexError::ProjectDirMissing(PathBuf::from("/missing")),
+            rule_id: "review-project-dir-missing",
+        },
+        ValidationCase {
+            err: || IndexError::OverrideCompile("bad glob".into()),
+            rule_id: "review-index-override-compile",
+        },
+        ValidationCase {
+            err: || IndexError::Filesystem("symlink cycle at <link>".into()),
+            rule_id: "review-index-filesystem",
+        },
+    ];
+
+    const HINT_VALIDATION_CASES: &[ValidationCase<HintError>] = &[
+        ValidationCase {
+            err: || HintError::Unsupported {
+                rule_id: RULE_ID.into(),
+                kind: HintKind::SetCoverage,
+                reason: "reserved",
+            },
+            rule_id: "review-unsupported-hint-kind",
+        },
+        ValidationCase {
+            err: || HintError::SchemaCompile {
+                rule_id: RULE_ID.into(),
+                schema_ref: "rule".into(),
+                detail: "compile failed".into(),
+            },
+            rule_id: "review-schema-compile-failed",
+        },
+        ValidationCase {
+            err: || HintError::SchemaResolve {
+                rule_id: RULE_ID.into(),
+                schema_ref: "missing".into(),
+                reason: "no such id".into(),
+            },
+            rule_id: "review-schema-resolve-failed",
+        },
+        ValidationCase {
+            err: hint_regex_compile,
+            rule_id: "review-regex-compile-failed",
+        },
+        ValidationCase {
+            err: || HintError::ToolInvocation {
+                rule_id: RULE_ID.into(),
+                tool: "contract".into(),
+                detail: "runtime".into(),
+            },
+            rule_id: "review-tool-invocation-failed",
+        },
+        ValidationCase {
+            err: || HintError::ToolUndeclared {
+                rule_id: RULE_ID.into(),
+                tool: "contract".into(),
+            },
+            rule_id: "review-tool-undeclared",
+        },
+    ];
+
+    const RENDER_CASES: &[DiagCase] = &[
+        DiagCase {
+            err: || RenderError::JsonSchemaValidation {
+                detail: "schema mismatch".into(),
+            },
+            code: "review-envelope-schema",
+        },
+        DiagCase {
+            err: || {
+                RenderError::JsonSerialise(
+                    serde_json::from_str::<serde_json::Value>("not json").unwrap_err(),
+                )
+            },
+            code: "review-envelope-serialise",
+        },
+    ];
+
+    fn assert_validation_rule_id(got: Error, rule_id: &str) {
+        match got {
+            Error::Validation { code, .. } => assert_eq!(code, rule_id),
+            other => panic!("lint exit mapping: expected Validation({rule_id}), got {other:?}"),
+        }
+    }
+
+    /// Every `IndexError` / `HintError` / `RenderError` variant maps
+    /// onto its lint exit-mapping `Error` discriminant (the D8 table).
+    #[test]
+    fn error_mapping_matches_d8_table() {
+        let rule = fake_rule();
+        for case in INDEX_CASES {
+            assert_validation_rule_id(map_index_error((case.err)()), case.rule_id);
+        }
+        for case in HINT_VALIDATION_CASES {
+            assert_validation_rule_id(map_hint_error(&rule, (case.err)()), case.rule_id);
+        }
+        match map_hint_error(
+            &rule,
+            HintError::Filesystem {
+                op: "read",
+                path: PathBuf::from("/missing"),
+                source: std::io::Error::from(std::io::ErrorKind::NotFound),
+            },
+        ) {
+            Error::Filesystem { op, path, .. } => {
+                assert_eq!(op, "review-eval");
+                assert_eq!(path, PathBuf::from("/missing"));
+            }
+            other => panic!("lint exit mapping: expected Filesystem, got {other:?}"),
+        }
+        for case in RENDER_CASES {
+            match map_render_error((case.err)()) {
+                Error::Diag { code, .. } => assert_eq!(code, case.code),
+                other => panic!("lint exit mapping: expected Diag({}), got {other:?}", case.code),
+            }
+        }
+    }
+}

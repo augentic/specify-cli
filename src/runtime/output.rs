@@ -14,7 +14,7 @@ pub enum Exit {
     ValidationFailed,
     VersionTooOld,
     /// The project's pinned `specify_version` major is older than the
-    /// running binary; the operator must run `specrun migrate` first.
+    /// running binary; the operator must run `specify migrate` first.
     MigrationRequired,
     /// Argument-shape failure: `clap` exits 2 for unknown flags / missing
     /// arguments; we mirror that for argument errors discovered after

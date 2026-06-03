@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::{Plan, Status};
-use specify_workflow::config::{Layout, is_workspace_clone, with_state};
+use specify_workflow::config::{Layout, is_slot, with_state};
 use specify_workflow::journal::{self, Event, EventKind};
 use specify_workflow::merge::{
     BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
@@ -26,37 +26,21 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // entry; `succeeded` brackets a fully completed run. Ordering is
     // started → … → archive.created → succeeded, so the lifecycle pair
     // wraps the ledger entry rather than racing it.
-    emit_merge_event(
+    super::bracket(
         ctx,
+        "slice.merge",
         EventKind::SliceMergeStarted {
             slice_name: name.into(),
         },
-    );
-    match commit_run(ctx, name) {
-        Ok(()) => {
-            emit_merge_event(
-                ctx,
-                EventKind::SliceMergeSucceeded {
-                    slice_name: name.into(),
-                },
-            );
-            Ok(())
-        }
-        Err(err) => {
-            // `reason` is the error's stable kebab discriminant. The
-            // failed event is best-effort like the rest, but the
-            // original error still propagates so the exit code is
-            // unchanged.
-            emit_merge_event(
-                ctx,
-                EventKind::SliceMergeFailed {
-                    slice_name: name.into(),
-                    reason: err.variant_str().into_owned(),
-                },
-            );
-            Err(err)
-        }
-    }
+        EventKind::SliceMergeSucceeded {
+            slice_name: name.into(),
+        },
+        |reason| EventKind::SliceMergeFailed {
+            slice_name: name.into(),
+            reason,
+        },
+        || commit_run(ctx, name),
+    )
 }
 
 /// Validator + apply core of `slice merge run`: commit the deltas,
@@ -97,18 +81,6 @@ fn commit_run(ctx: &Ctx, name: &str) -> Result<()> {
         write_run_text,
     )?;
     Ok(())
-}
-
-/// Best-effort append of a single `slice.merge.*` lifecycle event.
-/// Mirrors [`emit_archive_created`]'s posture: a journal-write failure
-/// is logged and swallowed so it can never change the merge's exit
-/// code. The `failed` variant's emit is equally best-effort, but the
-/// caller still propagates the original merge error afterwards.
-fn emit_merge_event(ctx: &Ctx, kind: EventKind) {
-    let event = Event::new(Timestamp::now(), kind);
-    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
-        eprintln!("warning: slice.merge journal append: {err}");
-    }
 }
 
 /// Append the `slice.archive.created` outcome-ledger event. Captures
@@ -359,14 +331,14 @@ fn summarise_ops(ops: &[MergeOperation]) -> String {
 /// than a freshly merged clone. The `.specify/project.yaml` check is
 /// already enforced upstream by `Ctx::load`.
 fn is_clone_eligible(project_dir: &Path) -> bool {
-    if !is_workspace_clone(project_dir) {
+    if !is_slot(project_dir) {
         return false;
     }
     !Layout::new(project_dir).plan_path().exists()
 }
 
 fn git(project_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
-    std::process::Command::new("git").arg("-C").arg(project_dir).args(args).output()
+    specify_workflow::cmd::git(&specify_workflow::cmd::real_cmd, Some(project_dir), args)
 }
 
 fn auto_commit(project_dir: &Path, name: &str) {

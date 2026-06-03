@@ -1,13 +1,16 @@
 //! Type definitions for `plan.yaml` (`Plan`, `Entry`, `EntryPatch`,
-//! `Status`, `Lifecycle`, `Severity`, `Finding`). Behaviour lives in
-//! the sibling submodules.
+//! `Status`, `Lifecycle`). Validation findings are emitted on the
+//! neutral [`specify_diagnostics::Diagnostic`] currency by the sibling
+//! `validate` / `doctor` modules. Behaviour lives in the sibling
+//! submodules.
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use specify_model::evidence::ClaimKind;
+
+use crate::name::{PlanName, SliceName};
 
 /// Lifecycle state of a single entry in [`Plan::entries`].
 ///
@@ -57,7 +60,7 @@ pub enum Status {
 ///
 /// Two stored states only — `pending` (default after `plan create`)
 /// and `approved` (operator-stamped at Gate 1 via
-/// `specrun plan transition <plan-name> approved`). "Currently
+/// `specify plan transition <plan-name> approved`). "Currently
 /// executing" and "drained" are computed from per-entry [`Status`] at
 /// read time via [`Plan::is_executing`] / [`Plan::is_drained`].
 #[derive(
@@ -94,7 +97,7 @@ pub enum Lifecycle {
 #[serde(rename_all = "kebab-case")]
 pub struct Plan {
     /// Human-readable plan name, e.g. `platform-v2`.
-    pub name: String,
+    pub name: PlanName,
     /// Plan-level lifecycle gate (workflow §Workflow vocabulary).
     /// Defaults to [`Lifecycle::Pending`] on parse so 1.x fixtures
     /// without a `lifecycle:` field load cleanly.
@@ -120,16 +123,16 @@ pub struct Plan {
 #[serde(rename_all = "kebab-case")]
 pub struct Entry {
     /// Stable identifier (kebab-case) unique within the plan.
-    pub name: String,
+    pub name: SliceName,
     /// Target registry project. Optional on disk: an omitted value
     /// resolves to the sole project in the topology (a single regular
     /// project synthesised from `project.yaml`), so single-project
-    /// plans need not repeat the project name; multi-project hub
+    /// plans need not repeat the project name; multi-project workspace
     /// registries require an explicit value.
     ///
     /// The target adapter (`name@vN`) is **not** stored on the slice —
     /// it is resolved on demand from this project via the topology
-    /// (`registry.yaml` for a hub, `project.yaml.adapter` for a single
+    /// (the committed `.specify/topology.lock` for a workspace, `project.yaml.adapter` for a single
     /// regular project) by [`crate::change::plan::core::resolve_target`].
     #[serde(default)]
     pub project: Option<String>,
@@ -138,7 +141,7 @@ pub struct Entry {
     /// Names of other plan entries that must reach `done` before this
     /// entry is eligible.
     #[serde(default)]
-    pub depends_on: Vec<String>,
+    pub depends_on: Vec<SliceName>,
     /// (source, lead) bindings (workflow §`Slice.sources`).
     /// Each entry pairs a `source` — referencing a top-level
     /// [`Plan::sources`] entry — with the `lead` from
@@ -160,14 +163,14 @@ pub struct Entry {
     /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
     /// materially-disagreeing lead synopses; `Accepted` /
     /// `Rejected` are written by the operator at Gate 1 via
-    /// `specrun plan amend --divergence`. Advisory metadata in v1.
+    /// `specify plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub divergence: Option<Divergence>,
     /// per-slice authority override — optional per-slice authority override map keyed
     /// by claim kind, valued by source key. Keys are the closed
     /// [`ClaimKind`] enum; values MUST be source keys present in
     /// this slice's own [`Entry::sources`] list — orphan keys are
-    /// rejected by `specrun slice validate` with
+    /// rejected by `specify slice validate` with
     /// `slice-authority-override-orphan-source`. Empty map and
     /// missing field are equivalent.
     #[serde(default, skip_serializing_if = "slice_authority_override_is_empty")]
@@ -188,10 +191,10 @@ pub struct Entry {
 /// divergence and writer-ownership contract — the CLI is the single writer of every variant of
 /// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
 /// disk in the `propose`-driven `/spec:plan` flow (RFC-29 D2) when the
-/// agent runs `specrun plan amend --divergence likely` *after*
-/// `specrun plan propose --from` (the slice writer), because slices
+/// agent runs `specify plan amend --divergence likely` *after*
+/// `specify plan propose --from` (the slice writer), because slices
 /// do not exist until projection runs. `Accepted` / `Rejected` reach
-/// disk via `specrun plan amend --divergence`. `plan amend` is the
+/// disk via `specify plan amend --divergence`. `plan amend` is the
 /// only writer of the field — `plan create` scaffolds an empty plan
 /// and never stamps divergence. `none` is the implicit-absent
 /// default and is never serialised explicitly into a slice record.
@@ -205,7 +208,7 @@ pub enum Divergence {
     #[serde(rename = "none")]
     None,
     /// Staged by the `/spec:plan` agent after `propose --from`, via
-    /// `specrun plan amend --divergence likely`, on
+    /// `specify plan amend --divergence likely`, on
     /// materially-disagreeing lead synopses.
     Likely,
     /// Operator-stamped at Gate 1 — divergence acknowledged and
@@ -297,7 +300,7 @@ impl SourceBinding {
 ///
 /// This is the *resolved* target form, produced by
 /// [`crate::change::plan::core::resolve_target`] from a slice's bound
-/// project topology and surfaced by `specrun plan next`, the slice
+/// project topology and surfaced by `specify plan next`, the slice
 /// `.metadata.yaml`, and the build request. It is no longer a stored
 /// `plan.yaml` field — a slice binds only a `project`, and the target
 /// adapter is resolved on demand.
@@ -306,12 +309,8 @@ impl SourceBinding {
 /// with `name` matching `^[a-z][a-z0-9-]*$` and `N` a non-negative
 /// integer. Deserialisation goes through [`TargetRef::parse`] so any
 /// payload that survives serde already has the `@vN` suffix in valid
-/// form; `FromStr` is the in-process belt-and-braces re-check.
-///
-/// Construct in-process via [`TargetRef::new`] (already-validated
-/// components, infallible) or via [`FromStr`] / serde
-/// [`Deserialize`] (string parse, fallible). Components are private so
-/// every `TargetRef` value satisfies the wire regex by construction.
+/// form. Components are private so every `TargetRef` value satisfies
+/// the wire regex by construction.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TargetRef {
     name: String,
@@ -319,23 +318,6 @@ pub struct TargetRef {
 }
 
 impl TargetRef {
-    /// Construct a [`TargetRef`] from already-validated components.
-    ///
-    /// `name` must satisfy the wire regex `^[a-z][a-z0-9-]*$`; the
-    /// debug assertion catches accidental in-process construction with
-    /// a non-kebab name. In release builds the value is still
-    /// round-trippable through serde because the schema regex is the
-    /// primary defence.
-    #[must_use]
-    pub fn new(name: impl Into<String>, version: u32) -> Self {
-        let name = name.into();
-        debug_assert!(
-            is_kebab_target_name(&name),
-            "TargetRef::new received non-kebab name `{name}`",
-        );
-        Self { name, version }
-    }
-
     /// Parse a wire-form `<name>@v<version>` string.
     ///
     /// # Errors
@@ -385,14 +367,6 @@ impl fmt::Display for TargetRef {
     }
 }
 
-impl FromStr for TargetRef {
-    type Err = TargetRefParseError;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Self::parse(input)
-    }
-}
-
 impl Serialize for TargetRef {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)
@@ -406,8 +380,8 @@ impl<'de> Deserialize<'de> for TargetRef {
     }
 }
 
-/// Error returned by [`TargetRef::parse`] / [`TargetRef::from_str`]
-/// when the input does not match the `name@vN` wire form.
+/// Error returned by [`TargetRef::parse`] when the input does not
+/// match the `name@vN` wire form.
 ///
 /// Carries the offending input verbatim so callers can surface it in
 /// diagnostics without re-formatting; the [`fmt::Display`] body is
@@ -499,13 +473,6 @@ impl SliceSourceBinding {
     #[must_use]
     pub fn lead<'a>(&'a self, slice_name: &'a str) -> &'a str {
         self.lead.as_deref().unwrap_or(slice_name)
-    }
-
-    /// `true` when the binding was authored / will be emitted as the
-    /// bare-string shorthand.
-    #[must_use]
-    pub const fn is_bare(&self) -> bool {
-        self.lead.is_none()
     }
 }
 
@@ -624,7 +591,7 @@ impl Patch<String> {
 #[derive(Debug, Default, Clone)]
 pub struct EntryPatch {
     /// Replace `depends_on` wholesale when `Some`.
-    pub depends_on: Option<Vec<String>>,
+    pub depends_on: Option<Vec<SliceName>>,
     /// Replace `sources` wholesale when `Some`.
     pub sources: Option<Vec<SliceSourceBinding>>,
     /// Three-way patch over `project`.
@@ -635,80 +602,12 @@ pub struct EntryPatch {
     pub context: Option<Vec<String>>,
     /// Set `divergence` when `Some`. `None` leaves the field
     /// untouched. The CLI is the only caller that materialises this
-    /// patch (`specrun plan amend --divergence`) — divergence and writer-ownership contract
+    /// patch (`specify plan amend --divergence`) — divergence and writer-ownership contract
     /// widens the accepted operator surface to include `Likely`
     /// alongside `Accepted` / `Rejected`; the implicit `None` value
     /// is still rejected at the flag-parser level (omit
     /// `--divergence` to leave the field alone).
     pub divergence: Option<Divergence>,
-}
-
-/// Severity of a validation finding produced by
-/// [`Plan::validate`].
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
-)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-pub enum Severity {
-    /// Blocking problem — the plan is not usable as-is.
-    Error,
-    /// Non-blocking advisory — the plan is usable but something looks
-    /// off (e.g. a source key is defined but unreferenced).
-    Warning,
-}
-
-impl Severity {
-    /// Project the plan-local severity onto the canonical
-    /// [`specify_diagnostics::Severity`] currency: a blocking `Error`
-    /// becomes `Important` (the default workflow-gating level) and a
-    /// non-blocking `Warning` becomes `Suggestion` (reviewer judgement,
-    /// never default-blocking).
-    #[must_use]
-    pub const fn to_core(self) -> specify_diagnostics::Severity {
-        match self {
-            Self::Error => specify_diagnostics::Severity::Important,
-            Self::Warning => specify_diagnostics::Severity::Suggestion,
-        }
-    }
-}
-
-/// A single finding reported by [`Plan::validate`].
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct Finding {
-    /// Severity bucket.
-    pub level: Severity,
-    /// Stable machine-readable code, e.g. `"plan.cycle"`.
-    pub code: &'static str,
-    /// Human-readable description.
-    pub message: String,
-    /// Name of the offending entry, when the finding is entry-local.
-    pub entry: Option<String>,
-}
-
-impl From<&Finding> for specify_diagnostics::Diagnostic {
-    /// Project a plan-validate [`Finding`] onto the canonical
-    /// [`specify_diagnostics::Diagnostic`] currency (REVIEW.md A18). The
-    /// stable `code` becomes the `rule_id`, the entry name (when
-    /// present) populates `slice`, and the finding is classified as a
-    /// deterministic `Plan` artifact violation. The fingerprint is
-    /// recomputed after `slice` is set so dedup identity covers it.
-    fn from(finding: &Finding) -> Self {
-        let mut diagnostic = Self::finding(
-            finding.code,
-            finding.message.clone(),
-            finding.message.clone(),
-            finding.level.to_core(),
-            specify_diagnostics::DiagnosticKind::Violation,
-            specify_diagnostics::DiagnosticSource::Deterministic,
-            specify_diagnostics::Artifact::Plan,
-            None,
-        );
-        diagnostic.slice.clone_from(&finding.entry);
-        diagnostic.fingerprint = specify_diagnostics::fingerprint(&diagnostic);
-        diagnostic
-    }
 }
 
 #[cfg(test)]

@@ -9,8 +9,8 @@
 //!
 //! The trait deliberately takes plain DTOs — never the runtime `Ctx`
 //! or a `Plan` — so the standards layer stays free of workflow
-//! lifecycle types. `specdev lint` wraps the framework's imperative
-//! `Check` predicates as one producer; `specrun lint` passes none.
+//! lifecycle types. `specify lint framework` wraps the framework's imperative
+//! `Check` predicates as one producer; `specify lint` passes none.
 //!
 //! The trait lives here, alongside the runner, rather than in the
 //! neutral `specify-diagnostics` leaf because it references

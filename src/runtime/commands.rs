@@ -41,23 +41,23 @@ pub fn run(cli: Cli) -> Exit {
             adapter,
             name,
             description,
-            hub,
+            workspace,
             include_framework,
             platforms,
             check_migration,
             upgrade,
         } => dispatch(format, || {
-            init::run(
+            init::run(&init::Args {
                 format,
-                adapter.as_deref(),
-                name.as_deref(),
-                description.as_deref(),
-                hub,
+                adapter: adapter.as_deref(),
+                name: name.as_deref(),
+                description: description.as_deref(),
+                workspace,
                 include_framework,
-                platforms.as_deref(),
+                platforms: platforms.as_deref(),
                 check_migration,
                 upgrade,
-            )
+            })
         }),
         Commands::Source { action } => dispatch_source(format, action),
         Commands::Target { action } => match action {
@@ -81,6 +81,7 @@ pub fn run(cli: Cli) -> Exit {
             LintAction::Run(args) => {
                 scoped_at(format, &args.project_dir, |ctx| lint::run::run(ctx, &args))
             }
+            LintAction::Framework(args) => dispatch(format, || lint::framework::run(format, &args)),
         },
         Commands::Journal { action } => match action {
             JournalAction::Emit { event, payload } => {
@@ -93,7 +94,7 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
-            clap_complete::generate(shell, &mut cmd, "specrun", &mut std::io::stdout());
+            clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
             Exit::Success
         }
         Commands::Migrate {
@@ -127,7 +128,7 @@ pub fn run(cli: Cli) -> Exit {
     }
 }
 
-/// Dispatch the `specrun source {resolve, preview, survey, extract}`
+/// Dispatch the `specify source {resolve, preview, survey, extract}`
 /// family.
 ///
 /// Factored out of [`run`] so the top-level dispatcher stays under the
@@ -191,7 +192,7 @@ where
 
 /// Variant of [`scoped`] that loads `Ctx` against an explicit
 /// project directory instead of the process CWD. Used by handlers
-/// that take a `--project-dir` flag (e.g. `specrun lint`).
+/// that take a `--project-dir` flag (e.g. `specify lint`).
 fn scoped_at<F>(format: Format, project_dir: &Path, f: F) -> Exit
 where
     F: FnOnce(&Ctx) -> Result<()>,

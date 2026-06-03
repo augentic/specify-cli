@@ -104,7 +104,7 @@ fn rfc_evidence() -> BTreeMap<(String, String), ClaimKind> {
 }
 
 #[test]
-fn projects_rfc_model_to_schema_valid_output() {
+fn projects_model_to_valid_output() {
     let projected =
         project(rfc_response(), header(), &rfc_authority(), &BTreeMap::new(), &rfc_evidence())
             .expect("the RFC envelope projects");

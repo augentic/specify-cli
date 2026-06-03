@@ -1,4 +1,4 @@
-//! `specrun tool gc` handler.
+//! `specify tool gc` handler.
 
 use std::fs;
 
@@ -6,8 +6,7 @@ use specify_error::{Error, Result};
 use specify_tool::cache;
 
 use super::dto::{GcBody, write_gc_text};
-use super::{build_inventory, emit_warnings_to_stderr, kept_by_scope};
-use crate::runtime::cli::Format;
+use super::{build_inventory, kept_by_scope};
 use crate::runtime::context::Ctx;
 
 pub fn run(ctx: &Ctx) -> Result<()> {
@@ -31,8 +30,5 @@ pub fn run(ctx: &Ctx) -> Result<()> {
         warnings: inventory.warnings,
     };
     ctx.write(&body, write_gc_text)?;
-    if matches!(ctx.format, Format::Text) {
-        emit_warnings_to_stderr(&body.warnings);
-    }
     Ok(())
 }

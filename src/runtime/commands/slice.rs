@@ -1,4 +1,4 @@
-//! Dispatcher for `specrun slice *`. Owns the `match action` table and
+//! Dispatcher for `specify slice *`. Owns the `match action` table and
 //! the omnia `artifact_classes` synthesiser shared by `slice merge` and
 //! `slice touched-specs`.
 
@@ -6,6 +6,7 @@ use std::path::Path;
 
 use specify_error::{Error, Result};
 use specify_workflow::config::Layout;
+use specify_workflow::journal::{self, EventKind};
 use specify_workflow::merge::{ArtifactClass, MergeStrategy};
 use specify_workflow::slice::LifecycleStatus;
 
@@ -45,6 +46,33 @@ fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass>
     ]
 }
 
+/// Best-effort lifecycle bracket shared by `slice merge run` and
+/// `slice build --phase finalize`. Emits `started`, runs `work`, then
+/// emits `succeeded` on `Ok` (returning the value) or
+/// `failed(err.variant_str())` on `Err` (re-propagating the error).
+/// Every emit is best-effort under `scope`, so a journal-write failure
+/// never changes the verb's exit code; the work's outcome alone drives
+/// it. `scope` is the dotted event family (`slice.merge` / `slice.build`).
+fn bracket<T>(
+    ctx: &Ctx, scope: &str, started: EventKind, succeeded: EventKind,
+    failed: impl FnOnce(String) -> EventKind, work: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    journal::emit_best_effort(ctx.layout(), started, scope);
+    match work() {
+        Ok(value) => {
+            journal::emit_best_effort(ctx.layout(), succeeded, scope);
+            Ok(value)
+        }
+        Err(err) => {
+            // `reason` is the error's stable kebab discriminant. The
+            // failed event is best-effort, but the original error still
+            // propagates so the exit code is unchanged.
+            journal::emit_best_effort(ctx.layout(), failed(err.variant_str().into_owned()), scope);
+            Err(err)
+        }
+    }
+}
+
 pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
     match action {
         SliceAction::Create {
@@ -74,7 +102,7 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             if matches!(target, LifecycleStatus::Merged) {
                 return Err(Error::Argument {
                     flag: "<target>",
-                    detail: "use `specrun slice merge run` to reach `merged`".to_string(),
+                    detail: "use `specify slice merge run` to reach `merged`".to_string(),
                 });
             }
             lifecycle::transition(ctx, name, target)

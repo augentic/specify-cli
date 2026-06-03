@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
-use crate::framework::builder::{framework_finding, loc};
+use crate::framework::builder::finding;
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
@@ -15,8 +15,6 @@ const PHASE_BRIEF_SOFT_CAP: usize = 500;
 const PHASE_BRIEF_HARD_CAP: usize = 800;
 
 const RULE_EXCEEDS_SIZE: &str = "brief.exceeds-size-limit";
-const RULE_FRONTMATTER_FORBIDDEN: &str = "brief.frontmatter-forbidden";
-
 static PARENT_BRIEF_NAMES: &[&str] =
     &["shape.md", "build.md", "merge.md", "survey.md", "extract.md"];
 
@@ -60,28 +58,10 @@ pub fn run(ctx: &Context) -> Vec<Diagnostic> {
             }
         };
 
-        findings.extend(check_frontmatter(&rel_path, &content, &path));
         findings.extend(check_size(&rel_path, &content, parent, phase, &path));
     }
 
     findings
-}
-
-fn check_frontmatter(rel_path: &str, content: &str, path: &Path) -> Vec<Diagnostic> {
-    if content.starts_with("---\n") || content.starts_with("---\r\n") {
-        return vec![finding(
-            RULE_FRONTMATTER_FORBIDDEN,
-            format!(
-                "{rel_path}: brief has YAML frontmatter. Briefs are not skills — \
-                 they are resolved by path from adapter.yaml and the loader \
-                 never reads brief frontmatter. Strip the leading '---' block \
-                 and rely on the body H1 for the brief title. See \
-                 docs/standards/skill-authoring.md#brief-authoring."
-            ),
-            Some(path.to_path_buf()),
-        )];
-    }
-    Vec::new()
 }
 
 fn check_size(
@@ -231,10 +211,6 @@ fn path_relative(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .map(|rel| rel.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path.display().to_string())
-}
-
-fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Diagnostic {
-    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }
 
 #[cfg(test)]

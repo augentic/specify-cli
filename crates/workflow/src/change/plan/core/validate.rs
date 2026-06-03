@@ -1,14 +1,73 @@
 //! [`Plan::validate`] and the per-check helpers it composes. Findings
 //! accumulate (no check short-circuits another); order is structural
 //! checks first, then consistency checks against the registry.
+//!
+//! Every check emits a neutral [`specify_diagnostics::Diagnostic`] via
+//! [`plan_finding`]: the stable check code becomes the `rule_id`, the
+//! offending plan entry (when present) populates `slice`, an `error`
+//! maps to a blocking `important` violation, and a `warning` maps to a
+//! non-blocking `suggestion`.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 
 use petgraph::graph::DiGraph;
+use specify_diagnostics::{
+    Artifact, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence, Severity, fingerprint,
+};
 
-use super::model::{Entry, Finding, Plan, Severity, Status};
+use super::model::{Entry, Plan, Status};
 use crate::registry::Registry;
+
+/// Build a plan-domain diagnostic on the neutral currency.
+///
+/// The stable check `code` becomes the `rule_id`, the offending plan
+/// entry (when present) populates `slice`, and the finding is a
+/// deterministic `Plan` artifact violation. The fingerprint is
+/// recomputed after `slice` is set so dedup identity covers it.
+/// `severity` is the neutral severity directly: pass
+/// [`Severity::Important`] for a blocking structural error and
+/// [`Severity::Suggestion`] for a non-blocking advisory.
+#[must_use]
+pub fn plan_finding(
+    code: &str, severity: Severity, message: impl Into<String>, entry: Option<String>,
+) -> Diagnostic {
+    let message = message.into();
+    let mut diagnostic = Diagnostic::finding(
+        code.to_string(),
+        message.clone(),
+        message,
+        severity,
+        DiagnosticKind::Violation,
+        DiagnosticSource::Deterministic,
+        Artifact::Plan,
+        None,
+    );
+    diagnostic.slice = entry;
+    diagnostic.fingerprint = fingerprint(&diagnostic);
+    diagnostic
+}
+
+/// As [`plan_finding`], but attaches a structured-evidence payload.
+///
+/// A health check carries its machine-readable data (the cycle path, the
+/// orphan source key, the stale-clone signatures) onto the neutral
+/// currency without loss. The fingerprint is recomputed after both
+/// `slice` and the structured evidence are set.
+#[must_use]
+pub fn plan_finding_structured(
+    code: &str, severity: Severity, message: impl Into<String>, entry: Option<String>,
+    summary: impl Into<String>, data: serde_json::Value,
+) -> Diagnostic {
+    let mut diagnostic = plan_finding(code, severity, message, entry);
+    diagnostic.evidence = FindingEvidence::Structured {
+        summary: summary.into(),
+        data,
+        locations: None,
+    };
+    diagnostic.fingerprint = fingerprint(&diagnostic);
+    diagnostic
+}
 
 impl Plan {
     /// Run all structural and semantic checks over the plan.
@@ -28,7 +87,9 @@ impl Plan {
     /// rejects invalid statuses at parse time, which is not reachable
     /// in-process — so nothing is emitted for it.
     #[must_use]
-    pub fn validate(&self, slices_dir: Option<&Path>, registry: Option<&Registry>) -> Vec<Finding> {
+    pub fn validate(
+        &self, slices_dir: Option<&Path>, registry: Option<&Registry>,
+    ) -> Vec<Diagnostic> {
         let mut results = Vec::new();
         results.extend(duplicate_names(&self.entries));
         results.extend(check_unknown_depends_on(&self.entries));
@@ -47,17 +108,17 @@ impl Plan {
     }
 }
 
-fn duplicate_names(changes: &[Entry]) -> Vec<Finding> {
+fn duplicate_names(changes: &[Entry]) -> Vec<Diagnostic> {
     let mut seen: HashSet<&str> = HashSet::new();
     let mut out = Vec::new();
     for entry in changes {
         if !seen.insert(entry.name.as_str()) {
-            out.push(Finding {
-                level: Severity::Error,
-                code: "duplicate-name",
-                message: format!("duplicate plan entry name '{}'", entry.name),
-                entry: Some(entry.name.clone()),
-            });
+            out.push(plan_finding(
+                "duplicate-name",
+                Severity::Important,
+                format!("duplicate plan entry name '{}'", entry.name),
+                Some(entry.name.to_string()),
+            ));
         }
     }
     out
@@ -86,43 +147,43 @@ pub fn entry_dependency_graph(entries: &[Entry]) -> DiGraph<&str, ()> {
     graph
 }
 
-fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Finding> {
+fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Diagnostic> {
     let known: HashSet<&str> = changes.iter().map(|c| c.name.as_str()).collect();
     let mut out = Vec::new();
     for entry in changes {
         for target in &entry.depends_on {
             if !known.contains(target.as_str()) {
-                out.push(Finding {
-                    level: Severity::Error,
-                    code: "unknown-depends-on",
-                    message: format!("depends-on references unknown slice '{target}'"),
-                    entry: Some(entry.name.clone()),
-                });
+                out.push(plan_finding(
+                    "unknown-depends-on",
+                    Severity::Important,
+                    format!("depends-on references unknown slice '{target}'"),
+                    Some(entry.name.to_string()),
+                ));
             }
         }
     }
     out
 }
 
-fn check_unknown_sources(plan: &Plan) -> Vec<Finding> {
+fn check_unknown_sources(plan: &Plan) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for entry in &plan.entries {
         for binding in &entry.sources {
             let key = binding.source();
             if !plan.sources.contains_key(key) {
-                out.push(Finding {
-                    level: Severity::Error,
-                    code: "unknown-source",
-                    message: format!("sources references unknown source key '{key}'"),
-                    entry: Some(entry.name.clone()),
-                });
+                out.push(plan_finding(
+                    "unknown-source",
+                    Severity::Important,
+                    format!("sources references unknown source key '{key}'"),
+                    Some(entry.name.to_string()),
+                ));
             }
         }
     }
     out
 }
 
-fn check_single_in_progress(changes: &[Entry]) -> Vec<Finding> {
+fn check_single_in_progress(changes: &[Entry]) -> Vec<Diagnostic> {
     let offenders: Vec<&Entry> =
         changes.iter().filter(|c| c.status == Status::InProgress).collect();
     if offenders.len() <= 1 {
@@ -130,31 +191,33 @@ fn check_single_in_progress(changes: &[Entry]) -> Vec<Finding> {
     }
     offenders
         .into_iter()
-        .map(|c| Finding {
-            level: Severity::Error,
-            code: "multiple-in-progress",
-            message: "multiple in-progress entries: at most one allowed per plan".to_string(),
-            entry: Some(c.name.clone()),
+        .map(|c| {
+            plan_finding(
+                "multiple-in-progress",
+                Severity::Important,
+                "multiple in-progress entries: at most one allowed per plan",
+                Some(c.name.to_string()),
+            )
         })
         .collect()
 }
 
-fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Finding> {
+fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Diagnostic> {
     let project_names: HashSet<&str> = registry.projects.iter().map(|p| p.name.as_str()).collect();
     let mut out = Vec::new();
     for entry in changes {
         if let Some(project) = &entry.project
             && !project_names.contains(project.as_str())
         {
-            out.push(Finding {
-                level: Severity::Error,
-                code: "project-not-in-registry",
-                message: format!(
+            out.push(plan_finding(
+                "project-not-in-registry",
+                Severity::Important,
+                format!(
                     "project '{}' on slice '{}' does not match any project in registry.yaml",
                     project, entry.name
                 ),
-                entry: Some(entry.name.clone()),
-            });
+                Some(entry.name.to_string()),
+            ));
         }
     }
     out
@@ -169,24 +232,24 @@ fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Find
 /// The single-regular-project case (no registry) is not reached here —
 /// an omitted `project` there always resolves to the sole synthesised
 /// project.
-fn check_project_binding_required(changes: &[Entry], registry: &Registry) -> Vec<Finding> {
+fn check_project_binding_required(changes: &[Entry], registry: &Registry) -> Vec<Diagnostic> {
     if registry.projects.len() <= 1 {
         return Vec::new();
     }
     let mut out = Vec::new();
     for entry in changes {
         if entry.project.is_none() {
-            out.push(Finding {
-                level: Severity::Error,
-                code: "plan-reconcile-project-binding-required",
-                message: format!(
+            out.push(plan_finding(
+                "plan-reconcile-project-binding-required",
+                Severity::Important,
+                format!(
                     "entry '{}' omits 'project' but the registry declares {} projects; \
                      bind one explicitly",
                     entry.name,
                     registry.projects.len()
                 ),
-                entry: Some(entry.name.clone()),
-            });
+                Some(entry.name.to_string()),
+            ));
         }
     }
     out
@@ -202,10 +265,10 @@ fn check_project_binding_required(changes: &[Entry], registry: &Registry) -> Vec
 /// claim kind (the `BTreeMap` iteration order on
 /// [`super::model::SliceAuthorityOverride::by_kind`]).
 ///
-/// Public for the per-slice helper at `specrun slice validate` to
+/// Public for the per-slice helper at `specify slice validate` to
 /// surface only the findings relevant to one slice.
 #[must_use]
-pub fn orphan_authority_override_keys(changes: &[Entry]) -> Vec<Finding> {
+pub fn orphan_authority_override_keys(changes: &[Entry]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for entry in changes {
         if entry.authority_override.by_kind.is_empty() {
@@ -215,43 +278,43 @@ pub fn orphan_authority_override_keys(changes: &[Entry]) -> Vec<Finding> {
             entry.sources.iter().map(super::model::SliceSourceBinding::source).collect();
         for (kind, key) in &entry.authority_override.by_kind {
             if !known.contains(key.as_str()) {
-                out.push(Finding {
-                    level: Severity::Error,
-                    code: "slice-authority-override-orphan-source",
-                    message: format!(
+                out.push(plan_finding(
+                    "slice-authority-override-orphan-source",
+                    Severity::Important,
+                    format!(
                         "slice '{}' override for kind '{kind}' references source key '{key}', \
                          not present in slice sources",
                         entry.name
                     ),
-                    entry: Some(entry.name.clone()),
-                });
+                    Some(entry.name.to_string()),
+                ));
             }
         }
     }
     out
 }
 
-fn check_context_paths(changes: &[Entry]) -> Vec<Finding> {
+fn check_context_paths(changes: &[Entry]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for entry in changes {
         for path in &entry.context {
             if path.starts_with('/') || path.contains("..") {
-                out.push(Finding {
-                    level: Severity::Error,
-                    code: "plan.context-path-invalid",
-                    message: format!(
+                out.push(plan_finding(
+                    "plan.context-path-invalid",
+                    Severity::Important,
+                    format!(
                         "entry '{}': context path '{}' must be relative to .specify/ (no '..' or absolute paths)",
                         entry.name, path
                     ),
-                    entry: Some(entry.name.clone()),
-                });
+                    Some(entry.name.to_string()),
+                ));
             }
         }
     }
     out
 }
 
-fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Finding> {
+fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let declared: HashSet<&str> = plan.entries.iter().map(|c| c.name.as_str()).collect();
 
@@ -273,28 +336,28 @@ fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Finding> {
 
     for name in &dir_names {
         if !declared.contains(name.as_str()) {
-            out.push(Finding {
-                level: Severity::Warning,
-                code: "orphan-slice-dir",
-                message: format!("slice directory '{name}' has no plan entry"),
-                entry: Some(name.clone()),
-            });
+            out.push(plan_finding(
+                "orphan-slice-dir",
+                Severity::Suggestion,
+                format!("slice directory '{name}' has no plan entry"),
+                Some(name.clone()),
+            ));
         }
     }
 
     for entry in &plan.entries {
         if entry.status == Status::InProgress {
-            let candidate = slices_dir.join(&entry.name);
+            let candidate = slices_dir.join(entry.name.as_str());
             if !candidate.is_dir() {
-                out.push(Finding {
-                    level: Severity::Warning,
-                    code: "missing-slice-dir-for-in-progress",
-                    message: format!(
+                out.push(plan_finding(
+                    "missing-slice-dir-for-in-progress",
+                    Severity::Suggestion,
+                    format!(
                         "in-progress entry '{}' has no slice directory (may briefly be absent during phase start-up)",
                         entry.name
                     ),
-                    entry: Some(entry.name.clone()),
-                });
+                    Some(entry.name.to_string()),
+                ));
             }
         }
     }

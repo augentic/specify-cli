@@ -5,7 +5,7 @@
 //! This crate is a deliberate carve-out from the workspace's
 //! `Render` / `emit` / `specify-error` discipline. It ships as a
 //! self-contained `wasm32-wasip2` component distributed independently
-//! of the `specrun` runtime binary, so it owns its own error rendering and
+//! of the `specify` runtime binary, so it owns its own error rendering and
 //! exit-code shape. Future changes here MUST preserve that boundary
 //! — do not pull in `specify-error`, `Render`, or the host
 //! `output::emit` dispatcher; those couplings would re-attach the

@@ -4,15 +4,12 @@
 //! at `survey` time, identified by its `(source, lead)` pair and
 //! validated against `schemas/discovery/lead.schema.json`.
 //!
-//! The whole-document model lives in [`document`] (discovery alias contract); it
-//! parses `discovery.md`, exposes [`Discovery::resolve_lead`]
-//! for the `--sources <key>=<lead-or-alias>` rewrite path, and gates
-//! the per-`source` `lead` ↔ `aliases[]` collision check shared
-//! between `specrun plan amend --add-alias` and
-//! `specrun slice validate`.
+//! The whole-document model lives in [`document`]; it parses
+//! `discovery.md` and exposes [`Discovery::resolve_lead`] for the
+//! `--sources <key>=<lead>` rewrite path.
 
 pub mod document;
 pub mod lead;
 
-pub use document::{Discovery, DiscoveryAliasCollision, ResolveError as DiscoveryResolveError};
-pub use lead::{AliasCollision, Lead, LeadAliases};
+pub use document::{Discovery, ResolveError as DiscoveryResolveError};
+pub use lead::Lead;

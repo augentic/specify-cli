@@ -253,7 +253,7 @@ pub fn render_json(outcome: Result<serde_json::Value, ScaffoldError>) -> (String
 fn project_dir_from_env() -> Result<PathBuf, ScaffoldError> {
     std::env::var_os("PROJECT_DIR").map(PathBuf::from).ok_or_else(|| {
         ScaffoldError::InvalidProject {
-            message: "PROJECT_DIR is not set; run through `specrun tool run` with a project scope"
+            message: "PROJECT_DIR is not set; run through `specify tool run` with a project scope"
                 .into(),
         }
     })

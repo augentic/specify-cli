@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 
+use specify_diagnostics::{Diagnostic, FindingEvidence, Severity};
 use tempfile::tempdir;
 
 use super::*;
@@ -10,6 +11,20 @@ use crate::change::plan::core::{
     plan_with_changes,
 };
 use crate::registry::{Registry, RegistryProject};
+
+/// Match a neutral diagnostic on its stable check code (`rule_id`).
+fn has_code(d: &Diagnostic, code: &str) -> bool {
+    d.rule_id.as_deref() == Some(code)
+}
+
+/// Read the structured-evidence payload a health check carries. Panics
+/// if the diagnostic does not carry `FindingEvidence::Structured`.
+fn data(d: &Diagnostic) -> &serde_json::Value {
+    match &d.evidence {
+        FindingEvidence::Structured { data, .. } => data,
+        other => panic!("expected structured evidence, got {other:?}"),
+    }
+}
 
 fn plan_with_sources(sources: Vec<(&str, &str)>, changes: Vec<Entry>) -> Plan {
     let mut map = BTreeMap::new();
@@ -33,14 +48,9 @@ fn cycle_two_node() {
         change_with_deps("b", Status::Pending, &["a"]),
     ]);
     let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
+        doctor(&plan, None, None, None).into_iter().filter(|d| has_code(d, CYCLE)).collect();
     assert_eq!(hits.len(), 1, "expected one cycle, got {hits:#?}");
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::Cycle { cycle } => {
-            assert_eq!(cycle, &vec!["a".to_string(), "b".to_string(), "a".to_string()]);
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
+    assert_eq!(data(&hits[0])["cycle"], serde_json::json!(["a", "b", "a"]));
 }
 
 #[test]
@@ -51,17 +61,9 @@ fn cycle_three_node() {
         change_with_deps("c", Status::Pending, &["b"]),
     ]);
     let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
+        doctor(&plan, None, None, None).into_iter().filter(|d| has_code(d, CYCLE)).collect();
     assert_eq!(hits.len(), 1, "single SCC, single diagnostic");
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::Cycle { cycle } => {
-            assert_eq!(
-                cycle,
-                &vec!["a".to_string(), "b".to_string(), "c".to_string(), "a".to_string()]
-            );
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
+    assert_eq!(data(&hits[0])["cycle"], serde_json::json!(["a", "b", "c", "a"]));
 }
 
 #[test]
@@ -72,7 +74,7 @@ fn cycle_two_disjoint() {
         change_with_deps("c", Status::Pending, &["d"]),
         change_with_deps("d", Status::Pending, &["c"]),
     ]);
-    let count = doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).count();
+    let count = doctor(&plan, None, None, None).into_iter().filter(|d| has_code(d, CYCLE)).count();
     assert_eq!(count, 2, "expected two distinct cycles");
 }
 
@@ -80,14 +82,9 @@ fn cycle_two_disjoint() {
 fn cycle_self_loop() {
     let plan = plan_with_changes(vec![change_with_deps("a", Status::Pending, &["a"])]);
     let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
+        doctor(&plan, None, None, None).into_iter().filter(|d| has_code(d, CYCLE)).collect();
     assert_eq!(hits.len(), 1);
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::Cycle { cycle } => {
-            assert_eq!(cycle, &vec!["a".to_string(), "a".to_string()]);
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
+    assert_eq!(data(&hits[0])["cycle"], serde_json::json!(["a", "a"]));
 }
 
 #[test]
@@ -97,7 +94,7 @@ fn no_cycle_quiet() {
         change_with_deps("b", Status::Pending, &["a"]),
     ]);
     let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == CYCLE).collect();
+        doctor(&plan, None, None, None).into_iter().filter(|d| has_code(d, CYCLE)).collect();
     assert!(hits.is_empty(), "no cycle expected, got {hits:#?}");
 }
 
@@ -108,7 +105,8 @@ fn orphan_source_zero() {
     let mut e = change("a", Status::Pending);
     e.sources = vec![SliceSourceBinding::bare("monolith")];
     let plan = plan_with_sources(vec![("monolith", "/path")], vec![e]);
-    let any_orphan = doctor(&plan, None, None, None).into_iter().any(|d| d.code == ORPHAN_SOURCE);
+    let any_orphan =
+        doctor(&plan, None, None, None).into_iter().any(|d| has_code(&d, ORPHAN_SOURCE));
     assert!(!any_orphan);
 }
 
@@ -122,14 +120,13 @@ fn orphan_source_one() {
             e
         }],
     );
-    let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == ORPHAN_SOURCE).collect();
+    let hits: Vec<_> = doctor(&plan, None, None, None)
+        .into_iter()
+        .filter(|d| has_code(d, ORPHAN_SOURCE))
+        .collect();
     assert_eq!(hits.len(), 1);
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::OrphanSource { key } => assert_eq!(key, "orphan"),
-        other => panic!("wrong payload: {other:?}"),
-    }
-    assert_eq!(hits[0].severity, Severity::Warning);
+    assert_eq!(data(&hits[0])["key"], "orphan");
+    assert_eq!(hits[0].severity, Severity::Suggestion);
 }
 
 #[test]
@@ -142,15 +139,12 @@ fn orphan_source_multiple_sorted() {
             e
         }],
     );
-    let hits: Vec<_> =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == ORPHAN_SOURCE).collect();
-    let keys: Vec<&str> = hits
-        .iter()
-        .map(|d| match d.data.as_ref().unwrap() {
-            DiagnosticPayload::OrphanSource { key } => key.as_str(),
-            _ => panic!("wrong payload"),
-        })
+    let hits: Vec<_> = doctor(&plan, None, None, None)
+        .into_iter()
+        .filter(|d| has_code(d, ORPHAN_SOURCE))
         .collect();
+    let keys: Vec<String> =
+        hits.iter().map(|d| data(d)["key"].as_str().expect("key string").to_string()).collect();
     assert_eq!(keys, vec!["alpha", "beta", "gamma"]);
 }
 
@@ -173,7 +167,7 @@ fn orphan_source_mixed_references() {
         ],
     );
     let count =
-        doctor(&plan, None, None, None).into_iter().filter(|d| d.code == ORPHAN_SOURCE).count();
+        doctor(&plan, None, None, None).into_iter().filter(|d| has_code(d, ORPHAN_SOURCE)).count();
     assert_eq!(count, 1, "only `ghost` should orphan");
 }
 
@@ -240,28 +234,19 @@ fn stale_clone_reports_missing_origin() {
     let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
-        .filter(|d| d.code == STALE_CLONE)
+        .filter(|d| has_code(d, STALE_CLONE))
         .collect();
     assert_eq!(hits.len(), 1, "expected single stale-clone, got {hits:#?}");
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::StaleClone {
-            project,
-            reason,
-            expected,
-            observed,
-        } => {
-            assert_eq!(project, "alpha");
-            assert_eq!(*reason, StaleReason::SlotMismatch);
-            assert_eq!(expected.as_ref().unwrap().slot_kind.as_deref(), Some("git-clone"));
-            assert_eq!(observed.as_ref().unwrap().slot_kind.as_deref(), Some("git-clone"));
-            assert!(observed.as_ref().unwrap().url.is_none());
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
+    let payload = data(&hits[0]);
+    assert_eq!(payload["project"], "alpha");
+    assert_eq!(payload["reason"], "slot-mismatch");
+    assert_eq!(payload["expected"]["slot-kind"], "git-clone");
+    assert_eq!(payload["observed"]["slot-kind"], "git-clone");
+    assert!(payload["observed"]["url"].is_null());
     assert!(
-        hits[0].message.contains("has no origin remote"),
+        hits[0].impact.contains("has no origin remote"),
         "missing origin should be reported via sync slot rules: {:?}",
-        hits[0].message
+        hits[0].impact
     );
 }
 
@@ -278,28 +263,13 @@ fn stale_clone_signature_changed() {
     let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
-        .filter(|d| d.code == STALE_CLONE)
+        .filter(|d| has_code(d, STALE_CLONE))
         .collect();
     assert_eq!(hits.len(), 1);
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::StaleClone {
-            reason,
-            expected,
-            observed,
-            ..
-        } => {
-            assert_eq!(*reason, StaleReason::SignatureChanged);
-            assert_eq!(
-                expected.as_ref().unwrap().url.as_deref(),
-                Some("git@github.com:org/alpha.git")
-            );
-            assert_eq!(
-                observed.as_ref().unwrap().url.as_deref(),
-                Some("git@github.com:old/alpha.git")
-            );
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
+    let payload = data(&hits[0]);
+    assert_eq!(payload["reason"], "signature-changed");
+    assert_eq!(payload["expected"]["url"], "git@github.com:org/alpha.git");
+    assert_eq!(payload["observed"]["url"], "git@github.com:old/alpha.git");
 }
 
 #[test]
@@ -315,7 +285,7 @@ fn stale_clone_signature_current() {
     let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
-        .filter(|d| d.code == STALE_CLONE)
+        .filter(|d| has_code(d, STALE_CLONE))
         .collect();
     assert!(hits.is_empty(), "current signature must not warn, got {hits:#?}");
 }
@@ -334,26 +304,17 @@ fn stale_clone_wrong_symlink_target() {
     let plan = plan_with_changes(vec![]);
     let hits: Vec<_> = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
-        .filter(|d| d.code == STALE_CLONE)
+        .filter(|d| has_code(d, STALE_CLONE))
         .collect();
     assert_eq!(hits.len(), 1, "wrong symlink target must surface stale slot");
-    match hits[0].data.as_ref().unwrap() {
-        DiagnosticPayload::StaleClone {
-            reason,
-            expected,
-            observed,
-            ..
-        } => {
-            assert_eq!(*reason, StaleReason::SlotMismatch);
-            assert_eq!(expected.as_ref().unwrap().slot_kind.as_deref(), Some("symlink"));
-            assert_eq!(observed.as_ref().unwrap().slot_kind.as_deref(), Some("symlink"));
-            assert!(
-                observed.as_ref().unwrap().target.as_ref().unwrap().contains("other"),
-                "observed target should name the wrong symlink target"
-            );
-        }
-        other => panic!("wrong payload: {other:?}"),
-    }
+    let payload = data(&hits[0]);
+    assert_eq!(payload["reason"], "slot-mismatch");
+    assert_eq!(payload["expected"]["slot-kind"], "symlink");
+    assert_eq!(payload["observed"]["slot-kind"], "symlink");
+    assert!(
+        payload["observed"]["target"].as_str().expect("observed target").contains("other"),
+        "observed target should name the wrong symlink target"
+    );
 }
 
 #[test]
@@ -363,7 +324,7 @@ fn stale_clone_ignores_missing_slots() {
     let plan = plan_with_changes(vec![]);
     let any_stale = doctor(&plan, None, Some(&registry), Some(tmp.path()))
         .into_iter()
-        .any(|d| d.code == STALE_CLONE);
+        .any(|d| has_code(&d, STALE_CLONE));
     assert!(!any_stale, "missing slots are left to workspace sync");
 }
 
@@ -389,7 +350,7 @@ fn healthy_plan_no_diagnostics() {
     let diagnostics = doctor(&plan, None, None, None);
     for code in [CYCLE, ORPHAN_SOURCE, STALE_CLONE] {
         assert!(
-            !diagnostics.iter().any(|d| d.code == code),
+            !diagnostics.iter().any(|d| has_code(d, code)),
             "healthy plan should not emit {code}: {diagnostics:#?}"
         );
     }
@@ -405,49 +366,34 @@ fn includes_validate_findings() {
     ]);
     let diagnostics = doctor(&plan, None, None, None);
     assert!(
-        diagnostics.iter().any(|d| d.code == "unknown-depends-on"),
+        diagnostics.iter().any(|d| has_code(d, "unknown-depends-on")),
         "validate's `unknown-depends-on` must pass through doctor unchanged: {diagnostics:#?}"
     );
 }
 
+/// A13: every health diagnostic is the neutral currency. A doctor
+/// finding serialises with kebab-case keys, carries the stable code as
+/// `rule-id`, maps the orphan-source warning to a non-blocking
+/// `suggestion`, and preserves its machine-readable payload on the
+/// structured evidence (`evidence.data`) — validating against the
+/// shared diagnostic schema.
 #[test]
-fn diagnostic_serialises_kebab_case() {
-    let diag = Diagnostic {
-        severity: Severity::Warning,
-        code: ORPHAN_SOURCE.to_string(),
-        message: "test".into(),
-        entry: None,
-        data: Some(DiagnosticPayload::OrphanSource {
-            key: "monolith".into(),
-        }),
-    };
-    let v = serde_json::to_value(&diag).expect("serialise");
-    assert_eq!(v["severity"], "warning");
-    assert_eq!(v["code"], ORPHAN_SOURCE);
-    assert_eq!(v["data"]["kind"], "orphan-source");
-    assert_eq!(v["data"]["key"], "monolith");
-}
+fn doctor_finding_is_canonical_diagnostic() {
+    let mut e = change("a", Status::Pending);
+    e.sources = vec![SliceSourceBinding::bare("monolith")];
+    let plan = plan_with_sources(vec![("monolith", "/path"), ("orphan", "/elsewhere")], vec![e]);
+    let hit = doctor(&plan, None, None, None)
+        .into_iter()
+        .find(|d| has_code(d, ORPHAN_SOURCE))
+        .expect("orphan-source diagnostic");
 
-/// REVIEW.md A18: a plan-doctor [`Diagnostic`] projects onto the
-/// canonical diagnostic currency with the code as `rule_id`, the entry
-/// as `slice`, the severity mapped, and a fingerprint that validates.
-#[test]
-fn doctor_diagnostic_projects_onto_canonical_diagnostic() {
-    let doctor = Diagnostic {
-        severity: Severity::Error,
-        code: CYCLE.to_string(),
-        message: "dependency cycle detected".to_string(),
-        entry: Some("identity-service".to_string()),
-        data: Some(DiagnosticPayload::Cycle {
-            cycle: vec!["a".to_string(), "b".to_string(), "a".to_string()],
-        }),
-    };
-    let diagnostic = specify_diagnostics::Diagnostic::from(&doctor);
+    specify_diagnostics::validate_diagnostic(&hit).expect("doctor finding is valid");
+    assert!(specify_diagnostics::verify_fingerprint(&hit), "fingerprint covers evidence");
 
-    assert_eq!(diagnostic.rule_id.as_deref(), Some(CYCLE));
-    assert_eq!(diagnostic.severity, specify_diagnostics::Severity::Important);
-    assert_eq!(diagnostic.slice.as_deref(), Some("identity-service"));
-    assert_eq!(diagnostic.artifact, specify_diagnostics::Artifact::Plan);
-    specify_diagnostics::validate_diagnostic(&diagnostic).expect("projected diagnostic is valid");
-    assert!(specify_diagnostics::verify_fingerprint(&diagnostic), "fingerprint covers slice");
+    let v = serde_json::to_value(&hit).expect("serialise");
+    assert_eq!(v["severity"], "suggestion");
+    assert_eq!(v["rule-id"], ORPHAN_SOURCE);
+    assert_eq!(v["artifact"], "plan");
+    assert_eq!(v["evidence"]["kind"], "structured");
+    assert_eq!(v["evidence"]["data"]["key"], "orphan");
 }

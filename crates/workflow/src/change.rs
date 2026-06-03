@@ -4,16 +4,15 @@
 mod plan;
 
 pub use plan::core::{
-    Divergence, Entry, EntryPatch, Finding, LeadCatalog, LeadCatalogEntry, Lifecycle, Patch, Plan,
+    Divergence, Entry, EntryPatch, LeadCatalog, LeadCatalogEntry, Lifecycle, Patch, Plan,
     ProjectMissingPlatforms, ProjectRef, ProposalKind, ProposalRequest, ProposalResponse,
-    ProposeOutcome, ResponseMember, ResponseSlice, Severity, SliceAuthorityOverride,
-    SliceSourceBinding, SourceBinding, Status, TargetRef, TargetRefParseError, build_catalog,
-    build_request, detect_missing_platforms, emit_authority_override_seed_events, entry_mut,
-    mutate_authority_overrides, orphan_authority_override_keys, reject_orphan_overrides,
-    resolve_target, resolve_topology, unknown_slice_err,
+    ProposeOutcome, ResponseMember, ResponseSlice, SliceAuthorityOverride, SliceSourceBinding,
+    SourceBinding, Status, TargetRef, TargetRefParseError, build_catalog, build_request,
+    detect_missing_platforms, emit_authority_override_seed_events, entry_mut,
+    mutate_authority_overrides, orphan_authority_override_keys, plan_finding,
+    plan_finding_structured, reject_orphan_overrides, resolve_target, resolve_topology,
+    unknown_slice_err,
 };
 pub use plan::doctor::{
-    CYCLE, CloneSignature, Diagnostic as PlanDoctorDiagnostic,
-    DiagnosticPayload as PlanDoctorPayload, ORPHAN_SOURCE, STALE_CLONE, StaleReason, detect,
-    doctor as plan_doctor,
+    CYCLE, CloneSignature, ORPHAN_SOURCE, STALE_CLONE, StaleReason, detect, doctor as plan_doctor,
 };

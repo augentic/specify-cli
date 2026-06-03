@@ -16,7 +16,7 @@ use specify_workflow::config::Layout;
 use specify_workflow::journal::{self, Event, EventKind};
 
 mod common;
-use common::{Project, assert_golden_at, parse_stderr, repo_root, specrun};
+use common::{Project, assert_golden_at, parse_stderr, repo_root, specify_cmd};
 
 /// Pinned RFC 3339 timestamp used by every golden snapshot. CLI-driven
 /// emits use `Timestamp::now()`; tests normalise the value to this
@@ -75,7 +75,7 @@ slices:
 ",
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "platform-v2", "approved"])
         .assert()
@@ -107,14 +107,14 @@ slices:
 ";
 
 #[test]
-fn plan_amend_divergence_from_none_to_accepted() {
+fn amend_divergence_none_to_accepted() {
     // source/target split note: the implicit-default first transition
     // serialises `from: none` because the on-disk slice has no
     // `divergence:` key.
     let project = Project::init();
     project.seed_plan(TWO_SLICE_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "accepted"])
         .assert()
@@ -141,7 +141,7 @@ fn plan_amend_divergence_none_to_likely() {
     let project = Project::init();
     project.seed_plan(TWO_SLICE_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "likely"])
         .assert()
@@ -156,7 +156,7 @@ fn plan_amend_divergence_none_to_likely() {
 
 #[test]
 fn plan_amend_divergence_likely_round_trips() {
-    // divergence and writer-ownership contract: `specrun plan amend --divergence likely` is the
+    // divergence and writer-ownership contract: `specify plan amend --divergence likely` is the
     // bare-skill fallback writer of `slices[].divergence: likely`.
     // The CLI must persist the field byte-identically to the legacy
     // skill-written form so existing fixtures keep round-tripping.
@@ -170,7 +170,7 @@ slices:
 ",
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "likely"])
         .assert()
@@ -189,7 +189,7 @@ slices:
 }
 
 #[test]
-fn plan_amend_divergence_from_likely_to_rejected() {
+fn amend_divergence_likely_to_rejected() {
     // source/target split note: `propose` writes `divergence: likely` and
     // the operator may transition it to `rejected` at Gate 1.
     let project = Project::init();
@@ -203,7 +203,7 @@ slices:
 ",
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "rejected"])
         .assert()
@@ -218,7 +218,7 @@ slices:
 }
 
 #[test]
-fn plan_amend_divergence_from_accepted_to_rejected() {
+fn amend_divergence_accepted_to_rejected() {
     let project = Project::init();
     project.seed_plan(
         "name: platform-v2
@@ -230,7 +230,7 @@ slices:
 ",
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "rejected"])
         .assert()
@@ -244,7 +244,7 @@ slices:
 }
 
 #[test]
-fn plan_amend_divergence_from_rejected_to_accepted() {
+fn amend_divergence_rejected_to_accepted() {
     let project = Project::init();
     project.seed_plan(
         "name: platform-v2
@@ -256,7 +256,7 @@ slices:
 ",
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--divergence", "accepted"])
         .assert()
@@ -274,7 +274,7 @@ fn plan_amend_without_divergence_no_event() {
     let project = Project::init();
     project.seed_plan(TWO_SLICE_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "checkout", "--description", "scope hint"])
         .assert()
@@ -291,7 +291,11 @@ fn plan_amend_without_divergence_no_event() {
 #[test]
 fn slice_create_writes_no_refined_journal() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "checkout"])
+        .assert()
+        .success();
     assert!(
         !journal_path(project.root()).exists(),
         "slice create must not emit slice.transition.refined"
@@ -301,8 +305,12 @@ fn slice_create_writes_no_refined_journal() {
 #[test]
 fn slice_transition_refined_writes() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
-    specrun()
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "checkout"])
+        .assert()
+        .success();
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "transition", "checkout", "refined"])
         .assert()
@@ -318,14 +326,18 @@ fn slice_transition_refined_writes() {
 #[test]
 fn slice_transition_built_no_refined_event() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "checkout"]).assert().success();
-    specrun()
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "checkout"])
+        .assert()
+        .success();
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "transition", "checkout", "refined"])
         .assert()
         .success();
     let before = read_journal(project.root()).len();
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "transition", "checkout", "built"])
         .assert()
@@ -337,7 +349,7 @@ fn slice_transition_built_no_refined_event() {
     );
 }
 
-// -- slice.synthesis.* (specrun slice validate) ----------------------
+// -- slice.synthesis.* (specify slice validate) ----------------------
 
 const PLAN_WITH_LEGACY_MONOLITH: &str = "\
 name: workflow-prov
@@ -385,7 +397,7 @@ fn stage_slice_for_synthesis_journal() -> Project {
 #[test]
 fn slice_validate_appends_synthesis() {
     let project = stage_slice_for_synthesis_journal();
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "validate", "my-slice"])
         .assert()
@@ -406,7 +418,7 @@ fn slice_validate_provenance_no_journal() {
     let bad = TAGGED_SPEC_UNKNOWN.replace("Status: unknown", "Status: agreed");
     fs::write(&spec_path, bad).expect("rewrite spec with tag/status mismatch");
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "validate", "my-slice"])
         .assert()
@@ -426,7 +438,7 @@ fn agent_emit_one_event_per_line() {
     // agent-driven events. The harness drives `append` directly
     // because the CLI does not own a `journal append` verb
     // (workflow §"What was cut and why"). `slice.synthesis.*` is
-    // CLI-owned via `specrun slice validate` instead.
+    // CLI-owned via `specify slice validate` instead.
     let project = Project::init();
     let layout = Layout::new(project.root());
     let fixed: jiff::Timestamp =
@@ -471,7 +483,7 @@ fn agent_emit_one_event_per_line() {
 // -- journal emit (source.* M1 events) -------------------------------
 
 #[test]
-fn journal_emit_appends_one_line_per_new_event() {
+fn emit_appends_one_line_per_event() {
     // The three RFC-29 D1 source events round-trip through the
     // `journal emit` front door: id + --payload deserialise into the
     // closed taxonomy, the CLI stamps the timestamp, and exactly one
@@ -496,7 +508,7 @@ fn journal_emit_appends_one_line_per_new_event() {
     ];
 
     for (event_id, payload, _) in cases {
-        specrun()
+        specify_cmd()
             .current_dir(project.root())
             .args(["journal", "emit", event_id, "--payload", payload])
             .assert()
@@ -526,7 +538,7 @@ fn journal_emit_appends_one_line_per_new_event() {
 }
 
 #[test]
-fn journal_emit_appends_m3_build_merge_events() {
+fn emit_appends_m3_build_merge() {
     // The RFC-29d M3 build/merge lifecycle events and
     // `target.execution.agent` round-trip through the `journal emit`
     // front door with no new wiring — the closed taxonomy is the
@@ -544,7 +556,7 @@ fn journal_emit_appends_m3_build_merge_events() {
     ];
 
     for (event_id, payload) in cases {
-        let mut cmd = specrun();
+        let mut cmd = specify_cmd();
         cmd.current_dir(project.root()).args(["journal", "emit", event_id]);
         if let Some(payload) = payload {
             cmd.args(["--payload", payload]);
@@ -574,11 +586,11 @@ fn journal_emit_appends_m3_build_merge_events() {
 }
 
 #[test]
-fn journal_emit_m3_failed_event_requires_reason() {
+fn emit_m3_failed_requires_reason() {
     // A `*.failed` variant without its `reason` field fails the single
     // serde round-trip as `journal-emit-payload-schema`.
     let project = Project::init();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "--format",
@@ -603,7 +615,7 @@ fn journal_emit_m3_failed_event_requires_reason() {
 #[test]
 fn journal_emit_unknown_event_is_rejected() {
     let project = Project::init();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "journal", "emit", "not.a.real.event", "--payload", "{}"])
         .assert()
@@ -618,11 +630,11 @@ fn journal_emit_unknown_event_is_rejected() {
 }
 
 #[test]
-fn journal_emit_incomplete_payload_is_rejected() {
+fn emit_incomplete_payload_rejected() {
     // A known event id whose payload omits a required field fails the
     // single serde round-trip as `journal-emit-payload-schema`.
     let project = Project::init();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "--format",

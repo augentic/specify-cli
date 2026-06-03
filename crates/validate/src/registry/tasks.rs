@@ -69,7 +69,7 @@ mod tests {
     }
 
     #[test]
-    fn checkbox_rule_passes_for_well_formed_tasks() {
+    fn checkbox_passes_well_formed() {
         let content = "## 1. Setup\n- [ ] 1.1 Do thing\n";
         let progress = parse_tasks(content);
         assert_eq!(tasks_use_checkbox_format(&ctx(content, Some(&progress))), RuleOutcome::Pass);
@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn grouping_rule_fails_when_a_task_precedes_any_heading() {
+    fn grouping_fails_task_before_heading() {
         let content = "- [ ] 1.1 Do thing\n";
         let progress = parse_tasks(content);
         assert!(matches!(

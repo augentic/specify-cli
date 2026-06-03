@@ -34,7 +34,7 @@ use strum::EnumString;
 /// (parsed out of `adapters/sources/<name>/adapter.yaml` at load
 /// time) and the discriminant stamped onto every cache index row at
 /// `.specify/.cache/extractions/<adapter>/index.jsonl` so
-/// `specrun source resolve --explain` can attribute hits and misses
+/// `specify source resolve --explain` can attribute hits and misses
 /// (see [`crate::adapter::cache::CacheIndexEntry::operation`]).
 ///
 /// Variants declared in kebab-alphabetical order so `BTreeMap`

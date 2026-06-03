@@ -1,10 +1,10 @@
-//! `specrun slice synthesize <slice>` handler — slice synthesis engine
+//! `specify slice synthesize <slice>` handler — slice synthesis engine
 //! (RFC-29c M2b; §"Command", §"Synthesis dispatch (D10)", §"Persist
 //! pipeline").
 //!
 //! The CLI cannot run the agent reconciliation step, so synthesis
 //! splits into the same two mutually-exclusive modes the shipped
-//! `specrun plan propose` precedent uses:
+//! `specify plan propose` precedent uses:
 //!
 //! - `--dry-run` is read-only. It reads the slice's bound
 //!   `evidence/<source>.yaml` and the resolved target `shape` brief and
@@ -51,7 +51,7 @@ use specify_workflow::slice::{
 
 use crate::runtime::context::Ctx;
 
-/// Run `specrun slice synthesize <slice> --dry-run | --from <response.json>`.
+/// Run `specify slice synthesize <slice> --dry-run | --from <response.json>`.
 ///
 /// # Errors
 ///
@@ -170,7 +170,7 @@ fn synthesize_from(ctx: &Ctx, name: &str, response_path: &Path) -> Result<Vec<St
     // kernel already enforced orphans/cross-refs/grammar; the broader
     // drift suite is `slice validate`'s job). `parse_yaml` validates the
     // serialised document and re-parses it.
-    let model_yaml = serialise_model(&projected)?;
+    let model_yaml = specify_model::atomic::serialise_yaml(&projected)?;
     SliceModel::parse_yaml(&model_yaml)?;
 
     // Step 4 — render provenance lines into `spec.md` (in memory).
@@ -223,15 +223,6 @@ fn staged_file(slice_dir: &Path, rel: &str, bytes: Vec<u8>) -> StagedFile {
         abs: slice_dir.join(rel),
         bytes,
     }
-}
-
-/// Serialise the projected model to a trailing-newlined YAML document.
-fn serialise_model(model: &SliceModel) -> Result<String> {
-    let mut content = serde_saphyr::to_string(model)?;
-    if !content.ends_with('\n') {
-        content.push('\n');
-    }
-    Ok(content)
 }
 
 /// Load the named slice's plan entry — the binding that carries the

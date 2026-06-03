@@ -355,7 +355,7 @@ fn merge_leaves_untouched_contracts() {
 }
 
 #[test]
-fn merge_without_contracts_dir_works_as_before() {
+fn merge_without_contracts_dir() {
     let project = build_project();
     let slice_dir = project.slice_dir();
 

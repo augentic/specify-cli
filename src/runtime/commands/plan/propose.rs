@@ -1,4 +1,4 @@
-//! `specrun plan propose` handler — plan-time lead reconciliation
+//! `specify plan propose` handler — plan-time lead reconciliation
 //! (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
 //!
 //! Two mutually exclusive modes wrap the agent-led reconciliation kernel
@@ -39,7 +39,7 @@ use specify_workflow::schema::validate_proposal_json;
 use super::{Ref, cli, plan_ref, require_file};
 use crate::runtime::context::Ctx;
 
-/// Run `specrun plan propose --dry-run | --from <response.json>`.
+/// Run `specify plan propose --dry-run | --from <response.json>`.
 ///
 /// # Errors
 ///
@@ -203,7 +203,7 @@ fn load_discovery(ctx: &Ctx) -> Result<Discovery> {
 }
 
 /// Resolve the project topology the request embeds and the response binds
-/// to — the committed `.specify/topology.lock` projection for a hub
+/// to — the committed `.specify/topology.lock` projection for a workspace
 /// (RFC-36), or the sole project synthesised from `project.yaml`.
 fn load_topology(ctx: &Ctx) -> Result<Vec<ProjectRef>> {
     let config = ProjectConfig::load(&ctx.project_dir)?;

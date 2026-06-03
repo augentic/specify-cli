@@ -1,4 +1,4 @@
-//! `specrun tool *` dispatcher. Hosts the shared inventory-assembly
+//! `specify tool *` dispatcher. Hosts the shared inventory-assembly
 //! helpers (declared-tool merge, adapter resolution, manifest
 //! validation) consumed by every per-subcommand handler.
 

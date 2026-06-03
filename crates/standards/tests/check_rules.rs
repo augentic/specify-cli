@@ -30,7 +30,7 @@ fn valid_rule(id: &str) -> String {
 id: {id}
 title: Test Rule
 severity: important
-trigger: When testing codex validation in specdev lint.
+trigger: When testing codex validation in specify lint framework.
 ---
 
 ## Rule
@@ -146,7 +146,7 @@ id: UNI-999
 title: Reserved Hint Shape Test
 severity: important
 trigger: When validating that Reserved hint kind hint kinds shape-check only.
-deterministic_hints:
+rule_hints:
   - kind: namespace-owner
     value: adapters/shared/rules/universal
   - kind: set-coverage

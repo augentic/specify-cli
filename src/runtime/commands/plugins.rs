@@ -1,4 +1,4 @@
-//! `specrun plugins {doctor, refresh}` — Cursor plugin-cache inspection
+//! `specify plugins {doctor, refresh}` — Cursor plugin-cache inspection
 //! and invalidation (RFC-30 §D2, Wave D).
 //!
 //! Bootstrap verbs: they operate on the Cursor plugin cache and the
@@ -30,7 +30,7 @@ use crate::runtime::output;
 const RESTART_NOTICE: &str =
     "Plugin cache cleared. Restart Cursor to repopulate from the marketplace.";
 
-/// Dispatch the `specrun plugins {doctor, refresh}` family.
+/// Dispatch the `specify plugins {doctor, refresh}` family.
 pub(super) fn run(format: Format, action: PluginsAction) -> Result<()> {
     match action {
         PluginsAction::Doctor {
@@ -96,15 +96,15 @@ fn journal_refresh(outcome: &RefreshOutcome) -> Result<bool> {
     let event = Event::new(
         Timestamp::now(),
         EventKind::PluginsRefreshed {
-            deleted_paths: outcome.deleted_paths.clone(),
-            marketplace: outcome.marketplace.clone(),
+            deleted_paths: outcome.deleted_paths.iter().map(|p| p.display().to_string()).collect(),
+            marketplace: outcome.marketplace.display().to_string(),
         },
     );
     journal::append_batch(Layout::new(&root), std::slice::from_ref(&event))?;
     Ok(true)
 }
 
-/// Wire-stable `specrun plugins refresh` envelope (text + JSON).
+/// Wire-stable `specify plugins refresh` envelope (text + JSON).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct RefreshBody {
@@ -126,9 +126,9 @@ impl RefreshBody {
     fn new(outcome: &RefreshOutcome, journaled: bool) -> Self {
         Self {
             version: 1,
-            marketplace: outcome.marketplace.clone(),
-            cache_root: outcome.cache_root.clone(),
-            deleted_paths: outcome.deleted_paths.clone(),
+            marketplace: outcome.marketplace.display().to_string(),
+            cache_root: outcome.cache_root.display().to_string(),
+            deleted_paths: outcome.deleted_paths.iter().map(|p| p.display().to_string()).collect(),
             journaled,
             message: RESTART_NOTICE,
         }
@@ -136,8 +136,8 @@ impl RefreshBody {
 }
 
 fn write_doctor_text(w: &mut dyn Write, report: &DoctorReport) -> std::io::Result<()> {
-    writeln!(w, "marketplace: {}", report.marketplace)?;
-    writeln!(w, "cache-root: {}", report.cache_root)?;
+    writeln!(w, "marketplace: {}", report.marketplace.display())?;
+    writeln!(w, "cache-root: {}", report.cache_root.display())?;
     for plugin in &report.plugins {
         let expected = plugin.expected_sha.as_deref().unwrap_or("null");
         let cached = plugin.cached_sha.as_deref().unwrap_or("null");

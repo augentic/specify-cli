@@ -10,7 +10,7 @@ Use `cargo make test` rather than `cargo test`. It runs `cargo nextest run --all
 
 ## Integration-first policy
 
-Integration tests under `tests/` use `assert_cmd::Command::cargo_bin("specrun")`, drive the binary through clap, and assert against stdout JSON or filesystem state. Test-binary names are `tests/<area>.rs` (`cache`, `cli`, `contract_tool`, `cross_repo`, `discovery_aliases`, `e2e`, `init`, `journal`, `plan`, `plan_orchestrate`, `registry`, `slice`, `slice_merge`, `source`, `source_preview`, `target`, `tool`, `tool_schema`, `workspace`).
+Integration tests under `tests/` use `assert_cmd::Command::cargo_bin("specify")`, drive the binary through clap, and assert against stdout JSON or filesystem state. Test-binary names are `tests/<area>.rs` (`cache`, `cli`, `contract_tool`, `e2e`, `fan_in_fan_out`, `init`, `journal`, `plan`, `plan_orchestrate`, `registry`, `slice`, `slice_merge`, `source`, `source_preview`, `target`, `tool`, `tool_schema`, `workspace`).
 
 One file per integration binary is the intentional layout — `tests/it.rs` consolidation was measured and dropped, see [DECISIONS.md "Integration tests"](../../DECISIONS.md#integration-tests--keep-per-file-binaries-no-testsitrs-umbrella). The cold-build win was 7.3 % cargo-reported (well below the 20 % bar we apply to "Idiomatic Rust Cleanup" chunks) and the per-binary split keeps `cargo test --test <area>` cheap for local iteration.
 
@@ -25,16 +25,16 @@ Test function names are identifiers, not sentences — the same brevity rules as
 - Compress outcome tails to the assertion's shape: `_is_an_error` / `_returns_…_error` → `_errors`; `_validates_cleanly` → `_validates`; `_surfaces_as_a_single_error_entry` → `_one_error`.
 - Push the full narrative into the test body or a `//` comment above the `fn`, not the identifier.
 
-`module_name_repetitions` does not fire on `#[test]` fns, so this is a review-time rule.
+`module_name_repetitions` does not fire on `#[test]` fns, so the dedicated `RustTestNaming` predicate enforces a 40-char cap instead. It scans an upward attribute window, so `#[tokio::test]` / `async fn` and tests behind intervening attributes (`#[ignore]`, `#[case(..)]`) are covered. `tests/rust_quality.rs::no_long_test_fn_names` fails CI on any `rust.test-fn-name-too-long` finding.
 
 ## Patterns to follow
 
-- Spin up a real `specrun init` in a `tempfile::TempDir`. Reach for the existing helpers in `tests/cross_repo.rs` for multi-repo / fake-forge work; do not invent a parallel harness.
+- Spin up a real `specify init` in a `tempfile::TempDir`. Reach for the shared helpers in `tests/common/mod.rs` (`init_workspace`, `copy_dir`, `run_git`/`GIT_ENV`) and follow the fake-forge bare-repo patterns in `tests/workspace.rs` for multi-repo / fake-forge work; do not invent a parallel harness.
 - Compare stdout JSON against checked-in goldens under `tests/fixtures/e2e/goldens/`. Regenerate with `REGENERATE_GOLDENS=1 cargo nextest run --test e2e` and `git diff` before committing. The harness substitutes tempdir paths to `<TEMPDIR>` so goldens stay machine-independent.
 - Prefer structural assertions (status fields, exit codes, JSON shape) over byte-for-byte prose comparisons.
 - Tests that need git operations set the four `GIT_*` env vars from `tests/common::GIT_ENV` so authorship is deterministic.
 
-`tests/cross_repo.rs` is the RM-05 happy-path acceptance harness — read it first when extending multi-repo coverage.
+`tests/fan_in_fan_out.rs` is the RM-05 (multi-repo acceptance) deterministic CLI proof — the end-to-end fan-in-twice / fan-out-once path (`source survey` → `plan propose --dry-run | --from` → per-slice `source extract` → `slice synthesize` → `slice build` → `slice merge`, plus `depends-on` ordering and byte-identical kernel re-projection). Read it first when extending multi-repo coverage; the exhaustive reconcile-code coverage over the same fan-out shape lives in `tests/plan_orchestrate/`.
 
 ## Golden file discipline
 
@@ -42,5 +42,5 @@ Test function names are identifiers, not sentences — the same brevity rules as
 
 ## Test-side gotchas
 
-- Never hand-edit `.metadata.yaml` from a test or fixture. Drive transitions through `specrun slice transition`, `specrun plan transition`, or `stamp_slice_outcome` in `tests/common/mod.rs` when a test needs a stamped phase outcome. The tests in `tests/slice.rs` are the canonical patterns.
+- Never hand-edit `.metadata.yaml` from a test or fixture. Drive transitions through `specify slice transition`, `specify plan transition`, or `stamp_slice_outcome` in `tests/common/mod.rs` when a test needs a stamped phase outcome. The tests in `tests/slice.rs` are the canonical patterns.
 - WASI fixture components used by `tests/tool.rs` are rebuilt via `scripts/regen-wasm-fixtures.sh`. The outputs are checked in; only re-run when a fixture source changes.

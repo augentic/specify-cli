@@ -1,8 +1,9 @@
 //! [`Plan::amend`]: in-place edit of an existing entry's non-status fields.
 
+use specify_diagnostics::blocking;
 use specify_error::Error;
 
-use super::model::{EntryPatch, Plan, Severity};
+use super::model::{EntryPatch, Plan};
 use crate::change::detect;
 
 impl Plan {
@@ -56,12 +57,11 @@ impl Plan {
             }
         }
 
-        let errors: Vec<_> =
-            self.validate(None, None).into_iter().filter(|r| r.level == Severity::Error).collect();
+        let errors: Vec<_> = self.validate(None, None).into_iter().filter(blocking).collect();
         let failure_msg = errors
             .first()
-            .map(|r| r.message.clone())
-            .or_else(|| detect(&self.entries).into_iter().next().map(|d| d.message));
+            .map(|r| r.impact.clone())
+            .or_else(|| detect(&self.entries).into_iter().next().map(|d| d.impact));
         if let Some(msg) = failure_msg {
             self.entries[idx] = snapshot;
             return Err(Error::Diag {

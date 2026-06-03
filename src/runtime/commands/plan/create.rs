@@ -1,4 +1,4 @@
-//! `specrun plan create` handler. Composes the shared CLI arg
+//! `specify plan create` handler. Composes the shared CLI arg
 //! parsers in [`super::args`] with the domain authority-override
 //! engine in [`specify_workflow::change::mutate_authority_overrides`]
 //! so the handler stays declarative.
@@ -16,10 +16,10 @@ use super::args::{build_source_map, parse_override_assigns};
 use crate::runtime::cli::SourceArg;
 use crate::runtime::context::Ctx;
 
-/// `specrun plan create <name> [--source ...] [--auto-approve]`.
+/// `specify plan create <name> [--source ...] [--auto-approve]`.
 ///
 /// Scaffolds an empty `plan.yaml` (workflow §The Plan); slices are
-/// authored later by `specrun plan propose --from` or `specrun plan
+/// authored later by `specify plan propose --from` or `specify plan
 /// add`.
 ///
 /// When `--auto-approve` is set (auto-approve Gate-1 contract), the plan is constructed
@@ -86,7 +86,7 @@ pub(super) fn create(
         events.push(journal::Event::new(
             now,
             journal::EventKind::PlanTransitionApproved {
-                plan_name: plan_name.clone().into(),
+                plan_name: plan_name.clone(),
             },
         ));
     }

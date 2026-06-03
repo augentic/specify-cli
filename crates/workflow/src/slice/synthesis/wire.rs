@@ -15,7 +15,7 @@
 //! shape). [`build_synthesis_inputs`] assembles them — each bound
 //! source's inline `lead` and `claims` plus the resolved target shape
 //! brief body — into the plain serialisable [`SynthesisInputs`] that
-//! `specrun slice synthesize --dry-run --format json` prints. Authority
+//! `specify slice synthesize --dry-run --format json` prints. Authority
 //! is **not** included: the kernel resolves it from the on-disk Evidence
 //! after the response returns (RFC-29c §"Authority resolution").
 //!
@@ -118,7 +118,7 @@ pub enum SynthesisInputsKind {
 /// The agent synthesis step's input envelope (RFC-29c §"Synthesis
 /// response", §"Evidence input").
 ///
-/// Assembled by [`build_synthesis_inputs`] and printed by `specrun
+/// Assembled by [`build_synthesis_inputs`] and printed by `specify
 /// slice synthesize --dry-run --format json`. Not schema-validated —
 /// synthesis is always agent-dispatched, so there is no tool consumer
 /// and no closed request schema. Authority is deliberately absent: the

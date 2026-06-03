@@ -1,4 +1,4 @@
-//! Clap derive surface for `specrun archive *`.
+//! Clap derive surface for `specify archive *`.
 
 use clap::Subcommand;
 

@@ -52,7 +52,7 @@ fn parses_verbatim_fixture() {
 
 /// `snake_case` authoring keys lift to the kebab-case wire shape
 /// carried by [`Rule`]. Covers every documented rename:
-/// `lint_mode`, `deterministic_hints`, and the nested
+/// `lint_mode`, `rule_hints`, and the nested
 /// `deprecated.replaced_by`.
 #[test]
 fn snake_case_keys_lift_to_kebab_case() {
@@ -62,7 +62,7 @@ title: Sample
 severity: important
 trigger: A short trigger sentence covering the rule context.
 lint_mode: hybrid
-deterministic_hints:
+rule_hints:
   - kind: regex
     value: 'https?://'
     description: Literal URL.
@@ -76,7 +76,7 @@ Body.
 ";
     let rule = parse_rule(content).expect("parses");
     assert_eq!(rule.lint_mode, Some(LintMode::Hybrid));
-    let hints = rule.deterministic_hints.as_ref().expect("hints present");
+    let hints = rule.rule_hints.as_ref().expect("hints present");
     assert_eq!(hints.len(), 1);
     assert_eq!(hints[0].kind, HintKind::Regex);
     assert_eq!(hints[0].value, "https?://");
@@ -88,10 +88,10 @@ Body.
     // intact (no snake_case key leaks).
     let json = serde_json::to_string(&rule).expect("serialize");
     assert!(json.contains("\"lint-mode\""));
-    assert!(json.contains("\"deterministic-hints\""));
+    assert!(json.contains("\"rule-hints\""));
     assert!(json.contains("\"replaced-by\""));
     assert!(!json.contains("\"lint_mode\""));
-    assert!(!json.contains("\"deterministic_hints\""));
+    assert!(!json.contains("\"rule_hints\""));
     assert!(!json.contains("\"replaced_by\""));
 }
 
@@ -194,14 +194,14 @@ id: UNI-014
 title: Broken regex tolerated
 severity: optional
 trigger: Parser must not compile regex hint values; that belongs to hint execution.
-deterministic_hints:
+rule_hints:
   - kind: regex
     value: '[invalid regex)('
 ---
 ## Rule
 ";
     let rule = parse_rule(content).expect("parses despite broken regex value");
-    let hints = rule.deterministic_hints.expect("hints present");
+    let hints = rule.rule_hints.expect("hints present");
     assert_eq!(hints.len(), 1);
     assert_eq!(hints[0].kind, HintKind::Regex);
     assert_eq!(hints[0].value, "[invalid regex)(");
@@ -217,7 +217,7 @@ id: UNI-014
 title: Reserved hint kinds
 severity: optional
 trigger: Reserved hint kind hint kinds must shape-validate without execution semantics.
-deterministic_hints:
+rule_hints:
   - kind: set-coverage
     value: 'rule.id'
   - kind: namespace-owner
@@ -226,7 +226,7 @@ deterministic_hints:
 ## Rule
 ";
     let rule = parse_rule(content).expect("parses");
-    let hints = rule.deterministic_hints.expect("hints present");
+    let hints = rule.rule_hints.expect("hints present");
     assert_eq!(hints.len(), 2);
     assert_eq!(hints[0].kind, HintKind::SetCoverage);
     assert_eq!(hints[1].kind, HintKind::NamespaceOwner);
@@ -269,12 +269,12 @@ fn snake_to_kebab_only_touches_keys() {
         "applicability": {
             "adapters": ["code-typescript", "documentation"],
         },
-        "deterministic_hints": [
+        "rule_hints": [
             {"kind": "regex", "value": "snake_in_value_stays"},
         ],
     });
     let lifted = snake_to_kebab_keys(input);
     assert_eq!(lifted["lint-mode"], "hybrid");
     assert_eq!(lifted["applicability"]["adapters"][0], "code-typescript");
-    assert_eq!(lifted["deterministic-hints"][0]["value"], "snake_in_value_stays");
+    assert_eq!(lifted["rule-hints"][0]["value"], "snake_in_value_stays");
 }

@@ -78,8 +78,8 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          ARCHIVE="specrun-${VERSION}-${{ matrix.target }}.tar.gz"
-          tar -czf "${ARCHIVE}" -C "target/${{ matrix.target }}/release" specrun specdev
+          ARCHIVE="specify-${VERSION}-${{ matrix.target }}.tar.gz"
+          tar -czf "${ARCHIVE}" -C "target/${{ matrix.target }}/release" specify
           shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
 
       - name: Package (windows)
@@ -87,18 +87,18 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $archive = "specrun-$version-${{ matrix.target }}.zip"
-          7z a $archive "target\${{ matrix.target }}\release\specrun.exe" "target\${{ matrix.target }}\release\specdev.exe"
+          $archive = "specify-$version-${{ matrix.target }}.zip"
+          7z a $archive "target\${{ matrix.target }}\release\specify.exe"
           (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLower() + "  " + $archive | Out-File -FilePath "$archive.sha256" -Encoding ascii
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: specrun-${{ matrix.target }}
+          name: specify-${{ matrix.target }}
           path: |
-            specrun-*.tar.gz
-            specrun-*.zip
-            specrun-*.sha256
+            specify-*.tar.gz
+            specify-*.zip
+            specify-*.sha256
           if-no-files-found: error
           retention-days: 7
 
@@ -179,7 +179,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: specrun-*
+          pattern: specify-*
           merge-multiple: true
 
       - name: Compute version

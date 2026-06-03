@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/lint/workspace-model.schema.json",
   "title": "Specify WorkspaceModel (v1)",
-  "description": "Deterministic, versioned snapshot of project facts produced by `specrun lint` for the `WorkspaceModel` schema. Persistence and query reserve: `.specify/cache/workspace-model.v1.json` is reserved as the future v2 persistence location; `specrun model query <selector>` is reserved as a future read-only CLI verb. v1 ships `--dump-model` only.",
+  "description": "Deterministic, versioned snapshot of project facts produced by `specify lint` for the `WorkspaceModel` schema. Persistence and query reserve: `.specify/cache/workspace-model.v1.json` is reserved as the future v2 persistence location; `specify model query <selector>` is reserved as a future read-only CLI verb. v1 ships `--dump-model` only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -104,6 +104,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/ignoreDirective" },
       "description": "`WorkspaceModel` entity: `ignore_directive` facts from the indexer pass that recognises `specify-ignore: <RULE-ID> — <rationale>` comments across the closed comment-style list. Optional in v1 envelopes until the indexer extractor lands; consumers MUST tolerate the field's absence."
+    },
+    "fenced_blocks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fencedBlock" },
+      "description": "`WorkspaceModel` entity: `fenced_block` facts from the fence-aware markdown pass (RFC-31 Phase 2). Optional in v1 envelopes; producers omit when empty."
     },
     "briefs": {
       "type": "array",
@@ -455,6 +460,32 @@
           "type": "string",
           "minLength": 1,
           "description": "Raw directive comment text as captured by the indexer, including delimiters; used by formatters that surface the original source spelling."
+        }
+      }
+    },
+    "fencedBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line-start", "line-end", "lang", "body"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "line-start": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line of the first body line inside the fence."
+        },
+        "line-end": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line of the closing fence delimiter."
+        },
+        "lang": {
+          "type": "string",
+          "description": "Info string from the opening fence; empty when absent."
+        },
+        "body": {
+          "type": "string",
+          "description": "Fence body text (opening/closing delimiters excluded)."
         }
       }
     }

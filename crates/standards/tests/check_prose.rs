@@ -3,9 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_standards::framework::check::{
-    Check, InvocationPositional, NumericCaps, OperationalVocabulary,
-};
+use specify_standards::framework::check::{Check, NumericCaps};
 use specify_standards::framework::{Context, core_id_for, snippet};
 
 fn fixture_root(name: &str) -> PathBuf {
@@ -21,25 +19,6 @@ fn context_for_fixture(name: &str) -> Context {
     let root = fixture_root(name);
     scaffold_framework_root(&root);
     Context::from_framework_root(root).expect("framework root resolves")
-}
-
-#[test]
-fn operational_vocabulary_flags_stale_terms() {
-    let ctx = context_for_fixture("stale-vocabulary");
-    let findings = OperationalVocabulary.run(&ctx);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("prose.operational-vocabulary"));
-    assert!(snippet(&findings[0]).contains("specify validate"));
-    assert!(snippet(&findings[0]).contains("specrun slice validate"));
-}
-
-#[test]
-fn invocation_positionals_flags_continued_invocation() {
-    let ctx = context_for_fixture("flag-after-skill-continued");
-    let findings = InvocationPositional.run(&ctx);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("prose.invocation-positional"));
-    assert!(snippet(&findings[0]).contains("3-4"));
 }
 
 #[test]

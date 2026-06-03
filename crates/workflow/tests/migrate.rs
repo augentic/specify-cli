@@ -1,6 +1,6 @@
 //! Golden-tree tests for the `V1ToV2` migrator.
 //!
-//! The migrator is a library primitive (the `specrun migrate` command
+//! The migrator is a library primitive (the `specify migrate` command
 //! lands in a later change), so these drive it through the public
 //! `specify_workflow::migrate` surface rather than the CLI. The happy
 //! path copies `migrate/v1-to-v2/before/` into a tempdir, runs `plan`
@@ -137,7 +137,7 @@ fn migrated_artifacts_are_valid_v2() {
 /// aborts the apply during precondition resolution, before any staging
 /// or commit, so the tree is left untouched.
 #[test]
-fn precondition_failure_leaves_tree_untouched() {
+fn precondition_failure_untouched() {
     let tmp = stage_before();
     let project = tmp.path();
     fs::remove_file(project.join("adapters/code-typescript/briefs/survey.md")).unwrap();

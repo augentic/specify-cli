@@ -66,7 +66,7 @@ pub enum Error {
 
     /// The project's pinned `specify_version` has a smaller major than the
     /// running binary; a migration must run before the CLI can operate.
-    #[error("project pinned to specify {from} but running {to}; run `specrun migrate`")]
+    #[error("project pinned to specify {from} but running {to}; run `specify migrate`")]
     ProjectNeedsMigration {
         /// Pinned major the project was last operated at.
         from: String,
@@ -101,7 +101,7 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    /// `specrun workspace prepare` refused to land a branch
+    /// `specify workspace prepare` refused to land a branch
     /// because `specify_registry::branch::prepare` returned a
     /// diagnostic. The renderer surfaces the diagnostic key + paths
     /// alongside the human-readable detail.
@@ -152,8 +152,8 @@ impl Error {
                 "plan-has-outstanding-work" => Some(
                     "complete or drop the listed entries, or rerun with --force to archive anyway.",
                 ),
-                "init-requires-adapter-or-hub" => Some(
-                    "`specrun init <adapter>` for a regular project, or `specrun init --hub` for a platform hub.\nsee: docs/init.md",
+                "init-requires-adapter-or-workspace" => Some(
+                    "`specify init <adapter>` for a regular project, or `specify init --workspace` for a workspace.\nsee: docs/init.md",
                 ),
                 "context-existing-unfenced-agents-md" => {
                     Some("rerun with --force to rewrite AGENTS.md.")
@@ -164,7 +164,7 @@ impl Error {
                 _ => None,
             },
             Self::ProjectNeedsMigration { .. } => {
-                Some("run `specrun migrate` to bring the project up to the running major.")
+                Some("run `specify migrate` to bring the project up to the running major.")
             }
             _ => None,
         }

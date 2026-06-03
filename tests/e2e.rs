@@ -21,7 +21,7 @@ use serde_json::Value;
 mod common;
 use common::{
     GIT_ENV, Project, assert_golden_at, copy_dir, omnia_schema_dir, parse_stdout, repo_root,
-    run_git, specrun,
+    run_git, specify_cmd,
 };
 use tempfile::tempdir;
 
@@ -38,7 +38,7 @@ fn goldens_dir() -> PathBuf {
 }
 
 fn specify_with_git_identity() -> Command {
-    let mut cmd = specrun();
+    let mut cmd = specify_cmd();
     cmd.envs(GIT_ENV);
     cmd
 }
@@ -60,7 +60,7 @@ fn validate_good_slice_passes() {
     let project = Project::init().with_schemas();
     project.stage_slice("good-slice");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -85,7 +85,7 @@ fn validate_bad_slice_fails_with_exit_two() {
     let project = Project::init().with_schemas();
     project.stage_slice("bad-slice");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -121,7 +121,7 @@ slices:
 ",
     );
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "run", "my-slice"])
         .assert()
@@ -164,7 +164,7 @@ fn workspace_merge_excludes_generated() {
     let project_root = tmp.path().join(".specify/workspace/orders");
     fs::create_dir_all(&project_root).expect("mkdir workspace project");
 
-    specrun()
+    specify_cmd()
         .current_dir(&project_root)
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -242,7 +242,7 @@ fn task_progress_reports_counts_and_items() {
     let project = Project::init().with_schemas();
     project.stage_slice("good-slice");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "task", "progress", "my-slice"])
         .assert()
@@ -269,7 +269,7 @@ fn task_mark_is_idempotent() {
     assert!(before.contains("- [ ] 1.1"), "fixture must start with task 1.1 incomplete");
 
     // First mark: flips - [ ] -> - [x] and reports idempotent: false.
-    let first = specrun()
+    let first = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "task", "mark", "my-slice", "1.1"])
         .assert()
@@ -286,7 +286,7 @@ fn task_mark_is_idempotent() {
     );
 
     // Second mark: no-op, idempotent: true, file unchanged.
-    let second = specrun()
+    let second = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "task", "mark", "my-slice", "1.1"])
         .assert()

@@ -3,9 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use specify_standards::framework::check::{
-    Check, EnvelopeJsonInBody, InvalidCriticalPath, VariableCoverage,
-};
+use specify_standards::framework::check::{Check, InvalidCriticalPath, VariableCoverage};
 use specify_standards::framework::{Context, core_id_for, snippet};
 
 fn fixture_root(name: &str) -> PathBuf {
@@ -50,27 +48,6 @@ fn invalid_critical_path_wrong_count() {
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].rule_id.as_deref(), core_id_for("skill.invalid-critical-path"));
     assert!(snippet(&findings[0]).contains("found 4"));
-}
-
-#[test]
-fn envelope_json_flags_shape() {
-    let ctx = context_for_fixture("envelope-json");
-    let body = r#"## Output
-
-```json
-{
-  "envelope-version": "1",
-  "ok": true,
-  "data": {}
-}
-```
-"#;
-    write_skill(&fixture_root("envelope-json"), body);
-
-    let findings = EnvelopeJsonInBody.run(&ctx);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].rule_id.as_deref(), core_id_for("skill.envelope-json-in-body"));
-    assert!(snippet(&findings[0]).contains("Envelope JSON in skill body"));
 }
 
 #[test]

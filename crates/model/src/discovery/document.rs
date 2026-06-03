@@ -2,18 +2,14 @@
 //! `## Lead inventory` section plus the surrounding operator
 //! prose.
 //!
-//! discovery alias contract — `slices[].sources[].lead` resolves
-//! first against a lead's `lead`, then against any entry in
-//! `aliases[]`, within that binding's `source`. Each block is a
-//! raw, unmerged lead identified by the `(source, lead)` pair.
-//! The `## Lead inventory` section uses the block grammar
+//! Each block is a raw, unmerged lead identified by the `(source, lead)`
+//! pair. The `## Lead inventory` section uses the block grammar
 //!
 //! ```markdown
 //! ### <source>:<lead>
 //!
 //! - lead: <lead>
 //! - source: <source>
-//! - aliases: [<alias>, <alias>]
 //! - synopsis: <reconciliation-grade headline>
 //! ```
 //!
@@ -31,20 +27,20 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use specify_diagnostics::{Artifact, Diagnostic};
 use specify_error::{Error, Result};
 
-use super::lead::{Lead, LeadAliases};
+use self::parse::{Parser, is_inventory_heading};
+use super::lead::Lead;
 use crate::atomic;
+
+mod parse;
 
 /// In-memory model of one `discovery.md` file.
 ///
 /// Stores every lead block under the canonical `## Lead
 /// inventory` heading plus the file's surrounding prose. Mutations
-/// flow through the [`Lead`] accessors ([`Discovery::lead_mut`])
-/// or the alias-focused helpers ([`Discovery::add_alias`] /
-/// [`Discovery::remove_alias`]); [`Discovery::write_atomic`] persists
-/// the result.
+/// flow through the [`Lead`] accessors ([`Discovery::lead_mut`]);
+/// [`Discovery::write_atomic`] persists the result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Discovery {
     /// Raw prose preceding `## Lead inventory`, with the trailing
@@ -69,14 +65,13 @@ impl Discovery {
     /// The parser preserves all prose outside the `## Lead
     /// inventory` section verbatim. Inside the section, every
     /// `### <id>` block plus its bullet list is collected as a
-    /// [`Lead`]; bullets are parsed line-by-line. Aliases use
-    /// the inline `[a, b, c]` form per discovery alias contract.
+    /// [`Lead`]; bullets are parsed line-by-line.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Diag`] (`discovery-parse-failed`) on a
-    /// structural defect — duplicate `id:` bullets, malformed
-    /// `aliases:` value, missing required bullets.
+    /// structural defect — duplicate `lead:` bullets, retired
+    /// `aliases:` bullets, missing required bullets.
     pub fn parse(text: &str) -> Result<Self> {
         Parser::new(text).run()
     }
@@ -134,21 +129,13 @@ impl Discovery {
     /// # Errors
     ///
     /// Returns [`Error::Io`] when the temp-file write / rename
-    /// fails. Schema validation is the caller's responsibility — the
-    /// document's invariants (single namespace for `id` + `aliases`,
-    /// kebab-case) are enforced by [`Self::check_alias_collisions`]
-    /// and the schema-side checks already wired in `slice validate`.
+    /// fails. Schema validation is the caller's responsibility.
     pub fn write_atomic(&self, path: &Path) -> Result<()> {
         let body = self.render();
         atomic::bytes_write(path, body.as_bytes())
     }
 
     /// Borrow the parsed lead inventory in document order.
-    ///
-    /// Read-only view used by the `survey` runner to echo the existing
-    /// lead set for a source into the agent handoff envelope (RFC-29 D1;
-    /// DECISIONS.md §"Source operations (D1)") without taking ownership
-    /// of the document.
     #[must_use]
     pub fn leads(&self) -> &[Lead] {
         &self.leads
@@ -156,178 +143,27 @@ impl Discovery {
 
     /// Consume the document and return its lead inventory in document
     /// order.
-    ///
-    /// The `survey` finalize path parses the agent- / tool-produced
-    /// `lead-set.md` into a [`Discovery`] and lifts the leads out for
-    /// schema validation and [`Self::merge_survey`]; the surrounding
-    /// prose of a lead-set artifact is discarded.
     #[must_use]
     pub fn into_leads(self) -> Vec<Lead> {
         self.leads
     }
 
-    /// Locate a lead by its `id` for mutation. discovery alias contract calls
-    /// out `id`-only addressing for amend-style operations (aliases
-    /// are *resolved* against, not *addressed* by, on the amend
-    /// path); use [`Self::resolve_lead`] when the caller wants
-    /// to accept either form.
+    /// Locate a lead by its canonical `lead` id for mutation.
     #[must_use]
     pub fn lead_mut(&mut self, id: &str) -> Option<&mut Lead> {
         self.leads.iter_mut().find(|c| c.lead == id)
     }
 
-    /// Convenience wrapper around [`Self::lead_mut`] that
-    /// converts the `None` arm into the canonical
-    /// `discovery-lead-unknown` diagnostic. `flag` is the CLI
-    /// flag token (e.g. `--add-alias`) the caller wants threaded
-    /// through the operator-facing detail string.
-    fn lead_mut_or_unknown(&mut self, id: &str, flag: &str) -> Result<&mut Lead> {
-        self.lead_mut(id).ok_or_else(|| Error::Diag {
-            code: "discovery-lead-unknown",
-            detail: format!(
-                "no lead `{id}` in discovery.md; {flag} must reference \
-                 an existing lead id"
-            ),
-        })
-    }
-
-    /// Resolve a `--sources <key>=<value>` token to its lead
-    /// per discovery alias contract. Walks every lead, returning a hit when
-    /// `token` matches the lead's `id` or any of its
-    /// `aliases[]`. Multiple hits surface as
-    /// [`ResolveError::Collision`] — the document is invalid, not
-    /// the input.
+    /// Resolve a `--sources <key>=<value>` token to its lead by exact
+    /// match on the canonical `lead` id.
     ///
     /// # Errors
     ///
-    /// - [`ResolveError::Unknown`] when no lead resolves
-    ///   `token`.
-    /// - [`ResolveError::Collision`] when more than one lead
-    ///   resolves `token` — caller surfaces this as
-    ///   `discovery-alias-collision`.
+    /// Returns [`ResolveError::Unknown`] when no lead matches `token`.
     pub fn resolve_lead(&self, token: &str) -> std::result::Result<&Lead, ResolveError> {
-        let hits: Vec<&Lead> = self.leads.iter().filter(|c| c.resolves(token)).collect();
-        match hits.len() {
-            0 => Err(ResolveError::Unknown {
-                token: token.to_string(),
-            }),
-            1 => Ok(hits[0]),
-            _ => {
-                let mut owners: Vec<String> = hits.iter().map(|c| c.lead.clone()).collect();
-                owners.sort();
-                Err(ResolveError::Collision {
-                    token: token.to_string(),
-                    leads: owners,
-                })
-            }
-        }
-    }
-
-    /// Walk every `lead` and every `aliases[]` entry across all
-    /// leads, returning every namespace collision sorted
-    /// deterministically.
-    ///
-    /// The single-namespace rule per discovery alias contract is
-    /// scoped **per `source`**: an alias MUST NOT collide with
-    /// another lead's `lead` or `aliases[]` under the *same*
-    /// `source`. The same `lead` under a different
-    /// `source` is legal — leads are raw and per-source, and
-    /// cross-source unification happens at plan time. Findings sort
-    /// by `source`, then lexicographically on the colliding name,
-    /// then by the bearing lead list so repeat runs produce
-    /// byte-identical error envelopes.
-    #[must_use]
-    pub fn check_alias_collisions(&self) -> Vec<DiscoveryAliasCollision> {
-        let mut owners_by_key: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
-        for lead in &self.leads {
-            owners_by_key
-                .entry((lead.source.clone(), lead.lead.clone()))
-                .or_default()
-                .push(lead.lead.clone());
-            for alias in &lead.aliases.names {
-                owners_by_key
-                    .entry((lead.source.clone(), alias.clone()))
-                    .or_default()
-                    .push(lead.lead.clone());
-            }
-        }
-
-        let mut findings: Vec<DiscoveryAliasCollision> = Vec::new();
-        for ((source, name), owners) in owners_by_key {
-            if owners.len() <= 1 {
-                continue;
-            }
-            let mut bearing: Vec<String> = owners;
-            bearing.sort();
-            bearing.dedup();
-            findings.push(DiscoveryAliasCollision {
-                source,
-                name,
-                bearing_leads: bearing,
-            });
-        }
-        findings.sort_by(|a, b| {
-            a.source
-                .cmp(&b.source)
-                .then_with(|| a.name.cmp(&b.name))
-                .then_with(|| a.bearing_leads.cmp(&b.bearing_leads))
-        });
-        findings
-    }
-
-    /// Append `alias` to the named lead's `aliases[]`. Refuses
-    /// when the alias would shadow the lead's own id; runs the
-    /// whole-document collision check on the result and refuses the
-    /// edit (the mutation is reverted) when any cross-lead
-    /// collision fires.
-    ///
-    /// # Errors
-    ///
-    /// - [`Error::Diag`] (`discovery-lead-unknown`) when no
-    ///   lead with id `lead` exists.
-    /// - [`Error::Validation`] (`discovery-alias-collision`) when
-    ///   the operator-supplied alias collides with an existing
-    ///   namespace entry (self-shadow or cross-lead).
-    pub fn add_alias(&mut self, lead: &str, alias: &str) -> Result<()> {
-        let entry = self.lead_mut_or_unknown(lead, "--add-alias")?;
-        entry.add_alias(alias.to_string()).map_err(|collision| {
-            Error::validation_failed(
-                "discovery-alias-collision",
-                "alias must not collide with the bearing lead's own id",
-                collision.to_string(),
-            )
-        })?;
-        // Whole-document collision gate: refuse the edit on any
-        // cross-lead clash so the on-disk document never
-        // contains an unresolvable namespace.
-        let collisions = self.check_alias_collisions();
-        if !collisions.is_empty() {
-            // Roll back the mutation we just applied so the in-memory
-            // model reflects the on-disk state. Cross-lead
-            // collisions can only involve this alias (every other
-            // pair was clean before the mutation), so removing the
-            // alias from this lead is sufficient.
-            if let Some(entry) = self.lead_mut(lead) {
-                entry.remove_alias(alias);
-            }
-            return Err(Self::collision_error(&collisions));
-        }
-        Ok(())
-    }
-
-    /// Remove `alias` from the named lead's `aliases[]`.
-    /// Idempotent — silently returns when the alias is not present.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Diag`] (`discovery-lead-unknown`) when
-    /// no lead with id `lead` exists. Operator-issued
-    /// removals against a missing lead are a typo, not a
-    /// no-op.
-    pub fn remove_alias(&mut self, lead: &str, alias: &str) -> Result<()> {
-        let entry = self.lead_mut_or_unknown(lead, "--remove-alias")?;
-        entry.remove_alias(alias);
-        Ok(())
+        self.leads.iter().find(|c| c.lead == token).ok_or_else(|| ResolveError::Unknown {
+            token: token.to_string(),
+        })
     }
 
     /// Merge a re-survey of `source` into the inventory and
@@ -336,44 +172,25 @@ impl Discovery {
     /// `leads` is the lead set the source's `survey` produced (already
     /// validated against `schemas/discovery/lead.schema.json` by the
     /// caller). The surveying source owns attribution: every incoming
-    /// lead's `source` is force-set to `source`, so a survey
-    /// for one source only ever writes that source's blocks. Each
-    /// incoming lead replaces the prior block sharing its
-    /// `(source, lead)` pair **in place**, so a surviving lead
-    /// keeps its document position and the file re-renders byte-stably
-    /// when nothing moved. Operator-authored `aliases[]` on a
-    /// surviving pair are carried forward (unioned with any alias the
-    /// re-survey itself emits) per discovery alias contract. Incoming
-    /// leads with no prior block are appended in survey order. Prior
-    /// blocks from *other* source keys, and prior blocks of this
-    /// source whose `lead` is absent from the incoming set, are left
-    /// untouched — re-survey replaces by `(source, lead)`, it
-    /// does not prune and never collapses across sources.
-    ///
-    /// The whole-document collision gate runs against the post-merge
-    /// state *before* any byte is written: on a
-    /// [`Self::check_alias_collisions`] hit the in-memory model is rolled
-    /// back and the file is left untouched, so a failed merge never lands
-    /// partial state on disk.
+    /// lead's `source` is force-set to `source`. Each incoming lead
+    /// replaces the prior block sharing its `(source, lead)` pair **in
+    /// place**. Incoming leads with no prior block are appended in survey
+    /// order. Prior blocks from *other* source keys, and prior blocks of
+    /// this source whose `lead` is absent from the incoming set, are left
+    /// untouched — re-survey replaces by `(source, lead)`, it does not
+    /// prune and never collapses across sources.
     ///
     /// # Errors
     ///
-    /// - [`Error::Validation`] (`discovery-alias-collision`) when the
-    ///   post-merge inventory contains any namespace collision; nothing
-    ///   is written and `self` is restored to its pre-merge state.
-    /// - [`Error::Io`] when the atomic re-render fails.
+    /// Returns [`Error::Io`] when the atomic re-render fails.
     pub fn merge_survey(&mut self, source: &str, leads: Vec<Lead>, path: &Path) -> Result<()> {
         let mut slots: Vec<Option<Lead>> = leads
             .into_iter()
             .map(|mut lead| {
-                // The surveying source owns attribution: a survey for
-                // `source` produces `source`'s leads, period.
                 lead.source = source.to_string();
                 Some(lead)
             })
             .collect();
-        // First incoming slot per lead (a valid lead set has unique
-        // leads within a single source).
         let mut slot_by_lead: BTreeMap<String, usize> = BTreeMap::new();
         for (idx, slot) in slots.iter().enumerate() {
             if let Some(lead) = slot {
@@ -383,73 +200,27 @@ impl Discovery {
 
         let mut merged: Vec<Lead> = Vec::with_capacity(self.leads.len() + slots.len());
         for prior in &self.leads {
-            // Only this source's prior blocks are eligible for
-            // replacement; other source keys pass through untouched so
-            // a survey never collapses leads across sources.
             let replacement = if prior.source == source {
                 slot_by_lead.get(&prior.lead).and_then(|&idx| slots[idx].take())
             } else {
                 None
             };
             match replacement {
-                Some(mut next) => {
-                    // Surviving (source, lead): carry
-                    // operator-authored aliases forward, unioning any
-                    // the re-survey itself emits so the namespace never
-                    // silently narrows.
-                    let mut names = prior.aliases.names.clone();
-                    for alias in &next.aliases.names {
-                        if !names.contains(alias) {
-                            names.push(alias.clone());
-                        }
-                    }
-                    next.aliases.names = names;
-                    merged.push(next);
-                }
+                Some(next) => merged.push(next),
                 None => merged.push(prior.clone()),
             }
         }
-        // Append incoming leads with no prior block, in survey order.
         for slot in &mut slots {
             if let Some(lead) = slot.take() {
                 merged.push(lead);
             }
         }
 
-        // Validate-before-write: stage the merge, gate on the whole-
-        // document collision check, and roll back the in-memory model on
-        // any hit so the file (and `self`) reflect the pre-merge state.
-        let prior_leads = std::mem::replace(&mut self.leads, merged);
-        let collisions = self.check_alias_collisions();
-        if !collisions.is_empty() {
-            self.leads = prior_leads;
-            return Err(Self::collision_error(&collisions));
-        }
+        self.leads = merged;
         self.write_atomic(path)
     }
 
-    /// Convert a non-empty list of collision findings into the
-    /// payload-free [`Error::Validation`] envelope the operational
-    /// `add_alias` path emits (exit 2). The `slice validate` surface
-    /// instead renders [`DiscoveryAliasCollision::to_diagnostic`] on
-    /// stdout; this constructor is the single-shot operational signal.
-    #[must_use]
-    pub fn collision_error(findings: &[DiscoveryAliasCollision]) -> Error {
-        let detail =
-            findings.iter().map(DiscoveryAliasCollision::detail).collect::<Vec<_>>().join("; ");
-        Error::Validation {
-            code: "discovery-alias-collision".to_string(),
-            detail,
-        }
-    }
-
-    /// Render the document back to its on-disk shape. Prose
-    /// surrounding the inventory section round-trips byte-for-byte
-    /// when no lead edits were applied. The
-    /// `## Lead inventory` heading is synthesised when the
-    /// input lacked one but leads have been added in-memory
-    /// (currently never reached from the CLI; future-proofing for
-    /// programmatic Discovery construction).
+    /// Render the document back to its on-disk shape.
     fn render(&self) -> String {
         let mut out = String::with_capacity(self.prefix.len() + self.suffix.len() + 128);
         out.push_str(&self.prefix);
@@ -476,8 +247,6 @@ impl Discovery {
 }
 
 /// Render a single `### <source>:<lead>` block onto `out`.
-/// Bullet order mirrors discovery alias contract: `lead`,
-/// `source`, optional `aliases`, `synopsis`.
 fn render_lead(out: &mut String, lead: &Lead) {
     out.push_str("### ");
     out.push_str(&lead.source);
@@ -490,79 +259,19 @@ fn render_lead(out: &mut String, lead: &Lead) {
     out.push_str("- source: ");
     out.push_str(&lead.source);
     out.push('\n');
-    if !lead.aliases.is_empty() {
-        out.push_str("- aliases: [");
-        out.push_str(&lead.aliases.names.join(", "));
-        out.push_str("]\n");
-    }
     out.push_str("- synopsis: ");
     out.push_str(&lead.synopsis);
     out.push('\n');
 }
 
-/// One alias-collision finding emitted by
-/// [`Discovery::check_alias_collisions`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiscoveryAliasCollision {
-    /// Source key whose per-source namespace the collision occurs in.
-    pub source: String,
-    /// Namespace entry that resolves to more than one lead under
-    /// `source`.
-    pub name: String,
-    /// Sorted, de-duplicated list of leads that own the colliding
-    /// name (either as `lead` or as a member of `aliases[]`).
-    pub bearing_leads: Vec<String>,
-}
-
-impl DiscoveryAliasCollision {
-    /// Human-readable detail naming the colliding name, its
-    /// `source`, and the bearing leads.
-    #[must_use]
-    pub fn detail(&self) -> String {
-        format!(
-            "name `{}` resolves to multiple leads under source `{}`: {}",
-            self.name,
-            self.source,
-            self.bearing_leads.join(", ")
-        )
-    }
-
-    /// Project the finding into the neutral [`Diagnostic`] currency the
-    /// `specrun slice validate` surface renders. A deterministic
-    /// `violation` against the `plan`/discovery artifact.
-    #[must_use]
-    pub fn to_diagnostic(&self) -> Diagnostic {
-        Diagnostic::violation(
-            "discovery-alias-collision",
-            "lead id and aliases share a single namespace per discovery.md",
-            self.detail(),
-            Artifact::Plan,
-            None,
-        )
-    }
-}
-
-/// Outcome of [`Discovery::resolve_lead`] when the supplied
-/// token cannot be reduced to exactly one lead.
+/// Outcome of [`Discovery::resolve_lead`] when the supplied token does
+/// not match any lead's canonical id.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolveError {
-    /// No lead has an `id` or `aliases[]` entry matching
-    /// `token`.
+    /// No lead has a `lead` id matching `token`.
     Unknown {
         /// Operator-supplied value that failed to resolve.
         token: String,
-    },
-    /// More than one lead resolves `token`. The discovery
-    /// document is itself invalid; the caller emits a
-    /// `discovery-alias-collision` error referring to the bearing
-    /// leads.
-    Collision {
-        /// Operator-supplied value that resolved to multiple
-        /// leads.
-        token: String,
-        /// Sorted, de-duplicated list of lead ids that own
-        /// `token`.
-        leads: Vec<String>,
     },
 }
 
@@ -570,224 +279,13 @@ impl std::fmt::Display for ResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unknown { token } => {
-                write!(f, "no lead in discovery.md has an id or alias matching `{token}`")
+                write!(f, "no lead in discovery.md has an id matching `{token}`")
             }
-            Self::Collision { token, leads } => write!(
-                f,
-                "`{token}` resolves to multiple leads in discovery.md: {}",
-                leads.join(", ")
-            ),
         }
     }
 }
 
 impl std::error::Error for ResolveError {}
-
-/// Hand-rolled, single-pass parser for `discovery.md`.
-///
-/// We avoid pulling a Markdown crate to keep the
-/// parser narrowly scoped to the section grammar we actually need.
-/// Prose outside `## Lead inventory` is preserved verbatim;
-/// the inventory section is parsed line-by-line into [`Lead`]
-/// rows.
-struct Parser<'a> {
-    lines: Vec<&'a str>,
-    cursor: usize,
-}
-
-impl<'a> Parser<'a> {
-    fn new(text: &'a str) -> Self {
-        // `split_inclusive('\n')` preserves the trailing newline so
-        // we can round-trip the file byte-for-byte even when the
-        // input lacks a final newline.
-        Self {
-            lines: text.split_inclusive('\n').collect(),
-            cursor: 0,
-        }
-    }
-
-    fn run(mut self) -> Result<Discovery> {
-        let prefix = self.consume_until_inventory();
-        let has_inventory_heading = self.cursor < self.lines.len();
-        let leads = if has_inventory_heading {
-            // Skip the `## Lead inventory` line.
-            self.cursor += 1;
-            self.parse_leads()?
-        } else {
-            Vec::new()
-        };
-        let suffix = self.lines[self.cursor..].concat();
-        Ok(Discovery {
-            prefix,
-            leads,
-            suffix,
-            has_inventory_heading,
-        })
-    }
-
-    /// Walk until the canonical `## Lead inventory` heading is
-    /// found. Returns the accumulated prose. Anything that survives
-    /// `cursor` after this call is either the heading line itself or
-    /// the end of the file.
-    fn consume_until_inventory(&mut self) -> String {
-        let mut out = String::new();
-        while self.cursor < self.lines.len() {
-            let line = self.lines[self.cursor];
-            if is_inventory_heading(line) {
-                return out;
-            }
-            out.push_str(line);
-            self.cursor += 1;
-        }
-        out
-    }
-
-    fn parse_leads(&mut self) -> Result<Vec<Lead>> {
-        let mut out: Vec<Lead> = Vec::new();
-        while self.cursor < self.lines.len() {
-            let line = self.lines[self.cursor];
-            if is_top_level_heading(line) {
-                // Some other `## …` section ends the inventory.
-                break;
-            }
-            if is_lead_heading(line) {
-                let lead = self.parse_lead_block()?;
-                out.push(lead);
-                continue;
-            }
-            // Blank lines and stray prose between lead blocks
-            // are skipped; the bullets carry the data so any
-            // surrounding decoration round-trips through the
-            // re-render path's stable formatting.
-            self.cursor += 1;
-        }
-        Ok(out)
-    }
-
-    fn parse_lead_block(&mut self) -> Result<Lead> {
-        let heading = self.lines[self.cursor];
-        let heading_label = lead_heading_id(heading).unwrap_or("").trim().to_string();
-        self.cursor += 1;
-
-        let mut lead: Option<String> = None;
-        let mut source: Option<String> = None;
-        let mut synopsis: Option<String> = None;
-        let mut aliases: Option<Vec<String>> = None;
-
-        while self.cursor < self.lines.len() {
-            let raw = self.lines[self.cursor];
-            if is_lead_heading(raw) || is_top_level_heading(raw) {
-                break;
-            }
-            let trimmed = strip_newline(raw).trim_start();
-            if let Some(bullet_body) = bullet_body(trimmed) {
-                let (key, value) = split_bullet(bullet_body)?;
-                match key {
-                    "lead" => {
-                        if lead.is_some() {
-                            return Err(parse_err(format!(
-                                "lead `{heading_label}`: duplicate `lead:` bullet"
-                            )));
-                        }
-                        lead = Some(value.to_string());
-                    }
-                    "source" => {
-                        source = Some(value.to_string());
-                    }
-                    "synopsis" => {
-                        synopsis = Some(value.to_string());
-                    }
-                    "aliases" => {
-                        aliases = Some(parse_inline_list(value, "aliases")?);
-                    }
-                    other => {
-                        return Err(parse_err(format!(
-                            "lead `{heading_label}`: unknown bullet `{other}`"
-                        )));
-                    }
-                }
-            }
-            self.cursor += 1;
-        }
-
-        let lead = lead.ok_or_else(|| {
-            parse_err(format!("lead `{heading_label}` is missing the `lead:` bullet"))
-        })?;
-        // `source` is optional on parse: a `survey` lead-set omits
-        // it (attribution is CLI-owned via `merge_survey`), while a
-        // persisted `discovery.md` always carries it. The schema
-        // (`required: [lead, source, synopsis]`) enforces presence
-        // on the merged document.
-        let source = source.unwrap_or_default();
-        let synopsis = synopsis
-            .ok_or_else(|| parse_err(format!("lead `{lead}` is missing the `synopsis:` bullet")))?;
-        let aliases = aliases.unwrap_or_default();
-        Ok(Lead {
-            lead,
-            source,
-            synopsis,
-            aliases: LeadAliases { names: aliases },
-        })
-    }
-}
-
-fn is_inventory_heading(line: &str) -> bool {
-    let trimmed = strip_newline(line).trim();
-    trimmed.eq_ignore_ascii_case("## Lead inventory")
-}
-
-fn is_top_level_heading(line: &str) -> bool {
-    let trimmed = strip_newline(line);
-    trimmed.starts_with("## ") && !is_inventory_heading(line)
-}
-
-fn is_lead_heading(line: &str) -> bool {
-    let trimmed = strip_newline(line);
-    trimmed.starts_with("### ")
-}
-
-fn lead_heading_id(line: &str) -> Option<&str> {
-    let trimmed = strip_newline(line);
-    trimmed.strip_prefix("### ")
-}
-
-fn strip_newline(line: &str) -> &str {
-    line.strip_suffix('\n').map_or(line, |s| s.strip_suffix('\r').unwrap_or(s))
-}
-
-fn bullet_body(trimmed: &str) -> Option<&str> {
-    trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* "))
-}
-
-fn split_bullet(body: &str) -> Result<(&str, &str)> {
-    let (key, value) = body
-        .split_once(':')
-        .ok_or_else(|| parse_err(format!("bullet `{body}` must use `key: value` form")))?;
-    Ok((key.trim(), value.trim()))
-}
-
-fn parse_inline_list(value: &str, field: &'static str) -> Result<Vec<String>> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let inner = trimmed
-        .strip_prefix('[')
-        .and_then(|s| s.strip_suffix(']'))
-        .ok_or_else(|| parse_err(format!("`{field}:` must be wrapped in `[…]`, got `{value}`")))?;
-    let inner = inner.trim();
-    if inner.is_empty() {
-        return Ok(Vec::new());
-    }
-    Ok(inner.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
-}
-
-const fn parse_err(detail: String) -> Error {
-    Error::Diag {
-        code: "discovery-parse-failed",
-        detail,
-    }
-}
 
 #[cfg(test)]
 mod tests;

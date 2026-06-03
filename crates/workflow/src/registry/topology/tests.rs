@@ -2,7 +2,7 @@ use super::*;
 use crate::Platform;
 
 #[test]
-fn round_trips_through_yaml_with_empties_elided() {
+fn round_trips_yaml_empties_elided() {
     let lock = TopologyLock::from_projects(vec![
         TopologyProject {
             name: "identity-contracts".to_string(),

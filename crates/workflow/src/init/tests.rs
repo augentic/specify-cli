@@ -4,7 +4,7 @@ use super::*;
 use crate::adapter::PlatformsCapability;
 
 #[test]
-fn regular_init_rejects_missing_adapter() {
+fn rejects_missing_adapter() {
     let tmp = tempdir().unwrap();
     let err = init(
         InitOptions {
@@ -12,7 +12,7 @@ fn regular_init_rejects_missing_adapter() {
             adapter: None,
             name: Some("demo"),
             description: None,
-            hub: false,
+            workspace: false,
             include_framework: false,
             platforms: None,
             upgrade: false,
@@ -24,7 +24,7 @@ fn regular_init_rejects_missing_adapter() {
         matches!(
             &err,
             Error::Diag {
-                code: "init-requires-adapter-or-hub",
+                code: "init-requires-adapter-or-workspace",
                 ..
             }
         ),
@@ -33,8 +33,8 @@ fn regular_init_rejects_missing_adapter() {
 }
 
 #[test]
-fn hub_init_rejects_adapter_argument() {
-    // `--hub` and `<adapter>` are mutually exclusive; the
+fn workspace_rejects_adapter_argument() {
+    // `--workspace` and `<adapter>` are mutually exclusive; the
     // orchestrator re-checks even when the CLI layer already
     // filtered.
     let tmp = tempdir().unwrap();
@@ -42,21 +42,21 @@ fn hub_init_rejects_adapter_argument() {
         InitOptions {
             project_dir: tmp.path(),
             adapter: Some("omnia"),
-            name: Some("platform-hub"),
+            name: Some("platform-workspace"),
             description: None,
-            hub: true,
+            workspace: true,
             include_framework: false,
             platforms: None,
             upgrade: false,
         },
         fixed_now(),
     )
-    .expect_err("hub + adapter must error");
+    .expect_err("workspace + adapter must error");
     assert!(
         matches!(
             &err,
             Error::Diag {
-                code: "init-requires-adapter-or-hub",
+                code: "init-requires-adapter-or-workspace",
                 ..
             }
         ),
@@ -65,19 +65,19 @@ fn hub_init_rejects_adapter_argument() {
 }
 
 #[test]
-fn validate_platforms_no_capability_passes_through() {
+fn validate_no_capability_passthrough() {
     let result = validate_platforms(Some(&[Platform::Core, Platform::Ios]), None, "test");
     assert_eq!(result.unwrap(), vec![Platform::Core, Platform::Ios]);
 }
 
 #[test]
-fn validate_platforms_no_capability_no_operator_returns_empty() {
+fn validate_no_cap_no_op_empty() {
     let result = validate_platforms(None, None, "test");
     assert!(result.unwrap().is_empty());
 }
 
 #[test]
-fn validate_platforms_required_but_none_fails() {
+fn validate_required_none_fails() {
     let cap = PlatformsCapability {
         required: true,
         allowed: vec![Platform::Core, Platform::Ios],

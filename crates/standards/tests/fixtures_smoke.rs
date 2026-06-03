@@ -3,11 +3,11 @@
 use specify_standards::framework::Context;
 
 fn framework_root() -> Option<std::path::PathBuf> {
-    std::env::var("SPECDEV_FRAMEWORK_ROOT").ok().map(std::path::PathBuf::from)
+    std::env::var("SPECIFY_FRAMEWORK_ROOT").ok().map(std::path::PathBuf::from)
 }
 
 #[test]
-fn framework_root_resolves_from_explicit_path() {
+fn framework_root_from_explicit_path() {
     let Some(root) = framework_root() else {
         return;
     };

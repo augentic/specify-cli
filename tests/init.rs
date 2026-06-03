@@ -1,8 +1,8 @@
-//! Integration tests for `specrun init` (adapter and `--hub` modes).
+//! Integration tests for `specify init` (adapter and `--workspace` modes).
 //!
 //! Covers the on-disk shape produced by `init`, the JSON envelope, and
 //! the clap-level invariants around the positional `<adapter>`
-//! argument and the `--hub` flag.
+//! argument and the `--workspace` flag.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -12,12 +12,12 @@ use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
 mod common;
-use common::{omnia_schema_dir, specrun};
+use common::{omnia_schema_dir, specify_cmd};
 
 #[test]
 fn init_text_format_succeeds() {
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -37,7 +37,7 @@ fn init_text_format_succeeds() {
 #[test]
 fn init_json_format_has_stable_shape() {
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init"])
         .arg(omnia_schema_dir())
@@ -67,7 +67,7 @@ fn init_json_format_has_stable_shape() {
 #[ignore = "networked GitHub fetch smoke test"]
 fn init_github_directory_uri_succeeds() {
     let tmp = tempdir().unwrap();
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args([
             "init",
@@ -79,14 +79,14 @@ fn init_github_directory_uri_succeeds() {
         .success();
 }
 
-// ---- `specrun init` adapter/hub invariant: positional <adapter> + --hub mutual exclusion ----
+// ---- `specify init` adapter/workspace invariant: positional <adapter> + --workspace mutual exclusion ----
 
 #[test]
 fn init_writes_adapter_field_for_url_arg() {
-    // Acceptance (a): `specrun init <url>` writes `adapter: <url>`
-    // and no `schema:` field; `hub:` either absent or false.
+    // Acceptance (a): `specify init <url>` writes `adapter: <url>`
+    // and no `schema:` field; `workspace:` either absent or false.
     let tmp = tempdir().unwrap();
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -98,39 +98,39 @@ fn init_writes_adapter_field_for_url_arg() {
         fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
     assert!(
         project_yaml.contains("adapter:"),
-        "project.yaml must carry `adapter:` after non-hub init, got:\n{project_yaml}"
+        "project.yaml must carry `adapter:` after regular init, got:\n{project_yaml}"
     );
     assert!(
         !project_yaml.lines().any(|line| line.trim_start().starts_with("schema:")),
         "project.yaml must NOT carry the legacy `schema:` field, got:\n{project_yaml}"
     );
-    // hub: absent (or false) means the value is implicit; just check no
-    // `hub: true` line.
+    // workspace: absent (or false) means the value is implicit; just check no
+    // `workspace: true` line.
     assert!(
-        !project_yaml.lines().any(|l| l.trim_start().starts_with("hub: true")),
-        "non-hub init must not write `hub: true`, got:\n{project_yaml}"
+        !project_yaml.lines().any(|l| l.trim_start().starts_with("workspace: true")),
+        "regular init must not write `workspace: true`, got:\n{project_yaml}"
     );
 
-    // Non-hub init writes only `project.yaml` and the `.specify/`
+    // Regular init writes only `project.yaml` and the `.specify/`
     // skeleton at the project root. Platform-component artefacts at the
     // repo root are operator-managed.
     for absent in ["registry.yaml", "plan.yaml", "change.md"] {
         assert!(
             !tmp.path().join(absent).exists(),
-            "non-hub init must not pre-touch `{absent}` at the repo root"
+            "regular init must not pre-touch `{absent}` at the repo root"
         );
     }
 }
 
 #[test]
 fn init_with_no_args_errors() {
-    // Acceptance (c): `specrun init` (no positional, no `--hub`) must
+    // Acceptance (c): `specify init` (no positional, no `--workspace`) must
     // exit `2` (clap's parse-error slot) with clap's standard
     // "required arguments were not provided" diagnostic. The historical
-    // post-parse `init-requires-adapter-or-hub` diagnostic was lifted
-    // into the clap surface (`required_unless_present = "hub"`).
+    // post-parse `init-requires-adapter-or-workspace` diagnostic was lifted
+    // into the clap surface (`required_unless_present = "workspace"`).
     let tmp = tempdir().unwrap();
-    let assert = specrun().current_dir(tmp.path()).args(["init"]).assert().failure();
+    let assert = specify_cmd().current_dir(tmp.path()).args(["init"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "clap parse errors map to exit code 2");
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
@@ -144,61 +144,63 @@ fn init_with_no_args_errors() {
 }
 
 #[test]
-fn init_with_adapter_and_hub_errors() {
-    // Acceptance (d): `specrun init <url> --hub` must exit `2` with
+fn init_with_adapter_and_workspace_errors() {
+    // Acceptance (d): `specify init <url> --workspace` must exit `2` with
     // clap's "the argument cannot be used with" diagnostic. Same
     // motivation as `init_with_no_args_errors`: the invariant lives in
-    // clap (`conflicts_with = "hub"`), not a post-parse diagnostic.
+    // clap (`conflicts_with = "workspace"`), not a post-parse diagnostic.
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
-        .arg("--hub")
+        .arg("--workspace")
         .assert()
         .failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "clap parse errors map to exit code 2");
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
-        stderr.contains("cannot be used with") && stderr.contains("--hub"),
+        stderr.contains("cannot be used with") && stderr.contains("--workspace"),
         "diagnostic must mention the conflicts_with rule, got stderr:\n{stderr}"
     );
 }
 
-// ---- specrun init --hub (registry hub-mode validation platform-hub topology) ----
+// ---- specify init --workspace (registry workspace topology) ----
 
 #[test]
-fn init_hub_writes_canonical_on_disk_shape() {
+fn workspace_writes_canonical_shape() {
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init"])
-        .args(["--name", "platform-hub", "--hub"])
+        .args(["--name", "platform-workspace", "--workspace"])
         .assert()
         .success();
 
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: serde_json::Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     assert_eq!(
-        value["adapter-name"], "hub",
-        "JSON response must surface adapter-name: \"hub\", got: {value}"
+        value["adapter-name"], "workspace",
+        "JSON response must surface adapter-name: \"workspace\", got: {value}"
     );
+    assert_eq!(value["workspace-synced"], true);
+    assert_eq!(value["workspace-sync-message"], "workspace sync complete");
     assert!(
         value["scaffolded-rule-keys"].as_array().expect("array").is_empty(),
-        "hub init must not scaffold rule keys, got: {}",
+        "workspace init must not scaffold rule keys, got: {}",
         value["scaffolded-rule-keys"]
     );
 
-    // Hub init scaffolds `project.yaml` (under `.specify/`) plus
+    // Workspace init scaffolds `project.yaml` (under `.specify/`) plus
     // `registry.yaml` at the repo root, and nothing else. `registry.yaml`
-    // survives because bootstrapping a hub is bootstrapping its registry;
+    // survives because bootstrapping a workspace is bootstrapping its registry;
     // `change.md` and `plan.yaml` stay operator-managed.
     assert!(tmp.path().join(".specify/project.yaml").is_file());
     assert!(tmp.path().join("registry.yaml").is_file());
     for absent in ["plan.yaml", "change.md"] {
         assert!(
             !tmp.path().join(absent).exists(),
-            "hub init must not pre-touch `{absent}` at the repo root"
+            "workspace init must not pre-touch `{absent}` at the repo root"
         );
     }
     // Phase-pipeline directories MUST NOT be present.
@@ -206,21 +208,21 @@ fn init_hub_writes_canonical_on_disk_shape() {
     assert!(!tmp.path().join(".specify/specs").exists());
     assert!(!tmp.path().join(".specify/.cache").exists());
 
-    // project.yaml shape: `hub: true` only, no `adapter:` field, and
+    // project.yaml shape: `workspace: true` only, no `adapter:` field, and
     // no stale `schema:` sentinel.
     let project_yaml =
         fs::read_to_string(tmp.path().join(".specify/project.yaml")).expect("read project.yaml");
     assert!(
         !project_yaml.lines().any(|l| l.trim_start().starts_with("schema:")),
-        "hub project.yaml must omit the stale `schema:` field:\n{project_yaml}"
+        "workspace project.yaml must omit the stale `schema:` field:\n{project_yaml}"
     );
     assert!(
         !project_yaml.lines().any(|l| l.trim_start().starts_with("adapter:")),
-        "hub project.yaml must omit the `adapter:` field:\n{project_yaml}"
+        "workspace project.yaml must omit the `adapter:` field:\n{project_yaml}"
     );
     assert!(
-        project_yaml.contains("hub: true"),
-        "project.yaml must carry `hub: true`:\n{project_yaml}"
+        project_yaml.contains("workspace: true"),
+        "project.yaml must carry `workspace: true`:\n{project_yaml}"
     );
 
     // registry.yaml shape — version: 1, projects: [].
@@ -238,22 +240,22 @@ fn init_hub_writes_canonical_on_disk_shape() {
         "registry.yaml `projects` must be an empty list, got: {registry}"
     );
 
-    // `change.md` is not scaffolded by hub init; it appears only after
-    // the operator runs `/spec:plan <name>` (or `specrun plan create <name>`).
+    // `change.md` is not scaffolded by workspace init; it appears only after
+    // the operator runs `/spec:plan <name>` (or `specify plan create <name>`).
 }
 
 #[test]
-fn init_hub_refuses_when_present() {
+fn init_workspace_refuses_when_present() {
     let tmp = tempdir().unwrap();
     // Pre-create `.specify/` with arbitrary content.
     fs::create_dir_all(tmp.path().join(".specify")).unwrap();
     fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nadapter: omnia\n")
         .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
-        .args(["--name", "platform-hub", "--hub"])
+        .args(["--name", "platform-workspace", "--workspace"])
         .assert()
         .failure();
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
@@ -266,7 +268,7 @@ fn init_hub_refuses_when_present() {
     assert_eq!(on_disk, "name: existing\nadapter: omnia\n");
 }
 
-// ---- `specrun init --upgrade` (RFC-30 §D5 re-entry version bump) ----
+// ---- `specify init --upgrade` (RFC-30 §D5 re-entry version bump) ----
 
 /// Recursively snapshot every regular file under `root` as a
 /// `relative-path -> bytes` map, so an upgrade's write set can be
@@ -316,7 +318,7 @@ fn seed_brownfield_regular(root: &Path) {
 }
 
 #[test]
-fn init_upgrade_bumps_only_version_and_preserves_artifacts() {
+fn upgrade_bumps_version_keeps_artifacts() {
     let tmp = tempdir().unwrap();
     seed_brownfield_regular(tmp.path());
 
@@ -326,7 +328,7 @@ fn init_upgrade_bumps_only_version_and_preserves_artifacts() {
     )
     .expect("parse before");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -362,7 +364,7 @@ fn init_upgrade_bumps_only_version_and_preserves_artifacts() {
 
     // Second run is a byte-stable no-op.
     let snapshot_after_first = snapshot_tree(tmp.path());
-    let assert2 = specrun()
+    let assert2 = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -378,21 +380,21 @@ fn init_upgrade_bumps_only_version_and_preserves_artifacts() {
 }
 
 #[test]
-fn init_upgrade_preserves_hub_and_registry() {
+fn upgrade_preserves_workspace_registry() {
     let tmp = tempdir().unwrap();
     let specify = tmp.path().join(".specify");
     fs::create_dir_all(&specify).unwrap();
     fs::write(
         specify.join("project.yaml"),
-        "name: platform-hub\nspecify_version: 0.2.0\nhub: true\n",
+        "name: platform-workspace\nspecify_version: 0.2.0\nworkspace: true\n",
     )
     .unwrap();
     fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
-    fs::write(tmp.path().join("AGENTS.md"), "# Hub sentinel\n").unwrap();
+    fs::write(tmp.path().join("AGENTS.md"), "# Workspace sentinel\n").unwrap();
 
     let registry_before = fs::read(tmp.path().join("registry.yaml")).unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -401,35 +403,37 @@ fn init_upgrade_preserves_hub_and_registry() {
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
     assert_eq!(value["specify-version"], "0.3.0");
     assert_eq!(value["specify-version-changed"], true);
-    assert_eq!(value["adapter-name"], "hub");
+    assert_eq!(value["adapter-name"], "workspace");
 
     let cfg: ProjectConfig =
         serde_saphyr::from_str(&fs::read_to_string(specify.join("project.yaml")).unwrap())
-            .expect("parse hub project.yaml");
-    assert!(cfg.hub, "hub discriminator must survive");
-    assert!(cfg.adapter.is_none(), "hub upgrade must not synthesise an adapter");
+            .expect("parse workspace project.yaml");
+    assert!(cfg.workspace, "workspace discriminator must survive");
+    assert!(cfg.adapter.is_none(), "workspace upgrade must not synthesise an adapter");
     assert_eq!(cfg.specify_version.as_deref(), Some("0.3.0"));
+    let project_yaml = fs::read_to_string(specify.join("project.yaml")).unwrap();
+    assert!(project_yaml.contains("workspace: true"), "upgrade must preserve workspace: key");
     assert_eq!(
         fs::read(tmp.path().join("registry.yaml")).unwrap(),
         registry_before,
-        "registry.yaml must be byte-identical after a hub upgrade"
+        "registry.yaml must be byte-identical after a workspace upgrade"
     );
 
     // Second run no-op.
     let project_after_first = fs::read(specify.join("project.yaml")).unwrap();
-    specrun().current_dir(tmp.path()).args(["init", "--upgrade"]).assert().success();
+    specify_cmd().current_dir(tmp.path()).args(["init", "--upgrade"]).assert().success();
     assert_eq!(
         fs::read(specify.join("project.yaml")).unwrap(),
         project_after_first,
-        "second hub --upgrade must be byte-stable"
+        "second workspace --upgrade must be byte-stable"
     );
 }
 
 #[test]
-fn init_upgrade_conflicts_with_adapter_hub_and_check_migration() {
-    for extra in [vec!["omnia"], vec!["--hub"], vec!["--check-migration"]] {
+fn upgrade_conflicts_workspace_migration() {
+    for extra in [vec!["omnia"], vec!["--workspace"], vec!["--check-migration"]] {
         let tmp = tempdir().unwrap();
-        let mut cmd = specrun();
+        let mut cmd = specify_cmd();
         cmd.current_dir(tmp.path()).args(["init", "--upgrade"]).args(&extra);
         let assert = cmd.assert().failure();
         assert_eq!(
@@ -447,7 +451,7 @@ fn init_upgrade_conflicts_with_adapter_hub_and_check_migration() {
     }
 }
 
-/// Tiny YAML→JSON helper — we only need it for the hub on-disk shape
+/// Tiny YAML→JSON helper — we only need it for the workspace on-disk shape
 /// assertion, and pulling in a full yaml dependency for one test is
 /// overkill. The registry file we write is shallow so a minimal hand
 /// parser via `serde_json::from_str` after an indent-stripped

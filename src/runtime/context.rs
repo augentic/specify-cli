@@ -33,7 +33,7 @@ impl Ctx {
 
     /// Variant of [`Self::load`] that walks from `start_dir` instead of
     /// the process CWD. Used by handlers that accept a `--project-dir`
-    /// flag (e.g. `specrun lint`); the resolved `project_dir` is the
+    /// flag (e.g. `specify lint`); the resolved `project_dir` is the
     /// nearest ancestor of `start_dir` containing `.specify/project.yaml`.
     pub(crate) fn load_at(format: Format, start_dir: &Path) -> Result<Self, Error> {
         let project_dir = ProjectConfig::find_root(start_dir).ok_or(Error::NotInitialized)?;
@@ -48,17 +48,17 @@ impl Ctx {
     /// Resolve this project's target adapter into a
     /// [`ResolvedTargetAdapter`].
     ///
-    /// Hub projects (`hub: true`, `adapter:` omitted) do not declare
-    /// an adapter, so this returns a `hub-no-adapter` diagnostic
-    /// naming the hub case rather than a stray adapter-resolution
+    /// Workspace projects (`workspace: true`, `adapter:` omitted) do not declare
+    /// an adapter, so this returns a `workspace-no-adapter` diagnostic
+    /// naming the workspace case rather than a stray adapter-resolution
     /// error lower down the stack.
     pub(crate) fn resolve_target_adapter(&self) -> Result<ResolvedTargetAdapter, Error> {
         let Some(adapter_value) = self.config.adapter.as_deref() else {
             return Err(Error::Diag {
-                code: "hub-no-adapter",
-                detail: "this project has no adapter declared (hub projects do not run \
-                         per-target operations); only `specrun registry` and `specrun plan` \
-                         verbs are supported on hubs"
+                code: "workspace-no-adapter",
+                detail: "this project has no adapter declared (workspaces do not run \
+                         per-target operations); only `specify registry` and `specify plan` \
+                         verbs are supported on workspaces"
                     .to_string(),
             });
         };

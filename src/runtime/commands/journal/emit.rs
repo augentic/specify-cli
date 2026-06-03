@@ -1,4 +1,4 @@
-//! `specrun journal emit` handler. A guarded front door onto the
+//! `specify journal emit` handler. A guarded front door onto the
 //! closed [`specify_workflow::journal::EventKind`] taxonomy: the
 //! handler mints no event kinds of its own, it only deserialises the
 //! operator-supplied id + payload into an existing variant, stamps the
@@ -14,7 +14,7 @@ use specify_workflow::journal::{self, Event, EventKind};
 
 use crate::runtime::context::Ctx;
 
-/// `specrun journal emit <event-id> [--payload <json>]`.
+/// `specify journal emit <event-id> [--payload <json>]`.
 ///
 /// Reassembles the adjacently-tagged `{ event, payload }` wire shape
 /// and runs a single serde round-trip into [`EventKind`]; the closed

@@ -35,7 +35,7 @@ fn path_pattern_narrows_candidates() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -70,7 +70,7 @@ fn path_pattern_empty_drops_findings() {
     let runner: &dyn ToolRunner = &NoToolRunner;
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -78,4 +78,36 @@ fn path_pattern_empty_drops_findings() {
     )
     .expect("evaluate ok");
     assert!(outcome.findings.is_empty(), "no .rs files survived path-pattern filter");
+}
+
+#[test]
+fn path_pattern_exclusion_carves_out_paths() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    fs::create_dir_all(tmp.path().join("docs/explanation")).expect("mkdir");
+    fs::write(tmp.path().join("docs/bad.md"), "fn main() {}\n").expect("write bad");
+    fs::write(tmp.path().join("docs/explanation/decision-log.md"), "fn other() {}\n")
+        .expect("write allowlisted");
+
+    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let rule = make_rule(
+        "UNI-903",
+        vec![
+            hint(HintKind::PathPattern, "docs/**/*.md"),
+            hint(HintKind::PathPattern, "!docs/explanation/decision-log.md"),
+            hint(HintKind::Regex, "\\bfn\\b"),
+        ],
+    );
+    let runner: &dyn ToolRunner = &NoToolRunner;
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert_eq!(outcome.findings.len(), 1);
+    assert_eq!(outcome.findings[0].location.as_ref().expect("loc").path, "docs/bad.md");
 }

@@ -1,4 +1,4 @@
-//! Integration tests for `specrun source survey` (RFC-29 D1;
+//! Integration tests for `specify source survey` (RFC-29 D1;
 //! DECISIONS.md §"Source operations (D1)").
 //!
 //! Covers source resolution against `plan.yaml.sources`, the agent
@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 mod common;
-use common::{Project, parse_stderr, parse_stdout, repo_root, specrun};
+use common::{Project, parse_stderr, parse_stdout, repo_root, specify_cmd};
 
 fn stage_code_typescript(project: &Project) {
     // The in-repo fixture ships only `adapter.yaml` (execution: agent);
@@ -68,12 +68,12 @@ const VALID_LEAD_SET: &str = "\
 ";
 
 #[test]
-fn agent_prepare_prints_envelope_and_emits_execution_event() {
+fn prepare_prints_envelope_emits_event() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "survey", "legacy"])
         .assert()
@@ -114,7 +114,7 @@ fn agent_prepare_prints_envelope_and_emits_execution_event() {
 }
 
 #[test]
-fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
+fn finalize_merges_and_cache_miss() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -126,7 +126,7 @@ fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(scratch.join("lead-set.md"), VALID_LEAD_SET).expect("write lead-set.md");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "survey", "legacy", "--phase", "finalize"])
         .assert()
@@ -163,7 +163,7 @@ fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
 }
 
 #[test]
-fn agent_finalize_unparseable_non_empty_lead_set_errors() {
+fn finalize_unparseable_lead_set_errors() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -174,7 +174,7 @@ fn agent_finalize_unparseable_non_empty_lead_set_errors() {
     fs::write(scratch.join("lead-set.md"), "The survey found registration behavior.\n")
         .expect("write unparseable lead-set.md");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "survey", "legacy", "--phase", "finalize"])
         .assert()
@@ -197,7 +197,7 @@ fn agent_finalize_unparseable_non_empty_lead_set_errors() {
 }
 
 #[test]
-fn agent_finalize_invalid_lead_set_leaves_discovery_untouched() {
+fn finalize_invalid_lead_set_untouched() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -212,7 +212,7 @@ fn agent_finalize_invalid_lead_set_leaves_discovery_untouched() {
     )
     .expect("write invalid lead-set.md");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "survey", "legacy", "--phase", "finalize"])
         .assert()
@@ -243,7 +243,7 @@ fn unknown_source_errors() {
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "survey", "not-a-source"])
         .assert()
@@ -260,7 +260,7 @@ fn plan_name_mismatch_errors() {
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "survey", "legacy", "--plan", "wrong-plan"])
         .assert()

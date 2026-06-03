@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn substitute_rejects_capability_out_of_scope() {
+    fn substitute_rejects_out_of_scope() {
         let err = substitute("$CAPABILITY_DIR/templates", Path::new("/tmp/project"), None)
             .expect_err("project-scope capability dir must fail");
         assert!(matches!(err, ToolError::InvalidPermission { .. }), "{err}");
@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn canonicalise_under_rejects_symlink_escape() {
+    fn canonicalise_rejects_symlink_escape() {
         let tmp = tempdir().expect("tempdir");
         let project = tmp.path().join("project");
         let outside = tmp.path().join("outside");

@@ -1,0 +1,26 @@
+[package]
+name = "specify-agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Init-time AGENTS.md context-fence generation: detection, rendering, fingerprinting, and lock sidecar"
+categories = ["development-tools"]
+keywords = ["specify", "agents", "context"]
+readme = "../../README.md"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+serde-saphyr.workspace = true
+serde_json.workspace = true
+specify-digest.workspace = true
+specify-error.workspace = true
+specify-model.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

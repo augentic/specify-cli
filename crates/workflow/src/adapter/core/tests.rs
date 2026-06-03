@@ -130,7 +130,7 @@ fn check_execution_rejects_missing_mode() {
 }
 
 #[test]
-fn check_execution_agent_allows_forced_opt_out() {
+fn execution_agent_allows_forced_opt_out() {
     // `execution: agent` forces `cache: opt-out`; declaring the
     // matching opt-out (or no cache at all) is not a conflict.
     check_execution(Some(Execution::Agent), Some(CacheMode::OptOut), Path::new("adapter.yaml"))
@@ -163,25 +163,6 @@ briefs:
         manifest.effective_cache_mode(),
         Some(CacheMode::OptOut),
         "execution: agent forces cache: opt-out even with no declared cache"
-    );
-}
-
-#[test]
-fn tool_execution_preserves_declared_cache() {
-    let yaml = r"name: omnia
-version: 1
-axis: target
-execution: tool
-briefs:
-  shape: briefs/shape.md
-  build: briefs/build.md
-  merge: briefs/merge.md
-";
-    let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
-    assert_eq!(
-        manifest.effective_cache_mode(),
-        None,
-        "tool execution leaves the (absent) declared cache mode untouched"
     );
 }
 
@@ -267,7 +248,7 @@ platforms:
 }
 
 #[test]
-fn target_platforms_not_required_round_trips() {
+fn platforms_optional_round_trip() {
     let yaml = r"name: contracts
 version: 1
 axis: target

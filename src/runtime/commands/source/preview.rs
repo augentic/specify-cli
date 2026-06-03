@@ -1,5 +1,5 @@
-//! `specrun source preview` handler — workflow-free source adapter
-//! execution scaffolding (`specrun source preview` contract).
+//! `specify source preview` handler — workflow-free source adapter
+//! execution scaffolding (`specify source preview` contract).
 //!
 //! Validates `--source`, then runs the shared [`prep`] seam (adapter
 //! resolution, brief directory, the four-root sandbox layout, and
@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use specify_error::{Error, Result};
+use specify_workflow::adapter::SourceOperation;
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::source::prep;
@@ -31,7 +32,7 @@ const DEFAULT_OUT_DIR: &str = ".specify-preview";
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct BriefEntry {
-    operation: String,
+    operation: SourceOperation,
     path: PathBuf,
 }
 
@@ -75,19 +76,26 @@ pub fn preview(
         .briefs
         .iter()
         .map(|(op, relative)| BriefEntry {
-            operation: op.to_string(),
+            operation: *op,
             path: prepared.adapter_dir.join(relative),
         })
         .collect();
+
+    let Some(evidence_dir) = prepared.evidence_dir else {
+        return Err(Error::Diag {
+            code: "source-preview-dir-missing",
+            detail: "preview prep did not scaffold the evidence/ directory \
+                (evidence_root was None)"
+                .to_string(),
+        });
+    };
 
     let body = PreviewBody {
         adapter: prepared.manifest.name,
         version: prepared.manifest.version,
         source: source.to_path_buf(),
         out: out_dir,
-        evidence_dir: prepared
-            .evidence_dir
-            .expect("evidence_root: Some(..) => evidence_dir present"),
+        evidence_dir,
         leads: prepared.leads,
         briefs,
     };

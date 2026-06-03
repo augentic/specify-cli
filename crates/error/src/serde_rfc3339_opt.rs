@@ -61,13 +61,13 @@ mod tests {
     }
 
     #[test]
-    fn none_is_skipped_when_paired_with_skip_serializing_if() {
+    fn none_skipped_with_skip_if() {
         let doc = MaybeStamped { at: None };
         assert_eq!(serde_json::to_string(&doc).expect("serialise"), "{}");
     }
 
     #[test]
-    fn missing_field_and_null_both_deserialise_to_none() {
+    fn missing_and_null_to_none() {
         let missing: MaybeStamped = serde_json::from_str("{}").expect("missing field");
         assert_eq!(missing, MaybeStamped { at: None });
         let null: MaybeStamped = serde_json::from_str(r#"{"at":null}"#).expect("null field");

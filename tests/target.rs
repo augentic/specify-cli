@@ -1,37 +1,23 @@
-//! Integration tests for `specrun target resolve`.
+//! Integration tests for `specify target resolve`.
 //!
 //! Mirrors the target-adapter loader exposed by
 //! `crates/workflow/src/adapter/`. The CLI verb is a thin
 //! `TargetAdapter::resolve(name, project_dir)` wrapper.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 mod common;
-use common::{Project, parse_stdout, repo_root, specrun};
+use common::{Project, copy_dir, parse_stdout, repo_root, specify_cmd};
 
 fn plugin_fixtures_root() -> PathBuf {
     repo_root().join("crates/workflow/tests/fixtures/plugins")
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create dst");
-    for entry in fs::read_dir(src).expect("read fixture dir") {
-        let entry = entry.expect("dir entry");
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if from.is_dir() {
-            copy_dir_recursive(&from, &to);
-        } else {
-            fs::copy(&from, &to).expect("copy fixture file");
-        }
-    }
-}
-
 fn stage_target_fixture(project: &Project, name: &str) {
     let src = plugin_fixtures_root().join("adapters").join("targets").join(name);
     let dst = project.root().join("adapters").join("targets").join(name);
-    copy_dir_recursive(&src, &dst);
+    copy_dir(&src, &dst);
 }
 
 #[test]
@@ -45,7 +31,7 @@ fn resolve_local_returns_manifest() {
     }
     stage_target_fixture(&project, "omnia");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "target", "resolve", "omnia"])
         .arg("--project-dir")
@@ -78,13 +64,13 @@ fn resolve_local_returns_manifest() {
 
 #[test]
 fn resolve_strips_version_suffix() {
-    // workflow §CLI surface: `specrun target resolve <value>` takes
+    // workflow §CLI surface: `specify target resolve <value>` takes
     // either `<name>` or `<name>@<version>`. The `@version` part is
     // opaque metadata; the loader is keyed on the bare kebab name.
     let project = Project::init();
     stage_target_fixture(&project, "omnia");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "target", "resolve", "omnia@v1"])
         .arg("--project-dir")
@@ -100,7 +86,7 @@ fn resolve_strips_version_suffix() {
 fn retired_adapter_verb_rejected_by_clap() {
     // `specify adapter *` retires at 2.0 (workflow §What was cut and why).
     // Clap rejects unknown verbs with exit code 2.
-    let assert = specrun().arg("adapter").arg("resolve").arg("omnia").assert().failure();
+    let assert = specify_cmd().arg("adapter").arg("resolve").arg("omnia").assert().failure();
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "clap must reject the retired `adapter` verb with exit 2, got {code}");
 }
@@ -108,7 +94,7 @@ fn retired_adapter_verb_rejected_by_clap() {
 #[test]
 fn retired_change_verb_rejected_by_clap() {
     // `specify change *` retires at 2.0 (workflow §What was cut and why).
-    let assert = specrun().arg("change").arg("draft").arg("demo").assert().failure();
+    let assert = specify_cmd().arg("change").arg("draft").arg("demo").assert().failure();
     let code = assert.get_output().status.code().expect("exit code");
     assert_eq!(code, 2, "clap must reject the retired `change` verb with exit 2, got {code}");
 }

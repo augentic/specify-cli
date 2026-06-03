@@ -1,6 +1,6 @@
 //! `plan.yaml.slices[].authority-override` mutation engine (workflow
 //! `kind: schema` evaluator contract). The CLI handlers ([`crate::change::Plan::amend`] siblings in
-//! the `specrun` runtime binary) parse `--authority-override` /
+//! the `specify` runtime binary) parse `--authority-override` /
 //! `--clear-authority-override` / `--clear-authority-overrides`
 //! flags into the typed `(slice, kind, source)` tuples this
 //! module consumes, then drive the in-memory plan through
@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use specify_error::{Error, Result};
 use specify_model::evidence::ClaimKind;
 
-use super::model::{Entry, Plan, Severity};
+use super::model::{Entry, Plan};
 use super::validate::orphan_authority_override_keys;
 use crate::journal::{self, AuthorityOverrideAction};
 
@@ -159,7 +159,7 @@ pub fn emit_seed_events(
         .authority_override
         .by_kind
         .iter()
-        .map(|(kind, key)| ((entry.name.clone(), *kind), key.clone()))
+        .map(|(kind, key)| ((entry.name.to_string(), *kind), key.clone()))
         .collect();
     emit_override_events(
         plan_name,
@@ -189,18 +189,18 @@ pub fn emit_seed_events(
 /// # Errors
 ///
 /// Returns `Error::Validation` when at least one orphan-source
-/// finding has `Severity::Error`.
+/// finding blocks (a `critical`/`important` violation).
 pub fn reject_orphan_overrides(plan: &Plan) -> Result<()> {
     let findings: Vec<_> = orphan_authority_override_keys(&plan.entries)
         .into_iter()
-        .filter(|f| f.level == Severity::Error)
+        .filter(specify_diagnostics::blocking)
         .collect();
     let Some(first) = findings.first() else {
         return Ok(());
     };
-    let detail = findings.iter().map(|f| f.message.clone()).collect::<Vec<_>>().join("; ");
+    let detail = findings.iter().map(|f| f.impact.clone()).collect::<Vec<_>>().join("; ");
     Err(Error::Validation {
-        code: first.code.to_string(),
+        code: first.rule_id.clone().unwrap_or_default(),
         detail,
     })
 }
@@ -253,8 +253,11 @@ pub fn unknown_slice_err(plan_name: &str, slice: &str) -> Error {
         "--authority-override / --clear-authority-override(s) must reference a slice present in \
          the plan",
         format!(
-            "no slice named '{slice}' in plan '{plan_name}'; add the slice (e.g. specrun plan add \
+            "no slice named '{slice}' in plan '{plan_name}'; add the slice (e.g. specify plan add \
              {slice}) before authoring authority-override entries"
         ),
     )
 }
+
+#[cfg(test)]
+mod tests;

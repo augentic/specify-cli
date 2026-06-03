@@ -1,6 +1,15 @@
 {
   "adapter_manifests": [],
   "artifact_paths": [],
+  "fenced_blocks": [
+    {
+      "body": "# fenced heading must not be counted\nfake: [link](nope)",
+      "lang": "yaml",
+      "line-end": 19,
+      "line-start": 17,
+      "path": "doc.md"
+    }
+  ],
   "files": [
     {
       "kind": "text",

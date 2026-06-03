@@ -14,8 +14,9 @@
 //!
 //! [workflow §Observability]: ../../../../docs/standards/workflow.md#observability
 
-use std::io::{ErrorKind, Write};
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -29,6 +30,12 @@ use crate::name::{PlanName, SliceName};
 
 /// Project-relative path the journal lives at.
 const JOURNAL_FILE_NAME: &str = "journal.jsonl";
+
+/// Project-relative path of the dropped-event sidecar. A best-effort
+/// append failure (see [`emit_best_effort`]) gets a second, recoverable
+/// home here so an `O_APPEND` hiccup to the primary journal is never a
+/// silent loss.
+const DROPPED_FILE_NAME: &str = "journal.dropped";
 
 /// One row of the journal. Serialises as `{ timestamp, event,
 /// payload }` — workflow §Wire format pins `timestamp` first so a
@@ -61,14 +68,14 @@ impl Event {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "payload")]
 pub enum EventKind {
-    /// Gate 1 cleared — `specrun plan transition <plan-name> approved`.
+    /// Gate 1 cleared — `specify plan transition <plan-name> approved`.
     #[serde(rename = "plan.transition.approved", rename_all = "kebab-case")]
     PlanTransitionApproved {
         /// Plan name from `plan.yaml.name`.
         plan_name: PlanName,
     },
     /// Operator walked one rung backwards on per-entry status via
-    /// `specrun plan transition <entry> --undo`. One event per rung
+    /// `specify plan transition <entry> --undo`. One event per rung
     /// (`done → in-progress` and `in-progress → pending` each fire
     /// individually) so the journal records every step the operator
     /// took and replay traces line up with the forward-direction
@@ -85,9 +92,9 @@ pub enum EventKind {
         to: crate::change::Status,
     },
     /// Stamped `slices[].divergence` via
-    /// `specrun plan amend --divergence <likely|accepted|rejected>`.
-    /// divergence and writer-ownership contract — the CLI is the single writer. In the
-    /// RFC-29 D2 propose flow the `/spec:plan` agent stages `likely`
+    /// `specify plan amend --divergence <likely|accepted|rejected>`.
+    /// The CLI is the single writer. In the propose flow the
+    /// `/spec:plan` agent stages `likely`
     /// through this event after `propose --from`; the operator later
     /// flips `accepted` / `rejected` the same way. This is the only
     /// path that writes the `divergence` field.
@@ -124,7 +131,7 @@ pub enum EventKind {
     },
     /// `[conflict]` on a requirement in `spec.md` — same-authority
     /// disagreement the operator must reconcile. Emitted by
-    /// `specrun slice validate` after a successful run.
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.conflict", rename_all = "kebab-case")]
     SliceSynthesisConflict {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -134,7 +141,7 @@ pub enum EventKind {
     },
     /// `[divergence]` on a requirement in `spec.md` — cross-authority
     /// disagreement preserved as inline commentary. Emitted by
-    /// `specrun slice validate` after a successful run.
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.divergence", rename_all = "kebab-case")]
     SliceSynthesisDivergence {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -144,7 +151,7 @@ pub enum EventKind {
     },
     /// `[unknown]` on a requirement in `spec.md` — a gap the operator
     /// must close before the requirement is meaningful. Emitted by
-    /// `specrun slice validate` after a successful run.
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.unknown", rename_all = "kebab-case")]
     SliceSynthesisUnknown {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -154,8 +161,7 @@ pub enum EventKind {
     },
     /// Slice synthesis began — `/spec:refine` started folding the
     /// extracted evidence into `proposal.md` / `spec.md` / `design.md`
-    /// / `tasks.md` / `model.yaml`. One event per slice (RFC-29c
-    /// §"Wire contracts"). Distinct from the per-requirement
+    /// / `tasks.md` / `model.yaml`. One event per slice. Distinct from the per-requirement
     /// `slice.synthesis.*` tag events above — `synthesize` is the
     /// lifecycle verb, `synthesis` is the requirement-tag noun.
     #[serde(rename = "slice.synthesize.started", rename_all = "kebab-case")]
@@ -164,16 +170,15 @@ pub enum EventKind {
         slice_name: SliceName,
     },
     /// Synthesis dispatched to the agent. Synthesis is always
-    /// agent-driven and `cache: opt-out` (RFC-29c §"Synthesis dispatch
-    /// (D10)"); this signal fires on the dry-run inputs phase so the
+    /// agent-driven and `cache: opt-out`; this signal fires on the dry-run inputs phase so the
     /// journal records that no cache short-circuit was attempted.
     #[serde(rename = "slice.synthesize.agent", rename_all = "kebab-case")]
     SliceSynthesizeAgent {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// Slice synthesis finished and the artifacts were persisted
-    /// (RFC-29c §"Wire contracts"). `artifacts` lists the persisted
+    /// Slice synthesis finished and the artifacts were persisted.
+    /// `artifacts` lists the persisted
     /// relative paths (`proposal.md`, `specs/<unit>/spec.md`,
     /// `design.md`, `tasks.md`, `model.yaml`).
     #[serde(rename = "slice.synthesize.completed", rename_all = "kebab-case")]
@@ -184,8 +189,8 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         artifacts: Vec<String>,
     },
-    /// Slice synthesis failed before all artifacts were persisted
-    /// (RFC-29c §"Wire contracts"). `reason` carries a short human
+    /// Slice synthesis failed before all artifacts were persisted.
+    /// `reason` carries a short human
     /// reason or finding code so the journal records why the slice
     /// stalled.
     #[serde(rename = "slice.synthesize.failed", rename_all = "kebab-case")]
@@ -197,7 +202,7 @@ pub enum EventKind {
     },
     /// `/spec:build` started implementing the slice — the target
     /// adapter's `build` brief began running against the refined
-    /// artifacts (RFC-29d §"Journal events"). One event per slice.
+    /// artifacts. One event per slice.
     #[serde(rename = "slice.build.started", rename_all = "kebab-case")]
     SliceBuildStarted {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -205,14 +210,14 @@ pub enum EventKind {
     },
     /// `/spec:build` finished implementing the slice — the target
     /// adapter's `build` brief completed and the slice is ready for
-    /// `/spec:merge` (RFC-29d §"Journal events"). One event per slice.
+    /// `/spec:merge`. One event per slice.
     #[serde(rename = "slice.build.succeeded", rename_all = "kebab-case")]
     SliceBuildSucceeded {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// `/spec:build` stopped before the slice was implemented
-    /// (RFC-29d §"Journal events"). `reason` carries a short human
+    /// `/spec:build` stopped before the slice was implemented.
+    /// `reason` carries a short human
     /// reason or finding code so the journal records why the build
     /// stalled.
     #[serde(rename = "slice.build.failed", rename_all = "kebab-case")]
@@ -222,25 +227,25 @@ pub enum EventKind {
         /// Short human reason / finding code for the failure.
         reason: String,
     },
-    /// `specrun slice merge` began folding the slice's deltas into the
-    /// baseline (RFC-29d §"Journal events"). The `slice.merge.*` pair
-    /// fires on the `specrun slice merge` validator outcome, not on a
+    /// `specify slice merge` began folding the slice's deltas into the
+    /// baseline. The `slice.merge.*` pair
+    /// fires on the `specify slice merge` validator outcome, not on a
     /// merge report. One event per slice.
     #[serde(rename = "slice.merge.started", rename_all = "kebab-case")]
     SliceMergeStarted {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// `specrun slice merge` validated and applied the slice's deltas
-    /// to the baseline (RFC-29d §"Journal events"). Fires on the
+    /// `specify slice merge` validated and applied the slice's deltas
+    /// to the baseline. Fires on the
     /// validator outcome, not on a merge report. One event per slice.
     #[serde(rename = "slice.merge.succeeded", rename_all = "kebab-case")]
     SliceMergeSucceeded {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// `specrun slice merge` refused to fold the slice into the
-    /// baseline (RFC-29d §"Journal events"). Fires on the validator
+    /// `specify slice merge` refused to fold the slice into the
+    /// baseline. Fires on the validator
     /// outcome, not on a merge report. `reason` carries a short human
     /// reason or finding code so the journal records why the merge
     /// stalled.
@@ -331,8 +336,8 @@ pub enum EventKind {
         operation: SourceOperation,
     },
     /// A target adapter ran one operation under agent execution. The
-    /// `build` verb emits this per agent invocation (RFC-29d
-    /// §"Journal events"). Unlike [`Self::SourceExecutionAgent`], which
+    /// `build` verb emits this per agent invocation.
+    /// Unlike [`Self::SourceExecutionAgent`], which
     /// fans out over the `(source, operation)` pair, the build verb
     /// derives `(slice, target)` from the bound project — `build` is
     /// the only agent-dispatched target operation that emits this event
@@ -363,8 +368,8 @@ pub enum EventKind {
     },
     /// per-slice authority override — operator set or cleared a per-slice
     /// `authority-override` map at Gate 1. CLI-driven via
-    /// `specrun plan create --authority-override`,
-    /// `specrun plan amend --authority-override`, or the matching
+    /// `specify plan create --authority-override`,
+    /// `specify plan amend --authority-override`, or the matching
     /// `--clear-*` flags.
     #[serde(rename = "plan.amend.authority-override", rename_all = "kebab-case")]
     PlanAmendAuthorityOverride {
@@ -383,14 +388,10 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source: Option<String>,
     },
-    /// `specrun plan propose --from` validated the agent reconciliation
-    /// response and wrote `plan.yaml.slices[]`. One event per successful
-    /// invocation — the `/spec:plan` skill never calls
-    /// `specrun journal emit` for D2. (RFC-29 review F8 folded the former
-    /// `plan.reconcile.agent` + `plan.reconcile.completed` pair into this
-    /// single event: they always co-fired atomically with no failure-mode
-    /// gap between them, so one indivisible event carries the whole D2
-    /// outcome.)
+    /// `specify plan propose --from` validated the agent reconciliation
+    /// response and wrote `plan.yaml.slices[]`. One indivisible event
+    /// per successful invocation — the `/spec:plan` skill never calls
+    /// `specify journal emit` here.
     #[serde(rename = "plan.reconcile.completed", rename_all = "kebab-case")]
     PlanReconcileCompleted {
         /// Plan name from `plan.yaml.name`.
@@ -407,7 +408,7 @@ pub enum EventKind {
     /// specs it touched, a one-line outcome summary, and the git SHA
     /// the baseline sat at. The archived slice folder under
     /// `.specify/archive/` is a prunable convenience cache
-    /// (`specrun archive prune`), not the system of record — this
+    /// (`specify archive prune`), not the system of record — this
     /// event plus git history of `.specify/specs/` is.
     #[serde(rename = "slice.archive.created", rename_all = "kebab-case")]
     SliceArchiveCreated {
@@ -425,13 +426,13 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         merge_sha: Option<String>,
         /// `DEC-NNNN` ids promoted into the Decision Record catalogue by
-        /// this merge (RFC-36), in slug order. Empty stays off the wire;
+        /// this merge, in slug order. Empty stays off the wire;
         /// this is the durable ledger of promoted decisions alongside git
         /// history of `.specify/decisions/`.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         decisions: Vec<String>,
     },
-    /// `specrun upgrade` self-updated the CLI binary. The new binary
+    /// `specify upgrade` self-updated the CLI binary. The new binary
     /// writes the event; `from` is the version observed before the
     /// upgrade, `to` the version now running, `channel` the resolved
     /// install channel (`cargo | brew | binary`).
@@ -444,7 +445,7 @@ pub enum EventKind {
         /// Resolved install channel (`cargo | brew | binary`).
         channel: String,
     },
-    /// `specrun plugins refresh` invalidated the Cursor plugin cache.
+    /// `specify plugins refresh` invalidated the Cursor plugin cache.
     /// `deleted_paths` are the cache directories removed (wire:
     /// `deleted-paths`); `marketplace` is the resolved marketplace file
     /// path whose top-level `name` scoped the deletion.
@@ -456,7 +457,7 @@ pub enum EventKind {
         /// the deletion.
         marketplace: String,
     },
-    /// `specrun migrate` applied a registered migrator. `kind` is the
+    /// `specify migrate` applied a registered migrator. `kind` is the
     /// stable migrator id (e.g. `v1-to-v2`); the counts (wire:
     /// `files-rewritten`, `files-moved`) summarise the applied plan.
     #[serde(rename = "migration.applied", rename_all = "kebab-case")]
@@ -468,7 +469,7 @@ pub enum EventKind {
         /// Count of files moved (wire: `files-moved`).
         files_moved: usize,
     },
-    /// `specrun migrate` staged a migrator but left the project
+    /// `specify migrate` staged a migrator but left the project
     /// untouched (atomic rollback). `kind` is the migrator id; `reason`
     /// is a short diagnostic (e.g. `staged-validation-failed`).
     #[serde(rename = "migration.skipped", rename_all = "kebab-case")]
@@ -478,10 +479,10 @@ pub enum EventKind {
         /// Short diagnostic (e.g. `staged-validation-failed`).
         reason: String,
     },
-    /// `specrun lint` finished a scan. The payload carries the scan
+    /// `specify lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
-    /// `baseline_present` flag (hard-coded `false` until RFC-33b
-    /// lands), and the CLI exit code the scan resolved to. Emission is
+    /// `baseline_present` flag (currently hard-coded `false`), and the
+    /// CLI exit code the scan resolved to. Emission is
     /// wired in the scanner; this variant exists so the taxonomy is
     /// closed even before the emitter ships.
     ///
@@ -505,12 +506,11 @@ pub struct LintCompletedPayload {
     pub scope: LintScope,
     /// Wall-clock duration of the scan in milliseconds.
     pub duration_ms: u64,
-    /// Per-status counts. While RFC-33b is deferred, the scanner emits
-    /// only `open`, `ignored`, and `false_positive`; the additional
-    /// `new` / `baselined` buckets land additively with RFC-33b.
+    /// Per-status counts. The scanner emits `open`, `ignored`, and
+    /// `false_positive`.
     pub counts: LintCounts,
     /// Whether the scan observed a baseline file. Hard-coded `false`
-    /// in current emitters; becomes scan-derived when RFC-33b lands.
+    /// in current emitters.
     pub baseline_present: bool,
     /// CLI exit code the scan resolved to (status-aware severity per
     /// the exit and presentation semantics). `0` on clean
@@ -528,7 +528,7 @@ pub struct LintScope {
     /// to a single target; `None` for project-wide scans.
     pub target: Option<String>,
     /// Slice id from `plan.yaml.slices[].name` when the scan was
-    /// narrowed to one slice (e.g. `specrun lint run --slice <name>`).
+    /// narrowed to one slice (e.g. `specify lint run --slice <name>`).
     pub slice: Option<String>,
     /// Artifact path (relative to project root) when the scan was
     /// narrowed to a single artifact; `None` otherwise.
@@ -536,8 +536,7 @@ pub struct LintScope {
 }
 
 /// Per-status finding counts on [`LintCompletedPayload`]. Current
-/// emitters fill the three buckets named here; RFC-33b adds `new` and
-/// `baselined` additively when it lands.
+/// emitters fill the three buckets named here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LintCounts {
     /// `status: open` count — findings that block CI by default when
@@ -630,8 +629,7 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 /// failing the whole read, so a journal written by a newer binary
 /// (carrying event kinds this binary does not know) still yields the
 /// events it does understand — the read stays forward-compatible and,
-/// for a given file, deterministic. This is the read side the RFC-36
-/// identity projection (`recent[]`) consumes.
+/// for a given file, deterministic.
 ///
 /// # Errors
 ///
@@ -650,6 +648,119 @@ pub fn read(layout: Layout<'_>) -> Result<Vec<Event>, Error> {
         .collect())
 }
 
+/// Byte window the backward tail reader pulls per `read`/`seek`. One
+/// `O_APPEND` journal line stays well under this, so the common case of a
+/// few recent matches resolves in a single window.
+const TAIL_CHUNK: usize = 8192;
+
+/// Read the most recent journal [`Event`]s that `select` maps to a value,
+/// returning at most `limit` of them in append (file) order.
+///
+/// Tails the journal backward (see [`for_each_line_rev`]) and stops as
+/// soon as `limit` matches are collected, so the bytes touched are bounded
+/// by how far back the `limit`-th match sits — not by total history. This
+/// keeps the projection cost flat as the journal grows.
+///
+/// Blank lines are skipped and lines that fail to parse as an [`Event`]
+/// are skipped rather than failing the read — identical leniency to
+/// [`read`], so a journal written by a newer binary still yields the
+/// matches this binary understands. A missing journal yields an empty
+/// vector. This is the read side the identity projection
+/// (`recent[]`) consumes.
+///
+/// # Errors
+///
+/// Propagates I/O failures other than a missing file.
+pub(crate) fn read_recent<T>(
+    layout: Layout<'_>, limit: usize, mut select: impl FnMut(Event) -> Option<T>,
+) -> Result<Vec<T>, Error> {
+    let mut newest_first: Vec<T> = Vec::new();
+    if limit == 0 {
+        return Ok(newest_first);
+    }
+    for_each_line_rev(&path(layout), TAIL_CHUNK, |line| {
+        if line.trim().is_empty() {
+            return true;
+        }
+        if let Ok(event) = serde_json::from_str::<Event>(line)
+            && let Some(item) = select(event)
+        {
+            newest_first.push(item);
+            if newest_first.len() >= limit {
+                return false;
+            }
+        }
+        true
+    })
+    .map_err(Error::Io)?;
+    newest_first.reverse();
+    Ok(newest_first)
+}
+
+/// Visit the complete lines of the file at `path` newest-first, invoking
+/// `visit` for each; `visit` returns `false` to stop early (the unread
+/// head of the file is then never read).
+///
+/// The file is read backward in `chunk`-byte windows, so only the tail the
+/// consumer scans is touched. Line boundaries follow [`str::lines`]: a
+/// single trailing newline is a terminator (no empty final line) while
+/// interior blank lines are preserved. Splitting happens on `b'\n'`
+/// boundaries — multi-byte UTF-8 sequences spanning a chunk edge are
+/// reassembled before decoding, and every emitted line spans from just
+/// after a newline (or file start) to just before the next newline (or
+/// end), which are always character boundaries in a valid UTF-8 journal.
+///
+/// A missing file yields no visits (`Ok(())`), mirroring [`read`].
+fn for_each_line_rev(
+    path: &Path, chunk: usize, mut visit: impl FnMut(&str) -> bool,
+) -> std::io::Result<()> {
+    debug_assert!(chunk > 0, "tail chunk size must be non-zero");
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err),
+    };
+    let mut pos = file.seek(SeekFrom::End(0))?;
+    if pos == 0 {
+        return Ok(());
+    }
+    let chunk = u64::try_from(chunk).unwrap_or(u64::MAX);
+    // `carry` holds the leading partial segment of the window read so far
+    // (the bytes before its first newline); its true start lies in an
+    // as-yet-unread earlier chunk, so it is only decoded once `pos` hits 0.
+    let mut carry: Vec<u8> = Vec::new();
+    let mut first = true;
+    while pos > 0 {
+        let take = pos.min(chunk);
+        pos -= take;
+        file.seek(SeekFrom::Start(pos))?;
+        let mut window = vec![0_u8; usize::try_from(take).unwrap_or(usize::MAX)];
+        file.read_exact(&mut window)?;
+        window.extend_from_slice(&carry);
+        if first {
+            first = false;
+            // Drop a single trailing newline so a terminator does not yield
+            // an empty final line (str::lines parity).
+            if window.last() == Some(&b'\n') {
+                window.pop();
+            }
+        }
+        // Emit every line after the first newline (newest-first); retain
+        // the pre-first-newline head as the next `carry`.
+        while let Some(idx) = window.iter().rposition(|&byte| byte == b'\n') {
+            let keep_going = visit(String::from_utf8_lossy(&window[idx + 1..]).as_ref());
+            window.truncate(idx);
+            if !keep_going {
+                return Ok(());
+            }
+        }
+        carry = window;
+    }
+    // `pos == 0`: the remaining bytes are the file's first line.
+    visit(String::from_utf8_lossy(&carry).as_ref());
+    Ok(())
+}
+
 /// Append a sequence of [`Event`]s to the project journal in a
 /// single write call.
 ///
@@ -666,7 +777,7 @@ pub fn read(layout: Layout<'_>) -> Result<Vec<Event>, Error> {
 /// invocation, well below the limit.
 ///
 /// Used by CLI verbs that own more than one journal emit per
-/// invocation (e.g. `specrun plan create --auto-approve
+/// invocation (e.g. `specify plan create --auto-approve
 /// --authority-override`, which stages both `plan.transition.approved`
 /// and `plan.amend.authority-override` in the same Gate-1 consent), and
 /// equally by single-event callers via
@@ -703,10 +814,85 @@ pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
     Ok(())
 }
 
+/// Best-effort append of a single lifecycle [`Event`] carrying `kind`.
+///
+/// Timestamped `Timestamp::now()`. The journal is observability, not the
+/// source of truth, so a failed append is **intentionally swallowed** —
+/// it can never change the calling verb's exit code (a journaling I/O
+/// hiccup must not fail an otherwise-successful slice merge / build). The
+/// lifecycle brackets in `slice merge` / `slice build` emit through this.
+///
+/// The swallow is intentional but **not silent**: `record_dropped`
+/// routes a structured `warning:` line to stderr (naming `scope`, the
+/// journal path, and the I/O error) through the same operator-warning
+/// surface other best-effort failures use, and appends the dropped event
+/// to the `<project_dir>/.specify/journal.dropped` sidecar as a
+/// recoverable audit trail. The mitigation is itself best-effort and
+/// never panics.
+pub fn emit_best_effort(layout: Layout<'_>, kind: EventKind, scope: &str) {
+    let event = Event::new(Timestamp::now(), kind);
+    if let Err(err) = append_batch(layout, std::slice::from_ref(&event)) {
+        record_dropped(layout, scope, &event, &err);
+    }
+}
+
+/// Surface a dropped journal [`Event`] so the best-effort swallow in
+/// [`emit_best_effort`] / [`emit_lint_completed`] is observable and
+/// recoverable rather than silent.
+///
+/// Emits an operator-visible `warning:` line to stderr — matching the
+/// repo's established best-effort warning idiom — and attempts to append
+/// the event to the `<project_dir>/.specify/journal.dropped` sidecar (a
+/// second chance at durability when the primary append failed for a
+/// path-local reason). The sidecar write is itself best-effort: if it
+/// too fails the stderr warning still surfaces the drop, and neither path
+/// changes the calling verb's exit code or panics.
+fn record_dropped(layout: Layout<'_>, scope: &str, event: &Event, err: &Error) {
+    let journal = path(layout);
+    let sidecar = layout.specify_dir().join(DROPPED_FILE_NAME);
+    if append_dropped(layout, event).is_ok() {
+        eprintln!(
+            "warning: {scope}: failed to append journal event to {} ({err}); \
+             recorded the dropped event in {} for recovery",
+            journal.display(),
+            sidecar.display(),
+        );
+    } else {
+        eprintln!(
+            "warning: {scope}: failed to append journal event to {} ({err}); \
+             the dropped event could not be written to the {} sidecar either",
+            journal.display(),
+            sidecar.display(),
+        );
+    }
+}
+
+/// Append `event` as one newline-terminated JSON line to the
+/// `<project_dir>/.specify/journal.dropped` sidecar.
+///
+/// Mirrors [`append_batch`]'s open/append shape but is reserved for
+/// events the primary journal append dropped. Returns the I/O or
+/// serialisation error to the caller, which discards it ([`record_dropped`]
+/// has already warned on stderr) — the helper itself never panics.
+fn append_dropped(layout: Layout<'_>, event: &Event) -> Result<(), Error> {
+    let line = serde_json::to_string(event).map_err(|err| Error::Diag {
+        code: "journal-event-serialise-failed",
+        detail: format!("failed to serialise dropped journal event: {err}"),
+    })?;
+    std::fs::create_dir_all(layout.specify_dir())?;
+    let sidecar = layout.specify_dir().join(DROPPED_FILE_NAME);
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&sidecar)?;
+    file.write_all(line.as_bytes())?;
+    file.write_all(b"\n")?;
+    Ok(())
+}
+
 /// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`.
 ///
-/// Best-effort: serialise/IO failures log to stderr with the supplied
-/// `command_label` prefix and never override the scan's exit code.
+/// Best-effort: a serialise/IO failure is intentionally swallowed so it
+/// never overrides the scan's exit code. The swallow is not silent —
+/// `record_dropped` warns on stderr under `command_label` and records
+/// the dropped event in the `.specify/journal.dropped` sidecar.
 pub fn emit_lint_completed(
     layout: Layout<'_>, scope: LintScope, findings: &[Diagnostic], duration_ms: u128,
     exit_code: i32, command_label: &str,
@@ -725,7 +911,7 @@ pub fn emit_lint_completed(
     };
     let event = Event::new(Timestamp::now(), EventKind::LintCompleted(payload));
     if let Err(err) = append_batch(layout, std::slice::from_ref(&event)) {
-        eprintln!("{command_label}: failed to append lint-completed journal event: {err}");
+        record_dropped(layout, command_label, &event, &err);
     }
 }
 
@@ -737,3 +923,5 @@ pub(crate) fn test_timestamp(raw: &str) -> Timestamp {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wire_shapes;

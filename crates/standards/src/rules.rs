@@ -4,14 +4,14 @@
 //! schemas embedded under `schemas/rules/` and `schemas/diagnostics/`:
 //!
 //! - [`Rule`] / [`Deprecated`] / [`Applicability`] /
-//!   [`DeterministicHint`] / [`Reference`] are the parsed-frontmatter
+//!   [`RuleHint`] / [`Reference`] are the parsed-frontmatter
 //!   shape used by the CH-11 frontmatter parser. Field names are
 //!   kebab-case at every nesting level (`lint-mode`,
-//!   `deterministic-hints`, `replaced-by`); the parser performs the
+//!   `rule-hints`, `replaced-by`); the parser performs the
 //!   `snake_case -> kebab-case` lift on the raw markdown side so the
 //!   in-memory shape matches the wire shape.
 //! - [`ResolvedRules`] / [`ResolvedRule`] are the export envelope
-//!   emitted by `specrun rules export --format json` (CH-17). They
+//!   emitted by `specify rules export --format json` (CH-17). They
 //!   add resolver-only fields ([`Origin`], [`PathRoot`], `path`,
 //!   `body`) on top of the codex-rule shape.
 //!
@@ -137,6 +137,12 @@ pub enum HintKind {
     /// only under the directory that owns that namespace (v1 source
     /// discriminator: `rule-namespace-matches-owner`).
     NamespaceOwner,
+    /// Fence-aware body predicate over [`crate::lint::FencedBlock`] facts
+    /// (RFC-31 Phase 2: `skill-envelope-json-in-body`, …).
+    FencedBlock,
+    /// Invoke a closed imperative authoring predicate by `rule_id`
+    /// (RFC-31 Phase 3 bridge until native hint parity lands).
+    AuthoringPredicate,
 }
 
 /// Inclusive narrowing filter — all populated dimensions match (AND).
@@ -161,10 +167,10 @@ pub struct Applicability {
     pub paths: Option<Vec<String>>,
 }
 
-/// One deterministic-hint entry on a rule.
+/// One rule-hint entry on a rule (executable by the deterministic hint interpreter).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct DeterministicHint {
+pub struct RuleHint {
     /// Hint kind discriminator.
     pub kind: HintKind,
     /// Hint payload, interpreted by a future validator or review tool.
@@ -172,6 +178,9 @@ pub struct DeterministicHint {
     /// Optional human explanation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Optional per-kind configuration (schema-validated; interpreted by the matching eval arm).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<serde_json::Value>,
 }
 
 /// One reference entry on a rule. Schema requires `label` plus
@@ -231,7 +240,7 @@ pub struct Rule {
     pub applicability: Option<Applicability>,
     /// Optional deterministic-hint list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deterministic_hints: Option<Vec<DeterministicHint>>,
+    pub rule_hints: Option<Vec<RuleHint>>,
     /// Optional reference list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub references: Option<Vec<Reference>>,
@@ -247,7 +256,7 @@ pub struct Rule {
 
 /// Read-only resolved view of shared, source-adapter, and
 /// target-adapter rules. Wire envelope emitted by
-/// `specrun rules export --format json` per the rules contract
+/// `specify rules export --format json` per the rules contract
 /// §"Resolved rules export".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -289,7 +298,7 @@ pub struct ResolvedRule {
     pub applicability: Option<Applicability>,
     /// Optional deterministic-hint list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub deterministic_hints: Option<Vec<DeterministicHint>>,
+    pub rule_hints: Option<Vec<RuleHint>>,
     /// Optional reference list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub references: Option<Vec<Reference>>,

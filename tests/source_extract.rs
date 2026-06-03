@@ -1,4 +1,4 @@
-//! Integration tests for `specrun source extract` (RFC-29 D1;
+//! Integration tests for `specify source extract` (RFC-29 D1;
 //! DECISIONS.md §"Source operations (D1)").
 //!
 //! Covers source resolution against `plan.yaml.sources`, the agent
@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 mod common;
-use common::{Project, TEMPDIR_PLACEHOLDER, parse_stderr, parse_stdout, repo_root, specrun};
+use common::{Project, TEMPDIR_PLACEHOLDER, parse_stderr, parse_stdout, repo_root, specify_cmd};
 
 /// Stage the path-bound `code-typescript` source adapter (the in-repo
 /// fixture ships only `adapter.yaml`; author the `extract` brief the
@@ -109,12 +109,12 @@ claims: []
 ";
 
 #[test]
-fn agent_prepare_prints_envelope_and_emits_execution_event() {
+fn prepare_prints_envelope_emits_event() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "extract", "legacy", "user-registration"])
         .args(["--slice", "identity"])
@@ -166,12 +166,12 @@ fn agent_prepare_prints_envelope_and_emits_execution_event() {
 }
 
 #[test]
-fn agent_prepare_value_bound_source_carries_value_inline() {
+fn prepare_value_bound_carries_inline() {
     let project = Project::init();
     stage_intent(&project);
     seed_plan_with_value_source(&project);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "extract", "brief", "password-reset"])
         .args(["--slice", "identity"])
@@ -195,7 +195,7 @@ fn agent_prepare_value_bound_source_carries_value_inline() {
 }
 
 #[test]
-fn agent_finalize_persists_evidence_and_emits_cache_miss() {
+fn finalize_persists_and_cache_miss() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -207,7 +207,7 @@ fn agent_finalize_persists_evidence_and_emits_cache_miss() {
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(scratch.join("evidence.yaml"), VALID_EVIDENCE).expect("write evidence.yaml");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "extract", "legacy", "user-registration"])
         .args(["--slice", "identity", "--phase", "finalize"])
@@ -242,7 +242,7 @@ fn agent_finalize_persists_evidence_and_emits_cache_miss() {
 }
 
 #[test]
-fn agent_finalize_value_bound_source_persists_evidence() {
+fn finalize_value_bound_persists() {
     let project = Project::init();
     stage_intent(&project);
     seed_plan_with_value_source(&project);
@@ -255,7 +255,7 @@ fn agent_finalize_value_bound_source_persists_evidence() {
     )
     .expect("write evidence.yaml");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "extract", "brief", "password-reset"])
         .args(["--slice", "identity", "--phase", "finalize"])
@@ -274,7 +274,7 @@ fn agent_finalize_value_bound_source_persists_evidence() {
 }
 
 #[test]
-fn agent_finalize_invalid_evidence_persists_no_file() {
+fn finalize_invalid_persists_no_file() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -286,7 +286,7 @@ fn agent_finalize_invalid_evidence_persists_no_file() {
     fs::write(scratch.join("evidence.yaml"), "authority: behaviour\nlead: user-registration\n")
         .expect("write invalid evidence.yaml");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "extract", "legacy", "user-registration"])
         .args(["--slice", "identity", "--phase", "finalize"])
@@ -339,7 +339,7 @@ fn agent_finalize_invalid_evidence_persists_no_file() {
 /// `tool` WASI-dispatch seam that would surface a kernel-level denial
 /// is wired but unexercised (see `dispatch_extract_tool`).
 #[test]
-fn sandbox_hides_project_dir_and_denies_out_of_scope_evidence() {
+fn sandbox_denies_out_of_scope() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -347,7 +347,7 @@ fn sandbox_hides_project_dir_and_denies_out_of_scope_evidence() {
     fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // (a) prepare: the handoff envelope must not expose $PROJECT_DIR.
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "extract", "legacy", "user-registration"])
         .args(["--slice", "identity"])
@@ -378,7 +378,7 @@ fn sandbox_hides_project_dir_and_denies_out_of_scope_evidence() {
     fs::write(project.root().join("evidence.yaml"), VALID_EVIDENCE)
         .expect("stage out-of-sandbox evidence");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "extract", "legacy", "user-registration"])
         .args(["--slice", "identity", "--phase", "finalize"])
@@ -408,7 +408,7 @@ fn unknown_source_errors() {
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "extract", "not-a-source", "user-registration"])
         .args(["--slice", "identity"])

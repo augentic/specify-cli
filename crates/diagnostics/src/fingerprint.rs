@@ -282,7 +282,7 @@ mod tests {
 
     /// (6) Digest summary enters the hash; sha256 and locations do not.
     #[test]
-    fn digest_summary_and_sha256_have_distinct_effects() {
+    fn digest_summary_and_sha256_differ() {
         let mut original = sample_diagnostic();
         original.evidence = FindingEvidence::Digest {
             sha256: "a".repeat(64),

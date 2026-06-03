@@ -1,4 +1,4 @@
-//! `specrun source {resolve, cache, preview, survey, extract}` —
+//! `specify source {resolve, cache, preview, survey, extract}` —
 //! source adapter operations and the extraction cache fingerprint
 //! contract cache surface.
 //!
@@ -7,7 +7,7 @@
 //! the target-axis path apart from the `@version` peel). `cache`
 //! owns the extraction cache fingerprint contract fingerprint lookup / write / index reader path
 //! and lives in its own module under [`cache`]. `preview` is the
-//! `specrun source preview` contract workflow-free source adapter scaffolding verb.
+//! `specify source preview` contract workflow-free source adapter scaffolding verb.
 //! [`prep`] is the internal prep seam (adapter resolution, brief
 //! directory, the four-root sandbox layout, and `evidence/`
 //! scaffolding) shared by `preview` today and the RFC-29 D1

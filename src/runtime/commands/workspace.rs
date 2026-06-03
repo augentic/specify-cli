@@ -1,4 +1,4 @@
-//! `specrun workspace *` handlers — `sync`, `prepare`, `push`.
+//! `specify workspace *` handlers — `sync`, `prepare`, `push`.
 
 pub mod cli;
 

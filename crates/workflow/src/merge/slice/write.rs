@@ -7,25 +7,32 @@ use std::fs;
 use std::path::Path;
 
 use specify_error::Error;
+use specify_model::atomic::bytes_write;
 
 use super::MergePreviewEntry;
 use crate::merge::artifact_class::{ArtifactClass, MergeStrategy};
 
 /// Write each merged baseline produced by [`super::read::plan_three_way`]
-/// to its target path, creating parent directories on demand. Caller
-/// guarantees every entry has already validated.
+/// to its target path via [`bytes_write`], which creates parent
+/// directories and persists each file with a temp-file + rename so a
+/// reader never observes a torn baseline. Caller guarantees every entry
+/// has already validated.
+///
+/// Atomicity is per file, not across the set: a crash mid-loop can leave
+/// some baselines updated and others not. That is safe because the caller
+/// flips the slice to `Merged` only after every write returns, so an
+/// interrupted commit leaves the slice `Built` and a retry re-writes the
+/// full set.
 pub(super) fn write_three_way_baselines(merged: &[MergePreviewEntry]) -> Result<(), Error> {
     for entry in merged {
-        if let Some(parent) = entry.baseline_path.parent() {
-            fs::create_dir_all(parent).map_err(|err| Error::Filesystem {
-                op: "mkdir",
-                path: parent.to_path_buf(),
-                source: err,
-            })?;
-        }
-        fs::write(&entry.baseline_path, &entry.result.output).map_err(|err| Error::Diag {
-            code: "merge-write-baseline-failed",
-            detail: format!("failed to write baseline {}: {err}", entry.baseline_path.display()),
+        bytes_write(&entry.baseline_path, entry.result.output.as_bytes()).map_err(|err| {
+            Error::Diag {
+                code: "merge-write-baseline-failed",
+                detail: format!(
+                    "failed to write baseline {}: {err}",
+                    entry.baseline_path.display()
+                ),
+            }
         })?;
     }
     Ok(())
@@ -132,3 +139,6 @@ pub(super) fn build_merge_summary(
         counts.iter().map(|(class, count)| format!("{count} {class}")).collect();
     format!("Merged {} into baseline", parts.join(", "))
 }
+
+#[cfg(test)]
+mod tests;

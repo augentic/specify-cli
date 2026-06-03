@@ -27,7 +27,7 @@ pub use specify_schema::{
     DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, PLAN_JSON_SCHEMA,
     PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
     SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, compile_schema,
-    read_yaml_as_json, validate_serialisable, validate_value,
+    read_yaml_as_json, validate_serialisable, validate_value, validate_value_cached,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -38,7 +38,7 @@ use crate::change::Plan;
 /// Returns `Ok(())` on a clean validation; otherwise a payload-free
 /// [`Error::Validation`] keyed on the code `"plan-schema"`, with the
 /// JSON-pointer + reason list the schema produced joined into the
-/// detail. Used by `specrun plan add` and `specrun plan amend` so
+/// detail. Used by `specify plan add` and `specify plan amend` so
 /// first-use validation refuses to write a malformed plan.
 ///
 /// # Errors
@@ -83,26 +83,10 @@ pub fn validate_plan_yaml(content: &str) -> Result<()> {
     )
 }
 
-/// Validate raw `plan.yaml` before typed deserialisation.
-///
-/// # Errors
-///
-/// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
-pub fn validate_plan_file(path: &Path) -> Result<()> {
-    let content = fs::read_to_string(path).map_err(|err| {
-        Error::validation_failed(
-            "plan-schema",
-            "plan.yaml conforms to schemas/plan/plan.schema.json",
-            format!("read failed: {err}"),
-        )
-    })?;
-    validate_plan_yaml(&content)
-}
-
 /// Validate a lead-reconciliation envelope against the embedded
 /// `schemas/discovery/proposal.schema.json`.
 ///
-/// Backs `specrun plan propose` (RFC-29 D2): the dry-run request the
+/// Backs `specify plan propose`: the dry-run request the
 /// CLI emits and the agent grouping response read by `--from` share one
 /// schema, discriminated by the closed `kind: request | response`
 /// `oneOf`. A single call validates either kind — there is no separate
@@ -136,7 +120,7 @@ const MODEL_SCHEMA_URL: &str =
 /// Validate an agent synthesis response against the embedded
 /// `schemas/slice/synthesis.schema.json`.
 ///
-/// Backs `specrun slice synthesize` (RFC-29 D3 / D10): synthesis is
+/// Backs `specify slice synthesize`: synthesis is
 /// always agent-dispatched, so the only schema-validated wire is the
 /// returned `kind: response`. Its `model` property `$ref`s
 /// `model.schema.json` by a relative URI, so the validator is built
@@ -175,9 +159,9 @@ static SYNTHESIS_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
 });
 
 /// Validate a target build request against the embedded
-/// `schemas/target/build-request.schema.json` (RFC-29d D6).
+/// `schemas/target/build-request.schema.json`.
 ///
-/// Backs `specrun slice build`: the request the CLI assembles
+/// Backs `specify slice build`: the request the CLI assembles
 /// ([`crate::slice::build_request`]) and writes to
 /// `.specify/slices/<slice>/build/request.yaml` is gated against this
 /// shape before handoff. The request carries no `$ref`, so the simple
@@ -204,9 +188,9 @@ const DIAGNOSTIC_SCHEMA_URL: &str =
     "https://github.com/augentic/specify-cli/schemas/diagnostics/diagnostic.schema.json";
 
 /// Validate a target build report against the embedded
-/// `schemas/target/build-report.schema.json` (RFC-29d D6).
+/// `schemas/target/build-report.schema.json`.
 ///
-/// Backs `specrun slice build`: the report a target writes to
+/// Backs `specify slice build`: the report a target writes to
 /// `.specify/slices/<slice>/build/report.yaml` is gated against this
 /// shape before the `built` transition. Its `findings[]` `$ref`s
 /// `diagnostic.schema.json` by a relative URI, so the validator is built
@@ -238,7 +222,7 @@ static BUILD_REPORT_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|
 });
 
 /// Validate a [`crate::registry::TopologyLock`] against the embedded
-/// `schemas/topology-lock.schema.json` (RFC-36).
+/// `schemas/topology-lock.schema.json`.
 ///
 /// Returns `Ok(())` on a clean validation; otherwise a payload-free
 /// [`Error::Validation`] keyed on `"topology-lock-schema"`. Used by the
@@ -301,41 +285,65 @@ pub fn evidence_yaml_paths(slice_dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
+/// One parsed `evidence/<source>.yaml` from a single read.
+///
+/// Read and schema-validated once by [`validate_evidence_dir`] and
+/// handed back so downstream slice gates (catalog-drift and
+/// model-drift) can reuse the parsed document instead of re-reading and
+/// re-parsing the file from disk.
+#[derive(Debug)]
+pub struct EvidenceDoc {
+    /// Path the document was read from, retained for per-file error
+    /// attribution and source-key derivation (the file stem) in the
+    /// consuming gates.
+    pub path: PathBuf,
+    /// The parsed YAML-as-JSON document — byte-identical to the value
+    /// the consuming gates would have produced by re-reading the file.
+    pub value: JsonValue,
+}
+
 /// Validate every `*.yaml` file under `<slice_dir>/evidence/` against
 /// the embedded `schemas/evidence.schema.json`.
 ///
 /// `slice_dir` is the directory typically at
 /// `.specify/slices/<name>/`. The evidence subdirectory is optional —
-/// returning `Ok(())` when it is absent matches the workflow §Extraction
-/// reliability rule that an empty `claims: []` (or no Evidence at all
-/// before extract runs) is valid.
+/// returning an empty `Vec` when it is absent matches the workflow
+/// §Extraction reliability rule that an empty `claims: []` (or no
+/// Evidence at all before extract runs) is valid.
 ///
 /// All findings are aggregated and returned in a single
 /// [`Error::Validation`] so the caller sees every malformed file in
-/// one pass.
+/// one pass. On a clean validation the parsed documents are returned
+/// (in sorted-path order) so the slice-validate drift gates can reuse
+/// them without a second read or parse.
 ///
 /// # Errors
 ///
 /// - [`Error::Filesystem`] if `evidence/` exists but cannot be read.
 /// - [`Error::Validation`] if any Evidence file fails YAML parse or
 ///   schema validation.
-pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
+pub fn validate_evidence_dir(slice_dir: &Path) -> Result<Vec<EvidenceDoc>> {
     let paths = evidence_yaml_paths(slice_dir)?;
 
+    let mut docs: Vec<EvidenceDoc> = Vec::with_capacity(paths.len());
     let mut summaries: Vec<ValidationSummary> = Vec::new();
-    for path in &paths {
-        match read_yaml_as_json(path) {
+    for path in paths {
+        match read_yaml_as_json(&path) {
             Ok(instance) => {
-                for summary in validate_value(
+                for summary in validate_value_cached(
                     &instance,
                     EVIDENCE_JSON_SCHEMA,
                     "evidence-schema",
                     "evidence file conforms to schemas/evidence.schema.json",
                 ) {
                     if summary.status == ValidationStatus::Fail {
-                        summaries.push(relabel_with_path(summary, path));
+                        summaries.push(relabel_with_path(summary, &path));
                     }
                 }
+                docs.push(EvidenceDoc {
+                    path,
+                    value: instance,
+                });
             }
             Err(err) => {
                 summaries.push(ValidationSummary {
@@ -349,7 +357,7 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
     }
 
     if summaries.is_empty() {
-        Ok(())
+        Ok(docs)
     } else {
         Err(Error::Validation {
             code: "evidence-schema".to_string(),
@@ -388,7 +396,7 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
 /// Validate a single Evidence document (already read into `content`)
 /// against the embedded `schemas/evidence.schema.json`.
 ///
-/// This is the `extract` validate-before-visible gate (RFC-29 D1;
+/// This is the `extract` validate-before-visible gate (
 /// DECISIONS.md §"Source operations (D1)"): the runner reads the agent-
 /// or tool-produced Evidence,
 /// runs it through this check, and only persists it to
@@ -424,7 +432,7 @@ pub fn validate_evidence(content: &str, source_path: &Path) -> Result<()> {
 /// Validate every lead in `leads` against the embedded
 /// `schemas/discovery/lead.schema.json`.
 ///
-/// This is the `survey` validate-before-visible gate (RFC-29 D1;
+/// This is the `survey` validate-before-visible gate (
 /// DECISIONS.md §"Source operations (D1)"): the
 /// `survey` runner parses the agent- or tool-produced lead set, runs it
 /// through this check, and only calls
@@ -452,7 +460,9 @@ pub fn validate_leads(leads: &[Lead]) -> Result<()> {
                 lead.lead
             ),
         })?;
-        for summary in validate_value(&instance, LEAD_JSON_SCHEMA, "discovery-lead-schema", rule) {
+        for summary in
+            validate_value_cached(&instance, LEAD_JSON_SCHEMA, "discovery-lead-schema", rule)
+        {
             if summary.status == ValidationStatus::Fail {
                 summaries.push(relabel_with_lead(summary, &lead.lead));
             }
@@ -500,7 +510,7 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
 ///
 /// Returns [`Error::Validation`] (keyed on `code`) when parsing or
 /// schema validation fails.
-fn validate_parsed_json(content: &str, schema: &str, code: &str, rule: &str) -> Result<()> {
+fn validate_parsed_json(content: &str, schema: &'static str, code: &str, rule: &str) -> Result<()> {
     let instance: JsonValue = serde_saphyr::from_str(content)
         .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
     err_from_failures(code, &validation_failures(&instance, schema, code, rule))
@@ -555,9 +565,9 @@ fn compile_ref_validator(
 }
 
 fn validation_failures(
-    instance: &JsonValue, schema_source: &str, rule_id: &str, rule: &str,
+    instance: &JsonValue, schema_source: &'static str, rule_id: &str, rule: &str,
 ) -> Vec<ValidationSummary> {
-    validate_value(instance, schema_source, rule_id, rule)
+    validate_value_cached(instance, schema_source, rule_id, rule)
         .into_iter()
         .filter(|summary| summary.status == ValidationStatus::Fail)
         .collect()
