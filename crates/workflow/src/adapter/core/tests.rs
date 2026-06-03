@@ -1,4 +1,5 @@
 use super::*;
+use crate::Platform;
 
 #[test]
 fn axis_dir_segment_round_trips() {
@@ -203,4 +204,91 @@ briefs:
         detail.contains("shape") || detail.contains("survey"),
         "expected closed-enum diagnostic, got: {detail}"
     );
+}
+
+#[test]
+fn target_without_platforms_round_trips() {
+    let yaml = r"name: omnia
+version: 1
+axis: target
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+";
+    let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
+    assert_eq!(manifest.platforms, None, "absent platforms must default to None");
+    let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
+    assert!(
+        !rendered.contains("platforms"),
+        "absent platforms field must elide on write, got:\n{rendered}"
+    );
+    let reparsed: TargetAdapter = serde_saphyr::from_str(&rendered).expect("reparse");
+    assert_eq!(manifest, reparsed);
+}
+
+#[test]
+fn target_with_platforms_round_trips() {
+    let yaml = r"name: vectis
+version: 1
+axis: target
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+platforms:
+  required: true
+  allowed:
+    - core
+    - ios
+    - android
+    - web
+    - desktop
+  default:
+    - core
+    - ios
+    - android
+";
+    let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
+    let cap = manifest.platforms.as_ref().expect("platforms must be Some");
+    assert!(cap.required);
+    assert_eq!(
+        cap.allowed,
+        vec![Platform::Core, Platform::Ios, Platform::Android, Platform::Web, Platform::Desktop]
+    );
+    assert_eq!(cap.default, vec![Platform::Core, Platform::Ios, Platform::Android]);
+
+    let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
+    assert!(rendered.contains("platforms:"), "platforms must appear in serialised output");
+    assert!(rendered.contains("required: true"), "required must round-trip");
+
+    let reparsed: TargetAdapter = serde_saphyr::from_str(&rendered).expect("reparse");
+    assert_eq!(manifest, reparsed);
+}
+
+#[test]
+fn target_platforms_not_required_round_trips() {
+    let yaml = r"name: contracts
+version: 1
+axis: target
+briefs:
+  shape: briefs/shape.md
+  build: briefs/build.md
+  merge: briefs/merge.md
+platforms:
+  required: false
+  allowed:
+    - core
+  default:
+    - core
+";
+    let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
+    let cap = manifest.platforms.as_ref().expect("platforms must be Some");
+    assert!(!cap.required);
+    assert_eq!(cap.allowed, vec![Platform::Core]);
+    assert_eq!(cap.default, vec![Platform::Core]);
+
+    let reparsed: TargetAdapter =
+        serde_saphyr::from_str(&serde_saphyr::to_string(&manifest).unwrap()).expect("reparse");
+    assert_eq!(manifest, reparsed);
 }
