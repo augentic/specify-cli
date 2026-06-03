@@ -157,15 +157,37 @@ pub fn enforce_report_no_blocking_on_success(report: &BuildReport) -> Result<()>
 ///
 /// Returns [`Error::Validation`] keyed on
 /// `target-build-output-missing` (exit code 2) when a success report
-/// declares an output path that is absent or empty.
+/// declares an output path that is absent, empty, not a regular file,
+/// or escapes the project directory.
 pub fn enforce_report_outputs_exist(report: &BuildReport, project_dir: &Path) -> Result<()> {
     if report.status != BuildStatus::Success || report.outputs.is_empty() {
         return Ok(());
     }
     for output in &report.outputs {
-        let full = project_dir.join(&output.path);
+        let path = Path::new(&output.path);
+        if path.is_absolute() || path.components().any(|c| c == std::path::Component::ParentDir) {
+            return Err(Error::validation_failed(
+                "target-build-output-missing",
+                "every build output path is a relative path within the project",
+                format!(
+                    "output for platform `{}` at `{}` is absolute or contains `..`",
+                    output.platform, output.path
+                ),
+            ));
+        }
+        let full = project_dir.join(path);
         match std::fs::metadata(&full) {
-            Ok(meta) if meta.len() > 0 => {}
+            Ok(meta) if meta.is_file() && meta.len() > 0 => {}
+            Ok(meta) if !meta.is_file() => {
+                return Err(Error::validation_failed(
+                    "target-build-output-missing",
+                    "every build output path is a regular file",
+                    format!(
+                        "output for platform `{}` at `{}` exists but is not a regular file",
+                        output.platform, output.path
+                    ),
+                ));
+            }
             Ok(_) => {
                 return Err(Error::validation_failed(
                     "target-build-output-missing",

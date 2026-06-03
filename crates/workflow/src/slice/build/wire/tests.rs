@@ -199,3 +199,55 @@ fn output_gate_skips_on_failure_status() {
     );
     enforce_report_outputs_exist(&report, dir.path()).expect("failure status skips output check");
 }
+
+#[test]
+fn output_gate_rejects_directory() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("shared/src")).expect("mkdir");
+
+    let report = report_with_outputs(
+        "success",
+        &[json!({ "platform": "core", "path": "shared/src" })],
+    );
+    match enforce_report_outputs_exist(&report, dir.path()) {
+        Err(Error::Validation { code, detail }) => {
+            assert_eq!(code, "target-build-output-missing");
+            assert!(detail.contains("not a regular file"), "detail: {detail}");
+        }
+        other => panic!("expected output-missing gate for directory, got {other:?}"),
+    }
+}
+
+#[test]
+fn output_gate_rejects_absolute_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let report = report_with_outputs(
+        "success",
+        &[json!({ "platform": "core", "path": "/etc/passwd" })],
+    );
+    match enforce_report_outputs_exist(&report, dir.path()) {
+        Err(Error::Validation { code, detail }) => {
+            assert_eq!(code, "target-build-output-missing");
+            assert!(detail.contains("absolute or contains `..`"), "detail: {detail}");
+        }
+        other => panic!("expected output-missing gate for absolute path, got {other:?}"),
+    }
+}
+
+#[test]
+fn output_gate_rejects_parent_traversal() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(dir.path().join("secret.txt"), "secret").expect("write");
+
+    let report = report_with_outputs(
+        "success",
+        &[json!({ "platform": "core", "path": "../secret.txt" })],
+    );
+    match enforce_report_outputs_exist(&report, dir.path()) {
+        Err(Error::Validation { code, detail }) => {
+            assert_eq!(code, "target-build-output-missing");
+            assert!(detail.contains("absolute or contains `..`"), "detail: {detail}");
+        }
+        other => panic!("expected output-missing gate for traversal path, got {other:?}"),
+    }
+}

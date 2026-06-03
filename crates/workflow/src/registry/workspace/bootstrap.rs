@@ -94,7 +94,7 @@ fn resolve_default_platforms(adapter: &str, dest: &Path) -> Option<String> {
     let tokens: Vec<String> = cap.default.iter().map(ToString::to_string).collect();
     Some(format!(
         "platforms:\n{}\n",
-        tokens.iter().map(|t| format!("- {t}")).collect::<Vec<_>>().join("\n")
+        tokens.iter().map(|t| format!("  - {t}")).collect::<Vec<_>>().join("\n")
     ))
 }
 
