@@ -350,7 +350,7 @@ fn prove_plan_time_fan_out(root: &Path) {
 }
 
 #[test]
-fn fan_in_twice_fan_out_once_through_build_and_merge() {
+fn fan_in_twice_fan_out_once() {
     let tmp = scenario();
     let root = tmp.path();
 
@@ -588,7 +588,7 @@ fn assert_no_staleness(output: &std::process::Output) {
 /// identical kernel-owned requirements, and the model carries no
 /// target/adapter field.
 #[test]
-fn kernel_projection_is_deterministic_and_target_independent() {
+fn kernel_projection_deterministic() {
     let project = common::Project::init().with_schemas();
     let root = project.root();
 

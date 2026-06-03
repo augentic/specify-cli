@@ -71,7 +71,7 @@ fn journal_lines(root: &Path) -> Vec<Value> {
 }
 
 #[test]
-fn migrate_applies_fixture_and_journals_counts() {
+fn applies_fixture_journals_counts() {
     let tmp = stage_before();
     let root = tmp.path();
 

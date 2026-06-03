@@ -93,7 +93,7 @@ claims:
 ";
 
 #[test]
-fn build_inputs_carries_lead_and_claims_without_authority() {
+fn build_inputs_carries_lead_and_claims() {
     let docs = SynthesisSourceInput::from_evidence_yaml("docs", EVIDENCE_DOCS)
         .expect("docs evidence shapes");
     let legacy = SynthesisSourceInput {

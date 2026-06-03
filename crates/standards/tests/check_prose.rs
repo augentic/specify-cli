@@ -34,7 +34,7 @@ fn operational_vocabulary_flags_stale_terms() {
 }
 
 #[test]
-fn invocation_positionals_flags_continued_invocation() {
+fn flags_continued_invocation() {
     let ctx = context_for_fixture("flag-after-skill-continued");
     let findings = InvocationPositional.run(&ctx);
     assert_eq!(findings.len(), 1);

@@ -160,7 +160,7 @@ fn init_distributes_shared_codex() {
 }
 
 #[test]
-fn init_include_framework_distributes_core_pack() {
+fn include_framework_distributes_core_pack() {
     let src = tempdir().unwrap();
     let omnia = synthetic_framework_source(src.path(), true);
     let project = tempdir().unwrap();

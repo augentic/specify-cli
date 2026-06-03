@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn parser_returns_none_for_unfenced_document() {
+    fn parser_none_for_unfenced() {
         let parsed =
             parse_document(b"# hand-authored\n\nNo managed context here.\n").expect("parse ok");
 

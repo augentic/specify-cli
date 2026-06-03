@@ -136,7 +136,7 @@ fn doctor_degrades_to_present_without_git() {
 }
 
 #[test]
-fn refresh_deletes_only_scoped_cache_and_journals() {
+fn refresh_deletes_scoped_cache() {
     let project = TempDir::new().expect("project tmp");
     let cursor = TempDir::new().expect("cursor tmp");
 

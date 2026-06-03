@@ -162,7 +162,7 @@ fn help_lists_active_verbs() {
 }
 
 #[test]
-fn project_manifest_validation_reports_rule_ids() {
+fn manifest_validation_reports_rule_ids() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("project-validation");
@@ -397,7 +397,7 @@ fn allowed_fs_reads_and_writes_declared() {
 }
 
 #[test]
-fn denied_fs_and_lifecycle_fail_before_guest() {
+fn denied_fs_lifecycle_fail_pre_guest() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();
     let cache = cache_dir("denied-fs");

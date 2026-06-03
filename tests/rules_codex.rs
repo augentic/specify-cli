@@ -36,7 +36,7 @@ fn synthetic_source(root: &Path) -> PathBuf {
 }
 
 #[test]
-fn init_populates_codex_cache_and_export_resolves_without_rules_root() {
+fn codex_cache_export_no_rules_root() {
     let src = tempdir().unwrap();
     let omnia = synthetic_source(src.path());
     let project = tempdir().unwrap();

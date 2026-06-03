@@ -168,7 +168,7 @@ fn init_with_adapter_and_workspace_errors() {
 // ---- specrun init --workspace (registry workspace topology) ----
 
 #[test]
-fn init_workspace_writes_canonical_on_disk_shape() {
+fn workspace_writes_canonical_shape() {
     let tmp = tempdir().unwrap();
     let assert = specrun()
         .current_dir(tmp.path())
@@ -318,7 +318,7 @@ fn seed_brownfield_regular(root: &Path) {
 }
 
 #[test]
-fn init_upgrade_bumps_only_version_and_preserves_artifacts() {
+fn upgrade_bumps_version_keeps_artifacts() {
     let tmp = tempdir().unwrap();
     seed_brownfield_regular(tmp.path());
 
@@ -380,7 +380,7 @@ fn init_upgrade_bumps_only_version_and_preserves_artifacts() {
 }
 
 #[test]
-fn init_upgrade_preserves_workspace_and_registry() {
+fn upgrade_preserves_workspace_registry() {
     let tmp = tempdir().unwrap();
     let specify = tmp.path().join(".specify");
     fs::create_dir_all(&specify).unwrap();
@@ -430,7 +430,7 @@ fn init_upgrade_preserves_workspace_and_registry() {
 }
 
 #[test]
-fn init_upgrade_conflicts_with_adapter_workspace_and_check_migration() {
+fn upgrade_conflicts_workspace_migration() {
     for extra in [vec!["omnia"], vec!["--workspace"], vec!["--check-migration"]] {
         let tmp = tempdir().unwrap();
         let mut cmd = specrun();

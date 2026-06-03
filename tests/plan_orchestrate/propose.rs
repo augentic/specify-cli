@@ -504,7 +504,7 @@ fn propose_reconcile_project_orphan() {
 }
 
 #[test]
-fn propose_reconcile_project_binding_required() {
+fn reconcile_project_binding_required() {
     // Two projects offered (workspace); the slice omits `project`, so the
     // kernel cannot auto-bind.
     let tmp = workspace_project(

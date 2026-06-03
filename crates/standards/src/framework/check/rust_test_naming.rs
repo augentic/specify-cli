@@ -61,9 +61,11 @@ fn check_test_fn_names(root: &Path, path: &Path, findings: &mut Vec<Diagnostic>)
         Err(_) => return,
     };
     let rel = relative_display(root, path);
-    for (line_idx, line) in content.lines().enumerate() {
+    let lines: Vec<&str> = content.lines().collect();
+    for (line_idx, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("fn ") else {
+        let Some(rest) = trimmed.strip_prefix("fn ").or_else(|| trimmed.strip_prefix("async fn "))
+        else {
             continue;
         };
         let Some((name, _)) = rest.split_once('(') else {
@@ -72,8 +74,7 @@ fn check_test_fn_names(root: &Path, path: &Path, findings: &mut Vec<Diagnostic>)
         if name.len() <= MAX_TEST_FN_LEN {
             continue;
         }
-        let prev = line_idx.checked_sub(1).and_then(|i| content.lines().nth(i)).unwrap_or("");
-        if !prev.trim().starts_with("#[test]") {
+        if !preceded_by_test_attr(&lines, line_idx) {
             continue;
         }
         findings.push(framework_finding(
@@ -86,6 +87,25 @@ fn check_test_fn_names(root: &Path, path: &Path, findings: &mut Vec<Diagnostic>)
             Some(loc(path, line_idx + 1, None)),
         ));
     }
+}
+
+/// Walk upward over the attribute window above a `fn`, skipping blank lines and
+/// other attributes (`#[ignore]`, `#[case(..)]`, …), and report whether a
+/// `#[test]` / `#[tokio::test]` attribute introduces it.
+fn preceded_by_test_attr(lines: &[&str], fn_idx: usize) -> bool {
+    for prev in lines[..fn_idx].iter().rev() {
+        let trimmed = prev.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !trimmed.starts_with("#[") {
+            return false;
+        }
+        if trimmed.starts_with("#[test]") || trimmed.starts_with("#[tokio::test") {
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -113,6 +133,41 @@ mod tests {
             findings.iter().any(|f| f.title.contains(RULE)),
             "expected long-name finding, got: {findings:?}"
         );
+    }
+
+    #[test]
+    fn flags_async_tokio_test_behind_attributes() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("crates/workflow/src/foo/tests.rs");
+        fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        fs::write(
+            &path,
+            "#[tokio::test]\n#[ignore]\nasync fn this_async_test_function_name_is_clearly_too_long() {}\n",
+        )
+        .expect("write");
+
+        let root = dir.path().to_path_buf();
+        fs::create_dir_all(root.join("src/runtime")).expect("runtime dir");
+        let ctx = Context::from_specify_cli_root(&root).expect("cli root");
+        let findings = RustTestNaming.run(&ctx);
+        assert!(
+            findings.iter().any(|f| f.title.contains(RULE)),
+            "tokio::test behind an intervening attribute must still be flagged, got: {findings:?}"
+        );
+    }
+
+    #[test]
+    fn ignores_long_non_test_fn() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("crates/workflow/src/foo/tests.rs");
+        fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        fs::write(&path, "fn this_helper_function_name_is_long_but_not_a_test_case() {}\n")
+            .expect("write");
+
+        let root = dir.path().to_path_buf();
+        fs::create_dir_all(root.join("src/runtime")).expect("runtime dir");
+        let ctx = Context::from_specify_cli_root(&root).expect("cli root");
+        assert!(RustTestNaming.run(&ctx).is_empty(), "non-test fns must not be flagged");
     }
 
     #[test]

@@ -169,7 +169,7 @@ fn slice_validate_authority_override_orphan() {
 }
 
 #[test]
-fn amend_clear_authority_override_removes_one() {
+fn amend_clear_override_removes_one() {
     // per-slice authority override: `--clear-authority-override <slice> <kind>` peels
     // off a single entry; the rest of the map survives. Journal
     // records the Clear without any spurious Set events for the
@@ -368,7 +368,7 @@ fn add_authority_override_seeds_map() {
 }
 
 #[test]
-fn amend_authority_override_unknown_slice_refused() {
+fn amend_override_unknown_slice_refused() {
     // per-slice authority override: unknown `--authority-override <slice>` must
     // refuse at exit 2 before any plan.yaml write happens.
     let project = Project::init();

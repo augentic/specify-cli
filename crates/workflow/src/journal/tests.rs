@@ -313,7 +313,7 @@ fn cli_plugins_migration_events_round_trip() {
 }
 
 #[test]
-fn slice_synthesize_completed_omits_empty_artifacts() {
+fn synthesize_omits_empty_artifacts() {
     // `artifacts` carries `skip_serializing_if = "Vec::is_empty"`
     // so an empty list does not reach the wire at all.
     let event = Event::new(

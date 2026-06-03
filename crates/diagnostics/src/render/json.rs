@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn valid_report_round_trips_through_schema_to_pretty_json() {
+    fn round_trips_to_pretty_json() {
         let out = render(&report(vec![fingerprinted()])).expect("valid envelope renders");
         assert!(out.ends_with('\n'), "single trailing newline");
         let parsed: Value = serde_json::from_str(&out).expect("output is valid JSON");
@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_violation_surfaces_as_render_error() {
+    fn schema_violation_render_error() {
         let bogus = json!({ "version": 1, "summary": {}, "findings": [{ "id": "x" }] });
         let err = render_value(&bogus).expect_err("incomplete finding must fail the schema");
         assert!(matches!(err, RenderError::JsonSchemaValidation { .. }));

@@ -50,7 +50,7 @@ fn build_request_n1_validates_as_request() {
 }
 
 #[test]
-fn build_request_workspace_validates_as_request() {
+fn build_request_workspace_validates() {
     let doc = discovery(
         "## Lead inventory\n\n\
              ### docs:identity-api\n\n\
@@ -115,7 +115,7 @@ fn build_catalog_membership_and_size() {
 }
 
 #[test]
-fn response_round_trips_rfc_multi_source_example() {
+fn response_round_trips_multi_source() {
     // Multi-source fan-out response (the proposal-schema envelope example).
     // Fan-out is two ordinary slices that reference the same lead and
     // are joined by `depends-on` — there is no `scope` grouping.
@@ -185,7 +185,7 @@ fn workspace_config() -> ProjectConfig {
 }
 
 #[test]
-fn resolve_topology_workspace_reads_topology_lock() {
+fn workspace_reads_topology_lock() {
     // RFC-36: workspace topology is projected from the committed
     // `.specify/topology.lock`, not `registry.yaml`.
     let dir = tempfile::tempdir().expect("tempdir");
@@ -239,7 +239,7 @@ fn resolve_topology_workspace_reads_topology_lock() {
 }
 
 #[test]
-fn resolve_topology_workspace_missing_cache_errors() {
+fn workspace_missing_cache_errors() {
     let dir = tempfile::tempdir().expect("tempdir");
     match resolve_topology(&workspace_config(), dir.path()) {
         Err(Error::Validation { code, .. }) => assert_eq!(code, "topology-cache-missing"),
@@ -248,7 +248,7 @@ fn resolve_topology_workspace_missing_cache_errors() {
 }
 
 #[test]
-fn resolve_topology_regular_missing_adapter_errors() {
+fn regular_missing_adapter_errors() {
     let config = ProjectConfig {
         name: "demo".to_string(),
         description: None,

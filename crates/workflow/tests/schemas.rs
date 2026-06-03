@@ -347,7 +347,7 @@ fn lead_accepts_minimal_shape() {
 }
 
 #[test]
-fn lead_rejects_missing_source_bad_id_and_retired_tentative() {
+fn lead_rejects_source_id_tentative() {
     let v = load("discovery/lead.schema.json");
     assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");

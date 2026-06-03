@@ -135,7 +135,7 @@ fn has_delta_headers_is_case_insensitive() {
 }
 
 #[test]
-fn has_delta_headers_requires_full_line_match() {
+fn delta_headers_full_line_match() {
     // Prose that merely mentions "## ADDED Requirements" as part of a longer
     // line should not be treated as a delta header.
     assert!(!has_delta_headers("we discussed ## ADDED Requirements at standup\n"));

@@ -430,7 +430,7 @@ fn synthesize_dry_run_omits_authority() {
 }
 
 #[test]
-fn synthesize_from_writes_no_provenance_file() {
+fn synthesize_from_no_provenance() {
     // RFC-29c §"Command": provenance is carried inline in `model.yaml`;
     // there is no persisted `provenance.yaml`.
     let project = stage_synthesizable_slice();
@@ -446,7 +446,7 @@ fn synthesize_from_writes_no_provenance_file() {
 }
 
 #[test]
-fn synthesize_normalizes_pre_assigned_fields() {
+fn synthesize_normalizes_fields() {
     // The agent pre-assigns wrong-but-valid kernel/header fields; the
     // command ignores them all and persists the canonical derivation
     // (RFC-29c §"Synthesis response": normalize, never reject).
@@ -589,7 +589,7 @@ fn synthesize_then_validate_is_drift_clean() {
 }
 
 #[test]
-fn synthesize_then_provenance_recomputes_labels() {
+fn provenance_recomputes_labels() {
     // `slice provenance` over a synthesized divergence model recomputes
     // the `authority-resolved` label and reads each claim's `value` /
     // `path` from on-disk Evidence (RFC-29c §"Provenance projection").

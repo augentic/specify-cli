@@ -68,7 +68,7 @@ const VALID_LEAD_SET: &str = "\
 ";
 
 #[test]
-fn agent_prepare_prints_envelope_and_emits_execution_event() {
+fn prepare_prints_envelope_emits_event() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -114,7 +114,7 @@ fn agent_prepare_prints_envelope_and_emits_execution_event() {
 }
 
 #[test]
-fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
+fn finalize_merges_and_cache_miss() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -163,7 +163,7 @@ fn agent_finalize_merges_lead_set_and_emits_cache_miss() {
 }
 
 #[test]
-fn agent_finalize_unparseable_non_empty_lead_set_errors() {
+fn finalize_unparseable_lead_set_errors() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -197,7 +197,7 @@ fn agent_finalize_unparseable_non_empty_lead_set_errors() {
 }
 
 #[test]
-fn agent_finalize_invalid_lead_set_leaves_discovery_untouched() {
+fn finalize_invalid_lead_set_untouched() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);

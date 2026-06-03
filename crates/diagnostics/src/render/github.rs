@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn annotation_carries_level_file_line_col_and_message() {
+    fn annotation_carries_fields() {
         let out = render(Format::Github, &report(vec![sample_diagnostic()])).expect("renders");
         assert!(out.starts_with("::error "), "important maps to error level, got {out:?}");
         assert!(out.contains("file=crates/invoice_export/src/config.rs"));
@@ -122,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn escape_encodes_universal_and_arg_only_characters() {
+    fn escape_encodes_special_chars() {
         assert_eq!(escape("a%b\rc\nd", false), "a%25b%0Dc%0Ad");
         assert_eq!(escape("a,b:c", true), "a%2Cb%3Ac", "arg context escapes comma and colon");
         assert_eq!(escape("a,b:c", false), "a,b:c", "message body leaves comma and colon");

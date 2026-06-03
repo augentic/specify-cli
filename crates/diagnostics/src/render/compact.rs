@@ -78,7 +78,7 @@ mod tests {
     }
 
     #[test]
-    fn finding_renders_tab_separated_fields_with_location() {
+    fn renders_tab_separated_fields() {
         let out = render(Format::Compact, &report(vec![sample_diagnostic()])).expect("renders");
         assert_eq!(
             out,
@@ -87,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_rule_id_and_location_collapse_to_dashes() {
+    fn missing_id_and_location_dashes() {
         let mut finding = sample_diagnostic();
         finding.rule_id = None;
         finding.location = None;
@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_location_fills_missing_coordinates_with_dashes() {
+    fn partial_location_fills_dashes() {
         let mut finding = sample_diagnostic();
         finding.location = Some(FindingLocation {
             path: "a/b.rs".into(),

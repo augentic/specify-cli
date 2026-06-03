@@ -487,7 +487,7 @@ mod core_003 {
     }
 
     #[test]
-    fn matches_imperative_skill_duplicate_name_row() {
+    fn matches_duplicate_name() {
         let project = tempfile::tempdir().expect("tempdir");
         let project_dir = project.path();
         stage_project(project_dir);
@@ -696,7 +696,7 @@ mod core_004 {
     }
 
     #[test]
-    fn matches_set_coverage_reference_against_adapter_briefs() {
+    fn matches_set_coverage() {
         let project = tempfile::tempdir().expect("tempdir");
         let project_dir = project.path();
         stage_project(project_dir);
@@ -853,7 +853,7 @@ mod core_005 {
     }
 
     #[test]
-    fn matches_imperative_skill_body_line_count_row() {
+    fn matches_body_line_count() {
         let project = tempfile::tempdir().expect("tempdir");
         let project_dir = project.path();
         stage_project(project_dir);
@@ -1066,7 +1066,7 @@ mod core_006 {
     }
 
     #[test]
-    fn matches_constant_eq_reference_against_adapter_manifest_version() {
+    fn matches_constant_eq() {
         let project = tempfile::tempdir().expect("tempdir");
         let project_dir = project.path();
         stage_project(project_dir);
@@ -1304,7 +1304,7 @@ mod core_007 {
     }
 
     #[test]
-    fn matches_set_eq_reference_against_adapter_briefs() {
+    fn matches_set_eq() {
         let project = tempfile::tempdir().expect("tempdir");
         let project_dir = project.path();
         stage_project(project_dir);
@@ -1496,7 +1496,7 @@ mod core_008 {
     }
 
     #[test]
-    fn matches_content_digest_eq_reference_against_agent_teams() {
+    fn matches_content_digest_eq() {
         let project = tempfile::tempdir().expect("tempdir");
         let project_dir = project.path();
         stage_project(project_dir);
@@ -1650,7 +1650,7 @@ mod core_009 {
     }
 
     #[test]
-    fn matches_namespace_owner_reference_against_rule_files() {
+    fn matches_namespace_owner() {
         let project = tempfile::tempdir().expect("tempdir");
         let project_dir = project.path();
         stage_project(project_dir);

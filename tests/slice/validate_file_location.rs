@@ -3,7 +3,7 @@
 use crate::support::*;
 
 #[test]
-fn validate_emits_file_location_when_root_spec_md_exists_but_no_canonical_specs() {
+fn root_spec_without_canonical() {
     let project = Project::init().with_schemas();
     specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let slice_dir = project.slices_dir().join("my-slice");
@@ -27,7 +27,7 @@ fn validate_emits_file_location_when_root_spec_md_exists_but_no_canonical_specs(
 }
 
 #[test]
-fn validate_does_not_emit_file_location_when_canonical_specs_exist() {
+fn skipped_when_canonical_exists() {
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
     let slice_dir = project.slices_dir().join("my-slice");
     fs::write(slice_dir.join("spec.md"), "stale root copy").expect("write root spec.md");
@@ -51,7 +51,7 @@ fn validate_does_not_emit_file_location_when_canonical_specs_exist() {
 }
 
 #[test]
-fn validate_does_not_emit_file_location_when_no_root_spec_md() {
+fn skipped_when_no_root_spec() {
     let project = Project::init().with_schemas();
     specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
     let assert = specrun()

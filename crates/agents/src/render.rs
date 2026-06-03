@@ -295,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_project_omits_detection_sections() {
+    fn workspace_omits_detection_sections() {
         let mut input = regular_input();
         input.is_workspace = true;
         input.adapter = None;
@@ -353,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    fn navigation_lists_materialized_workspace_peers() {
+    fn navigation_lists_workspace_peers() {
         let mut input = regular_input();
         input.workspace_peers = vec![Peer {
             name: "billing".to_string(),

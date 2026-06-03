@@ -109,7 +109,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_preserves_non_utf8_surrounding_bytes() {
+    fn writer_preserves_non_utf8_bytes() {
         let existing = [
             b"prefix ".as_slice(),
             &[0xff, b'\n'],
@@ -124,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_reports_unchanged_when_bytes_match() {
+    fn writer_unchanged_when_bytes_match() {
         let planned = plan_agents_write(Some(GENERATED), GENERATED, false).expect("plan ok");
 
         assert_eq!(planned.bytes, GENERATED);

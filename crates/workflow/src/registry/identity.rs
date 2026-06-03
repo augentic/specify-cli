@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn units_sorted_by_slug_requirements_by_req_id() {
+    fn units_by_slug_reqs_by_req_id() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_spec(
             dir.path(),
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn decisions_projection_accepted_only_dec_ascending() {
+    fn decisions_accepted_only_ascending() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_decision(dir.path(), "DEC-0001", "use-postgres", "accepted", "Use PostgreSQL");
         write_decision(dir.path(), "DEC-0002", "drop-redis", "rejected", "Drop Redis");
@@ -308,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn decisions_capped_with_more_keeps_most_recent() {
+    fn decisions_capped_keeps_most_recent() {
         let dir = tempfile::tempdir().expect("tempdir");
         for n in 1..=11 {
             write_decision(

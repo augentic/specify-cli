@@ -127,12 +127,12 @@ fn needs_migration_none_for_unparseable_pin() {
 }
 
 #[test]
-fn needs_migration_none_for_unparseable_current() {
+fn needs_migration_none_unparseable() {
     assert_eq!(needs_migration("not-a-semver", "1.0.0"), None);
 }
 
 #[test]
-fn load_does_not_raise_migration_for_same_or_newer_major_pin() {
+fn load_skips_migration_same_or_newer() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("same-major pin loads");
@@ -140,7 +140,7 @@ fn load_does_not_raise_migration_for_same_or_newer_major_pin() {
 }
 
 #[test]
-fn load_for_migration_returns_no_tuple_for_same_major_pin() {
+fn for_migration_no_tuple_same_major() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
     let (cfg, migration) =
@@ -160,7 +160,7 @@ fn load_allows_invalid_pinned_version() {
 }
 
 #[test]
-fn workspace_field_defaults_false_round_trips() {
+fn workspace_field_defaults_false() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("loads");
@@ -176,7 +176,7 @@ fn workspace_field_defaults_false_round_trips() {
 }
 
 #[test]
-fn workspace_field_omitted_when_false_in_serialise() {
+fn workspace_field_omitted_when_false() {
     let cfg = ProjectConfig {
         name: "demo".to_string(),
         description: None,

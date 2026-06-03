@@ -58,7 +58,7 @@ fn parse_rejects_retired_aliases_bullet() {
 }
 
 #[test]
-fn parse_lead_set_accepts_headingless_blocks() {
+fn accepts_headingless_blocks() {
     let doc = Discovery::parse_lead_set(
         "\
 ### user-registration
@@ -75,7 +75,7 @@ fn parse_lead_set_accepts_headingless_blocks() {
 }
 
 #[test]
-fn parse_lead_set_accepts_existing_inventory_heading() {
+fn accepts_existing_inventory_heading() {
     let lead_set = "\
 ## Lead inventory
 
@@ -91,7 +91,7 @@ fn parse_lead_set_accepts_existing_inventory_heading() {
 }
 
 #[test]
-fn parse_lead_set_accepts_whitespace_only_content() {
+fn accepts_whitespace_only_content() {
     let doc = Discovery::parse_lead_set("\n  \n").expect("parse ok");
 
     assert!(doc.leads.is_empty());
@@ -154,7 +154,7 @@ fn merge_survey_replaces_same_id_block() {
 }
 
 #[test]
-fn merge_survey_preserves_deterministic_ordering() {
+fn merge_preserves_ordering() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("discovery.md");
     let doc_md = "\

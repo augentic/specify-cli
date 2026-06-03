@@ -331,7 +331,7 @@ fn archive_sweeps_change_brief() {
 }
 
 #[test]
-fn archive_sweeps_change_brief_and_working_dir() {
+fn sweeps_change_brief_and_working_dir() {
     let tmp = tempdir().expect("tempdir");
     let archive_dir = tmp.path().join(".specify/archive/plans");
     let plan_path = write_plan_with_working_dir(

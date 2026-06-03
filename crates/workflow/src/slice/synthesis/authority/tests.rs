@@ -103,7 +103,7 @@ fn multi_disagreed_tied_top_is_conflict() {
 // -- Resolution order (RFC-29c §"Authority resolution") -----------
 
 #[test]
-fn resolution_order_step_1_per_slice_override_wins() {
+fn step_1_per_slice_override_wins() {
     // `runtime` is the lowest class but the override forces it to
     // win the `example` kind outright.
     let claims = [
@@ -125,7 +125,7 @@ fn resolution_order_step_1_per_slice_override_wins() {
 }
 
 #[test]
-fn resolution_order_step_2_document_authority_wins() {
+fn step_2_document_authority_wins() {
     let claims = [
         claim("docs", "reset.expiry", ClaimKind::Criterion),
         claim("runtime", "reset.expiry", ClaimKind::Example),
@@ -145,7 +145,7 @@ fn resolution_order_step_2_document_authority_wins() {
 }
 
 #[test]
-fn resolution_order_step_3_default_ordering_breaks_tie() {
+fn step_3_default_ordering_breaks_tie() {
     // `intent > documentation` decides when no override fires.
     let claims = [
         claim("brief", "reset.expiry", ClaimKind::Intent),
@@ -184,7 +184,7 @@ fn resolution_order_step_4_tie_is_conflict() {
 // -- Mixed-kind requirements (RFC-29c §"Per-claim resolution") ----
 
 #[test]
-fn mixed_kinds_per_kind_authority_picks_winner() {
+fn mixed_kinds_picks_winner() {
     // A `criterion` (documentation) outranks an `example`
     // (behaviour) by the default ordering, no override.
     let claims = [

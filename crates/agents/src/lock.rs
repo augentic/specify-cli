@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn lock_serializes_with_rm02_snake_case_keys() {
+    fn lock_serializes_snake_case_keys() {
         let lock = ContextLock {
             version: 1,
             fingerprint: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

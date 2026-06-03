@@ -181,7 +181,7 @@ fn slice_model_schema_compiles() {
 /// optional-field design that lets one schema serve both the response
 /// and the persisted file.
 #[test]
-fn slice_model_schema_accepts_agent_response_without_kernel_fields() {
+fn slice_model_accepts_no_kernel() {
     let instance = json!({
         "requirements": [{
             "title": "Request password reset",
@@ -233,7 +233,7 @@ fn synthesis_schema_compiles() {
 /// The RFC-29c §"Synthesis response" worked example validates against
 /// the synthesis schema with the model `$ref` resolved.
 #[test]
-fn synthesis_schema_accepts_rfc_response_example() {
+fn synthesis_accepts_example() {
     let validator = synthesis_validator();
     let instance = json!({
         "kind": "response",
@@ -288,7 +288,7 @@ fn decision_schema_compiles() {
 /// optional-field design that lets one schema serve both the slice form
 /// and the persisted baseline form.
 #[test]
-fn decision_schema_accepts_slice_authored_form() {
+fn decision_accepts_slice_form() {
     let instance = json!({
         "slug": "identity-store-postgres",
         "status": "accepted",
@@ -310,7 +310,7 @@ fn decision_schema_accepts_slice_authored_form() {
 /// The RFC-36 §"Record shape" promoted baseline example validates with
 /// the engine-stamped header fields present.
 #[test]
-fn decision_schema_accepts_promoted_baseline_form() {
+fn decision_accepts_baseline_form() {
     let instance = json!({
         "id": "DEC-0007",
         "slug": "identity-store-postgres",
@@ -368,7 +368,7 @@ fn workspace_model_schema_compiles() {
 }
 
 #[test]
-fn workspace_model_schema_accepts_minimal_envelope() {
+fn workspace_model_accepts_minimal() {
     let instance = json!({
         "version": 1,
         "project_dir": ".",
@@ -422,7 +422,7 @@ fn lint_result_schema_compiles() {
 }
 
 #[test]
-fn lint_result_schema_accepts_envelope_with_one_finding() {
+fn lint_result_accepts_one_finding() {
     let envelope: Value =
         serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA).expect("lint-result schema parses");
     let finding: Value =
@@ -472,7 +472,7 @@ fn lint_result_schema_accepts_envelope_with_one_finding() {
 /// `diagnostic.schema.json` resolving against the envelope schema's
 /// directory rather than an absolute URL.
 #[test]
-fn diagnostic_report_schema_uses_relative_diagnostic_ref() {
+fn diagnostic_report_relative_ref() {
     let envelope: Value = serde_json::from_str(DIAGNOSTIC_REPORT_JSON_SCHEMA)
         .expect("diagnostic-report schema parses");
     let items_ref = envelope
@@ -561,7 +561,7 @@ fn build_report_schema_accepts_success() {
 
 /// The RFC-29d §"Build report" failure (no findings) example validates.
 #[test]
-fn build_report_schema_accepts_failure_without_findings() {
+fn build_report_failure_no_findings() {
     let validator = build_report_validator();
     let instance = json!({
         "version": 1,
@@ -577,7 +577,7 @@ fn build_report_schema_accepts_failure_without_findings() {
 /// The RFC-29d §"Build report" failure-with-findings example validates,
 /// proving the relative diagnostic `$ref` accepts a full RFC-28 finding.
 #[test]
-fn build_report_schema_accepts_failure_with_findings() {
+fn build_report_failure_with_findings() {
     let validator = build_report_validator();
     let instance = json!({
         "version": 1,
@@ -619,7 +619,7 @@ fn build_report_schema_accepts_failure_with_findings() {
 /// must round-trip cleanly so rules exporters accept files awaiting
 /// implementation.
 #[test]
-fn codex_rule_schema_accepts_each_reserved_hint_kind() {
+fn codex_rule_accepts_reserved_kinds() {
     let reserved = [
         "unique",
         "reference-resolves",

@@ -144,7 +144,7 @@ fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::proc
 /// hint lands stdout on a schema-valid review envelope and exits 2 per
 /// lint exit mapping.
 #[test]
-fn review_emits_important_finding_and_exits_2() {
+fn review_emits_important_exits_2() {
     let fx = build_fixture();
     let output = run_review(&fx.project, Some(&fx.codex), &[]);
 

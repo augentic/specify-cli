@@ -28,7 +28,7 @@ fn seed_project_yaml(project_dir: &Path, contents: &str) {
 }
 
 #[test]
-fn upgrade_bumps_older_same_major_pin_preserving_fields() {
+fn bumps_older_major_preserving_fields() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(
         tmp.path(),
@@ -52,7 +52,7 @@ fn upgrade_bumps_older_same_major_pin_preserving_fields() {
 }
 
 #[test]
-fn upgrade_is_byte_stable_noop_when_already_current() {
+fn byte_stable_noop_when_current() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(
         tmp.path(),
@@ -69,7 +69,7 @@ fn upgrade_is_byte_stable_noop_when_already_current() {
 }
 
 #[test]
-fn upgrade_preserves_workspace_discriminator() {
+fn preserves_workspace_discriminator() {
     let tmp = tempdir().unwrap();
     seed_project_yaml(
         tmp.path(),

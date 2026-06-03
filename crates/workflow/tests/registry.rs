@@ -334,7 +334,7 @@ fn registry_project_order_preserved() {
 }
 
 #[test]
-fn multi_project_with_descriptions_validates() {
+fn multi_project_with_descriptions() {
     let yaml = "\
 version: 1
 projects:
@@ -355,7 +355,7 @@ projects:
 }
 
 #[test]
-fn multi_project_missing_description_accepted() {
+fn multi_project_missing_description() {
     // RFC-36: the registry no longer authors descriptions, so the former
     // `registry-description-missing-multi-repo` invariant is retired —
     // descriptions live in each project's `project.yaml`.
@@ -530,7 +530,7 @@ fn rejects_url_with_leading_whitespace() {
 // ---------- Registry workspace validation (registry workspace validation) ----------
 
 #[test]
-fn validate_shape_workspace_accepts_empty_projects() {
+fn workspace_accepts_empty_projects() {
     let reg = Registry {
         version: 1,
         projects: vec![],
@@ -539,7 +539,7 @@ fn validate_shape_workspace_accepts_empty_projects() {
 }
 
 #[test]
-fn validate_shape_workspace_accepts_non_dot_urls() {
+fn workspace_accepts_non_dot_urls() {
     let reg = Registry {
         version: 1,
         projects: vec![
@@ -563,7 +563,7 @@ fn validate_shape_workspace_accepts_non_dot_urls() {
 }
 
 #[test]
-fn validate_shape_workspace_rejects_dot_url_entry() {
+fn workspace_rejects_dot_url_entry() {
     let reg = Registry {
         version: 1,
         projects: vec![RegistryProject {
@@ -589,7 +589,7 @@ fn validate_shape_workspace_rejects_dot_url_entry() {
 }
 
 #[test]
-fn validate_shape_workspace_rejects_dot_url_multi() {
+fn workspace_rejects_dot_url_multi() {
     let reg = Registry {
         version: 1,
         projects: vec![
@@ -622,7 +622,7 @@ fn validate_shape_workspace_rejects_dot_url_multi() {
 }
 
 #[test]
-fn validate_shape_workspace_inherits_base_errors() {
+fn workspace_inherits_base_errors() {
     // version != 1 is a base-shape error; workspace mode must surface it
     // without ever reaching the `workspace-cannot-be-project` check.
     let reg = Registry {

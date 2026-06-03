@@ -84,7 +84,7 @@ fn src_rule_on_source_passes() {
 }
 
 #[test]
-fn non_src_rule_under_source_adapter_rejected() {
+fn non_src_rule_under_source_rejected() {
     let temp = TempDir::new().expect("tempdir");
     scaffold_framework(temp.path());
     write_rule(temp.path(), "adapters/sources/documentation/rules/wrong-namespace.md", "OMNIA-001");

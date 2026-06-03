@@ -31,7 +31,7 @@ fn include_filter_accepts_known_extensions() {
 }
 
 #[test]
-fn include_filter_rejects_unknown_extensions() {
+fn rejects_unknown_extensions() {
     assert!(!is_included("photo.png"));
     assert!(!is_included("data.bin"));
     assert!(!is_included("notes.txt"));

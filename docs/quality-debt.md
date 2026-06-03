@@ -32,7 +32,7 @@ Strip RFC/Phase prose from module docs in: `init/`, `registry/topology.rs`, `cha
 - Renamed top-level `init/tests.rs` fns.
 - Tempdir `"hub"` already absent; workspace tests use `"workspace"`.
 - `RustTestNaming` / `RustSourceQuality` via `cargo test --test rust_quality` (specify-cli roots only).
-- Integration tests still carry long names — burn down incrementally; predicates report via `run_rust_quality`.
+- Test-name burn-down complete: every `#[test]` / `#[tokio::test]` fn is `<= 40` chars and `tests/rust_quality.rs::no_long_test_fn_names` now hard-gates `rust.test-fn-name-too-long`. `RustSourceQuality` archaeology remains the only burn-down-tracked predicate.
 
 ## Trait audit (keep unless noted)
 

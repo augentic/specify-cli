@@ -109,7 +109,7 @@ claims: []
 ";
 
 #[test]
-fn agent_prepare_prints_envelope_and_emits_execution_event() {
+fn prepare_prints_envelope_emits_event() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -166,7 +166,7 @@ fn agent_prepare_prints_envelope_and_emits_execution_event() {
 }
 
 #[test]
-fn agent_prepare_value_bound_source_carries_value_inline() {
+fn prepare_value_bound_carries_inline() {
     let project = Project::init();
     stage_intent(&project);
     seed_plan_with_value_source(&project);
@@ -195,7 +195,7 @@ fn agent_prepare_value_bound_source_carries_value_inline() {
 }
 
 #[test]
-fn agent_finalize_persists_evidence_and_emits_cache_miss() {
+fn finalize_persists_and_cache_miss() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -242,7 +242,7 @@ fn agent_finalize_persists_evidence_and_emits_cache_miss() {
 }
 
 #[test]
-fn agent_finalize_value_bound_source_persists_evidence() {
+fn finalize_value_bound_persists() {
     let project = Project::init();
     stage_intent(&project);
     seed_plan_with_value_source(&project);
@@ -274,7 +274,7 @@ fn agent_finalize_value_bound_source_persists_evidence() {
 }
 
 #[test]
-fn agent_finalize_invalid_evidence_persists_no_file() {
+fn finalize_invalid_persists_no_file() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);
@@ -339,7 +339,7 @@ fn agent_finalize_invalid_evidence_persists_no_file() {
 /// `tool` WASI-dispatch seam that would surface a kernel-level denial
 /// is wired but unexercised (see `dispatch_extract_tool`).
 #[test]
-fn sandbox_hides_project_dir_and_denies_out_of_scope_evidence() {
+fn sandbox_denies_out_of_scope() {
     let project = Project::init();
     stage_code_typescript(&project);
     seed_plan_with_legacy_source(&project);

@@ -1039,7 +1039,7 @@ mod tests {
     }
 
     #[test]
-    fn path_hint_keeps_filename_when_outside_slice() {
+    fn path_hint_keeps_filename_outside() {
         let slice = TempDir::new().unwrap();
         let other = TempDir::new().unwrap();
         let stray = other.path().join("spec.md");
@@ -1066,7 +1066,7 @@ mod tests {
     }
 
     #[test]
-    fn file_location_flags_root_spec_without_canonical() {
+    fn file_location_flags_root_no_canonical() {
         let slice = TempDir::new().unwrap();
         fs::write(slice.path().join("spec.md"), "# misplaced").unwrap();
         let findings = collect_spec_file_location_findings(slice.path());
@@ -1075,7 +1075,7 @@ mod tests {
     }
 
     #[test]
-    fn file_location_silent_with_canonical_specs() {
+    fn file_location_silent_with_canonical() {
         let slice = TempDir::new().unwrap();
         let unit = slice.path().join("specs").join("auth");
         fs::create_dir_all(&unit).unwrap();
@@ -1086,7 +1086,7 @@ mod tests {
     }
 
     #[test]
-    fn file_location_silent_with_no_specs_at_all() {
+    fn file_location_silent_no_specs() {
         let slice = TempDir::new().unwrap();
         assert!(collect_spec_file_location_findings(slice.path()).is_empty());
     }

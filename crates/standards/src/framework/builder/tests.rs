@@ -68,7 +68,7 @@ fn unclassified_defaults_important() {
 /// [`crate::framework::check`] resolves to a known severity and a
 /// closed `CORE-NNN` id.
 #[test]
-fn exported_rules_map_to_severity_and_core_id() {
+fn exported_rules_map_severity_core_id() {
     let important = [
         RULE_MISSING_MANIFEST,
         RULE_DUPLICATE_RULE_ID,

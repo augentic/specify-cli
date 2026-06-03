@@ -12,7 +12,7 @@ mod common;
 use common::{parse_json, specrun};
 
 #[test]
-fn upgrade_dry_run_reports_channel_and_commands() {
+fn dry_run_reports_channel_commands() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
     let assert = specrun()

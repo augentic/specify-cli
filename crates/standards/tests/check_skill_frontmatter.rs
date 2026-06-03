@@ -71,7 +71,7 @@ fn unknown_tool_reports_disallowed() {
 }
 
 #[test]
-fn spec_prefix_override_accepts_specify_prefix() {
+fn prefix_override_accepts_specify() {
     let temp = tempfile::tempdir().expect("temp dir");
     write_framework_scaffold(temp.path());
     write_skill(

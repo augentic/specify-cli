@@ -14,7 +14,7 @@ mod common;
 use common::{Project, init_workspace, omnia_schema_dir, parse_stderr, parse_stdout, specrun};
 
 #[test]
-fn init_workspace_validate_succeeds_on_empty() {
+fn workspace_validate_succeeds_empty() {
     let tmp = tempdir().unwrap();
     specrun()
         .current_dir(tmp.path())

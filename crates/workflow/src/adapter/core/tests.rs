@@ -129,7 +129,7 @@ fn check_execution_rejects_missing_mode() {
 }
 
 #[test]
-fn check_execution_agent_allows_forced_opt_out() {
+fn execution_agent_allows_forced_opt_out() {
     // `execution: agent` forces `cache: opt-out`; declaring the
     // matching opt-out (or no cache at all) is not a conflict.
     check_execution(Some(Execution::Agent), Some(CacheMode::OptOut), Path::new("adapter.yaml"))

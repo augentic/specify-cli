@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn github_sparse_checkout_uses_adapter_parent() {
+fn sparse_checkout_uses_adapter_parent() {
     assert_eq!(sparse_checkout_path("adapters/omnia"), "adapters");
     assert_eq!(sparse_checkout_path("schemas/omnia"), "schemas");
     assert_eq!(sparse_checkout_path("omnia"), "omnia");

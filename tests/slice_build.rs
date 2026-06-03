@@ -80,7 +80,7 @@ findings:
 // ---------------------------------------------------------------------------
 
 #[test]
-fn prepare_writes_request_and_emits_events_without_transition() {
+fn prepare_writes_request_no_transition() {
     let project = Project::init();
     stage_refined_slice(&project);
 
@@ -154,7 +154,7 @@ fn prepare_writes_request_and_emits_events_without_transition() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn finalize_validates_report_and_gates_built() {
+fn finalize_validates_and_gates_built() {
     let project = Project::init();
     stage_refined_slice(&project);
     write_report(&project, SUCCESS_REPORT);
@@ -190,7 +190,7 @@ fn finalize_validates_report_and_gates_built() {
 }
 
 #[test]
-fn finalize_rejects_success_with_blocking_finding() {
+fn finalize_rejects_success_blocking() {
     let project = Project::init();
     stage_refined_slice(&project);
     write_report(&project, SUCCESS_WITH_BLOCKING_REPORT);

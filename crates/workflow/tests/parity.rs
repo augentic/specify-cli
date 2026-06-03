@@ -30,7 +30,7 @@ fn assert_merge_success(case: &str, baseline: Option<&str>, delta: &str, expecte
 }
 
 #[test]
-fn case_01_single_req_is_byte_for_byte_identical() {
+fn case_01_single_req_identical() {
     assert_merge_success(
         "case-01-single-req",
         Some(fixture!("case-01-single-req", "baseline.md")),
@@ -41,7 +41,7 @@ fn case_01_single_req_is_byte_for_byte_identical() {
 }
 
 #[test]
-fn case_02_multi_req_is_byte_for_byte_identical() {
+fn case_02_multi_req_identical() {
     assert_merge_success(
         "case-02-multi-req",
         Some(fixture!("case-02-multi-req", "baseline.md")),
@@ -51,7 +51,7 @@ fn case_02_multi_req_is_byte_for_byte_identical() {
 }
 
 #[test]
-fn case_03_new_baseline_is_byte_for_byte_identical() {
+fn case_03_new_baseline_identical() {
     assert_merge_success(
         "case-03-new-baseline",
         None,
@@ -61,7 +61,7 @@ fn case_03_new_baseline_is_byte_for_byte_identical() {
 }
 
 #[test]
-fn case_04_modified_is_byte_for_byte_identical() {
+fn case_04_modified_identical() {
     assert_merge_success(
         "case-04-modified",
         Some(fixture!("case-04-modified", "baseline.md")),
@@ -71,7 +71,7 @@ fn case_04_modified_is_byte_for_byte_identical() {
 }
 
 #[test]
-fn case_05_removed_is_byte_for_byte_identical() {
+fn case_05_removed_identical() {
     assert_merge_success(
         "case-05-removed",
         Some(fixture!("case-05-removed", "baseline.md")),
@@ -81,7 +81,7 @@ fn case_05_removed_is_byte_for_byte_identical() {
 }
 
 #[test]
-fn case_06_renamed_is_byte_for_byte_identical() {
+fn case_06_renamed_identical() {
     assert_merge_success(
         "case-06-renamed",
         Some(fixture!("case-06-renamed", "baseline.md")),
@@ -91,7 +91,7 @@ fn case_06_renamed_is_byte_for_byte_identical() {
 }
 
 #[test]
-fn case_07_all_sections_is_byte_for_byte_identical() {
+fn case_07_all_sections_identical() {
     assert_merge_success(
         "case-07-all-sections",
         Some(fixture!("case-07-all-sections", "baseline.md")),
@@ -138,7 +138,7 @@ fn case_08_validation_ok_has_no_failures() {
 }
 
 #[test]
-fn case_09_validation_fails_produces_expected_failure_set() {
+fn case_09_validation_fails_failure_set() {
     let baseline = fixture!("case-09-validation-fails", "baseline.md");
     let expected = fixture!("case-09-validation-fails", "expected-validation.txt");
     let results = validate_baseline(baseline, None);
@@ -161,7 +161,7 @@ fn case_09_validation_fails_produces_expected_failure_set() {
 }
 
 #[test]
-fn case_10_design_refs_preserves_python_regex_quirk() {
+fn case_10_design_refs_python_regex_quirk() {
     // The expected file is empty: Python's `^REQ-[0-9]{3}$` (no
     // MULTILINE) never matches inside the multi-line design body, even
     // though `design.md` mentions REQ-999 / REQ-042 that are not in the

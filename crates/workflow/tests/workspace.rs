@@ -173,7 +173,7 @@ fn workspace_sync_no_registry_is_noop() {
 }
 
 #[test]
-fn sync_symlink_creates_workspace_and_gitignore() {
+fn sync_symlink_creates_gitignore() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
 
@@ -259,7 +259,7 @@ fn c01_selector_preserves_order() {
 }
 
 #[test]
-fn c01_selector_resolver_rejects_unknown_project() {
+fn c01_selector_rejects_unknown() {
     let registry = registry_with_projects(&["billing", "orders"]);
     let err = registry.select(&["ghost".to_string()]).expect_err("unknown selector must fail");
     let msg = err.to_string();
@@ -335,7 +335,7 @@ fn c02_sync_recreates_deleted_slot() {
 }
 
 #[test]
-fn c02_local_slot_refuses_existing_non_symlink() {
+fn c02_local_slot_refuses_non_symlink() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
@@ -486,7 +486,7 @@ fn c02_sync_refuses_escaping_name() {
 }
 
 #[test]
-fn c02_sync_refuses_symlinked_workspace_base() {
+fn c02_sync_refuses_symlinked_base() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
@@ -625,7 +625,7 @@ fn c04_prepare_blocks_unrelated_dirty() {
 }
 
 #[test]
-fn c04_prepare_branch_reports_missing_origin() {
+fn c04_prepare_reports_missing_origin() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
@@ -750,7 +750,7 @@ projects:
 }
 
 #[test]
-fn c03_status_enriches_symlink_project_state() {
+fn c03_status_enriches_symlink_state() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let peer = project_dir.join("peer");
@@ -971,7 +971,7 @@ fn c07_push_missing_origin_is_local_only() {
 }
 
 #[test]
-fn c07_push_dry_run_classifies_without_pushing() {
+fn c07_push_dry_run_classifies() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
@@ -1026,7 +1026,7 @@ fn forge_branch_matchers_round_trip() {
 // This test pins the layout so a future refactor to the private helper
 // keeps producing the same on-disk path the binary expects.
 #[test]
-fn sync_lays_down_workspace_under_dot_specify() {
+fn sync_lays_workspace_under_dot_specify() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
@@ -1063,7 +1063,7 @@ fn stage_topology_slot(project_dir: &Path, name: &str, project_yaml: &str) {
 }
 
 #[test]
-fn regenerate_topology_lock_projects_baseline_identity() {
+fn topology_lock_projects_baseline() {
     use specify_workflow::registry::topology::TopologyLock;
     use specify_workflow::registry::workspace::regenerate_topology_lock;
 
@@ -1133,7 +1133,7 @@ fn regenerate_topology_lock_projects_baseline_identity() {
 }
 
 #[test]
-fn regenerate_topology_lock_projects_accepted_decisions() {
+fn topology_lock_projects_decisions() {
     use specify_workflow::registry::topology::TopologyLock;
     use specify_workflow::registry::workspace::regenerate_topology_lock;
 

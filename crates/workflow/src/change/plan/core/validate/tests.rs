@@ -251,7 +251,7 @@ fn omitted_project_passes_without_registry() {
 }
 
 #[test]
-fn omitted_project_flagged_in_multi_project_registry() {
+fn omitted_project_flagged_multi() {
     let mut e = change("ambiguous", Status::Pending);
     e.project = None;
     let plan = plan_with_changes(vec![e]);
@@ -284,7 +284,7 @@ fn omitted_project_flagged_in_multi_project_registry() {
 }
 
 #[test]
-fn omitted_project_ok_in_single_project_registry() {
+fn omitted_project_ok_single() {
     let mut e = change("solo", Status::Pending);
     e.project = None;
     let plan = plan_with_changes(vec![e]);

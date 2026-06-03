@@ -137,7 +137,7 @@ fn migrated_artifacts_are_valid_v2() {
 /// aborts the apply during precondition resolution, before any staging
 /// or commit, so the tree is left untouched.
 #[test]
-fn precondition_failure_leaves_tree_untouched() {
+fn precondition_failure_untouched() {
     let tmp = stage_before();
     let project = tmp.path();
     fs::remove_file(project.join("adapters/code-typescript/briefs/survey.md")).unwrap();

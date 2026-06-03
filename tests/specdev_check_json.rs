@@ -527,7 +527,7 @@ fn missing_framework_root_emits_envelope() {
 /// header and a `Summary: 0 critical, 0 important, ...` tally,
 /// driven by `specify_diagnostics::render` with `Format::Pretty`.
 #[test]
-fn default_text_output_renders_pretty_summary() {
+fn text_output_renders_summary() {
     let temp = TempDir::new().expect("tempdir");
     write_scaffold(temp.path());
     write_source_adapter_manifest(temp.path(), "documentation");

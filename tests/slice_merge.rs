@@ -266,7 +266,7 @@ fn conflict_check_no_drift_for_new_files() {
 }
 
 #[test]
-fn conflict_check_no_drift_without_contracts() {
+fn conflict_check_no_drift_no_contracts() {
     let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
@@ -395,7 +395,7 @@ fn run_emits_merge_started_then_succeeded() {
 }
 
 #[test]
-fn run_emits_merge_started_then_failed_on_validator_failure() {
+fn emits_merge_started_then_failed() {
     // RFC-29d: a forced validator/commit failure brackets the run with
     // `slice.merge.started` then `slice.merge.failed` (non-empty
     // `reason`), exits non-zero, and emits neither `slice.merge.succeeded`

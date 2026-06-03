@@ -36,7 +36,7 @@ fn with_state_propagates_error_skips_write() {
 }
 
 #[test]
-fn with_state_require_existing_errors_on_absence() {
+fn require_existing_errors_on_absence() {
     let tmp = tempdir().expect("tempdir");
     let layout = Layout::new(tmp.path());
     let err = with_state::<Registry, (), _>(layout, "registry.yaml", |_| Ok(()))

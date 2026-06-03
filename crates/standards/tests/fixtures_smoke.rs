@@ -7,7 +7,7 @@ fn framework_root() -> Option<std::path::PathBuf> {
 }
 
 #[test]
-fn framework_root_resolves_from_explicit_path() {
+fn framework_root_from_explicit_path() {
     let Some(root) = framework_root() else {
         return;
     };

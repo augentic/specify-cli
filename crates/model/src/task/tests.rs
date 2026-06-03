@@ -190,7 +190,7 @@ fn duplicate_task_numbers_are_both_parsed() {
 }
 
 #[test]
-fn mark_complete_targets_first_duplicate_only() {
+fn mark_complete_first_duplicate() {
     let input = "\
 ## 1. Group
 

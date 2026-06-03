@@ -107,7 +107,7 @@ slices:
 ";
 
 #[test]
-fn plan_amend_divergence_from_none_to_accepted() {
+fn amend_divergence_none_to_accepted() {
     // source/target split note: the implicit-default first transition
     // serialises `from: none` because the on-disk slice has no
     // `divergence:` key.
@@ -189,7 +189,7 @@ slices:
 }
 
 #[test]
-fn plan_amend_divergence_from_likely_to_rejected() {
+fn amend_divergence_likely_to_rejected() {
     // source/target split note: `propose` writes `divergence: likely` and
     // the operator may transition it to `rejected` at Gate 1.
     let project = Project::init();
@@ -218,7 +218,7 @@ slices:
 }
 
 #[test]
-fn plan_amend_divergence_from_accepted_to_rejected() {
+fn amend_divergence_accepted_to_rejected() {
     let project = Project::init();
     project.seed_plan(
         "name: platform-v2
@@ -244,7 +244,7 @@ slices:
 }
 
 #[test]
-fn plan_amend_divergence_from_rejected_to_accepted() {
+fn amend_divergence_rejected_to_accepted() {
     let project = Project::init();
     project.seed_plan(
         "name: platform-v2
@@ -471,7 +471,7 @@ fn agent_emit_one_event_per_line() {
 // -- journal emit (source.* M1 events) -------------------------------
 
 #[test]
-fn journal_emit_appends_one_line_per_new_event() {
+fn emit_appends_one_line_per_event() {
     // The three RFC-29 D1 source events round-trip through the
     // `journal emit` front door: id + --payload deserialise into the
     // closed taxonomy, the CLI stamps the timestamp, and exactly one
@@ -526,7 +526,7 @@ fn journal_emit_appends_one_line_per_new_event() {
 }
 
 #[test]
-fn journal_emit_appends_m3_build_merge_events() {
+fn emit_appends_m3_build_merge() {
     // The RFC-29d M3 build/merge lifecycle events and
     // `target.execution.agent` round-trip through the `journal emit`
     // front door with no new wiring — the closed taxonomy is the
@@ -574,7 +574,7 @@ fn journal_emit_appends_m3_build_merge_events() {
 }
 
 #[test]
-fn journal_emit_m3_failed_event_requires_reason() {
+fn emit_m3_failed_requires_reason() {
     // A `*.failed` variant without its `reason` field fails the single
     // serde round-trip as `journal-emit-payload-schema`.
     let project = Project::init();
@@ -618,7 +618,7 @@ fn journal_emit_unknown_event_is_rejected() {
 }
 
 #[test]
-fn journal_emit_incomplete_payload_is_rejected() {
+fn emit_incomplete_payload_rejected() {
     // A known event id whose payload omits a required field fails the
     // single serde round-trip as `journal-emit-payload-schema`.
     let project = Project::init();

@@ -135,7 +135,7 @@ fn false_positive_prefix_promotes_status() {
 /// Test 3a: directive with `rationale = None` mints UNI-022 when
 /// the rule is resolved.
 #[test]
-fn missing_rationale_mints_uni_022_when_resolved() {
+fn mints_uni_022_when_resolved() {
     let mut findings = vec![finding("UNI-014", "src/lib.rs", 18)];
     let dirs = vec![directive("src/lib.rs", 17, "UNI-014", 18, None)];
     let outcome = apply(&mut findings, &dirs, &validation_rules(), 100);
@@ -162,7 +162,7 @@ fn missing_rationale_mints_uni_022_when_resolved() {
 /// tree is absent). The match-and-demote step still runs against
 /// the matched finding.
 #[test]
-fn missing_rationale_silent_when_uni_022_absent() {
+fn silent_when_uni_022_absent() {
     let mut findings = vec![finding("UNI-014", "src/lib.rs", 18)];
     let dirs = vec![directive("src/lib.rs", 17, "UNI-014", 18, None)];
     // Only UNI-023 is resolved; UNI-022 absent.
@@ -351,7 +351,7 @@ fn blocking_finding(severity: Severity, status: Option<FindingStatus>) -> Diagno
 /// non-blocking sets pass; an open critical/important set returns
 /// `Error::Validation { review-findings-present }`.
 #[test]
-fn deny_blocking_findings_maps_to_validation() {
+fn deny_blocking_maps_to_validation() {
     // Empty / ignored / false-positive / sub-threshold → Ok.
     deny_blocking_findings(&report(vec![])).expect("empty envelope must exit 0");
     deny_blocking_findings(&report(vec![blocking_finding(

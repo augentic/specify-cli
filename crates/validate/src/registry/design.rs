@@ -39,7 +39,7 @@ mod tests {
     }
 
     #[test]
-    fn passes_when_referenced_ids_are_backed_by_specs() {
+    fn passes_when_ids_backed_by_specs() {
         let dir = tempfile::tempdir().expect("tempdir");
         let specs = dir.path().join("specs");
         std::fs::create_dir_all(specs.join("a")).expect("mkdir");
@@ -52,7 +52,7 @@ mod tests {
     }
 
     #[test]
-    fn fails_when_a_referenced_id_is_missing_from_specs() {
+    fn fails_when_id_missing_from_specs() {
         let dir = tempfile::tempdir().expect("tempdir");
         let specs = dir.path().join("specs");
         std::fs::create_dir_all(specs.join("a")).expect("mkdir");

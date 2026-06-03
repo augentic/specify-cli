@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_schema_rejects_valid_json_that_is_not_a_schema() {
+    fn rejects_non_schema_json() {
         let err = compile_schema(r#"{ "type": "frobnicate" }"#)
             .expect_err("unknown type keyword fails to compile");
         match err {
@@ -221,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_value_passes_a_conforming_instance() {
+    fn passes_conforming_instance() {
         let summaries =
             validate_value(&json!({ "name": "ok" }), OBJECT_SCHEMA, "object", "object shape");
         assert_eq!(summaries.len(), 1);
@@ -230,7 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_value_reports_additional_property_with_child_pointer() {
+    fn reports_additional_property() {
         let summaries = validate_value(
             &json!({ "name": "ok", "extra": 1 }),
             OBJECT_SCHEMA,
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_value_surfaces_meta_failure_for_bad_schema() {
+    fn surfaces_meta_failure() {
         let summaries = validate_value(&json!({}), "{ not json", "bad", "bad schema");
         assert_eq!(summaries[0].status, ValidationStatus::Fail);
     }
@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_serialisable_ok_on_pass_and_validation_error_on_fail() {
+    fn serialisable_ok_and_err() {
         validate_serialisable(
             &Doc { name: "ok".into() },
             OBJECT_SCHEMA,
@@ -286,14 +286,14 @@ mod tests {
     }
 
     #[test]
-    fn join_details_concatenates_only_fail_details() {
+    fn join_details_only_fail_details() {
         let summaries = validate_value(&json!({}), OBJECT_SCHEMA, "object", "object shape");
         let joined = join_details(&summaries);
         assert!(joined.contains("name"), "missing required field appears in joined detail");
     }
 
     #[test]
-    fn child_pointer_escapes_json_pointer_metacharacters() {
+    fn child_pointer_escapes_metachars() {
         assert_eq!(child_pointer("", "a"), "/a");
         assert_eq!(child_pointer("/parent", "child"), "/parent/child");
         assert_eq!(child_pointer("", "a/b~c"), "/a~1b~0c", "/ -> ~1 and ~ -> ~0");

@@ -73,7 +73,7 @@ fn stage_slice_with_catalog(evidence: &str, catalog: Option<&str>, plan: Option<
 }
 
 #[test]
-fn validate_skips_catalog_drift_without_catalog() {
+fn skips_catalog_drift_no_catalog() {
     let project =
         stage_slice_with_catalog(EVIDENCE_WITH_COMPONENT, None, Some(PLAN_WITH_UI_SCREENS));
     let assert = specrun()

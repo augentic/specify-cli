@@ -131,7 +131,7 @@ fn validate_rejects_tag_status_mismatch() {
 }
 
 #[test]
-fn validate_skips_provenance_without_metadata() {
+fn skips_provenance_no_metadata() {
     // pre-2.0 (or pre-synthesis) state. The provenance gate must
     // not fire and the slice progresses to the existing adapter rule
     // run. The adapter rules will still surface deferred /
@@ -162,7 +162,7 @@ fn validate_skips_provenance_without_metadata() {
 }
 
 #[test]
-fn validate_flags_thin_synopsis_non_blocking() {
+fn flags_thin_synopsis_non_blocking() {
     // A thin same-slug synopsis the agent cannot match or split on,
     // alongside a content-bearing one. The advisory must surface at
     // `suggestion` severity (non-blocking by the shared

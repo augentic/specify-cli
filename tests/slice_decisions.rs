@@ -130,7 +130,7 @@ fn supersede_orphan_fires() {
 }
 
 #[test]
-fn supersede_resolving_to_baseline_is_silent() {
+fn supersede_to_baseline_silent() {
     let baseline = "---\nid: DEC-0001\nslug: old-store\nstatus: accepted\nslice: s\ndate: 2026-06-02\n---\n# Old\n\n## Context\nc\n\n## Decision\nd\n\n## Consequences\ne\n";
     let project = stage(
         &[("new.md", record("new-store", "accepted", &["DEC-0001"]))],
@@ -140,7 +140,7 @@ fn supersede_resolving_to_baseline_is_silent() {
 }
 
 #[test]
-fn supersede_resolving_to_sibling_slug_is_silent() {
+fn supersede_to_sibling_silent() {
     let project = stage(
         &[
             ("alpha.md", record("alpha", "accepted", &[])),

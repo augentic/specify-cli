@@ -706,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn load_marketplace_rejects_schema_violation() {
+    fn marketplace_rejects_schema_violation() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("marketplace.json");
         fs::write(&path, r#"{ "name": "augentic" }"#).unwrap();

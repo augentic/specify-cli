@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn finding_line_carries_tag_rule_title_location_impact_remediation() {
+    fn finding_line_fields() {
         let out = render_plain(&report(vec![sample_diagnostic()]));
         assert!(out.contains("[IMPORTANT] UNI-014 Literal deployment URL in generated handler"));
         assert!(out.contains("(crates/invoice_export/src/config.rs:18:5)"));
@@ -215,7 +215,7 @@ mod tests {
     /// The summary footer is emitted even for an empty report so callers
     /// always get the tally line.
     #[test]
-    fn empty_report_still_prints_header_and_summary() {
+    fn empty_report_prints_header() {
         let out = render_plain(&report(vec![]));
         assert!(out.starts_with("Specify review — 0 finding(s)\n"));
         assert!(out.contains("Summary: 0 critical, 0 important, 0 suggestion, 0 optional"));
@@ -225,7 +225,7 @@ mod tests {
     /// ANSI escape and resets it; the `color` seam keeps this
     /// deterministic without touching the process `NO_COLOR` env.
     #[test]
-    fn paint_wraps_tag_in_ansi_when_color_enabled() {
+    fn paint_wraps_tag_in_ansi() {
         assert_eq!(
             super::paint(Severity::Critical, "[CRITICAL]", true),
             "\x1b[31m[CRITICAL]\x1b[0m"

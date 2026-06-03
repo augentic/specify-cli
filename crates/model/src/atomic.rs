@@ -93,7 +93,7 @@ mod tests {
     /// YAML serialisation round-trips and the file ends with exactly one
     /// newline regardless of what `serde_saphyr` emits.
     #[test]
-    fn yaml_round_trips_with_single_trailing_newline() {
+    fn yaml_round_trips_trailing_newline() {
         let dir = tempfile::tempdir().expect("tempdir");
         let target = dir.path().join("doc.yaml");
         let doc = Doc {

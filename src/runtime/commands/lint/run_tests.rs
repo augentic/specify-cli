@@ -13,7 +13,7 @@ fn tasks_parser_collects_paths() {
 }
 
 #[test]
-fn tasks_parser_handles_touches_and_produces() {
+fn tasks_parser_touches_and_produces() {
     let text = "## Produces\n\n- a.md\n\n## Touches\n\n- b.md\n";
     let paths = parse_slice_tasks_paths(text);
     assert_eq!(paths, vec![PathBuf::from("a.md"), PathBuf::from("b.md")]);
