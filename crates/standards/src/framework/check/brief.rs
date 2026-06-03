@@ -15,8 +15,6 @@ const PHASE_BRIEF_SOFT_CAP: usize = 500;
 const PHASE_BRIEF_HARD_CAP: usize = 800;
 
 const RULE_EXCEEDS_SIZE: &str = "brief.exceeds-size-limit";
-const RULE_FRONTMATTER_FORBIDDEN: &str = "brief.frontmatter-forbidden";
-
 static PARENT_BRIEF_NAMES: &[&str] =
     &["shape.md", "build.md", "merge.md", "survey.md", "extract.md"];
 
@@ -60,28 +58,10 @@ pub fn run(ctx: &Context) -> Vec<Diagnostic> {
             }
         };
 
-        findings.extend(check_frontmatter(&rel_path, &content, &path));
         findings.extend(check_size(&rel_path, &content, parent, phase, &path));
     }
 
     findings
-}
-
-fn check_frontmatter(rel_path: &str, content: &str, path: &Path) -> Vec<Diagnostic> {
-    if content.starts_with("---\n") || content.starts_with("---\r\n") {
-        return vec![finding(
-            RULE_FRONTMATTER_FORBIDDEN,
-            format!(
-                "{rel_path}: brief has YAML frontmatter. Briefs are not skills — \
-                 they are resolved by path from adapter.yaml and the loader \
-                 never reads brief frontmatter. Strip the leading '---' block \
-                 and rely on the body H1 for the brief title. See \
-                 docs/standards/skill-authoring.md#brief-authoring."
-            ),
-            Some(path.to_path_buf()),
-        )];
-    }
-    Vec::new()
 }
 
 fn check_size(

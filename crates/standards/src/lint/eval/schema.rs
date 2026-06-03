@@ -16,7 +16,7 @@
 //! are parsed; markdown files fall back to their extracted
 //! frontmatter via [`crate::lint::WorkspaceModel::frontmatter`].
 //! The `target: frontmatter` extension from the contract is reserved
-//! — the closed [`crate::rules::DeterministicHint`] shape carries no
+//! — the closed [`crate::rules::RuleHint`] shape carries no
 //! `target` field, so v1 cannot opt into it.
 //!
 //! Each `iter_errors` entry maps to one [`specify_diagnostics::Diagnostic`]
@@ -37,7 +37,7 @@ use specify_schema::{
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{DeterministicHint, ResolvedRule};
+use crate::rules::{ResolvedRule, RuleHint};
 
 static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     HashMap::from([
@@ -97,7 +97,7 @@ impl SchemaCache {
 }
 
 pub(crate) fn evaluate(
-    rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], project_dir: &Path,
+    rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], project_dir: &Path,
     model: &WorkspaceModel, next_id: &mut u64, cache: &mut SchemaCache,
 ) -> Result<Vec<Diagnostic>, HintError> {
     let validator = compile_schema_for_hint(rule, hint, project_dir, cache)?;
@@ -134,7 +134,7 @@ pub(crate) fn evaluate(
 }
 
 fn compile_schema_for_hint(
-    rule: &ResolvedRule, hint: &DeterministicHint, project_dir: &Path, cache: &mut SchemaCache,
+    rule: &ResolvedRule, hint: &RuleHint, project_dir: &Path, cache: &mut SchemaCache,
 ) -> Result<Arc<Validator>, HintError> {
     let raw = hint.value.trim();
     if raw.starts_with("http://") || raw.starts_with("https://") {

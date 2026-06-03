@@ -4,7 +4,7 @@ use std::fs;
 
 use specify_diagnostics::Diagnostic;
 
-use super::{RULE_FRONTMATTER_RESTATEMENT, RULE_SECTION_LINE_COUNT};
+use super::RULE_SECTION_LINE_COUNT;
 use crate::framework::builder::finding;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
@@ -80,32 +80,4 @@ fn count_section_body_lines(section_lines: &[String]) -> usize {
         count += 1;
     }
     count
-}
-
-pub(super) fn check_no_frontmatter_restatement(
-    ctx: &Context,
-) -> Result<Vec<Diagnostic>, ToolingError> {
-    let root = ctx.framework_root();
-    let mut findings = Vec::new();
-
-    for path in walk_skill_files(root)? {
-        let rel = relative_display(root, &path);
-        let content = fs::read_to_string(&path)?;
-        let Some(lines) = skill_body_lines(&content) else {
-            continue;
-        };
-
-        if let Some(idx) = lines.iter().position(|line| line.trim() == "## Input") {
-            findings.push(finding(
-                RULE_FRONTMATTER_RESTATEMENT,
-                format!(
-                    "Frontmatter restated in skill body: {rel}:{} — '## Input' restates the argument-hint already rendered on every invocation; drop the H2 (the inference / prompt instruction belongs in Critical Path step 1)",
-                    idx + 1
-                ),
-                Some(path),
-            ));
-        }
-    }
-
-    Ok(findings)
 }

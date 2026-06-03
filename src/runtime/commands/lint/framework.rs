@@ -10,9 +10,9 @@
 //!
 //! 1. Resolve the framework root and load the imperative
 //!    [`AuthoringContext`].
-//! 2. Wrap the imperative `Check` pass as a [`DiagnosticProducer`]
-//!    ([`AuthoringProducer`]) so the runner composes it with the
-//!    declarative pass and dedupes the combined set by fingerprint.
+//! 2. Wrap the CORE-009 namespace imperative bridge as a
+//!    [`DiagnosticProducer`] ([`AuthoringProducer`]) so the runner
+//!    composes it with the declarative pass and dedupes by fingerprint.
 //! 3. Configure the runner for the framework surface
 //!    ([`ScanProfile::Framework`], [`NoopToolRunner`],
 //!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
@@ -130,16 +130,12 @@ fn pick_format(global: Format, output_format: Option<LintFormat>) -> Diagnostics
     }
 }
 
-/// Imperative producer wrapping the framework's `Check` pass.
+/// Imperative producer for the CORE-009 namespace-ownership bridge only.
 ///
+/// Every other migratable predicate runs through declarative
+/// `kind: authoring-predicate` hints on `CORE-*` rule files.
 /// Holds the loaded [`AuthoringContext`]; ignores the `WorkspaceModel`
-/// the runner threads in (the imperative predicates index their own
-/// inputs from the context). [`check::run`] now finalises the batch
-/// itself — building each [`Diagnostic`] via
-/// [`specify_standards::framework::framework_finding`], rebasing locations
-/// to project-relative form, and stamping fingerprints and ids — so
-/// this producer is a thin pass-through that satisfies the
-/// [`DiagnosticProducer`] contract directly.
+/// the runner threads in. [`check::run`] finalises the batch itself.
 struct AuthoringProducer<'a> {
     ctx: &'a AuthoringContext,
 }

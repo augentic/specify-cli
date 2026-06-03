@@ -23,7 +23,7 @@ fn resolved_codex_accepts_example() {
                     "languages": ["rust"],
                     "artifacts": ["code"]
                 },
-                "deterministic-hints": [
+                "rule-hints": [
                     {
                         "kind": "regex",
                         "value": "https?://",
@@ -96,7 +96,7 @@ fn codex_rule_accepts_example() {
             "artifacts": ["code"]
         },
         "lint_mode": "hybrid",
-        "deterministic_hints": [
+        "rule_hints": [
             {
                 "kind": "regex",
                 "value": "https?://",

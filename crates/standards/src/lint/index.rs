@@ -115,6 +115,7 @@ fn build_consumer(
             let sections = markdown::extract_sections(&file);
             let links = markdown::extract_links(&file);
             let ignore_directives = ignore_directives::extract(&file);
+            let fenced_blocks = markdown::extract_fenced_blocks(&file);
             PerFile {
                 file: File {
                     path: file.relative,
@@ -126,6 +127,7 @@ fn build_consumer(
                 sections,
                 links,
                 ignore_directives,
+                fenced_blocks,
             }
         })
         .collect();
@@ -135,6 +137,7 @@ fn build_consumer(
     let mut sections_out: Vec<MarkdownSection> = Vec::new();
     let mut links_out: Vec<MarkdownLink> = Vec::new();
     let mut ignore_directives_out: Vec<IgnoreDirective> = Vec::new();
+    let mut fenced_blocks_out: Vec<crate::lint::FencedBlock> = Vec::new();
     for entry in per_file {
         files_out.push(entry.file);
         if let Some(fm) = entry.frontmatter {
@@ -143,6 +146,7 @@ fn build_consumer(
         sections_out.extend(entry.sections);
         links_out.extend(entry.links);
         ignore_directives_out.extend(entry.ignore_directives);
+        fenced_blocks_out.extend(entry.fenced_blocks);
     }
 
     let known_paths: std::collections::HashSet<String> =
@@ -158,6 +162,7 @@ fn build_consumer(
     sort_sections(&mut sections_out);
     sort_links(&mut links_out);
     sort_ignore_directives(&mut ignore_directives_out);
+    sort_fenced_blocks(&mut fenced_blocks_out);
 
     Ok(WorkspaceModel {
         version: WorkspaceModelVersion,
@@ -176,11 +181,16 @@ fn build_consumer(
         rule_index,
         text_matches: Vec::new(),
         ignore_directives: ignore_directives_out,
+        fenced_blocks: fenced_blocks_out,
         briefs: Vec::new(),
         agent_teams: Vec::new(),
     })
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "framework indexer records fenced blocks alongside markdown facts"
+)]
 fn build_framework(
     project_dir: &Path, artifact_paths: &[PathBuf], languages: &[String],
 ) -> Result<WorkspaceModel, IndexError> {
@@ -200,6 +210,7 @@ fn build_framework(
             let manifest = adapter::extract(&file);
             let marketplace_entries = marketplace::extract(&file);
             let brief = brief::extract(&file);
+            let fenced_blocks = markdown::extract_fenced_blocks(&file);
             FrameworkPerFile {
                 file: File {
                     path: file.relative,
@@ -215,6 +226,7 @@ fn build_framework(
                 manifest,
                 marketplace_entries,
                 brief,
+                fenced_blocks,
             }
         })
         .collect();
@@ -228,6 +240,7 @@ fn build_framework(
     let mut manifests_out: Vec<AdapterManifest> = Vec::new();
     let mut marketplace_out: Vec<MarketplaceEntry> = Vec::new();
     let mut briefs_out: Vec<Brief> = Vec::new();
+    let mut fenced_blocks_out: Vec<crate::lint::FencedBlock> = Vec::new();
     for entry in per_file {
         files_out.push(entry.file);
         if let Some(fm) = entry.frontmatter {
@@ -236,6 +249,7 @@ fn build_framework(
         sections_out.extend(entry.sections);
         links_out.extend(entry.links);
         ignore_directives_out.extend(entry.ignore_directives);
+        fenced_blocks_out.extend(entry.fenced_blocks);
         if let Some(skill) = entry.skill {
             skills_out.push(skill);
         }
@@ -272,6 +286,7 @@ fn build_framework(
     sort_sections(&mut sections_out);
     sort_links(&mut links_out);
     sort_ignore_directives(&mut ignore_directives_out);
+    sort_fenced_blocks(&mut fenced_blocks_out);
     skills_out.sort_by(|a, b| a.path.cmp(&b.path));
     manifests_out.sort_by(|a, b| a.path.cmp(&b.path));
     marketplace_out.sort_by(|a, b| a.path_in_manifest.cmp(&b.path_in_manifest));
@@ -296,9 +311,14 @@ fn build_framework(
         rule_index,
         text_matches: Vec::new(),
         ignore_directives: ignore_directives_out,
+        fenced_blocks: fenced_blocks_out,
         briefs: briefs_out,
         agent_teams: agent_teams_facts,
     })
+}
+
+fn sort_fenced_blocks(blocks: &mut [crate::lint::FencedBlock]) {
+    blocks.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.line_start.cmp(&b.line_start)));
 }
 
 fn sort_sections(sections: &mut [MarkdownSection]) {
@@ -329,6 +349,7 @@ struct PerFile {
     sections: Vec<MarkdownSection>,
     links: Vec<MarkdownLink>,
     ignore_directives: Vec<IgnoreDirective>,
+    fenced_blocks: Vec<crate::lint::FencedBlock>,
 }
 
 struct FrameworkPerFile {
@@ -337,6 +358,7 @@ struct FrameworkPerFile {
     sections: Vec<MarkdownSection>,
     links: Vec<MarkdownLink>,
     ignore_directives: Vec<IgnoreDirective>,
+    fenced_blocks: Vec<crate::lint::FencedBlock>,
     skill: Option<Skill>,
     manifest: Option<AdapterManifest>,
     marketplace_entries: Vec<MarketplaceEntry>,

@@ -105,6 +105,11 @@
       "items": { "$ref": "#/$defs/ignoreDirective" },
       "description": "`WorkspaceModel` entity: `ignore_directive` facts from the indexer pass that recognises `specify-ignore: <RULE-ID> — <rationale>` comments across the closed comment-style list. Optional in v1 envelopes until the indexer extractor lands; consumers MUST tolerate the field's absence."
     },
+    "fenced_blocks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fencedBlock" },
+      "description": "`WorkspaceModel` entity: `fenced_block` facts from the fence-aware markdown pass (RFC-31 Phase 2). Optional in v1 envelopes; producers omit when empty."
+    },
     "briefs": {
       "type": "array",
       "items": { "$ref": "#/$defs/brief" },
@@ -455,6 +460,32 @@
           "type": "string",
           "minLength": 1,
           "description": "Raw directive comment text as captured by the indexer, including delimiters; used by formatters that surface the original source spelling."
+        }
+      }
+    },
+    "fencedBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line-start", "line-end", "lang", "body"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "line-start": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line of the first body line inside the fence."
+        },
+        "line-end": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line of the closing fence delimiter."
+        },
+        "lang": {
+          "type": "string",
+          "description": "Info string from the opening fence; empty when absent."
+        },
+        "body": {
+          "type": "string",
+          "description": "Fence body text (opening/closing delimiters excluded)."
         }
       }
     }

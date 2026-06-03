@@ -13,11 +13,9 @@ use std::path::Path;
 
 use specify_diagnostics::Severity;
 use specify_standards::lint::eval::{ToolOutput, ToolRunError, ToolRunner};
-use specify_standards::rules::{
-    Applicability, DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule,
-};
+use specify_standards::rules::{Applicability, HintKind, Origin, PathRoot, ResolvedRule, RuleHint};
 
-pub fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {
+pub fn make_rule(rule_id: &str, hints: Vec<RuleHint>) -> ResolvedRule {
     ResolvedRule {
         rule_id: rule_id.to_string(),
         title: format!("{rule_id} test rule"),
@@ -25,7 +23,7 @@ pub fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {
         trigger: format!("Trigger for {rule_id}"),
         lint_mode: None,
         applicability: None,
-        deterministic_hints: if hints.is_empty() { None } else { Some(hints) },
+        rule_hints: if hints.is_empty() { None } else { Some(hints) },
         references: None,
         origin: Origin::Shared,
         path_root: PathRoot::RulesRoot,
@@ -35,9 +33,7 @@ pub fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {
     }
 }
 
-pub fn make_rule_with_adapter(
-    rule_id: &str, adapter: &str, hints: Vec<DeterministicHint>,
-) -> ResolvedRule {
+pub fn make_rule_with_adapter(rule_id: &str, adapter: &str, hints: Vec<RuleHint>) -> ResolvedRule {
     let mut rule = make_rule(rule_id, hints);
     rule.applicability = Some(Applicability {
         adapters: Some(vec![adapter.to_string()]),
@@ -48,11 +44,12 @@ pub fn make_rule_with_adapter(
     rule
 }
 
-pub fn hint(kind: HintKind, value: &str) -> DeterministicHint {
-    DeterministicHint {
+pub fn hint(kind: HintKind, value: &str) -> RuleHint {
+    RuleHint {
         kind,
         value: value.to_string(),
         description: None,
+        config: None,
     }
 }
 

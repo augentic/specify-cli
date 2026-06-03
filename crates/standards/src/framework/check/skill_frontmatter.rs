@@ -111,6 +111,23 @@ fn load_skill_entries(ctx: &Context) -> Result<Vec<SkillEntry>, ToolingError> {
 
 fn check_schema(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
     let mut findings = Vec::new();
+    findings.extend(findings_missing_frontmatter(ctx)?);
+    findings.extend(findings_schema_violation(ctx)?);
+    Ok(findings)
+}
+
+/// RFC-31 Phase 2 de-fuse: missing-frontmatter findings only (`CORE-042`).
+pub fn findings_missing_frontmatter(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
+    schema_findings_for_rule(ctx, RULE_MISSING_FRONTMATTER)
+}
+
+/// RFC-31 Phase 2 de-fuse: schema-violation findings only (`CORE-044`).
+pub fn findings_schema_violation(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
+    schema_findings_for_rule(ctx, RULE_SCHEMA_VIOLATION)
+}
+
+fn schema_findings_for_rule(ctx: &Context, rule_id: &str) -> Result<Vec<Diagnostic>, ToolingError> {
+    let mut findings = Vec::new();
 
     for entry in load_skill_entries(ctx)? {
         match validate_frontmatter(ctx, &entry.path, SchemaId::Skill) {
@@ -120,13 +137,16 @@ fn check_schema(ctx: &Context) -> Result<Vec<Diagnostic>, ToolingError> {
             }
             Err(SchemaError::Validation(errors)) => {
                 for error in errors {
-                    let rule_id = if error.message.contains("missing leading YAML frontmatter") {
+                    let mapped = if error.message.contains("missing leading YAML frontmatter") {
                         RULE_MISSING_FRONTMATTER
                     } else {
                         RULE_SCHEMA_VIOLATION
                     };
+                    if mapped != rule_id {
+                        continue;
+                    }
                     findings.push(finding(
-                        rule_id,
+                        mapped,
                         format!(
                             "Skill frontmatter: {} — {} {}",
                             entry.rel, error.instance_path, error.message

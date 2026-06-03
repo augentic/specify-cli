@@ -3,7 +3,7 @@
 //! Splits a rule markdown file into YAML frontmatter +
 //! verbatim body, validates the frontmatter against the embedded
 //! `schemas/rules/rule.schema.json`, lifts the `snake_case`
-//! authoring keys (`lint_mode`, `deterministic_hints`,
+//! authoring keys (`lint_mode`, `rule_hints`,
 //! `replaced_by`) to the kebab-case wire shape carried by
 //! [`Rule`], and returns the typed rule with `body` set to the
 //! exact post-delimiter bytes.
@@ -32,7 +32,7 @@
 //!
 //! # Out of scope
 //!
-//! No regex compilation. The deterministic-hints contract
+//! No regex compilation. The rule-hints contract
 //! extensibility" requires the runtime resolver to never compile a
 //! regex it never executes — hint execution belongs to `specify lint`
 //! (CH-13 +). Applicability filtering, deprecation filtering, and
@@ -178,7 +178,7 @@ fn split_frontmatter(content: &str) -> Result<(&str, &str), ParseError> {
 ///
 /// Rule frontmatter keys never contain `_` for any reason
 /// other than the `snake_case` authoring convention (`lint_mode`,
-/// `deterministic_hints`, `replaced_by`), so a blind `_` -> `-`
+/// `rule_hints`, `replaced_by`), so a blind `_` -> `-`
 /// rewrite is safe. String VALUES (e.g. adapter names like
 /// `code-typescript`) are untouched — only keys are transformed.
 fn snake_to_kebab_keys(value: JsonValue) -> JsonValue {

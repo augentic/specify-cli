@@ -69,22 +69,3 @@ fn sub_brief_over_hard_cap_finding() {
     assert!(snippet(size).contains("phase sub-brief is 801 non-blank lines"));
     assert!(snippet(size).contains("exceeds hard cap 800"));
 }
-
-#[test]
-fn brief_with_frontmatter_finding() {
-    let tmp = TempDir::new().expect("tempdir");
-    let root = scaffold_framework_root(tmp.path());
-    write_brief(
-        &root,
-        "adapters/targets/demo/briefs/extract.md",
-        "---\ndescription: drift\n---\n\n# Extract\n",
-    );
-
-    let findings = BriefCheck.run(&context_for(&root));
-    let fm = findings
-        .iter()
-        .find(|f| f.rule_id.as_deref() == core_id_for("brief.frontmatter-forbidden"))
-        .expect("expected frontmatter finding");
-    assert!(snippet(fm).contains("brief has YAML frontmatter"));
-    assert!(snippet(fm).contains("docs/standards/skill-authoring.md#brief-authoring"));
-}

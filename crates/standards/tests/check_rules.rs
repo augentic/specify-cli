@@ -146,7 +146,7 @@ id: UNI-999
 title: Reserved Hint Shape Test
 severity: important
 trigger: When validating that Reserved hint kind hint kinds shape-check only.
-deterministic_hints:
+rule_hints:
   - kind: namespace-owner
     value: adapters/shared/rules/universal
   - kind: set-coverage

@@ -1,3 +1,7 @@
+//! Framework authoring predicates. RFC-31 Phase 4: only [`RulesCheck`] is
+//! wired through [`run`]; sibling modules are library predicates invoked
+//! via [`crate::lint::eval::authoring_predicate`] (and direct unit tests).
+
 pub mod adapter;
 pub mod agent_teams;
 pub mod brief;
@@ -7,12 +11,12 @@ pub mod links;
 mod plugins;
 mod prose;
 pub mod rules;
-mod rust_source;
-mod rust_test_naming;
+pub mod rust_source;
+pub mod rust_test_naming;
 pub mod scenarios;
 pub mod schema_alias;
 pub mod schema_links;
-mod skill_body;
+pub mod skill_body;
 pub mod skill_frontmatter;
 pub mod tools;
 
@@ -22,12 +26,13 @@ pub use adapter::{AdapterCheck, RULE_EXECUTION_AGENT, RULE_MISSING_MANIFEST, run
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
 pub use deployable_links::DeployableLinksCheck;
-pub use docs_quality::{HistoryCitation, MissingDiagramAsset, TextPipelineDiagram};
+pub use docs_quality::{MissingDiagramAsset, TextPipelineDiagram};
 pub use links::LinksCheck;
 pub use plugins::{BrokenSymlinkCheck, MarketplaceDriftCheck};
-pub use prose::{InvocationPositional, NumericCaps, OperationalVocabulary};
+pub use prose::NumericCaps;
 pub use rules::{
     RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, RulesCheck, run_rules_check,
+    run_rules_namespace_check, run_rules_schema_check,
 };
 pub use rust_source::RustSourceQuality;
 pub use rust_test_naming::RustTestNaming;
@@ -42,8 +47,8 @@ pub use scenarios::{
 pub use schema_alias::SchemaAliasCheck;
 pub use schema_links::SchemaLinksCheck;
 pub use skill_body::{
-    EnvelopeJsonInBody, FrontmatterRestatement, InlineJsonTooLong, InvalidCriticalPath,
-    MissingCriticalPath, SectionLineCount, StepBodyDuplicatesCriticalPath, VariableCoverage,
+    InlineJsonTooLong, InvalidCriticalPath, MissingCriticalPath, SectionLineCount,
+    StepBodyDuplicatesCriticalPath, VariableCoverage,
 };
 pub use skill_frontmatter::{
     ArgumentHintGrammar, DescriptionGrammar, FrontmatterSchema, NameDirMismatch,
@@ -52,7 +57,7 @@ pub use skill_frontmatter::{
     RULE_UNKNOWN_TOOL, UnknownTool,
 };
 use specify_diagnostics::{Diagnostic, fingerprint};
-pub use tools::{DeclaredToolInvocations, FirstPartyTools};
+pub use tools::FirstPartyTools;
 
 use crate::framework::context::Context;
 
@@ -81,51 +86,12 @@ pub fn run_rust_quality(ctx: &Context) -> Vec<Diagnostic> {
     findings
 }
 
-/// Run every registered check predicate sequentially, then finalise the
-/// combined batch.
+/// Run the CORE-009 namespace-ownership imperative bridge, then finalise.
+///
+/// Every other migratable predicate is invoked via declarative
+/// `kind: authoring-predicate` hints on `CORE-*` rule files.
 pub fn run(ctx: &Context) -> Vec<Diagnostic> {
-    let checks: &[&dyn Check] = &[
-        &AdapterCheck,
-        &AgentTeamsCheck,
-        &BriefCheck,
-        &RulesCheck,
-        &HistoryCitation,
-        &RustTestNaming,
-        &RustSourceQuality,
-        &MissingDiagramAsset,
-        &TextPipelineDiagram,
-        &LinksCheck,
-        &DeployableLinksCheck,
-        &BrokenSymlinkCheck,
-        &MarketplaceDriftCheck,
-        &FirstPartyTools,
-        &DeclaredToolInvocations,
-        &OperationalVocabulary,
-        &NumericCaps,
-        &InvocationPositional,
-        &ScenariosCheck,
-        &FrontmatterSchema,
-        &NameDirMismatch,
-        &UnknownTool,
-        &DescriptionGrammar,
-        &ArgumentHintGrammar,
-        &SectionLineCount,
-        &MissingCriticalPath,
-        &InvalidCriticalPath,
-        &InlineJsonTooLong,
-        &EnvelopeJsonInBody,
-        &StepBodyDuplicatesCriticalPath,
-        &FrontmatterRestatement,
-        &VariableCoverage,
-        &SchemaLinksCheck,
-        &SchemaAliasCheck,
-    ];
-    let mut findings = Vec::new();
-
-    for check in checks {
-        findings.extend(check.run(ctx));
-    }
-
+    let mut findings = RulesCheck.run(ctx);
     finalize(&mut findings, ctx.framework_root());
     findings
 }

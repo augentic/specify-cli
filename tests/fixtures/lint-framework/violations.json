@@ -21,65 +21,55 @@
       "title": "Rules namespace ownership: adapters/targets/omnia/rules/frame-misplaced.md — FRAME-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got 'FRAME-001' u…"
     },
     {
-      "artifact": "unknown",
+      "artifact": "code",
+      "confidence": "high",
       "evidence": {
-        "kind": "snippet",
-        "value": "Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
+        "data": {
+          "json_pointer": ""
+        },
+        "kind": "structured",
+        "summary": "\"description\" is a required property"
       },
-      "fingerprint": "sha256:aeaec43fc2a37a5bf7c3dcdd1afd363df51ee41fe513998ea4da0396824400d7",
+      "fingerprint": "sha256:222ecdfdea2abd7bce34963fa22ad1eb0a6e88eb943514d69a3d676c5c8e1d1f",
       "id": "FIND-0002",
-      "impact": "Authoring check 'rules.duplicate-rule-id' failed.",
+      "impact": "An adapter manifest fails adapter.schema.json validation.",
       "kind": "violation",
-      "remediation": "Resolve the violation reported by 'rules.duplicate-rule-id'. See the finding message for details.",
-      "rule-id": "CORE-026",
-      "severity": "important",
+      "location": {
+        "path": "adapters/targets/omnia/adapter.yaml"
+      },
+      "remediation": "See adapters/shared/rules/core/CORE-001-adapter-schema.md",
+      "rule-id": "CORE-001",
+      "severity": "critical",
       "source": "deterministic",
-      "title": "Rule duplicate id 'UNI-100' across files: adapters/shared/rules/universal/uni-100-first.md, adapters/shared/rules/universal/uni-100-second.md"
+      "title": "Adapter Manifest Schema: schema validation failed"
     },
     {
-      "artifact": "unknown",
+      "artifact": "code",
+      "confidence": "high",
       "evidence": {
-        "kind": "snippet",
-        "value": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"severity\" is a required property"
+        "data": {
+          "json_pointer": ""
+        },
+        "kind": "structured",
+        "summary": "\"briefs\" is a required property"
       },
-      "fingerprint": "sha256:9d29664224e61e89486853ac2c7a79027cf47092b2ab1c57cfdfc5eece70a52b",
+      "fingerprint": "sha256:fbd92b05f54d0aafc7426966d7f4e27948eea00d7f9de4f79ec05c52ddf83953",
       "id": "FIND-0003",
-      "impact": "Authoring check 'rules.schema-violation' failed.",
+      "impact": "An adapter manifest fails adapter.schema.json validation.",
       "kind": "violation",
       "location": {
-        "line": 1,
-        "path": "adapters/shared/rules/universal/bad-frontmatter.md"
+        "path": "adapters/targets/omnia/adapter.yaml"
       },
-      "remediation": "Resolve the violation reported by 'rules.schema-violation'. See the finding message for details.",
-      "rule-id": "CORE-027",
+      "remediation": "See adapters/shared/rules/core/CORE-001-adapter-schema.md",
+      "rule-id": "CORE-001",
       "severity": "critical",
       "source": "deterministic",
-      "title": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"severity\" is a required property"
-    },
-    {
-      "artifact": "unknown",
-      "evidence": {
-        "kind": "snippet",
-        "value": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"trigger\" is a required property"
-      },
-      "fingerprint": "sha256:9281f43553d7bb841761416fde453301236ee27e670d8bdc3e2eff528833fe83",
-      "id": "FIND-0004",
-      "impact": "Authoring check 'rules.schema-violation' failed.",
-      "kind": "violation",
-      "location": {
-        "line": 1,
-        "path": "adapters/shared/rules/universal/bad-frontmatter.md"
-      },
-      "remediation": "Resolve the violation reported by 'rules.schema-violation'. See the finding message for details.",
-      "rule-id": "CORE-027",
-      "severity": "critical",
-      "source": "deterministic",
-      "title": "Rule frontmatter: adapters/shared/rules/universal/bad-frontmatter.md — / \"trigger\" is a required property"
+      "title": "Adapter Manifest Schema: schema validation failed"
     }
   ],
   "summary": {
     "critical": 2,
-    "important": 2,
+    "important": 1,
     "optional": 0,
     "suggestion": 0
   },

@@ -92,6 +92,23 @@ pub struct MarkdownLink {
     pub resolves: Option<bool>,
 }
 
+/// `fenced_block` fact — closed fence body extracted for fence-aware evaluators
+/// (RFC-31 Phase 2: CORE-037, CORE-017).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct FencedBlock {
+    /// Project-relative path of the markdown file.
+    pub path: String,
+    /// 1-based line of the first body line inside the fence.
+    pub line_start: u32,
+    /// 1-based line of the closing fence delimiter.
+    pub line_end: u32,
+    /// Info string from the opening fence (`json`, `text`, …); empty when absent.
+    pub lang: String,
+    /// Fence body lines joined with `\n` (excludes opening/closing delimiters).
+    pub body: String,
+}
+
 /// `symlink` fact per the `WorkspaceModel` entity families.
 ///
 /// Recorded but not traversed under the consumer file scan contract;

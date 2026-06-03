@@ -18,9 +18,9 @@ use std::path::Path;
 
 use specify_diagnostics::Severity;
 use specify_standards::lint::eval::{ToolOutput, ToolRunError, ToolRunner};
-use specify_standards::rules::{DeterministicHint, HintKind, Origin, PathRoot, ResolvedRule};
+use specify_standards::rules::{HintKind, Origin, PathRoot, ResolvedRule, RuleHint};
 
-fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {
+fn make_rule(rule_id: &str, hints: Vec<RuleHint>) -> ResolvedRule {
     ResolvedRule {
         rule_id: rule_id.to_string(),
         title: format!("{rule_id} parity fixture"),
@@ -28,7 +28,7 @@ fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {
         trigger: format!("Trigger for {rule_id}"),
         lint_mode: None,
         applicability: None,
-        deterministic_hints: if hints.is_empty() { None } else { Some(hints) },
+        rule_hints: if hints.is_empty() { None } else { Some(hints) },
         references: None,
         origin: Origin::Core,
         path_root: PathRoot::RulesRoot,
@@ -38,11 +38,16 @@ fn make_rule(rule_id: &str, hints: Vec<DeterministicHint>) -> ResolvedRule {
     }
 }
 
-fn hint(kind: HintKind, value: &str) -> DeterministicHint {
-    DeterministicHint {
+fn hint(kind: HintKind, value: &str) -> RuleHint {
+    hint_with_config(kind, value, None)
+}
+
+fn hint_with_config(kind: HintKind, value: &str, config: Option<serde_json::Value>) -> RuleHint {
+    RuleHint {
         kind,
         value: value.to_string(),
         description: None,
+        config,
     }
 }
 
@@ -172,7 +177,7 @@ mod core_001 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -357,7 +362,7 @@ mod core_002 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -522,7 +527,7 @@ mod core_003 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -725,7 +730,7 @@ mod core_004 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -879,7 +884,7 @@ mod core_005 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -1095,7 +1100,7 @@ mod core_006 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -1336,7 +1341,7 @@ mod core_007 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -1518,7 +1523,7 @@ mod core_008 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -1678,7 +1683,7 @@ mod core_009 {
         let runner: &dyn ToolRunner = &NoToolRunner;
         let outcome = evaluate(
             &rule,
-            rule.deterministic_hints.as_deref().unwrap_or_default(),
+            rule.rule_hints.as_deref().unwrap_or_default(),
             &model,
             project_dir,
             runner,
@@ -1705,5 +1710,722 @@ mod core_009 {
             declarative, imperative,
             "declarative CORE-009 must flag the same rule files as the inline namespace-owner reference",
         );
+    }
+}
+
+/// `CORE-025` — operational vocabulary with path-pattern exclusions (RFC-31 Phase 2).
+mod core_025 {
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::Path;
+    use std::sync::OnceLock;
+
+    use regex::Regex;
+    use specify_diagnostics::Diagnostic;
+    use specify_standards::lint::ScanProfile;
+    use specify_standards::lint::eval::evaluate;
+    use specify_standards::lint::index::build;
+    use specify_standards::rules::HintKind;
+
+    use super::{NoToolRunner, hint, make_rule};
+
+    fn forbidden_patterns() -> Vec<Regex> {
+        static PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
+        PATTERNS
+            .get_or_init(|| {
+                [
+                    r"\.specify/changes/",
+                    r"\bspecify validate\b",
+                    r"\bspecify merge\b",
+                    r"\bspecify change plan\b",
+                    r"\bspecify change draft\b",
+                    r"\b[Ii]nitiative\b",
+                ]
+                .into_iter()
+                .map(|p| Regex::new(p).expect("forbidden pattern"))
+                .collect()
+            })
+            .clone()
+    }
+
+    fn stage_project(project_dir: &Path) {
+        fs::create_dir_all(project_dir.join("docs/explanation")).expect("mkdir explanation");
+        fs::create_dir_all(project_dir.join("docs/fixtures/nested")).expect("mkdir fixtures");
+        fs::write(project_dir.join("docs/bad.md"), "Run specify validate on this slice.\n")
+            .expect("write bad");
+        fs::write(
+            project_dir.join("docs/explanation/decision-log.md"),
+            "Run specify validate here too (allowlisted path).\n",
+        )
+        .expect("write decision-log");
+        fs::write(
+            project_dir.join("docs/fixtures/nested/x.md"),
+            "Run specify validate under fixtures (segment allowlist).\n",
+        )
+        .expect("write fixtures");
+    }
+
+    fn imperative_flagged_lines(project_dir: &Path) -> BTreeSet<(String, u32)> {
+        let allowed_prefixes =
+            ["docs/explanation/decision-log.md", "docs/explanation/release-notes.md"];
+        let allowed_segments = ["/fixtures/", "/archive/"];
+        let patterns = forbidden_patterns();
+        let mut out = BTreeSet::new();
+        let rel = "docs/bad.md";
+        let path = project_dir.join(rel);
+        let content = fs::read_to_string(&path).expect("read");
+        for (line_idx, line) in content.lines().enumerate() {
+            if allowed_prefixes.iter().any(|p| rel.starts_with(p)) {
+                continue;
+            }
+            if allowed_segments.iter().any(|s| rel.contains(s)) {
+                continue;
+            }
+            if patterns.iter().any(|re| re.is_match(line)) {
+                out.insert((rel.to_string(), u32::try_from(line_idx + 1).unwrap_or(u32::MAX)));
+            }
+        }
+        out
+    }
+
+    fn declarative_flagged_lines(findings: &[Diagnostic]) -> BTreeSet<(String, u32)> {
+        findings
+            .iter()
+            .filter_map(|f| {
+                let loc = f.location.as_ref()?;
+                Some((loc.path.clone(), loc.line?))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn core_025_exclusion_parity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        stage_project(dir.path());
+
+        let imperative = imperative_flagged_lines(dir.path());
+        assert_eq!(imperative.len(), 1);
+
+        let model = build(dir.path(), ScanProfile::Consumer, &[], &[]).expect("index");
+        let mut hints = vec![
+            hint(HintKind::PathPattern, "docs/**/*.md"),
+            hint(HintKind::PathPattern, "!docs/explanation/decision-log.md"),
+            hint(HintKind::PathPattern, "!docs/explanation/release-notes.md"),
+            hint(HintKind::PathPattern, "!**/fixtures/**"),
+            hint(HintKind::PathPattern, "!**/archive/**"),
+        ];
+        for pattern in [
+            r"\.specify/changes/",
+            r"\bspecify validate\b",
+            r"\bspecify merge\b",
+            r"\bspecify change plan\b",
+            r"\bspecify change draft\b",
+            r"\b[Ii]nitiative\b",
+        ] {
+            hints.push(hint(HintKind::Regex, pattern));
+        }
+        let rule = make_rule("CORE-025", hints);
+        let outcome = evaluate(
+            &rule,
+            rule.rule_hints.as_deref().unwrap_or_default(),
+            &model,
+            dir.path(),
+            &NoToolRunner,
+            1,
+        )
+        .expect("declarative evaluate");
+
+        let declarative = declarative_flagged_lines(&outcome.findings);
+        assert_eq!(
+            declarative, imperative,
+            "declarative exclusions + regex must flag the same (file, line) set as imperative carve-outs",
+        );
+    }
+}
+
+/// `CORE-016` — design-history citation (`RFC-N` where `N < 100`) via `regex` config.
+mod core_016 {
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::Path;
+
+    use specify_diagnostics::Diagnostic;
+    use specify_standards::lint::ScanProfile;
+    use specify_standards::lint::eval::evaluate;
+    use specify_standards::lint::index::build;
+    use specify_standards::rules::HintKind;
+
+    use super::{NoToolRunner, hint_with_config, make_rule};
+
+    fn stage_project(project_dir: &Path) {
+        fs::create_dir_all(project_dir.join("docs")).expect("docs dir");
+        fs::write(
+            project_dir.join("docs/bad.md"),
+            "See RFC-5 for retired design-history citation.\n",
+        )
+        .expect("write bad");
+        fs::write(
+            project_dir.join("docs/good.md"),
+            "Use RFC 3339 timestamps and RFC 5322 email syntax.\n",
+        )
+        .expect("write good");
+    }
+
+    fn imperative_flagged_lines(project_dir: &Path) -> BTreeSet<(String, u32)> {
+        let mut out = BTreeSet::new();
+        for rel in ["docs/bad.md", "docs/good.md"] {
+            let path = project_dir.join(rel);
+            let content = fs::read_to_string(&path).expect("read");
+            for (line_idx, line) in content.lines().enumerate() {
+                if has_specify_history_citation(line) {
+                    out.insert((rel.to_string(), u32::try_from(line_idx + 1).unwrap_or(u32::MAX)));
+                }
+            }
+        }
+        out
+    }
+
+    fn has_specify_history_citation(text: &str) -> bool {
+        let lower = text.to_ascii_lowercase();
+        let retired_tree = ["rfc", "s/"].concat();
+        let retired_token = ["rfc", "-"].concat();
+        if lower.contains(&retired_tree) || contains_numbered_token(&lower, &retired_token) {
+            return true;
+        }
+
+        let mut search = text;
+        let retired_upper = ["R", "FC"].concat();
+        while let Some(idx) = search.find(&retired_upper) {
+            let rest = &search[idx + retired_upper.len()..];
+            if let Some(number) = parse_design_history_number(
+                rest.strip_prefix('-').or_else(|| rest.strip_prefix(' ')),
+            ) && number < 100
+            {
+                return true;
+            }
+            search = advance_one(rest);
+        }
+        false
+    }
+
+    fn contains_numbered_token(text: &str, token: &str) -> bool {
+        let mut search = text;
+        while let Some(idx) = search.find(token) {
+            let rest = &search[idx + token.len()..];
+            if parse_design_history_number(Some(rest)).is_some_and(|number| number < 100) {
+                return true;
+            }
+            search = advance_one(rest);
+        }
+        false
+    }
+
+    fn advance_one(text: &str) -> &str {
+        text.char_indices().nth(1).map_or("", |(idx, _)| &text[idx..])
+    }
+
+    fn parse_design_history_number(rest: Option<&str>) -> Option<u32> {
+        let rest = rest?;
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        if digits.is_empty() { None } else { digits.parse().ok() }
+    }
+
+    fn declarative_flagged_lines(findings: &[Diagnostic]) -> BTreeSet<(String, u32)> {
+        findings
+            .iter()
+            .filter_map(|f| {
+                let loc = f.location.as_ref()?;
+                Some((loc.path.clone(), loc.line?))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn core_016_regex_parity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        stage_project(dir.path());
+
+        let imperative = imperative_flagged_lines(dir.path());
+        assert_eq!(imperative.len(), 1, "fixture must flag exactly one line");
+
+        let model = build(dir.path(), ScanProfile::Framework, &[], &[]).expect("index");
+        let rule = make_rule(
+            "CORE-016",
+            vec![
+                hint_with_config(HintKind::PathPattern, "docs/**/*.md", None),
+                hint_with_config(
+                    HintKind::Regex,
+                    r"(?i)RFC[-\s]+(\d+)",
+                    Some(serde_json::json!({
+                        "capture-group": 1,
+                        "capture-op": "lt",
+                        "capture-value": 100
+                    })),
+                ),
+            ],
+        );
+        let runner = NoToolRunner;
+        let outcome = evaluate(
+            &rule,
+            rule.rule_hints.as_deref().unwrap_or_default(),
+            &model,
+            dir.path(),
+            &runner,
+            1,
+        )
+        .expect("declarative evaluate");
+
+        let declarative = declarative_flagged_lines(&outcome.findings);
+        assert_eq!(
+            declarative, imperative,
+            "declarative regex config must flag the same (file, line) set as the imperative reference",
+        );
+    }
+}
+
+/// `CORE-037` — envelope JSON in skill body via `fenced-block` facts (RFC-31 Phase 2 pilot).
+mod core_037 {
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::Path;
+    use std::sync::LazyLock;
+
+    use regex::{Regex, RegexBuilder};
+    use specify_diagnostics::Diagnostic;
+    use specify_standards::lint::ScanProfile;
+    use specify_standards::lint::eval::evaluate;
+    use specify_standards::lint::index::build;
+    use specify_standards::rules::HintKind;
+
+    use super::{NoToolRunner, hint, make_rule};
+
+    static ENVELOPE_FENCE_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^\s*(`{3,})(json|jsonc)\b").expect("envelope fence"));
+    static ENVELOPE_VERSION_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#""envelope[-_]version"\s*:"#).expect("envelope version"));
+    static ENVELOPE_OK_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#""ok"\s*:\s*(true|false)\b"#).expect("envelope ok"));
+    static ENVELOPE_DATA_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#""data"\s*:"#).expect("envelope data"));
+    static ENVELOPE_ERROR_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#""error"\s*:\s*\{"#).expect("envelope error"));
+
+    fn stage_project(project_dir: &Path) {
+        let skill = project_dir.join("plugins/spec/skills/init/SKILL.md");
+        fs::create_dir_all(skill.parent().expect("parent")).expect("mkdir");
+        fs::write(
+            &skill,
+            "---\nname: init\ndescription: Test skill for envelope parity.\n---\n\n```json\n{\"ok\": true, \"data\": {}, \"envelope_version\": \"1\"}\n```\n",
+        )
+        .expect("write skill");
+    }
+
+    fn is_envelope_body(body: &[String]) -> bool {
+        let text = body.join("\n");
+        if ENVELOPE_VERSION_RE.is_match(&text) {
+            return true;
+        }
+        let has_ok = ENVELOPE_OK_RE.is_match(&text);
+        let has_data = ENVELOPE_DATA_RE.is_match(&text);
+        let has_error = ENVELOPE_ERROR_RE.is_match(&text);
+        has_ok && (has_data || has_error)
+    }
+
+    fn imperative_flagged_lines(project_dir: &Path) -> BTreeSet<(String, u32)> {
+        let rel = "plugins/spec/skills/init/SKILL.md";
+        let path = project_dir.join(rel);
+        let content = fs::read_to_string(&path).expect("read");
+        let lines: Vec<&str> = content.split('\n').collect();
+        let mut out = BTreeSet::new();
+        let mut in_block = false;
+        let mut block_start = 0_usize;
+        let mut block_body: Vec<String> = Vec::new();
+        let mut open_fence: Option<String> = None;
+
+        for (i, line) in lines.iter().enumerate() {
+            if !in_block {
+                if let Some(caps) = ENVELOPE_FENCE_RE.captures(line) {
+                    in_block = true;
+                    open_fence = Some(caps[1].to_string());
+                    block_start = i + 1;
+                    block_body.clear();
+                }
+                continue;
+            }
+            let fence = open_fence.as_deref().unwrap_or("```");
+            let close_re =
+                RegexBuilder::new(&format!(r"^\s*{fence}\s*$")).build().expect("fence close");
+            if close_re.is_match(line) {
+                if is_envelope_body(&block_body) {
+                    out.insert((
+                        rel.to_string(),
+                        u32::try_from(block_start + 1).unwrap_or(u32::MAX),
+                    ));
+                }
+                in_block = false;
+                open_fence = None;
+                block_body.clear();
+                continue;
+            }
+            block_body.push((*line).to_string());
+        }
+        out
+    }
+
+    fn declarative_flagged_lines(findings: &[Diagnostic]) -> BTreeSet<(String, u32)> {
+        findings
+            .iter()
+            .filter_map(|f| {
+                let loc = f.location.as_ref()?;
+                Some((loc.path.clone(), loc.line?))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn core_037_envelope_parity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        stage_project(dir.path());
+
+        let imperative = imperative_flagged_lines(dir.path());
+        assert_eq!(imperative.len(), 1);
+
+        let model = build(dir.path(), ScanProfile::Framework, &[], &[]).expect("index");
+        let rule = make_rule(
+            "CORE-037",
+            vec![
+                hint(HintKind::PathPattern, "plugins/**/skills/**/SKILL.md"),
+                hint(HintKind::FencedBlock, "skill-envelope-json-in-body"),
+            ],
+        );
+        let outcome = evaluate(
+            &rule,
+            rule.rule_hints.as_deref().unwrap_or_default(),
+            &model,
+            dir.path(),
+            &NoToolRunner,
+            1,
+        )
+        .expect("declarative evaluate");
+
+        let declarative = declarative_flagged_lines(&outcome.findings);
+        assert_eq!(
+            declarative, imperative,
+            "fenced-block envelope predicate must flag the same (file, line) set as imperative",
+        );
+    }
+}
+
+/// `CORE-050` — retired `specify-contract` without `-validate` suffix via `regex` config.
+mod core_050 {
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::Path;
+
+    use ::regex::Regex;
+    use specify_diagnostics::Diagnostic;
+    use specify_standards::lint::ScanProfile;
+    use specify_standards::lint::eval::evaluate;
+    use specify_standards::lint::index::build;
+    use specify_standards::rules::HintKind;
+
+    use super::{NoToolRunner, hint_with_config, make_rule};
+
+    fn stage_project(project_dir: &Path) {
+        let skill = project_dir.join("plugins/spec/skills/init/SKILL.md");
+        fs::create_dir_all(skill.parent().expect("parent")).expect("mkdir");
+        fs::write(&skill, "Run specify-contract-validate here\nAlso specify-contract alone\n")
+            .expect("write skill");
+    }
+
+    fn imperative_flagged_lines(project_dir: &Path) -> BTreeSet<(String, u32)> {
+        let pattern = Regex::new(r"\bspecify-contract\b").expect("regex");
+        let rel = "plugins/spec/skills/init/SKILL.md";
+        let path = project_dir.join(rel);
+        let content = fs::read_to_string(&path).expect("read");
+        let mut out = BTreeSet::new();
+        for (line_idx, line) in content.lines().enumerate() {
+            if pattern.find_iter(line).any(|m| !line[m.end()..].starts_with("-validate")) {
+                out.insert((rel.to_string(), u32::try_from(line_idx + 1).unwrap_or(u32::MAX)));
+            }
+        }
+        out
+    }
+
+    fn declarative_flagged_lines(findings: &[Diagnostic]) -> BTreeSet<(String, u32)> {
+        findings
+            .iter()
+            .filter_map(|f| {
+                let loc = f.location.as_ref()?;
+                Some((loc.path.clone(), loc.line?))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn core_050_suffix_parity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        stage_project(dir.path());
+
+        let imperative = imperative_flagged_lines(dir.path());
+        assert_eq!(imperative.len(), 1);
+
+        let model = build(dir.path(), ScanProfile::Framework, &[], &[]).expect("index");
+        let rule = make_rule(
+            "CORE-050",
+            vec![
+                hint_with_config(HintKind::PathPattern, "plugins/**/skills/**/SKILL.md", None),
+                hint_with_config(
+                    HintKind::Regex,
+                    r"\bspecify-contract\b",
+                    Some(serde_json::json!({ "suffix-must-not-start-with": "-validate" })),
+                ),
+            ],
+        );
+        let runner = NoToolRunner;
+        let outcome = evaluate(
+            &rule,
+            rule.rule_hints.as_deref().unwrap_or_default(),
+            &model,
+            dir.path(),
+            &runner,
+            1,
+        )
+        .expect("declarative evaluate");
+
+        let declarative = declarative_flagged_lines(&outcome.findings);
+        assert_eq!(
+            declarative, imperative,
+            "declarative suffix guard must flag the same (file, line) set as the imperative reference",
+        );
+    }
+}
+
+/// `CORE-014` — brief frontmatter forbidden via `path-pattern` + line-1 `regex`.
+mod core_014 {
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::Path;
+
+    use specify_diagnostics::Diagnostic;
+    use specify_standards::framework::check::brief::{is_parent_brief, is_phase_sub_brief};
+    use specify_standards::lint::ScanProfile;
+    use specify_standards::lint::eval::evaluate;
+    use specify_standards::lint::index::build;
+    use specify_standards::rules::HintKind;
+
+    use super::{NoToolRunner, hint, make_rule};
+
+    fn stage_project(project_dir: &Path) {
+        fs::create_dir_all(project_dir.join("adapters/targets/demo/briefs")).expect("briefs");
+        fs::write(
+            project_dir.join("adapters/targets/demo/briefs/extract.md"),
+            "---\ndescription: drift\n---\n\n# Extract\n",
+        )
+        .expect("write brief");
+        fs::write(
+            project_dir.join("adapters/targets/demo/briefs/shape.md"),
+            "# Shape\n\nNo frontmatter here.\n",
+        )
+        .expect("write shape");
+    }
+
+    fn imperative_flagged(project_dir: &Path) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        let rel = "adapters/targets/demo/briefs/extract.md";
+        if !is_parent_brief(rel) && !is_phase_sub_brief(rel) {
+            return out;
+        }
+        let content = fs::read_to_string(project_dir.join(rel)).expect("read");
+        if content.starts_with("---\n") || content.starts_with("---\r\n") {
+            out.insert(rel.to_string());
+        }
+        out
+    }
+
+    fn declarative_flagged(findings: &[Diagnostic]) -> BTreeSet<String> {
+        findings.iter().filter_map(|f| f.location.as_ref().map(|l| l.path.clone())).collect()
+    }
+
+    #[test]
+    fn core_014_brief_frontmatter_parity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        stage_project(dir.path());
+        let imperative = imperative_flagged(dir.path());
+        assert_eq!(imperative.len(), 1);
+
+        let model = build(dir.path(), ScanProfile::Framework, &[], &[]).expect("index");
+        let rule = make_rule(
+            "CORE-014",
+            vec![
+                hint(HintKind::PathPattern, "adapters/**/briefs/extract.md"),
+                hint(HintKind::PathPattern, "adapters/**/briefs/shape.md"),
+                hint(HintKind::Regex, "^---"),
+            ],
+        );
+        let outcome = evaluate(
+            &rule,
+            rule.rule_hints.as_deref().unwrap_or_default(),
+            &model,
+            dir.path(),
+            &NoToolRunner,
+            1,
+        )
+        .expect("eval");
+        assert_eq!(declarative_flagged(&outcome.findings), imperative);
+    }
+}
+
+/// `CORE-023` — slash-skill positional via `regex` config + logical-line join.
+mod core_023 {
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::Path;
+
+    use specify_diagnostics::Diagnostic;
+    use specify_standards::lint::ScanProfile;
+    use specify_standards::lint::eval::evaluate;
+    use specify_standards::lint::eval::regex::logical_lines::{
+        logical_lines_with_starts, violates_slash_skill_positional,
+    };
+    use specify_standards::lint::index::build;
+    use specify_standards::rules::HintKind;
+
+    use super::{NoToolRunner, hint_with_config, make_rule};
+
+    fn stage_project(project_dir: &Path) {
+        fs::create_dir_all(project_dir.join("docs")).expect("docs");
+        fs::write(project_dir.join("docs/bad.md"), "/spec:build \\\n  --retry\n")
+            .expect("write bad");
+    }
+
+    fn imperative_flagged_lines(project_dir: &Path) -> BTreeSet<(String, u32)> {
+        let rel = "docs/bad.md";
+        let content = fs::read_to_string(project_dir.join(rel)).expect("read");
+        let mut out = BTreeSet::new();
+        for (start, logical) in logical_lines_with_starts(&content) {
+            if violates_slash_skill_positional(&logical) {
+                out.insert((rel.to_string(), u32::try_from(start).unwrap_or(u32::MAX)));
+            }
+        }
+        out
+    }
+
+    fn declarative_flagged_lines(findings: &[Diagnostic]) -> BTreeSet<(String, u32)> {
+        findings
+            .iter()
+            .filter_map(|f| {
+                let loc = f.location.as_ref()?;
+                Some((loc.path.clone(), loc.line?))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn core_023_slash_skill_parity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        stage_project(dir.path());
+        let imperative = imperative_flagged_lines(dir.path());
+        assert_eq!(imperative.len(), 1);
+
+        let model = build(dir.path(), ScanProfile::Consumer, &[], &[]).expect("index");
+        let rule = make_rule(
+            "CORE-023",
+            vec![
+                hint_with_config(HintKind::PathPattern, "docs/**/*.md", None),
+                hint_with_config(
+                    HintKind::Regex,
+                    "slash-skill-positional",
+                    Some(serde_json::json!({
+                        "slash-skill-positional": true,
+                        "join-backslash-continuations": true
+                    })),
+                ),
+            ],
+        );
+        let outcome = evaluate(
+            &rule,
+            rule.rule_hints.as_deref().unwrap_or_default(),
+            &model,
+            dir.path(),
+            &NoToolRunner,
+            1,
+        )
+        .expect("eval");
+        assert_eq!(declarative_flagged_lines(&outcome.findings), imperative);
+    }
+}
+
+/// `CORE-038` — `## Input` restatement via `regex` on skill paths.
+mod core_038 {
+    use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::Path;
+
+    use specify_diagnostics::Diagnostic;
+    use specify_standards::lint::ScanProfile;
+    use specify_standards::lint::eval::evaluate;
+    use specify_standards::lint::index::build;
+    use specify_standards::rules::HintKind;
+
+    use super::{NoToolRunner, hint, make_rule};
+
+    fn stage_project(project_dir: &Path) {
+        let skill = project_dir.join("plugins/spec/skills/init/SKILL.md");
+        fs::create_dir_all(skill.parent().expect("parent")).expect("mkdir");
+        fs::write(
+            &skill,
+            "---\nname: init\ndescription: Test skill for input restatement parity.\n---\n\n## Input\n\nRestated args.\n",
+        )
+        .expect("write skill");
+    }
+
+    fn imperative_flagged_lines(project_dir: &Path) -> BTreeSet<(String, u32)> {
+        let rel = "plugins/spec/skills/init/SKILL.md";
+        let content = fs::read_to_string(project_dir.join(rel)).expect("read");
+        let mut out = BTreeSet::new();
+        for (idx, line) in content.lines().enumerate() {
+            if line.trim() == "## Input" {
+                out.insert((rel.to_string(), u32::try_from(idx + 1).unwrap_or(u32::MAX)));
+            }
+        }
+        out
+    }
+
+    fn declarative_flagged_lines(findings: &[Diagnostic]) -> BTreeSet<(String, u32)> {
+        findings
+            .iter()
+            .filter_map(|f| {
+                let loc = f.location.as_ref()?;
+                Some((loc.path.clone(), loc.line?))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn core_038_input_restatement_parity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        stage_project(dir.path());
+        let imperative = imperative_flagged_lines(dir.path());
+        assert_eq!(imperative.len(), 1);
+
+        let model = build(dir.path(), ScanProfile::Framework, &[], &[]).expect("index");
+        let rule = make_rule(
+            "CORE-038",
+            vec![
+                hint(HintKind::PathPattern, "plugins/**/skills/**/SKILL.md"),
+                hint(HintKind::Regex, r"(?m)^## Input\s*$"),
+            ],
+        );
+        let outcome = evaluate(
+            &rule,
+            rule.rule_hints.as_deref().unwrap_or_default(),
+            &model,
+            dir.path(),
+            &NoToolRunner,
+            1,
+        )
+        .expect("eval");
+        assert_eq!(declarative_flagged_lines(&outcome.findings), imperative);
     }
 }

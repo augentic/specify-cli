@@ -1,15 +1,8 @@
 use specify_diagnostics::Severity;
 
 use super::{core_id_for, severity_for};
-use crate::framework::check::skill_frontmatter::{
-    RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_MISSING_FRONTMATTER,
-    RULE_NAME_DIRECTORY_MISMATCH, RULE_UNKNOWN_TOOL,
-};
 use crate::framework::check::{
     RULE_DUPLICATE_RULE_ID, RULE_MISSING_MANIFEST, RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-    RULE_RECORDED_TRACE_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS, RULE_STALE_RECORDED_TRACE,
-    SCENARIO_RULE_ARTIFACT_PATH_UNSAFE, SCENARIO_RULE_BODY_ID_MISMATCH, SCENARIO_RULE_DUPLICATE_ID,
-    SCENARIO_RULE_SCHEMA_VIOLATION, SKILL_RULE_SCHEMA_VIOLATION,
 };
 
 /// `rules.schema-violation` is the one rule the table elevates to
@@ -64,32 +57,10 @@ fn unclassified_defaults_important() {
     assert_eq!(severity_for("totally.made.up"), Severity::Important);
 }
 
-/// Every `RULE_*` constant re-exported from
-/// [`crate::framework::check`] resolves to a known severity and a
-/// closed `CORE-NNN` id.
+/// The imperative bridge maps only CORE-009 onto the codex table.
 #[test]
-fn exported_rules_map_severity_core_id() {
-    let important = [
-        RULE_MISSING_MANIFEST,
-        RULE_DUPLICATE_RULE_ID,
-        RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-        RULE_ARGUMENT_HINT_GRAMMAR,
-        RULE_DESCRIPTION_GRAMMAR,
-        RULE_MISSING_FRONTMATTER,
-        RULE_NAME_DIRECTORY_MISMATCH,
-        SKILL_RULE_SCHEMA_VIOLATION,
-        RULE_UNKNOWN_TOOL,
-        SCENARIO_RULE_ARTIFACT_PATH_UNSAFE,
-        SCENARIO_RULE_BODY_ID_MISMATCH,
-        SCENARIO_RULE_DUPLICATE_ID,
-        SCENARIO_RULE_SCHEMA_VIOLATION,
-        RULE_RECORDED_TRACE_VIOLATION,
-        RULE_STAGES_NOT_CONTIGUOUS,
-        RULE_STALE_RECORDED_TRACE,
-    ];
-
-    for rule_id in important {
-        assert_eq!(severity_for(rule_id), Severity::Important, "{rule_id} severity");
-        assert!(core_id_for(rule_id).is_some(), "{rule_id} must map to a CORE id");
-    }
+fn imperative_bridge_maps_core_009_only() {
+    assert_eq!(core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION), Some("CORE-009"));
+    assert!(core_id_for(RULE_MISSING_MANIFEST).is_none());
+    assert!(core_id_for(RULE_DUPLICATE_RULE_ID).is_none());
 }

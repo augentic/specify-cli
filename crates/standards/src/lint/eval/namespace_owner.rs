@@ -46,7 +46,7 @@ use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
+use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
 const SOURCE_RULE_NAMESPACE_MATCHES_OWNER: &str = "rule-namespace-matches-owner";
 
@@ -62,7 +62,7 @@ const TARGET_OWNERS: &[(&str, &[&str])] =
 const ABSENT_ID_TOKEN: &str = "(absent)";
 
 pub(crate) fn evaluate(
-    rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
+    rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();

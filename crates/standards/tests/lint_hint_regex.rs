@@ -32,7 +32,7 @@ fn matches_text_skips_binaries() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -68,7 +68,7 @@ fn regex_compile_failure_is_hard_error() {
     let runner: &dyn ToolRunner = &NoToolRunner;
     let err = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,

@@ -31,7 +31,7 @@ fn flags_invalid_frontmatter() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -62,7 +62,7 @@ fn schema_hint_rejects_http_reference() {
     let runner: &dyn ToolRunner = &NoToolRunner;
     let err = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,

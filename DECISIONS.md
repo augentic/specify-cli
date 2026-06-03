@@ -227,14 +227,7 @@ discriminators + new `WorkspaceModel` indexer facts (engine work), or (b)
 weakening fused multi-finding predicates (e.g. `ScenariosCheck` emits 7 ids,
 `RulesCheck` emits 3), procedural/structural checks (per-section line counts,
 fence-context, def/use dataflow), dynamic registries, or the `git`-subprocess
-trace-staleness WARN. Adding those discriminators/facts is a future RFC, not a
-flag-day deletion: do **not** retire imperative predicates or remove
-`AuthoringProducer` by weakening checks. Roughly nine ids are cleanly
-migratable author-side today (`CORE-016`, `025`, `038`, `050`, `051` via
-`path-pattern`+`regex`; `035`, `036`, `044`, `047` via `schema`); the rest are
-gated on the engine work above. The headline "remove `AuthoringProducer` /
-~2× `make lint`" payoff only lands when the *last* predicate is retired, so
-partial migration buys little — hence the steady-state posture.
+trace-staleness WARN. **[RFC-31](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md)** (Accepted) is the coordinated program to lift that constraint (hint `config`, extended `regex` / `path-pattern`, indexer facts, de-fusing). Until those phases complete: do **not** retire imperative predicates or remove `AuthoringProducer` by weakening checks. Phase 1 spike work is tracked in [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md) and [DIAGNOSTICS.md §"A16"](./DIAGNOSTICS.md). The headline "remove `AuthoringProducer` / ~2× framework lint" payoff only lands when the *last migratable* predicate is retired.
 
 ## Tool architecture
 

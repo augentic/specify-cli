@@ -15,10 +15,11 @@
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
-//! When a rule carries multiple `path-pattern` hints they UNION — a
-//! file is a candidate when it matches any of the supplied patterns —
-//! so authors can list independent globs without writing a single
-//! brace-expansion. When a rule carries zero `path-pattern` hints the
+//! When a rule carries multiple include `path-pattern` hints they UNION.
+//! Hints whose `value` starts with `!` are exclusions applied after the
+//! include union (RFC-31 Phase 2). When a rule carries only exclusions,
+//! the starting set is every file in the model. When a rule carries zero
+//! `path-pattern` hints the
 //! candidate set defaults to every [`crate::lint::File`] in
 //! [`crate::lint::WorkspaceModel`]; per-kind sub-evaluators apply
 //! their own [`crate::lint::FileKind`] filter (e.g. regex skips
@@ -55,10 +56,12 @@
 //! truncation loop bails on them rather than synthesising a bogus
 //! payload.
 
+pub mod authoring_predicate;
 pub mod cardinality;
 pub mod constant_eq;
 pub mod content_digest_eq;
 mod error;
+pub mod fenced_block;
 mod finding;
 pub mod namespace_owner;
 pub mod path_pattern;
@@ -81,7 +84,7 @@ pub use tool::{ToolOutput, ToolRunError, ToolRunner};
 
 use crate::lint::WorkspaceModel;
 use crate::lint::diagnostics::map_hint_error;
-use crate::rules::{DeterministicHint, HintKind, LintMode, ResolvedRule};
+use crate::rules::{HintKind, LintMode, ResolvedRule, RuleHint};
 
 /// One reserved-kind hint occurrence captured per call to [`evaluate`].
 ///
@@ -92,7 +95,7 @@ use crate::rules::{DeterministicHint, HintKind, LintMode, ResolvedRule};
 pub struct ReservedSkipped {
     /// Rule that carried the reserved hint.
     pub rule_id: String,
-    /// Index of the hint inside the rule's `deterministic_hints`
+    /// Index of the hint inside the rule's `rule_hints`
     /// list (0-based).
     pub hint_index: usize,
     /// The reserved kind that was skipped.
@@ -130,7 +133,7 @@ pub struct HintEvalOutcome {
 ///
 /// Any [`HintError`] variant — see the per-variant docs.
 pub fn evaluate(
-    rule: &ResolvedRule, hints: &[DeterministicHint], model: &WorkspaceModel, project_dir: &Path,
+    rule: &ResolvedRule, hints: &[RuleHint], model: &WorkspaceModel, project_dir: &Path,
     tool_runner: &dyn ToolRunner, start_id_counter: u64,
 ) -> Result<HintEvalOutcome, HintError> {
     let mut schema_cache = schema::SchemaCache::default();
@@ -151,8 +154,12 @@ pub fn evaluate(
 /// run-scoped cache; the standalone [`evaluate`] entry point passes a
 /// fresh per-call cache (behaviour is identical either way — the cache
 /// only elides recompilation).
+#[expect(
+    clippy::too_many_lines,
+    reason = "hint-kind dispatch arms grow with each RFC-31 eval extension; splitting would fragment the fixed evaluation order"
+)]
 fn evaluate_with_cache(
-    rule: &ResolvedRule, hints: &[DeterministicHint], model: &WorkspaceModel, project_dir: &Path,
+    rule: &ResolvedRule, hints: &[RuleHint], model: &WorkspaceModel, project_dir: &Path,
     tool_runner: &dyn ToolRunner, start_id_counter: u64, schema_cache: &mut schema::SchemaCache,
 ) -> Result<HintEvalOutcome, HintError> {
     let mut findings: Vec<Diagnostic> = Vec::new();
@@ -161,18 +168,20 @@ fn evaluate_with_cache(
     let reserved_skipped: Vec<ReservedSkipped> = Vec::new();
     let mut next_id = start_id_counter;
 
-    let mut path_pattern_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut schema_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut reference_resolves_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut unique_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut set_coverage_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut cardinality_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut constant_eq_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut set_eq_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut content_digest_eq_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut namespace_owner_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut regex_hints: Vec<&DeterministicHint> = Vec::new();
-    let mut tool_hints: Vec<&DeterministicHint> = Vec::new();
+    let mut path_pattern_hints: Vec<&RuleHint> = Vec::new();
+    let mut schema_hints: Vec<&RuleHint> = Vec::new();
+    let mut reference_resolves_hints: Vec<&RuleHint> = Vec::new();
+    let mut unique_hints: Vec<&RuleHint> = Vec::new();
+    let mut set_coverage_hints: Vec<&RuleHint> = Vec::new();
+    let mut cardinality_hints: Vec<&RuleHint> = Vec::new();
+    let mut constant_eq_hints: Vec<&RuleHint> = Vec::new();
+    let mut set_eq_hints: Vec<&RuleHint> = Vec::new();
+    let mut content_digest_eq_hints: Vec<&RuleHint> = Vec::new();
+    let mut namespace_owner_hints: Vec<&RuleHint> = Vec::new();
+    let mut fenced_block_hints: Vec<&RuleHint> = Vec::new();
+    let mut regex_hints: Vec<&RuleHint> = Vec::new();
+    let mut tool_hints: Vec<&RuleHint> = Vec::new();
+    let mut authoring_predicate_hints: Vec<&RuleHint> = Vec::new();
 
     for hint in hints {
         match hint.kind {
@@ -186,8 +195,10 @@ fn evaluate_with_cache(
             HintKind::SetEq => set_eq_hints.push(hint),
             HintKind::ContentDigestEq => content_digest_eq_hints.push(hint),
             HintKind::NamespaceOwner => namespace_owner_hints.push(hint),
+            HintKind::FencedBlock => fenced_block_hints.push(hint),
             HintKind::Regex => regex_hints.push(hint),
             HintKind::Tool => tool_hints.push(hint),
+            HintKind::AuthoringPredicate => authoring_predicate_hints.push(hint),
         }
     }
 
@@ -237,6 +248,10 @@ fn evaluate_with_cache(
         let mut new = namespace_owner::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
+    for hint in fenced_block_hints {
+        let mut new = fenced_block::evaluate(rule, hint, &candidates, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
     for hint in regex_hints {
         let mut new = regex::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
         findings.append(&mut new);
@@ -244,6 +259,17 @@ fn evaluate_with_cache(
     for hint in tool_hints {
         let mut new =
             tool::evaluate(rule, hint, &candidates, project_dir, tool_runner, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in authoring_predicate_hints {
+        let mut new = authoring_predicate::evaluate(
+            rule,
+            hint,
+            &candidates,
+            model,
+            project_dir,
+            &mut next_id,
+        )?;
         findings.append(&mut new);
     }
 
@@ -259,7 +285,7 @@ fn evaluate_with_cache(
 ///
 /// Shared by both lint surfaces (`specify lint run` and `specify lint framework`)
 /// so the per-rule gating stays identical: rules in `lint-mode:
-/// model-assisted` and rules with no (or empty) `deterministic_hints`
+/// model-assisted` and rules with no (or empty) `rule_hints`
 /// are skipped; `start_id` is threaded forward so ids stay monotonic.
 ///
 /// `rule_filter` is the operator's allow-list: EMPTY means no filtering
@@ -297,7 +323,7 @@ pub fn evaluate_rules(
             next_id += 1;
             continue;
         }
-        let Some(hints) = rule.deterministic_hints.as_deref() else {
+        let Some(hints) = rule.rule_hints.as_deref() else {
             continue;
         };
         if hints.is_empty() {
@@ -322,17 +348,32 @@ pub fn evaluate_rules(
 }
 
 fn build_candidate_set(
-    rule: &ResolvedRule, path_pattern_hints: &[&DeterministicHint], model: &WorkspaceModel,
+    rule: &ResolvedRule, path_pattern_hints: &[&RuleHint], model: &WorkspaceModel,
 ) -> Result<Vec<PathBuf>, HintError> {
     if path_pattern_hints.is_empty() {
         let mut paths: Vec<PathBuf> = model.files.iter().map(|f| PathBuf::from(&f.path)).collect();
         paths.sort();
         return Ok(paths);
     }
+
+    let (excludes, includes): (Vec<&RuleHint>, Vec<&RuleHint>) =
+        path_pattern_hints.iter().copied().partition(|hint| path_pattern::is_exclusion(hint));
+
     let mut set: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
-    for hint in path_pattern_hints {
+    if includes.is_empty() {
+        for file in &model.files {
+            set.insert(PathBuf::from(&file.path));
+        }
+    } else {
+        for hint in &includes {
+            for path in path_pattern::evaluate(rule, hint, model)? {
+                set.insert(path);
+            }
+        }
+    }
+    for hint in &excludes {
         for path in path_pattern::evaluate(rule, hint, model)? {
-            set.insert(path);
+            set.remove(&path);
         }
     }
     Ok(set.into_iter().collect())

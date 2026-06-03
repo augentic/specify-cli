@@ -37,8 +37,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 mod facts;
 
 pub use facts::{
-    AdapterManifest, AgentTeam, Brief, File, Frontmatter, IgnoreDirective, MarkdownLink,
-    MarkdownSection, MarketplaceEntry, RuleIndexEntry, Skill, Symlink, TextMatch,
+    AdapterManifest, AgentTeam, Brief, FencedBlock, File, Frontmatter, IgnoreDirective,
+    MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, Skill, Symlink, TextMatch,
 };
 
 /// Type-level pin of the `WorkspaceModel` envelope version.
@@ -173,6 +173,9 @@ pub struct WorkspaceModel {
     /// shape.
     #[serde(default)]
     pub ignore_directives: Vec<IgnoreDirective>,
+    /// `fenced_block` facts from the fence-aware markdown pass (RFC-31 Phase 2).
+    #[serde(default)]
+    pub fenced_blocks: Vec<FencedBlock>,
     /// `brief` facts from `adapters/**/briefs/*.md` under the
     /// framework scan profile. Optional in v1 envelopes; producers
     /// omit the field when empty so the consumer profile's wire

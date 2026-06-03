@@ -636,7 +636,7 @@ fn codex_rule_accepts_reserved_kinds() {
             "title": "Reserved-kind smoke fixture",
             "severity": "important",
             "trigger": "Reserved hint kind smoke fixture.",
-            "deterministic_hints": [{
+            "rule_hints": [{
                 "kind": kind,
                 "value": "placeholder"
             }]

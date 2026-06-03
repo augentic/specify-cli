@@ -268,7 +268,7 @@ mod tests {
                 artifacts: None,
                 paths: None,
             }),
-            deterministic_hints: None,
+            rule_hints: None,
             references: None,
             origin: Origin::Shared,
             path_root: PathRoot::RulesRoot,

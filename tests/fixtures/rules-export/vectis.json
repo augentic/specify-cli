@@ -223,7 +223,10 @@
     {
       "body": "\n## Rule\n\nKeep operational parameters discoverable and reviewable. Timeouts, URLs, retry counts, buffer sizes, page sizes, polling intervals, and similar values should be named constants or configuration rather than unexplained literals in behavior code.\n\n## Look For\n\n- Numeric literals in function calls that represent tunable parameters, such as timeout durations, retry counts, page sizes, or polling intervals.\n- URL strings embedded directly in handler code rather than sourced from configuration.\n- Magic numbers that require domain knowledge to understand, such as `42`, `1000`, or `86400`.\n- The same literal value repeated in multiple locations where a shared constant should be used.\n\n## Spec Guidance\n\nWhen the spec does not define operational parameters such as timeouts, page sizes, retry limits, or polling intervals, propose adding them as explicit design decisions so they are reviewed and documented.\n",
       "deprecated": null,
-      "deterministic-hints": [
+      "origin": "shared",
+      "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
+      "path-root": "rules-root",
+      "rule-hints": [
         {
           "description": "Restrict the URL-literal scan to Rust source files.",
           "kind": "path-pattern",
@@ -235,9 +238,6 @@
           "value": "\\bhttps?://\\S+"
         }
       ],
-      "origin": "shared",
-      "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
-      "path-root": "rules-root",
       "rule-id": "UNI-014",
       "severity": "important",
       "title": "Hardcoded Configuration Values",

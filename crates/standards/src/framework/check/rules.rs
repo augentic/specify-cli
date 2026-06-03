@@ -48,11 +48,14 @@ pub struct RulesCheck;
 
 impl Check for RulesCheck {
     fn run(&self, ctx: &Context) -> Vec<Diagnostic> {
-        run_rules_check(ctx)
+        run_rules_namespace_check(ctx)
     }
 }
 
-pub fn run_rules_check(ctx: &Context) -> Vec<Diagnostic> {
+/// Rule schema shape, `## Rule` heading, and duplicate-id detection.
+/// Invoked by declarative `CORE-026` / `CORE-027` via
+/// `kind: authoring-predicate`, not the framework `AuthoringProducer`.
+pub fn run_rules_schema_check(ctx: &Context) -> Vec<Diagnostic> {
     let paths = match discover_rule_files(ctx) {
         Ok(paths) => paths,
         Err(error) => {
@@ -64,7 +67,6 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Diagnostic> {
         }
     };
 
-    let namespaces = namespace_owners(ctx);
     let mut findings = Vec::new();
     let mut ids_by_value: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
@@ -127,7 +129,53 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Diagnostic> {
         };
 
         let seen = ids_by_value.entry(id.to_string()).or_default();
-        seen.push(rel.clone());
+        seen.push(rel);
+    }
+
+    for (id, paths) in ids_by_value {
+        if paths.len() > 1 {
+            findings.push(framework_finding(
+                RULE_DUPLICATE_RULE_ID,
+                format!("Rule duplicate id '{id}' across files: {}", paths.join(", ")),
+                None,
+            ));
+        }
+    }
+
+    findings
+}
+
+/// FRAME reservation, dynamic source owners, and namespace placement.
+/// Retained as the sole `AuthoringProducer` imperative bridge (CORE-009).
+pub fn run_rules_namespace_check(ctx: &Context) -> Vec<Diagnostic> {
+    let paths = match discover_rule_files(ctx) {
+        Ok(paths) => paths,
+        Err(error) => {
+            return vec![framework_finding(
+                RULE_NAMESPACE_OWNERSHIP_VIOLATION,
+                format!("Rule discovery failed: {error}"),
+                None,
+            )];
+        }
+    };
+
+    let namespaces = namespace_owners(ctx);
+    let mut findings = Vec::new();
+
+    for path in paths {
+        let rel = relative_display(ctx.framework_root(), &path);
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(_) => continue,
+        };
+
+        let Some(frontmatter) = skill_frontmatter(&content) else {
+            continue;
+        };
+
+        let Some(id) = frontmatter.get("id").and_then(|value| value.as_str()) else {
+            continue;
+        };
 
         let Some(owner) = namespace_owner_for_path(ctx, &path) else {
             continue;
@@ -172,16 +220,14 @@ pub fn run_rules_check(ctx: &Context) -> Vec<Diagnostic> {
         }
     }
 
-    for (id, paths) in ids_by_value {
-        if paths.len() > 1 {
-            findings.push(framework_finding(
-                RULE_DUPLICATE_RULE_ID,
-                format!("Rule duplicate id '{id}' across files: {}", paths.join(", ")),
-                None,
-            ));
-        }
-    }
+    findings
+}
 
+/// Full fused rules pass (schema + namespace). Used by integration tests
+/// and `kind: authoring-predicate` for `rules.*` ids.
+pub fn run_rules_check(ctx: &Context) -> Vec<Diagnostic> {
+    let mut findings = run_rules_schema_check(ctx);
+    findings.extend(run_rules_namespace_check(ctx));
     findings
 }
 

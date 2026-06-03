@@ -16,9 +16,15 @@
 //! single flat pass with no parser dependency.
 
 use std::borrow::Cow;
+use std::sync::LazyLock;
+
+use regex::Regex;
 
 use super::files::DiscoveredFile;
-use crate::lint::{MarkdownLink, MarkdownSection};
+use crate::lint::{FencedBlock, MarkdownLink, MarkdownSection};
+
+static FENCE_OPEN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s*(`{3,}|~{3,})(\S*)").expect("fence open regex"));
 
 /// Extract ATX-style section facts from a markdown file. Non-markdown
 /// files return an empty vector.
@@ -290,6 +296,51 @@ fn find_unescaped(bytes: &[u8], start: usize, needle: u8) -> Option<usize> {
         i += 1;
     }
     None
+}
+
+/// Extract closed fenced-code blocks from a markdown file.
+#[must_use]
+pub fn extract_fenced_blocks(file: &DiscoveredFile) -> Vec<FencedBlock> {
+    if file.language.as_deref() != Some("markdown") {
+        return Vec::new();
+    }
+    let text = file.text();
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut out = Vec::new();
+    let mut in_block = false;
+    let mut open_marker = String::new();
+    let mut lang = String::new();
+    let mut body_start_line = 0_u32;
+    let mut body_lines: Vec<String> = Vec::new();
+
+    for (idx, line) in lines.iter().enumerate() {
+        let line_no = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+        if !in_block {
+            if let Some(caps) = FENCE_OPEN_RE.captures(line) {
+                in_block = true;
+                open_marker = caps.get(1).map_or("```", |m| m.as_str()).to_string();
+                lang = caps.get(2).map_or("", |m| m.as_str()).to_string();
+                body_start_line = line_no.saturating_add(1);
+                body_lines.clear();
+            }
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(&open_marker) && trimmed.trim_end() == open_marker {
+            out.push(FencedBlock {
+                path: file.relative.clone(),
+                line_start: body_start_line,
+                line_end: line_no,
+                lang: lang.clone(),
+                body: body_lines.join("\n"),
+            });
+            in_block = false;
+            body_lines.clear();
+            continue;
+        }
+        body_lines.push((*line).to_string());
+    }
+    out
 }
 
 #[cfg(test)]

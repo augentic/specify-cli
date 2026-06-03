@@ -49,7 +49,7 @@ use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
+use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
 const SOURCE_AGENT_TEAMS_MATCH_CANONICAL: &str = "agent-teams-match-canonical";
 
@@ -65,7 +65,7 @@ const CANONICAL_REL: &str = "docs/reference/review-team-protocol.md";
 const ABSENT_DIGEST_TOKEN: &str = "(unavailable)";
 
 pub(crate) fn evaluate(
-    rule: &ResolvedRule, hint: &DeterministicHint, _candidates: &[PathBuf], model: &WorkspaceModel,
+    rule: &ResolvedRule, hint: &RuleHint, _candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();

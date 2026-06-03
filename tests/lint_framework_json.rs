@@ -178,6 +178,48 @@ fn write_scaffold(root: &Path) {
         .expect("mkdir docs/reference");
     fs::write(&canonical, "# Review Team Protocol\n\nSynthetic stub for tests.\n")
         .expect("review-team-protocol.md");
+
+    write_core_adapter_schema_rule(root);
+}
+
+/// Declarative `CORE-001` so adapter manifest schema violations surface
+/// without relying on rule-file parse failures (which abort codex resolve).
+fn write_core_adapter_schema_rule(root: &Path) {
+    fs::create_dir_all(root.join("adapters/shared/rules/core")).expect("core rules dir");
+    let schema_src =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas").join("adapter.schema.json");
+    let schema_dst = root.join(".cursor/schemas/adapter.schema.json");
+    fs::create_dir_all(schema_dst.parent().expect("adapter schema parent"))
+        .expect("mkdir .cursor/schemas");
+    fs::copy(&schema_src, &schema_dst).expect("adapter.schema.json");
+    write_codex_rule(
+        root,
+        "adapters/shared/rules/core/CORE-001-adapter-schema.md",
+        r"---
+id: CORE-001
+title: Adapter Manifest Schema
+severity: critical
+trigger: An adapter manifest fails adapter.schema.json validation.
+rule_hints:
+  - kind: path-pattern
+    value: adapters/**/adapter.yaml
+  - kind: schema
+    value: ./.cursor/schemas/adapter.schema.json
+---
+
+## Rule
+
+Synthetic CORE-001 for golden tests.
+
+## Look For
+
+Invalid manifests.
+
+## Fix
+
+Fix manifest.
+",
+    );
 }
 
 /// Write a minimal source-adapter manifest at
@@ -403,31 +445,9 @@ fn violations_tree_emits_expected_envelope() {
         "adapters/shared/rules/universal/uni-999.md",
         &valid_rule_body("UNI-999"),
     );
-    write_codex_rule(
-        temp.path(),
-        "adapters/shared/rules/universal/uni-100-first.md",
-        &valid_rule_body("UNI-100"),
-    );
-    write_codex_rule(
-        temp.path(),
-        "adapters/shared/rules/universal/uni-100-second.md",
-        &valid_rule_body("UNI-100"),
-    );
-    write_codex_rule(
-        temp.path(),
-        "adapters/shared/rules/universal/bad-frontmatter.md",
-        r"---
-id: UNI-001
-title: Missing required fields
----
-
-## Rule
-
-Body without trigger and severity.
-",
-    );
-
     write_target_adapter_manifest(temp.path(), "omnia");
+    let bad_manifest = temp.path().join("adapters/targets/omnia/adapter.yaml");
+    fs::write(&bad_manifest, "name: omnia\nversion: 1\naxis: target\n").expect("bad manifest");
     write_codex_rule(
         temp.path(),
         "adapters/targets/omnia/rules/frame-misplaced.md",
@@ -450,8 +470,8 @@ Body without trigger and severity.
         .and_then(Value::as_array)
         .expect("normalized envelope carries findings array");
     assert!(
-        findings.len() >= 3,
-        "expected at least three findings (schema, namespace, duplicate); got {}",
+        findings.len() >= 2,
+        "expected at least two findings (CORE-001 adapter schema, CORE-009 namespace); got {}",
         findings.len(),
     );
     for finding_json in findings {

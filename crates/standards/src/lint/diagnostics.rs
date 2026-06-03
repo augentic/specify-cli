@@ -204,7 +204,7 @@ mod tests {
             trigger: "trigger".into(),
             lint_mode: None,
             applicability: None,
-            deterministic_hints: None,
+            rule_hints: None,
             references: None,
             origin: Origin::Shared,
             path_root: PathRoot::RulesRoot,

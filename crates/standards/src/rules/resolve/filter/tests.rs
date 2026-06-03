@@ -13,7 +13,7 @@ fn make_rule(
         trigger: "Synthetic CH-13 filter fixture trigger sentence long enough for schema.".into(),
         lint_mode: None,
         applicability,
-        deterministic_hints: None,
+        rule_hints: None,
         references: None,
         deprecated,
         body: format!("## Rule\n\nBody for {id}.\n"),

@@ -36,56 +36,11 @@ use crate::framework::error::ToolingError;
 /// Mapping from each still-active imperative authoring rule id to its
 /// closed codex `CORE-NNN` id.
 ///
-/// `CORE-001..009` are owned by declarative rule files in the framework
-/// repo (`adapters/shared/rules/core/`). `rules.namespace-ownership-violation`
-/// reuses `CORE-009` (its declarative counterpart); every other entry
-/// is minted at `CORE-010` and up.
-const CORE_ID_TABLE: &[(&str, &str)] = &[
-    ("rules.namespace-ownership-violation", "CORE-009"),
-    ("adapter.missing-manifest", "CORE-010"),
-    ("adapter.execution-agent", "CORE-051"),
-    ("agent-teams.missing-canonical", "CORE-011"),
-    ("agent-teams.non-canonical-overlay", "CORE-012"),
-    ("brief.exceeds-size-limit", "CORE-013"),
-    ("brief.frontmatter-forbidden", "CORE-014"),
-    ("docs.missing-diagram-asset", "CORE-015"),
-    ("docs.specify-history-citation-in-docs", "CORE-016"),
-    ("docs.text-pipeline-diagram", "CORE-017"),
-    ("links.brief-schema-link-resolve", "CORE-018"),
-    ("links.broken-reference", "CORE-019"),
-    ("links.unresolved-directive", "CORE-020"),
-    ("links.docs-in-deployable-surface", "CORE-052"),
-    ("plugins.broken-symlink", "CORE-021"),
-    ("plugins.marketplace-drift", "CORE-022"),
-    ("prose.invocation-positional", "CORE-023"),
-    ("prose.numeric-cap-exceeded", "CORE-024"),
-    ("prose.operational-vocabulary", "CORE-025"),
-    ("rules.duplicate-rule-id", "CORE-026"),
-    ("rules.schema-violation", "CORE-027"),
-    ("scenarios.artifact-path-unsafe", "CORE-028"),
-    ("scenarios.body-id-mismatch", "CORE-029"),
-    ("scenarios.duplicate-id", "CORE-030"),
-    ("scenarios.recorded-trace-violation", "CORE-031"),
-    ("scenarios.schema-violation", "CORE-032"),
-    ("scenarios.stages-not-contiguous-prefix", "CORE-033"),
-    ("scenarios.stale-recorded-trace", "CORE-034"),
-    ("skill.argument-hint-grammar", "CORE-035"),
-    ("skill.description-grammar", "CORE-036"),
-    ("skill.envelope-json-in-body", "CORE-037"),
-    ("skill.frontmatter-restatement", "CORE-038"),
-    ("skill.inline-json-too-long", "CORE-039"),
-    ("skill.invalid-critical-path", "CORE-040"),
-    ("skill.missing-critical-path", "CORE-041"),
-    ("skill.missing-frontmatter", "CORE-042"),
-    ("skill.name-directory-mismatch", "CORE-043"),
-    ("skill.schema-violation", "CORE-044"),
-    ("skill.section-line-count", "CORE-045"),
-    ("skill.step-body-duplicates-critical-path", "CORE-046"),
-    ("skill.unknown-tool", "CORE-047"),
-    ("skill.variable-coverage", "CORE-048"),
-    ("tools.invalid-declaration", "CORE-049"),
-    ("tools.invocation-not-equivalent", "CORE-050"),
-];
+/// After RFC-31 Phase 4 only the CORE-009 namespace bridge remains
+/// imperative. `CORE-001..008` and `CORE-010..052` run through
+/// declarative `CORE-*` rule files (`kind: authoring-predicate` or
+/// native hints). See `adapters/shared/rules/core/` in augentic/specify.
+const CORE_ID_TABLE: &[(&str, &str)] = &[("rules.namespace-ownership-violation", "CORE-009")];
 
 /// Resolve the closed codex `CORE-NNN` id for an imperative authoring
 /// rule id, or `None` when the id has not been assigned one yet (the

@@ -3,8 +3,8 @@ use serde_json::Value as JsonValue;
 use specify_schema::{RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA};
 
 use super::{
-    Applicability, Deprecated, DeterministicHint, HintKind, LintMode, Origin, PathRoot, Reference,
-    ResolvedRule, ResolvedRules, Rule, Severity,
+    Applicability, Deprecated, HintKind, LintMode, Origin, PathRoot, Reference, ResolvedRule,
+    ResolvedRules, Rule, RuleHint, Severity,
 };
 
 fn validator(schema_source: &str) -> Validator {
@@ -53,7 +53,7 @@ fn origin_ordering_matches_contract() {
 
 /// `Rule` round-trips its own JSON shape, exercising the
 /// snake-to-kebab field renames (`lint-mode`,
-/// `deterministic-hints`).
+/// `rule-hints`).
 #[test]
 fn codex_rule_round_trips() {
     let rule = Rule {
@@ -68,10 +68,11 @@ fn codex_rule_round_trips() {
                 artifacts: Some(vec!["code".into()]),
                 paths: None,
             }),
-            deterministic_hints: Some(vec![DeterministicHint {
+            rule_hints: Some(vec![RuleHint {
                 kind: HintKind::Regex,
                 value: "https?://".into(),
                 description: Some("Literal URL in generated code.".into()),
+                config: None,
             }]),
             references: Some(vec![Reference {
                 label: "Omnia guardrails".into(),
@@ -83,7 +84,7 @@ fn codex_rule_round_trips() {
         };
     let value = serde_json::to_value(&rule).expect("serialise");
     assert_eq!(value.get("lint-mode").and_then(JsonValue::as_str), Some("hybrid"));
-    assert!(value.get("deterministic-hints").is_some());
+    assert!(value.get("rule-hints").is_some());
     let parsed: Rule = serde_json::from_value(value).expect("round-trip");
     assert_eq!(rule, parsed);
 }
@@ -109,10 +110,11 @@ fn resolved_codex_round_trips() {
                     artifacts: Some(vec!["code".into()]),
                     paths: None,
                 }),
-                deterministic_hints: Some(vec![DeterministicHint {
+                rule_hints: Some(vec![RuleHint {
                     kind: HintKind::Regex,
                     value: "https?://".into(),
                     description: Some("Literal URL in generated code.".into()),
+                    config: None,
                 }]),
                 references: Some(vec![Reference {
                     label: "Omnia guardrails".into(),

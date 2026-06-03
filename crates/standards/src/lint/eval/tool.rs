@@ -11,7 +11,7 @@
 //! candidate's project-relative path as the sole positional argument.
 //! The closed `{artifact}` / `{project_dir}` / `{rule_id}` placeholder
 //! set named in the contract cannot be expanded in v1 because the
-//! closed [`crate::rules::DeterministicHint`] shape carries no
+//! closed [`crate::rules::RuleHint`] shape carries no
 //! `args:` field; extending the hint shape is the rules schema's responsibility,
 //! not this evaluator's.
 //!
@@ -40,7 +40,7 @@ use specify_diagnostics::{
 use thiserror::Error;
 
 use super::{HintError, SyntheticFinding, make_synthetic_finding, restamp_finding};
-use crate::rules::{DeterministicHint, ResolvedRule};
+use crate::rules::{ResolvedRule, RuleHint};
 
 const STDERR_MAX_BYTES: usize = 8 * 1024;
 
@@ -89,7 +89,7 @@ pub enum ToolRunError {
 }
 
 pub(crate) fn evaluate(
-    rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], project_dir: &Path,
+    rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], project_dir: &Path,
     runner: &dyn ToolRunner, next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
     if !runner.is_declared(&hint.value) {
@@ -136,7 +136,7 @@ fn parse_tool_findings(output: &ToolOutput) -> Vec<Diagnostic> {
     Vec::new()
 }
 
-fn build_undeclared(rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64) -> Diagnostic {
+fn build_undeclared(rule: &ResolvedRule, hint: &RuleHint, id_num: u64) -> Diagnostic {
     let evidence = FindingEvidence::Snippet {
         value: format!("tool {tool} not declared by the project's tools.yaml", tool = hint.value),
     };
@@ -157,7 +157,7 @@ fn build_undeclared(rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64) 
 }
 
 fn build_invocation_failed(
-    rule: &ResolvedRule, hint: &DeterministicHint, id_num: u64, candidate: &Path, stderr: &[u8],
+    rule: &ResolvedRule, hint: &RuleHint, id_num: u64, candidate: &Path, stderr: &[u8],
 ) -> Diagnostic {
     let snippet = clip_stderr(stderr);
     let evidence = FindingEvidence::Snippet { value: snippet };

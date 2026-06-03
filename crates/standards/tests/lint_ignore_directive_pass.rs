@@ -132,7 +132,7 @@ fn validation_rule(rule_id: &str) -> ResolvedRule {
         trigger: format!("Trigger for {rule_id}"),
         lint_mode: None,
         applicability: None,
-        deterministic_hints: None,
+        rule_hints: None,
         references: None,
         origin: Origin::Shared,
         path_root: PathRoot::RulesRoot,
@@ -171,7 +171,7 @@ fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
     let runner: &dyn ToolRunner = &NoToolRunner;
     let outcome = evaluate(
         &url_rule,
-        url_rule.deterministic_hints.as_deref().unwrap_or_default(),
+        url_rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,

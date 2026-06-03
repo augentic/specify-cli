@@ -57,7 +57,7 @@ fn tool_findings_thread_through() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -84,7 +84,7 @@ fn tool_undeclared_emits_synthetic_finding() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,
@@ -114,7 +114,7 @@ fn tool_failure_truncates_stderr() {
 
     let outcome = evaluate(
         &rule,
-        rule.deterministic_hints.as_deref().unwrap_or_default(),
+        rule.rule_hints.as_deref().unwrap_or_default(),
         &model,
         tmp.path(),
         runner,

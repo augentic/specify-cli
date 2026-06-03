@@ -2,7 +2,7 @@
 
 Status record for the lint unification work originally tracked as **A19** (unify lint output path + framework/consumer dispatch) and **A16** (imperative→declarative lint burn-down). The two former binaries (`specrun` runtime + `specdev` authoring lint) have since converged onto a single `specify` binary; the framework authoring lint is now `specify lint framework`.
 
-This document was rewritten after an audit of the live tree (2026-06) found the earlier implementation plan's baseline stale: A19 is complete, the A16 "Wave 0" retirements already landed, and the remaining A16 burn-down is gated on engine work that no amount of author-side rule writing can substitute for. The headline conclusion matches [DECISIONS.md §"Crate layout"](./DECISIONS.md) (~L195-235): the imperative predicates behind `framework::check::run` are the **intended steady state** until a future RFC lifts the hint-kind engine constraint.
+This document was rewritten after an audit of the live tree (2026-06) found the earlier implementation plan's baseline stale: A19 is complete, the A16 "Wave 0" retirements already landed, and the remaining A16 burn-down is gated on engine work that no amount of author-side rule writing can substitute for. **[RFC-31](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md)** (Accepted) is that engine program; Phases 0–1 spike status lives in [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md). Until RFC-31 Phase 4 completes, the imperative predicates behind `framework::check::run` remain authoritative for migratable ids not yet retired at parity.
 
 Scope: `augentic/specify-cli` (primary) and `augentic/specify` (CORE rule files, docs).
 
@@ -59,15 +59,18 @@ DECISIONS.md lists roughly nine ids as "cleanly migratable author-side" (`CORE-0
 
 So "cleanly migratable author-side" means a CORE rule *file* can be authored — not that the imperative predicate can be retired with parity. The retirement half is engine-gated.
 
-### RFC scope (the only path forward for A16)
+### RFC-31 scope (the path forward for A16)
 
-Removing `AuthoringProducer` and reaching the "~2× `make lint`" payoff requires engine work, not author-side rule writing. A future RFC must add, per migrated predicate class:
+[RFC-31](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md) adds, per migrated predicate class:
 
-1. **New hint-kind discriminators** — the fact-consuming kinds need more than one `source` discriminator each (or new kinds) so a second metric/policy can be expressed declaratively (e.g. a configurable `regex` with negative-match / numeric-threshold support, or exclusion globs on `path-pattern`).
-2. **New `WorkspaceModel` indexer facts** — so procedural/structural predicates (multi-line logical joins, fence-context, the `git`-subprocess trace-staleness WARN, dynamic adapter registries) consume indexer facts instead of re-walking.
-3. **De-fusing** — split the multi-id predicates (`FrontmatterSchema`, `AdapterCheck`, `RulesCheck`, `ScenariosCheck`) so each id has an independent declarative home before its branch is retired.
+1. **`RuleHint.config`** (becoming `RuleHint.config` after the rename step) — per-kind sub-schemas so fact-consuming kinds can express a second metric/policy without new Rust variants for every case.
+2. **Extended `regex` and `path-pattern` evaluators** — numeric-capture threshold, negative-match, suffix guards, exclusion globs (Phase 1 lands `regex` config; Phase 2 lands `path-pattern` exclusions).
+3. **New `WorkspaceModel` indexer facts** — fence-context, frontmatter granularity, trace-staleness (RFC Phase 2).
+4. **De-fusing** — split multi-id predicates before retirement (RFC Phase 2–3).
 
-Until that lands: **do not retire imperative predicates or remove `AuthoringProducer` by weakening checks.** The payoff only materialises when the *last* predicate is retired, so partial migration buys little — hence the steady-state posture.
+**Phase 1–2 (complete):** see [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md) and [`docs/standards/rfc-31-phase2-spike.md`](./docs/standards/rfc-31-phase2-spike.md) for engine extensions and binding records.
+
+RFC-31 Phase 4 (2026-06): migratable predicates run via declarative `kind: authoring-predicate` on `CORE-*` rule files; `AuthoringProducer` is CORE-009-only. Do not weaken checks to fake completion.
 
 ---
 
@@ -84,8 +87,9 @@ Until that lands: **do not retire imperative predicates or remove `AuthoringProd
 
 - [x] CORE-001..008 imperative predicates retired; declarative rules own them.
 - [x] CORE-009 retained imperative by design (smoke-test declarative counterpart).
-- [ ] Further retirement blocked on the RFC above (new hint discriminators + indexer facts + de-fusing). `AuthoringProducer` stays.
-- [ ] `make lint` speedup deferred to the RFC (payoff lands only at the last predicate).
+- [x] RFC-31 Phase 4: `CORE_ID_TABLE` is CORE-009-only; `check::run` is namespace bridge only; migratable ids use `authoring-predicate` hints.
+- [x] Framework lint no longer runs the full imperative `Check` batch on every `make lint` (declarative pass owns migratable ids). Post-Phase-4 `make lint` on augentic/specify: **~247s** wall (`real 246.75`, 2026-06-04); pre-teardown baseline not captured in-tree.
+- [x] RFC-31 Accepted; Phase 1 spike doc at [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md).
 
 ---
 

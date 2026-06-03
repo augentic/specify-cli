@@ -28,12 +28,12 @@ use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
+use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
 const SOURCE_SKILL_NAME: &str = "skill-name";
 
 pub(crate) fn evaluate(
-    rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], model: &WorkspaceModel,
+    rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();

@@ -68,7 +68,7 @@ fn rule(rule_id: &str, severity: Severity) -> ResolvedRule {
         trigger: format!("Trigger for {rule_id}"),
         lint_mode: None,
         applicability: None,
-        deterministic_hints: None,
+        rule_hints: None,
         references: None,
         origin: Origin::Shared,
         path_root: PathRoot::RulesRoot,
