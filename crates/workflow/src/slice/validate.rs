@@ -26,7 +26,7 @@ use specify_model::spec::provenance::{self, ParsedSpec, RequirementStatus, Requi
 
 use crate::change::{Plan, orphan_authority_override_keys};
 use crate::config::Layout;
-use crate::decisions::{is_dec_ref, read_baseline};
+use crate::decisions::{is_dec_ref, list_md_files, read_baseline};
 use crate::design_system::{ComponentStatus, ComponentsCatalog};
 use crate::journal::{Event, EventKind, append_batch};
 use crate::schema::{evidence_yaml_paths, validate_evidence_dir};
@@ -185,7 +185,11 @@ pub fn model_drift_findings(
 
     let mut findings = Vec::new();
     if let Err(Error::Validation { detail, .. }) = validate_model_doc(&value) {
-        findings.push(model_schema_finding(detail));
+        findings.push(model_drift(
+            "slice-model-schema",
+            "model.yaml conforms to schemas/slice/model.schema.json",
+            detail,
+        ));
     }
     let Ok(model) = serde_saphyr::from_str::<SliceModel>(&raw) else {
         return Ok(findings);
@@ -203,14 +207,6 @@ pub fn model_drift_findings(
 
 fn model_drift(code: &'static str, rule: &'static str, detail: String) -> Diagnostic {
     Diagnostic::violation(code, rule, detail, Artifact::Specs, None)
-}
-
-fn model_schema_finding(detail: String) -> Diagnostic {
-    model_drift(
-        "slice-model-schema",
-        "model.yaml conforms to schemas/slice/model.schema.json",
-        detail,
-    )
 }
 
 /// `slice-spec-provenance-stale` — compare each model requirement's
@@ -635,23 +631,7 @@ fn collect_decision_gates(layout: Layout<'_>, slice_dir: &Path) -> Result<Vec<Di
         return Ok(Vec::new());
     }
 
-    let mut files: Vec<PathBuf> = Vec::new();
-    for entry in std::fs::read_dir(&decisions_dir).map_err(|source| Error::Filesystem {
-        op: "readdir",
-        path: decisions_dir.clone(),
-        source,
-    })? {
-        let entry = entry.map_err(|source| Error::Filesystem {
-            op: "readdir-entry",
-            path: decisions_dir.clone(),
-            source,
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("md") {
-            files.push(path);
-        }
-    }
-    files.sort();
+    let files = list_md_files(&decisions_dir)?;
 
     let mut findings: Vec<Diagnostic> = Vec::new();
     let mut slug_files: BTreeMap<String, Vec<String>> = BTreeMap::new();

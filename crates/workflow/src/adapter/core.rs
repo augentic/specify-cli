@@ -416,8 +416,7 @@ impl SourceAdapter {
 }
 
 /// Shared `execution: agent` forced-opt-out rule (RFC-29 D9) behind
-/// both [`SourceAdapter::effective_cache_mode`] and
-/// [`TargetAdapter::effective_cache_mode`] (REVIEW.md A9): an
+/// [`SourceAdapter::effective_cache_mode`] (REVIEW.md A9): an
 /// `agent`-dispatched adapter always bypasses the cache regardless of
 /// the declared `cache:` field; otherwise the declared mode applies.
 const fn effective_cache_mode(
@@ -464,15 +463,6 @@ impl TargetAdapter {
     /// `briefs.keys()` is the canonical typed operation source.
     pub fn operations(&self) -> impl Iterator<Item = &TargetOperation> {
         self.briefs.keys()
-    }
-
-    /// Effective extraction-cache mode after applying the
-    /// `execution: agent` forced opt-out (RFC-29 D9). Mirrors
-    /// [`SourceAdapter::effective_cache_mode`]; target dispatch (M3)
-    /// will consume it once `build` / `merge` become CLI-owned.
-    #[must_use]
-    pub const fn effective_cache_mode(&self) -> Option<CacheMode> {
-        effective_cache_mode(self.execution, self.cache)
     }
 }
 
@@ -677,8 +667,7 @@ fn check_axis_and_name(
 ///   manifest can declare a non-opt-out cache mode — the arm cannot
 ///   fire until the cache enum widens. The runtime "agent forces
 ///   opt-out" behaviour itself is modelled by
-///   [`SourceAdapter::effective_cache_mode`] /
-///   [`TargetAdapter::effective_cache_mode`], not here.
+///   [`SourceAdapter::effective_cache_mode`], not here.
 fn check_execution(
     execution: Option<Execution>, cache: Option<CacheMode>, manifest_path: &Path,
 ) -> Result<(), Error> {

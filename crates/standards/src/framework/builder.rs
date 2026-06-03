@@ -23,13 +23,15 @@
 //! legacy `[rule_id]` title prefix so a newly-added predicate is never
 //! silently dropped from the wire.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use specify_diagnostics::{
     Artifact, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
     Severity,
 };
 use specify_digest::sha256_hex;
+
+use crate::framework::error::ToolingError;
 
 /// Mapping from each still-active imperative authoring rule id to its
 /// closed codex `CORE-NNN` id.
@@ -174,6 +176,20 @@ pub fn framework_finding(
         status: None,
         disposition: None,
     }
+}
+
+/// Build a finding for an infrastructure failure (a [`ToolingError`]
+/// raised while a predicate walks the tree), with no location.
+#[must_use]
+pub fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Diagnostic {
+    framework_finding(rule_id, error.to_string(), None)
+}
+
+/// Build a finding anchored at line 1 of an optional path. `None`
+/// yields a location-less finding.
+#[must_use]
+pub fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Diagnostic {
+    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }
 
 /// Read the verbatim [`FindingEvidence::Snippet`] payload of a finding,

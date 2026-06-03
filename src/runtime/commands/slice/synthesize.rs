@@ -170,7 +170,7 @@ fn synthesize_from(ctx: &Ctx, name: &str, response_path: &Path) -> Result<Vec<St
     // kernel already enforced orphans/cross-refs/grammar; the broader
     // drift suite is `slice validate`'s job). `parse_yaml` validates the
     // serialised document and re-parses it.
-    let model_yaml = serialise_model(&projected)?;
+    let model_yaml = specify_model::atomic::serialise_yaml(&projected)?;
     SliceModel::parse_yaml(&model_yaml)?;
 
     // Step 4 — render provenance lines into `spec.md` (in memory).
@@ -223,15 +223,6 @@ fn staged_file(slice_dir: &Path, rel: &str, bytes: Vec<u8>) -> StagedFile {
         abs: slice_dir.join(rel),
         bytes,
     }
-}
-
-/// Serialise the projected model to a trailing-newlined YAML document.
-fn serialise_model(model: &SliceModel) -> Result<String> {
-    let mut content = serde_saphyr::to_string(model)?;
-    if !content.ends_with('\n') {
-        content.push('\n');
-    }
-    Ok(content)
 }
 
 /// Load the named slice's plan entry — the binding that carries the

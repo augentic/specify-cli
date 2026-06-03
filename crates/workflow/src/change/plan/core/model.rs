@@ -6,7 +6,6 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use specify_model::evidence::ClaimKind;
@@ -310,12 +309,8 @@ impl SourceBinding {
 /// with `name` matching `^[a-z][a-z0-9-]*$` and `N` a non-negative
 /// integer. Deserialisation goes through [`TargetRef::parse`] so any
 /// payload that survives serde already has the `@vN` suffix in valid
-/// form; `FromStr` is the in-process belt-and-braces re-check.
-///
-/// Construct in-process via [`TargetRef::new`] (already-validated
-/// components, infallible) or via [`FromStr`] / serde
-/// [`Deserialize`] (string parse, fallible). Components are private so
-/// every `TargetRef` value satisfies the wire regex by construction.
+/// form. Components are private so every `TargetRef` value satisfies
+/// the wire regex by construction.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TargetRef {
     name: String,
@@ -323,23 +318,6 @@ pub struct TargetRef {
 }
 
 impl TargetRef {
-    /// Construct a [`TargetRef`] from already-validated components.
-    ///
-    /// `name` must satisfy the wire regex `^[a-z][a-z0-9-]*$`; the
-    /// debug assertion catches accidental in-process construction with
-    /// a non-kebab name. In release builds the value is still
-    /// round-trippable through serde because the schema regex is the
-    /// primary defence.
-    #[must_use]
-    pub fn new(name: impl Into<String>, version: u32) -> Self {
-        let name = name.into();
-        debug_assert!(
-            is_kebab_target_name(&name),
-            "TargetRef::new received non-kebab name `{name}`",
-        );
-        Self { name, version }
-    }
-
     /// Parse a wire-form `<name>@v<version>` string.
     ///
     /// # Errors
@@ -389,14 +367,6 @@ impl fmt::Display for TargetRef {
     }
 }
 
-impl FromStr for TargetRef {
-    type Err = TargetRefParseError;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Self::parse(input)
-    }
-}
-
 impl Serialize for TargetRef {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.collect_str(self)
@@ -410,8 +380,8 @@ impl<'de> Deserialize<'de> for TargetRef {
     }
 }
 
-/// Error returned by [`TargetRef::parse`] / [`TargetRef::from_str`]
-/// when the input does not match the `name@vN` wire form.
+/// Error returned by [`TargetRef::parse`] when the input does not
+/// match the `name@vN` wire form.
 ///
 /// Carries the offending input verbatim so callers can surface it in
 /// diagnostics without re-formatting; the [`fmt::Display`] body is
@@ -503,13 +473,6 @@ impl SliceSourceBinding {
     #[must_use]
     pub fn lead<'a>(&'a self, slice_name: &'a str) -> &'a str {
         self.lead.as_deref().unwrap_or(slice_name)
-    }
-
-    /// `true` when the binding was authored / will be emitted as the
-    /// bare-string shorthand.
-    #[must_use]
-    pub const fn is_bare(&self) -> bool {
-        self.lead.is_none()
     }
 }
 

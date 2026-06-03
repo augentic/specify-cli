@@ -5,7 +5,7 @@ use regex::Regex;
 use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
-use crate::framework::builder::{framework_finding, loc};
+use crate::framework::builder::{framework_finding, infrastructure_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
@@ -306,8 +306,4 @@ fn collect_walk_targets(
 
 fn has_extension(path: &Path, extensions: &[&str]) -> bool {
     path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| extensions.contains(&ext))
-}
-
-fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Diagnostic {
-    framework_finding(rule_id, error.to_string(), None)
 }

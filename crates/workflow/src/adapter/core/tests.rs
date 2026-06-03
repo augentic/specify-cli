@@ -166,25 +166,6 @@ briefs:
 }
 
 #[test]
-fn tool_execution_preserves_declared_cache() {
-    let yaml = r"name: omnia
-version: 1
-axis: target
-execution: tool
-briefs:
-  shape: briefs/shape.md
-  build: briefs/build.md
-  merge: briefs/merge.md
-";
-    let manifest: TargetAdapter = serde_saphyr::from_str(yaml).expect("parse");
-    assert_eq!(
-        manifest.effective_cache_mode(),
-        None,
-        "tool execution leaves the (absent) declared cache mode untouched"
-    );
-}
-
-#[test]
 fn unknown_brief_key_rejected() {
     // `shape` is a target operation; appearing on a source manifest
     // must fail at the typed `briefs: BTreeMap<SourceOperation, _>`

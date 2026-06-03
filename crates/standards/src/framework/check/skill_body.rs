@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use regex::{Regex, RegexBuilder};
 use specify_diagnostics::Diagnostic;
 
-use crate::framework::builder::{framework_finding, loc};
+use crate::framework::builder::{finding, infrastructure_finding};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
@@ -664,12 +664,4 @@ fn collect_var_uses(text: &str, use_re: &Regex) -> std::collections::HashSet<Str
 
 fn truncate(text: &str, max: usize) -> String {
     if text.len() <= max { text.to_string() } else { text[..max].to_string() }
-}
-
-fn finding(rule_id: &'static str, message: String, path: Option<std::path::PathBuf>) -> Diagnostic {
-    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
-}
-
-fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Diagnostic {
-    framework_finding(rule_id, error.to_string(), None)
 }

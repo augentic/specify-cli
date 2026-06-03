@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
-use crate::framework::builder::{framework_finding, loc};
+use crate::framework::builder::finding;
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
@@ -231,10 +231,6 @@ fn path_relative(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .map(|rel| rel.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path.display().to_string())
-}
-
-fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Diagnostic {
-    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }
 
 #[cfg(test)]

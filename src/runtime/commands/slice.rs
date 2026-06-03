@@ -6,6 +6,7 @@ use std::path::Path;
 
 use specify_error::{Error, Result};
 use specify_workflow::config::Layout;
+use specify_workflow::journal::{self, EventKind};
 use specify_workflow::merge::{ArtifactClass, MergeStrategy};
 use specify_workflow::slice::LifecycleStatus;
 
@@ -43,6 +44,33 @@ fn artifact_classes(project_root: &Path, slice_dir: &Path) -> Vec<ArtifactClass>
             strategy: MergeStrategy::OpaqueReplace,
         },
     ]
+}
+
+/// Best-effort lifecycle bracket shared by `slice merge run` and
+/// `slice build --phase finalize`. Emits `started`, runs `work`, then
+/// emits `succeeded` on `Ok` (returning the value) or
+/// `failed(err.variant_str())` on `Err` (re-propagating the error).
+/// Every emit is best-effort under `scope`, so a journal-write failure
+/// never changes the verb's exit code; the work's outcome alone drives
+/// it. `scope` is the dotted event family (`slice.merge` / `slice.build`).
+fn bracket<T>(
+    ctx: &Ctx, scope: &str, started: EventKind, succeeded: EventKind,
+    failed: impl FnOnce(String) -> EventKind, work: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    journal::emit_best_effort(ctx.layout(), started, scope);
+    match work() {
+        Ok(value) => {
+            journal::emit_best_effort(ctx.layout(), succeeded, scope);
+            Ok(value)
+        }
+        Err(err) => {
+            // `reason` is the error's stable kebab discriminant. The
+            // failed event is best-effort, but the original error still
+            // propagates so the exit code is unchanged.
+            journal::emit_best_effort(ctx.layout(), failed(err.variant_str().into_owned()), scope);
+            Err(err)
+        }
+    }
 }
 
 pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {

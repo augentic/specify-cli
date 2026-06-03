@@ -83,22 +83,6 @@ pub fn validate_plan_yaml(content: &str) -> Result<()> {
     )
 }
 
-/// Validate raw `plan.yaml` before typed deserialisation.
-///
-/// # Errors
-///
-/// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
-pub fn validate_plan_file(path: &Path) -> Result<()> {
-    let content = fs::read_to_string(path).map_err(|err| {
-        Error::validation_failed(
-            "plan-schema",
-            "plan.yaml conforms to schemas/plan/plan.schema.json",
-            format!("read failed: {err}"),
-        )
-    })?;
-    validate_plan_yaml(&content)
-}
-
 /// Validate a lead-reconciliation envelope against the embedded
 /// `schemas/discovery/proposal.schema.json`.
 ///

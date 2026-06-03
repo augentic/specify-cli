@@ -76,6 +76,34 @@ fn is_ascii_digits(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// List every `*.md` file directly under `dir`, sorted by path for
+/// deterministic iteration. The caller is responsible for confirming the
+/// directory exists (an absent `decisions/` is an opt-out, not an error).
+///
+/// # Errors
+///
+/// Surfaces I/O errors reading the directory or one of its entries.
+pub(crate) fn list_md_files(dir: &Path) -> Result<Vec<PathBuf>, Error> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(dir).map_err(|source| Error::Filesystem {
+        op: "readdir",
+        path: dir.to_path_buf(),
+        source,
+    })? {
+        let entry = entry.map_err(|source| Error::Filesystem {
+            op: "readdir-entry",
+            path: dir.to_path_buf(),
+            source,
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            out.push(path);
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
 /// Read the baseline catalogue at `.specify/decisions/`, returning every
 /// record sorted by `DEC-NNNN` ascending. A missing directory yields an
 /// empty vector.
@@ -91,20 +119,7 @@ pub fn read_baseline(decisions_dir: &Path) -> Result<Vec<BaselineDecision>, Erro
         return Ok(Vec::new());
     }
     let mut out: Vec<BaselineDecision> = Vec::new();
-    for entry in std::fs::read_dir(decisions_dir).map_err(|source| Error::Filesystem {
-        op: "readdir",
-        path: decisions_dir.to_path_buf(),
-        source,
-    })? {
-        let entry = entry.map_err(|source| Error::Filesystem {
-            op: "readdir-entry",
-            path: decisions_dir.to_path_buf(),
-            source,
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
+    for path in list_md_files(decisions_dir)? {
         let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
             op: "read",
             path: path.clone(),
@@ -145,20 +160,7 @@ fn read_slice_records(src: &Path) -> Result<Vec<SliceRecord>, Error> {
         return Ok(Vec::new());
     }
     let mut out: Vec<SliceRecord> = Vec::new();
-    for entry in std::fs::read_dir(src).map_err(|source| Error::Filesystem {
-        op: "readdir",
-        path: src.to_path_buf(),
-        source,
-    })? {
-        let entry = entry.map_err(|source| Error::Filesystem {
-            op: "readdir-entry",
-            path: src.to_path_buf(),
-            source,
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
+    for path in list_md_files(src)? {
         let text = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
             op: "read",
             path: path.clone(),

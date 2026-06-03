@@ -8,7 +8,7 @@ use serde_json::Value as JsonValue;
 use specify_diagnostics::Diagnostic;
 use walkdir::WalkDir;
 
-use crate::framework::builder::{framework_finding, loc};
+use crate::framework::builder::finding;
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::helpers::{
@@ -531,10 +531,6 @@ fn is_contiguous_stages_prefix(stages: &JsonValue) -> bool {
 
 fn parse_frontmatter_yaml(body: &str) -> Result<BTreeMap<String, JsonValue>, String> {
     serde_saphyr::from_str(body).map_err(|source| source.to_string())
-}
-
-fn finding(rule_id: &'static str, message: String, path: Option<PathBuf>) -> Diagnostic {
-    framework_finding(rule_id, message, path.map(|path| loc(path, 1, None)))
 }
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ use regex::Regex;
 use serde_json::Value as JsonValue;
 use specify_diagnostics::Diagnostic;
 
-use crate::framework::builder::{framework_finding, loc};
+use crate::framework::builder::{framework_finding, infrastructure_finding, loc};
 use crate::framework::check::Check;
 use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
@@ -426,10 +426,6 @@ fn imperative_verbs() -> &'static [&'static str] {
 
 fn finding(rule_id: &'static str, message: impl Into<String>, path: &Path) -> Diagnostic {
     framework_finding(rule_id, message.into(), Some(loc(path, 1, None)))
-}
-
-fn infrastructure_finding(rule_id: &'static str, error: ToolingError) -> Diagnostic {
-    framework_finding(rule_id, error.to_string(), None)
 }
 
 #[cfg(test)]

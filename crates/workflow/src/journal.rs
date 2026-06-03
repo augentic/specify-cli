@@ -703,6 +703,20 @@ pub fn append_batch(layout: Layout<'_>, events: &[Event]) -> Result<(), Error> {
     Ok(())
 }
 
+/// Best-effort append of a single lifecycle [`Event`] carrying `kind`.
+///
+/// Timestamped `Timestamp::now()`. Mirrors [`emit_lint_completed`]'s
+/// posture: a journal-write failure is logged under `scope` (the dotted
+/// event family, e.g. `slice.merge` / `slice.build`) and swallowed so it
+/// can never change the calling verb's exit code. The lifecycle
+/// brackets in `slice merge` / `slice build` emit through this.
+pub fn emit_best_effort(layout: Layout<'_>, kind: EventKind, scope: &str) {
+    let event = Event::new(Timestamp::now(), kind);
+    if let Err(err) = append_batch(layout, std::slice::from_ref(&event)) {
+        eprintln!("warning: {scope} journal append: {err}");
+    }
+}
+
 /// Append a `lint-completed` event to `<project_dir>/.specify/journal.jsonl`.
 ///
 /// Best-effort: serialise/IO failures log to stderr with the supplied

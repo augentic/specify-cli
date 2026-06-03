@@ -454,6 +454,15 @@ pub(crate) fn candidate_set(candidates: &[PathBuf]) -> std::collections::BTreeSe
     candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect()
 }
 
+/// Apply the §"Evidence cap" truncation and stamp the structured lint
+/// finding fingerprint. Clamp BEFORE signing. Shared by every
+/// finding builder so the stamp can never be forgotten.
+fn finalize(mut finding: Diagnostic) -> Diagnostic {
+    clamp_evidence(&mut finding);
+    finding.fingerprint = compute_fingerprint(&finding);
+    finding
+}
+
 /// Build a finding from rule-derived defaults (severity, target
 /// adapter, impact, remediation), apply the §"Evidence cap"
 /// truncation, and stamp the structured lint finding fingerprint.
@@ -461,7 +470,7 @@ pub(crate) fn make_finding(
     rule: &ResolvedRule, id_num: u64, title: String, location: Option<FindingLocation>,
     evidence: FindingEvidence,
 ) -> Diagnostic {
-    let mut finding = Diagnostic {
+    finalize(Diagnostic {
         id: format!("FIND-{id_num:04}"),
         rule_id: Some(rule.rule_id.clone()),
         related_rule_ids: None,
@@ -482,10 +491,7 @@ pub(crate) fn make_finding(
         fingerprint: String::new(),
         status: None,
         disposition: None,
-    };
-    clamp_evidence(&mut finding);
-    finding.fingerprint = compute_fingerprint(&finding);
-    finding
+    })
 }
 
 /// Build a non-blocking `kind: review` diagnostic for a
@@ -495,7 +501,7 @@ pub(crate) fn make_finding(
 /// `model-assisted` — the question is destined for a scorer, not a
 /// deterministic verdict.
 fn make_review_finding(rule: &ResolvedRule, id_num: u64) -> Diagnostic {
-    let mut finding = Diagnostic {
+    finalize(Diagnostic {
         id: format!("FIND-{id_num:04}"),
         rule_id: Some(rule.rule_id.clone()),
         related_rule_ids: None,
@@ -518,10 +524,7 @@ fn make_review_finding(rule: &ResolvedRule, id_num: u64) -> Diagnostic {
         fingerprint: String::new(),
         status: None,
         disposition: None,
-    };
-    clamp_evidence(&mut finding);
-    finding.fingerprint = compute_fingerprint(&finding);
-    finding
+    })
 }
 
 /// Inputs for [`make_synthetic_finding`].
@@ -565,7 +568,7 @@ pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> Diagnostic {
         remediation,
         target_adapter,
     } = spec;
-    let mut finding = Diagnostic {
+    finalize(Diagnostic {
         id: format!("FIND-{id_num:04}"),
         rule_id: Some(rule_id.to_string()),
         related_rule_ids: None,
@@ -586,10 +589,7 @@ pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> Diagnostic {
         fingerprint: String::new(),
         status: None,
         disposition: None,
-    };
-    clamp_evidence(&mut finding);
-    finding.fingerprint = compute_fingerprint(&finding);
-    finding
+    })
 }
 
 /// Stamp `id` and recompute the fingerprint on a finding produced
