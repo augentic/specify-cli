@@ -30,6 +30,18 @@ fn report(status: &str, findings: &[Value]) -> BuildReport {
     .expect("report deserialises")
 }
 
+fn report_with_outputs(status: &str, outputs: &[Value]) -> BuildReport {
+    serde_json::from_value(json!({
+        "version": 1,
+        "slice": "identity-service",
+        "target": "vectis@v1",
+        "status": status,
+        "findings": [],
+        "outputs": outputs,
+    }))
+    .expect("report with outputs deserialises")
+}
+
 #[test]
 fn request_round_trips() {
     let req = json!({
@@ -74,6 +86,35 @@ fn report_rejects_unknown_field() {
 }
 
 #[test]
+fn report_without_outputs_round_trips() {
+    let report = report("success", &[]);
+    assert!(report.outputs.is_empty(), "missing outputs defaults to empty");
+    let serialised = serde_json::to_string(&report).expect("serialise");
+    assert!(!serialised.contains("outputs"), "empty outputs is skipped in serialisation");
+    let reparsed: BuildReport = serde_json::from_str(&serialised).expect("re-deserialise");
+    assert_eq!(report, reparsed);
+}
+
+#[test]
+fn report_with_outputs_round_trips() {
+    let report = report_with_outputs(
+        "success",
+        &[
+            json!({ "platform": "core", "path": "shared/src/app.rs" }),
+            json!({ "platform": "ios", "path": "iOS/MyApp/ContentView.swift" }),
+        ],
+    );
+    assert_eq!(report.outputs.len(), 2);
+    assert_eq!(report.outputs[0].platform, Platform::Core);
+    assert_eq!(report.outputs[0].path, "shared/src/app.rs");
+    assert_eq!(report.outputs[1].platform, Platform::Ios);
+
+    let serialised = serde_json::to_string(&report).expect("serialise");
+    let reparsed: BuildReport = serde_json::from_str(&serialised).expect("re-deserialise");
+    assert_eq!(report, reparsed);
+}
+
+#[test]
 fn gate_rejects_success_with_blocking_finding() {
     let report = report("success", &[finding("critical")]);
     match enforce_report_no_blocking_on_success(&report) {
@@ -94,4 +135,67 @@ fn gate_accepts_success_with_only_non_blocking_findings() {
 fn gate_accepts_failure_with_blocking_finding() {
     let report = report("failure", &[finding("critical")]);
     enforce_report_no_blocking_on_success(&report).expect("failure may carry blocking findings");
+}
+
+#[test]
+fn output_gate_accepts_empty_outputs() {
+    let report = report("success", &[]);
+    let dir = tempfile::tempdir().expect("tempdir");
+    enforce_report_outputs_exist(&report, dir.path()).expect("empty outputs passes");
+}
+
+#[test]
+fn output_gate_accepts_present_outputs() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("shared/src")).expect("mkdir");
+    std::fs::write(dir.path().join("shared/src/app.rs"), "fn main() {}").expect("write");
+
+    let report = report_with_outputs(
+        "success",
+        &[json!({ "platform": "core", "path": "shared/src/app.rs" })],
+    );
+    enforce_report_outputs_exist(&report, dir.path()).expect("present output passes");
+}
+
+#[test]
+fn output_gate_rejects_missing_output() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let report = report_with_outputs(
+        "success",
+        &[json!({ "platform": "ios", "path": "iOS/MyApp/ContentView.swift" })],
+    );
+    match enforce_report_outputs_exist(&report, dir.path()) {
+        Err(Error::Validation { code, .. }) => {
+            assert_eq!(code, "target-build-output-missing");
+        }
+        other => panic!("expected output-missing gate, got {other:?}"),
+    }
+}
+
+#[test]
+fn output_gate_rejects_empty_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("shared/src")).expect("mkdir");
+    std::fs::write(dir.path().join("shared/src/app.rs"), "").expect("write empty");
+
+    let report = report_with_outputs(
+        "success",
+        &[json!({ "platform": "core", "path": "shared/src/app.rs" })],
+    );
+    match enforce_report_outputs_exist(&report, dir.path()) {
+        Err(Error::Validation { code, .. }) => {
+            assert_eq!(code, "target-build-output-missing");
+        }
+        other => panic!("expected output-missing gate for empty file, got {other:?}"),
+    }
+}
+
+#[test]
+fn output_gate_skips_on_failure_status() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let report = report_with_outputs(
+        "failure",
+        &[json!({ "platform": "ios", "path": "iOS/MyApp/ContentView.swift" })],
+    );
+    enforce_report_outputs_exist(&report, dir.path()).expect("failure status skips output check");
 }

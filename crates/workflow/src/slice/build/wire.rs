@@ -10,11 +10,13 @@
 //! [`enforce_report_no_blocking_on_success`] is the typed gate the verb
 //! applies to a deserialised report.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_diagnostics::{Diagnostic, blocking};
 use specify_error::{Error, Result};
+
+use crate::platform::Platform;
 
 /// Wire version pinned by both build schemas (`version` `const: 1`).
 pub const BUILD_VERSION: u32 = 1;
@@ -81,6 +83,21 @@ pub enum BuildStatus {
     Failure,
 }
 
+/// A single per-platform build output declared in a [`BuildReport`].
+///
+/// Each entry names the platform and a path (relative to `project-dir`)
+/// where the target adapter produced an artifact. The CLI finalize gate
+/// verifies every declared path exists and is non-empty
+/// (`target-build-output-missing`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct BuildOutput {
+    /// Platform this output was produced for.
+    pub platform: Platform,
+    /// Relative path (from `project-dir`) to the produced artifact.
+    pub path: String,
+}
+
 /// The per-slice build report a target adapter returns.
 ///
 /// Round-trips `schemas/target/build-report.schema.json`. `findings`
@@ -99,6 +116,11 @@ pub struct BuildReport {
     /// RFC-28 diagnostics; defaults to `[]`.
     #[serde(default)]
     pub findings: Vec<Diagnostic>,
+    /// Per-platform build outputs; defaults to `[]` for backward
+    /// compatibility. When non-empty the finalize gate verifies every
+    /// path exists on disk.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outputs: Vec<BuildOutput>,
 }
 
 /// Reject a [`BuildStatus::Success`] report carrying any blocking
@@ -120,6 +142,53 @@ pub fn enforce_report_no_blocking_on_success(report: &BuildReport) -> Result<()>
             "a success build report carries no blocking finding",
             format!("slice `{}` reported success with a blocking finding", report.slice),
         ));
+    }
+    Ok(())
+}
+
+/// Reject a [`BuildStatus::Success`] report whose `outputs[]` paths do
+/// not all resolve to existing, non-empty files under `project_dir`.
+///
+/// Empty `outputs` is accepted (backward compatibility — the field is
+/// optional). On [`BuildStatus::Failure`] the gate is a no-op (a failed
+/// build need not have produced outputs).
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] keyed on
+/// `target-build-output-missing` (exit code 2) when a success report
+/// declares an output path that is absent or empty.
+pub fn enforce_report_outputs_exist(report: &BuildReport, project_dir: &Path) -> Result<()> {
+    if report.status != BuildStatus::Success || report.outputs.is_empty() {
+        return Ok(());
+    }
+    for output in &report.outputs {
+        let full = project_dir.join(&output.path);
+        match std::fs::metadata(&full) {
+            Ok(meta) if meta.len() > 0 => {}
+            Ok(_) => {
+                return Err(Error::validation_failed(
+                    "target-build-output-missing",
+                    "every build output path exists and is non-empty",
+                    format!(
+                        "output for platform `{}` at `{}` exists but is empty",
+                        output.platform, output.path
+                    ),
+                ));
+            }
+            Err(_) => {
+                return Err(Error::validation_failed(
+                    "target-build-output-missing",
+                    "every build output path exists and is non-empty",
+                    format!(
+                        "output for platform `{}` at `{}` does not exist under {}",
+                        output.platform,
+                        output.path,
+                        project_dir.display()
+                    ),
+                ));
+            }
+        }
     }
     Ok(())
 }
