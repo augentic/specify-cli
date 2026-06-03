@@ -683,6 +683,45 @@ fn reconcile_rejects_name_collision() {
     }
 }
 
+#[test]
+fn reconcile_multi_project_wires_only_own_bootstraps() {
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    let doc = discovery_with(&[("intent", "feat-a"), ("intent", "feat-b")]);
+    let topo = vec![
+        project("app-one", "vectis@v1", "First Crux app."),
+        project("app-two", "vectis@v1", "Second Crux app."),
+    ];
+    let mut s1 = slice("feat-a", vec![member("intent", "feat-a")]);
+    s1.project = Some("app-one".to_string());
+    let mut s2 = slice("feat-b", vec![member("intent", "feat-b")]);
+    s2.project = Some("app-two".to_string());
+    plan.propose_from(response(vec![s1, s2]), &doc, &topo).expect("propose ok");
+
+    let missing = vec![
+        ProjectMissingPlatforms {
+            project: "app-one".to_string(),
+            missing: vec![Platform::Ios],
+        },
+        ProjectMissingPlatforms {
+            project: "app-two".to_string(),
+            missing: vec![Platform::Android],
+        },
+    ];
+
+    let names = plan.reconcile_platforms(&missing).expect("reconcile succeeds");
+    assert_eq!(names, vec!["app-one-bootstrap-ios", "app-two-bootstrap-android"]);
+
+    // feat-a is bound to app-one: should depend only on its own bootstrap.
+    let feat_a = plan.entries.iter().find(|e| e.name == "feat-a").unwrap();
+    assert_eq!(feat_a.depends_on, vec!["app-one-bootstrap-ios"]);
+    assert!(!feat_a.depends_on.contains(&"app-two-bootstrap-android".to_string()));
+
+    // feat-b is bound to app-two: should depend only on its own bootstrap.
+    let feat_b = plan.entries.iter().find(|e| e.name == "feat-b").unwrap();
+    assert_eq!(feat_b.depends_on, vec!["app-two-bootstrap-android"]);
+    assert!(!feat_b.depends_on.contains(&"app-one-bootstrap-ios".to_string()));
+}
+
 // --- detect_missing_platforms tests --------------------------------
 
 #[test]

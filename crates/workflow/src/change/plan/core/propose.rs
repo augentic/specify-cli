@@ -512,6 +512,8 @@ impl Plan {
     ) -> Result<Vec<String>> {
         let mut bootstrap_entries: Vec<Entry> = Vec::new();
         let mut bootstrap_names: Vec<String> = Vec::new();
+        let mut names_by_project: std::collections::HashMap<&str, Vec<String>> =
+            std::collections::HashMap::new();
 
         for pm in project_missing {
             if pm.missing.is_empty() {
@@ -524,7 +526,8 @@ impl Plan {
             if all_supported_missing {
                 let name = bootstrap_slice_name(&pm.project, "app-foundation", project_missing);
                 bootstrap_entries.push(bootstrap_entry(&name, &pm.project, &pm.missing));
-                bootstrap_names.push(name);
+                bootstrap_names.push(name.clone());
+                names_by_project.entry(&pm.project).or_default().push(name);
             } else {
                 for platform in &pm.missing {
                     let raw = format!("bootstrap-{platform}");
@@ -534,7 +537,8 @@ impl Plan {
                         &pm.project,
                         std::slice::from_ref(platform),
                     ));
-                    bootstrap_names.push(name);
+                    bootstrap_names.push(name.clone());
+                    names_by_project.entry(&pm.project).or_default().push(name);
                 }
             }
         }
@@ -556,18 +560,13 @@ impl Plan {
         }
 
         // Wire every pre-existing entry's depends_on to the bootstrap
-        // slice(s) for its bound project.
+        // slice(s) created for its bound project only.
         for entry in &mut self.entries {
             let project_name = entry.project.as_deref().unwrap_or("");
-            for pm in project_missing {
-                if pm.missing.is_empty() {
-                    continue;
-                }
-                if pm.project == project_name {
-                    for boot_name in &bootstrap_names {
-                        if !entry.depends_on.contains(boot_name) {
-                            entry.depends_on.push(boot_name.clone());
-                        }
+            if let Some(project_boots) = names_by_project.get(project_name) {
+                for boot_name in project_boots {
+                    if !entry.depends_on.contains(boot_name) {
+                        entry.depends_on.push(boot_name.clone());
                     }
                 }
             }
