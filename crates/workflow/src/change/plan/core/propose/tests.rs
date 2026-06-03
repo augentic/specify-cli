@@ -17,6 +17,7 @@ fn project(name: &str, target: &str, description: &str) -> ProjectRef {
         recent: Vec::new(),
         decisions: Vec::new(),
         decisions_more: None,
+        platforms: Vec::new(),
     }
 }
 
@@ -222,6 +223,7 @@ fn resolve_topology_hub_reads_topology_lock() {
                 recent: Vec::new(),
                 decisions: Vec::new(),
                 decisions_more: None,
+                platforms: Vec::new(),
             },
             ProjectRef {
                 name: "identity-service".to_string(),
@@ -231,6 +233,7 @@ fn resolve_topology_hub_reads_topology_lock() {
                 recent: Vec::new(),
                 decisions: Vec::new(),
                 decisions_more: None,
+                platforms: Vec::new(),
             },
         ]
     );

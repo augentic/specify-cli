@@ -1,4 +1,5 @@
 use super::*;
+use crate::Platform;
 
 #[test]
 fn round_trips_through_yaml_with_empties_elided() {
@@ -15,6 +16,7 @@ fn round_trips_through_yaml_with_empties_elided() {
             recent: Vec::new(),
             decisions: Vec::new(),
             decisions_more: None,
+            platforms: Vec::new(),
         },
         TopologyProject {
             name: "identity-service".to_string(),
@@ -24,12 +26,37 @@ fn round_trips_through_yaml_with_empties_elided() {
             recent: Vec::new(),
             decisions: Vec::new(),
             decisions_more: None,
+            platforms: Vec::new(),
         },
     ]);
 
     let yaml = serde_saphyr::to_string(&lock).expect("serialize lock");
     assert!(yaml.contains("name: identity-contracts"), "{yaml}");
     assert!(!yaml.contains("recent:"), "empty recent elided: {yaml}");
+    assert!(!yaml.contains("platforms:"), "empty platforms elided: {yaml}");
+
+    let parsed: TopologyLock = serde_saphyr::from_str(&yaml).expect("round-trip");
+    assert_eq!(parsed, lock);
+}
+
+#[test]
+fn round_trips_with_platforms() {
+    let lock = TopologyLock::from_projects(vec![TopologyProject {
+        name: "mobile-app".to_string(),
+        target: "vectis@v1".to_string(),
+        description: Some("Cross-platform mobile app.".to_string()),
+        surface: Vec::new(),
+        recent: Vec::new(),
+        decisions: Vec::new(),
+        decisions_more: None,
+        platforms: vec![Platform::Core, Platform::Ios, Platform::Android],
+    }]);
+
+    let yaml = serde_saphyr::to_string(&lock).expect("serialize lock");
+    assert!(yaml.contains("platforms:"), "platforms present: {yaml}");
+    assert!(yaml.contains("core"), "{yaml}");
+    assert!(yaml.contains("ios"), "{yaml}");
+    assert!(yaml.contains("android"), "{yaml}");
 
     let parsed: TopologyLock = serde_saphyr::from_str(&yaml).expect("round-trip");
     assert_eq!(parsed, lock);
@@ -47,6 +74,27 @@ fn save_then_load_is_identity() {
         recent: Vec::new(),
         decisions: Vec::new(),
         decisions_more: None,
+        platforms: Vec::new(),
+    }]);
+
+    lock.save(&path).expect("save");
+    let loaded = TopologyLock::load(&path).expect("load").expect("present");
+    assert_eq!(loaded, lock);
+}
+
+#[test]
+fn save_then_load_with_platforms() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("topology.lock");
+    let lock = TopologyLock::from_projects(vec![TopologyProject {
+        name: "mobile-app".to_string(),
+        target: "vectis@v1".to_string(),
+        description: None,
+        surface: Vec::new(),
+        recent: Vec::new(),
+        decisions: Vec::new(),
+        decisions_more: None,
+        platforms: vec![Platform::Core, Platform::Ios, Platform::Android],
     }]);
 
     lock.save(&path).expect("save");

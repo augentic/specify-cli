@@ -38,6 +38,7 @@ use super::model::{
     Entry, Plan, Severity, SliceAuthorityOverride, SliceSourceBinding, Status, TargetRef,
 };
 use super::validate::entry_dependency_graph;
+use crate::Platform;
 use crate::adapter::TargetAdapter;
 use crate::config::{Layout, ProjectConfig};
 use crate::init::adapter_name_from_value;
@@ -127,6 +128,12 @@ pub struct ProjectRef {
     /// Absent when the catalogue fits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decisions_more: Option<u64>,
+    /// Target platforms this project builds for, projected from
+    /// `project.yaml.platforms`. The agent reads each candidate
+    /// project's platform set during reconciliation. Empty stays off
+    /// the wire (non-platforms targets omit the field).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<Platform>,
 }
 
 /// One row in the request's flat lead catalog.
@@ -372,6 +379,7 @@ fn hub_topology(project_dir: &Path) -> Result<Vec<ProjectRef>> {
             recent: project.recent,
             decisions: project.decisions,
             decisions_more: project.decisions_more,
+            platforms: project.platforms,
         })
         .collect())
 }
@@ -396,6 +404,7 @@ fn regular_topology(config: &ProjectConfig, project_dir: &Path) -> Result<Projec
         recent: projection.recent,
         decisions: projection.decisions,
         decisions_more: projection.decisions_more,
+        platforms: config.platforms.clone(),
     })
 }
 

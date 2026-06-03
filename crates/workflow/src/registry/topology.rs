@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use specify_error::Error;
 use specify_model::atomic::yaml_write;
 
+use crate::Platform;
 use crate::adapter::TargetAdapter;
 use crate::config::ProjectConfig;
 use crate::init::adapter_name_from_value;
@@ -72,6 +73,11 @@ pub struct TopologyProject {
     /// the catalogue fits within `K`.
     #[serde(default, rename = "decisions-more", skip_serializing_if = "Option::is_none")]
     pub decisions_more: Option<u64>,
+    /// Target platforms this project builds for, projected from
+    /// `project.yaml.platforms`. Empty stays off the wire (non-platforms
+    /// targets omit the field).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<Platform>,
 }
 
 /// One accepted Decision Record projected into routing identity.
@@ -193,6 +199,13 @@ impl TopologyProject {
     ///
     /// - [`Error::Validation`] `topology-cache-project-adapter-missing`
     ///   when the slot `project.yaml` omits `adapter`.
+    /// - [`Error::Validation`] `topology-cache-project-platforms-missing`
+    ///   when the resolved target requires platforms but the slot
+    ///   declares none.
+    /// - [`Error::Validation`] `topology-cache-project-platforms-must-include-core`
+    ///   when the slot's platform set omits `Platform::Core`.
+    /// - [`Error::Validation`] `topology-cache-project-platforms-not-allowed`
+    ///   when a declared platform falls outside the target's allowed set.
     /// - Any error from [`TargetAdapter::resolve`] when the adapter
     ///   cannot be resolved against the slot.
     pub fn resolve(
@@ -207,6 +220,14 @@ impl TopologyProject {
         })?;
         let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter_value), slot_dir)?;
         let target = format!("{}@v{}", resolved.manifest.name, resolved.manifest.version);
+
+        validate_topology_platforms(
+            registry_name,
+            &config.platforms,
+            resolved.manifest.platforms.as_ref(),
+            &resolved.manifest.name,
+        )?;
+
         let projection = super::identity::project_baseline(slot_dir)?;
         Ok(Self {
             name: registry_name.to_string(),
@@ -216,8 +237,65 @@ impl TopologyProject {
             recent: projection.recent,
             decisions: projection.decisions,
             decisions_more: projection.decisions_more,
+            platforms: config.platforms.clone(),
         })
     }
+}
+
+/// Backstop validation of a workspace slot's platforms against the
+/// resolved target adapter's [`crate::adapter::PlatformsCapability`].
+/// Mirrors the three `project-platforms-*` rules from
+/// [`crate::init::validate_platforms`], scoped to topology resolution.
+fn validate_topology_platforms(
+    registry_name: &str, platforms: &[Platform],
+    capability: Option<&crate::adapter::PlatformsCapability>, target_name: &str,
+) -> Result<(), Error> {
+    let Some(cap) = capability else {
+        return Ok(());
+    };
+
+    if platforms.is_empty() && cap.required {
+        let defaults: Vec<String> = cap.default.iter().map(ToString::to_string).collect();
+        return Err(Error::validation_failed(
+            "topology-cache-project-platforms-missing",
+            format!("workspace slot `{registry_name}` declares platforms"),
+            format!(
+                "workspace slot `{registry_name}` target '{target_name}' requires platforms \
+                 but project.yaml declares none; default set is [{}]",
+                defaults.join(", "),
+            ),
+        ));
+    }
+
+    if !platforms.is_empty() && !platforms.contains(&Platform::Core) {
+        return Err(Error::validation_failed(
+            "topology-cache-project-platforms-must-include-core",
+            format!("workspace slot `{registry_name}` platform set includes `core`"),
+            format!(
+                "workspace slot `{registry_name}` platform set must include `core`; \
+                 every project that declares platforms requires the shared Rust core crate",
+            ),
+        ));
+    }
+
+    if !platforms.is_empty() {
+        let allowed_display: Vec<String> = cap.allowed.iter().map(ToString::to_string).collect();
+        for p in platforms {
+            if !cap.allowed.contains(p) {
+                return Err(Error::validation_failed(
+                    "topology-cache-project-platforms-not-allowed",
+                    format!("workspace slot `{registry_name}` platform `{p}` is allowed"),
+                    format!(
+                        "workspace slot `{registry_name}` platform `{p}` is not allowed \
+                         by target '{target_name}'; allowed: [{}]",
+                        allowed_display.join(", "),
+                    ),
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn malformed(detail: String) -> Error {

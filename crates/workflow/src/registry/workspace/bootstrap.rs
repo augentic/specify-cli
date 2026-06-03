@@ -6,6 +6,8 @@ use std::path::Path;
 use specify_error::Error;
 
 use super::git::{self, git_output_ok, git_porcelain_non_empty};
+use crate::adapter::TargetAdapter;
+use crate::init::adapter_name_from_value;
 use crate::registry::gitignore::ensure_gitignore_entries;
 
 pub(super) fn bootstrap(
@@ -62,14 +64,38 @@ fn scaffold_greenfield(dest: &Path, adapter: &str) -> Result<(), Error> {
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
         .unwrap_or("greenfield");
-    let project_yaml = format!(
+
+    let platforms_line = resolve_default_platforms(adapter, dest);
+
+    let mut project_yaml = format!(
         "name: {name}\nadapter: {adapter}\nspecify_version: \"{}\"\nrules: {{}}\n",
         env!("CARGO_PKG_VERSION")
     );
+    if let Some(line) = platforms_line {
+        project_yaml.push_str(&line);
+    }
     std::fs::write(specify_dir.join("project.yaml"), project_yaml).map_err(Error::Io)?;
     ensure_gitignore_entries(dest)?;
 
     Ok(())
+}
+
+/// Attempt to resolve the target adapter and return a YAML `platforms:`
+/// line containing the manifest's default set when the target declares
+/// `platforms.required`. Returns `None` on resolve failure (edge case:
+/// adapter cache not yet populated) or when the target does not require
+/// platforms.
+fn resolve_default_platforms(adapter: &str, dest: &Path) -> Option<String> {
+    let resolved = TargetAdapter::resolve(adapter_name_from_value(adapter), dest).ok()?;
+    let cap = resolved.manifest.platforms.as_ref()?;
+    if !cap.required || cap.default.is_empty() {
+        return None;
+    }
+    let tokens: Vec<String> = cap.default.iter().map(ToString::to_string).collect();
+    Some(format!(
+        "platforms:\n{}\n",
+        tokens.iter().map(|t| format!("- {t}")).collect::<Vec<_>>().join("\n")
+    ))
 }
 
 /// Resolve the adapter identifier to pass into a greenfield slot's
