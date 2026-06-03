@@ -87,6 +87,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         rules: BTreeMap::new(),
         tools: Vec::new(),
         workspace: true,
+        platforms: Vec::new(),
     };
     let config_path = layout.config_path();
     let serialised = serde_saphyr::to_string(&cfg)?;

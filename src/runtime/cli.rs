@@ -84,6 +84,12 @@ pub enum Commands {
             conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework"]
         )]
         check_migration: bool,
+        /// Comma-separated target platforms (e.g. core,ios,android).
+        /// Required when the target adapter declares platforms as mandatory.
+        /// Run `specify init <adapter>` without --platforms to see the
+        /// target's allowed and default sets.
+        #[arg(long, conflicts_with_all = ["workspace", "check_migration"])]
+        platforms: Option<String>,
         /// Re-entry version bump: over an already-populated `.specify/`,
         /// rewrite `project.yaml.specify_version` to this binary's
         /// version (preserving every other field) and regenerate
@@ -92,7 +98,7 @@ pub enum Commands {
         /// running version is a no-op. Refuses with exit `4` when the
         /// project's major is older than this binary's (run `specify
         /// migrate` first). Mutually exclusive with every other `init`
-        /// argument.
+        /// argument except `--platforms`.
         #[arg(
             long,
             conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework", "check_migration"]

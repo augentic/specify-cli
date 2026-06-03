@@ -5,6 +5,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::config::{ProjectConfig, is_slot};
+use specify_workflow::platform::parse_platforms_csv;
 use specify_workflow::init::{InitOptions, InitResult, init};
 use specify_workflow::migrate::{self, MigrationAction};
 use specify_workflow::registry::Registry;
@@ -33,6 +34,7 @@ pub(super) struct Args<'a> {
     pub description: Option<&'a str>,
     pub workspace: bool,
     pub include_framework: bool,
+    pub platforms: Option<&'a str>,
     pub check_migration: bool,
     pub upgrade: bool,
 }
@@ -44,6 +46,12 @@ pub(super) fn run(args: &Args<'_>) -> Result<()> {
         return check_migration_probe(args.format, &project_dir);
     }
 
+    let parsed_platforms =
+        args.platforms.map(parse_platforms_csv).transpose().map_err(|e| Error::Argument {
+            flag: "--platforms",
+            detail: e,
+        })?;
+
     let opts = InitOptions {
         project_dir: &project_dir,
         adapter: args.adapter,
@@ -51,6 +59,7 @@ pub(super) fn run(args: &Args<'_>) -> Result<()> {
         description: args.description,
         workspace: args.workspace,
         include_framework: args.include_framework,
+        platforms: parsed_platforms.as_deref(),
         upgrade: args.upgrade,
     };
 

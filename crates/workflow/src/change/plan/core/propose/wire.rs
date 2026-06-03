@@ -91,6 +91,10 @@ pub struct ProjectRef {
     /// Absent when the catalogue fits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decisions_more: Option<u64>,
+    /// Target platforms this project builds for, projected from
+    /// `project.yaml.platforms`. Empty stays off the wire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<crate::Platform>,
 }
 
 /// One row in the request's flat lead catalog.

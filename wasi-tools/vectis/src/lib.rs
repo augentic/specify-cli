@@ -11,10 +11,12 @@
 //! `output::emit` dispatcher; those couplings would re-attach the
 //! tool to the host CLI's release cadence.
 //!
-//! `vectis` exposes three subcommands:
+//! `vectis` exposes four subcommands:
 //!
 //! - `validate` — schema + cross-artifact validation for tokens, assets,
 //!   layout, composition, plus an `all` fan-out.
+//! - `verify` — declared-vs-present platform shell verification
+//!   (detect mode for plan-time, verify mode for build/lint).
 //! - `scaffold` — render-only Crux project scaffolds (core / iOS /
 //!   Android shells).
 //! - `schema` — print a tool-owned embedded schema to stdout (the tool-owned schema and catalog decisions D1).
@@ -27,6 +29,7 @@ mod error;
 pub mod scaffold;
 pub mod schema;
 pub mod validate;
+pub mod verify;
 
 pub use error::{EXIT_FAILURE, VectisError};
 
@@ -51,9 +54,10 @@ pub fn render_json(payload: &Value) -> String {
 #[command(
     name = "vectis",
     version,
-    about = "Validate Vectis UI artifacts, render Crux project scaffolds, and retrieve tool-owned schemas.",
+    about = "Validate Vectis UI artifacts, verify platform shells, render Crux project scaffolds, and retrieve tool-owned schemas.",
     long_about = "Vectis WASI command tool. Subcommands:\n  \
                   validate — validate Vectis UI artifacts (tokens, assets, layout, composition, all).\n  \
+                  verify  — verify declared platform shells are present on disk (detect, verify).\n  \
                   scaffold — render Crux project scaffolds (core, ios, android).\n  \
                   schema  — print a tool-owned embedded schema to stdout."
 )]
@@ -68,6 +72,8 @@ pub struct Args {
 pub enum VectisCommand {
     /// Validate Vectis UI artifacts.
     Validate(validate::ValidateArgs),
+    /// Verify declared platform shells are present on disk.
+    Verify(verify::VerifyArgs),
     /// Render Vectis Crux scaffolds.
     #[command(subcommand)]
     Scaffold(scaffold::ScaffoldCommand),
@@ -84,6 +90,7 @@ pub enum VectisCommand {
 pub fn run(args: &Args) -> (String, u8) {
     match &args.command {
         VectisCommand::Validate(v) => validate::render_json(validate::run(v)),
+        VectisCommand::Verify(v) => verify::render_json(verify::run(v)),
         VectisCommand::Scaffold(s) => scaffold::render_json(scaffold::run(s)),
         VectisCommand::Schema { name } => schema::run(name),
     }

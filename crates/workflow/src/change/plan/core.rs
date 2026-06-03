@@ -23,9 +23,9 @@ pub use model::{
     SliceSourceBinding, SourceBinding, Status, TargetRef, TargetRefParseError,
 };
 pub use propose::{
-    LeadCatalog, LeadCatalogEntry, ProjectRef, ProposalKind, ProposalRequest, ProposalResponse,
-    ProposeOutcome, ResponseMember, ResponseSlice, build_catalog, build_request, resolve_target,
-    resolve_topology,
+    LeadCatalog, LeadCatalogEntry, ProjectMissingPlatforms, ProjectRef, ProposalKind,
+    ProposalRequest, ProposalResponse, ProposeOutcome, ResponseMember, ResponseSlice,
+    build_catalog, build_request, detect_missing_platforms, resolve_target, resolve_topology,
 };
 #[cfg(test)]
 pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};

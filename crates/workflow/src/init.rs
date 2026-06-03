@@ -19,6 +19,7 @@ use specify_model::atomic::bytes_write;
 use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
 
 use crate::config::Layout;
+use crate::platform::Platform;
 
 /// Inputs to [`init`].
 ///
@@ -52,6 +53,11 @@ pub struct InitOptions<'a> {
     /// consumer projects carry only `UNI-*` rules. Ignored for workspace
     /// init (workspaces resolve no adapter and so distribute no codex).
     pub include_framework: bool,
+    /// Target platforms to declare in `project.yaml`. Parsed from the
+    /// `--platforms` CLI flag (comma-separated). `None` means the
+    /// operator did not pass `--platforms`. When the resolved target
+    /// adapter declares `platforms.required`, this must be `Some`.
+    pub platforms: Option<&'a [Platform]>,
     /// When `true`, run the re-entry **upgrade** path instead of a
     /// fresh scaffold: bump `project.yaml.specify_version` to the
     /// running binary's version over an already-populated `.specify/`,
@@ -212,6 +218,61 @@ pub(crate) fn scaffold_wasm_pkg_config(layout: &Layout<'_>) -> Result<bool, Erro
     }
     bytes_write(&path, DEFAULT_WASM_PKG_CONFIG.as_bytes())?;
     Ok(true)
+}
+
+pub(crate) fn validate_platforms(
+    operator: Option<&[Platform]>, capability: Option<&crate::adapter::PlatformsCapability>,
+    target_name: &str,
+) -> Result<Vec<Platform>, Error> {
+    let Some(cap) = capability else {
+        return Ok(operator.map(<[Platform]>::to_vec).unwrap_or_default());
+    };
+
+    let platforms = match operator {
+        Some(p) if !p.is_empty() => p,
+        _ if cap.required => {
+            let defaults: Vec<String> = cap.default.iter().map(ToString::to_string).collect();
+            return Err(Error::validation_failed(
+                "project-platforms-required",
+                format!("target '{target_name}' requires --platforms"),
+                format!(
+                    "target '{target_name}' requires --platforms; default set is [{}]",
+                    defaults.join(", "),
+                ),
+            ));
+        }
+        Some(p) => p,
+        None => return Ok(Vec::new()),
+    };
+
+    if !platforms.contains(&Platform::Core) {
+        return Err(Error::validation_failed(
+            "project-platforms-must-include-core",
+            "platform set must include `core`",
+            "the --platforms set must include `core`; every project that declares platforms requires the shared Rust core crate",
+        ));
+    }
+
+    let allowed_display: Vec<String> = cap.allowed.iter().map(ToString::to_string).collect();
+    for p in platforms {
+        if !cap.allowed.contains(p) {
+            return Err(Error::validation_failed(
+                "project-platforms-not-allowed",
+                format!("platform `{p}` is not in the target's allowed set"),
+                format!(
+                    "platform `{p}` is not allowed by target '{target_name}'; allowed: [{}]",
+                    allowed_display.join(", "),
+                ),
+            ));
+        }
+    }
+
+    Ok(platforms.to_vec())
+}
+
+#[cfg(test)]
+pub(super) fn fixed_now() -> Timestamp {
+    "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
 }
 
 #[cfg(test)]

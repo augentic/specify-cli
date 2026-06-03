@@ -11,6 +11,8 @@ pub use atomic::{AtomicYaml, with_state};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
+use crate::platform::Platform;
+
 /// In-memory representation of `.specify/project.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProjectConfig {
@@ -53,6 +55,14 @@ pub struct ProjectConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<specify_tool::manifest::Tool>,
 
+    /// Target platforms this project builds for (e.g. `core`, `ios`,
+    /// `android`). Set at `specify init --platforms` and changeable via
+    /// `specify init --upgrade --platforms`. When the bound target
+    /// adapter declares `platforms.required`, this field must be
+    /// non-empty and must include `Platform::Core`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<Platform>,
+
     /// `true` when this project is a registry-only **workspace**.
     /// Workspaces hold platform-level state — `registry.yaml`,
     /// `change.md`, `plan.yaml`, workspace slots under `.specify/workspace/`
@@ -63,8 +73,8 @@ pub struct ProjectConfig {
     /// `true` so regular `project.yaml` files round-trip byte-stable.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub workspace: bool,
-}
 
+}
 impl ProjectConfig {
     /// Load `.specify/project.yaml` from `project_dir`.
     ///

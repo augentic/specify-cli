@@ -29,8 +29,8 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
 use specify_workflow::change::{
-    Plan, ProjectRef, ProposalRequest, ProposalResponse, ProposeOutcome, build_request,
-    resolve_topology,
+    Plan, ProjectMissingPlatforms, ProjectRef, ProposalRequest, ProposalResponse, ProposeOutcome,
+    build_request, detect_missing_platforms, resolve_topology,
 };
 use specify_workflow::config::{ProjectConfig, with_state};
 use specify_workflow::journal::{self, Event, EventKind};
@@ -51,7 +51,7 @@ use crate::runtime::context::Ctx;
 pub(super) fn propose(ctx: &Ctx, args: cli::ProposeArgs) -> Result<()> {
     match (args.dry_run, args.from) {
         (true, None) => dry_run(ctx),
-        (false, Some(path)) => from(ctx, &path),
+        (false, Some(path)) => from(ctx, &path, args.reconcile_platforms),
         // The clap `conflicts_with` guard makes `(true, Some(_))`
         // unreachable; return the mode error rather than risk a panic.
         (false, None) | (true, Some(_)) => Err(Error::validation_failed(
@@ -74,7 +74,7 @@ fn dry_run(ctx: &Ctx) -> Result<()> {
 
 /// `--from`: schema-gate and project the agent response onto
 /// `plan.yaml.slices[]`, then emit the paired reconciliation events.
-fn from(ctx: &Ctx, response_path: &Path) -> Result<()> {
+fn from(ctx: &Ctx, response_path: &Path, reconcile_platforms: bool) -> Result<()> {
     let plan_path = require_file(&ctx.project_dir)?;
     let raw = read_response(response_path)?;
 
@@ -95,11 +95,26 @@ fn from(ctx: &Ctx, response_path: &Path) -> Result<()> {
     let discovery = load_discovery(ctx)?;
     let topology = load_topology(ctx)?;
 
+    // Detect missing platforms before entering the write loop so
+    // filesystem probes happen outside the atomic transaction.
+    let project_missing: Vec<ProjectMissingPlatforms> =
+        if reconcile_platforms { detect_missing_for_topology(&topology, ctx) } else { Vec::new() };
+
     // The projection runs inside the atomic write loop: `propose_from`
     // replaces `plan.entries`, `with_state` writes `plan.yaml` on Ok and
     // rolls back on any Err.
     let projected = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        let outcome = plan.propose_from(response, &discovery, &topology)?;
+        let mut outcome = plan.propose_from(response, &discovery, &topology)?;
+
+        if !project_missing.is_empty() {
+            let bootstrap_names = plan.reconcile_platforms(&project_missing)?;
+            if !bootstrap_names.is_empty() {
+                let mut all_names = bootstrap_names;
+                all_names.extend(outcome.slice_names);
+                outcome.slice_names = all_names;
+            }
+        }
+
         Ok(Projected {
             plan: plan_ref(plan, &plan_path),
             outcome,
@@ -110,6 +125,28 @@ fn from(ctx: &Ctx, response_path: &Path) -> Result<()> {
     emit_reconcile_event(ctx, &projected)?;
 
     ctx.write(&summary(projected), write_summary_text)
+}
+
+/// Detect missing platforms for each project in the topology.
+///
+/// Single-project mode checks `ctx.project_dir`; hub mode checks each
+/// member's workspace clone directory.
+fn detect_missing_for_topology(topology: &[ProjectRef], ctx: &Ctx) -> Vec<ProjectMissingPlatforms> {
+    topology
+        .iter()
+        .filter(|p| !p.platforms.is_empty())
+        .map(|p| {
+            let project_dir = if topology.len() == 1 {
+                ctx.project_dir.clone()
+            } else {
+                ctx.layout().specify_dir().join("workspace").join(&p.name)
+            };
+            ProjectMissingPlatforms {
+                project: p.name.clone(),
+                missing: detect_missing_platforms(&project_dir, &p.platforms),
+            }
+        })
+        .collect()
 }
 
 /// Successful projection carried out of the [`with_state`] write loop so

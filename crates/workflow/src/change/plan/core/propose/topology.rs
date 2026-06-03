@@ -81,6 +81,7 @@ fn workspace_topology(project_dir: &Path) -> Result<Vec<ProjectRef>> {
             recent: project.recent,
             decisions: project.decisions,
             decisions_more: project.decisions_more,
+            platforms: project.platforms,
         })
         .collect())
 }
@@ -105,5 +106,6 @@ fn regular_topology(config: &ProjectConfig, project_dir: &Path) -> Result<Projec
         recent: projection.recent,
         decisions: projection.decisions,
         decisions_more: projection.decisions_more,
+        platforms: config.platforms.clone(),
     })
 }

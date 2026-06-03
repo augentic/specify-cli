@@ -43,6 +43,7 @@ pub fn run(cli: Cli) -> Exit {
             description,
             workspace,
             include_framework,
+            platforms,
             check_migration,
             upgrade,
         } => dispatch(format, || {
@@ -53,6 +54,7 @@ pub fn run(cli: Cli) -> Exit {
                 description: description.as_deref(),
                 workspace,
                 include_framework,
+                platforms: platforms.as_deref(),
                 check_migration,
                 upgrade,
             })

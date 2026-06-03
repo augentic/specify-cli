@@ -165,6 +165,11 @@ pub struct ProposeArgs {
     /// Apply the agent's grouping response, validate it, and replace plan.yaml.slices[]. The only writer.
     #[arg(long = "from", value_name = "RESPONSE_JSON", conflicts_with = "dry_run")]
     pub from: Option<PathBuf>,
+    /// After writing the agent's slices, detect declared platforms
+    /// that lack on-disk shells and deterministically insert bootstrap
+    /// slices for them. Only legal with `--from`.
+    #[arg(long = "reconcile-platforms", action = ArgAction::SetTrue, conflicts_with = "dry_run")]
+    pub reconcile_platforms: bool,
 }
 
 /// Flag surface for `specify plan add`. Grouped into one struct so the

@@ -1,8 +1,9 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;
 
+use crate::Platform;
 use crate::config::ProjectConfig;
 use crate::init::{InitOptions, fixed_now, init};
 
@@ -16,6 +17,7 @@ fn upgrade_opts(project_dir: &Path) -> InitOptions<'_> {
         description: None,
         workspace: false,
         include_framework: false,
+        platforms: None,
         upgrade: true,
     }
 }
@@ -98,4 +100,100 @@ fn upgrade_refuses_when_uninitialised() {
     let err = init(upgrade_opts(tmp.path()), fixed_now())
         .expect_err("upgrade over a bare directory must error");
     assert!(matches!(err, specify_error::Error::NotInitialized), "got: {err:?}");
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("workspace root")
+        .to_path_buf()
+}
+
+fn seed_adapter_cache(project_dir: &Path, name: &str) {
+    let fixture = repo_root().join("tests/fixtures/adapters/targets").join(name);
+    let cache = project_dir.join(".specify/.cache/manifests/targets").join(name);
+    fs::create_dir_all(cache.join("briefs")).expect("mkdir cache dir");
+    for entry in fs::read_dir(&fixture).expect("read fixture dir") {
+        let entry = entry.unwrap();
+        let dest = cache.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            fs::create_dir_all(&dest).expect("mkdir sub");
+            for sub in fs::read_dir(entry.path()).expect("read sub") {
+                let sub = sub.unwrap();
+                fs::copy(sub.path(), dest.join(sub.file_name())).unwrap();
+            }
+        } else {
+            fs::copy(entry.path(), &dest).unwrap();
+        }
+    }
+}
+
+#[test]
+fn upgrade_with_platforms_updates_config() {
+    let tmp = tempdir().unwrap();
+    seed_project_yaml(tmp.path(), "name: demo\nadapter: vectis-stub\nspecify_version: 0.2.0\n");
+    seed_adapter_cache(tmp.path(), "vectis-stub");
+
+    let platforms = [Platform::Core, Platform::Ios, Platform::Android];
+    let result = init(
+        InitOptions {
+            project_dir: tmp.path(),
+            adapter: None,
+            name: None,
+            description: None,
+            hub: false,
+            include_framework: false,
+            platforms: Some(&platforms),
+            upgrade: true,
+        },
+        fixed_now(),
+    )
+    .expect("upgrade with platforms ok");
+    assert!(result.specify_version_changed);
+
+    let cfg = ProjectConfig::load(tmp.path()).expect("reload");
+    assert_eq!(cfg.platforms, vec![Platform::Core, Platform::Ios, Platform::Android]);
+}
+
+#[test]
+fn upgrade_with_platforms_missing_core_fails() {
+    let tmp = tempdir().unwrap();
+    seed_project_yaml(tmp.path(), "name: demo\nadapter: vectis-stub\nspecify_version: 0.2.0\n");
+    seed_adapter_cache(tmp.path(), "vectis-stub");
+
+    let platforms = [Platform::Ios, Platform::Android];
+    let err = init(
+        InitOptions {
+            project_dir: tmp.path(),
+            adapter: None,
+            name: None,
+            description: None,
+            hub: false,
+            include_framework: false,
+            platforms: Some(&platforms),
+            upgrade: true,
+        },
+        fixed_now(),
+    )
+    .expect_err("upgrade without core must fail");
+    let specify_error::Error::Validation { code, .. } = err else {
+        panic!("expected Validation, got: {err:?}");
+    };
+    assert_eq!(code, "project-platforms-must-include-core");
+}
+
+#[test]
+fn upgrade_without_platforms_preserves_existing() {
+    let tmp = tempdir().unwrap();
+    seed_project_yaml(
+        tmp.path(),
+        "name: demo\nadapter: vectis-stub\nspecify_version: 0.2.0\nplatforms:\n  - core\n  - ios\n",
+    );
+
+    let result = init(upgrade_opts(tmp.path()), fixed_now()).expect("upgrade ok");
+    assert!(result.specify_version_changed);
+
+    let cfg = ProjectConfig::load(tmp.path()).expect("reload");
+    assert_eq!(cfg.platforms, vec![Platform::Core, Platform::Ios]);
 }

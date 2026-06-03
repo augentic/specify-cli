@@ -71,6 +71,11 @@
         }
       }
     },
+    "platform": {
+      "type": "string",
+      "enum": ["core", "ios", "android", "web", "desktop"],
+      "description": "Closed target platform enum. `core` is the shared Rust business-logic crate; `ios`, `android` are supported shell platforms; `web`, `desktop` are future placeholders."
+    },
     "projectRef": {
       "type": "object",
       "additionalProperties": false,
@@ -119,6 +124,14 @@
           "type": "integer",
           "minimum": 1,
           "description": "Count of accepted decisions elided past the K cap. Absent when the catalogue fits within K."
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/platform"
+          },
+          "uniqueItems": true,
+          "description": "Target platforms this project builds for, projected from `project.yaml.platforms`. The agent reads each candidate project's platform set during reconciliation. Empty stays off the wire (non-platforms targets omit the field)."
         }
       }
     },

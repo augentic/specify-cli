@@ -113,6 +113,135 @@ fn all_mode_recurses_findings_exit_code() {
     );
 }
 
+// ── verify subcommand ──────────────────────────────────────────────
+
+fn vectis_verify() -> Command {
+    let mut cmd = vectis();
+    cmd.arg("verify");
+    cmd
+}
+
+fn write_project_yaml(root: &std::path::Path, platforms: &[&str]) {
+    let yaml_platforms: Vec<String> = platforms.iter().map(|p| format!("  - {p}")).collect();
+    let content = format!(
+        "name: test-app\nadapter: vectis\nspecify_version: '2.0'\nplatforms:\n{}",
+        yaml_platforms.join("\n"),
+    );
+    std::fs::write(root.join("project.yaml"), content).expect("write project.yaml");
+}
+
+fn scaffold_core(root: &std::path::Path) {
+    let dir = root.join("shared/src");
+    std::fs::create_dir_all(&dir).expect("mkdir shared/src");
+    std::fs::write(dir.join("app.rs"), "pub struct App;").expect("write app.rs");
+}
+
+fn scaffold_ios(root: &std::path::Path) {
+    let dir = root.join("iOS/TestApp");
+    std::fs::create_dir_all(&dir).expect("mkdir iOS/TestApp");
+    std::fs::write(dir.join("ContentView.swift"), "struct ContentView {}").expect("write swift");
+}
+
+fn scaffold_android(root: &std::path::Path) {
+    let dir = root.join("Android/app/src/main/kotlin/com/test");
+    std::fs::create_dir_all(&dir).expect("mkdir Android");
+    std::fs::write(dir.join("MainActivity.kt"), "class MainActivity").expect("write kt");
+}
+
+#[test]
+fn verify_detect_all_present_exits_zero() {
+    let tmp = tempdir().unwrap();
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
+    scaffold_core(tmp.path());
+    scaffold_ios(tmp.path());
+    scaffold_android(tmp.path());
+
+    let assert = vectis_verify()
+        .args(["--mode", "detect"])
+        .arg(tmp.path())
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "detect");
+    let missing = value["missing"].as_array().expect("missing array");
+    assert!(missing.is_empty(), "expected empty missing: {value}");
+}
+
+#[test]
+fn verify_detect_missing_shell_exits_zero_with_missing() {
+    let tmp = tempdir().unwrap();
+    write_project_yaml(tmp.path(), &["core", "ios"]);
+    scaffold_core(tmp.path());
+
+    let assert = vectis_verify()
+        .args(["--mode", "detect"])
+        .arg(tmp.path())
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "detect");
+    let missing = value["missing"].as_array().expect("missing array");
+    assert_eq!(missing.len(), 1);
+    assert_eq!(missing[0], "ios");
+}
+
+#[test]
+fn verify_verify_missing_shell_exits_one() {
+    let tmp = tempdir().unwrap();
+    write_project_yaml(tmp.path(), &["core", "android"]);
+    scaffold_core(tmp.path());
+
+    let assert = vectis_verify()
+        .args(["--mode", "verify"])
+        .arg(tmp.path())
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(value["mode"], "verify");
+    let findings = value["findings"].as_array().expect("findings array");
+    assert!(findings.iter().any(|f| f["id"] == "platform-shell-missing"));
+}
+
+#[test]
+fn verify_missing_project_yaml_exits_two() {
+    let tmp = tempdir().unwrap();
+
+    let assert = vectis_verify()
+        .args(["--mode", "detect"])
+        .arg(tmp.path())
+        .assert()
+        .failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 2);
+}
+
+#[test]
+fn verify_uses_project_dir_env() {
+    let tmp = tempdir().unwrap();
+    write_project_yaml(tmp.path(), &["core"]);
+    scaffold_core(tmp.path());
+
+    let assert = vectis_verify()
+        .env("PROJECT_DIR", tmp.path())
+        .args(["--mode", "detect"])
+        .assert()
+        .success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "detect");
+    let missing = value["missing"].as_array().expect("missing array");
+    assert!(missing.is_empty());
+}
+
 // ── schema subcommand ──────────────────────────────────────────────
 
 fn vectis_schema() -> Command {

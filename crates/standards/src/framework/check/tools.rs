@@ -25,7 +25,7 @@ const EXPECTED_FIRST_PARTY_TOOLS: &[ExpectedToolDeclaration] = &[
     ExpectedToolDeclaration {
         adapter: "vectis",
         name: "vectis",
-        package: "specify:vectis@0.3.0",
+        package: "specify:vectis@0.4.0",
     },
 ];
 
