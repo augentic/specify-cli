@@ -86,6 +86,7 @@ pub(super) fn run(opts: InitOptions<'_>) -> Result<InitResult, Error> {
         specify_version: Some(specify_version.clone()),
         rules: BTreeMap::new(),
         tools: Vec::new(),
+        platforms: Vec::new(),
         hub: true,
     };
     let config_path = layout.config_path();

@@ -35,6 +35,7 @@ fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {
         specify_version: None,
         rules,
         tools: Vec::new(),
+        platforms: Vec::new(),
         hub: false,
     }
 }
@@ -184,6 +185,7 @@ fn hub_field_omitted_when_false_in_serialise() {
         specify_version: None,
         rules: BTreeMap::new(),
         tools: Vec::new(),
+        platforms: Vec::new(),
         hub: false,
     };
     let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
@@ -200,6 +202,7 @@ fn hub_field_serialised_when_true() {
         specify_version: None,
         rules: BTreeMap::new(),
         tools: Vec::new(),
+        platforms: Vec::new(),
         hub: true,
     };
     let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
@@ -272,4 +275,54 @@ fn find_root_walks_up_to_specify_project() {
 fn find_root_none_outside_tree() {
     let tmp = tempdir().unwrap();
     assert!(ProjectConfig::find_root(tmp.path()).is_none());
+}
+
+#[test]
+fn platforms_field_absent_deserialises_as_empty() {
+    let tmp = tempdir().unwrap();
+    write_config(tmp.path(), "name: demo\nadapter: omnia\n");
+    let cfg = ProjectConfig::load(tmp.path()).expect("loads without platforms");
+    assert!(cfg.platforms.is_empty());
+}
+
+#[test]
+fn platforms_field_round_trips() {
+    use crate::platform::Platform;
+
+    let tmp = tempdir().unwrap();
+    write_config(
+        tmp.path(),
+        "name: demo\nadapter: vectis\nplatforms:\n  - core\n  - ios\n  - android\n",
+    );
+    let cfg = ProjectConfig::load(tmp.path()).expect("loads with platforms");
+    assert_eq!(cfg.platforms, vec![Platform::Core, Platform::Ios, Platform::Android]);
+
+    let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
+    assert!(yaml.contains("platforms:"), "platforms must serialise when present, got:\n{yaml}");
+    assert!(yaml.contains("- core"), "must contain core, got:\n{yaml}");
+    assert!(yaml.contains("- ios"), "must contain ios, got:\n{yaml}");
+    assert!(yaml.contains("- android"), "must contain android, got:\n{yaml}");
+}
+
+#[test]
+fn platforms_field_omitted_when_empty_in_serialise() {
+    let cfg = sample_cfg(BTreeMap::new());
+    let yaml = serde_saphyr::to_string(&cfg).expect("serialise");
+    assert!(!yaml.contains("platforms:"), "empty platforms should be omitted, got:\n{yaml}");
+}
+
+#[test]
+fn platforms_field_preserves_order() {
+    use crate::platform::Platform;
+
+    let tmp = tempdir().unwrap();
+    write_config(
+        tmp.path(),
+        "name: demo\nadapter: vectis\nplatforms:\n  - core\n  - android\n  - ios\n  - web\n  - desktop\n",
+    );
+    let cfg = ProjectConfig::load(tmp.path()).expect("loads");
+    assert_eq!(
+        cfg.platforms,
+        vec![Platform::Core, Platform::Android, Platform::Ios, Platform::Web, Platform::Desktop]
+    );
 }

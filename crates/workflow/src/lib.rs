@@ -15,8 +15,11 @@ pub mod journal;
 pub mod merge;
 pub mod migrate;
 pub mod name;
+pub mod platform;
 pub mod plugins;
 pub mod registry;
 pub mod schema;
 pub mod slice;
 pub mod upgrade;
+
+pub use platform::Platform;

@@ -11,6 +11,8 @@ pub use atomic::{AtomicYaml, with_state};
 use serde::{Deserialize, Serialize};
 use specify_error::Error;
 
+use crate::platform::Platform;
+
 /// In-memory representation of `.specify/project.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ProjectConfig {
@@ -52,6 +54,14 @@ pub struct ProjectConfig {
     /// points owned by `specify-tool`, not by any adapter.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<specify_tool::manifest::Tool>,
+
+    /// Target platforms this project builds for (e.g. `core`, `ios`,
+    /// `android`). Set at `specrun init --platforms` and changeable via
+    /// `specrun init --upgrade --platforms`. When the bound target
+    /// adapter declares `platforms.required`, this field must be
+    /// non-empty and must include `Platform::Core`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<Platform>,
 
     /// `true` when this project is a registry-only **platform hub**.
     /// Hubs hold platform-level state — `registry.yaml`, `change.md`,
