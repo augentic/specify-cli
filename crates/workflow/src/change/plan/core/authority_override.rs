@@ -258,3 +258,6 @@ pub fn unknown_slice_err(plan_name: &str, slice: &str) -> Error {
         ),
     )
 }
+
+#[cfg(test)]
+mod tests;

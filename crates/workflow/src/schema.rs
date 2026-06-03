@@ -27,7 +27,7 @@ pub use specify_schema::{
     DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, PLAN_JSON_SCHEMA,
     PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
     SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, compile_schema,
-    read_yaml_as_json, validate_serialisable, validate_value,
+    read_yaml_as_json, validate_serialisable, validate_value, validate_value_cached,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -285,41 +285,65 @@ pub fn evidence_yaml_paths(slice_dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
+/// One parsed `evidence/<source>.yaml` from a single read.
+///
+/// Read and schema-validated once by [`validate_evidence_dir`] and
+/// handed back so downstream slice gates (catalog-drift and
+/// model-drift) can reuse the parsed document instead of re-reading and
+/// re-parsing the file from disk.
+#[derive(Debug)]
+pub struct EvidenceDoc {
+    /// Path the document was read from, retained for per-file error
+    /// attribution and source-key derivation (the file stem) in the
+    /// consuming gates.
+    pub path: PathBuf,
+    /// The parsed YAML-as-JSON document — byte-identical to the value
+    /// the consuming gates would have produced by re-reading the file.
+    pub value: JsonValue,
+}
+
 /// Validate every `*.yaml` file under `<slice_dir>/evidence/` against
 /// the embedded `schemas/evidence.schema.json`.
 ///
 /// `slice_dir` is the directory typically at
 /// `.specify/slices/<name>/`. The evidence subdirectory is optional —
-/// returning `Ok(())` when it is absent matches the workflow §Extraction
-/// reliability rule that an empty `claims: []` (or no Evidence at all
-/// before extract runs) is valid.
+/// returning an empty `Vec` when it is absent matches the workflow
+/// §Extraction reliability rule that an empty `claims: []` (or no
+/// Evidence at all before extract runs) is valid.
 ///
 /// All findings are aggregated and returned in a single
 /// [`Error::Validation`] so the caller sees every malformed file in
-/// one pass.
+/// one pass. On a clean validation the parsed documents are returned
+/// (in sorted-path order) so the slice-validate drift gates can reuse
+/// them without a second read or parse.
 ///
 /// # Errors
 ///
 /// - [`Error::Filesystem`] if `evidence/` exists but cannot be read.
 /// - [`Error::Validation`] if any Evidence file fails YAML parse or
 ///   schema validation.
-pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
+pub fn validate_evidence_dir(slice_dir: &Path) -> Result<Vec<EvidenceDoc>> {
     let paths = evidence_yaml_paths(slice_dir)?;
 
+    let mut docs: Vec<EvidenceDoc> = Vec::with_capacity(paths.len());
     let mut summaries: Vec<ValidationSummary> = Vec::new();
-    for path in &paths {
-        match read_yaml_as_json(path) {
+    for path in paths {
+        match read_yaml_as_json(&path) {
             Ok(instance) => {
-                for summary in validate_value(
+                for summary in validate_value_cached(
                     &instance,
                     EVIDENCE_JSON_SCHEMA,
                     "evidence-schema",
                     "evidence file conforms to schemas/evidence.schema.json",
                 ) {
                     if summary.status == ValidationStatus::Fail {
-                        summaries.push(relabel_with_path(summary, path));
+                        summaries.push(relabel_with_path(summary, &path));
                     }
                 }
+                docs.push(EvidenceDoc {
+                    path,
+                    value: instance,
+                });
             }
             Err(err) => {
                 summaries.push(ValidationSummary {
@@ -333,7 +357,7 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<()> {
     }
 
     if summaries.is_empty() {
-        Ok(())
+        Ok(docs)
     } else {
         Err(Error::Validation {
             code: "evidence-schema".to_string(),
@@ -436,7 +460,9 @@ pub fn validate_leads(leads: &[Lead]) -> Result<()> {
                 lead.lead
             ),
         })?;
-        for summary in validate_value(&instance, LEAD_JSON_SCHEMA, "discovery-lead-schema", rule) {
+        for summary in
+            validate_value_cached(&instance, LEAD_JSON_SCHEMA, "discovery-lead-schema", rule)
+        {
             if summary.status == ValidationStatus::Fail {
                 summaries.push(relabel_with_lead(summary, &lead.lead));
             }
@@ -484,7 +510,7 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
 ///
 /// Returns [`Error::Validation`] (keyed on `code`) when parsing or
 /// schema validation fails.
-fn validate_parsed_json(content: &str, schema: &str, code: &str, rule: &str) -> Result<()> {
+fn validate_parsed_json(content: &str, schema: &'static str, code: &str, rule: &str) -> Result<()> {
     let instance: JsonValue = serde_saphyr::from_str(content)
         .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
     err_from_failures(code, &validation_failures(&instance, schema, code, rule))
@@ -539,9 +565,9 @@ fn compile_ref_validator(
 }
 
 fn validation_failures(
-    instance: &JsonValue, schema_source: &str, rule_id: &str, rule: &str,
+    instance: &JsonValue, schema_source: &'static str, rule_id: &str, rule: &str,
 ) -> Vec<ValidationSummary> {
-    validate_value(instance, schema_source, rule_id, rule)
+    validate_value_cached(instance, schema_source, rule_id, rule)
         .into_iter()
         .filter(|summary| summary.status == ValidationStatus::Fail)
         .collect()

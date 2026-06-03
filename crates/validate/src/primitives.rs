@@ -25,9 +25,19 @@ fn checkbox_re() -> &'static Regex {
     })
 }
 
+/// Unanchored *scanner* over the canonical `REQ_ID_PATTERN` grammar: finds
+/// `REQ-NNN` references embedded in design prose. Distinct from the
+/// full-string `specify_model::spec::is_req_id` predicate — anchoring it
+/// would stop it matching references inside surrounding text. The pattern
+/// body is sourced from `REQ_ID_PATTERN` (anchors stripped) so the scanner
+/// and the predicate share one grammar definition.
 fn req_id_ref_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"REQ-[0-9]{3}").expect("req id regex is valid"))
+    RE.get_or_init(|| {
+        let body =
+            specify_model::spec::REQ_ID_PATTERN.trim_start_matches('^').trim_end_matches('$');
+        Regex::new(body).expect("req id scanner regex is valid")
+    })
 }
 
 pub fn screen_slug_re() -> &'static Regex {

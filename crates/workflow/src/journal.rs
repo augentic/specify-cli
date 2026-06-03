@@ -14,8 +14,9 @@
 //!
 //! [workflow §Observability]: ../../../../docs/standards/workflow.md#observability
 
-use std::io::{ErrorKind, Write};
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -86,8 +87,8 @@ pub enum EventKind {
     },
     /// Stamped `slices[].divergence` via
     /// `specrun plan amend --divergence <likely|accepted|rejected>`.
-    /// divergence and writer-ownership contract — the CLI is the single writer. In the
-    /// RFC-29 D2 propose flow the `/spec:plan` agent stages `likely`
+    /// The CLI is the single writer. In the propose flow the
+    /// `/spec:plan` agent stages `likely`
     /// through this event after `propose --from`; the operator later
     /// flips `accepted` / `rejected` the same way. This is the only
     /// path that writes the `divergence` field.
@@ -154,8 +155,7 @@ pub enum EventKind {
     },
     /// Slice synthesis began — `/spec:refine` started folding the
     /// extracted evidence into `proposal.md` / `spec.md` / `design.md`
-    /// / `tasks.md` / `model.yaml`. One event per slice (RFC-29c
-    /// §"Wire contracts"). Distinct from the per-requirement
+    /// / `tasks.md` / `model.yaml`. One event per slice. Distinct from the per-requirement
     /// `slice.synthesis.*` tag events above — `synthesize` is the
     /// lifecycle verb, `synthesis` is the requirement-tag noun.
     #[serde(rename = "slice.synthesize.started", rename_all = "kebab-case")]
@@ -164,16 +164,15 @@ pub enum EventKind {
         slice_name: SliceName,
     },
     /// Synthesis dispatched to the agent. Synthesis is always
-    /// agent-driven and `cache: opt-out` (RFC-29c §"Synthesis dispatch
-    /// (D10)"); this signal fires on the dry-run inputs phase so the
+    /// agent-driven and `cache: opt-out`; this signal fires on the dry-run inputs phase so the
     /// journal records that no cache short-circuit was attempted.
     #[serde(rename = "slice.synthesize.agent", rename_all = "kebab-case")]
     SliceSynthesizeAgent {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// Slice synthesis finished and the artifacts were persisted
-    /// (RFC-29c §"Wire contracts"). `artifacts` lists the persisted
+    /// Slice synthesis finished and the artifacts were persisted.
+    /// `artifacts` lists the persisted
     /// relative paths (`proposal.md`, `specs/<unit>/spec.md`,
     /// `design.md`, `tasks.md`, `model.yaml`).
     #[serde(rename = "slice.synthesize.completed", rename_all = "kebab-case")]
@@ -184,8 +183,8 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         artifacts: Vec<String>,
     },
-    /// Slice synthesis failed before all artifacts were persisted
-    /// (RFC-29c §"Wire contracts"). `reason` carries a short human
+    /// Slice synthesis failed before all artifacts were persisted.
+    /// `reason` carries a short human
     /// reason or finding code so the journal records why the slice
     /// stalled.
     #[serde(rename = "slice.synthesize.failed", rename_all = "kebab-case")]
@@ -197,7 +196,7 @@ pub enum EventKind {
     },
     /// `/spec:build` started implementing the slice — the target
     /// adapter's `build` brief began running against the refined
-    /// artifacts (RFC-29d §"Journal events"). One event per slice.
+    /// artifacts. One event per slice.
     #[serde(rename = "slice.build.started", rename_all = "kebab-case")]
     SliceBuildStarted {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -205,14 +204,14 @@ pub enum EventKind {
     },
     /// `/spec:build` finished implementing the slice — the target
     /// adapter's `build` brief completed and the slice is ready for
-    /// `/spec:merge` (RFC-29d §"Journal events"). One event per slice.
+    /// `/spec:merge`. One event per slice.
     #[serde(rename = "slice.build.succeeded", rename_all = "kebab-case")]
     SliceBuildSucceeded {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// `/spec:build` stopped before the slice was implemented
-    /// (RFC-29d §"Journal events"). `reason` carries a short human
+    /// `/spec:build` stopped before the slice was implemented.
+    /// `reason` carries a short human
     /// reason or finding code so the journal records why the build
     /// stalled.
     #[serde(rename = "slice.build.failed", rename_all = "kebab-case")]
@@ -223,7 +222,7 @@ pub enum EventKind {
         reason: String,
     },
     /// `specrun slice merge` began folding the slice's deltas into the
-    /// baseline (RFC-29d §"Journal events"). The `slice.merge.*` pair
+    /// baseline. The `slice.merge.*` pair
     /// fires on the `specrun slice merge` validator outcome, not on a
     /// merge report. One event per slice.
     #[serde(rename = "slice.merge.started", rename_all = "kebab-case")]
@@ -232,7 +231,7 @@ pub enum EventKind {
         slice_name: SliceName,
     },
     /// `specrun slice merge` validated and applied the slice's deltas
-    /// to the baseline (RFC-29d §"Journal events"). Fires on the
+    /// to the baseline. Fires on the
     /// validator outcome, not on a merge report. One event per slice.
     #[serde(rename = "slice.merge.succeeded", rename_all = "kebab-case")]
     SliceMergeSucceeded {
@@ -240,7 +239,7 @@ pub enum EventKind {
         slice_name: SliceName,
     },
     /// `specrun slice merge` refused to fold the slice into the
-    /// baseline (RFC-29d §"Journal events"). Fires on the validator
+    /// baseline. Fires on the validator
     /// outcome, not on a merge report. `reason` carries a short human
     /// reason or finding code so the journal records why the merge
     /// stalled.
@@ -331,8 +330,8 @@ pub enum EventKind {
         operation: SourceOperation,
     },
     /// A target adapter ran one operation under agent execution. The
-    /// `build` verb emits this per agent invocation (RFC-29d
-    /// §"Journal events"). Unlike [`Self::SourceExecutionAgent`], which
+    /// `build` verb emits this per agent invocation.
+    /// Unlike [`Self::SourceExecutionAgent`], which
     /// fans out over the `(source, operation)` pair, the build verb
     /// derives `(slice, target)` from the bound project — `build` is
     /// the only agent-dispatched target operation that emits this event
@@ -384,13 +383,9 @@ pub enum EventKind {
         source: Option<String>,
     },
     /// `specrun plan propose --from` validated the agent reconciliation
-    /// response and wrote `plan.yaml.slices[]`. One event per successful
-    /// invocation — the `/spec:plan` skill never calls
-    /// `specrun journal emit` for D2. (RFC-29 review F8 folded the former
-    /// `plan.reconcile.agent` + `plan.reconcile.completed` pair into this
-    /// single event: they always co-fired atomically with no failure-mode
-    /// gap between them, so one indivisible event carries the whole D2
-    /// outcome.)
+    /// response and wrote `plan.yaml.slices[]`. One indivisible event
+    /// per successful invocation — the `/spec:plan` skill never calls
+    /// `specrun journal emit` here.
     #[serde(rename = "plan.reconcile.completed", rename_all = "kebab-case")]
     PlanReconcileCompleted {
         /// Plan name from `plan.yaml.name`.
@@ -425,7 +420,7 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         merge_sha: Option<String>,
         /// `DEC-NNNN` ids promoted into the Decision Record catalogue by
-        /// this merge (RFC-36), in slug order. Empty stays off the wire;
+        /// this merge, in slug order. Empty stays off the wire;
         /// this is the durable ledger of promoted decisions alongside git
         /// history of `.specify/decisions/`.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -480,8 +475,8 @@ pub enum EventKind {
     },
     /// `specrun lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
-    /// `baseline_present` flag (hard-coded `false` until RFC-33b
-    /// lands), and the CLI exit code the scan resolved to. Emission is
+    /// `baseline_present` flag (currently hard-coded `false`), and the
+    /// CLI exit code the scan resolved to. Emission is
     /// wired in the scanner; this variant exists so the taxonomy is
     /// closed even before the emitter ships.
     ///
@@ -505,12 +500,11 @@ pub struct LintCompletedPayload {
     pub scope: LintScope,
     /// Wall-clock duration of the scan in milliseconds.
     pub duration_ms: u64,
-    /// Per-status counts. While RFC-33b is deferred, the scanner emits
-    /// only `open`, `ignored`, and `false_positive`; the additional
-    /// `new` / `baselined` buckets land additively with RFC-33b.
+    /// Per-status counts. The scanner emits `open`, `ignored`, and
+    /// `false_positive`.
     pub counts: LintCounts,
     /// Whether the scan observed a baseline file. Hard-coded `false`
-    /// in current emitters; becomes scan-derived when RFC-33b lands.
+    /// in current emitters.
     pub baseline_present: bool,
     /// CLI exit code the scan resolved to (status-aware severity per
     /// the exit and presentation semantics). `0` on clean
@@ -536,8 +530,7 @@ pub struct LintScope {
 }
 
 /// Per-status finding counts on [`LintCompletedPayload`]. Current
-/// emitters fill the three buckets named here; RFC-33b adds `new` and
-/// `baselined` additively when it lands.
+/// emitters fill the three buckets named here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LintCounts {
     /// `status: open` count — findings that block CI by default when
@@ -630,8 +623,7 @@ pub fn path(layout: Layout<'_>) -> PathBuf {
 /// failing the whole read, so a journal written by a newer binary
 /// (carrying event kinds this binary does not know) still yields the
 /// events it does understand — the read stays forward-compatible and,
-/// for a given file, deterministic. This is the read side the RFC-36
-/// identity projection (`recent[]`) consumes.
+/// for a given file, deterministic.
 ///
 /// # Errors
 ///
@@ -648,6 +640,119 @@ pub fn read(layout: Layout<'_>) -> Result<Vec<Event>, Error> {
         .filter(|line| !line.trim().is_empty())
         .filter_map(|line| serde_json::from_str::<Event>(line).ok())
         .collect())
+}
+
+/// Byte window the backward tail reader pulls per `read`/`seek`. One
+/// `O_APPEND` journal line stays well under this, so the common case of a
+/// few recent matches resolves in a single window.
+const TAIL_CHUNK: usize = 8192;
+
+/// Read the most recent journal [`Event`]s that `select` maps to a value,
+/// returning at most `limit` of them in append (file) order.
+///
+/// Tails the journal backward (see [`for_each_line_rev`]) and stops as
+/// soon as `limit` matches are collected, so the bytes touched are bounded
+/// by how far back the `limit`-th match sits — not by total history. This
+/// keeps the projection cost flat as the journal grows.
+///
+/// Blank lines are skipped and lines that fail to parse as an [`Event`]
+/// are skipped rather than failing the read — identical leniency to
+/// [`read`], so a journal written by a newer binary still yields the
+/// matches this binary understands. A missing journal yields an empty
+/// vector. This is the read side the identity projection
+/// (`recent[]`) consumes.
+///
+/// # Errors
+///
+/// Propagates I/O failures other than a missing file.
+pub(crate) fn read_recent<T>(
+    layout: Layout<'_>, limit: usize, mut select: impl FnMut(Event) -> Option<T>,
+) -> Result<Vec<T>, Error> {
+    let mut newest_first: Vec<T> = Vec::new();
+    if limit == 0 {
+        return Ok(newest_first);
+    }
+    for_each_line_rev(&path(layout), TAIL_CHUNK, |line| {
+        if line.trim().is_empty() {
+            return true;
+        }
+        if let Ok(event) = serde_json::from_str::<Event>(line)
+            && let Some(item) = select(event)
+        {
+            newest_first.push(item);
+            if newest_first.len() >= limit {
+                return false;
+            }
+        }
+        true
+    })
+    .map_err(Error::Io)?;
+    newest_first.reverse();
+    Ok(newest_first)
+}
+
+/// Visit the complete lines of the file at `path` newest-first, invoking
+/// `visit` for each; `visit` returns `false` to stop early (the unread
+/// head of the file is then never read).
+///
+/// The file is read backward in `chunk`-byte windows, so only the tail the
+/// consumer scans is touched. Line boundaries follow [`str::lines`]: a
+/// single trailing newline is a terminator (no empty final line) while
+/// interior blank lines are preserved. Splitting happens on `b'\n'`
+/// boundaries — multi-byte UTF-8 sequences spanning a chunk edge are
+/// reassembled before decoding, and every emitted line spans from just
+/// after a newline (or file start) to just before the next newline (or
+/// end), which are always character boundaries in a valid UTF-8 journal.
+///
+/// A missing file yields no visits (`Ok(())`), mirroring [`read`].
+fn for_each_line_rev(
+    path: &Path, chunk: usize, mut visit: impl FnMut(&str) -> bool,
+) -> std::io::Result<()> {
+    debug_assert!(chunk > 0, "tail chunk size must be non-zero");
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err),
+    };
+    let mut pos = file.seek(SeekFrom::End(0))?;
+    if pos == 0 {
+        return Ok(());
+    }
+    let chunk = u64::try_from(chunk).unwrap_or(u64::MAX);
+    // `carry` holds the leading partial segment of the window read so far
+    // (the bytes before its first newline); its true start lies in an
+    // as-yet-unread earlier chunk, so it is only decoded once `pos` hits 0.
+    let mut carry: Vec<u8> = Vec::new();
+    let mut first = true;
+    while pos > 0 {
+        let take = pos.min(chunk);
+        pos -= take;
+        file.seek(SeekFrom::Start(pos))?;
+        let mut window = vec![0_u8; usize::try_from(take).unwrap_or(usize::MAX)];
+        file.read_exact(&mut window)?;
+        window.extend_from_slice(&carry);
+        if first {
+            first = false;
+            // Drop a single trailing newline so a terminator does not yield
+            // an empty final line (str::lines parity).
+            if window.last() == Some(&b'\n') {
+                window.pop();
+            }
+        }
+        // Emit every line after the first newline (newest-first); retain
+        // the pre-first-newline head as the next `carry`.
+        while let Some(idx) = window.iter().rposition(|&byte| byte == b'\n') {
+            let keep_going = visit(String::from_utf8_lossy(&window[idx + 1..]).as_ref());
+            window.truncate(idx);
+            if !keep_going {
+                return Ok(());
+            }
+        }
+        carry = window;
+    }
+    // `pos == 0`: the remaining bytes are the file's first line.
+    visit(String::from_utf8_lossy(&carry).as_ref());
+    Ok(())
 }
 
 /// Append a sequence of [`Event`]s to the project journal in a

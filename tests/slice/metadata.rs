@@ -6,21 +6,17 @@ use crate::support::*;
 #[test]
 fn metadata_without_outcome_still_parses() {
     use specify_workflow::slice::SliceMetadata;
-    // Hand-craft a `.metadata.yaml` that predates the `outcome` field
-    // and assert that SliceMetadata::load accepts it and leaves
-    // `outcome` as None.
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let slice_dir = tmp.path();
-    let yaml = r#"target: omnia
-status: refining
-created-at: "2024-08-01T10:00:00Z"
-"#;
-    fs::write(slice_dir.join(".metadata.yaml"), yaml).expect("write metadata");
-    let meta = SliceMetadata::load(slice_dir).expect("legacy metadata parses");
-    assert!(
-        meta.outcome.is_none(),
-        "pre-existing metadata without an outcome field must load as None"
-    );
+    // A freshly-created slice writes `.metadata.yaml` with no `outcome`
+    // key (omitted via `skip_serializing_if`) — byte-for-byte the
+    // back-compat shape of metadata that predates the field. Drive
+    // creation through `slice create` rather than hand-writing the file
+    // (testing.md:45), then assert `SliceMetadata::load` leaves `outcome`
+    // as None.
+    let project = Project::init();
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let slice_dir = project.slices_dir().join("my-slice");
+    let meta = SliceMetadata::load(&slice_dir).expect("freshly-created metadata parses");
+    assert!(meta.outcome.is_none(), "metadata without an outcome field must load as None");
 }
 
 #[test]

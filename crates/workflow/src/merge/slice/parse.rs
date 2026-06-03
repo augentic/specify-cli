@@ -17,3 +17,6 @@ pub(super) fn system_time_to_utc(t: SystemTime) -> Result<Timestamp, Error> {
         detail: format!("baseline mtime out of range: {err}"),
     })
 }
+
+#[cfg(test)]
+mod tests;

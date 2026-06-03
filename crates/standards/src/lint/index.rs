@@ -109,18 +109,24 @@ fn build_consumer(
     let symlinks_facts = discovery.symlinks;
 
     let per_file: Vec<PerFile> = discovered
-        .par_iter()
-        .map(|file| PerFile {
-            file: File {
-                path: file.relative.clone(),
-                kind: file.kind,
-                language: file.language.clone(),
-                sha256: None,
-            },
-            frontmatter: frontmatter::extract(file),
-            sections: markdown::extract_sections(file),
-            links: markdown::extract_links(file),
-            ignore_directives: ignore_directives::extract(file),
+        .into_par_iter()
+        .map(|file| {
+            let frontmatter = frontmatter::extract(&file);
+            let sections = markdown::extract_sections(&file);
+            let links = markdown::extract_links(&file);
+            let ignore_directives = ignore_directives::extract(&file);
+            PerFile {
+                file: File {
+                    path: file.relative,
+                    kind: file.kind,
+                    language: file.language,
+                    sha256: None,
+                },
+                frontmatter,
+                sections,
+                links,
+                ignore_directives,
+            }
         })
         .collect();
 
@@ -184,22 +190,32 @@ fn build_framework(
     let agent_teams_facts = discovery.agent_teams;
 
     let per_file: Vec<FrameworkPerFile> = discovered
-        .par_iter()
-        .map(|file| FrameworkPerFile {
-            file: File {
-                path: file.relative.clone(),
-                kind: file.kind,
-                language: file.language.clone(),
-                sha256: None,
-            },
-            frontmatter: frontmatter::extract(file),
-            sections: markdown::extract_sections(file),
-            links: markdown::extract_links(file),
-            ignore_directives: ignore_directives::extract(file),
-            skill: skill::extract(file),
-            manifest: adapter::extract(file),
-            marketplace_entries: marketplace::extract(file),
-            brief: brief::extract(file),
+        .into_par_iter()
+        .map(|file| {
+            let frontmatter = frontmatter::extract(&file);
+            let sections = markdown::extract_sections(&file);
+            let links = markdown::extract_links(&file);
+            let ignore_directives = ignore_directives::extract(&file);
+            let skill = skill::extract(&file);
+            let manifest = adapter::extract(&file);
+            let marketplace_entries = marketplace::extract(&file);
+            let brief = brief::extract(&file);
+            FrameworkPerFile {
+                file: File {
+                    path: file.relative,
+                    kind: file.kind,
+                    language: file.language,
+                    sha256: None,
+                },
+                frontmatter,
+                sections,
+                links,
+                ignore_directives,
+                skill,
+                manifest,
+                marketplace_entries,
+                brief,
+            }
         })
         .collect();
 

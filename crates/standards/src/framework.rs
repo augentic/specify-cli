@@ -1,36 +1,11 @@
 //! Framework authoring checks — the imperative `Check` pass behind
-//! `specdev lint`.
-//!
-//! This module is the dissolved `specify-authoring` crate: the
-//! imperative predicates that enforce framework authoring standards
+//! `specdev lint`. Predicates enforce framework authoring standards
 //! (skill markdown shape, adapter manifests, brief discipline, prose
-//! vocabulary, rule namespace ownership, …) live here, scanning the
-//! framework repo through a [`context::Context`] rather than the
-//! `WorkspaceModel` the declarative hint pass consumes.
-//!
-//! Unlike the lightweight `Finding` the predicates used to emit, every
-//! predicate now builds the canonical [`specify_diagnostics::Diagnostic`]
-//! directly via [`builder::framework_finding`]. [`check::run`] finalises
-//! the batch — rebasing locations to project-relative form, computing
-//! fingerprints, and assigning sequential `FIND-NNNN` ids — so the
-//! `specdev` binary's [`crate::lint::producer::DiagnosticProducer`]
-//! bridge stays a thin wrapper.
-//!
-//! The framework `Check` trait survives (only its return type changed)
-//! because the predicates need a `&Context`, which the
-//! `DiagnosticProducer::produce(&WorkspaceModel, project_dir)` contract
-//! does not provide.
-//!
-//! ## Lint posture
-//!
-//! The dissolved `specify-authoring` crate carried no `[lints]
-//! workspace = true` stanza, so its predicates were never held to the
-//! workspace's `missing_docs` / `missing_debug_implementations` /
-//! `missing_copy_implementations` warnings. This relocation preserves
-//! that posture verbatim with a module-scoped allow rather than churning
-//! ~100 unit-struct derives and internal-doc comments onto code the
-//! declarative burn-down will delete as each predicate migrates to
-//! a `CORE-NNN` rule file.
+//! vocabulary, rule namespace ownership, …) by scanning the framework
+//! repo through a [`context::Context`] and emitting canonical
+//! [`specify_diagnostics::Diagnostic`]s via [`builder::framework_finding`];
+//! [`check::run`] finalises each batch (project-relative locations,
+//! fingerprints, sequential `FIND-NNNN` ids).
 #![allow(
     missing_docs,
     missing_debug_implementations,

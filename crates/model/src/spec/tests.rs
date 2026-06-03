@@ -266,3 +266,30 @@ Body paragraph.
     assert!(req.body.ends_with("- THEN c\n") || req.body.ends_with("- THEN c"));
     assert_eq!(req.heading, "### Requirement: Check body layout");
 }
+
+#[test]
+fn req_id_grammar_boundaries() {
+    assert!(is_req_id("REQ-001"));
+    assert!(is_req_id("REQ-999"));
+    assert!(!is_req_id("req-001"));
+    assert!(!is_req_id("REQ-1"));
+    assert!(!is_req_id("REQ-"));
+    assert!(!is_req_id("REQ-0012"));
+    assert!(!is_req_id("REQ-00a"));
+    assert!(!is_req_id("xREQ-001"));
+    assert!(!is_req_id("REQ-001\n"));
+    assert!(!is_req_id("TASK-001"));
+}
+
+#[test]
+fn task_id_grammar_boundaries() {
+    assert!(is_task_id("TASK-001"));
+    assert!(is_task_id("TASK-010"));
+    assert!(!is_task_id("task-001"));
+    assert!(!is_task_id("TASK-1"));
+    assert!(!is_task_id("TASK-"));
+    assert!(!is_task_id("TASK-0012"));
+    assert!(!is_task_id("TASK-00a"));
+    assert!(!is_task_id("REQ-001"));
+    assert!(!is_task_id("TASK-001\n"));
+}

@@ -11,7 +11,27 @@ use std::thread::sleep;
 use std::time::Duration;
 
 mod common;
-use common::{Project, parse_json, specrun};
+use common::{Project, copy_dir, parse_json, repo_root, specrun};
+
+/// Stage the two-spec fixture content into a fresh slice and drive it to
+/// `refined` through the real CLI verbs (`slice create` →
+/// `slice transition`), instead of staging the `built` fixture and
+/// rewriting `.metadata.yaml` by hand (testing.md:45). The merge surface
+/// reads the slice's `specs/` tree, so only the fixture's spec content is
+/// copied in; its `built` `.metadata.yaml` is left behind.
+fn stage_refined_slice(project: &Project) {
+    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    let slice_dir = project.slices_dir().join("my-slice");
+    copy_dir(
+        &repo_root().join("tests/fixtures/e2e/merge-two-spec-slice/specs"),
+        &slice_dir.join("specs"),
+    );
+    specrun()
+        .current_dir(project.root())
+        .args(["slice", "transition", "my-slice", "refined"])
+        .assert()
+        .success();
+}
 
 // ---------------------------------------------------------------------------
 // slice merge preview
@@ -70,13 +90,10 @@ fn preview_reports_operations() {
 #[test]
 fn preview_doesnt_require_built_status() {
     let project = Project::init().with_schemas();
-    let slice_dir = project.stage_slice("merge-two-spec-slice");
-    // Downgrade status to `refined` — `slice merge run` refuses this but
-    // `slice merge preview` must accept it.
-    let metadata_path = slice_dir.join(".metadata.yaml");
-    let original = fs::read_to_string(&metadata_path).unwrap();
-    let downgraded = original.replace("status: built", "status: refined");
-    fs::write(&metadata_path, downgraded).unwrap();
+    // `slice merge run` refuses a non-`built` slice but `slice merge
+    // preview` must accept one. Reach `refined` through the real verbs
+    // rather than rewriting `.metadata.yaml` by hand.
+    stage_refined_slice(&project);
 
     specrun()
         .current_dir(project.root())
@@ -399,14 +416,12 @@ fn emits_merge_started_then_failed() {
     // RFC-29d: a forced validator/commit failure brackets the run with
     // `slice.merge.started` then `slice.merge.failed` (non-empty
     // `reason`), exits non-zero, and emits neither `slice.merge.succeeded`
-    // nor the `slice.archive.created` ledger entry. Downgrading the
-    // slice to `refined` makes `slice::commit` reject the non-`Built`
-    // status with the `lifecycle` diagnostic.
+    // nor the `slice.archive.created` ledger entry. A slice in `refined`
+    // makes `slice::commit` reject the non-`Built` status with the
+    // `lifecycle` diagnostic; reach that state through the real verbs
+    // rather than rewriting `.metadata.yaml` by hand.
     let project = Project::init().with_schemas();
-    let slice_dir = project.stage_slice("merge-two-spec-slice");
-    let metadata_path = slice_dir.join(".metadata.yaml");
-    let original = fs::read_to_string(&metadata_path).unwrap();
-    fs::write(&metadata_path, original.replace("status: built", "status: refined")).unwrap();
+    stage_refined_slice(&project);
 
     specrun()
         .current_dir(project.root())

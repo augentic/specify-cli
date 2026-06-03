@@ -29,7 +29,7 @@
 //! the export shape or sibling-repo codex content:
 //!
 //! ```text
-//! REGENERATE_GOLDENS=1 cargo test --test codex_export
+//! REGENERATE_GOLDENS=1 cargo nextest run --test rules_export
 //! ```
 //!
 //! Regeneration only writes files for tests that ran (sibling repo
@@ -101,7 +101,7 @@ fn assert_golden(actual: &Value, name: &str) {
     let expected = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
         panic!(
             "golden {} missing ({err}); regenerate via \
-             REGENERATE_GOLDENS=1 cargo test --test codex_export",
+             REGENERATE_GOLDENS=1 cargo nextest run --test rules_export",
             golden_path.display()
         )
     });

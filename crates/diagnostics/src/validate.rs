@@ -16,6 +16,8 @@
 //! callers that need every failure at once may invoke the individual
 //! validators.
 
+use std::sync::LazyLock;
+
 use serde_json::Value as JsonValue;
 use specify_schema::{DIAGNOSTIC_JSON_SCHEMA, compile_schema};
 
@@ -24,6 +26,18 @@ use crate::fingerprint::fingerprint;
 
 /// 16 `KiB` cap on the serialized evidence object.
 const EVIDENCE_MAX_BYTES: usize = 16 * 1024;
+
+/// Diagnostic-schema validator, compiled once on first use.
+///
+/// A compile failure here means the embedded
+/// `schemas/diagnostics/diagnostic.schema.json` is corrupt (a broken
+/// binary), so the `expect` is genuinely unreachable in production and
+/// mirrors the `LazyLock<Validator>` pattern the workflow layer uses
+/// for embedded schema compilation.
+static DIAGNOSTIC_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
+    compile_schema(DIAGNOSTIC_JSON_SCHEMA)
+        .expect("embedded diagnostic schema compiles (corrupt binary otherwise)")
+});
 
 /// Closed failure mode for the diagnostic validators.
 #[derive(Debug, thiserror::Error)]
@@ -90,10 +104,10 @@ pub fn validate_diagnostic(diagnostic: &Diagnostic) -> Result<(), DiagnosticErro
 /// Returns [`DiagnosticError::Schema`] with a `; `-joined error list
 /// when the instance fails validation.
 pub fn validate_diagnostic_json(value: &JsonValue) -> Result<(), DiagnosticError> {
-    let validator = compile_schema(DIAGNOSTIC_JSON_SCHEMA)
-        .map_err(|err| DiagnosticError::Schema(err.to_string()))?;
-    let errors: Vec<String> =
-        validator.iter_errors(value).map(|err| format!("{}: {err}", err.instance_path())).collect();
+    let errors: Vec<String> = DIAGNOSTIC_VALIDATOR
+        .iter_errors(value)
+        .map(|err| format!("{}: {err}", err.instance_path()))
+        .collect();
     if errors.is_empty() { Ok(()) } else { Err(DiagnosticError::Schema(errors.join("; "))) }
 }
 

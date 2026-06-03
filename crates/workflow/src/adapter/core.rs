@@ -24,7 +24,7 @@ use specify_schema::{
 };
 
 use crate::adapter::operation::{SourceOperation, TargetOperation};
-use crate::schema::validate_value;
+use crate::schema::validate_value_cached;
 
 /// Filename of an adapter manifest.
 ///
@@ -711,10 +711,11 @@ fn validate_schema(
 }
 
 fn run_schema(
-    schema_source: &str, manifest_path: &Path, instance: &serde_json::Value, label: &str,
+    schema_source: &'static str, manifest_path: &Path, instance: &serde_json::Value, label: &str,
 ) -> Result<(), Error> {
     let rule = format!("{} conforms to embedded {label} schema", manifest_path.display());
-    for summary in validate_value(instance, schema_source, "adapter-schema-violation", &rule) {
+    for summary in validate_value_cached(instance, schema_source, "adapter-schema-violation", &rule)
+    {
         if summary.status == ValidationStatus::Fail {
             return Err(Error::Diag {
                 code: "adapter-schema-violation",

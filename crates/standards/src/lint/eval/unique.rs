@@ -61,7 +61,10 @@ pub(crate) fn evaluate(
             continue;
         }
         let sorted: Vec<String> = paths.into_iter().collect();
-        let first = sorted.first().cloned().expect("len >= 2");
+        debug_assert!(sorted.len() >= 2, "duplicate group filtered to < 2 paths");
+        let Some(first) = sorted.first().cloned() else {
+            continue;
+        };
         let location = FindingLocation {
             path: first,
             line: Some(1),

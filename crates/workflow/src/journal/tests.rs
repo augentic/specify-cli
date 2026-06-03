@@ -391,3 +391,155 @@ fn no_snake_case_leaks_to_wire() {
     let layout = Layout::new(dir.path());
     wire_shapes::run_snake_case_probe(layout);
 }
+
+/// Collect every line `for_each_line_rev` yields, restored to file order.
+fn collect_chronological(path: &Path, chunk: usize) -> Vec<String> {
+    let mut newest_first: Vec<String> = Vec::new();
+    for_each_line_rev(path, chunk, |line| {
+        newest_first.push(line.to_owned());
+        true
+    })
+    .expect("for_each_line_rev");
+    newest_first.reverse();
+    newest_first
+}
+
+#[test]
+fn for_each_line_rev_matches_str_lines() {
+    // The tail reader must agree with `str::lines` for every line-boundary
+    // shape — trailing newline or not, interior and trailing blanks, empty
+    // file — across chunk sizes that force partial-line splits at the edge,
+    // including multi-byte UTF-8 straddling a chunk boundary.
+    let cases = [
+        "",
+        "a",
+        "a\n",
+        "a\nb\nc",
+        "a\nb\nc\n",
+        "\n",
+        "\n\n",
+        "a\n\nb\n",
+        "a\n\n",
+        "\na\n",
+        "αβ\nγδ\nεζ",
+        "αβ\nγδ\nεζ\n",
+    ];
+    let dir = tempdir().expect("tempdir");
+    for (idx, content) in cases.iter().enumerate() {
+        let path = dir.path().join(format!("case-{idx}.jsonl"));
+        std::fs::write(&path, content).expect("write case");
+        let expected: Vec<String> = content.lines().map(str::to_owned).collect();
+        for chunk in [1_usize, 2, 3, 5, 8192] {
+            assert_eq!(
+                collect_chronological(&path, chunk),
+                expected,
+                "content {content:?} at chunk {chunk} must match str::lines"
+            );
+        }
+    }
+}
+
+#[test]
+fn for_each_line_rev_missing_file() {
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("absent.jsonl");
+    let mut visited = 0_usize;
+    for_each_line_rev(&path, 8192, |_| {
+        visited += 1;
+        true
+    })
+    .expect("missing file is not an error");
+    assert_eq!(visited, 0, "a missing file must yield no lines");
+}
+
+#[test]
+fn for_each_line_rev_early_stop() {
+    // Returning `false` halts the backward scan; only the tail is touched.
+    let dir = tempdir().expect("tempdir");
+    let path = dir.path().join("early.jsonl");
+    std::fs::write(&path, "first\nsecond\nthird\n").expect("write");
+    let mut seen: Vec<String> = Vec::new();
+    for_each_line_rev(&path, 8192, |line| {
+        seen.push(line.to_owned());
+        false
+    })
+    .expect("for_each_line_rev");
+    assert_eq!(seen, vec!["third".to_string()], "early stop must yield only the newest line");
+}
+
+fn write_archive_summaries(layout: Layout<'_>, summaries: &[&str]) {
+    for summary in summaries {
+        let event = Event::new(
+            test_timestamp("2026-05-22T13:15:00Z"),
+            EventKind::SliceArchiveCreated {
+                slice_name: "slice".into(),
+                touched_specs: vec![],
+                outcome_summary: (*summary).to_string(),
+                merge_sha: None,
+                decisions: vec![],
+            },
+        );
+        append_batch(layout, std::slice::from_ref(&event)).expect("append archive event");
+    }
+}
+
+#[test]
+fn read_recent_last_n_matching() {
+    let dir = tempdir().expect("tempdir");
+    let layout = Layout::new(dir.path());
+    // Interleave non-matching events so the tail must filter, not just slice
+    // the last N raw lines.
+    for idx in 0..5 {
+        write_archive_summaries(layout, &[&format!("merge-{idx}")]);
+        let noise = Event::new(
+            test_timestamp("2026-05-22T13:15:00Z"),
+            EventKind::SliceBuildStarted {
+                slice_name: "slice".into(),
+            },
+        );
+        append_batch(layout, std::slice::from_ref(&noise)).expect("append noise");
+    }
+
+    let recent: Vec<String> = read_recent(layout, 3, |event| match event.kind {
+        EventKind::SliceArchiveCreated { outcome_summary, .. } => Some(outcome_summary),
+        _ => None,
+    })
+    .expect("read_recent");
+    assert_eq!(
+        recent,
+        vec!["merge-2".to_string(), "merge-3".to_string(), "merge-4".to_string()],
+        "must keep the last N matching summaries in append order"
+    );
+}
+
+#[test]
+fn read_recent_short_missing_and_zero_limit() {
+    let dir = tempdir().expect("tempdir");
+    let layout = Layout::new(dir.path());
+
+    // Missing journal -> empty.
+    let absent: Vec<String> = read_recent(layout, 10, |event| match event.kind {
+        EventKind::SliceArchiveCreated { outcome_summary, .. } => Some(outcome_summary),
+        _ => None,
+    })
+    .expect("read_recent missing");
+    assert!(absent.is_empty(), "missing journal must yield no summaries");
+
+    write_archive_summaries(layout, &["only"]);
+
+    // Fewer matches than the limit -> all of them, in order.
+    let short: Vec<String> = read_recent(layout, 10, |event| match event.kind {
+        EventKind::SliceArchiveCreated { outcome_summary, .. } => Some(outcome_summary),
+        _ => None,
+    })
+    .expect("read_recent short");
+    assert_eq!(short, vec!["only".to_string()], "fewer-than-limit must return all matches");
+
+    // Zero limit -> empty, no read needed.
+    let none: Vec<String> = read_recent(layout, 0, |event| match event.kind {
+        EventKind::SliceArchiveCreated { outcome_summary, .. } => Some(outcome_summary),
+        _ => None,
+    })
+    .expect("read_recent zero");
+    assert!(none.is_empty(), "a zero limit must yield no summaries");
+}

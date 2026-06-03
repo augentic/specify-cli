@@ -58,6 +58,8 @@
 pub mod cardinality;
 pub mod constant_eq;
 pub mod content_digest_eq;
+mod error;
+mod finding;
 pub mod namespace_owner;
 pub mod path_pattern;
 pub mod reference_resolves;
@@ -70,112 +72,16 @@ pub mod unique;
 
 use std::path::{Path, PathBuf};
 
-use specify_diagnostics::{
-    Artifact, Confidence, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence,
-    FindingLocation, Severity, fingerprint as compute_fingerprint, validate_evidence_size,
-};
+pub use error::HintError;
+pub use finding::reserved_hint_summary;
+pub(crate) use finding::{SyntheticFinding, make_finding, make_synthetic_finding, restamp_finding};
+use specify_diagnostics::Diagnostic;
 use specify_error::Error as CliError;
-use thiserror::Error;
 pub use tool::{ToolOutput, ToolRunError, ToolRunner};
 
 use crate::lint::WorkspaceModel;
 use crate::lint::diagnostics::map_hint_error;
 use crate::rules::{DeterministicHint, HintKind, LintMode, ResolvedRule};
-
-/// Closed failure mode for the hint interpreter.
-///
-/// Variants map to the lint exit mapping exit-code table at the handler boundary —
-/// `Unsupported`, `SchemaCompile`, `SchemaResolve`, `RegexCompile`,
-/// `Filesystem`, and `ToolInvocation` are infrastructure failures
-/// the caller maps to `Error::Validation` (exit 2) or
-/// `Error::Filesystem` (exit 1) per lint exit mapping. Recoverable per-finding
-/// states (`tool.invocation-failed`, `tool.undeclared`, the reserved-hint diagnostics
-/// summary) flow back as [`Diagnostic`] entries on the Ok path.
-#[derive(Debug, Error)]
-pub enum HintError {
-    /// Hint shape outside the v1 contract (reserved kinds called
-    /// directly, `http(s)://` schema refs, glob negation, …).
-    #[error("rule {rule_id}: hint kind {kind:?} unsupported: {reason}")]
-    Unsupported {
-        /// Originating rule id.
-        rule_id: String,
-        /// Hint kind that triggered the rejection.
-        kind: HintKind,
-        /// Static reason copied into operator-facing diagnostics.
-        reason: &'static str,
-    },
-    /// JSON Schema referenced by a `kind: schema` hint failed to
-    /// compile.
-    #[error("rule {rule_id}: schema {schema_ref} failed to compile: {detail}")]
-    SchemaCompile {
-        /// Originating rule id.
-        rule_id: String,
-        /// Schema reference verbatim from the hint's `value`.
-        schema_ref: String,
-        /// Compiler error message.
-        detail: String,
-    },
-    /// Schema reference could not be resolved (unknown registered id,
-    /// missing project file, escapes `project_dir` via `..`,
-    /// `http(s)://` ref).
-    #[error("rule {rule_id}: schema {schema_ref} could not be resolved: {reason}")]
-    SchemaResolve {
-        /// Originating rule id.
-        rule_id: String,
-        /// Schema reference verbatim from the hint's `value`.
-        schema_ref: String,
-        /// Free-form resolution reason.
-        reason: String,
-    },
-    /// Regex pattern carried by a `kind: regex` hint did not compile.
-    #[error("rule {rule_id}: regex {pattern} failed to compile: {source}")]
-    RegexCompile {
-        /// Originating rule id.
-        rule_id: String,
-        /// Pattern verbatim from the hint's `value`.
-        pattern: String,
-        /// Underlying `regex` crate error.
-        #[source]
-        source: ::regex::Error,
-    },
-    /// Tool invocation failed at the runtime boundary (the WASI host
-    /// could not invoke the declared tool). Recoverable
-    /// non-zero-exit outcomes flow as `tool.invocation-failed`
-    /// findings on the Ok path per `kind: tool` evaluator contract.
-    #[error("rule {rule_id}: tool {tool} invocation failed: {detail}")]
-    ToolInvocation {
-        /// Originating rule id.
-        rule_id: String,
-        /// Tool name from the hint's `value`.
-        tool: String,
-        /// Free-form invocation failure detail.
-        detail: String,
-    },
-    /// Reserved variant — `tool.undeclared` is emitted as a finding
-    /// on the Ok path per `kind: tool` evaluator contract. The variant is preserved on the
-    /// closed enum so callers exhaustively match every `kind: tool` evaluator contract-mandated
-    /// surface.
-    #[error("rule {rule_id}: tool {tool} not declared by the project")]
-    ToolUndeclared {
-        /// Originating rule id.
-        rule_id: String,
-        /// Tool name from the hint's `value`.
-        tool: String,
-    },
-    /// Filesystem I/O against a candidate file failed during
-    /// evaluation (the indexer normally skips unreadable files but
-    /// races between scan and eval can still surface here).
-    #[error("filesystem {op} on {path}: {source}", path = path.display())]
-    Filesystem {
-        /// Operation name (`read`, `parse`, …).
-        op: &'static str,
-        /// Path the operation targeted.
-        path: PathBuf,
-        /// Underlying I/O error.
-        #[source]
-        source: std::io::Error,
-    },
-}
 
 /// One reserved-kind hint occurrence captured per call to [`evaluate`].
 ///
@@ -227,6 +133,28 @@ pub fn evaluate(
     rule: &ResolvedRule, hints: &[DeterministicHint], model: &WorkspaceModel, project_dir: &Path,
     tool_runner: &dyn ToolRunner, start_id_counter: u64,
 ) -> Result<HintEvalOutcome, HintError> {
+    let mut schema_cache = schema::SchemaCache::default();
+    evaluate_with_cache(
+        rule,
+        hints,
+        model,
+        project_dir,
+        tool_runner,
+        start_id_counter,
+        &mut schema_cache,
+    )
+}
+
+/// [`evaluate`] threaded with a caller-owned [`schema::SchemaCache`] so a
+/// `kind: schema` validator (and its resolved project path) is built once
+/// per lint run rather than once per rule. [`evaluate_rules`] owns the
+/// run-scoped cache; the standalone [`evaluate`] entry point passes a
+/// fresh per-call cache (behaviour is identical either way — the cache
+/// only elides recompilation).
+fn evaluate_with_cache(
+    rule: &ResolvedRule, hints: &[DeterministicHint], model: &WorkspaceModel, project_dir: &Path,
+    tool_runner: &dyn ToolRunner, start_id_counter: u64, schema_cache: &mut schema::SchemaCache,
+) -> Result<HintEvalOutcome, HintError> {
     let mut findings: Vec<Diagnostic> = Vec::new();
     // No hint kind is reserved after C17; the machinery stays as
     // forward-compat scaffolding for any future kind landed reserved.
@@ -266,7 +194,15 @@ pub fn evaluate(
     let candidates = build_candidate_set(rule, &path_pattern_hints, model)?;
 
     for hint in schema_hints {
-        let mut new = schema::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
+        let mut new = schema::evaluate(
+            rule,
+            hint,
+            &candidates,
+            project_dir,
+            model,
+            &mut next_id,
+            schema_cache,
+        )?;
         findings.append(&mut new);
     }
     for hint in reference_resolves_hints {
@@ -344,6 +280,8 @@ pub fn evaluate_rules(
     let mut findings: Vec<Diagnostic> = Vec::new();
     let mut reserved: Vec<ReservedSkipped> = Vec::new();
     let mut next_id = start_id;
+    // One cache per run: a schema referenced by many rules compiles once.
+    let mut schema_cache = schema::SchemaCache::default();
 
     for rule in rules {
         if !rule_filter.is_empty() && !rule_filter.contains(&rule.rule_id.as_str()) {
@@ -355,7 +293,7 @@ pub fn evaluate_rules(
         // diagnostic so the "needs judgment" signal stays first-class
         // on the wire (the model scorer / human reviewer picks it up).
         if matches!(rule.lint_mode, Some(LintMode::ModelAssisted)) {
-            findings.push(make_review_finding(rule, next_id));
+            findings.push(finding::make_review_finding(rule, next_id));
             next_id += 1;
             continue;
         }
@@ -365,64 +303,22 @@ pub fn evaluate_rules(
         if hints.is_empty() {
             continue;
         }
-        let outcome = evaluate(rule, hints, model, project_dir, runner, next_id)
-            .map_err(|err| map_hint_error(rule, err))?;
+        let outcome = evaluate_with_cache(
+            rule,
+            hints,
+            model,
+            project_dir,
+            runner,
+            next_id,
+            &mut schema_cache,
+        )
+        .map_err(|err| map_hint_error(rule, err))?;
         findings.extend(outcome.findings);
         reserved.extend(outcome.reserved_skipped);
         next_id = outcome.next_id_counter;
     }
 
     Ok((findings, reserved, next_id))
-}
-
-/// Mint the reserved-hint diagnostics reserved-hint summary finding from accumulated
-/// [`ReservedSkipped`] entries, or return `None` when the input is
-/// empty.
-///
-/// `strict_hints` upgrades the finding's severity from `optional` to
-/// `important`; the `rule_id` is `review.reserved-hint-skipped` in
-/// both modes per reserved-hint diagnostics.
-#[must_use]
-pub fn reserved_hint_summary(
-    skipped: &[ReservedSkipped], strict_hints: bool,
-) -> Option<Diagnostic> {
-    if skipped.is_empty() {
-        return None;
-    }
-    let pairs: Vec<serde_json::Value> =
-        skipped.iter().map(|s| serde_json::json!([s.rule_id, s.hint_index])).collect();
-    let evidence = FindingEvidence::Structured {
-        summary: "Reserved hint kinds awaiting implementation".to_string(),
-        data: serde_json::json!({ "pairs": pairs }),
-        locations: None,
-    };
-    let severity = if strict_hints { Severity::Important } else { Severity::Optional };
-    let mut finding = Diagnostic {
-        id: "FIND-RESERVED".to_string(),
-        rule_id: Some("review.reserved-hint-skipped".to_string()),
-        related_rule_ids: None,
-        title: "Reserved hint kinds awaiting implementation".to_string(),
-        severity,
-        source: DiagnosticSource::Deterministic,
-        kind: DiagnosticKind::Violation,
-        target_adapter: None,
-        source_adapter: None,
-        slice: None,
-        change: None,
-        artifact: Artifact::Unknown,
-        location: None,
-        evidence,
-        impact: format!("{} reserved hint occurrence(s) skipped this scan.", skipped.len()),
-        remediation: "Implement the reserved hint kind or remove the hint until support lands."
-            .to_string(),
-        confidence: Some(Confidence::High),
-        fingerprint: String::new(),
-        status: None,
-        disposition: None,
-    };
-    clamp_evidence(&mut finding);
-    finding.fingerprint = compute_fingerprint(&finding);
-    Some(finding)
 }
 
 fn build_candidate_set(
@@ -453,191 +349,3 @@ fn build_candidate_set(
 pub(crate) fn candidate_set(candidates: &[PathBuf]) -> std::collections::BTreeSet<String> {
     candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect()
 }
-
-/// Apply the §"Evidence cap" truncation and stamp the structured lint
-/// finding fingerprint. Clamp BEFORE signing. Shared by every
-/// finding builder so the stamp can never be forgotten.
-fn finalize(mut finding: Diagnostic) -> Diagnostic {
-    clamp_evidence(&mut finding);
-    finding.fingerprint = compute_fingerprint(&finding);
-    finding
-}
-
-/// Build a finding from rule-derived defaults (severity, target
-/// adapter, impact, remediation), apply the §"Evidence cap"
-/// truncation, and stamp the structured lint finding fingerprint.
-pub(crate) fn make_finding(
-    rule: &ResolvedRule, id_num: u64, title: String, location: Option<FindingLocation>,
-    evidence: FindingEvidence,
-) -> Diagnostic {
-    finalize(Diagnostic {
-        id: format!("FIND-{id_num:04}"),
-        rule_id: Some(rule.rule_id.clone()),
-        related_rule_ids: None,
-        title,
-        severity: rule.severity,
-        source: DiagnosticSource::Deterministic,
-        kind: DiagnosticKind::Violation,
-        target_adapter: single_adapter(rule),
-        source_adapter: None,
-        slice: None,
-        change: None,
-        artifact: Artifact::Code,
-        location,
-        evidence,
-        impact: rule.trigger.clone(),
-        remediation: format!("See {}", rule.path),
-        confidence: Some(Confidence::High),
-        fingerprint: String::new(),
-        status: None,
-        disposition: None,
-    })
-}
-
-/// Build a non-blocking `kind: review` diagnostic for a
-/// `lint-mode: model-assisted` rule the deterministic engine cannot
-/// score. The rule's `trigger` becomes the review prompt (impact +
-/// snippet evidence) and its `path` the remediation pointer. Source is
-/// `model-assisted` — the question is destined for a scorer, not a
-/// deterministic verdict.
-fn make_review_finding(rule: &ResolvedRule, id_num: u64) -> Diagnostic {
-    finalize(Diagnostic {
-        id: format!("FIND-{id_num:04}"),
-        rule_id: Some(rule.rule_id.clone()),
-        related_rule_ids: None,
-        title: rule.title.clone(),
-        severity: rule.severity,
-        source: DiagnosticSource::ModelAssisted,
-        kind: DiagnosticKind::Review,
-        target_adapter: single_adapter(rule),
-        source_adapter: None,
-        slice: None,
-        change: None,
-        artifact: Artifact::Code,
-        location: None,
-        evidence: FindingEvidence::Snippet {
-            value: rule.trigger.clone(),
-        },
-        impact: rule.trigger.clone(),
-        remediation: format!("Model-assisted review required; see {}", rule.path),
-        confidence: Some(Confidence::Medium),
-        fingerprint: String::new(),
-        status: None,
-        disposition: None,
-    })
-}
-
-/// Inputs for [`make_synthetic_finding`].
-///
-/// Named fields keep the synthetic-finding call sites readable: the
-/// `tool.undeclared` / `tool.invocation-failed` shapes pass several
-/// optional values (`location`, `target_adapter`) that would otherwise
-/// be bare positional `None`s.
-pub(crate) struct SyntheticFinding<'a> {
-    /// Monotonic finding number rendered into the `FIND-NNNN` id.
-    pub id_num: u64,
-    /// Explicit rule id stamped on the finding.
-    pub rule_id: &'a str,
-    /// Human-readable finding title.
-    pub title: String,
-    /// Finding severity.
-    pub severity: Severity,
-    /// Optional source location.
-    pub location: Option<FindingLocation>,
-    /// Structured evidence payload.
-    pub evidence: FindingEvidence,
-    /// Impact line.
-    pub impact: String,
-    /// Remediation line.
-    pub remediation: String,
-    /// Optional owning target adapter.
-    pub target_adapter: Option<String>,
-}
-
-/// Build a finding with an explicit `rule_id` / `severity` (for the
-/// synthetic `tool.undeclared` and `tool.invocation-failed` shapes).
-pub(crate) fn make_synthetic_finding(spec: SyntheticFinding<'_>) -> Diagnostic {
-    let SyntheticFinding {
-        id_num,
-        rule_id,
-        title,
-        severity,
-        location,
-        evidence,
-        impact,
-        remediation,
-        target_adapter,
-    } = spec;
-    finalize(Diagnostic {
-        id: format!("FIND-{id_num:04}"),
-        rule_id: Some(rule_id.to_string()),
-        related_rule_ids: None,
-        title,
-        severity,
-        source: DiagnosticSource::Deterministic,
-        kind: DiagnosticKind::Violation,
-        target_adapter,
-        source_adapter: None,
-        slice: None,
-        change: None,
-        artifact: Artifact::Code,
-        location,
-        evidence,
-        impact,
-        remediation,
-        confidence: Some(Confidence::High),
-        fingerprint: String::new(),
-        status: None,
-        disposition: None,
-    })
-}
-
-/// Stamp `id` and recompute the fingerprint on a finding produced
-/// outside the rule-derived defaults (e.g. forwarded from a tool's
-/// stdout). Applies the evidence-cap truncation before signing.
-pub(crate) fn restamp_finding(finding: &mut Diagnostic, id_num: u64) {
-    finding.id = format!("FIND-{id_num:04}");
-    clamp_evidence(finding);
-    finding.fingerprint = compute_fingerprint(finding);
-}
-
-fn single_adapter(rule: &ResolvedRule) -> Option<String> {
-    let adapters = rule.applicability.as_ref().and_then(|a| a.adapters.as_ref())?;
-    if adapters.len() != 1 {
-        return None;
-    }
-    let raw = adapters[0].as_str();
-    Some(raw.split_once('@').map_or_else(|| raw.to_owned(), |(name, _)| name.to_owned()))
-}
-
-const TRUNCATION_MARKER: &str = "…[truncated]";
-const CLAMP_ITERATION_LIMIT: usize = 32;
-
-fn clamp_evidence(finding: &mut Diagnostic) {
-    let mut iter = 0;
-    while validate_evidence_size(finding).is_err() && iter < CLAMP_ITERATION_LIMIT {
-        iter += 1;
-        match &mut finding.evidence {
-            FindingEvidence::Snippet { value } => {
-                if value.is_empty() {
-                    break;
-                }
-                let target = value.len() / 2;
-                let mut cut = target;
-                while cut > 0 && !value.is_char_boundary(cut) {
-                    cut -= 1;
-                }
-                value.truncate(cut);
-                value.push_str(TRUNCATION_MARKER);
-            }
-            FindingEvidence::Structured { data, locations, .. } => {
-                *data = serde_json::json!({ "truncated": true });
-                *locations = None;
-            }
-            FindingEvidence::Digest { .. } => break,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests;

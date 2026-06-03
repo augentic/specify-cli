@@ -342,3 +342,6 @@ pub(super) fn check_opaque_drift(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

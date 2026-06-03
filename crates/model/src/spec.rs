@@ -2,6 +2,10 @@
 //! sections. Public functions are pure, infallible, and deliberately
 //! lenient — coherence checks belong to the merge engine.
 
+use std::sync::OnceLock;
+
+use regex::Regex;
+
 pub mod provenance;
 
 // Hard-coded spec format constants (matches
@@ -13,6 +17,8 @@ pub const REQ_HEADING: &str = "### Requirement:";
 pub const REQ_ID_PREFIX: &str = "ID:";
 /// Regex pattern for valid requirement IDs (`REQ-NNN`).
 pub const REQ_ID_PATTERN: &str = r"^REQ-[0-9]{3}$";
+/// Regex pattern for valid task IDs (`TASK-NNN`).
+pub const TASK_ID_PATTERN: &str = r"^TASK-[0-9]{3}$";
 /// Markdown heading prefix for scenario blocks.
 pub const SCENARIO_HEADING: &str = "#### Scenario:";
 /// Section heading for added requirements in a delta spec.
@@ -81,6 +87,44 @@ pub struct Rename {
     pub id: String,
     /// New name for the requirement.
     pub new_name: String,
+}
+
+// ---------------------------------------------------------------------------
+// ID grammar — the single authority for the closed `REQ` / `TASK` ID shapes.
+// The validate and workflow layers call these predicates rather than
+// re-encoding the pattern, so the grammar lives in exactly one place.
+// ---------------------------------------------------------------------------
+
+fn req_id_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(REQ_ID_PATTERN).expect("REQ_ID_PATTERN is a valid regex"))
+}
+
+fn task_id_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(TASK_ID_PATTERN).expect("TASK_ID_PATTERN is a valid regex"))
+}
+
+/// Return `true` iff `id` is a full-string match for the closed
+/// `^REQ-[0-9]{3}$` requirement-ID grammar.
+#[must_use]
+pub fn is_req_id(id: &str) -> bool {
+    full_match(req_id_re(), id)
+}
+
+/// Return `true` iff `id` is a full-string match for the closed
+/// `^TASK-[0-9]{3}$` task-ID grammar.
+#[must_use]
+pub fn is_task_id(id: &str) -> bool {
+    full_match(task_id_re(), id)
+}
+
+/// `true` iff `re` matches `id` spanning the whole string. The anchored `$`
+/// in the ID patterns also matches just before a trailing `\n`, so a bare
+/// `is_match` would accept `"REQ-001\n"`; the explicit full-span check
+/// rejects it, matching the strict grammar both consuming layers enforce.
+fn full_match(re: &Regex, id: &str) -> bool {
+    re.find(id).is_some_and(|m| m.start() == 0 && m.end() == id.len())
 }
 
 // ---------------------------------------------------------------------------

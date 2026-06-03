@@ -24,7 +24,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use jsonschema::Validator;
 use serde_json::Value;
@@ -53,11 +53,54 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
     ])
 });
 
+/// Run-scoped memo for `kind: schema` evaluation.
+///
+/// Built once per `specrun lint` / `specdev lint` invocation in
+/// [`super::evaluate_rules`] and threaded by `&mut` into every per-rule
+/// [`super::evaluate`] call, so a schema referenced by N rules compiles
+/// once per run instead of once per rule. Two maps back the two results
+/// the previous code recomputed on every evaluation:
+///
+/// - `validators` — the compiled [`Validator`], keyed by the registered
+///   schema id (e.g. `rule`) or, for a project-relative `$ref`, its
+///   resolved absolute path (so aliased refs share one validator). The
+///   two key namespaces never collide: a project key is always an
+///   absolute path under `project_dir`, never a bare registered token.
+/// - `resolved_paths` — the normalised project file path keyed by the
+///   `$ref` verbatim, so the `..`-escape normalisation runs once per ref.
+///
+/// Run scope (rather than a process-global `LazyLock`) is what keeps
+/// project file schemas honest: a long-lived host that lints several
+/// trees — or the in-process integration suite that lints many temp
+/// dirs — never serves a validator compiled from a stale or sibling
+/// tree. Registered ids are `&'static`, so their identity is stable
+/// regardless; sharing one run-scoped map keeps both reference shapes on
+/// a single mechanism. A plain `&mut` map (not a lock) sidesteps any
+/// guard-lifetime concern.
+#[derive(Default)]
+pub(crate) struct SchemaCache {
+    validators: HashMap<String, Arc<Validator>>,
+    resolved_paths: HashMap<String, PathBuf>,
+}
+
+impl SchemaCache {
+    /// Resolve a project-relative `$ref` to its normalised absolute path,
+    /// memoised by the `$ref` verbatim so the escape check runs once.
+    fn resolve_project_path(&mut self, project_dir: &Path, raw: &str) -> Result<PathBuf, String> {
+        if let Some(path) = self.resolved_paths.get(raw) {
+            return Ok(path.clone());
+        }
+        let resolved = resolve_project_relative(project_dir, raw)?;
+        self.resolved_paths.insert(raw.to_owned(), resolved.clone());
+        Ok(resolved)
+    }
+}
+
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &DeterministicHint, candidates: &[PathBuf], project_dir: &Path,
-    model: &WorkspaceModel, next_id: &mut u64,
+    model: &WorkspaceModel, next_id: &mut u64, cache: &mut SchemaCache,
 ) -> Result<Vec<Diagnostic>, HintError> {
-    let validator = compile_schema_for_hint(rule, hint, project_dir)?;
+    let validator = compile_schema_for_hint(rule, hint, project_dir, cache)?;
 
     let mut out: Vec<Diagnostic> = Vec::new();
     for candidate in candidates {
@@ -91,8 +134,8 @@ pub(crate) fn evaluate(
 }
 
 fn compile_schema_for_hint(
-    rule: &ResolvedRule, hint: &DeterministicHint, project_dir: &Path,
-) -> Result<Validator, HintError> {
+    rule: &ResolvedRule, hint: &DeterministicHint, project_dir: &Path, cache: &mut SchemaCache,
+) -> Result<Arc<Validator>, HintError> {
     let raw = hint.value.trim();
     if raw.starts_with("http://") || raw.starts_with("https://") {
         return Err(HintError::SchemaResolve {
@@ -103,34 +146,47 @@ fn compile_schema_for_hint(
         });
     }
     if raw.starts_with("./") || raw.starts_with("../") {
-        let resolved = resolve_project_relative(project_dir, raw).map_err(|reason| {
+        let resolved = cache.resolve_project_path(project_dir, raw).map_err(|reason| {
             HintError::SchemaResolve {
                 rule_id: rule.rule_id.clone(),
                 schema_ref: raw.to_owned(),
                 reason,
             }
         })?;
+        let key = resolved.to_string_lossy().into_owned();
+        if let Some(validator) = cache.validators.get(&key) {
+            return Ok(Arc::clone(validator));
+        }
         let body = std::fs::read_to_string(&resolved).map_err(|err| HintError::Filesystem {
             op: "read-schema",
             path: resolved.clone(),
             source: err,
         })?;
-        return compile_schema(&body).map_err(|err| HintError::SchemaCompile {
-            rule_id: rule.rule_id.clone(),
-            schema_ref: raw.to_owned(),
-            detail: err.to_string(),
-        });
+        let validator =
+            Arc::new(compile_schema(&body).map_err(|err| HintError::SchemaCompile {
+                rule_id: rule.rule_id.clone(),
+                schema_ref: raw.to_owned(),
+                detail: err.to_string(),
+            })?);
+        cache.validators.insert(key, Arc::clone(&validator));
+        return Ok(validator);
+    }
+    if let Some(validator) = cache.validators.get(raw) {
+        return Ok(Arc::clone(validator));
     }
     let registered = REGISTERED_SCHEMAS.get(raw).ok_or_else(|| HintError::SchemaResolve {
         rule_id: rule.rule_id.clone(),
         schema_ref: raw.to_owned(),
         reason: "unknown registered schema id".to_owned(),
     })?;
-    compile_schema(registered).map_err(|err| HintError::SchemaCompile {
-        rule_id: rule.rule_id.clone(),
-        schema_ref: raw.to_owned(),
-        detail: err.to_string(),
-    })
+    let validator =
+        Arc::new(compile_schema(registered).map_err(|err| HintError::SchemaCompile {
+            rule_id: rule.rule_id.clone(),
+            schema_ref: raw.to_owned(),
+            detail: err.to_string(),
+        })?);
+    cache.validators.insert(raw.to_owned(), Arc::clone(&validator));
+    Ok(validator)
 }
 
 fn resolve_project_relative(project_dir: &Path, raw: &str) -> Result<PathBuf, String> {

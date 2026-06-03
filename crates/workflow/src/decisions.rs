@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use specify_error::Error;
+use specify_model::atomic::bytes_write;
 use specify_model::decision::{self, DecisionRecord, DecisionStatus};
 
 use crate::config::Layout;
@@ -318,11 +319,6 @@ pub fn promote(
         }
     }
 
-    std::fs::create_dir_all(&decisions_dir).map_err(|source| Error::Filesystem {
-        op: "mkdir",
-        path: decisions_dir.clone(),
-        source,
-    })?;
     for w in &writes {
         let path = decisions_dir.join(format!("{}-{}.md", w.id, w.slug));
         write_record(&path, &w.record, &w.body)?;
@@ -354,15 +350,21 @@ fn resolve_target(
 }
 
 /// Serialise a record's front-matter and write `---\n<yaml>---\n<body>`
-/// to `path` (plain write, mirroring the spec baseline promotion which
-/// is part of the same atomic merge).
+/// to `path` via [`bytes_write`] (temp-file + rename, creating the parent
+/// chain) so a crash mid-merge never leaves a half-written record.
+/// Atomicity is per file, not across the promotion set: the caller flips
+/// the slice metadata only after every write returns, so an interrupted
+/// promotion is safely re-runnable.
 fn write_record(path: &Path, record: &DecisionRecord, body: &str) -> Result<(), Error> {
     let yaml = serde_saphyr::to_string(record)?;
     let yaml = if yaml.ends_with('\n') { yaml } else { format!("{yaml}\n") };
     let content = format!("---\n{yaml}---\n{body}");
-    std::fs::write(path, content).map_err(|source| Error::Filesystem {
-        op: "write",
-        path: path.to_path_buf(),
-        source,
+    bytes_write(path, content.as_bytes()).map_err(|err| match err {
+        Error::Io(source) => Error::Filesystem {
+            op: "write",
+            path: path.to_path_buf(),
+            source,
+        },
+        other => other,
     })
 }

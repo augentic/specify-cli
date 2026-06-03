@@ -5,7 +5,7 @@
 //! unit-test without a temp project; the project topology they embed is
 //! resolved separately by [`super::topology::resolve_topology`].
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
@@ -21,28 +21,42 @@ use super::wire::{LeadCatalogEntry, ProjectRef, ProposalKind, ProposalRequest};
 /// covered by at least one slice. Identities are deduplicated — a
 /// well-formed `discovery.md` carries a unique `(source, lead)` per
 /// lead, so [`LeadCatalog::len`] equals the surveyed lead count.
+///
+/// Keyed `source -> {lead}` (never an empty lead set, since
+/// [`build_catalog`] only inserts when a lead is present) so a
+/// `(source, lead)` membership probe borrows `&str` through
+/// `String: Borrow<str>` and never allocates an owned key. Iterating
+/// `source` then `lead` yields the same lexicographic `(source, lead)`
+/// order a flat `BTreeSet<(String, String)>` would.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LeadCatalog {
-    pub(super) identities: BTreeSet<(String, String)>,
+    identities: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl LeadCatalog {
     /// `true` when the `(source, lead)` identity was surveyed.
     #[must_use]
     pub fn contains(&self, source: &str, lead: &str) -> bool {
-        self.identities.contains(&(source.to_owned(), lead.to_owned()))
+        self.identities.get(source).is_some_and(|leads| leads.contains(lead))
     }
 
     /// Number of distinct surveyed identities.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.identities.len()
+        self.identities.values().map(BTreeSet::len).sum()
     }
 
     /// `true` when no lead was surveyed.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.identities.is_empty()
+    }
+
+    /// Surveyed `(source, lead)` identities in lexicographic order.
+    pub(super) fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.identities.iter().flat_map(|(source, leads)| {
+            leads.iter().map(move |lead| (source.as_str(), lead.as_str()))
+        })
     }
 }
 
@@ -55,13 +69,11 @@ impl LeadCatalog {
 /// identities collapse into one set entry (see [`LeadCatalog`]).
 #[must_use]
 pub fn build_catalog(discovery: &Discovery) -> LeadCatalog {
-    LeadCatalog {
-        identities: discovery
-            .leads()
-            .iter()
-            .map(|lead| (lead.source.clone(), lead.lead.clone()))
-            .collect(),
+    let mut identities: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for lead in discovery.leads() {
+        identities.entry(lead.source.clone()).or_default().insert(lead.lead.clone());
     }
+    LeadCatalog { identities }
 }
 
 /// Assemble the `kind: request` envelope from a surveyed `discovery.md`

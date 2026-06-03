@@ -24,5 +24,5 @@ pub use constants::{
 };
 pub use validate::{
     ValidationStatus, ValidationSummary, compile_schema, join_details, read_yaml_as_json,
-    validate_serialisable, validate_value,
+    validate_serialisable, validate_value, validate_value_cached,
 };

@@ -164,18 +164,18 @@ fn slice_source_sets(slices: &[ResponseSlice]) -> Result<Vec<SliceMembership>> {
 /// slice — that is fan-out, not a double-count — so coverage is the only
 /// remaining invariant: nothing surveyed is left unplanned.
 fn check_coverage(source_sets: &[SliceMembership], catalog: &LeadCatalog) -> Result<()> {
-    let mut covered: HashSet<&LeadPair> = HashSet::new();
+    let mut covered: HashSet<(&str, &str)> = HashSet::new();
     for set in source_sets {
         for pair in set {
-            covered.insert(pair);
+            covered.insert((pair.0.as_str(), pair.1.as_str()));
         }
     }
-    for pair in &catalog.identities {
-        if !covered.contains(pair) {
+    for (source, lead) in catalog.iter() {
+        if !covered.contains(&(source, lead)) {
             return Err(Error::validation_failed(
                 "plan-reconcile-partition",
                 "every surveyed lead must be referenced by at least one slice",
-                format!("lead ({}, {}) is unaccounted for by any slice", pair.0, pair.1),
+                format!("lead ({source}, {lead}) is unaccounted for by any slice"),
             ));
         }
     }

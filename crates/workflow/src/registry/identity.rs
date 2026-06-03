@@ -166,19 +166,13 @@ fn requirement_order(id: &str) -> u64 {
 }
 
 fn project_recent(project_dir: &Path) -> Result<Vec<String>, Error> {
-    let events = journal::read(Layout::new(project_dir))?;
-    let mut summaries: Vec<String> = events
-        .into_iter()
-        .filter_map(|event| match event.kind {
-            EventKind::SliceArchiveCreated { outcome_summary, .. } => Some(outcome_summary),
-            _ => None,
-        })
-        .collect();
-    let len = summaries.len();
-    if len > RECENT_TAIL {
-        summaries.drain(..len - RECENT_TAIL);
-    }
-    Ok(summaries)
+    // Tail-read the last `RECENT_TAIL` archive summaries rather than
+    // loading every event and discarding all but the tail — cost stays
+    // flat as the journal grows.
+    journal::read_recent(Layout::new(project_dir), RECENT_TAIL, |event| match event.kind {
+        EventKind::SliceArchiveCreated { outcome_summary, .. } => Some(outcome_summary),
+        _ => None,
+    })
 }
 
 #[cfg(test)]
