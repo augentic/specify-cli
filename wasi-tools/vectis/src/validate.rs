@@ -65,7 +65,7 @@ pub use crate::VectisError;
 
 mod engine;
 
-pub use engine::run;
+pub use engine::{find_project_root, run};
 
 /// Hidden re-exports for integration tests under `crates/vectis/tests/`.
 /// These items are not part of the stable public API; they exist so the
