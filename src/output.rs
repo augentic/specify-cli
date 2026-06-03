@@ -1,8 +1,10 @@
 //! Shared CLI output format and the single [`emit`] entry point used by
 //! both `specrun` and `specdev`, plus the shared lint output tail:
-//! [`emit_lint_report`] renders one envelope and [`finish_lint`] turns
-//! the outcome into the handler's terminal `Result<()>` so both lint
-//! surfaces differ only in pipeline config, not output/exit plumbing.
+//! [`run_lint`] is the one kernel both lint handlers call —
+//! [`emit_lint_report`] renders one envelope and the internal
+//! `finish_lint` turns the outcome into the handler's terminal
+//! `Result<()>` so both lint surfaces differ only in pipeline config,
+//! not output/exit plumbing.
 
 use std::io::Write;
 use std::time::Instant;
@@ -172,9 +174,32 @@ pub fn emit_lint_report(run: LintRun<'_>) -> Result<Option<DiagnosticReport>> {
     }
 }
 
+/// Drive one lint surface end to end: run the caller's pipeline
+/// assembly + emit closure, then collapse its outcome into the
+/// terminal `Result<()>`. This is the single kernel both lint handlers
+/// (`specrun lint run`, `specdev lint`) call, so the build → emit →
+/// finish → blocking-gate sequence lives in one place; the handlers
+/// differ only in the `PipelineConfig` their `build` closure assembles.
+///
+/// `build` owns every pre-emit `?` abort (scope composition, tool
+/// runner construction, framework-root load) plus the
+/// [`emit_lint_report`] call; any `Err` it returns is routed through
+/// the JSON fallback below so structured consumers keep a stable
+/// envelope shape even when the run aborts before emit.
+///
+/// # Errors
+///
+/// Propagates the closure's abort error or the blocking-finding
+/// `Error::Validation` from [`deny_blocking_findings`].
+pub fn run_lint(
+    format: DiagnosticsFormat, build: impl FnOnce() -> Result<Option<DiagnosticReport>>,
+) -> Result<()> {
+    finish_lint(format, build())
+}
+
 /// Collapse a lint run's [`emit_lint_report`] outcome into the
-/// handler's terminal `Result<()>`. Shared by both lint surfaces so
-/// the failure-render seam lives in one place:
+/// handler's terminal `Result<()>`. Driven only by [`run_lint`] so the
+/// failure-render seam lives in one place:
 ///
 /// - `Ok(Some(report))` — the envelope is already on stdout; gate the
 ///   exit on blocking findings via [`deny_blocking_findings`].
@@ -184,15 +209,7 @@ pub fn emit_lint_report(run: LintRun<'_>) -> Result<Option<DiagnosticReport>> {
 ///   consumers keep a stable shape, then propagate the error. The
 ///   matching stderr `error: …` line is the dispatcher's
 ///   `output::report`, so the two sinks compose without double-print.
-///
-/// # Errors
-///
-/// Propagates the abort error, or [`deny_blocking_findings`]'s
-/// payload-free `Error::Validation` when any open blocking finding
-/// remains.
-pub fn finish_lint(
-    format: DiagnosticsFormat, built: Result<Option<DiagnosticReport>>,
-) -> Result<()> {
+fn finish_lint(format: DiagnosticsFormat, built: Result<Option<DiagnosticReport>>) -> Result<()> {
     match built {
         Ok(Some(report)) => deny_blocking_findings(&report),
         Ok(None) => Ok(()),

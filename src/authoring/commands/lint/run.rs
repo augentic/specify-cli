@@ -16,10 +16,10 @@
 //! 3. Configure the runner for the framework surface
 //!    ([`ScanProfile::Framework`], [`NoopToolRunner`],
 //!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
-//! 4. Hand the config to [`crate::output::emit_lint_report`] +
-//!    [`crate::output::finish_lint`], which render the envelope,
-//!    append one `lint-completed` event, decide the blocking exit, and
-//!    own the JSON fallback on abort.
+//! 4. Hand the config to the shared [`crate::output::run_lint`] kernel
+//!    (via [`crate::output::emit_lint_report`]), which renders the
+//!    envelope, appends one `lint-completed` event, decides the
+//!    blocking exit, and owns the JSON fallback on abort.
 
 use std::path::Path;
 use std::time::Instant;
@@ -46,16 +46,15 @@ use crate::output::{self, Format, LintRun};
 /// `Exit::from(&Error)` table. Always leaves a stable envelope on
 /// stdout for JSON output — the real report on success, an empty
 /// all-zero envelope when the run aborts before emit (via
-/// [`output::finish_lint`]).
+/// [`output::run_lint`]).
 pub fn run(format: Format, action: &LintAction) -> Result<()> {
     let diagnostics_format = pick_format(format, action.output_format);
-    let built = build_report(action, diagnostics_format);
-    output::finish_lint(diagnostics_format, built)
+    output::run_lint(diagnostics_format, || build_report(action, diagnostics_format))
 }
 
 /// Assemble the framework-surface inputs and config, then run the
 /// shared pipeline + emit tail. Every `?` here is a pre-emit abort
-/// that [`output::finish_lint`] turns into the JSON fallback envelope.
+/// that [`output::run_lint`] turns into the JSON fallback envelope.
 fn build_report(
     action: &LintAction, format: DiagnosticsFormat,
 ) -> Result<Option<DiagnosticReport>> {

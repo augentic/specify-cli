@@ -43,9 +43,9 @@ use crate::runtime::context::Ctx;
 /// Handler entry point dispatched from `src/runtime/commands.rs`.
 ///
 /// Assembles the consumer-surface pipeline config and hands it to the
-/// shared lint tail; output, journal, and exit plumbing live in
-/// [`output::emit_lint_report`] / [`output::finish_lint`] so this
-/// handler differs from `specdev lint` only in the config it builds.
+/// shared [`output::run_lint`] kernel; output, journal, and exit
+/// plumbing live there so this handler differs from `specdev lint`
+/// only in the config its `build_report` closure builds.
 ///
 /// # Errors
 ///
@@ -54,13 +54,12 @@ use crate::runtime::context::Ctx;
 /// `map_resolve_error` from the shared tail.
 pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
     let format: DiagnosticsFormat = args.output_format.into();
-    let built = build_report(ctx, args, format);
-    output::finish_lint(format, built)
+    output::run_lint(format, || build_report(ctx, args, format))
 }
 
 /// Assemble the consumer-surface inputs and config, then run the
 /// shared pipeline + emit tail. Every `?` here is a pre-emit abort
-/// that [`output::finish_lint`] turns into the JSON fallback envelope.
+/// that [`output::run_lint`] turns into the JSON fallback envelope.
 fn build_report(
     ctx: &Ctx, args: &RunArgs, format: DiagnosticsFormat,
 ) -> Result<Option<DiagnosticReport>> {
