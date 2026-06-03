@@ -463,10 +463,12 @@ Body without trigger and severity.
 }
 
 /// (4) `--format json` against a non-existent framework root surfaces
-/// the infrastructure error as exit code 1, still emits a valid
-/// (empty-findings) envelope on stdout, and prints an `error:`
-/// prefix on stderr — the contract CH-22 codified for the JSON
-/// branch.
+/// the infrastructure error as exit code 1 and still emits a valid
+/// (empty-findings) envelope on stdout. The failure now routes through
+/// the shared runtime `output::report` (A19), so `--format json`
+/// renders the structured `ErrorBody` envelope on stderr — carrying
+/// the `specdev-framework-root` discriminant — exactly as `specrun
+/// --format json` does, rather than a bespoke `error:` text line.
 #[test]
 fn missing_framework_root_emits_envelope() {
     let temp = TempDir::new().expect("tempdir");
@@ -504,7 +506,19 @@ fn missing_framework_root_emits_envelope() {
     );
 
     let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
-    assert!(stderr.contains("error:"), "expected `error:` prefix on stderr; got:\n{stderr}");
+    let error_body: Value = serde_json::from_str(&stderr).unwrap_or_else(|err| {
+        panic!("stderr must be the JSON ErrorBody envelope ({err}); got:\n{stderr}")
+    });
+    assert_eq!(
+        error_body.get("error").and_then(Value::as_str),
+        Some("specdev-framework-root"),
+        "stderr envelope must carry the infrastructure-error discriminant; got:\n{stderr}",
+    );
+    assert_eq!(
+        error_body.get("exit-code").and_then(Value::as_u64),
+        Some(1),
+        "stderr envelope must report exit-code 1; got:\n{stderr}",
+    );
 }
 
 /// (5) Default text output on a clean tree now prints the

@@ -159,7 +159,7 @@ pub fn emit_seed_events(
         .authority_override
         .by_kind
         .iter()
-        .map(|(kind, key)| ((entry.name.clone(), *kind), key.clone()))
+        .map(|(kind, key)| ((entry.name.to_string(), *kind), key.clone()))
         .collect();
     emit_override_events(
         plan_name,

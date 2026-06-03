@@ -9,7 +9,7 @@ use super::super::model::{Entry, Lifecycle, Plan, Status};
 
 fn write_plan(dir: &Path, name: &str, changes: Vec<Entry>) -> PathBuf {
     let plan = Plan {
-        name: name.to_string(),
+        name: name.into(),
         lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: changes,

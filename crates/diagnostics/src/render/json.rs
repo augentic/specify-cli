@@ -118,4 +118,21 @@ mod tests {
         let err = render_value(&bogus).expect_err("incomplete finding must fail the schema");
         assert!(matches!(err, RenderError::JsonSchemaValidation { .. }));
     }
+
+    /// The envelope preserves the producer's input order — the JSON
+    /// `findings` array mirrors the slice order rather than re-sorting.
+    #[test]
+    fn preserves_input_finding_order() {
+        let mut first = fingerprinted();
+        first.id = "FIND-0001".into();
+        first.title = "first".into();
+        let mut second = fingerprinted();
+        second.id = "FIND-0002".into();
+        second.title = "second".into();
+
+        let out = render(&report(vec![first, second])).expect("renders");
+        let parsed: Value = serde_json::from_str(&out).expect("valid JSON");
+        assert_eq!(parsed["findings"][0]["title"], json!("first"));
+        assert_eq!(parsed["findings"][1]["title"], json!("second"));
+    }
 }

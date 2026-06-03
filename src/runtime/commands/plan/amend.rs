@@ -66,7 +66,7 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
                 plan.entries.iter().find(|e| e.name == name).and_then(|e| e.divergence);
 
             let patch = EntryPatch {
-                depends_on: depends_on.clone(),
+                depends_on: depends_on.clone().map(|v| v.into_iter().map(Into::into).collect()),
                 sources: sources_replace,
                 project: Patch::from_string_option(project.clone()),
                 description: Patch::from_string_option(description.clone()),
@@ -99,8 +99,8 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
                 journal_events.push(journal::Event::new(
                     now,
                     journal::EventKind::PlanAmendDivergence {
-                        plan_name: plan_name.into(),
-                        slice_name: amended.name.clone().into(),
+                        plan_name,
+                        slice_name: amended.name.clone(),
                         from: previous_divergence.unwrap_or(Divergence::None),
                         to,
                     },

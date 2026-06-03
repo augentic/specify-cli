@@ -3,7 +3,6 @@
 //! used for slice resume.
 
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
 
 use specify_error::is_kebab;
 
@@ -39,13 +38,11 @@ pub(super) fn project_worktree_path(project_dir: &Path, project: &RegistryProjec
 }
 
 pub(super) fn refresh_origin_head(slot_path: &Path) {
-    drop(
-        Command::new("git")
-            .arg("-C")
-            .arg(slot_path)
-            .args(["remote", "set-head", "origin", "--auto"])
-            .output(),
-    );
+    drop(crate::cmd::git(
+        &crate::cmd::real_cmd,
+        Some(slot_path),
+        ["remote", "set-head", "origin", "--auto"],
+    ));
 }
 
 pub(super) fn resolve_origin_head(

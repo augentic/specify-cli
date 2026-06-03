@@ -80,7 +80,7 @@ fn escape(s: &str, in_arg: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::escape;
-    use crate::diagnostic::{DiagnosticReport, DiagnosticSummary, Severity};
+    use crate::diagnostic::{DiagnosticReport, DiagnosticSummary, FindingLocation, Severity};
     use crate::render::{Format, render};
     use crate::test_support::sample_diagnostic;
 
@@ -125,5 +125,58 @@ mod tests {
         assert_eq!(escape("a%b\rc\nd", false), "a%25b%0Dc%0Ad");
         assert_eq!(escape("a,b:c", true), "a%2Cb%3Ac", "arg context escapes comma and colon");
         assert_eq!(escape("a,b:c", false), "a,b:c", "message body leaves comma and colon");
+    }
+
+    /// A finding without a location emits no `file=`/`line=`/`col=` args
+    /// but still carries the `title=` arg.
+    #[test]
+    fn no_location_omits_position_args() {
+        let mut finding = sample_diagnostic();
+        finding.location = None;
+        let out = render(Format::Github, &report(vec![finding])).expect("renders");
+        assert!(!out.contains("file="), "no file arg without location, got {out:?}");
+        assert!(!out.contains("line="), "no line arg without location, got {out:?}");
+        assert!(!out.contains("col="), "no col arg without location, got {out:?}");
+        assert!(out.contains("title="), "title arg always present, got {out:?}");
+    }
+
+    /// A line-only location emits `line=` but no `col=`.
+    #[test]
+    fn line_only_location_omits_col_arg() {
+        let mut finding = sample_diagnostic();
+        finding.location = Some(FindingLocation {
+            path: "a/b.rs".into(),
+            line: Some(9),
+            column: None,
+            end_line: None,
+            end_column: None,
+        });
+        let out = render(Format::Github, &report(vec![finding])).expect("renders");
+        assert!(out.contains("line=9"), "line arg present, got {out:?}");
+        assert!(!out.contains("col="), "no col arg without column, got {out:?}");
+    }
+
+    /// The rule id rides in the message body as a `[id]` tag; absent it,
+    /// no bracketed tag is emitted before the impact block.
+    #[test]
+    fn rule_tag_appears_in_body_when_present() {
+        let with_rule =
+            render(Format::Github, &report(vec![sample_diagnostic()])).expect("renders");
+        assert!(with_rule.contains("[UNI-014]"), "rule tag in body, got {with_rule:?}");
+
+        let mut bare = sample_diagnostic();
+        bare.rule_id = None;
+        let without = render(Format::Github, &report(vec![bare])).expect("renders");
+        assert!(!without.contains("[UNI-014]"), "no rule tag when absent, got {without:?}");
+    }
+
+    /// A comma in the title is `%2C`-escaped inside the arg list so the
+    /// argument separator round-trips.
+    #[test]
+    fn title_comma_escaped_in_arg_list() {
+        let mut finding = sample_diagnostic();
+        finding.title = "alpha, beta".into();
+        let out = render(Format::Github, &report(vec![finding])).expect("renders");
+        assert!(out.contains("title=alpha%2C beta"), "comma escaped in arg, got {out:?}");
     }
 }

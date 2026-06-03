@@ -65,7 +65,7 @@ pub(super) struct Ref {
 
 pub(super) fn plan_ref(plan: &Plan, plan_path: &Path) -> Ref {
     Ref {
-        name: plan.name.clone(),
+        name: plan.name.to_string(),
         path: plan_path.display().to_string(),
     }
 }

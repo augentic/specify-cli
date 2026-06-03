@@ -5,7 +5,7 @@ use specify_diagnostics::{
     DiagnosticSource, DiagnosticSummary, FindingEvidence, FindingLocation, FindingStatus,
     RenderError, Severity,
 };
-use specify_standards::lint::diagnostics::{map_hint_error, map_index_error};
+use specify_standards::lint::diagnostics::{map_hint_error, map_index_error, map_render_error};
 use specify_standards::lint::eval::HintError;
 use specify_standards::lint::ignore::deny_blocking_findings;
 use specify_standards::lint::index::IndexError;

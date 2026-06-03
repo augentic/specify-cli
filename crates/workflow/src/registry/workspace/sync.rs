@@ -1,8 +1,8 @@
 //! Peer materialisation: turn registry entries into `.specify/workspace/<name>/`
 //! symlinks (local URLs) or shallow Git clones (remote URLs).
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use specify_error::Error;
 
@@ -10,6 +10,7 @@ use super::bootstrap::{self, greenfield_init};
 use super::git::{self, git_output_ok};
 use super::slot_problem::inspect_at;
 use super::{contracts_base, registry_symlink_target, workspace_base, workspace_slot_path};
+use crate::cmd;
 use crate::config::{Layout, ProjectConfig};
 use crate::registry::catalog::{Registry, RegistryProject};
 use crate::registry::gitignore::ensure_gitignore_entries;
@@ -271,16 +272,23 @@ pub(super) fn materialise_git_remote(
                 std::fs::create_dir_all(parent).map_err(Error::Io)?;
             }
 
-            let clone_result = Command::new("git")
-                .args(["clone", "--depth", "1", url])
-                .arg(dest)
-                .output()
-                .map_err(|e| Error::Diag {
-                    code: "workspace-git-clone-spawn-failed",
-                    detail: format!(
-                        "failed to spawn `git clone` for registry url `{url}`: {e} (is `git` installed?)"
-                    ),
-                })?;
+            let clone_result = cmd::git(
+                &cmd::real_cmd,
+                None,
+                [
+                    OsStr::new("clone"),
+                    OsStr::new("--depth"),
+                    OsStr::new("1"),
+                    OsStr::new(url),
+                    dest.as_os_str(),
+                ],
+            )
+            .map_err(|e| Error::Diag {
+                code: "workspace-git-clone-spawn-failed",
+                detail: format!(
+                    "failed to spawn `git clone` for registry url `{url}`: {e} (is `git` installed?)"
+                ),
+            })?;
 
             if clone_result.status.success() {
                 ensure_origin_matches(dest, url)?;

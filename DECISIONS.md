@@ -207,9 +207,32 @@ the predicates need `&Context` (framework root + schema cache), which the
 `DiagnosticProducer::produce(&WorkspaceModel, project_dir)` signature does
 not carry. The dissolution does not change crates.io exposure: the root
 `specify` crate (which builds both `specrun` and `specdev`) already pulled
-the predicates into the published binary's dependency graph. The declarative
-burn-down deletes this imperative code incrementally as each predicate
-migrates to a `CORE-NNN` rule file.
+the predicates into the published binary's dependency graph.
+
+The declarative burn-down deletes this imperative code incrementally as each
+predicate migrates to a `CORE-NNN` rule file — but the migration is **bounded
+by a deliberate engine constraint, and the imperative predicates behind
+`framework::check::run` are the intended steady state until that constraint is
+lifted**. An empirical audit of the `CORE-010..051` predicates (2026-06) found
+that every *fact-consuming* declarative hint kind (`unique`, `cardinality`,
+`set-coverage`, `set-eq`, `constant-eq`, `content-digest-eq`,
+`reference-resolves`, `namespace-owner`) is hardcoded to exactly **one**
+`source` discriminator, each already spent on a `CORE-001..009` migration.
+Only `path-pattern`, line-based `regex`, and `schema` can express a *new*
+author-side check without new Rust. Consequently most surviving predicates
+cannot move to declarative rules without either (a) new hint-kind
+discriminators + new `WorkspaceModel` indexer facts (engine work), or (b)
+weakening fused multi-finding predicates (e.g. `ScenariosCheck` emits 7 ids,
+`RulesCheck` emits 3), procedural/structural checks (per-section line counts,
+fence-context, def/use dataflow), dynamic registries, or the `git`-subprocess
+trace-staleness WARN. Adding those discriminators/facts is a future RFC, not a
+flag-day deletion: do **not** retire imperative predicates or remove
+`AuthoringProducer` by weakening checks. Roughly nine ids are cleanly
+migratable author-side today (`CORE-016`, `025`, `038`, `050`, `051` via
+`path-pattern`+`regex`; `035`, `036`, `044`, `047` via `schema`); the rest are
+gated on the engine work above. The headline "remove `AuthoringProducer` /
+~2× `make lint`" payoff only lands when the *last* predicate is retired, so
+partial migration buys little — hence the steady-state posture.
 
 ## Tool architecture
 

@@ -35,7 +35,6 @@
 //! [`super::HintError::Unsupported`] so authoring drift surfaces at
 //! hint-evaluation time rather than silently passing.
 
-use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
@@ -61,8 +60,7 @@ pub(crate) fn evaluate(
         });
     }
 
-    let candidate_set: BTreeSet<String> =
-        candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let candidate_set = super::candidate_set(candidates);
 
     let mut out: Vec<Diagnostic> = Vec::new();
     for manifest in &model.adapter_manifests {

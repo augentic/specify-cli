@@ -78,14 +78,14 @@ fn lifecycle_round_trips() {
 #[test]
 fn serializes_kebab_case() {
     let plan = Plan {
-        name: "demo".to_string(),
+        name: "demo".into(),
         lifecycle: Lifecycle::Pending,
         sources: BTreeMap::new(),
         entries: vec![Entry {
-            name: "entry-one".to_string(),
+            name: "entry-one".into(),
             project: Some("default".into()),
             status: Status::InProgress,
-            depends_on: vec!["entry-zero".to_string()],
+            depends_on: vec!["entry-zero".into()],
             sources: vec![],
             context: vec![],
             description: None,

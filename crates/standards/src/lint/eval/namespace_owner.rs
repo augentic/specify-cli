@@ -74,8 +74,7 @@ pub(crate) fn evaluate(
         });
     }
 
-    let candidate_set: BTreeSet<String> =
-        candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let candidate_set = super::candidate_set(candidates);
 
     let mut out: Vec<Diagnostic> = Vec::new();
     for frontmatter in &model.frontmatter {

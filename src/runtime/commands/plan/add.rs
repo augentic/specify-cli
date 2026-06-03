@@ -48,10 +48,10 @@ pub(super) fn add(ctx: &Ctx, args: AddArgs) -> Result<()> {
             .collect::<BTreeMap<_, _>>(),
     };
     let entry = Entry {
-        name: name.to_string(),
+        name: name.into(),
         project,
         status: Status::Pending,
-        depends_on,
+        depends_on: depends_on.into_iter().map(Into::into).collect(),
         sources,
         context,
         description,

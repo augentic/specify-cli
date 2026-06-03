@@ -76,3 +76,104 @@ pub(super) const SPECS_RULES: &[Rule] = &[
         check: None,
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use specify_model::spec::{ParsedSpec, parse_baseline};
+
+    use super::{
+        specs_ids_match_pattern, specs_requirements_have_ids, specs_requirements_have_scenarios,
+    };
+    use crate::{BriefContext, RuleOutcome};
+
+    fn ctx(spec: Option<&ParsedSpec>) -> BriefContext<'_> {
+        BriefContext {
+            id: "specs",
+            content: "",
+            parsed_spec: spec,
+            tasks: None,
+            slice_dir: Path::new("."),
+            specs_dir: Path::new("."),
+        }
+    }
+
+    /// Each structural rule fails with the shared "not parsed" detail
+    /// when no spec was handed in — a rule-layer branch the primitives
+    /// never see.
+    #[test]
+    fn rules_fail_when_spec_not_parsed() {
+        for rule in [
+            specs_requirements_have_scenarios,
+            specs_requirements_have_ids,
+            specs_ids_match_pattern,
+        ] {
+            assert!(matches!(
+                rule(&ctx(None)),
+                RuleOutcome::Fail { detail } if detail.contains("not parsed")
+            ));
+        }
+    }
+
+    mod scenarios {
+        use super::{ctx, parse_baseline, specs_requirements_have_scenarios};
+        use crate::RuleOutcome;
+
+        #[test]
+        fn passes_when_present() {
+            let spec = parse_baseline(
+                "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n- WHEN a\n- THEN b\n",
+            );
+            assert_eq!(specs_requirements_have_scenarios(&ctx(Some(&spec))), RuleOutcome::Pass);
+        }
+
+        #[test]
+        fn fails_when_absent() {
+            let spec = parse_baseline("### Requirement: Thing\n\nID: REQ-001\n\nno scenario\n");
+            assert!(matches!(
+                specs_requirements_have_scenarios(&ctx(Some(&spec))),
+                RuleOutcome::Fail { .. }
+            ));
+        }
+    }
+
+    mod ids {
+        use super::{ctx, parse_baseline, specs_requirements_have_ids};
+        use crate::RuleOutcome;
+
+        #[test]
+        fn passes_when_present() {
+            let spec =
+                parse_baseline("### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: H\n");
+            assert_eq!(specs_requirements_have_ids(&ctx(Some(&spec))), RuleOutcome::Pass);
+        }
+
+        #[test]
+        fn fails_when_missing() {
+            let spec = parse_baseline("### Requirement: Thing\n\n#### Scenario: H\n");
+            assert!(matches!(
+                specs_requirements_have_ids(&ctx(Some(&spec))),
+                RuleOutcome::Fail { .. }
+            ));
+        }
+    }
+
+    mod id_pattern {
+        use super::{ctx, parse_baseline, specs_ids_match_pattern};
+        use crate::RuleOutcome;
+
+        #[test]
+        fn passes_on_canonical_ids() {
+            let spec =
+                parse_baseline("### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: H\n");
+            assert_eq!(specs_ids_match_pattern(&ctx(Some(&spec))), RuleOutcome::Pass);
+        }
+
+        #[test]
+        fn fails_on_short_id() {
+            let spec = parse_baseline("### Requirement: Thing\n\nID: REQ-1\n\n#### Scenario: H\n");
+            assert!(matches!(specs_ids_match_pattern(&ctx(Some(&spec))), RuleOutcome::Fail { .. }));
+        }
+    }
+}

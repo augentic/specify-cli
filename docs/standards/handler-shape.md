@@ -37,6 +37,12 @@ For the full DTO and dispatch rules see [coding-standards.md §"Format dispatch"
 
 Check surfaces that gate on findings — `slice validate`, the lint sentinels — own their rendering. They collect `Vec<Diagnostic>`, assemble a `DiagnosticReport`, and render it on **stdout** via `ctx.write` (the success sink), then, if any diagnostic blocks, return a payload-free `Error::validation_failed(code, detail)` purely to carry exit 2 and the discriminant on stderr. `Error::Validation` is `{ code, detail }` with no findings payload — the rich report already went to stdout. Single operational errors that are not findings (e.g. `tool-not-declared`, `discovery-lead-unknown`) take the same payload-free shape but render no report. The blocking decision uses the uniform predicate (`kind == violation && status == open && severity ∈ {critical, important}`); `kind: review` diagnostics surface but never block. See [DECISIONS.md §"Drained `Error::Validation` and the `Diagnostic` substrate"](../../DECISIONS.md#drained-errorvalidation-and-the-diagnostic-substrate).
 
+### The two lint handlers share one tail
+
+`specrun lint run` and `specdev lint` are the same handler shape with different pipeline config. Both return `Result<()>`, assemble surface-specific `ResolveInputs` + `PipelineConfig`, and hand them to the shared tail in [`src/output.rs`](../../src/output.rs): `emit_lint_report` runs the pipeline and renders the envelope on stdout; `finish_lint` collapses the outcome into the terminal `Result<()>` — `deny_blocking_findings` on success, the empty-envelope stdout fallback on a pre-emit abort. The fallback owns only the **stdout** side (an all-zero `DiagnosticReport`, JSON only, so CI consumers keep a stable shape); the stderr `error: …` line is the dispatcher's `output::report`, so the two sinks compose without double-printing. Neither handler writes its own `println!`/`eprintln!`.
+
+`specdev` is a thin binary: its sole handler obeys this same `Result<()>` contract, and [`src/authoring.rs`](../../src/authoring.rs) maps the terminal error through the one `Exit::from(&Error)` table in [`src/runtime/output.rs`](../../src/runtime/output.rs) exactly as `specrun` does — there is no `specdev`-local exit enum. Only bootstrap verbs (`migrate`, `upgrade`) justify a bespoke exit subset; lint does not.
+
 ## Exit codes
 
 The five-slot CLI exit-code table is fixed:

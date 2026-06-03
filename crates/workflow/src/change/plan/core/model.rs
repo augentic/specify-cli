@@ -9,6 +9,8 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use specify_model::evidence::ClaimKind;
 
+use crate::name::{PlanName, SliceName};
+
 /// Lifecycle state of a single entry in [`Plan::entries`].
 ///
 /// workflow collapses the per-entry state machine to three states:
@@ -94,7 +96,7 @@ pub enum Lifecycle {
 #[serde(rename_all = "kebab-case")]
 pub struct Plan {
     /// Human-readable plan name, e.g. `platform-v2`.
-    pub name: String,
+    pub name: PlanName,
     /// Plan-level lifecycle gate (workflow §Workflow vocabulary).
     /// Defaults to [`Lifecycle::Pending`] on parse so 1.x fixtures
     /// without a `lifecycle:` field load cleanly.
@@ -120,7 +122,7 @@ pub struct Plan {
 #[serde(rename_all = "kebab-case")]
 pub struct Entry {
     /// Stable identifier (kebab-case) unique within the plan.
-    pub name: String,
+    pub name: SliceName,
     /// Target registry project. Optional on disk: an omitted value
     /// resolves to the sole project in the topology (a single regular
     /// project synthesised from `project.yaml`), so single-project
@@ -138,7 +140,7 @@ pub struct Entry {
     /// Names of other plan entries that must reach `done` before this
     /// entry is eligible.
     #[serde(default)]
-    pub depends_on: Vec<String>,
+    pub depends_on: Vec<SliceName>,
     /// (source, lead) bindings (workflow §`Slice.sources`).
     /// Each entry pairs a `source` — referencing a top-level
     /// [`Plan::sources`] entry — with the `lead` from
@@ -624,7 +626,7 @@ impl Patch<String> {
 #[derive(Debug, Default, Clone)]
 pub struct EntryPatch {
     /// Replace `depends_on` wholesale when `Some`.
-    pub depends_on: Option<Vec<String>>,
+    pub depends_on: Option<Vec<SliceName>>,
     /// Replace `sources` wholesale when `Some`.
     pub sources: Option<Vec<SliceSourceBinding>>,
     /// Three-way patch over `project`.

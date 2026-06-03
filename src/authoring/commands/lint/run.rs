@@ -2,8 +2,11 @@
 //! `Check` predicates with the declarative deterministic-hint
 //! interpreter into a single [`DiagnosticReport`] envelope.
 //!
-//! The shared pipeline lives in [`specify_standards::lint::runner`]; this
-//! handler is thin:
+//! The shared pipeline lives in [`specify_standards::lint::runner`] and
+//! the shared output/journal/exit tail in [`crate::output`]; this
+//! handler is thin and obeys the same `Result<()>` contract as the
+//! runtime `specrun lint run` handler, differing only in the
+//! framework-surface config it assembles:
 //!
 //! 1. Resolve the framework root and load the imperative
 //!    [`AuthoringContext`].
@@ -13,115 +16,66 @@
 //! 3. Configure the runner for the framework surface
 //!    ([`ScanProfile::Framework`], [`NoopToolRunner`],
 //!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
-//! 4. Render the envelope and append exactly one `lint-completed`
-//!    event to `<framework_root>/.specify/journal.jsonl`.
-//! 5. Decide exit per [`blocking_findings_present`].
+//! 4. Hand the config to [`crate::output::emit_lint_report`] +
+//!    [`crate::output::finish_lint`], which render the envelope,
+//!    append one `lint-completed` event, decide the blocking exit, and
+//!    own the JSON fallback on abort.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Instant;
 
-use specify_diagnostics::{
-    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary,
-    Format as DiagnosticsFormat, render,
-};
+use specify_diagnostics::{Diagnostic, DiagnosticReport, Format as DiagnosticsFormat};
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
 use specify_standards::framework::check;
 use specify_standards::framework::context::Context as AuthoringContext;
-use specify_standards::lint::diagnostics::map_render_error;
 use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
 use specify_standards::lint::producer::DiagnosticProducer;
-use specify_standards::lint::runner::{
-    PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
-};
+use specify_standards::lint::runner::{PipelineConfig, ResolverDegradation};
 use specify_standards::lint::{ScanProfile, WorkspaceModel};
 use specify_workflow::config::Layout;
 use specify_workflow::journal::LintScope;
 
 use crate::authoring::commands::lint::cli::{LintAction, LintFormat};
-use crate::authoring::exit::Exit;
-use crate::output::{Format, LintEmit, emit_diagnostic_report};
+use crate::output::{self, Format, LintRun};
 
 /// Handler entry point dispatched from `src/authoring/commands.rs`.
 ///
-/// Always renders an envelope on stdout (an empty all-zero envelope
-/// when JSON output is requested but the pipeline aborts before
-/// emit) so CI consumers can rely on a stable shape regardless of
-/// outcome.
-pub fn run(format: Format, action: &LintAction) -> Exit {
-    let started_at = Instant::now();
+/// Returns `Result<()>` like every runtime handler; the dispatcher in
+/// [`crate::authoring`] maps the terminal error through the shared
+/// `Exit::from(&Error)` table. Always leaves a stable envelope on
+/// stdout for JSON output — the real report on success, an empty
+/// all-zero envelope when the run aborts before emit (via
+/// [`output::finish_lint`]).
+pub fn run(format: Format, action: &LintAction) -> Result<()> {
     let diagnostics_format = pick_format(format, action.output_format);
-
-    match build_envelope(action) {
-        Ok(BuildOutcome::Envelope { result, project_dir }) => {
-            let scope = LintScope {
-                target: None,
-                slice: None,
-                artifact: action.artifacts.first().map(|p| p.display().to_string()),
-            };
-            match emit_diagnostic_report(LintEmit {
-                format: diagnostics_format,
-                report: &result,
-                layout: Layout::new(&project_dir),
-                scope,
-                command_label: "specdev lint",
-                elapsed_ms: started_at.elapsed().as_millis(),
-                trailing_newline: false,
-            }) {
-                Ok(true) => Exit::ValidationFailed,
-                Ok(false) => Exit::Success,
-                Err(err) => {
-                    let err = map_render_error(err);
-                    eprintln!("error: {err}");
-                    emit_fallback_envelope(diagnostics_format);
-                    exit_from_error(&err)
-                }
-            }
-        }
-        Ok(BuildOutcome::DumpedModel) => Exit::Success,
-        Err(err) => {
-            eprintln!("error: {err}");
-            emit_fallback_envelope(diagnostics_format);
-            exit_from_error(&err)
-        }
-    }
+    let built = build_report(action, diagnostics_format);
+    output::finish_lint(diagnostics_format, built)
 }
 
-/// Outcome of [`build_envelope`]: either a fully composed
-/// [`DiagnosticReport`] ready to render, or the `--dump-model` shortcut
-/// which has already emitted its own stdout body.
-enum BuildOutcome {
-    Envelope { result: DiagnosticReport, project_dir: PathBuf },
-    DumpedModel,
-}
-
-fn build_envelope(action: &LintAction) -> Result<BuildOutcome> {
-    let LintAction {
-        framework_root,
-        target,
-        sources,
-        rules: rule_filter,
-        artifacts,
-        languages,
-        dump_model,
-        strict_hints,
-        ..
-    } = action;
-
+/// Assemble the framework-surface inputs and config, then run the
+/// shared pipeline + emit tail. Every `?` here is a pre-emit abort
+/// that [`output::finish_lint`] turns into the JSON fallback envelope.
+fn build_report(
+    action: &LintAction, format: DiagnosticsFormat,
+) -> Result<Option<DiagnosticReport>> {
+    let started_at = Instant::now();
     let authoring_ctx =
-        AuthoringContext::from_framework_root(framework_root).map_err(|err| Error::Diag {
-            code: "specdev-framework-root",
-            detail: err.to_string(),
+        AuthoringContext::from_framework_root(&action.framework_root).map_err(|err| {
+            Error::Diag {
+                code: "specdev-framework-root",
+                detail: err.to_string(),
+            }
         })?;
     let project_dir = authoring_ctx.framework_root().to_path_buf();
 
     let inputs = ResolveInputs {
         project_dir: &project_dir,
         rules_root: Some(&project_dir),
-        target_adapter: target,
-        source_adapters: sources,
-        artifact_paths: artifacts,
-        languages,
+        target_adapter: &action.target,
+        source_adapters: &action.sources,
+        artifact_paths: &action.artifacts,
+        languages: &action.languages,
         include_deprecated: false,
         include_unmatched: false,
         include_core: true,
@@ -129,12 +83,12 @@ fn build_envelope(action: &LintAction) -> Result<BuildOutcome> {
 
     let producer = AuthoringProducer { ctx: &authoring_ctx };
     let producers: [&dyn DiagnosticProducer; 1] = [&producer];
-    let rule_filter_slice: Vec<&str> = rule_filter.iter().map(String::as_str).collect();
+    let rule_filter_slice: Vec<&str> = action.rules.iter().map(String::as_str).collect();
     let tool_runner = NoopToolRunner;
     let config = PipelineConfig {
         profile: ScanProfile::Framework,
-        dump_model: *dump_model,
-        strict_hints: *strict_hints,
+        dump_model: action.dump_model,
+        strict_hints: action.strict_hints,
         apply_ignore_directives: true,
         rule_filter: &rule_filter_slice,
         resolver_degradation: ResolverDegradation::SkipDeclarative,
@@ -142,10 +96,21 @@ fn build_envelope(action: &LintAction) -> Result<BuildOutcome> {
         producers: &producers,
     };
 
-    match run_pipeline(&inputs, &config)? {
-        RunOutcome::DumpedModel => Ok(BuildOutcome::DumpedModel),
-        RunOutcome::Report(result) => Ok(BuildOutcome::Envelope { result, project_dir }),
-    }
+    let scope = LintScope {
+        target: None,
+        slice: None,
+        artifact: action.artifacts.first().map(|p| p.display().to_string()),
+    };
+    output::emit_lint_report(LintRun {
+        inputs: &inputs,
+        config: &config,
+        format,
+        layout: Layout::new(&project_dir),
+        scope,
+        command_label: "specdev lint",
+        started_at,
+        trailing_newline: false,
+    })
 }
 
 /// Resolve the diagnostics format for the success body. Per-subcommand
@@ -159,35 +124,6 @@ fn pick_format(global: Format, output_format: Option<LintFormat>) -> Diagnostics
     match global {
         Format::Json => DiagnosticsFormat::Json,
         Format::Text => DiagnosticsFormat::Pretty,
-    }
-}
-
-/// Map a `specify_error::Error` onto the closed [`Exit`] code set.
-/// The `specdev` [`Exit`] only models the codes the framework run can
-/// produce — `Success(0)`, `GenericFailure(1)`, `ValidationFailed(2)` —
-/// and `Argument` failures piggy-back on `ValidationFailed` to match
-/// the runtime convention.
-const fn exit_from_error(err: &Error) -> Exit {
-    match err {
-        Error::Validation { .. } | Error::Argument { .. } => Exit::ValidationFailed,
-        _ => Exit::GenericFailure,
-    }
-}
-
-/// Print an empty all-zero envelope on stdout when the run aborts
-/// before reaching the success-path emit, but only for JSON output.
-fn emit_fallback_envelope(format: DiagnosticsFormat) {
-    if !matches!(format, DiagnosticsFormat::Json) {
-        return;
-    }
-    let result = DiagnosticReport {
-        version: DiagnosticReportVersion,
-        summary: DiagnosticSummary::default(),
-        findings: Vec::new(),
-    };
-    match render(format, &result) {
-        Ok(rendered) => println!("{rendered}"),
-        Err(err) => eprintln!("error: failed to render fallback envelope: {err}"),
     }
 }
 

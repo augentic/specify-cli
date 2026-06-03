@@ -45,8 +45,7 @@ pub(crate) fn evaluate(
         });
     }
 
-    let candidate_set: BTreeSet<String> =
-        candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let candidate_set = super::candidate_set(candidates);
 
     let mut groups: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for skill in &model.skills {

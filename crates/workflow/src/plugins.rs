@@ -21,7 +21,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -218,17 +217,14 @@ pub struct GitCli;
 
 impl ShaResolver for GitCli {
     fn head(&self, repo_dir: &Path) -> Option<String> {
-        let output = Command::new("git")
-            .arg("-C")
-            .arg(repo_dir)
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .ok()?;
+        let output =
+            crate::cmd::git(&crate::cmd::real_cmd, Some(repo_dir), ["rev-parse", "HEAD"]).ok()?;
         first_sha(&output)
     }
 
     fn ls_remote(&self, url: &str, git_ref: &str) -> Option<String> {
-        let output = Command::new("git").args(["ls-remote", url, git_ref]).output().ok()?;
+        let output =
+            crate::cmd::git(&crate::cmd::real_cmd, None, ["ls-remote", url, git_ref]).ok()?;
         first_sha(&output)
     }
 }

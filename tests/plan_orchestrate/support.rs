@@ -1,11 +1,11 @@
 //! Shared fixtures, seeds, and re-exports for the `plan_orchestrate`
 //! integration suite (REVIEW.md A13).
 //!
-//! The suite was a single 2,900-line file; it is now split across the
-//! sibling `#[path]` submodules (`lifecycle`, `archive`, `authority`,
-//! `propose`). Every submodule pulls its shared surface in with
-//! `use crate::support::*;`, so the common imports, helpers, and plan
-//! seeds live here once.
+//! The suite is split across themed submodules grouped by `plan`
+//! command family (`validate`, `next`, `mutate`, `source_binding`,
+//! `transition`, `create`, `archive`, `propose`, `authority`). Every
+//! submodule pulls its shared surface in with `use crate::support::*;`,
+//! so the common imports, helpers, and plan seeds live here once.
 
 pub use std::fs;
 pub use std::path::{Path, PathBuf};
@@ -70,6 +70,16 @@ slices:
   - name: a
     project: default
     status: in-progress
+";
+
+/// One pending entry. Shared by the `mutate` (amend-on-missing) and
+/// `transition` submodules.
+pub const SINGLE_PENDING: &str = "\
+name: demo
+slices:
+  - name: foo
+    project: default
+    status: pending
 ";
 
 pub const ALL_DONE: &str = "\

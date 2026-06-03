@@ -3,7 +3,6 @@
 //! the active slice's allow-list.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use super::infer::{AllowedPath, allowed_paths};
 use super::{Diagnostic, Dirty, git_output};
@@ -100,12 +99,11 @@ enum PorcelainKind {
 }
 
 fn porcelain_entries(slot_path: &Path) -> Vec<PorcelainEntry> {
-    let Ok(output) = Command::new("git")
-        .arg("-C")
-        .arg(slot_path)
-        .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
-        .output()
-    else {
+    let Ok(output) = crate::cmd::git(
+        &crate::cmd::real_cmd,
+        Some(slot_path),
+        ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    ) else {
         return Vec::new();
     };
     if !output.status.success() {

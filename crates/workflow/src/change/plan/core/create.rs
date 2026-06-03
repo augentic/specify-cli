@@ -25,7 +25,7 @@ impl Plan {
     pub fn init(name: &str, sources: BTreeMap<String, SourceBinding>) -> Result<Self, Error> {
         validate_name(name)?;
         Ok(Self {
-            name: name.to_string(),
+            name: name.into(),
             lifecycle: Lifecycle::Pending,
             sources,
             entries: vec![],

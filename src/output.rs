@@ -1,13 +1,23 @@
 //! Shared CLI output format and the single [`emit`] entry point used by
-//! both `specrun` and `specdev`.
+//! both `specrun` and `specdev`, plus the shared lint output tail:
+//! [`emit_lint_report`] renders one envelope and [`finish_lint`] turns
+//! the outcome into the handler's terminal `Result<()>` so both lint
+//! surfaces differ only in pipeline config, not output/exit plumbing.
 
 use std::io::Write;
+use std::time::Instant;
 
 use clap::ValueEnum;
 use serde::Serialize;
-use specify_diagnostics::{DiagnosticReport, Format as DiagnosticsFormat, RenderError, render};
-use specify_error::Error;
-use specify_standards::lint::ignore::blocking_findings_present;
+use specify_diagnostics::{
+    DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format as DiagnosticsFormat,
+    RenderError, render,
+};
+use specify_error::{Error, Result};
+use specify_standards::ResolveInputs;
+use specify_standards::lint::diagnostics::map_render_error;
+use specify_standards::lint::ignore::{blocking_findings_present, deny_blocking_findings};
+use specify_standards::lint::runner::{PipelineConfig, RunOutcome, run as run_pipeline};
 use specify_workflow::config::Layout;
 use specify_workflow::journal::{self, LintScope};
 
@@ -103,4 +113,118 @@ pub fn emit_diagnostic_report(emit: LintEmit<'_>) -> Result<bool, RenderError> {
         emit.command_label,
     );
     Ok(blocking)
+}
+
+/// Everything [`emit_lint_report`] needs to run one lint pipeline and
+/// render its envelope. The two lint surfaces (`specrun lint run`,
+/// `specdev lint`) differ only in the inputs and config they assemble
+/// here — the render → journal → blocking-decision tail is shared.
+pub struct LintRun<'a> {
+    /// Resolver inputs (project dir, rules root, adapters, filters).
+    pub inputs: &'a ResolveInputs<'a>,
+    /// Pipeline config (profile, producers, tool runner, degradation).
+    pub config: &'a PipelineConfig<'a>,
+    /// Wire format for the rendered envelope and the abort fallback.
+    pub format: DiagnosticsFormat,
+    /// Project (or framework-root) layout the journal event lands under.
+    pub layout: Layout<'a>,
+    /// Scope facets recorded on the `lint-completed` event.
+    pub scope: LintScope,
+    /// Command label prefixed onto best-effort journal failures.
+    pub command_label: &'static str,
+    /// Scan clock started at handler entry; the elapsed span lands on
+    /// the journal event.
+    pub started_at: Instant,
+    /// Append an extra newline after the body (`specrun` does,
+    /// `specdev` does not). See [`LintEmit::trailing_newline`].
+    pub trailing_newline: bool,
+}
+
+/// Run the lint pipeline and render its envelope on stdout.
+///
+/// Returns the composed [`DiagnosticReport`] so the caller can run the
+/// blocking-decision gate, or `None` for the `--dump-model`
+/// short-circuit (whose model body has already reached stdout). Any
+/// `Err` is a pre-emit / emit-time abort — the real report never
+/// reached stdout — which [`finish_lint`] turns into the empty
+/// fallback envelope.
+///
+/// # Errors
+///
+/// Propagates pipeline resolution / indexing / evaluation errors and
+/// the [`map_render_error`]-mapped envelope render failure.
+pub fn emit_lint_report(run: LintRun<'_>) -> Result<Option<DiagnosticReport>> {
+    match run_pipeline(run.inputs, run.config)? {
+        RunOutcome::DumpedModel => Ok(None),
+        RunOutcome::Report(report) => {
+            emit_diagnostic_report(LintEmit {
+                format: run.format,
+                report: &report,
+                layout: run.layout,
+                scope: run.scope,
+                command_label: run.command_label,
+                elapsed_ms: run.started_at.elapsed().as_millis(),
+                trailing_newline: run.trailing_newline,
+            })
+            .map_err(map_render_error)?;
+            Ok(Some(report))
+        }
+    }
+}
+
+/// Collapse a lint run's [`emit_lint_report`] outcome into the
+/// handler's terminal `Result<()>`. Shared by both lint surfaces so
+/// the failure-render seam lives in one place:
+///
+/// - `Ok(Some(report))` — the envelope is already on stdout; gate the
+///   exit on blocking findings via [`deny_blocking_findings`].
+/// - `Ok(None)` — `--dump-model` already emitted its body; succeed.
+/// - `Err(err)` — the run aborted before emitting its real report;
+///   render the empty fallback envelope on stdout (JSON only) so CI
+///   consumers keep a stable shape, then propagate the error. The
+///   matching stderr `error: …` line is the dispatcher's
+///   `output::report`, so the two sinks compose without double-print.
+///
+/// # Errors
+///
+/// Propagates the abort error, or [`deny_blocking_findings`]'s
+/// payload-free `Error::Validation` when any open blocking finding
+/// remains.
+pub fn finish_lint(
+    format: DiagnosticsFormat, built: Result<Option<DiagnosticReport>>,
+) -> Result<()> {
+    match built {
+        Ok(Some(report)) => deny_blocking_findings(&report),
+        Ok(None) => Ok(()),
+        Err(err) => {
+            emit_empty_report_on_abort(format);
+            Err(err)
+        }
+    }
+}
+
+/// Render an empty all-zero [`DiagnosticReport`] on **stdout** when a
+/// lint run aborts before composing its real report, but only for JSON
+/// output — so structured CI consumers always receive a stable
+/// envelope shape. A no-op for the human formatters (`pretty | github
+/// | compact`), whose only failure signal is the stderr `error: …`
+/// line.
+///
+/// Owns the stdout side of the abort path only; the stderr line is the
+/// dispatcher's `output::report`.
+fn emit_empty_report_on_abort(format: DiagnosticsFormat) {
+    if !matches!(format, DiagnosticsFormat::Json) {
+        return;
+    }
+    let report = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::default(),
+        findings: Vec::new(),
+    };
+    // The empty envelope is schema-valid by construction, so a render
+    // error is unreachable; on the impossible path leave stdout empty
+    // rather than emit a malformed body.
+    if let Ok(rendered) = render(DiagnosticsFormat::Json, &report) {
+        print!("{rendered}");
+    }
 }

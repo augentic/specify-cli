@@ -61,15 +61,8 @@ pub fn extract(file: &DiscoveredFile) -> Option<AdapterManifest> {
 /// extractor never confuses a nested `adapter.yaml` for a top-level
 /// adapter manifest.
 fn parse_manifest_path(relative: &str) -> Option<(AdapterAxis, &str)> {
-    let rest = relative.strip_prefix("adapters/")?;
-    let (axis_str, rest) = rest.split_once('/')?;
-    let axis = match axis_str {
-        "sources" => AdapterAxis::Sources,
-        "targets" => AdapterAxis::Targets,
-        _ => return None,
-    };
-    let (adapter, tail) = rest.split_once('/')?;
-    if adapter.is_empty() || tail != "adapter.yaml" {
+    let (axis, adapter, tail) = super::path_util::parse_adapter_prefix(relative)?;
+    if tail != "adapter.yaml" {
         return None;
     }
     Some((axis, adapter))

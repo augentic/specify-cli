@@ -366,7 +366,7 @@ fn is_clone_eligible(project_dir: &Path) -> bool {
 }
 
 fn git(project_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
-    std::process::Command::new("git").arg("-C").arg(project_dir).args(args).output()
+    specify_workflow::cmd::git(&specify_workflow::cmd::real_cmd, Some(project_dir), args)
 }
 
 fn auto_commit(project_dir: &Path, name: &str) {

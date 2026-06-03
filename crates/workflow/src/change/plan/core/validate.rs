@@ -56,7 +56,7 @@ fn duplicate_names(changes: &[Entry]) -> Vec<Finding> {
                 level: Severity::Error,
                 code: "duplicate-name",
                 message: format!("duplicate plan entry name '{}'", entry.name),
-                entry: Some(entry.name.clone()),
+                entry: Some(entry.name.to_string()),
             });
         }
     }
@@ -96,7 +96,7 @@ fn check_unknown_depends_on(changes: &[Entry]) -> Vec<Finding> {
                     level: Severity::Error,
                     code: "unknown-depends-on",
                     message: format!("depends-on references unknown slice '{target}'"),
-                    entry: Some(entry.name.clone()),
+                    entry: Some(entry.name.to_string()),
                 });
             }
         }
@@ -114,7 +114,7 @@ fn check_unknown_sources(plan: &Plan) -> Vec<Finding> {
                     level: Severity::Error,
                     code: "unknown-source",
                     message: format!("sources references unknown source key '{key}'"),
-                    entry: Some(entry.name.clone()),
+                    entry: Some(entry.name.to_string()),
                 });
             }
         }
@@ -134,7 +134,7 @@ fn check_single_in_progress(changes: &[Entry]) -> Vec<Finding> {
             level: Severity::Error,
             code: "multiple-in-progress",
             message: "multiple in-progress entries: at most one allowed per plan".to_string(),
-            entry: Some(c.name.clone()),
+            entry: Some(c.name.to_string()),
         })
         .collect()
 }
@@ -153,7 +153,7 @@ fn check_project_in_registry(changes: &[Entry], registry: &Registry) -> Vec<Find
                     "project '{}' on slice '{}' does not match any project in registry.yaml",
                     project, entry.name
                 ),
-                entry: Some(entry.name.clone()),
+                entry: Some(entry.name.to_string()),
             });
         }
     }
@@ -185,7 +185,7 @@ fn check_project_binding_required(changes: &[Entry], registry: &Registry) -> Vec
                     entry.name,
                     registry.projects.len()
                 ),
-                entry: Some(entry.name.clone()),
+                entry: Some(entry.name.to_string()),
             });
         }
     }
@@ -223,7 +223,7 @@ pub fn orphan_authority_override_keys(changes: &[Entry]) -> Vec<Finding> {
                          not present in slice sources",
                         entry.name
                     ),
-                    entry: Some(entry.name.clone()),
+                    entry: Some(entry.name.to_string()),
                 });
             }
         }
@@ -243,7 +243,7 @@ fn check_context_paths(changes: &[Entry]) -> Vec<Finding> {
                         "entry '{}': context path '{}' must be relative to .specify/ (no '..' or absolute paths)",
                         entry.name, path
                     ),
-                    entry: Some(entry.name.clone()),
+                    entry: Some(entry.name.to_string()),
                 });
             }
         }
@@ -284,7 +284,7 @@ fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Finding> {
 
     for entry in &plan.entries {
         if entry.status == Status::InProgress {
-            let candidate = slices_dir.join(&entry.name);
+            let candidate = slices_dir.join(entry.name.as_str());
             if !candidate.is_dir() {
                 out.push(Finding {
                     level: Severity::Warning,
@@ -293,7 +293,7 @@ fn slices_dir_consistency(plan: &Plan, slices_dir: &Path) -> Vec<Finding> {
                         "in-progress entry '{}' has no slice directory (may briefly be absent during phase start-up)",
                         entry.name
                     ),
-                    entry: Some(entry.name.clone()),
+                    entry: Some(entry.name.to_string()),
                 });
             }
         }

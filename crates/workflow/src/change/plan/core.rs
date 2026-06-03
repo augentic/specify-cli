@@ -133,7 +133,7 @@ slices:
 
     pub fn change_with_deps(name: &str, status: Status, deps: &[&str]) -> Entry {
         let mut e = change(name, status);
-        e.depends_on = deps.iter().map(|s| (*s).to_string()).collect();
+        e.depends_on = deps.iter().map(|s| (*s).into()).collect();
         e
     }
 }

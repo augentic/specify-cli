@@ -1,7 +1,12 @@
-use specify_error::Error;
+use std::path::Path;
 
-use super::super::model::{Lifecycle, SourceBinding};
+use specify_error::{Error, Result};
+use specify_model::discovery::Discovery;
+
+use super::super::model::{Lifecycle, Plan, SliceSourceBinding, SourceBinding, Status};
 use super::*;
+use crate::config::ProjectConfig;
+use crate::registry::topology::Surface;
 use crate::schema::validate_proposal_json;
 
 fn discovery(body: &str) -> Discovery {
@@ -304,7 +309,7 @@ fn discovery_with(leads: &[(&str, &str)]) -> Discovery {
 
 fn plan_with_sources(lifecycle: Lifecycle, keys: &[&str]) -> Plan {
     Plan {
-        name: "p".to_string(),
+        name: "p".into(),
         lifecycle,
         sources: keys
             .iter()

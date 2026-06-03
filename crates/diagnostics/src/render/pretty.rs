@@ -178,4 +178,45 @@ mod tests {
         let out = render_plain(&report(vec![finding]));
         assert!(out.contains("(x/y.rs:3)"), "line-only location omits column, got {out:?}");
     }
+
+    /// Each demoted status renders its own bracketed tag — the `ignored`
+    /// arm is covered above, so pin the remaining three.
+    #[test]
+    fn each_non_open_status_tag_renders() {
+        for (status, tag) in [
+            (FindingStatus::Fixed, "[fixed]"),
+            (FindingStatus::Accepted, "[accepted]"),
+            (FindingStatus::FalsePositive, "[false-positive]"),
+        ] {
+            let mut finding = sample_diagnostic();
+            finding.status = Some(status);
+            let out = render_plain(&report(vec![finding]));
+            assert!(out.contains(tag), "expected {tag} for {status:?}, got {out:?}");
+        }
+    }
+
+    /// A finding with neither location nor rule id renders the bare
+    /// title line — no parenthesised location, no rule token.
+    #[test]
+    fn no_location_no_rule_renders_bare_title() {
+        let mut finding = sample_diagnostic();
+        finding.location = None;
+        finding.rule_id = None;
+        let out = render_plain(&report(vec![finding]));
+        assert!(!out.contains("config.rs"), "no location rendered, got {out:?}");
+        assert!(!out.contains("UNI-014"), "no rule token, got {out:?}");
+        assert!(
+            out.contains("[IMPORTANT] Literal deployment URL in generated handler"),
+            "bare title still present, got {out:?}"
+        );
+    }
+
+    /// The summary footer is emitted even for an empty report so callers
+    /// always get the tally line.
+    #[test]
+    fn empty_report_still_prints_header_and_summary() {
+        let out = render_plain(&report(vec![]));
+        assert!(out.starts_with("Specify review — 0 finding(s)\n"));
+        assert!(out.contains("Summary: 0 critical, 0 important, 0 suggestion, 0 optional"));
+    }
 }

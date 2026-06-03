@@ -29,14 +29,13 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
+use specify_workflow::adapter::SourceOperation;
 use specify_workflow::adapter::cache::{self, LookupOutcome};
-use specify_workflow::adapter::{CacheLayout, Execution, SourceOperation};
-use specify_workflow::change::{Plan, SourceBinding};
-use specify_workflow::journal::{self, CacheMissReason, Event, EventKind};
+use specify_workflow::change::Plan;
+use specify_workflow::journal::{CacheMissReason, EventKind};
 use specify_workflow::schema;
 
 use crate::runtime::commands::source::cli::Phase;
@@ -116,180 +115,102 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
         evidence_root: None,
     })?;
 
-    match prepared.manifest.execution {
-        Some(Execution::Tool) => run_tool(ctx, source, &prepared, source_path.as_deref(), binding),
-        _ => match phase {
-            Phase::Prepare => prepare(ctx, source, &prepared, source_path.as_deref()),
-            Phase::Finalize => finalize(ctx, source, &prepared, source_path.as_deref(), binding),
-        },
-    }
-}
-
-/// Agent `prepare` phase: build scratch, emit `source.execution.agent`,
-/// and print the survey handoff envelope. The CLI returns control to
-/// the agent and does not block.
-fn prepare(
-    ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
-) -> Result<()> {
-    let scratch = op::scratch_path(prepared, SourceOperation::Survey)?;
-    std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
-
-    let event = Event::new(
-        Timestamp::now(),
-        EventKind::SourceExecutionAgent {
-            source: source.to_string(),
-            adapter: prepared.manifest.name.clone(),
+    let flow = SurveyFlow {
+        common: op::Common {
+            ctx,
+            source,
+            prepared: &prepared,
+            source_path: source_path.as_deref(),
+            binding,
             operation: SourceOperation::Survey,
-        },
-    );
-    journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
-
-    let handoff = SurveyHandoff {
-        adapter: prepared.manifest.name.clone(),
-        version: prepared.manifest.version,
-        briefs_dir: prepared.briefs_dir.clone(),
-        source_dir: source_path.map(Path::to_path_buf),
-        scratch_dir: scratch,
-        leads: existing_lead_ids(ctx, source)?,
-        execution: "agent",
-    };
-    ctx.write(&handoff, write_handoff_text)
-}
-
-/// Agent `finalize` phase: validate the agent-produced lead set, merge
-/// it into `discovery.md`, then record the cache outcome.
-fn finalize(
-    ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
-    binding: &SourceBinding,
-) -> Result<()> {
-    let scratch = op::scratch_path(prepared, SourceOperation::Survey)?;
-    let raw = op::read_artifact(
-        &scratch.join(SourceOperation::Survey.artifact_name()),
-        SourceOperation::Survey,
-    )?;
-
-    // Fingerprint first so a missing source path aborts before any
-    // discovery.md write; the lookup itself has no side effects.
-    let fingerprint =
-        op::build_fingerprint(prepared, source_path, binding, SourceOperation::Survey, None)?;
-    let layout = CacheLayout::new(&ctx.project_dir, &prepared.manifest.name);
-    let cache_mode = prepared.manifest.effective_cache_mode();
-    let lookup = cache::lookup(
-        layout,
-        &fingerprint,
-        cache_mode,
-        SURVEY_LANE,
-        source,
-        SourceOperation::Survey,
-    )?;
-
-    // Validate-before-visible: a schema failure returns here, before the
-    // cache event is emitted and before discovery.md is touched.
-    let lead_ids = validate_and_merge(ctx, source, &raw)?;
-
-    emit_cache_event(ctx, source, &prepared.manifest.name, &lookup)?;
-    op::write_cache_entry(
-        &op::CacheEntry {
-            layout,
-            cache_mode,
             slice_lane: SURVEY_LANE,
-            source,
-            adapter: &prepared.manifest.name,
-            op: SourceOperation::Survey,
+            lead: None,
         },
-        &fingerprint,
-        raw.as_bytes(),
-    )?;
-
-    ctx.write(
-        &survey_result(
-            source,
-            &prepared.manifest.name,
-            &lookup,
-            lead_ids,
-            ctx.layout().discovery_path(),
-        ),
-        write_result_text,
-    )
+    };
+    op::run(&flow, phase)
 }
 
-/// Single-phase `tool` execution: probe the cache, produce the lead set
-/// (cached hit or freshly dispatched), validate, and merge.
-fn run_tool(
-    ctx: &Ctx, source: &str, prepared: &prep::SourcePrep, source_path: Option<&Path>,
-    binding: &SourceBinding,
-) -> Result<()> {
-    let scratch = op::scratch_path(prepared, SourceOperation::Survey)?;
-    std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
+/// Survey's operation-specific seam onto the shared [`op::run`] flow:
+/// the handoff omits `evidence-dir`, the commit merges the lead set
+/// into `discovery.md`, and the cache event is `source.survey.cache-*`.
+struct SurveyFlow<'a> {
+    common: op::Common<'a>,
+}
 
-    let fingerprint =
-        op::build_fingerprint(prepared, source_path, binding, SourceOperation::Survey, None)?;
-    let layout = CacheLayout::new(&ctx.project_dir, &prepared.manifest.name);
-    let cache_mode = prepared.manifest.effective_cache_mode();
-    let lookup = cache::lookup(
-        layout,
-        &fingerprint,
-        cache_mode,
-        SURVEY_LANE,
-        source,
-        SourceOperation::Survey,
-    )?;
+impl<'a> op::Flow<'a> for SurveyFlow<'a> {
+    type Handoff = SurveyHandoff;
+    type Outcome = SurveyResult;
 
-    let artifact = SourceOperation::Survey.artifact_name();
-    let raw = match &lookup.outcome {
-        LookupOutcome::Hit { cache_dir } => {
-            op::read_artifact(&cache_dir.join(artifact), SourceOperation::Survey)?
-        }
-        LookupOutcome::Miss { .. } => {
-            dispatch_survey_tool(prepared)?;
-            op::read_artifact(&scratch.join(artifact), SourceOperation::Survey)?
-        }
-    };
-
-    let lead_ids = validate_and_merge(ctx, source, &raw)?;
-    emit_cache_event(ctx, source, &prepared.manifest.name, &lookup)?;
-    if matches!(lookup.outcome, LookupOutcome::Miss { .. }) {
-        op::write_cache_entry(
-            &op::CacheEntry {
-                layout,
-                cache_mode,
-                slice_lane: SURVEY_LANE,
-                source,
-                adapter: &prepared.manifest.name,
-                op: SourceOperation::Survey,
-            },
-            &fingerprint,
-            raw.as_bytes(),
-        )?;
+    fn common(&self) -> &op::Common<'a> {
+        &self.common
     }
 
-    ctx.write(
-        &survey_result(
-            source,
-            &prepared.manifest.name,
-            &lookup,
-            lead_ids,
-            ctx.layout().discovery_path(),
-        ),
-        write_result_text,
-    )
-}
+    fn handoff(&self, scratch: PathBuf) -> Result<SurveyHandoff> {
+        let c = &self.common;
+        Ok(SurveyHandoff {
+            adapter: c.prepared.manifest.name.clone(),
+            version: c.prepared.manifest.version,
+            briefs_dir: c.prepared.briefs_dir.clone(),
+            source_dir: c.source_path.map(Path::to_path_buf),
+            scratch_dir: scratch,
+            leads: existing_lead_ids(c.ctx, c.source)?,
+            execution: "agent",
+        })
+    }
 
-/// Dispatch the declared `survey` WASI tool / built-in Rust path.
-///
-/// M1 ships no first-party survey tool; the WASI survey dispatch
-/// protocol is out of scope for RFC-29 M1. The control flow above is
-/// wired correctly (cache probe, lead-set read, validate-before-visible
-/// merge) so the only seam left is the actual tool invocation.
-fn dispatch_survey_tool(prepared: &prep::SourcePrep) -> Result<()> {
-    Err(Error::Diag {
-        code: "source-survey-tool-unsupported",
-        detail: format!(
-            "source adapter `{}` declares `execution: tool`, but M1 ships no `survey` tool \
-             dispatch; no first-party source declares a survey tool",
-            prepared.manifest.name
-        ),
-    })
+    fn write_handoff(w: &mut dyn Write, body: &SurveyHandoff) -> std::io::Result<()> {
+        write_handoff_text(w, body)
+    }
+
+    fn commit(
+        &self, raw: &str, _artifact_source: &Path, lookup: &cache::CacheLookup,
+    ) -> Result<SurveyResult> {
+        let c = &self.common;
+        let lead_ids = validate_and_merge(c.ctx, c.source, raw)?;
+        Ok(survey_result(
+            c.source,
+            &c.prepared.manifest.name,
+            lookup,
+            lead_ids,
+            c.ctx.layout().discovery_path(),
+        ))
+    }
+
+    fn write_outcome(w: &mut dyn Write, body: &SurveyResult) -> std::io::Result<()> {
+        write_result_text(w, body)
+    }
+
+    fn cache_event(&self, lookup: &cache::CacheLookup) -> EventKind {
+        let c = &self.common;
+        match &lookup.outcome {
+            LookupOutcome::Hit { .. } => EventKind::SourceSurveyCacheHit {
+                source: c.source.to_string(),
+                adapter: c.prepared.manifest.name.clone(),
+                fingerprint: lookup.digest.clone(),
+            },
+            LookupOutcome::Miss { reason } => EventKind::SourceSurveyCacheMiss {
+                source: c.source.to_string(),
+                adapter: c.prepared.manifest.name.clone(),
+                fingerprint: lookup.digest.clone(),
+                reason: *reason,
+            },
+        }
+    }
+
+    /// M1 ships no first-party survey tool; the WASI survey dispatch
+    /// protocol is out of scope for RFC-29 M1. The shared flow is wired
+    /// correctly (cache probe, lead-set read, validate-before-visible
+    /// merge) so the only seam left is the actual tool invocation.
+    fn dispatch_tool(&self) -> Result<()> {
+        Err(Error::Diag {
+            code: "source-survey-tool-unsupported",
+            detail: format!(
+                "source adapter `{}` declares `execution: tool`, but M1 ships no `survey` tool \
+                 dispatch; no first-party source declares a survey tool",
+                self.common.prepared.manifest.name
+            ),
+        })
+    }
 }
 
 /// Parse, schema-validate, and merge a lead set into `discovery.md`.
@@ -319,28 +240,6 @@ fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>>
     let mut discovery = load_or_empty_discovery(&discovery_path)?;
     discovery.merge_survey(source, leads, &discovery_path)?;
     Ok(lead_ids)
-}
-
-/// Emit the `source.survey.cache-hit` / `cache-miss` journal event for
-/// `lookup`.
-fn emit_cache_event(
-    ctx: &Ctx, source: &str, adapter: &str, lookup: &cache::CacheLookup,
-) -> Result<()> {
-    let kind = match &lookup.outcome {
-        LookupOutcome::Hit { .. } => EventKind::SourceSurveyCacheHit {
-            source: source.to_string(),
-            adapter: adapter.to_string(),
-            fingerprint: lookup.digest.clone(),
-        },
-        LookupOutcome::Miss { reason } => EventKind::SourceSurveyCacheMiss {
-            source: source.to_string(),
-            adapter: adapter.to_string(),
-            fingerprint: lookup.digest.clone(),
-            reason: *reason,
-        },
-    };
-    let event = Event::new(Timestamp::now(), kind);
-    journal::append_batch(ctx.layout(), std::slice::from_ref(&event))
 }
 
 fn survey_result(
@@ -387,7 +286,7 @@ fn load_or_empty_discovery(path: &Path) -> Result<Discovery> {
 fn load_plan(ctx: &Ctx, plan_name: Option<&str>) -> Result<Plan> {
     let plan = Plan::load(&ctx.layout().plan_path())?;
     if let Some(name) = plan_name
-        && name != plan.name
+        && name != plan.name.as_str()
     {
         return Err(Error::Argument {
             flag: "--plan",

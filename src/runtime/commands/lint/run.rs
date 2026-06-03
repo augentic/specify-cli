@@ -25,72 +25,73 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_diagnostics::Format as DiagnosticsFormat;
+use specify_diagnostics::{DiagnosticReport, Format as DiagnosticsFormat};
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
 use specify_standards::lint::ScanProfile;
-use specify_standards::lint::diagnostics::map_render_error;
 use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_standards::lint::ignore::deny_blocking_findings;
-use specify_standards::lint::runner::{
-    PipelineConfig, ResolverDegradation, RunOutcome, run as run_pipeline,
-};
+use specify_standards::lint::runner::{PipelineConfig, ResolverDegradation};
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
 use specify_workflow::journal::LintScope;
 
-use crate::output::{LintEmit, emit_diagnostic_report};
+use crate::output::{self, LintRun};
 use crate::runtime::commands::lint::cli::RunArgs;
 use crate::runtime::commands::tool::{Inventory, ScopedTool, build_inventory};
 use crate::runtime::context::Ctx;
 
 /// Handler entry point dispatched from `src/runtime/commands.rs`.
 ///
+/// Assembles the consumer-surface pipeline config and hands it to the
+/// shared lint tail; output, journal, and exit plumbing live in
+/// [`output::emit_lint_report`] / [`output::finish_lint`] so this
+/// handler differs from `specdev lint` only in the config it builds.
+///
 /// # Errors
 ///
-/// Closed mapping per lint exit mapping — see [`map_index_error`],
-/// `map_hint_error`, [`map_render_error`], and `map_resolve_error`.
+/// Closed mapping per lint exit mapping — `map_index_error` /
+/// `map_hint_error` from the pipeline, `map_render_error` /
+/// `map_resolve_error` from the shared tail.
 pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
-    let rules_root = args.rules_root.as_deref();
+    let format: DiagnosticsFormat = args.output_format.into();
+    let built = build_report(ctx, args, format);
+    output::finish_lint(format, built)
+}
+
+/// Assemble the consumer-surface inputs and config, then run the
+/// shared pipeline + emit tail. Every `?` here is a pre-emit abort
+/// that [`output::finish_lint`] turns into the JSON fallback envelope.
+fn build_report(
+    ctx: &Ctx, args: &RunArgs, format: DiagnosticsFormat,
+) -> Result<Option<DiagnosticReport>> {
+    let started_at = Instant::now();
     let target = args.target.as_str();
-    let sources = args.sources.as_slice();
     let slice = args.slice.as_deref();
     let artifacts = args.artifacts.as_slice();
-    let languages = args.languages.as_slice();
-    let dump_model = args.dump_model;
-    let strict_hints = args.strict_hints;
-    let include_core = args.include_core;
-    let format: DiagnosticsFormat = args.output_format.into();
-
-    let started_at = Instant::now();
     let artifact_set = compose_artifact_set(&ctx.project_dir, slice, artifacts)?;
 
     let inputs = ResolveInputs {
         project_dir: &ctx.project_dir,
-        rules_root,
+        rules_root: args.rules_root.as_deref(),
         target_adapter: target,
-        source_adapters: sources,
+        source_adapters: args.sources.as_slice(),
         artifact_paths: &artifact_set,
-        languages,
+        languages: args.languages.as_slice(),
         include_deprecated: false,
         include_unmatched: false,
-        include_core,
+        include_core: args.include_core,
     };
 
     let tool_runner = WasiToolRunner::new(ctx)?;
     let config = PipelineConfig {
         profile: ScanProfile::Consumer,
-        dump_model,
-        strict_hints,
+        dump_model: args.dump_model,
+        strict_hints: args.strict_hints,
         apply_ignore_directives: true,
         rule_filter: &[],
         resolver_degradation: ResolverDegradation::Fatal,
         tool_runner: &tool_runner,
         producers: &[],
-    };
-    let result = match run_pipeline(&inputs, &config)? {
-        RunOutcome::DumpedModel => return Ok(()),
-        RunOutcome::Report(result) => result,
     };
 
     let scope = LintScope {
@@ -101,17 +102,16 @@ pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
         // field `null` per the variant doc.
         artifact: (artifacts.len() == 1).then(|| artifacts[0].display().to_string()),
     };
-    emit_diagnostic_report(LintEmit {
+    output::emit_lint_report(LintRun {
+        inputs: &inputs,
+        config: &config,
         format,
-        report: &result,
         layout: ctx.layout(),
         scope,
         command_label: "specrun lint",
-        elapsed_ms: started_at.elapsed().as_millis(),
+        started_at,
         trailing_newline: true,
     })
-    .map_err(map_render_error)?;
-    deny_blocking_findings(&result)
 }
 
 /// Compose the `artifact_paths` vector handed to both the resolver

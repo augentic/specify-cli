@@ -33,7 +33,7 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     let plan_name = plan.name.clone();
     ctx.write(
         &PushBody {
-            plan_name: plan.name,
+            plan_name: plan.name.to_string(),
             projects: results,
             dry_run,
         },

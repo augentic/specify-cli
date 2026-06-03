@@ -40,7 +40,8 @@ use std::path::PathBuf;
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
-use crate::lint::{AdapterAxis, WorkspaceModel};
+use crate::lint::WorkspaceModel;
+use crate::lint::adapter_briefs::axis_token;
 use crate::rules::{DeterministicHint, HintKind, ResolvedRule};
 
 const SOURCE_ADAPTER_BRIEFS_COVER_OPERATIONS: &str = "adapter-briefs-cover-operations";
@@ -58,8 +59,7 @@ pub(crate) fn evaluate(
         });
     }
 
-    let candidate_set: BTreeSet<String> =
-        candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let candidate_set = super::candidate_set(candidates);
 
     let mut out: Vec<Diagnostic> = Vec::new();
     for manifest in &model.adapter_manifests {
@@ -108,11 +108,4 @@ pub(crate) fn evaluate(
         }
     }
     Ok(out)
-}
-
-const fn axis_token(axis: AdapterAxis) -> &'static str {
-    match axis {
-        AdapterAxis::Sources => "sources",
-        AdapterAxis::Targets => "targets",
-    }
 }

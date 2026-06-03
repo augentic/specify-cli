@@ -43,7 +43,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     ctx.write(
         &PlanValidateBody {
             plan: Ref {
-                name: plan.name,
+                name: plan.name.to_string(),
                 path: plan_path.display().to_string(),
             },
             results: &results,
@@ -175,7 +175,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
             }
             Some(entry) if was_executing => NextBody {
                 reason: Some("in-progress".into()),
-                active: Some(entry.name.clone()),
+                active: Some(entry.name.to_string()),
                 ..NextBody::default()
             },
             Some(entry) => {
@@ -184,7 +184,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
                     .ok()
                     .map(|t| t.to_string());
                 NextBody {
-                    next: Some(entry.name.clone()),
+                    next: Some(entry.name.to_string()),
                     project: entry.project.clone(),
                     target,
                     description: entry.description.clone(),
@@ -267,7 +267,7 @@ pub(super) fn transition(
 fn dispatch_undo(
     plan: &mut Plan, plan_path: &std::path::Path, name: &str,
 ) -> Result<TransitionBody> {
-    if name == plan.name {
+    if name == plan.name.as_str() {
         return Err(Error::Argument {
             flag: "--undo",
             detail: "plan-level lifecycle has no undo path in v1; `--undo` operates on \
@@ -284,7 +284,7 @@ fn dispatch_undo(
     Ok(TransitionBody {
         plan: plan_ref(plan, plan_path),
         kind: TransitionKind::Undo,
-        name: entry.name.clone(),
+        name: entry.name.to_string(),
         previous: from.to_string(),
         current: to.to_string(),
         changed: true,
@@ -295,7 +295,7 @@ fn dispatch_undo(
 fn dispatch_transition(
     plan: &mut Plan, plan_path: &std::path::Path, name: &str, target: &str,
 ) -> Result<TransitionBody> {
-    if name == plan.name {
+    if name == plan.name.as_str() {
         // Plan-level transition: only `approved` is legal.
         return match target {
             "approved" => {
@@ -309,7 +309,7 @@ fn dispatch_transition(
                     return Ok(TransitionBody {
                         plan: plan_ref(plan, plan_path),
                         kind: TransitionKind::Plan,
-                        name: plan.name.clone(),
+                        name: plan.name.to_string(),
                         previous: previous.to_string(),
                         current: plan.lifecycle.to_string(),
                         changed: false,
@@ -320,7 +320,7 @@ fn dispatch_transition(
                 Ok(TransitionBody {
                     plan: plan_ref(plan, plan_path),
                     kind: TransitionKind::Plan,
-                    name: plan.name.clone(),
+                    name: plan.name.to_string(),
                     previous: previous.to_string(),
                     current: plan.lifecycle.to_string(),
                     changed: true,
@@ -347,7 +347,7 @@ fn dispatch_transition(
             Ok(TransitionBody {
                 plan: plan_ref(plan, plan_path),
                 kind: TransitionKind::Entry,
-                name: entry.name.clone(),
+                name: entry.name.to_string(),
                 previous: previous.to_string(),
                 current: entry.status.to_string(),
                 changed: true,
@@ -405,7 +405,7 @@ pub(super) fn archive(ctx: &Ctx, force: bool) -> Result<()> {
     }
     let archive_dir = layout.archive_dir().join("plans");
     let brief_path = layout.change_brief_path();
-    let plan_name = Plan::load(&plan_path)?.name;
+    let plan_name = Plan::load(&plan_path)?.name.into_string();
 
     let (archived, archived_plans_dir) =
         Plan::archive(&plan_path, &brief_path, &archive_dir, force, Timestamp::now())?;

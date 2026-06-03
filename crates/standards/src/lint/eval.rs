@@ -442,6 +442,18 @@ fn build_candidate_set(
     Ok(set.into_iter().collect())
 }
 
+/// Render the candidate `PathBuf` slice into the `/`-relative string
+/// set the fact-iterating sub-evaluators test membership against.
+///
+/// Every fact-iterating kind (`set-coverage`, `set-eq`, `constant-eq`,
+/// `reference-resolves`, `unique`, `cardinality`, `namespace-owner`)
+/// narrows its facts to the `path-pattern` candidate set by string
+/// path. Sharing the conversion keeps that lookup identical across
+/// kinds.
+pub(crate) fn candidate_set(candidates: &[PathBuf]) -> std::collections::BTreeSet<String> {
+    candidates.iter().map(|p| p.to_string_lossy().into_owned()).collect()
+}
+
 /// Build a finding from rule-derived defaults (severity, target
 /// adapter, impact, remediation), apply the §"Evidence cap"
 /// truncation, and stamp the structured lint finding fingerprint.
