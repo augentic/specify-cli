@@ -7,6 +7,7 @@ use specify_error::{Error, Result};
 use specify_workflow::config::{ProjectConfig, is_workspace_clone};
 use specify_workflow::init::{InitOptions, InitResult, init};
 use specify_workflow::migrate::{self, MigrationAction};
+use specify_workflow::platform::parse_platforms_csv;
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::agents;
@@ -27,13 +28,20 @@ fn canonical(p: &Path) -> String {
 )]
 pub(super) fn run(
     format: Format, adapter: Option<&str>, name: Option<&str>, description: Option<&str>,
-    hub: bool, include_framework: bool, check_migration: bool, upgrade: bool,
+    hub: bool, include_framework: bool, platforms: Option<&str>, check_migration: bool,
+    upgrade: bool,
 ) -> Result<()> {
     let project_dir = PathBuf::from(".");
 
     if check_migration {
         return check_migration_probe(format, &project_dir);
     }
+
+    let parsed_platforms =
+        platforms.map(parse_platforms_csv).transpose().map_err(|e| Error::Argument {
+            flag: "--platforms",
+            detail: e,
+        })?;
 
     let opts = InitOptions {
         project_dir: &project_dir,
@@ -42,6 +50,7 @@ pub(super) fn run(
         description,
         hub,
         include_framework,
+        platforms: parsed_platforms.as_deref(),
         upgrade,
     };
 

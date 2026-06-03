@@ -15,6 +15,7 @@ fn hub_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
         description: None,
         hub: true,
         include_framework: false,
+        platforms: None,
         upgrade: false,
     }
 }

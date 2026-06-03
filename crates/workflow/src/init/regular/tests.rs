@@ -70,6 +70,7 @@ fn base_opts<'a>(project_dir: &'a Path, target_dir: &'a Path) -> InitOptions<'a>
         description: None,
         hub: false,
         include_framework: false,
+        platforms: None,
         upgrade: false,
     }
 }
@@ -134,6 +135,7 @@ fn init_distributes_shared_codex() {
             description: None,
             hub: false,
             include_framework: false,
+            platforms: None,
             upgrade: false,
         },
         fixed_now(),
@@ -173,6 +175,7 @@ fn init_include_framework_distributes_core_pack() {
             description: None,
             hub: false,
             include_framework: true,
+            platforms: None,
             upgrade: false,
         },
         fixed_now(),
@@ -380,6 +383,7 @@ fn default_name_is_dir_basename() {
             description: None,
             hub: false,
             include_framework: false,
+            platforms: None,
             upgrade: false,
         },
         fixed_now(),
@@ -389,4 +393,116 @@ fn default_name_is_dir_basename() {
     let cfg = ProjectConfig::load(&project).expect("reload");
     assert_eq!(cfg.name, "my-project");
     assert_eq!(result.adapter_name, "omnia");
+}
+
+fn vectis_stub_target_dir() -> PathBuf {
+    repo_root().join("tests").join("fixtures").join("adapters").join("targets").join("vectis-stub")
+}
+
+fn platforms_opts<'a>(
+    project_dir: &'a Path, target_dir: &'a Path, platforms: Option<&'a [crate::Platform]>,
+) -> InitOptions<'a> {
+    InitOptions {
+        project_dir,
+        adapter: Some(target_dir.to_str().expect("target path utf8")),
+        name: Some("demo"),
+        description: None,
+        hub: false,
+        include_framework: false,
+        platforms,
+        upgrade: false,
+    }
+}
+
+#[test]
+fn init_platforms_required_target_without_flag_fails() {
+    let tmp = tempdir().unwrap();
+    let target_dir = vectis_stub_target_dir();
+    let err = init(platforms_opts(tmp.path(), &target_dir, None), fixed_now())
+        .expect_err("init without --platforms on a required target must fail");
+    let specify_error::Error::Validation { code, .. } = err else {
+        panic!("expected Validation, got: {err:?}");
+    };
+    assert_eq!(code, "project-platforms-required");
+}
+
+#[test]
+fn init_platforms_missing_core_fails() {
+    use crate::Platform;
+
+    let tmp = tempdir().unwrap();
+    let target_dir = vectis_stub_target_dir();
+    let platforms = [Platform::Ios, Platform::Android];
+    let err = init(platforms_opts(tmp.path(), &target_dir, Some(&platforms)), fixed_now())
+        .expect_err("init with platforms missing core must fail");
+    let specify_error::Error::Validation { code, .. } = err else {
+        panic!("expected Validation, got: {err:?}");
+    };
+    assert_eq!(code, "project-platforms-must-include-core");
+}
+
+#[test]
+fn init_platforms_not_allowed_fails() {
+    use crate::Platform;
+
+    let tmp = tempdir().unwrap();
+    // Create a minimal target adapter that only allows core + ios.
+    let target_dir = tmp.path().join("adapter-limited");
+    fs::create_dir_all(target_dir.join("briefs")).unwrap();
+    fs::write(
+        target_dir.join("adapter.yaml"),
+        "name: adapter-limited\nversion: 1\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Stub adapter with limited platforms\nplatforms:\n  required: true\n  allowed: [core, ios]\n  default: [core, ios]\n",
+    ).unwrap();
+    for brief in ["shape.md", "build.md", "merge.md"] {
+        fs::write(target_dir.join("briefs").join(brief), "# Stub\n").unwrap();
+    }
+
+    let project = tempdir().unwrap();
+    let platforms = [Platform::Core, Platform::Ios, Platform::Android];
+    let err = init(
+        InitOptions {
+            project_dir: project.path(),
+            adapter: Some(target_dir.to_str().unwrap()),
+            name: Some("demo"),
+            description: None,
+            hub: false,
+            include_framework: false,
+            platforms: Some(&platforms),
+            upgrade: false,
+        },
+        fixed_now(),
+    )
+    .expect_err("init with disallowed platform must fail");
+    let specify_error::Error::Validation { code, detail } = err else {
+        panic!("expected Validation, got: {err:?}");
+    };
+    assert_eq!(code, "project-platforms-not-allowed");
+    assert!(detail.contains("android"), "detail should name the bad platform: {detail}");
+}
+
+#[test]
+fn init_with_platforms_writes_to_project_yaml() {
+    use crate::Platform;
+
+    let tmp = tempdir().unwrap();
+    let target_dir = vectis_stub_target_dir();
+    let platforms = [Platform::Core, Platform::Ios, Platform::Android];
+    let result = init(platforms_opts(tmp.path(), &target_dir, Some(&platforms)), fixed_now())
+        .expect("init with valid platforms must succeed");
+    assert_eq!(result.adapter_name, "vectis-stub");
+
+    let cfg = ProjectConfig::load(tmp.path()).expect("reload ok");
+    assert_eq!(cfg.platforms, vec![Platform::Core, Platform::Ios, Platform::Android]);
+}
+
+#[test]
+fn init_without_platforms_on_optional_target_succeeds() {
+    let tmp = tempdir().unwrap();
+    let target_dir = omnia_target_dir();
+    let result = init(platforms_opts(tmp.path(), &target_dir, None), fixed_now())
+        .expect("init without platforms on a non-required target must succeed");
+    assert_eq!(result.adapter_name, "omnia");
+
+    let cfg = ProjectConfig::load(tmp.path()).expect("reload ok");
+    assert!(cfg.platforms.is_empty());
 }

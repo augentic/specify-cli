@@ -22,4 +22,4 @@ pub mod schema;
 pub mod slice;
 pub mod upgrade;
 
-pub use platform::Platform;
+pub use platform::{Platform, parse_platforms_csv};
