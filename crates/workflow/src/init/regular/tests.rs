@@ -52,10 +52,33 @@ fn write_shared_rule(root: &Path, pack: &str, id: &str) {
 /// omnia target adapter plus the shared `universal/` pack (and,
 /// when `with_core`, the framework `core/` pack). Returns the path
 /// to the target adapter dir for use as the init `<adapter>` arg.
+fn seed_spec_runtime_mirror(root: &Path) {
+    let runtime = root.join("adapters/shared/references/runtime");
+    fs::create_dir_all(runtime.join("synthesis")).expect("mkdir runtime synthesis");
+    fs::write(
+        runtime.join("guardrails.md"),
+        "# Shared guardrails\n\n## Single-writer for lifecycle state\n\nCLI-only lifecycle writes.\n",
+    )
+    .expect("write runtime guardrails");
+    fs::write(runtime.join("synthesis/authority.md"), "# Authority precedence\n")
+        .expect("write runtime authority");
+    let omnia_runtime = root.join("adapters/targets/omnia/references/spec-runtime");
+    let omnia_synthesis = omnia_runtime.join("synthesis");
+    fs::create_dir_all(&omnia_synthesis).expect("mkdir omnia spec-runtime synthesis");
+    fs::write(
+        omnia_runtime.join("guardrails.md"),
+        "# Shared guardrails\n\n## Single-writer for lifecycle state\n",
+    )
+    .expect("write omnia spec-runtime guardrails");
+    fs::write(omnia_synthesis.join("authority.md"), "# Authority precedence\n")
+        .expect("write omnia spec-runtime authority");
+}
+
 fn synthetic_framework_source(root: &Path, with_core: bool) -> PathBuf {
     let omnia = root.join("adapters/targets/omnia");
     copy_tree(&omnia_target_dir(), &omnia);
     write_shared_rule(root, "universal", "UNI-901");
+    seed_spec_runtime_mirror(root);
     if with_core {
         write_shared_rule(root, "core", "CORE-901");
     }
@@ -184,6 +207,38 @@ fn include_framework_distributes_core_pack() {
     let meta = project.path().join(".specify/.cache/codex/.codex-meta.yaml");
     let meta_text = fs::read_to_string(&meta).expect("read codex meta");
     assert!(meta_text.contains("include_framework: true"), "meta:\n{meta_text}");
+}
+
+#[test]
+fn init_vendors_spec_runtime_into_cached_adapter() {
+    let src = tempdir().unwrap();
+    let omnia = synthetic_framework_source(src.path(), false);
+    let project = tempdir().unwrap();
+
+    init(
+        InitOptions {
+            project_dir: project.path(),
+            adapter: Some(omnia.to_str().expect("adapter path utf8")),
+            name: Some("demo"),
+            description: None,
+            workspace: false,
+            include_framework: false,
+            upgrade: false,
+        },
+        fixed_now(),
+    )
+    .expect("init ok");
+
+    let guardrails = project
+        .path()
+        .join(".specify/.cache/manifests/targets/omnia/references/spec-runtime/guardrails.md");
+    assert!(guardrails.is_file(), "spec-runtime must be vendored as regular files");
+    let text = fs::read_to_string(&guardrails).expect("read vendored guardrails");
+    assert!(text.contains("Single-writer for lifecycle state"));
+    let authority = project.path().join(
+        ".specify/.cache/manifests/targets/omnia/references/spec-runtime/synthesis/authority.md",
+    );
+    assert!(authority.is_file(), "nested spec-runtime paths must vendor");
 }
 
 #[test]

@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod agent_teams;
 pub mod brief;
+mod deployable_links;
 mod docs_quality;
 pub mod links;
 mod plugins;
@@ -20,6 +21,7 @@ use std::path::Path;
 pub use adapter::{AdapterCheck, RULE_EXECUTION_AGENT, RULE_MISSING_MANIFEST, run_adapter_check};
 pub use agent_teams::AgentTeamsCheck;
 pub use brief::BriefCheck;
+pub use deployable_links::DeployableLinksCheck;
 pub use docs_quality::{HistoryCitation, MissingDiagramAsset, TextPipelineDiagram};
 pub use links::LinksCheck;
 pub use plugins::{BrokenSymlinkCheck, MarketplaceDriftCheck};
@@ -93,6 +95,7 @@ pub fn run(ctx: &Context) -> Vec<Diagnostic> {
         &MissingDiagramAsset,
         &TextPipelineDiagram,
         &LinksCheck,
+        &DeployableLinksCheck,
         &BrokenSymlinkCheck,
         &MarketplaceDriftCheck,
         &FirstPartyTools,

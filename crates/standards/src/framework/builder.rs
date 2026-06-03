@@ -54,6 +54,7 @@ const CORE_ID_TABLE: &[(&str, &str)] = &[
     ("links.brief-schema-link-resolve", "CORE-018"),
     ("links.broken-reference", "CORE-019"),
     ("links.unresolved-directive", "CORE-020"),
+    ("links.docs-in-deployable-surface", "CORE-052"),
     ("plugins.broken-symlink", "CORE-021"),
     ("plugins.marketplace-drift", "CORE-022"),
     ("prose.invocation-positional", "CORE-023"),
