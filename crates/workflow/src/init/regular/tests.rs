@@ -210,7 +210,7 @@ fn include_framework_distributes_core_pack() {
 }
 
 #[test]
-fn init_vendors_spec_runtime_into_cached_adapter() {
+fn init_vendors_spec_runtime_in_cache() {
     let src = tempdir().unwrap();
     let omnia = synthetic_framework_source(src.path(), false);
     let project = tempdir().unwrap();
