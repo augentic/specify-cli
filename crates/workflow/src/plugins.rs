@@ -1,6 +1,6 @@
 //! Cursor plugin cache inspection and invalidation (RFC-30 §D2, Wave D).
 //!
-//! Owns the deterministic primitives the `specrun plugins {doctor,
+//! Owns the deterministic primitives the `specify plugins {doctor,
 //! refresh}` commands drive: marketplace discovery, `$CURSOR_HOME`
 //! detection, the cache scan under
 //! `$CURSOR_HOME/plugins/cache/<name>/<plugin>/<sha>/`, expected-sha
@@ -82,7 +82,7 @@ struct RawMetadata {
     plugin_root: String,
 }
 
-/// Per-plugin drift classification (RFC §"specrun plugins doctor").
+/// Per-plugin drift classification (RFC §"specify plugins doctor").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PluginStatus {
@@ -161,7 +161,7 @@ impl Summary {
     }
 }
 
-/// Wire-stable `specrun plugins doctor` envelope (text + JSON). Change
+/// Wire-stable `specify plugins doctor` envelope (text + JSON). Change
 /// G's `/spec:init` skill parses this from `--format json`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -180,7 +180,7 @@ pub struct DoctorReport {
     pub summary: Summary,
 }
 
-/// Outcome of a `specrun plugins refresh`.
+/// Outcome of a `specify plugins refresh`.
 ///
 /// The deleted cache scope and the marketplace that scoped it. Drives
 /// the `plugins.refreshed` journal event and the command's confirmation
@@ -371,7 +371,7 @@ fn home_dir() -> Option<PathBuf> {
 
 /// Classify a plugin from its cached and expected shas.
 ///
-/// The pure drift kernel (RFC §"specrun plugins doctor"); `Extra` is
+/// The pure drift kernel (RFC §"specify plugins doctor"); `Extra` is
 /// decided separately by [`build_report`] (a cache dir not declared by
 /// the marketplace).
 #[must_use]

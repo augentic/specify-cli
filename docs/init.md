@@ -1,17 +1,17 @@
-# `specrun init`
+# `specify init`
 
-`specrun init` scaffolds the per-project `.specify/` tree plus
+`specify init` scaffolds the per-project `.specify/` tree plus
 `project.yaml`. It has two mutually exclusive shapes; missing both
 surfaces as `init-requires-adapter-or-workspace`.
 
-## Regular project — `specrun init <adapter>`
+## Regular project — `specify init <adapter>`
 
 Pass an adapter identifier or a directory/URL that resolves to one:
 
 ```bash
-specrun init omnia
-specrun init https://github.com/augentic/omnia.git
-specrun init ./path/to/adapter
+specify init omnia
+specify init https://github.com/augentic/omnia.git
+specify init ./path/to/adapter
 ```
 
 The adapter supplies the schemas, plan template, and registry hooks
@@ -25,17 +25,17 @@ the project will use. The CLI writes:
   mirror or to register additional namespaces. The file is checked
   in; re-running `init` never overwrites operator edits.
 
-## Workspace — `specrun init --workspace`
+## Workspace — `specify init --workspace`
 
 ```bash
-specrun init --workspace --name <workspace-name>
+specify init --workspace --name <workspace-name>
 ```
 
 A workspace is a registry-only project: it owns `registry.yaml` and
 the cross-repo workspace slots, but does not itself host adapter artifacts.
 Use this for the platform repo that orchestrates a fleet of adapter
 projects. Workspace init writes `workspace: true` in `project.yaml`,
-seeds an empty `registry.yaml`, and chains `specrun workspace sync`
+seeds an empty `registry.yaml`, and chains `specify workspace sync`
 before returning (no-op when `projects: []`, but still upserts
 `.gitignore` and canonicalises an empty `topology.lock`). Workspace init
 also writes `.specify/wasm-pkg.toml` so workspace operators can publish or

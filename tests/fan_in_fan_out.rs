@@ -65,7 +65,7 @@ use tempfile::{TempDir, tempdir};
 mod common;
 use common::{
     copy_dir, init_workspace, omnia_schema_dir, parse_json, parse_stderr, parse_stdout, repo_root,
-    specrun,
+    specify_cmd,
 };
 
 // ---------------------------------------------------------------------------
@@ -177,7 +177,7 @@ fn survey_finalize(root: &Path, source: &str, adapter: &str, lead_set: &str) {
     let scratch = root.join(format!(".specify/.cache/extractions/{adapter}/survey/scratch"));
     fs::create_dir_all(&scratch).expect("mkdir survey scratch");
     fs::write(scratch.join("lead-set.md"), lead_set).expect("write lead-set.md");
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["source", "survey", source, "--phase", "finalize"])
         .assert()
@@ -192,7 +192,7 @@ fn extract_finalize(
     let scratch = root.join(format!(".specify/.cache/extractions/{adapter}/{slice}/scratch"));
     fs::create_dir_all(&scratch).expect("mkdir extract scratch");
     fs::write(scratch.join("evidence.yaml"), evidence).expect("write evidence.yaml");
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["source", "extract", source, lead, "--slice", slice, "--phase", "finalize"])
         .assert()
@@ -274,7 +274,7 @@ fn prove_plan_time_fan_out(root: &Path) {
     // `propose --dry-run` returns a kind:request envelope exposing both
     // projects and one lead row per (source, lead), and writes nothing.
     let plan_before = read_plan(root);
-    let dry = specrun()
+    let dry = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "plan", "propose", "--dry-run"])
         .assert()
@@ -292,7 +292,7 @@ fn prove_plan_time_fan_out(root: &Path) {
     assert_eq!(read_plan(root), plan_before, "--dry-run must not touch plan.yaml");
 
     // Neither flag aborts mode-required.
-    let no_mode = specrun()
+    let no_mode = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "plan", "propose"])
         .assert()
@@ -313,7 +313,7 @@ fn prove_plan_time_fan_out(root: &Path) {
         r#"{"version":1,"kind":"response","slices":[{"name":"unbound","sources":[{"source":"docs","lead":"identity-api"},{"source":"legacy","lead":"identity-api"}]},{"name":"reset","project":"identity-service","sources":[{"source":"docs","lead":"password-reset"},{"source":"legacy","lead":"reset-password"}]}]}"#,
     )
     .expect("write bad response");
-    let bound = specrun()
+    let bound = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "plan", "propose", "--from", "bad-response.json"])
         .assert()
@@ -327,7 +327,7 @@ fn prove_plan_time_fan_out(root: &Path) {
     // depends-on and emits plan.reconcile.completed.
     fs::write(root.join("response.json"), fixture("propose-response.json"))
         .expect("write response.json");
-    let from = specrun()
+    let from = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "plan", "propose", "--from", "response.json"])
         .assert()
@@ -379,7 +379,7 @@ fn fan_in_twice_fan_out_once() {
         "contracts request resolves the declared `contracts` input into additional[], got:\n{contracts_request}"
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["slice", "merge", "run", "identity-contracts"])
         .assert()
@@ -409,7 +409,7 @@ fn fan_in_twice_fan_out_once() {
         "omnia declares no extra inputs, so additional[] is omitted, got:\n{service_request}"
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["slice", "merge", "run", "identity-service"])
         .assert()
@@ -438,15 +438,18 @@ enum Sources {
 
 /// Run `plan next --format json` and return the parsed body.
 fn plan_next(root: &Path) -> Value {
-    let out =
-        specrun().current_dir(root).args(["--format", "json", "plan", "next"]).assert().success();
+    let out = specify_cmd()
+        .current_dir(root)
+        .args(["--format", "json", "plan", "next"])
+        .assert()
+        .success();
     parse_json(&out.get_output().stdout)
 }
 
 /// Create a slice bound to `target`, extract its Evidence, synthesize it,
 /// assert the slice-time invariants, then build it to `built`.
 fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources) {
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["slice", "create", slice, "--target", target])
         .assert()
@@ -480,7 +483,7 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
     // Synthesis: project the agent response into model.yaml + artifacts.
     fs::write(root.join("synth.json"), fixture(&format!("synthesis/{slice}.json")))
         .expect("write synth response");
-    let synth = specrun()
+    let synth = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "slice", "synthesize", slice, "--from", "synth.json"])
         .assert()
@@ -498,10 +501,12 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
 
     // model.yaml carries inline provenance; `slice validate` flags no
     // staleness; `slice provenance` projects the audit view.
-    let validate =
-        specrun().current_dir(root).args(["--format", "json", "slice", "validate", slice]).assert();
+    let validate = specify_cmd()
+        .current_dir(root)
+        .args(["--format", "json", "slice", "validate", slice])
+        .assert();
     assert_no_staleness(validate.get_output());
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "slice", "provenance", slice])
         .assert()
@@ -516,10 +521,14 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
             .expect("seed contracts input");
     }
 
-    specrun().current_dir(root).args(["slice", "transition", slice, "refined"]).assert().success();
+    specify_cmd()
+        .current_dir(root)
+        .args(["slice", "transition", slice, "refined"])
+        .assert()
+        .success();
 
     // Build, prepare phase: assemble + schema-validate + persist request.
-    let prepare = specrun()
+    let prepare = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "slice", "build", slice])
         .assert()
@@ -536,7 +545,7 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
         fixture(&format!("reports/{slice}.yaml")),
     )
     .expect("write golden build report");
-    let finalize = specrun()
+    let finalize = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "slice", "build", slice, "--phase", "finalize"])
         .assert()
@@ -625,7 +634,7 @@ slices:
 
     let mut requirements: Vec<Value> = Vec::new();
     for (slice, target) in [("bound-contracts", "contracts"), ("bound-omnia", "omnia")] {
-        specrun()
+        specify_cmd()
             .current_dir(root)
             .args(["slice", "create", slice, "--target", target])
             .assert()
@@ -634,13 +643,13 @@ slices:
         fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
         fs::write(evidence_dir.join("docs.yaml"), &evidence).expect("write evidence");
 
-        specrun()
+        specify_cmd()
             .current_dir(root)
             .args(["slice", "synthesize", slice, "--from", "synth.json"])
             .assert()
             .success();
 
-        let show = specrun()
+        let show = specify_cmd()
             .current_dir(root)
             .args(["--format", "json", "slice", "model", "show", slice])
             .assert()
@@ -662,7 +671,7 @@ slices:
     // response reproduces the same `model.yaml` exactly.
     let model_path = project.slices_dir().join("bound-contracts/model.yaml");
     let first = fs::read_to_string(&model_path).expect("first model.yaml");
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["slice", "synthesize", "bound-contracts", "--from", "synth.json"])
         .assert()

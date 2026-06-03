@@ -1,4 +1,4 @@
-//! Integration tests for `specrun tool schema`.
+//! Integration tests for `specify tool schema`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use tempfile::tempdir;
 
 mod common;
-use common::{parse_json, repo_root, scaffold_tool_project, specrun};
+use common::{parse_json, repo_root, scaffold_tool_project, specify_cmd};
 
 fn contract_wasm() -> PathBuf {
     repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
@@ -28,7 +28,7 @@ fn schema_contract_no_schemas_exits_nonzero() {
     let tmp = tempdir().expect("tempdir");
     let (project, cache) = scaffold_tool_project(&tmp, "contract", &wasm);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["tool", "schema", "contract", "tokens"])
@@ -54,7 +54,7 @@ fn schema_vectis_tokens_returns_valid_json() {
     let tmp = tempdir().expect("tempdir");
     let (project, cache) = scaffold_tool_project(&tmp, "vectis", &wasm);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["tool", "schema", "vectis", "tokens"])
@@ -81,7 +81,7 @@ fn schema_vectis_unknown_name_exits_nonzero() {
     let tmp = tempdir().expect("tempdir");
     let (project, cache) = scaffold_tool_project(&tmp, "vectis", &wasm);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(&project)
         .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["tool", "schema", "vectis", "nonexistent"])
@@ -108,7 +108,7 @@ fn schema_undeclared_tool_exits_two() {
         std::env::temp_dir().join(format!("specify-tool-schema-undeclared-{}", std::process::id()));
     fs::create_dir_all(&cache).expect("create cache");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project)
         .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["--format", "json", "tool", "schema", "nosuch", "tokens"])
@@ -122,7 +122,7 @@ fn schema_undeclared_tool_exits_two() {
 
 #[test]
 fn help_lists_schema_verb() {
-    let assert = specrun().args(["tool", "--help"]).assert().success();
+    let assert = specify_cmd().args(["tool", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("schema"), "tool --help must list `schema`, got:\n{stdout}");
 }

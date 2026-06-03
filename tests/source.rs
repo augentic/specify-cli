@@ -1,4 +1,4 @@
-//! Integration tests for `specrun source resolve`.
+//! Integration tests for `specify source resolve`.
 //!
 //! Mirrors the source-adapter loader exposed by
 //! `crates/workflow/src/plugin/`. The CLI verb is a thin
@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 mod common;
-use common::{Project, copy_dir, parse_stderr, parse_stdout, repo_root, specrun};
+use common::{Project, copy_dir, parse_stderr, parse_stdout, repo_root, specify_cmd};
 
 fn plugin_fixtures_root() -> PathBuf {
     repo_root().join("crates/workflow/tests/fixtures/plugins")
@@ -25,7 +25,7 @@ fn resolve_local_returns_manifest() {
     let project = Project::init();
     stage_source_fixture(&project, "code-typescript");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "resolve", "code-typescript"])
         .arg("--project-dir")
@@ -57,7 +57,7 @@ fn resolve_local_returns_manifest() {
 fn resolve_missing_emits_not_found() {
     let project = Project::init();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "source", "resolve", "no-such-source"])
         .arg("--project-dir")

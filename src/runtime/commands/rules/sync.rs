@@ -1,4 +1,4 @@
-//! `specrun rules sync` handler — shared codex distribution (RM-07).
+//! `specify rules sync` handler — shared codex distribution (RM-07).
 //!
 //! Resolves the project's adapter source (the recorded `adapter:`
 //! value, or the `--source` override) and mirrors the shared codex

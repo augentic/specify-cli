@@ -115,7 +115,7 @@ fn init_creates_specify_tree() {
 
     // Non-workspace init must not pre-touch any platform-component
     // artefact at the repo root. Operators mint these via
-    // `specrun registry add` and `specrun plan create`
+    // `specify registry add` and `specify plan create`
     // (which scaffolds change.md + plan.yaml together).
     for absent in ["registry.yaml", "plan.yaml", "change.md"] {
         assert!(

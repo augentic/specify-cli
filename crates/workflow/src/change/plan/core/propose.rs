@@ -1,7 +1,7 @@
 //! Lead-reconciliation envelope DTOs and the plan-time `propose`
 //! domain core (RFC-29 D2).
 //!
-//! `specrun plan propose` wraps agent-led lead reconciliation in a
+//! `specify plan propose` wraps agent-led lead reconciliation in a
 //! CLI-owned projection kernel. The wire contract is a single
 //! envelope discriminated by a closed `kind: request | response`,
 //! validated against `schemas/discovery/proposal.schema.json`

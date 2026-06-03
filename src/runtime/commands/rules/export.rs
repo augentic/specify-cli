@@ -1,4 +1,4 @@
-//! `specrun rules export` handler — `ResolvedRules` export contract.
+//! `specify rules export` handler — `ResolvedRules` export contract.
 //!
 //! Read-only. Builds the `ResolveInputs` struct from CLI args,
 //! delegates to [`specify_standards::build_resolved_rules`], and
@@ -52,7 +52,7 @@ fn require_json(format: Format) -> Result<()> {
         Format::Json => Ok(()),
         Format::Text => Err(Error::Argument {
             flag: "--format",
-            detail: "specrun rules export currently emits JSON only; rerun with --format json"
+            detail: "specify rules export currently emits JSON only; rerun with --format json"
                 .to_string(),
         }),
     }

@@ -6,20 +6,24 @@ use crate::support::*;
 fn overlap_reports_shared_adapters() {
     let project = Project::init();
     // Two active slices both claim `login`.
-    specrun().current_dir(project.root()).args(["slice", "create", "first"]).assert().success();
-    specrun().current_dir(project.root()).args(["slice", "create", "second"]).assert().success();
-    specrun()
+    specify_cmd().current_dir(project.root()).args(["slice", "create", "first"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "second"])
+        .assert()
+        .success();
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "touched-specs", "first", "--set", "login:new,oauth:new"])
         .assert()
         .success();
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "touched-specs", "second", "--set", "login:modified"])
         .assert()
         .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "overlap", "first"])
         .assert()
@@ -36,20 +40,20 @@ fn overlap_reports_shared_adapters() {
 #[test]
 fn overlap_empty_for_disjoint_slices() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
-    specrun().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
-    specrun()
+    specify_cmd().current_dir(project.root()).args(["slice", "create", "alpha"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["slice", "create", "beta"]).assert().success();
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "touched-specs", "alpha", "--set", "aa:new"])
         .assert()
         .success();
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "touched-specs", "beta", "--set", "bb:new"])
         .assert()
         .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "overlap", "alpha"])
         .assert()

@@ -1,4 +1,4 @@
-//! Integration tests for `specrun plugins {doctor, refresh}` (RFC-30
+//! Integration tests for `specify plugins {doctor, refresh}` (RFC-30
 //! §D2, Wave D).
 //!
 //! The status kernel, cache scan, and marketplace cross-reference are
@@ -16,7 +16,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 mod common;
-use common::{parse_json, run_git, specrun};
+use common::{parse_json, run_git, specify_cmd};
 
 /// Write a schema-valid marketplace.json declaring `plugins` at
 /// `<project>/.cursor-plugin/marketplace.json`.
@@ -76,7 +76,7 @@ fn doctor_reports_ok_drifted_missing_extra() {
     seed_cache_plugin_empty(cursor.path(), "augentic", "client");
     seed_cache_leaf(cursor.path(), "augentic", "omnia", "feedfacefeedfacefeedfacefeedface");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.path())
         .env("CURSOR_HOME", cursor.path())
         .args(["--format", "json", "plugins", "doctor", "--project-dir"])
@@ -118,7 +118,7 @@ fn doctor_degrades_to_present_without_git() {
     write_marketplace(project.path(), "augentic", &["spec"]);
     seed_cache_leaf(cursor.path(), "augentic", "spec", "cafebabecafebabecafebabecafebabe");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.path())
         .env("CURSOR_HOME", cursor.path())
         // Defang any ambient git repo above the tempdir.
@@ -150,7 +150,7 @@ fn refresh_deletes_scoped_cache() {
     // A second marketplace's cache must survive.
     seed_cache_leaf(cursor.path(), "acme", "widget", "bbb");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.path())
         .env("CURSOR_HOME", cursor.path())
         .args(["--format", "json", "plugins", "refresh", "--yes", "--project-dir"])
@@ -183,7 +183,7 @@ fn refresh_without_consent_refuses() {
     write_marketplace(project.path(), "augentic", &["spec"]);
     seed_cache_leaf(cursor.path(), "augentic", "spec", "aaa");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.path())
         .env("CURSOR_HOME", cursor.path())
         .args(["--format", "json", "plugins", "refresh", "--project-dir"])

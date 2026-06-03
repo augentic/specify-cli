@@ -1,7 +1,7 @@
-//! Integration tests for `specrun slice merge preview` and
-//! `specrun slice merge conflict-check`.
+//! Integration tests for `specify slice merge preview` and
+//! `specify slice merge conflict-check`.
 //!
-//! These are the two no-write counterparts to `specrun slice merge run`
+//! These are the two no-write counterparts to `specify slice merge run`
 //! used by the merge-skill rewrite: `preview` computes the operation
 //! list without touching disk; `conflict-check` flags `type: modified`
 //! baselines that have drifted since `defined_at`.
@@ -11,7 +11,7 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 mod common;
-use common::{Project, copy_dir, parse_json, repo_root, specrun};
+use common::{Project, copy_dir, parse_json, repo_root, specify_cmd};
 
 /// Stamp `path` with a fixed mtime comfortably after the 2020
 /// `defined_at` the drift tests seed, so `slice merge conflict-check`'s
@@ -39,13 +39,17 @@ fn stamp_mtime_after_defined_at(path: &Path) {
 /// reads the slice's `specs/` tree, so only the fixture's spec content is
 /// copied in; its `built` `.metadata.yaml` is left behind.
 fn stage_refined_slice(project: &Project) {
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let slice_dir = project.slices_dir().join("my-slice");
     copy_dir(
         &repo_root().join("tests/fixtures/e2e/merge-two-spec-slice/specs"),
         &slice_dir.join("specs"),
     );
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "transition", "my-slice", "refined"])
         .assert()
@@ -61,7 +65,7 @@ fn preview_reports_operations() {
     let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "preview", "my-slice"])
         .assert()
@@ -114,7 +118,7 @@ fn preview_doesnt_require_built_status() {
     // rather than rewriting `.metadata.yaml` by hand.
     stage_refined_slice(&project);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "preview", "my-slice"])
         .assert()
@@ -126,7 +130,7 @@ fn preview_emits_readable_text() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["slice", "merge", "preview", "my-slice"])
         .assert()
@@ -149,7 +153,7 @@ fn conflict_check_no_conflicts_unmodified() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
@@ -184,7 +188,7 @@ fn conflict_check_flags_modified_newer() {
     // filesystem mtime resolution.
     stamp_mtime_after_defined_at(&baseline);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
@@ -220,7 +224,7 @@ fn conflict_check_no_drift_when_older() {
     fs::create_dir_all(slice_contract.parent().unwrap()).unwrap();
     fs::write(&slice_contract, "type: object\nproperties: {}\n").unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
@@ -258,7 +262,7 @@ fn conflict_check_detects_drift_when_newer() {
     fs::create_dir_all(slice_contract.parent().unwrap()).unwrap();
     fs::write(&slice_contract, "type: object\nproperties: {}\n").unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
@@ -287,7 +291,7 @@ fn conflict_check_no_drift_for_new_files() {
     fs::create_dir_all(slice_contract.parent().unwrap()).unwrap();
     fs::write(&slice_contract, "type: object\n").unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
@@ -317,7 +321,7 @@ fn conflict_check_no_drift_no_contracts() {
     fs::create_dir_all(baseline_contract.parent().unwrap()).unwrap();
     fs::write(&baseline_contract, "type: object\n").unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()
@@ -339,7 +343,7 @@ fn run_archives_and_emits_ledger_event() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "merge", "run", "my-slice"])
         .assert()
@@ -374,7 +378,7 @@ fn run_emits_merge_started_then_succeeded() {
     let project = Project::init().with_schemas();
     project.stage_slice("merge-two-spec-slice");
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "merge", "run", "my-slice"])
         .assert()
@@ -441,7 +445,7 @@ fn emits_merge_started_then_failed() {
     let project = Project::init().with_schemas();
     stage_refined_slice(&project);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "merge", "run", "my-slice"])
         .assert()
@@ -491,7 +495,7 @@ fn archive_prune_keeps_recent_by_count() {
         fs::create_dir_all(archive.join(name)).unwrap();
     }
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "archive", "prune", "--keep", "2"])
         .assert()
@@ -511,7 +515,7 @@ fn archive_prune_dry_run_removes_nothing() {
     let archive = project.root().join(".specify/archive");
     fs::create_dir_all(archive.join("2026-01-01-alpha")).unwrap();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["archive", "prune", "--keep", "0", "--dry-run"])
         .assert()
@@ -525,7 +529,7 @@ fn archive_prune_requires_a_bound() {
     let project = Project::init();
     fs::create_dir_all(project.root().join(".specify/archive")).unwrap();
 
-    specrun().current_dir(project.root()).args(["archive", "prune"]).assert().failure();
+    specify_cmd().current_dir(project.root()).args(["archive", "prune"]).assert().failure();
 }
 
 #[test]
@@ -542,7 +546,7 @@ fn conflict_check_ignores_new_entries() {
 
     // touched_specs keeps the fixture's `new` classification; no
     // `defined_at` means conflict_check returns empty regardless.
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "merge", "conflict-check", "my-slice"])
         .assert()

@@ -1,8 +1,8 @@
-//! End-to-end test for the `specdev lint` extension.
+//! End-to-end test for the `specify lint framework` extension.
 //!
 //! Exercises the binary surface added for framework convergence:
 //!
-//! - `specdev lint --output-format json` against a small
+//! - `specify lint framework --output-format json` against a small
 //!   framework-shaped scaffold emits a `DiagnosticReport` envelope on
 //!   stdout that validates against
 //!   `schemas/diagnostics/diagnostic-report.schema.json`.
@@ -15,7 +15,7 @@
 //!   from [`specify_diagnostics`] round-trips through
 //!   the new verb.
 //!
-//! The scaffold mirrors `tests/specdev_check_json.rs::write_scaffold`
+//! The scaffold mirrors `tests/lint_framework_json.rs::write_scaffold`
 //! and is deliberately small: just enough framework structure to
 //! satisfy `Context::is_framework_root` and silence the marketplace
 //! / agent-teams predicates so the JSON envelope shape — not
@@ -32,7 +32,7 @@ use tempfile::TempDir;
 /// `specify_standards::framework::context::Context::from_framework_root` and
 /// supplies the marketplace + canonical-doc files the imperative
 /// `Check` predicates expect. Intentionally identical in shape to
-/// the scaffold used by `tests/specdev_check_json.rs` so both
+/// the scaffold used by `tests/lint_framework_json.rs` so both
 /// surfaces exercise the same fixture profile.
 fn scaffold_framework(root: &Path) {
     for rel in [
@@ -54,7 +54,7 @@ fn scaffold_framework(root: &Path) {
   "name": "test",
   "owner": { "name": "Test Owner", "email": "test@example.com" },
   "metadata": {
-    "description": "Synthetic marketplace for specdev lint e2e tests.",
+    "description": "Synthetic marketplace for specify lint framework e2e tests.",
     "version": "0.0.0",
     "pluginRoot": "plugins"
   },
@@ -62,7 +62,7 @@ fn scaffold_framework(root: &Path) {
     {
       "name": "test",
       "source": "test",
-      "description": "Synthetic plugin used by specdev lint e2e tests."
+      "description": "Synthetic plugin used by specify lint framework e2e tests."
     }
   ]
 }
@@ -79,7 +79,7 @@ fn scaffold_framework(root: &Path) {
         r#"{
   "name": "test",
   "displayName": "Test Plugin",
-  "description": "Synthetic plugin used by specdev lint e2e tests.",
+  "description": "Synthetic plugin used by specify lint framework e2e tests.",
   "version": "0.0.0"
 }
 "#,
@@ -117,21 +117,21 @@ fn scaffold_framework(root: &Path) {
         .expect("review-team-protocol.md");
 }
 
-/// Run `specdev lint --framework-root <root> --output-format json`
+/// Run `specify lint framework --framework-root <root> --output-format json`
 /// and return the captured `(exit, stdout, stderr)` triple.
-fn run_specdev_lint(root: &Path, args: &[&str]) -> (Option<i32>, Vec<u8>, Vec<u8>) {
-    let output = Command::cargo_bin("specdev")
-        .expect("cargo_bin(specdev)")
-        .args(["lint", "--framework-root"])
+fn run_lint_framework(root: &Path, args: &[&str]) -> (Option<i32>, Vec<u8>, Vec<u8>) {
+    let output = Command::cargo_bin("specify")
+        .expect("cargo_bin(specify)")
+        .args(["lint", "framework", "--framework-root"])
         .arg(root)
         .args(args)
         .env("NO_COLOR", "1")
         .output()
-        .expect("specdev invocation");
+        .expect("specify lint framework invocation");
     (output.status.code(), output.stdout, output.stderr)
 }
 
-/// `specdev lint --output-format json` emits a wire envelope that
+/// `specify lint framework --output-format json` emits a wire envelope that
 /// passes the binary's own pre-emit schema validation (the
 /// diagnostics JSON formatter validates against
 /// `DIAGNOSTIC_REPORT_JSON_SCHEMA` before it returns; a validation
@@ -143,7 +143,7 @@ fn json_envelope_validates_against_schema() {
     let temp = TempDir::new().expect("tempdir");
     scaffold_framework(temp.path());
 
-    let (_code, stdout, stderr) = run_specdev_lint(temp.path(), &["--output-format", "json"]);
+    let (_code, stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "json"]);
 
     let envelope: Value = serde_json::from_slice(&stdout).unwrap_or_else(|err| {
         panic!("stdout is not JSON: {err}; stderr:\n{}", String::from_utf8_lossy(&stderr))
@@ -188,7 +188,7 @@ fn lint_completed_event_lands_in_journal() {
     let journal_path = temp.path().join(".specify").join("journal.jsonl");
     assert!(!journal_path.exists(), "precondition: journal must not exist before the run");
 
-    let (_code, _stdout, stderr) = run_specdev_lint(temp.path(), &["--output-format", "json"]);
+    let (_code, _stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "json"]);
 
     assert!(
         journal_path.is_file(),
@@ -227,13 +227,13 @@ fn lint_completed_event_lands_in_journal() {
 /// `--output-format pretty` produces a non-empty stdout body that
 /// includes the diagnostics-formatter header — confirms the four
 /// formatters from [`specify_diagnostics`] are wired
-/// into the `specdev lint` verb.
+/// into the `specify lint framework` verb.
 #[test]
 fn pretty_format_emits_diagnostics_summary() {
     let temp = TempDir::new().expect("tempdir");
     scaffold_framework(temp.path());
 
-    let (_code, stdout, stderr) = run_specdev_lint(temp.path(), &["--output-format", "pretty"]);
+    let (_code, stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "pretty"]);
     let stdout = String::from_utf8(stdout).expect("utf8 stdout");
     assert!(
         stdout.contains("finding(s)") && stdout.contains("Summary:"),

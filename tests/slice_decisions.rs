@@ -1,5 +1,5 @@
 //! Integration tests for the RFC-36 Decision Record gate in
-//! `specrun slice validate` — the five `decision-*` findings over
+//! `specify slice validate` — the five `decision-*` findings over
 //! `<slice>/decisions/*.md`.
 //!
 //! Each test crafts a slice that trips exactly one finding and asserts
@@ -10,7 +10,7 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_json, specrun};
+use common::{Project, parse_json, specify_cmd};
 
 /// Body of a well-formed slice-authored Decision Record.
 fn record(slug: &str, status: &str, supersedes: &[&str]) -> String {
@@ -29,7 +29,11 @@ fn record(slug: &str, status: &str, supersedes: &[&str]) -> String {
 /// optional promoted baseline records under `.specify/decisions/`.
 fn stage(decisions: &[(&str, String)], baseline: &[(&str, String)]) -> Project {
     let project = Project::init().with_schemas();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
 
     let dir = project.slices_dir().join("my-slice").join("decisions");
     fs::create_dir_all(&dir).expect("mkdir slice decisions");
@@ -48,7 +52,7 @@ fn stage(decisions: &[(&str, String)], baseline: &[(&str, String)]) -> Project {
 }
 
 fn validate(project: &Project) -> std::process::Output {
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()

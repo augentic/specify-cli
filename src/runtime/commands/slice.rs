@@ -1,4 +1,4 @@
-//! Dispatcher for `specrun slice *`. Owns the `match action` table and
+//! Dispatcher for `specify slice *`. Owns the `match action` table and
 //! the omnia `artifact_classes` synthesiser shared by `slice merge` and
 //! `slice touched-specs`.
 
@@ -102,7 +102,7 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
             if matches!(target, LifecycleStatus::Merged) {
                 return Err(Error::Argument {
                     flag: "<target>",
-                    detail: "use `specrun slice merge run` to reach `merged`".to_string(),
+                    detail: "use `specify slice merge run` to reach `merged`".to_string(),
                 });
             }
             lifecycle::transition(ctx, name, target)

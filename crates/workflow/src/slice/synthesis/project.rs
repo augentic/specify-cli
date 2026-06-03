@@ -12,7 +12,7 @@
 //! re-derived / re-stamped (RFC-29c §"Synthesis response").
 //!
 //! Four conditions the kernel cannot project around are hard aborts,
-//! mirroring the drift findings `specrun slice validate` re-checks
+//! mirroring the drift findings `specify slice validate` re-checks
 //! (RFC-29c §"Drift validation"): a claim that anchors no on-disk
 //! Evidence (`slice-model-source-orphan`), a claim whose `kind`
 //! disagrees with Evidence (`slice-model-claim-kind-mismatch`), a
@@ -21,7 +21,7 @@
 //! three-digit grammar (`slice-model-id-grammar`).
 //!
 //! [`project`] is pure: it performs no I/O and reads no clock. The
-//! caller (the `specrun slice synthesize` handler) reads Evidence and
+//! caller (the `specify slice synthesize` handler) reads Evidence and
 //! the plan to build the [`ProjectionHeader`], the per-source
 //! `authority` map, the per-slice `overrides` map, and the
 //! `evidence_claims` anchor index, then hands them in. **Kernel

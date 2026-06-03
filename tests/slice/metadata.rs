@@ -13,7 +13,11 @@ fn metadata_without_outcome_still_parses() {
     // (testing.md:45), then assert `SliceMetadata::load` leaves `outcome`
     // as None.
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let slice_dir = project.slices_dir().join("my-slice");
     let meta = SliceMetadata::load(&slice_dir).expect("freshly-created metadata parses");
     assert!(meta.outcome.is_none(), "metadata without an outcome field must load as None");
@@ -42,7 +46,7 @@ fn phase_outcome_round_trips_serde() {
 
 #[test]
 fn help_lists_axis_verbs() {
-    let assert = specrun().arg("--help").assert().success();
+    let assert = specify_cmd().arg("--help").assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
     assert!(stdout.contains("slice"), "Top-level --help must still list `slice`, got:\n{stdout}");
     assert!(

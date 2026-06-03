@@ -62,5 +62,5 @@ fn retired_helper_in_brief_fails() {
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].rule_id.as_deref(), core_id_for("tools.invocation-not-equivalent"));
     assert!(snippet(&findings[0]).contains("specify-contract"));
-    assert!(snippet(&findings[0]).contains("specrun tool run contract"));
+    assert!(snippet(&findings[0]).contains("specify tool run contract"));
 }

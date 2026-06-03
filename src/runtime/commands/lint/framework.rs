@@ -1,12 +1,12 @@
-//! `specdev lint` handler — composes the framework's imperative
-//! `Check` predicates with the declarative deterministic-hint
+//! `specify lint framework` handler — composes the framework's
+//! imperative `Check` predicates with the declarative deterministic-hint
 //! interpreter into a single [`DiagnosticReport`] envelope.
 //!
 //! The shared pipeline lives in [`specify_standards::lint::runner`] and
 //! the shared output/journal/exit tail in [`crate::output`]; this
 //! handler is thin and obeys the same `Result<()>` contract as the
-//! runtime `specrun lint run` handler, differing only in the
-//! framework-surface config it assembles:
+//! consumer `lint run` handler, differing only in the framework-surface
+//! config it assembles:
 //!
 //! 1. Resolve the framework root and load the imperative
 //!    [`AuthoringContext`].
@@ -36,18 +36,22 @@ use specify_standards::lint::{ScanProfile, WorkspaceModel};
 use specify_workflow::config::Layout;
 use specify_workflow::journal::LintScope;
 
-use crate::authoring::commands::lint::cli::{LintAction, LintFormat};
 use crate::output::{self, Format, LintRun};
+use crate::runtime::commands::lint::cli::{FrameworkArgs, LintFormat};
 
-/// Handler entry point dispatched from `src/authoring/commands.rs`.
+/// Handler entry point dispatched from `src/runtime/commands.rs`.
 ///
-/// Returns `Result<()>` like every runtime handler; the dispatcher in
-/// [`crate::authoring`] maps the terminal error through the shared
-/// `Exit::from(&Error)` table. Always leaves a stable envelope on
-/// stdout for JSON output — the real report on success, an empty
-/// all-zero envelope when the run aborts before emit (via
-/// [`output::run_lint`]).
-pub fn run(format: Format, action: &LintAction) -> Result<()> {
+/// Returns `Result<()>` like every runtime handler; the dispatcher maps
+/// the terminal error through the shared `Exit::from(&Error)` table.
+/// Always leaves a stable envelope on stdout for JSON output — the real
+/// report on success, an empty all-zero envelope when the run aborts
+/// before emit (via [`output::run_lint`]).
+///
+/// # Errors
+///
+/// Propagates the framework-root load error and any pipeline /
+/// render abort routed through [`output::run_lint`].
+pub fn run(format: Format, action: &FrameworkArgs) -> Result<()> {
     let diagnostics_format = pick_format(format, action.output_format);
     output::run_lint(diagnostics_format, || build_report(action, diagnostics_format))
 }
@@ -56,13 +60,13 @@ pub fn run(format: Format, action: &LintAction) -> Result<()> {
 /// shared pipeline + emit tail. Every `?` here is a pre-emit abort
 /// that [`output::run_lint`] turns into the JSON fallback envelope.
 fn build_report(
-    action: &LintAction, format: DiagnosticsFormat,
+    action: &FrameworkArgs, format: DiagnosticsFormat,
 ) -> Result<Option<DiagnosticReport>> {
     let started_at = Instant::now();
     let authoring_ctx =
         AuthoringContext::from_framework_root(&action.framework_root).map_err(|err| {
             Error::Diag {
-                code: "specdev-framework-root",
+                code: "framework-root",
                 detail: err.to_string(),
             }
         })?;
@@ -106,7 +110,7 @@ fn build_report(
         format,
         layout: Layout::new(&project_dir),
         scope,
-        command_label: "specdev lint",
+        command_label: "specify lint framework",
         started_at,
         trailing_newline: false,
     })
@@ -114,8 +118,8 @@ fn build_report(
 
 /// Resolve the diagnostics format for the success body. Per-subcommand
 /// `--output-format` wins; otherwise mirror the global `--format`
-/// flag so the legacy `specdev lint --format json` invocation still
-/// emits the wire envelope.
+/// flag so `specify lint framework --format json` still emits the wire
+/// envelope.
 fn pick_format(global: Format, output_format: Option<LintFormat>) -> DiagnosticsFormat {
     if let Some(value) = output_format {
         return value.into();
@@ -148,8 +152,8 @@ impl DiagnosticProducer for AuthoringProducer<'_> {
 
 /// `ToolRunner` stub used by the framework run.
 ///
-/// `specdev lint` never has a `project.yaml` to populate a tool
-/// inventory from — framework runs live alongside the codex tree
+/// `specify lint framework` never has a `project.yaml` to populate a
+/// tool inventory from — framework runs live alongside the codex tree
 /// itself, not inside an initialised consumer project. Any `kind: tool`
 /// hint a framework-applicable rule declares is reported as undeclared.
 struct NoopToolRunner;
@@ -163,7 +167,8 @@ impl ToolRunner for NoopToolRunner {
         &self, tool_name: &str, _args: &[String], _project_dir: &Path,
     ) -> std::result::Result<ToolOutput, ToolRunError> {
         Err(ToolRunError::Runtime(format!(
-            "tool {tool_name} cannot run under specdev lint; framework runs ship without a tool inventory"
+            "tool {tool_name} cannot run under specify lint framework; framework runs ship without \
+             a tool inventory"
         )))
     }
 }

@@ -1,4 +1,4 @@
-//! Dispatcher for `specrun archive *`. Owns the `archive prune`
+//! Dispatcher for `specify archive *`. Owns the `archive prune`
 //! retention GC over `.specify/archive/`.
 
 use std::io::Write;

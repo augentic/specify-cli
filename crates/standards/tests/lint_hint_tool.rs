@@ -5,7 +5,7 @@
 //! The `kind: tool` evaluator contract `tool` evaluator is exercised through a fake
 //! [`specify_standards::lint::eval::ToolRunner`] that simulates the
 //! contract WASI tool's stdout. The standards crate does not depend on
-//! `specify-tool` (Wasmtime stays at the `specrun lint` CLI boundary);
+//! `specify-tool` (Wasmtime stays at the `specify lint` CLI boundary);
 //! the CLI integration is S9's responsibility.
 
 mod eval_support;

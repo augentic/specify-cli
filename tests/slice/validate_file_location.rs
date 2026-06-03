@@ -5,12 +5,16 @@ use crate::support::*;
 #[test]
 fn root_spec_without_canonical() {
     let project = Project::init().with_schemas();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let slice_dir = project.slices_dir().join("my-slice");
     fs::write(slice_dir.join("spec.md"), CLEAN_SPEC_MD).expect("write root spec.md");
     fs::remove_dir_all(slice_dir.join("specs")).expect("remove specs dir created by slice create");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -32,7 +36,7 @@ fn skipped_when_canonical_exists() {
     let slice_dir = project.slices_dir().join("my-slice");
     fs::write(slice_dir.join("spec.md"), "stale root copy").expect("write root spec.md");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -53,8 +57,12 @@ fn skipped_when_canonical_exists() {
 #[test]
 fn skipped_when_no_root_spec() {
     let project = Project::init().with_schemas();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-    let assert = specrun()
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();

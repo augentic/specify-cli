@@ -27,7 +27,7 @@ fn append_creates_specify_dir_when_missing() {
 
 #[test]
 fn append_batch_writes_in_order() {
-    // auto-approve Gate-1 contract: `specrun plan create --auto-approve
+    // auto-approve Gate-1 contract: `specify plan create --auto-approve
     // --authority-override` may emit both `plan.transition.approved`
     // and `plan.amend.authority-override` in a single fsynced append.
     // Exercise the batched helper to lock ordering.
@@ -157,7 +157,7 @@ fn cache_miss_reason_round_trips() {
 
 #[test]
 fn plan_reconcile_event_round_trips() {
-    // `specrun plan propose --from` emits one `plan.reconcile.completed` event; lock its wire shape.
+    // `specify plan propose --from` emits one `plan.reconcile.completed` event; lock its wire shape.
     let completed = Event::new(
         test_timestamp("2026-05-22T13:15:00Z"),
         EventKind::PlanReconcileCompleted {

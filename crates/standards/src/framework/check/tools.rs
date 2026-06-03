@@ -46,42 +46,42 @@ const RETIRED_HELPER_PATTERNS: &[RetiredHelperPattern] = &[
     RetiredHelperPattern {
         token: "specify-contract-validate",
         pattern: r"\bspecify-contract-validate\b",
-        replacement: "specrun tool run contract -- <BASELINE_DIR> --format json",
+        replacement: "specify tool run contract -- <BASELINE_DIR> --format json",
     },
     RetiredHelperPattern {
         token: "specify-contract",
         pattern: r"\bspecify-contract\b",
-        replacement: "specrun tool run contract -- <BASELINE_DIR> --format json",
+        replacement: "specify tool run contract -- <BASELINE_DIR> --format json",
     },
     RetiredHelperPattern {
         token: "specify-vectis validate",
         pattern: r"\bspecify-vectis\s+validate\b",
-        replacement: "specrun tool run vectis -- validate <mode> [path]",
+        replacement: "specify tool run vectis -- validate <mode> [path]",
     },
     RetiredHelperPattern {
         token: "specify vectis validate",
         pattern: r"\bspecify\s+vectis\s+validate\b",
-        replacement: "specrun tool run vectis -- validate <mode> [path]",
+        replacement: "specify tool run vectis -- validate <mode> [path]",
     },
     RetiredHelperPattern {
         token: "specify-vectis init",
         pattern: r"\bspecify-vectis\s+init\b",
-        replacement: "specrun tool run vectis -- scaffold core <app-name>",
+        replacement: "specify tool run vectis -- scaffold core <app-name>",
     },
     RetiredHelperPattern {
         token: "specify vectis init",
         pattern: r"\bspecify\s+vectis\s+init\b",
-        replacement: "specrun tool run vectis -- scaffold core <app-name>",
+        replacement: "specify tool run vectis -- scaffold core <app-name>",
     },
     RetiredHelperPattern {
         token: "specify-vectis add-shell",
         pattern: r"\bspecify-vectis\s+add-shell\b",
-        replacement: "specrun tool run vectis -- scaffold ios|android <app-name>",
+        replacement: "specify tool run vectis -- scaffold ios|android <app-name>",
     },
     RetiredHelperPattern {
         token: "specify vectis add-shell",
         pattern: r"\bspecify\s+vectis\s+add-shell\b",
-        replacement: "specrun tool run vectis -- scaffold ios|android <app-name>",
+        replacement: "specify tool run vectis -- scaffold ios|android <app-name>",
     },
 ];
 

@@ -1,4 +1,4 @@
-//! Integration tests for `specrun registry` (registry add/remove).
+//! Integration tests for `specify registry` (registry add/remove).
 //!
 //! Covers `registry add`, `registry remove`, the workspace `registry
 //! validate` invariants surfaced after a fresh `init --workspace`, and the
@@ -11,19 +11,19 @@ use serde_json::Value;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_workspace, omnia_schema_dir, parse_stderr, parse_stdout, specrun};
+use common::{Project, init_workspace, omnia_schema_dir, parse_stderr, parse_stdout, specify_cmd};
 
 #[test]
 fn workspace_validate_succeeds_empty() {
     let tmp = tempdir().unwrap();
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .args(["--name", "platform-workspace", "--workspace"])
         .assert()
         .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -35,7 +35,7 @@ fn workspace_validate_succeeds_empty() {
 #[test]
 fn init_workspace_validate_rejects_dot_url() {
     let tmp = tempdir().unwrap();
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .args(["--name", "platform-workspace", "--workspace"])
@@ -55,7 +55,7 @@ fn init_workspace_validate_rejects_dot_url() {
     )
     .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -70,7 +70,7 @@ fn init_workspace_validate_rejects_dot_url() {
     assert!(msg.contains("registry.yaml"), "message must scope the file: {msg}");
 }
 
-// ---- specrun registry {add, remove} (registry add/remove) ----
+// ---- specify registry {add, remove} (registry add/remove) ----
 
 #[test]
 fn add_round_trips_through_show() {
@@ -79,7 +79,7 @@ fn add_round_trips_through_show() {
 
     // Hub registries reject `url: .` (workspace-cannot-be-project) but accept
     // remote-url entries — the canonical multi-repo shape.
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args([
             "--format",
@@ -118,7 +118,7 @@ fn add_succeeds_without_adapter() {
     let tmp = tempdir().unwrap();
     init_workspace(&tmp, "platform-workspace");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args([
             "--format",
@@ -144,7 +144,7 @@ fn add_rejects_dot_url_in_workspace_mode() {
     let tmp = tempdir().unwrap();
     init_workspace(&tmp, "platform-workspace");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args([
             "--format",
@@ -173,7 +173,7 @@ fn add_rejects_non_kebab() {
     let tmp = tempdir().unwrap();
     init_workspace(&tmp, "platform-workspace");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args([
             "--format",
@@ -205,7 +205,7 @@ fn remove_succeeds_and_round_trips() {
     for (name, url) in
         [("alpha", "git@github.com:org/alpha.git"), ("beta", "git@github.com:org/beta.git")]
     {
-        specrun()
+        specify_cmd()
             .current_dir(tmp.path())
             .args([
                 "--format",
@@ -224,7 +224,7 @@ fn remove_succeeds_and_round_trips() {
             .success();
     }
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "remove", "beta"])
         .assert()
@@ -249,7 +249,7 @@ fn remove_warns_on_plan_ref() {
     for (name, url) in
         [("alpha", "git@github.com:org/alpha.git"), ("beta", "git@github.com:org/beta.git")]
     {
-        specrun()
+        specify_cmd()
             .current_dir(tmp.path())
             .args([
                 "--format",
@@ -269,19 +269,19 @@ fn remove_warns_on_plan_ref() {
     }
 
     // Author a plan with one entry pointing at alpha. The merged
-    // `specrun plan create` scaffolds plan.yaml (change.md scaffold moved to /spec:plan).
-    specrun()
+    // `specify plan create` scaffolds plan.yaml (change.md scaffold moved to /spec:plan).
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "create", "demo"])
         .assert()
         .success();
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "add", "alpha-feature", "--project", "alpha"])
         .assert()
         .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "remove", "alpha"])
         .assert()
@@ -301,7 +301,7 @@ fn remove_unknown_project_errors() {
     let tmp = tempdir().unwrap();
     init_workspace(&tmp, "platform-workspace");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "remove", "ghost"])
         .assert()
@@ -318,7 +318,7 @@ fn remove_refuses_when_absent() {
     let tmp = tempdir().unwrap();
     // Plain init (no workspace) — single-repo project has no registry.yaml
     // by default.
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -327,7 +327,7 @@ fn remove_refuses_when_absent() {
         .success();
     assert!(!tmp.path().join("registry.yaml").exists());
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "registry", "remove", "alpha"])
         .assert()
@@ -368,8 +368,8 @@ fn load_from_tempdir() {
 
 // ---- Registry CLI verbs (registry CLI verbs) ----
 //
-// `specrun registry validate` isolates the same shape check the C12 hook drives through
-// `specrun plan validate`. The tests below cover the full
+// `specify registry validate` isolates the same shape check the C12 hook drives through
+// `specify plan validate`. The tests below cover the full
 // matrix: absent / well-formed / malformed × text / json.
 
 const REGISTRY_SINGLE: &str = "\
@@ -405,7 +405,7 @@ fn write_registry(project: &Project, body: &str) {
 fn validate_absent() {
     let project = Project::init();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -416,7 +416,7 @@ fn validate_absent() {
     assert!(actual["error"].is_null(), "success envelope must omit error: {actual}");
 
     let text =
-        specrun().current_dir(project.root()).args(["registry", "validate"]).assert().success();
+        specify_cmd().current_dir(project.root()).args(["registry", "validate"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
     assert!(
         stdout.contains("no registry declared"),
@@ -429,7 +429,7 @@ fn validate_well_formed() {
     let project = Project::init();
     write_registry(&project, REGISTRY_SINGLE);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -445,7 +445,7 @@ fn validate_multi_project() {
     let project = Project::init();
     write_registry(&project, REGISTRY_THREE);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -461,7 +461,7 @@ fn validate_malformed_version() {
     let project = Project::init();
     write_registry(&project, "version: 2\nprojects: []\n");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -492,7 +492,7 @@ projects:
 ",
     );
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "registry", "validate"])
         .assert()
@@ -520,7 +520,7 @@ projects:
     );
 
     let assert =
-        specrun().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
+        specify_cmd().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
 }
 
@@ -530,15 +530,15 @@ fn validate_unknown_key() {
     write_registry(&project, "version: 1\nversions: 2\nprojects: []\n");
 
     let assert =
-        specrun().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
+        specify_cmd().current_dir(project.root()).args(["registry", "validate"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
 }
 
 /// Plan "Done when" criterion: on a scaffolded project with no
-/// registry, `specrun registry validate` exits 0.
+/// registry, `specify registry validate` exits 0.
 #[test]
 fn validate_on_bare_repo() {
     let project = Project::init();
     assert!(!project.root().join("registry.yaml").exists(), "bare repo must not have a registry");
-    specrun().current_dir(project.root()).args(["registry", "validate"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["registry", "validate"]).assert().success();
 }

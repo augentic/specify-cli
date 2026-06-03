@@ -197,7 +197,7 @@ pub struct FingerprintToolVersion {
 /// on every cache write (extraction cache fingerprint contract).
 ///
 /// The slot is `(timestamp, fingerprint-sha256, slice, source,
-/// adapter, operation)` — together they let `specrun source resolve
+/// adapter, operation)` — together they let `specify source resolve
 /// --explain` reconstruct the fingerprint chain without re-reading
 /// the underlying `fingerprint.json`. Append-only; writers stream
 /// NDJSON lines per `journal::append_batch` posture.
@@ -226,7 +226,7 @@ pub struct CacheIndexEntry {
 /// the same import they use for [`CacheIndexEntry`].
 ///
 /// The cache write surface (extraction cache fingerprint contract) records which one drove a
-/// given index row so `specrun source resolve --explain` can
+/// given index row so `specify source resolve --explain` can
 /// attribute hits and misses. Target adapters use the sibling
 /// [`TargetOperation`](crate::adapter::TargetOperation) enum
 /// (`shape | build | merge`).

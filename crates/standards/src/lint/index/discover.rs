@@ -3,7 +3,7 @@
 //!
 //! For the consumer scan, the rules tree lives at
 //! `<project_dir>/.specify/.cache/codex/` (the distributed codex cache
-//! populated by `specrun init` and refreshed by `specrun rules sync` —
+//! populated by `specify init` and refreshed by `specify rules sync` —
 //! codex distribution, RM-07). This module walks that tree, reuses the
 //! rule frontmatter parser
 //! ([`crate::rules::parse::parse_rule_file`]), and emits one

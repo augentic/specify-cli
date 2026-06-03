@@ -33,7 +33,7 @@ impl Ctx {
 
     /// Variant of [`Self::load`] that walks from `start_dir` instead of
     /// the process CWD. Used by handlers that accept a `--project-dir`
-    /// flag (e.g. `specrun lint`); the resolved `project_dir` is the
+    /// flag (e.g. `specify lint`); the resolved `project_dir` is the
     /// nearest ancestor of `start_dir` containing `.specify/project.yaml`.
     pub(crate) fn load_at(format: Format, start_dir: &Path) -> Result<Self, Error> {
         let project_dir = ProjectConfig::find_root(start_dir).ok_or(Error::NotInitialized)?;
@@ -57,7 +57,7 @@ impl Ctx {
             return Err(Error::Diag {
                 code: "workspace-no-adapter",
                 detail: "this project has no adapter declared (workspaces do not run \
-                         per-target operations); only `specrun registry` and `specrun plan` \
+                         per-target operations); only `specify registry` and `specify plan` \
                          verbs are supported on workspaces"
                     .to_string(),
             });

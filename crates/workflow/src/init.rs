@@ -1,4 +1,4 @@
-//! Orchestration for `specrun init`. Scaffolds `.specify/`, resolves
+//! Orchestration for `specify init`. Scaffolds `.specify/`, resolves
 //! the requested adapter, writes `project.yaml`, and upserts
 //! `.gitignore` lines. Workspace mode additionally mints `registry.yaml`.
 
@@ -153,7 +153,7 @@ pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> 
 /// mirrors `adapters/shared/rules/universal/` (and, when
 /// `include_framework`, `core/`) into `.specify/.cache/codex/`.
 ///
-/// This is the engine behind `specrun rules sync`. `init` distributes
+/// This is the engine behind `specify rules sync`. `init` distributes
 /// the codex inline via the private `cache::cache_codex` path; this
 /// entry point lets a refresh run stand alone without re-running init.
 ///

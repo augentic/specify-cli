@@ -43,7 +43,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         Err(Error::validation_failed(
             "plan-structural-errors",
             "plan must be free of structural errors",
-            "run 'specrun plan validate' for detail",
+            "run 'specify plan validate' for detail",
         ))
     } else {
         Ok(())
@@ -54,7 +54,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 /// materialised slot's current `project.yaml` *and baseline projection*
 /// (`surface[]` from `.specify/specs/`, `recent[]` from the journal
 /// ledger), emitting `topology-cache-stale` on divergence (the fix is
-/// `specrun workspace sync`). Because the projection is deterministic
+/// `specify workspace sync`). Because the projection is deterministic
 /// (D36-6), this is a regenerate-and-compare check: `TopologyProject::resolve`
 /// re-derives the fresh entry and any drift in `target` / `description`
 /// / `surface` / `recent` trips the warning. Replaces the former
@@ -95,7 +95,7 @@ fn topology_cache_staleness(ctx: &Ctx, registry: &Registry, results: &mut Vec<Di
                 Severity::Suggestion,
                 format!(
                     "workspace slot '{}' has drifted from .specify/topology.lock; \
-                     run `specrun workspace sync` to regenerate the topology cache",
+                     run `specify workspace sync` to regenerate the topology cache",
                     rp.name
                 ),
                 None,
@@ -104,7 +104,7 @@ fn topology_cache_staleness(ctx: &Ctx, registry: &Registry, results: &mut Vec<Di
     }
 }
 
-/// `specrun plan next` — return the active in-progress entry, or
+/// `specify plan next` — return the active in-progress entry, or
 /// transition the next eligible `Pending` entry to `InProgress` and
 /// return it. The only writer of per-entry `in-progress` per
 /// workflow §CLI surface.
@@ -129,14 +129,14 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
             return Err(Error::validation_failed(
                 "plan-structural-errors",
                 "plan must be free of structural errors",
-                "run 'specrun plan validate' for detail",
+                "run 'specify plan validate' for detail",
             ));
         }
         if !detect(&plan.entries).is_empty() {
             return Err(Error::validation_failed(
                 "plan-structural-errors",
                 "plan must be free of structural errors",
-                "run 'specrun plan validate' for detail",
+                "run 'specify plan validate' for detail",
             ));
         }
 
@@ -179,7 +179,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
-/// `specrun plan transition <name> <target>` — dispatches to either
+/// `specify plan transition <name> <target>` — dispatches to either
 /// the plan-level Gate 1 stamp (`<plan-name> approved`) or the
 /// per-entry close (`<entry-name> done`). `--undo` swaps the
 /// forward verb for the one-rung reverse walk on per-entry status
@@ -188,7 +188,7 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 ///
 /// `<plan-name> approved` against an already-approved plan is an
 /// idempotent no-op (exit 0, no journal event) per auto-approve Gate-1 contract —
-/// running the explicit transition after `specrun plan create
+/// running the explicit transition after `specify plan create
 /// --auto-approve` must not double-stamp the lifecycle nor double-
 /// fire `plan.transition.approved`.
 pub(super) fn transition(
@@ -344,7 +344,7 @@ fn plan_target_invalid(target: &str) -> Error {
         flag: "<target>",
         detail: format!(
             "plan-level transition target must be `approved`; got `{target}`. \
-             Run `specrun plan transition <plan-name> approved` to stamp Gate 1."
+             Run `specify plan transition <plan-name> approved` to stamp Gate 1."
         ),
     }
 }

@@ -6,10 +6,10 @@
 //! [DECISIONS.md § `WorkspaceModel`](../../DECISIONS.md#workspacemodel).
 //!
 //! Sibling umbrella to [`crate::rules`]: this module owns the
-//! `specrun lint` deterministic review pipeline — `WorkspaceModel` DTOs,
+//! `specify lint` deterministic review pipeline — `WorkspaceModel` DTOs,
 //! the consumer / framework indexer, the hint interpreter, and the
-//! diagnostic formatters that `specrun lint` and (later)
-//! `specdev lint --format json` share.
+//! diagnostic formatters that `specify lint` and (later)
+//! `specify lint framework --format json` share.
 //!
 //! The submodule shape mirrors the the standards-layer dependency invariant sketch.
 //! v1 ships the [`model`] DTO layer; [`index`], [`eval`], and

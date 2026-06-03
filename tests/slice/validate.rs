@@ -27,7 +27,7 @@ fn validate_rejects_missing_id() {
                 Status: agreed\n\n\
                 body\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -43,7 +43,7 @@ fn validate_rejects_malformed_id() {
                 Sources: [legacy-monolith]\n\
                 Status: agreed\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -58,7 +58,7 @@ fn validate_rejects_missing_sources() {
                 ID: REQ-001\n\
                 Status: agreed\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -73,7 +73,7 @@ fn validate_rejects_missing_status() {
                 ID: REQ-001\n\
                 Sources: [legacy-monolith]\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -89,7 +89,7 @@ fn validate_rejects_unknown_status() {
                 Sources: [legacy-monolith]\n\
                 Status: maybe\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -105,7 +105,7 @@ fn validate_rejects_source_not_in_plan() {
                 Sources: [phantom]\n\
                 Status: agreed\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -121,7 +121,7 @@ fn validate_rejects_tag_status_mismatch() {
                 Sources: [legacy-monolith]\n\
                 Status: agreed\n";
     let project = stage_slice_with_spec(spec, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -141,7 +141,7 @@ fn skips_provenance_no_metadata() {
                 ID: REQ-001\n\n\
                 body that has no Sources or Status yet\n";
     let project = stage_slice_with_spec(spec, None);
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -174,7 +174,11 @@ fn flags_thin_synopsis_non_blocking() {
     // asserts on the advisory finding itself rather than the overall
     // exit code — matching the suite's `assert_no_finding` convention.)
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
 
     let discovery = "\
 # Discovery — identity
@@ -195,7 +199,7 @@ fn flags_thin_synopsis_non_blocking() {
 ";
     fs::write(project.root().join("discovery.md"), discovery).expect("write discovery.md");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();

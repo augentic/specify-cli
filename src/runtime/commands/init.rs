@@ -21,7 +21,7 @@ fn canonical(p: &Path) -> String {
     std::fs::canonicalize(p).map_or_else(|_| p.display().to_string(), |c| c.display().to_string())
 }
 
-/// Clap-mapped inputs for `specrun init` (format-only handler).
+/// Clap-mapped inputs for `specify init` (format-only handler).
 #[expect(
     clippy::struct_excessive_bools,
     reason = "mirrors the `Commands::Init` clap variant: each bool is an independent init flag."
@@ -153,12 +153,12 @@ fn write_text(w: &mut dyn Write, body: &Body) -> std::io::Result<()> {
     if is_workspace {
         writeln!(
             w,
-            "Next: run `specrun registry add <id> <url>` to declare projects, then `/spec:plan <name>`."
+            "Next: run `specify registry add <id> <url>` to declare projects, then `/spec:plan <name>`."
         )?;
     } else {
         writeln!(
             w,
-            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specrun plan create <name>` followed by `specrun plan add` and `specrun plan transition <name> approved`."
+            "Next: run `/spec:plan <name>` (the skill that authors `change.md` + `plan.yaml`), or — for a headless plan — `specify plan create <name>` followed by `specify plan add` and `specify plan transition <name> approved`."
         )?;
     }
     Ok(())
@@ -216,7 +216,7 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option
     Ok(None)
 }
 
-/// `specrun init --check-migration` read-only probe. Resolves config
+/// `specify init --check-migration` read-only probe. Resolves config
 /// through the migration carve-out, runs the registered migrators'
 /// pure plans, and emits the stable probe envelope. Exits `0`
 /// regardless of the outcome (it is a probe, not an enforcement).

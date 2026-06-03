@@ -1,4 +1,4 @@
-//! Golden tests for `specrun rules export`.
+//! Golden tests for `specify rules export`.
 //!
 //! Exercises the runtime rules export contract — `ResolvedRules` export
 //! rules export" and §"Codex root resolution (v1)" — via the
@@ -282,7 +282,7 @@ fn omnia_agent_consumable_assertions() {
 
 /// CLI smoke test: a hand-built rules-root tree with
 /// a `CORE-*` rule under `adapters/shared/rules/core/` excludes that
-/// rule from `specrun rules export` by default and includes it under
+/// rule from `specify rules export` by default and includes it under
 /// `--include-core`. Uses `assert_cmd` so the closed CLI plumbing
 /// (clap struct → handler → resolver) is exercised end-to-end.
 #[test]
@@ -343,21 +343,21 @@ fn write_rule_fixture(path: &Path, id: &str, title: &str) {
     fs::write(path, body).expect("write rule fixture");
 }
 
-/// Invoke `specrun rules export` against an explicit rules root and
+/// Invoke `specify rules export` against an explicit rules root and
 /// parse the JSON envelope on stdout. `include_core` toggles the
 /// closed `--include-core` flag.
 fn export_via_cli(rules_root: &Path, project: &Path, include_core: bool) -> Value {
-    let mut cmd = Command::cargo_bin("specrun").expect("cargo_bin(specrun)");
+    let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
     cmd.args(["--format", "json", "rules", "export", "--target", "omnia"])
         .args(["--rules-root".as_ref(), rules_root.as_os_str()])
         .args(["--project-dir".as_ref(), project.as_os_str()]);
     if include_core {
         cmd.arg("--include-core");
     }
-    let output = cmd.output().expect("specrun invocation");
+    let output = cmd.output().expect("specify invocation");
     assert!(
         output.status.success(),
-        "specrun rules export failed (status: {:?}); stderr:\n{}\nstdout:\n{}",
+        "specify rules export failed (status: {:?}); stderr:\n{}\nstdout:\n{}",
         output.status,
         String::from_utf8_lossy(&output.stderr),
         String::from_utf8_lossy(&output.stdout),
@@ -380,12 +380,12 @@ fn rule_id(rule: &Value) -> &str {
 fn negative_text_format_rejected() {
     let project = tempdir().expect("project tempdir");
 
-    let output = Command::cargo_bin("specrun")
-        .expect("cargo_bin(specrun)")
+    let output = Command::cargo_bin("specify")
+        .expect("cargo_bin(specify)")
         .args(["--format", "text", "rules", "export", "--target", "omnia"])
         .args(["--project-dir".as_ref(), project.path().as_os_str()])
         .output()
-        .expect("specrun invocation");
+        .expect("specify invocation");
 
     assert_eq!(
         output.status.code(),
@@ -410,12 +410,12 @@ fn negative_text_format_rejected() {
 fn negative_rules_root_required() {
     let project = tempdir().expect("project tempdir");
 
-    let output = Command::cargo_bin("specrun")
-        .expect("cargo_bin(specrun)")
+    let output = Command::cargo_bin("specify")
+        .expect("cargo_bin(specify)")
         .args(["--format", "json", "rules", "export", "--target", "omnia"])
         .args(["--project-dir".as_ref(), project.path().as_os_str()])
         .output()
-        .expect("specrun invocation");
+        .expect("specify invocation");
 
     assert_eq!(
         output.status.code(),

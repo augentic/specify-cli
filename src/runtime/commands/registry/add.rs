@@ -1,4 +1,4 @@
-//! `specrun registry add` handler.
+//! `specify registry add` handler.
 
 use specify_error::{Error, Result, is_kebab};
 use specify_model::atomic::yaml_write;

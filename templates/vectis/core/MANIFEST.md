@@ -1,7 +1,7 @@
 # Core Assembly Template Manifest
 
 Human reference for the core assembly templates. The canonical source-to-target
-registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.core`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specrun tool run vectis -- scaffold core`.
+registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.core`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specify tool run vectis -- scaffold core`.
 
 Source filenames are flat under `templates/vectis/core/`. Nested target paths (e.g. `shared/src/bin/codegen.rs`) are declared in `manifest.yaml`, not mirrored in this directory layout. The `gitignore` source has no leading dot because shipping a literal `.gitignore` inside the `templates/` tree would be silently honoured by git tools that walk the repo; the engine renames it on write.
 

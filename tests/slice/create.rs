@@ -5,7 +5,7 @@ use crate::support::*;
 #[test]
 fn create_writes_dir_and_metadata() {
     let project = Project::init();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "my-slice"])
         .assert()
@@ -33,7 +33,7 @@ fn create_writes_dir_and_metadata() {
 #[test]
 fn create_rejects_uppercase_name() {
     let project = Project::init();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "BadName"])
         .assert()
@@ -50,8 +50,12 @@ fn create_rejects_uppercase_name() {
 #[test]
 fn create_errors_on_collision() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-    let assert = specrun()
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "my-slice"])
         .assert()
@@ -65,8 +69,12 @@ fn create_errors_on_collision() {
 #[test]
 fn create_continue_reuses_existing_dir() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
-    let assert = specrun()
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "create", "my-slice", "--if-exists", "continue"])
         .assert()

@@ -57,7 +57,7 @@ pub fn sort_resolved(entries: &mut [ResolvedRuleEntry]) {
 /// Compose [`super::resolve`], [`super::filter`], and [`sort_resolved`]
 /// to assemble the [`ResolvedRules`] wire envelope.
 ///
-/// This is the top-level entry point CH-17 (the `specrun rules
+/// This is the top-level entry point CH-17 (the `specify rules
 /// export` CLI) will call. The returned envelope is fully ordered and
 /// ready for serialisation against `resolved.schema.json`.
 ///

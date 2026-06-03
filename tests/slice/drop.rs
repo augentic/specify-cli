@@ -5,9 +5,13 @@ use crate::support::*;
 #[test]
 fn drop_transitions_and_archives() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "--format",

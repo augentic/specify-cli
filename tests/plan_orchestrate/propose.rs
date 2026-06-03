@@ -1,4 +1,4 @@
-//! `specrun plan propose` CLI tests: dry-run request envelopes,
+//! `specify plan propose` CLI tests: dry-run request envelopes,
 //! `--from` happy paths, journal tail, negative gates, and re-propose
 //! semantics, plus the propose-only seeds and helpers.
 
@@ -199,7 +199,7 @@ fn workspace_project(registry: &str, discovery: &str, plan: &str) -> TempDir {
 /// return the parsed `--format json` stderr envelope.
 fn propose_from_stderr(root: &Path, body: &str) -> Value {
     let response = write_response(root, body);
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "plan", "propose", "--from"])
         .arg(&response)
@@ -217,7 +217,7 @@ fn propose_from_stderr(root: &Path, body: &str) -> Value {
 /// parsed `--format json` stdout summary.
 fn propose_from_ok(root: &Path, body: &str) -> Value {
     let response = write_response(root, body);
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "plan", "propose", "--from"])
         .arg(&response)
@@ -236,7 +236,7 @@ fn propose_dry_run_n1_request_golden() {
     project.seed_plan(PROPOSE_PLAN_N1);
     seed_discovery(project.root(), PROPOSE_DISCOVERY_N1);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "propose", "--dry-run"])
         .assert()
@@ -267,7 +267,7 @@ fn propose_dry_run_workspace_request_golden() {
         PROPOSE_PLAN_WORKSPACE,
     );
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "propose", "--dry-run"])
         .assert()
@@ -366,7 +366,7 @@ fn propose_from_emits_single_journal_tail() {
         PROPOSE_PLAN_WORKSPACE,
     );
     let response = write_response(tmp.path(), PROPOSE_RESPONSE_FANOUT);
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["plan", "propose", "--from"])
         .arg(&response)
@@ -400,7 +400,7 @@ fn propose_mode_required() {
     let project = Project::init();
     project.seed_plan("name: demo\nslices: []\n");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "propose"])
         .assert()
@@ -416,7 +416,7 @@ fn propose_response_not_found() {
     project.seed_plan("name: demo\nslices: []\n");
     let missing = project.root().join("absent.json");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "propose", "--from"])
         .arg(&missing)
@@ -559,7 +559,7 @@ fn propose_dry_run_empty_catalog() {
     project.seed_plan("name: demo\nslices: []\n");
     // Deliberately no discovery.md.
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "propose", "--dry-run"])
         .assert()
@@ -610,7 +610,7 @@ fn propose_refuses_on_approved_plan() {
     seed_discovery(project.root(), PROPOSE_DISCOVERY_N1);
 
     propose_from_ok(project.root(), PROPOSE_RESPONSE_N1);
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "demo", "approved"])
         .assert()

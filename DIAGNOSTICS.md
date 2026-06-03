@@ -1,6 +1,6 @@
 # Diagnostics lint unification — status and remaining scope
 
-Status record for the lint unification work originally tracked as **A19** (unify lint output path + `specdev`/`specrun` dispatch) and **A16** (imperative→declarative lint burn-down).
+Status record for the lint unification work originally tracked as **A19** (unify lint output path + framework/consumer dispatch) and **A16** (imperative→declarative lint burn-down). The two former binaries (`specrun` runtime + `specdev` authoring lint) have since converged onto a single `specify` binary; the framework authoring lint is now `specify lint framework`.
 
 This document was rewritten after an audit of the live tree (2026-06) found the earlier implementation plan's baseline stale: A19 is complete, the A16 "Wave 0" retirements already landed, and the remaining A16 burn-down is gated on engine work that no amount of author-side rule writing can substitute for. The headline conclusion matches [DECISIONS.md §"Crate layout"](./DECISIONS.md) (~L195-235): the imperative predicates behind `framework::check::run` are the **intended steady state** until a future RFC lifts the hint-kind engine constraint.
 
@@ -18,18 +18,18 @@ Related docs:
 
 ## A19 — Unify lint output path and dispatch — COMPLETE
 
-Both lint surfaces converge on one kernel. `specrun lint run` ([src/runtime/commands/lint/run.rs](./src/runtime/commands/lint/run.rs)) and `specdev lint` ([src/authoring/commands/lint/run.rs](./src/authoring/commands/lint/run.rs)) each return `Result<()>` and call `output::run_lint(format, || build_report(...))` in [src/output.rs](./src/output.rs). The kernel owns the shared tail — `emit_lint_report` runs the pipeline and renders the envelope, the internal `finish_lint` collapses the outcome into the terminal `Result<()>` (`deny_blocking_findings` on success, the empty-envelope JSON fallback on a pre-emit abort). The two handlers differ only in the `PipelineConfig` their `build_report` closure assembles.
+Both lint surfaces converge on one kernel. `specify lint run` ([src/runtime/commands/lint/run.rs](./src/runtime/commands/lint/run.rs)) and `specify lint framework` ([src/runtime/commands/lint/framework.rs](./src/runtime/commands/lint/framework.rs)) each return `Result<()>` and call `output::run_lint(format, || build_report(...))` in [src/output.rs](./src/output.rs). The kernel owns the shared tail — `emit_lint_report` runs the pipeline and renders the envelope, the internal `finish_lint` collapses the outcome into the terminal `Result<()>` (`deny_blocking_findings` on success, the empty-envelope JSON fallback on a pre-emit abort). The two handlers differ only in the `PipelineConfig` their `build_report` closure assembles.
 
 What this closed (relative to the original A19 gap list):
 
-- **Bespoke `Exit` enum** — gone. There is no `src/authoring/exit.rs`; `specdev`'s terminal error maps through the one `Exit::from(&Error)` table in [src/runtime/output.rs](./src/runtime/output.rs).
+- **Bespoke `Exit` enum** — gone. There is no `src/authoring/exit.rs`; the framework lint's terminal error maps through the one `Exit::from(&Error)` table in [src/runtime/output.rs](./src/runtime/output.rs).
 - **Manual error / `eprintln!` paths** — gone. Neither handler writes its own `println!`/`eprintln!`; the abort fallback lives only in `output::finish_lint`.
 - **Handler-shape divergence** — gone. Both handlers obey the same `Result<()>` contract documented in [handler-shape.md](./docs/standards/handler-shape.md).
 - **Shared kernel** — landed. `output::run_lint` is the single build → emit → finish → blocking-gate kernel; `finish_lint` is internal to it.
 
 Pinned wire contract (unchanged):
 
-- `LintEmit::trailing_newline` — `true` for `specrun`, `false` for `specdev` — preserves each surface's historical stdout shape. It is caller config, not normalised, until an intentional wire bump.
+- `LintEmit::trailing_newline` — `true` for `specify lint`, `false` for `specify lint framework` — preserves each surface's historical stdout shape. It is caller config, not normalised, until an intentional wire bump.
 - `--format json` / `--output-format json` emit a `DiagnosticReport` on stdout even on infrastructure failure (empty all-zero envelope), so CI consumers keep a stable shape.
 
 Verification: `cargo make check`; `cargo nextest run -p specify-standards --test lint_diagnostics_json --test lint_diagnostics_pretty`; `cargo nextest run -p specify lint`.

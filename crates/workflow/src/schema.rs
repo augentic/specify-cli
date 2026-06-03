@@ -38,7 +38,7 @@ use crate::change::Plan;
 /// Returns `Ok(())` on a clean validation; otherwise a payload-free
 /// [`Error::Validation`] keyed on the code `"plan-schema"`, with the
 /// JSON-pointer + reason list the schema produced joined into the
-/// detail. Used by `specrun plan add` and `specrun plan amend` so
+/// detail. Used by `specify plan add` and `specify plan amend` so
 /// first-use validation refuses to write a malformed plan.
 ///
 /// # Errors
@@ -86,7 +86,7 @@ pub fn validate_plan_yaml(content: &str) -> Result<()> {
 /// Validate a lead-reconciliation envelope against the embedded
 /// `schemas/discovery/proposal.schema.json`.
 ///
-/// Backs `specrun plan propose`: the dry-run request the
+/// Backs `specify plan propose`: the dry-run request the
 /// CLI emits and the agent grouping response read by `--from` share one
 /// schema, discriminated by the closed `kind: request | response`
 /// `oneOf`. A single call validates either kind — there is no separate
@@ -120,7 +120,7 @@ const MODEL_SCHEMA_URL: &str =
 /// Validate an agent synthesis response against the embedded
 /// `schemas/slice/synthesis.schema.json`.
 ///
-/// Backs `specrun slice synthesize`: synthesis is
+/// Backs `specify slice synthesize`: synthesis is
 /// always agent-dispatched, so the only schema-validated wire is the
 /// returned `kind: response`. Its `model` property `$ref`s
 /// `model.schema.json` by a relative URI, so the validator is built
@@ -161,7 +161,7 @@ static SYNTHESIS_VALIDATOR: LazyLock<jsonschema::Validator> = LazyLock::new(|| {
 /// Validate a target build request against the embedded
 /// `schemas/target/build-request.schema.json`.
 ///
-/// Backs `specrun slice build`: the request the CLI assembles
+/// Backs `specify slice build`: the request the CLI assembles
 /// ([`crate::slice::build_request`]) and writes to
 /// `.specify/slices/<slice>/build/request.yaml` is gated against this
 /// shape before handoff. The request carries no `$ref`, so the simple
@@ -190,7 +190,7 @@ const DIAGNOSTIC_SCHEMA_URL: &str =
 /// Validate a target build report against the embedded
 /// `schemas/target/build-report.schema.json`.
 ///
-/// Backs `specrun slice build`: the report a target writes to
+/// Backs `specify slice build`: the report a target writes to
 /// `.specify/slices/<slice>/build/report.yaml` is gated against this
 /// shape before the `built` transition. Its `findings[]` `$ref`s
 /// `diagnostic.schema.json` by a relative URI, so the validator is built

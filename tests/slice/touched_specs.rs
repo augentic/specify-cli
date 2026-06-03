@@ -5,7 +5,11 @@ use crate::support::*;
 #[test]
 fn touched_specs_classifies_new_vs_modified() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let slice_dir = project.slices_dir().join("my-slice");
 
     // Adapter `alpha` — no baseline, should classify as `new`.
@@ -18,7 +22,7 @@ fn touched_specs_classifies_new_vs_modified() {
     fs::create_dir_all(slice_dir.join("specs/beta")).unwrap();
     fs::write(slice_dir.join("specs/beta/spec.md"), "# Beta delta\n").unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "touched-specs", "my-slice", "--scan"])
         .assert()
@@ -43,9 +47,13 @@ fn touched_specs_classifies_new_vs_modified() {
 #[test]
 fn touched_specs_accepts_explicit_list() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "--format",

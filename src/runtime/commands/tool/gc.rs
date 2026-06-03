@@ -1,4 +1,4 @@
-//! `specrun tool gc` handler.
+//! `specify tool gc` handler.
 
 use std::fs;
 

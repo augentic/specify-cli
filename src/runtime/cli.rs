@@ -1,4 +1,4 @@
-//! Top-level clap derive surface for the `specrun` binary. Owns the
+//! Top-level clap derive surface for the `specify` binary. Owns the
 //! umbrella types ([`Cli`], [`Commands`], [`Format`], [`SourceArg`],
 //! [`SliceSourceArg`]) and re-exports the per-verb action enums.
 
@@ -24,7 +24,7 @@ use crate::runtime::commands::workspace::cli::WorkspaceAction;
 
 #[derive(Parser)]
 #[command(
-    name = "specrun",
+    name = "specify",
     version,
     about = "Deterministic primitives for spec-driven development"
 )]
@@ -33,9 +33,9 @@ pub struct Cli {
     pub(crate) command: Commands,
 
     /// Output format. `text` by default; pass `--format json` (or set
-    /// `SPECRUN_FORMAT=json`) for structured envelopes when shelling
+    /// `SPECIFY_FORMAT=json`) for structured envelopes when shelling
     /// out from skills.
-    #[arg(long, env = "SPECRUN_FORMAT", default_value = "text", global = true)]
+    #[arg(long, env = "SPECIFY_FORMAT", default_value = "text", global = true)]
     pub(crate) format: Format,
 }
 
@@ -90,7 +90,7 @@ pub enum Commands {
         /// `AGENTS.md` only when absent — scaffolding nothing else and
         /// never re-fetching the adapter cache. A project already at the
         /// running version is a no-op. Refuses with exit `4` when the
-        /// project's major is older than this binary's (run `specrun
+        /// project's major is older than this binary's (run `specify
         /// migrate` first). Mutually exclusive with every other `init`
         /// argument.
         #[arg(
@@ -133,7 +133,7 @@ pub enum Commands {
         action: ToolAction,
     },
 
-    /// Deterministic lint (`specrun lint` v1). Resolves applicable codex
+    /// Deterministic lint (`specify lint` v1). Resolves applicable codex
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
     /// and emits the `DiagnosticReport` envelope. Read-only.
     Lint {
@@ -186,7 +186,7 @@ pub enum Commands {
     /// Print a shell-completion script for `<shell>` to stdout.
     ///
     /// Pipe into your shell's completion directory (e.g.
-    /// `specrun completions zsh > ~/.zsh/_specrun`). Generated via
+    /// `specify completions zsh > ~/.zsh/_specify`). Generated via
     /// `clap_complete`; the output tracks the live clap surface so
     /// every new verb is auto-discovered.
     Completions {
@@ -222,7 +222,7 @@ pub enum Commands {
         yes: bool,
     },
 
-    /// Self-update the `specrun` binary across its install channel.
+    /// Self-update the `specify` binary across its install channel.
     ///
     /// Bootstrap verb: operates on the binary, not a project, so it
     /// never loads project config. `--channel auto` (the default)
@@ -262,7 +262,7 @@ pub enum Commands {
     },
 }
 
-/// `specrun upgrade --channel` value. `Auto` resolves to
+/// `specify upgrade --channel` value. `Auto` resolves to
 /// [`specify_workflow::upgrade::InstallChannel::detect`] at the handler
 /// boundary; the other variants force the matching channel.
 #[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
@@ -387,12 +387,12 @@ pub struct SliceSourceArg {
 }
 
 /// Typed value for the per-slice `--authority-override <kind>=<key>`
-/// flag on `specrun plan add` (where the slice context is implicit
+/// flag on `specify plan add` (where the slice context is implicit
 /// from the command's positional `name`).
 ///
 /// Wire form is `<claim-kind>=<source>`; both sides must be
 /// non-empty and kebab-case (`source` is validated at the
-/// `specrun slice validate` stage via the orphan-key check).
+/// `specify slice validate` stage via the orphan-key check).
 /// `claim-kind` is parsed at the CLI boundary against the closed
 /// [`ClaimKind`] enum so misspellings fail before any plan mutation
 /// runs (clap exits 2 with its standard usage diagnostic).

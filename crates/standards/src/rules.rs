@@ -11,7 +11,7 @@
 //!   `snake_case -> kebab-case` lift on the raw markdown side so the
 //!   in-memory shape matches the wire shape.
 //! - [`ResolvedRules`] / [`ResolvedRule`] are the export envelope
-//!   emitted by `specrun rules export --format json` (CH-17). They
+//!   emitted by `specify rules export --format json` (CH-17). They
 //!   add resolver-only fields ([`Origin`], [`PathRoot`], `path`,
 //!   `body`) on top of the codex-rule shape.
 //!
@@ -247,7 +247,7 @@ pub struct Rule {
 
 /// Read-only resolved view of shared, source-adapter, and
 /// target-adapter rules. Wire envelope emitted by
-/// `specrun rules export --format json` per the rules contract
+/// `specify rules export --format json` per the rules contract
 /// §"Resolved rules export".
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]

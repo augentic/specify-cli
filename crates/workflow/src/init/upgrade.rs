@@ -1,4 +1,4 @@
-//! Re-entry (`specrun init --upgrade`) body: bumps `project.yaml.specify_version`
+//! Re-entry (`specify init --upgrade`) body: bumps `project.yaml.specify_version`
 //! to the running binary over an existing `.specify/` without re-scaffolding.
 //! Mutates only `project.yaml`; never touches slices, specs, archive, registry,
 //! or the adapter cache.
@@ -32,7 +32,7 @@ use crate::init::{InitOptions, InitResult, resolve_version};
 /// - [`Error::CliTooOld`] when the pinned floor is newer than this
 ///   binary (propagated by the loader).
 /// - [`Error::ProjectNeedsMigration`] when the pinned major is older
-///   than this binary's (exit 4 — the operator must run `specrun
+///   than this binary's (exit 4 — the operator must run `specify
 ///   migrate` first). Dormant while the binary is pre-1.0: the
 ///   migration tuple is always `None` at major `0`.
 /// - filesystem / serialisation errors from rewriting `project.yaml`.

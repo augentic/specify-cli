@@ -59,7 +59,11 @@ const SYNTH_RESPONSE_JSON: &str = r###"{
 /// the on-disk Evidence the kernel resolves authority from (`--from`).
 fn stage_synthesizable_slice() -> Project {
     let project = Project::init().with_schemas();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let slice_dir = project.slices_dir().join("my-slice");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
@@ -72,7 +76,7 @@ fn stage_synthesizable_slice() -> Project {
 #[test]
 fn synthesize_dry_run_emits_inputs_envelope() {
     let project = stage_synthesizable_slice();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "synthesize", "my-slice", "--dry-run"])
         .assert()
@@ -115,7 +119,7 @@ fn synthesize_from_projects_and_persists() {
     let response_path = project.root().join("response.json");
     fs::write(&response_path, SYNTH_RESPONSE_JSON).expect("write response");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "synthesize", "my-slice", "--from"])
         .arg(&response_path)
@@ -145,7 +149,7 @@ fn synthesize_from_projects_and_persists() {
 
     // The persisted model.yaml is schema-valid: `slice model show`
     // loads it through `SliceModel::parse_yaml`, which schema-gates.
-    let show = specrun()
+    let show = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "model", "show", "my-slice"])
         .assert()
@@ -172,7 +176,7 @@ fn synthesize_from_projects_and_persists() {
 #[test]
 fn synthesize_requires_a_mode() {
     let project = stage_synthesizable_slice();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "synthesize", "my-slice"])
         .assert()
@@ -188,7 +192,7 @@ fn synthesize_requires_a_mode() {
 fn run_synthesize_from(project: &Project, response_json: &str) -> std::process::Output {
     let response_path = project.root().join("response.json");
     fs::write(&response_path, response_json).expect("write response");
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "synthesize", "my-slice", "--from"])
         .arg(&response_path)
@@ -389,7 +393,11 @@ const DIVERGENCE_RESPONSE_JSON: &str = r###"{
 /// divergence.
 fn stage_divergence_slice() -> Project {
     let project = Project::init().with_schemas();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let slice_dir = project.slices_dir().join("my-slice");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
@@ -406,7 +414,7 @@ fn synthesize_dry_run_omits_authority() {
     // `authority` — the kernel resolves authority post-response (RFC-29c
     // §"Synthesis response").
     let project = stage_synthesizable_slice();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "synthesize", "my-slice", "--dry-run"])
         .assert()
@@ -454,7 +462,7 @@ fn synthesize_normalizes_fields() {
     let output = run_synthesize_from(&project, SYNTH_RESPONSE_PRE_ASSIGNED);
     assert_eq!(output.status.code(), Some(0), "a normalizing projection must succeed");
 
-    let show = specrun()
+    let show = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "model", "show", "my-slice"])
         .assert()
@@ -528,7 +536,7 @@ fn synthesize_resolves_per_kind_divergence() {
     let output = run_synthesize_from(&project, DIVERGENCE_RESPONSE_JSON);
     assert_eq!(output.status.code(), Some(0), "the divergence slice synthesizes");
 
-    let show = specrun()
+    let show = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "model", "show", "my-slice"])
         .assert()
@@ -570,7 +578,7 @@ fn synthesize_then_validate_is_drift_clean() {
     let output = run_synthesize_from(&project, SYNTH_RESPONSE_JSON);
     assert_eq!(output.status.code(), Some(0), "synthesize must succeed before validate");
 
-    let validate = specrun()
+    let validate = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -597,7 +605,7 @@ fn provenance_recomputes_labels() {
     let output = run_synthesize_from(&project, DIVERGENCE_RESPONSE_JSON);
     assert_eq!(output.status.code(), Some(0), "the divergence slice synthesizes");
 
-    let prov = specrun()
+    let prov = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "provenance", "my-slice"])
         .assert()

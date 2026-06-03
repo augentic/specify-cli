@@ -1,4 +1,4 @@
-//! Integration tests for `specrun plan *` — the top-level verb that
+//! Integration tests for `specify plan *` — the top-level verb that
 //! orchestrates the executable plan at `plan.yaml` (the executable plan contract).
 //!
 //! These CLI tests stand up a fresh `.specify/` project via `specify

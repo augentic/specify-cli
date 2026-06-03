@@ -22,7 +22,7 @@
 //!
 //! The canonical schema at `schemas/rules/rule.schema.json` is
 //! the single source of truth for both the runtime resolver and
-//! `specdev lint`'s codex-frontmatter predicate (the vendored codex-rule schema removal
+//! `specify lint framework`'s codex-frontmatter predicate (the vendored codex-rule schema removal
 //! the vendored codex-rule schema"). It carries `snake_case` keys.
 //! Validation runs against the original raw frontmatter, *before* the
 //! `snake_case -> kebab-case` lift, which keeps schema semantics
@@ -34,7 +34,7 @@
 //!
 //! No regex compilation. The deterministic-hints contract
 //! extensibility" requires the runtime resolver to never compile a
-//! regex it never executes — hint execution belongs to `specrun lint`
+//! regex it never executes — hint execution belongs to `specify lint`
 //! (CH-13 +). Applicability filtering, deprecation filtering, and
 //! stable ordering are CH-13 / CH-14.
 
@@ -49,7 +49,7 @@ use super::Rule;
 /// Canonical codex-rule frontmatter schema, sourced from
 /// [`specify_schema::RULE_JSON_SCHEMA`]. Per the standards-layer contract
 /// §"Eliminates the vendored codex-rule schema", that constant is the
-/// single embedded source of truth — `specdev lint`'s codex predicate
+/// single embedded source of truth — `specify lint framework`'s codex predicate
 /// compiles the same constant via `specify_standards::framework`.
 const RULE_SCHEMA: &str = RULE_JSON_SCHEMA;
 

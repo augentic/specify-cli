@@ -1,4 +1,4 @@
-//! `specrun plan {add,remove,amend}` CLI tests — the L1.J write-side
+//! `specify plan {add,remove,amend}` CLI tests — the L1.J write-side
 //! commands.
 
 use crate::support::*;
@@ -24,7 +24,7 @@ fn plan_add_appends_pending_entry_json() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "add", "foo"])
         .assert()
@@ -49,10 +49,10 @@ fn plan_add_rejects_duplicate_name_text() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
     let assert =
-        specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().failure();
+        specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -66,8 +66,11 @@ fn plan_add_rejects_invalid_name() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    let assert =
-        specrun().current_dir(project.root()).args(["plan", "add", "NotKebab"]).assert().failure();
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["plan", "add", "NotKebab"])
+        .assert()
+        .failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
 
     let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
@@ -92,7 +95,7 @@ slices:
 ",
     );
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "remove", "a"])
         .assert()
@@ -124,7 +127,7 @@ slices:
     );
 
     let assert =
-        specrun().current_dir(project.root()).args(["plan", "remove", "a"]).assert().failure();
+        specify_cmd().current_dir(project.root()).args(["plan", "remove", "a"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(2));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -155,7 +158,7 @@ slices:
 ",
     );
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "--format",
@@ -189,7 +192,7 @@ fn plan_amend_clears_description() {
     let project = Project::init();
     project.seed_plan(WITH_DESCRIPTION);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--description", ""])
         .assert()
@@ -208,7 +211,7 @@ fn plan_amend_leaves_field_alone() {
     project.seed_plan(WITH_DESCRIPTION);
 
     // --depends-on (clear) but no --description; description must stay.
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--depends-on"])
         .assert()
@@ -223,7 +226,7 @@ fn plan_amend_on_missing_entry_fails() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "nope", "--description", "x"])
         .assert()

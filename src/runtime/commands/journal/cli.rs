@@ -1,4 +1,4 @@
-//! Clap derive surface for `specrun journal *`. The umbrella `cli.rs`
+//! Clap derive surface for `specify journal *`. The umbrella `cli.rs`
 //! re-exports `JournalAction`.
 
 use clap::Subcommand;

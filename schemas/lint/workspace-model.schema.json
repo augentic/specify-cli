@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/lint/workspace-model.schema.json",
   "title": "Specify WorkspaceModel (v1)",
-  "description": "Deterministic, versioned snapshot of project facts produced by `specrun lint` for the `WorkspaceModel` schema. Persistence and query reserve: `.specify/cache/workspace-model.v1.json` is reserved as the future v2 persistence location; `specrun model query <selector>` is reserved as a future read-only CLI verb. v1 ships `--dump-model` only.",
+  "description": "Deterministic, versioned snapshot of project facts produced by `specify lint` for the `WorkspaceModel` schema. Persistence and query reserve: `.specify/cache/workspace-model.v1.json` is reserved as the future v2 persistence location; `specify model query <selector>` is reserved as a future read-only CLI verb. v1 ships `--dump-model` only.",
   "type": "object",
   "additionalProperties": false,
   "required": [

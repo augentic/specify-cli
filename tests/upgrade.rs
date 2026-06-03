@@ -1,23 +1,23 @@
-//! Integration test for `specrun upgrade --dry-run --format json`
+//! Integration test for `specify upgrade --dry-run --format json`
 //! (RFC-30 §D1, Wave C item 2).
 //!
 //! Drives the command end-to-end against a forced `--channel cargo` and
-//! an injected release tag (`SPECRUN_RELEASE_TAG`) so the envelope is
+//! an injected release tag (`SPECIFY_RELEASE_TAG`) so the envelope is
 //! deterministic and the test never touches `gh` or the network. The
 //! per-channel planning, classification, and JSON-probe parsing are
 //! unit-tested in the workflow crate; this asserts the wire shape Change
 //! G's `/spec:init` skill parses (`channel`, `to`, `commands`).
 
 mod common;
-use common::{parse_json, specrun};
+use common::{parse_json, specify_cmd};
 
 #[test]
 fn dry_run_reports_channel_commands() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECRUN_RELEASE_TAG", "v9.9.9")
+        .env("SPECIFY_RELEASE_TAG", "v9.9.9")
         .args(["--format", "json", "upgrade", "--channel", "cargo", "--dry-run"])
         .assert()
         .success();
@@ -51,9 +51,9 @@ fn dry_run_reports_channel_commands() {
 fn upgrade_without_consent_refuses() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
-        .env("SPECRUN_RELEASE_TAG", "v9.9.9")
+        .env("SPECIFY_RELEASE_TAG", "v9.9.9")
         .args(["--format", "json", "upgrade", "--channel", "cargo"])
         .assert()
         .failure();

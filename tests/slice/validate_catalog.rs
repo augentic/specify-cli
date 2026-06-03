@@ -54,7 +54,11 @@ slices:
 /// and optionally a component catalog.
 fn stage_slice_with_catalog(evidence: &str, catalog: Option<&str>, plan: Option<&str>) -> Project {
     let project = Project::init().with_schemas();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let slice_dir = project.slices_dir().join("my-slice");
     let evidence_dir = slice_dir.join("evidence");
     fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
@@ -76,7 +80,7 @@ fn stage_slice_with_catalog(evidence: &str, catalog: Option<&str>, plan: Option<
 fn skips_catalog_drift_no_catalog() {
     let project =
         stage_slice_with_catalog(EVIDENCE_WITH_COMPONENT, None, Some(PLAN_WITH_UI_SCREENS));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -90,7 +94,7 @@ fn validate_passes_when_slug_confirmed() {
         Some(CATALOG_YAML),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -105,7 +109,7 @@ fn validate_detects_missing_catalog_entry() {
         Some(catalog_without_tab_bar),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -126,7 +130,7 @@ fn validate_detects_rejected_catalog_entry() {
         Some(catalog_with_rejected),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert()
@@ -146,7 +150,7 @@ fn validate_ignores_candidate_notes() {
         Some(CATALOG_YAML),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();
@@ -168,7 +172,7 @@ claims:
         Some(empty_catalog),
         Some(PLAN_WITH_UI_SCREENS),
     );
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "my-slice"])
         .assert();

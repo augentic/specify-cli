@@ -1,6 +1,6 @@
 //! Archival move of `plan.yaml` (plus optional working directory and
 //! operator brief) into the archive tree.
-//! §"`specrun plan archive`" for the preflight + execute flow.
+//! §"`specify plan archive`" for the preflight + execute flow.
 
 use std::path::{Path, PathBuf};
 

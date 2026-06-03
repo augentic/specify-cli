@@ -5,10 +5,14 @@ use crate::support::*;
 #[test]
 fn transition_walks_happy_path() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
 
     for target in ["refined", "built"] {
-        let assert = specrun()
+        let assert = specify_cmd()
             .current_dir(project.root())
             .args(["--format", "json", "slice", "transition", "my-slice", target])
             .assert()
@@ -27,9 +31,13 @@ fn transition_walks_happy_path() {
 #[test]
 fn transition_rejects_illegal_edge() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     // Refining -> Built is not a legal edge (must pass through refined).
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "transition", "my-slice", "built"])
         .assert()
@@ -46,9 +54,13 @@ fn transition_rejects_merged_target() {
     // that bookkeeping, so the dispatcher refuses the value with an
     // argument-error envelope (exit 2) before lifecycle ever runs.
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "transition", "my-slice", "merged"])
         .assert()
@@ -58,7 +70,7 @@ fn transition_rejects_merged_target() {
     assert_eq!(value["exit-code"], 2);
     let message = value["message"].as_str().expect("message string");
     assert!(
-        message.contains("specrun slice merge run"),
+        message.contains("specify slice merge run"),
         "argument-error message must redirect to the merge runner; got:\n{message}"
     );
     assert!(

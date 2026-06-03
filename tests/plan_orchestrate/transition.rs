@@ -1,4 +1,4 @@
-//! `specrun plan transition` CLI tests: per-entry edges, undo, the
+//! `specify plan transition` CLI tests: per-entry edges, undo, the
 //! plan-level Gate-1 stamp, and the retired-state rejections.
 
 use crate::support::*;
@@ -27,9 +27,9 @@ fn plan_transition_happy_path_text() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "done"])
         .assert()
@@ -44,7 +44,7 @@ fn plan_transition_legal_edge_json() {
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "transition", "foo", "done"])
         .assert()
@@ -64,7 +64,7 @@ fn plan_transition_rejects_illegal_edge() {
     let project = Project::init();
     project.seed_plan(SINGLE_DONE);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "pending"])
         .assert()
@@ -89,7 +89,7 @@ fn transition_undo_done_to_in_progress() {
     let project = Project::init();
     project.seed_plan(SINGLE_DONE);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "transition", "foo", "--undo"])
         .assert()
@@ -121,7 +121,7 @@ fn undo_in_progress_to_pending_refuses() {
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "--undo"])
         .assert()
@@ -130,7 +130,7 @@ fn undo_in_progress_to_pending_refuses() {
     let plan_mid = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
     assert!(plan_mid.contains("status: pending"), "plan.yaml after first undo: {plan_mid}");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "--undo"])
         .assert()
@@ -144,13 +144,13 @@ fn undo_in_progress_to_pending_refuses() {
 
 #[test]
 fn transition_plan_level_approved() {
-    // workflow §The plan gate: `specrun plan transition <plan-name>
+    // workflow §The plan gate: `specify plan transition <plan-name>
     // approved` is the operator-stamped Gate 1 transition. The plan
     // name on the wire matches `plan.yaml.name`.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "transition", "demo", "approved"])
         .assert()
@@ -171,7 +171,7 @@ fn transition_rejects_per_entry_in_progress() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "in-progress"])
         .assert()
@@ -189,7 +189,7 @@ fn plan_transition_rejects_retired_states() {
     project.seed_plan(SINGLE_PENDING);
 
     for retired in ["blocked", "failed", "skipped"] {
-        let assert = specrun()
+        let assert = specify_cmd()
             .current_dir(project.root())
             .args(["plan", "transition", "foo", retired])
             .assert()
@@ -214,7 +214,7 @@ fn transition_rejects_unknown_reason() {
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "foo", "in-progress", "--reason", "x"])
         .assert()

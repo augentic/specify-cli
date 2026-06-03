@@ -1,4 +1,4 @@
-//! Integration tests for `specrun workspace *` (workspace orchestration contract).
+//! Integration tests for `specify workspace *` (workspace orchestration contract).
 //!
 //! Covers `workspace sync`, `workspace push`, and the hidden
 //! `workspace prepare` executor helper. Selector
@@ -10,11 +10,11 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_workspace, omnia_schema_dir, parse_stdout, run_git, specrun};
+use common::{Project, init_workspace, omnia_schema_dir, parse_stdout, run_git, specify_cmd};
 
 #[test]
 fn workspace_help_lists_active_subcommands() {
-    let assert = specrun().args(["workspace", "--help"]).assert().success();
+    let assert = specify_cmd().args(["workspace", "--help"]).assert().success();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     for verb in ["sync", "push"] {
         assert!(
@@ -39,7 +39,7 @@ fn c01_sync_unknown_selector_preflight() {
     .unwrap();
     let gitignore_before = fs::read_to_string(tmp.path().join(".gitignore")).ok();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "sync", "ghost"])
         .assert()
@@ -91,7 +91,7 @@ fn c01_sync_skips_unselected_slots() {
     )
     .unwrap();
 
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["workspace", "sync", "orders", "billing"])
         .assert()
@@ -119,7 +119,7 @@ fn c01_push_unknown_selector_preflight() {
     )
     .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "push", "ghost", "--dry-run"])
         .assert()
@@ -166,14 +166,14 @@ fn c04_prepare_returns_json() {
     )
     .unwrap();
 
-    let help = specrun().args(["workspace", "--help"]).assert().success();
+    let help = specify_cmd().args(["workspace", "--help"]).assert().success();
     let help_stdout = String::from_utf8(help.get_output().stdout.clone()).expect("help utf8");
     assert!(
         !help_stdout.contains("prepare"),
         "executor helper must stay hidden from human workspace help, got:\n{help_stdout}"
     );
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "prepare", "alpha", "--change", "demo-change"])
         .assert()
@@ -221,7 +221,7 @@ fn c04_prepare_origin_head_diagnostic() {
     )
     .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "workspace", "prepare", "alpha", "--change", "demo-change"])
         .assert()
@@ -244,7 +244,7 @@ fn c04_prepare_origin_head_diagnostic() {
 #[test]
 fn planning_sync_no_registry_exits_zero() {
     let project = Project::init();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "workspace", "sync"])
         .assert()
@@ -261,7 +261,7 @@ fn planning_sync_two_symlink_peers() {
     fs::create_dir_all(peer.join(".specify")).expect("peer .specify");
     let root = tmp.path().join("root");
     fs::create_dir_all(&root).expect("root");
-    specrun()
+    specify_cmd()
         .current_dir(&root)
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -283,7 +283,7 @@ projects:
 ";
     fs::write(root.join("registry.yaml"), reg).expect("registry");
 
-    specrun().current_dir(&root).args(["workspace", "sync"]).assert().success();
+    specify_cmd().current_dir(&root).args(["workspace", "sync"]).assert().success();
 
     assert!(root.join(".specify/workspace/alpha").exists());
     assert!(root.join(".specify/workspace/beta").exists());

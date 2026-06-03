@@ -27,10 +27,10 @@ pub const WASM_PKG_CONFIG_FILENAME: &str = "wasm-pkg.toml";
 /// (private mirrors, internal registries) without setting an env var.
 pub const WASM_PKG_CONFIG_PATH: &str = ".specify/wasm-pkg.toml";
 
-/// Canonical contents `specrun init` writes for a fresh project.
+/// Canonical contents `specify init` writes for a fresh project.
 ///
 /// Mirrors the wasm-pkg distribution model so
-/// `wkg --config .specify/wasm-pkg.toml` and `specrun tool fetch`
+/// `wkg --config .specify/wasm-pkg.toml` and `specify tool fetch`
 /// agree on namespace routing.
 pub const DEFAULT_WASM_PKG_CONFIG: &str = "default_registry = \"augentic.io\"\n\
                                            \n\

@@ -20,7 +20,7 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
         return Err(Error::Diag {
             code: "workspace-push-no-plan",
             detail: "No active plan found at plan.yaml. Run `/spec:plan <name>` (or \
-                     `specrun plan create <name>`) to scaffold a fresh plan, or check whether \
+                     `specify plan create <name>`) to scaffold a fresh plan, or check whether \
                      the plan was already archived."
                 .to_string(),
         });

@@ -1,4 +1,4 @@
-//! `specrun journal emit` — guarded front door onto the closed
+//! `specify journal emit` — guarded front door onto the closed
 //! workflow §Observability event taxonomy.
 //!
 //! `emit` is the only verb: it deserialises `<event-id>` + `--payload`

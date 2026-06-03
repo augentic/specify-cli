@@ -77,7 +77,7 @@ impl Registry {
         // `registry-description-missing-multi-repo` invariants are
         // retired — those facets live in each project's `project.yaml`
         // and are checked against `.specify/topology.lock` by
-        // `specrun plan validate` (`topology-cache-stale`).
+        // `specify plan validate` (`topology-cache-stale`).
 
         Ok(())
     }

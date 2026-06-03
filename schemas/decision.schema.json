@@ -30,7 +30,7 @@
     },
     "id": {
       "$ref": "#/$defs/decRef",
-      "description": "Engine-stamped durable project-global id (`DEC-NNNN`). Absent in the slice-authored form; required on the persisted baseline form. Assigned by `specrun slice merge` as `max(existing) + 1`, never reused."
+      "description": "Engine-stamped durable project-global id (`DEC-NNNN`). Absent in the slice-authored form; required on the persisted baseline form. Assigned by `specify slice merge` as `max(existing) + 1`, never reused."
     },
     "slice": {
       "$ref": "#/$defs/slug",

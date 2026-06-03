@@ -22,7 +22,7 @@ fn provenance_projects_from_model() {
     fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
     fs::write(evidence_dir.join("legacy-monolith.yaml"), CLEAN_EVIDENCE_YAML)
         .expect("write evidence");
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "provenance", "my-slice"])
         .assert()
@@ -38,7 +38,7 @@ fn provenance_projects_from_model() {
 #[test]
 fn provenance_fails_without_model() {
     let project = stage_slice_with_spec(CLEAN_SPEC_MD, Some(PLAN_WITH_LEGACY_MONOLITH));
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "provenance", "my-slice"])
         .assert()

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/augentic/specify-cli/schemas/rules/resolved.schema.json",
   "title": "Specify resolved rules export",
-  "description": "Wire shape emitted by `specrun rules export --format json` for the `ResolvedRules` export contract. The export is the read-only resolved view of shared, source-adapter, and target-adapter rules for a project, target adapter, slice, or artifact path. Frontmatter `snake_case` keys (`lint_mode`, `deterministic_hints`, `deprecated.replaced_by`) are emitted as kebab-case at every nesting level (`lint-mode`, `deterministic-hints`, `deprecated.replaced-by`). The schema is the authoritative source for exported field names; producers MUST validate output against it.",
+  "description": "Wire shape emitted by `specify rules export --format json` for the `ResolvedRules` export contract. The export is the read-only resolved view of shared, source-adapter, and target-adapter rules for a project, target adapter, slice, or artifact path. Frontmatter `snake_case` keys (`lint_mode`, `deterministic_hints`, `deprecated.replaced_by`) are emitted as kebab-case at every nesting level (`lint-mode`, `deterministic-hints`, `deprecated.replaced-by`). The schema is the authoritative source for exported field names; producers MUST validate output against it.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -116,7 +116,7 @@
         "content-digest-eq",
         "namespace-owner"
       ],
-      "description": "Closed v1 deterministic-hint kind enum. Every kind is executable; `specrun lint` owns execution semantics."
+      "description": "Closed v1 deterministic-hint kind enum. Every kind is executable; `specify lint` owns execution semantics."
     },
     "deterministicHint": {
       "type": "object",

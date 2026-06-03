@@ -3,7 +3,7 @@
 //! Each test stages a fixture slice under a tempdir in the expected
 //! layout (`<project>/.specify/slices/<name>/`), runs `validate_slice`,
 //! assembles the returned `Vec<Diagnostic>` into a `DiagnosticReport`
-//! (renumbered, summarised) exactly as the `specrun slice validate`
+//! (renumbered, summarised) exactly as the `specify slice validate`
 //! handler does, serialises it via its `Serialize` derive, and compares
 //! the pretty-printed JSON against a checked-in golden file.
 //!

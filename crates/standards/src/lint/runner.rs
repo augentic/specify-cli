@@ -1,6 +1,6 @@
 //! Shared lint pipeline runner.
 //!
-//! Both lint surfaces (`specrun lint` and `specdev lint`) compose the
+//! Both lint surfaces (`specify lint` and `specify lint framework`) compose the
 //! identical sequence: resolve the codex, index the workspace, run any
 //! imperative producers, evaluate the declarative deterministic hints,
 //! dedupe by fingerprint, apply the ignore-directive pass, fold in the
@@ -34,10 +34,10 @@ use crate::rules::{ResolveInputs, ResolvedRules, build_resolved_rules, map_resol
 /// How the runner treats a codex-resolution failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolverDegradation {
-    /// Surface the resolver error and abort the run (`specrun lint`).
+    /// Surface the resolver error and abort the run (`specify lint`).
     Fatal,
     /// Log the resolver error to stderr and continue with an empty
-    /// declarative pass (`specdev lint`): the imperative `Check` pass
+    /// declarative pass (`specify lint framework`): the imperative `Check` pass
     /// already surfaces the codex-shape violations the resolver trips
     /// over, so the framework contributor's edit loop stays legible.
     SkipDeclarative,
@@ -45,8 +45,8 @@ pub enum ResolverDegradation {
 
 /// Configuration for one [`run`] of the shared lint pipeline.
 pub struct PipelineConfig<'a> {
-    /// Indexer profile (`Consumer` for `specrun`, `Framework` for
-    /// `specdev`).
+    /// Indexer profile (`Consumer` for `specify lint`, `Framework` for
+    /// `specify lint framework`).
     pub profile: ScanProfile,
     /// When set, emit the indexed `WorkspaceModel` and stop before the
     /// evaluator pass.
@@ -109,7 +109,10 @@ pub fn run(inputs: &ResolveInputs<'_>, config: &PipelineConfig<'_>) -> Result<Ru
         ResolverDegradation::SkipDeclarative => match build_resolved_rules(inputs) {
             Ok(resolved) => resolved,
             Err(err) => {
-                eprintln!("specdev lint: declarative pass skipped: {}", map_resolve_error(err));
+                eprintln!(
+                    "specify lint framework: declarative pass skipped: {}",
+                    map_resolve_error(err)
+                );
                 empty_resolved(inputs.target_adapter.to_string(), inputs.source_adapters.to_vec())
             }
         },

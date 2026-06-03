@@ -1,4 +1,4 @@
-//! Slice-validation kernel for `specrun slice validate`.
+//! Slice-validation kernel for `specify slice validate`.
 //!
 //! Holds the pure, `Ctx`-free gate logic the handler orchestrates: the
 //! pre-adapter gates ([`pre_adapter_gates`]) — provenance scan, spec

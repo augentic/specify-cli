@@ -1,4 +1,4 @@
-//! `specrun source extract` handler — slice-time Evidence extraction
+//! `specify source extract` handler — slice-time Evidence extraction
 //! (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
 //!
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
@@ -101,7 +101,7 @@ struct ExtractResult {
     evidence: PathBuf,
 }
 
-/// Run `specrun source extract <source> <lead> --slice <slice>
+/// Run `specify source extract <source> <lead> --slice <slice>
 /// [--phase prepare|finalize]`.
 ///
 /// # Errors
@@ -115,7 +115,7 @@ pub fn run(ctx: &Ctx, source: &str, lead: &str, slice: &str, phase: Phase) -> Re
     let binding = plan.sources.get(source).ok_or_else(|| Error::Diag {
         code: "source-unknown",
         detail: format!(
-            "no source `{source}` in plan.yaml.sources; `specrun source extract` resolves \
+            "no source `{source}` in plan.yaml.sources; `specify source extract` resolves \
              its argument against the plan's source keys, not the adapter name"
         ),
     })?;

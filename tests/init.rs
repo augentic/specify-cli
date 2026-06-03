@@ -1,4 +1,4 @@
-//! Integration tests for `specrun init` (adapter and `--workspace` modes).
+//! Integration tests for `specify init` (adapter and `--workspace` modes).
 //!
 //! Covers the on-disk shape produced by `init`, the JSON envelope, and
 //! the clap-level invariants around the positional `<adapter>`
@@ -12,12 +12,12 @@ use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
 mod common;
-use common::{omnia_schema_dir, specrun};
+use common::{omnia_schema_dir, specify_cmd};
 
 #[test]
 fn init_text_format_succeeds() {
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -37,7 +37,7 @@ fn init_text_format_succeeds() {
 #[test]
 fn init_json_format_has_stable_shape() {
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init"])
         .arg(omnia_schema_dir())
@@ -67,7 +67,7 @@ fn init_json_format_has_stable_shape() {
 #[ignore = "networked GitHub fetch smoke test"]
 fn init_github_directory_uri_succeeds() {
     let tmp = tempdir().unwrap();
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args([
             "init",
@@ -79,14 +79,14 @@ fn init_github_directory_uri_succeeds() {
         .success();
 }
 
-// ---- `specrun init` adapter/workspace invariant: positional <adapter> + --workspace mutual exclusion ----
+// ---- `specify init` adapter/workspace invariant: positional <adapter> + --workspace mutual exclusion ----
 
 #[test]
 fn init_writes_adapter_field_for_url_arg() {
-    // Acceptance (a): `specrun init <url>` writes `adapter: <url>`
+    // Acceptance (a): `specify init <url>` writes `adapter: <url>`
     // and no `schema:` field; `workspace:` either absent or false.
     let tmp = tempdir().unwrap();
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -124,13 +124,13 @@ fn init_writes_adapter_field_for_url_arg() {
 
 #[test]
 fn init_with_no_args_errors() {
-    // Acceptance (c): `specrun init` (no positional, no `--workspace`) must
+    // Acceptance (c): `specify init` (no positional, no `--workspace`) must
     // exit `2` (clap's parse-error slot) with clap's standard
     // "required arguments were not provided" diagnostic. The historical
     // post-parse `init-requires-adapter-or-workspace` diagnostic was lifted
     // into the clap surface (`required_unless_present = "workspace"`).
     let tmp = tempdir().unwrap();
-    let assert = specrun().current_dir(tmp.path()).args(["init"]).assert().failure();
+    let assert = specify_cmd().current_dir(tmp.path()).args(["init"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(2), "clap parse errors map to exit code 2");
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).expect("utf8");
     assert!(
@@ -145,12 +145,12 @@ fn init_with_no_args_errors() {
 
 #[test]
 fn init_with_adapter_and_workspace_errors() {
-    // Acceptance (d): `specrun init <url> --workspace` must exit `2` with
+    // Acceptance (d): `specify init <url> --workspace` must exit `2` with
     // clap's "the argument cannot be used with" diagnostic. Same
     // motivation as `init_with_no_args_errors`: the invariant lives in
     // clap (`conflicts_with = "workspace"`), not a post-parse diagnostic.
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -165,12 +165,12 @@ fn init_with_adapter_and_workspace_errors() {
     );
 }
 
-// ---- specrun init --workspace (registry workspace topology) ----
+// ---- specify init --workspace (registry workspace topology) ----
 
 #[test]
 fn workspace_writes_canonical_shape() {
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init"])
         .args(["--name", "platform-workspace", "--workspace"])
@@ -241,7 +241,7 @@ fn workspace_writes_canonical_shape() {
     );
 
     // `change.md` is not scaffolded by workspace init; it appears only after
-    // the operator runs `/spec:plan <name>` (or `specrun plan create <name>`).
+    // the operator runs `/spec:plan <name>` (or `specify plan create <name>`).
 }
 
 #[test]
@@ -252,7 +252,7 @@ fn init_workspace_refuses_when_present() {
     fs::write(tmp.path().join(".specify/project.yaml"), "name: existing\nadapter: omnia\n")
         .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .args(["--name", "platform-workspace", "--workspace"])
@@ -268,7 +268,7 @@ fn init_workspace_refuses_when_present() {
     assert_eq!(on_disk, "name: existing\nadapter: omnia\n");
 }
 
-// ---- `specrun init --upgrade` (RFC-30 §D5 re-entry version bump) ----
+// ---- `specify init --upgrade` (RFC-30 §D5 re-entry version bump) ----
 
 /// Recursively snapshot every regular file under `root` as a
 /// `relative-path -> bytes` map, so an upgrade's write set can be
@@ -328,7 +328,7 @@ fn upgrade_bumps_version_keeps_artifacts() {
     )
     .expect("parse before");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -364,7 +364,7 @@ fn upgrade_bumps_version_keeps_artifacts() {
 
     // Second run is a byte-stable no-op.
     let snapshot_after_first = snapshot_tree(tmp.path());
-    let assert2 = specrun()
+    let assert2 = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -394,7 +394,7 @@ fn upgrade_preserves_workspace_registry() {
 
     let registry_before = fs::read(tmp.path().join("registry.yaml")).unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -421,7 +421,7 @@ fn upgrade_preserves_workspace_registry() {
 
     // Second run no-op.
     let project_after_first = fs::read(specify.join("project.yaml")).unwrap();
-    specrun().current_dir(tmp.path()).args(["init", "--upgrade"]).assert().success();
+    specify_cmd().current_dir(tmp.path()).args(["init", "--upgrade"]).assert().success();
     assert_eq!(
         fs::read(specify.join("project.yaml")).unwrap(),
         project_after_first,
@@ -433,7 +433,7 @@ fn upgrade_preserves_workspace_registry() {
 fn upgrade_conflicts_workspace_migration() {
     for extra in [vec!["omnia"], vec!["--workspace"], vec!["--check-migration"]] {
         let tmp = tempdir().unwrap();
-        let mut cmd = specrun();
+        let mut cmd = specify_cmd();
         cmd.current_dir(tmp.path()).args(["init", "--upgrade"]).args(&extra);
         let assert = cmd.assert().failure();
         assert_eq!(

@@ -1,4 +1,4 @@
-//! `specrun plan create` CLI tests, the human-driven replay loop, and
+//! `specify plan create` CLI tests, the human-driven replay loop, and
 //! the `--auto-approve` Gate-1 contract.
 
 use crate::support::*;
@@ -18,7 +18,7 @@ slices:
 ",
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -30,9 +30,9 @@ slices:
         .assert()
         .success();
 
-    specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -44,7 +44,7 @@ slices:
         .assert()
         .success();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "transition", "registration-duplicate-email-crash", "done"])
         .assert()
@@ -78,7 +78,7 @@ slices:
 fn create_scaffolds_matches_golden() {
     let project = Project::init();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "my-change"])
         .assert()
@@ -101,9 +101,9 @@ fn create_scaffolds_matches_golden() {
 #[test]
 fn create_refuses_overwrite() {
     let project = Project::init();
-    specrun().current_dir(project.root()).args(["plan", "create", "first"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "create", "first"]).assert().success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "second"])
         .assert()
@@ -116,15 +116,15 @@ fn create_refuses_overwrite() {
 fn plan_create_then_validate_passes_clean() {
     let project = Project::init();
 
-    specrun().current_dir(project.root()).args(["plan", "create", "fresh"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "create", "fresh"]).assert().success();
 
     let assert =
-        specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+        specify_cmd().current_dir(project.root()).args(["plan", "validate"]).assert().success();
     assert_eq!(assert.get_output().status.code(), Some(0));
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
     assert!(
         !stdout.contains("ERROR"),
-        "freshly-scaffolded plan must pass `specrun plan validate` with no errors, got:\n{stdout}"
+        "freshly-scaffolded plan must pass `specify plan validate` with no errors, got:\n{stdout}"
     );
 }
 
@@ -139,7 +139,7 @@ fn create_auto_approve_stamps() {
     // `plan.transition.approved` event matching the post-create stamp.
     let project = Project::init();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "fresh", "--auto-approve"])
         .assert()
@@ -180,13 +180,13 @@ fn create_auto_approve_stamps() {
 
 #[test]
 fn plan_create_auto_approve_idempotent() {
-    // auto-approve Gate-1 contract: running `specrun plan transition <name> approved`
+    // auto-approve Gate-1 contract: running `specify plan transition <name> approved`
     // after a successful `--auto-approve` create must be a no-op —
     // exit 0, no second `plan.transition.approved` event, plan.yaml
     // unchanged.
     let project = Project::init();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "create", "fresh", "--auto-approve"])
         .assert()
@@ -196,7 +196,7 @@ fn plan_create_auto_approve_idempotent() {
     let before_lines = before.lines().filter(|l| !l.is_empty()).count();
     let plan_before = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "transition", "fresh", "approved"])
         .assert()
@@ -230,7 +230,7 @@ fn plan_create_auto_approve_invalid_name() {
     // lands on disk and the journal stays untouched.
     let project = Project::init();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "create", "Bad_Name", "--auto-approve"])
         .assert()
@@ -263,7 +263,7 @@ fn create_auto_approve_no_partial_events() {
     // leave the journal untouched.
     let project = Project::init();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -298,13 +298,13 @@ fn create_auto_approve_then_validate_passes() {
     // new validation drift on the empty-scaffold path.
     let project = Project::init();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "create", "fresh", "--auto-approve"])
         .assert()
         .success();
 
     let assert =
-        specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+        specify_cmd().current_dir(project.root()).args(["plan", "validate"]).assert().success();
     assert_eq!(assert.get_output().status.code(), Some(0));
 }

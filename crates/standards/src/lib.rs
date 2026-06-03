@@ -10,8 +10,8 @@
 //! than through this crate.
 //!
 //! **Crate name vs modules:** `specify-standards` is the whole standards layer
-//! (policy resolution plus the `specrun lint` scanner). The [`rules`]
-//! module owns parsing and `specrun rules export`; [`lint`] owns indexing
+//! (policy resolution plus the `specify lint` scanner). The [`rules`]
+//! module owns parsing and `specify rules export`; [`lint`] owns indexing
 //! and hint evaluation — not a separate `specify-rules` crate.
 //!
 //! The internal module shape preserves the rules-vs-lint split:

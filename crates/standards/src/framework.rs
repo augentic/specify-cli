@@ -1,5 +1,5 @@
 //! Framework authoring checks — the imperative `Check` pass behind
-//! `specdev lint`. Predicates enforce framework authoring standards
+//! `specify lint framework`. Predicates enforce framework authoring standards
 //! (skill markdown shape, adapter manifests, brief discipline, prose
 //! vocabulary, rule namespace ownership, …) by scanning the framework
 //! repo through a [`context::Context`] and emitting canonical

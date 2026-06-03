@@ -1,5 +1,5 @@
 //! Shared CLI output format and the single [`emit`] entry point used by
-//! both `specrun` and `specdev`, plus the shared lint output tail:
+//! every `specify` surface, plus the shared lint output tail:
 //! [`run_lint`] is the one kernel both lint handlers call —
 //! [`emit_lint_report`] renders one envelope and the internal
 //! `finish_lint` turns the outcome into the handler's terminal
@@ -59,7 +59,7 @@ pub fn emit<T: Serialize>(
     }
 }
 
-/// The shared lint-output tail for the `specrun lint` and `specdev lint`
+/// The shared lint-output tail for the `specify lint` and `specify lint framework`
 /// handlers (REVIEW.md A19). Carries the already-composed
 /// [`DiagnosticReport`] plus everything [`emit_diagnostic_report`] needs
 /// to render it, journal the run, and decide blocking status in one
@@ -78,9 +78,9 @@ pub struct LintEmit<'a> {
     /// Wall-clock duration of the scan in milliseconds.
     pub elapsed_ms: u128,
     /// Append an extra newline after the (already newline-terminated)
-    /// body. `specrun` historically does (`println!`); `specdev` does
-    /// not (`print!`) — preserved here so neither surface's stdout shape
-    /// shifts under the unification.
+    /// body. `specify lint` does (`println!`); `specify lint framework`
+    /// does not (`print!`) — preserved here so neither surface's stdout
+    /// shape shifts under the unification.
     pub trailing_newline: bool,
 }
 
@@ -91,7 +91,7 @@ pub struct LintEmit<'a> {
 /// Shared by both lint handlers so the render → print → journal →
 /// blocking-decision sequence lives in one place. Callers map the
 /// returned [`RenderError`] and the blocking flag onto their own
-/// surface conventions (`specrun` → `Result`, `specdev` → `Exit`).
+/// surface conventions (both lint surfaces map it onto `Result`).
 ///
 /// # Errors
 ///
@@ -118,8 +118,8 @@ pub fn emit_diagnostic_report(emit: LintEmit<'_>) -> Result<bool, RenderError> {
 }
 
 /// Everything [`emit_lint_report`] needs to run one lint pipeline and
-/// render its envelope. The two lint surfaces (`specrun lint run`,
-/// `specdev lint`) differ only in the inputs and config they assemble
+/// render its envelope. The two lint surfaces (`specify lint run`,
+/// `specify lint framework`) differ only in the inputs and config they assemble
 /// here — the render → journal → blocking-decision tail is shared.
 pub struct LintRun<'a> {
     /// Resolver inputs (project dir, rules root, adapters, filters).
@@ -137,8 +137,8 @@ pub struct LintRun<'a> {
     /// Scan clock started at handler entry; the elapsed span lands on
     /// the journal event.
     pub started_at: Instant,
-    /// Append an extra newline after the body (`specrun` does,
-    /// `specdev` does not). See [`LintEmit::trailing_newline`].
+    /// Append an extra newline after the body (`specify lint` does,
+    /// `specify lint framework` does not). See [`LintEmit::trailing_newline`].
     pub trailing_newline: bool,
 }
 
@@ -177,7 +177,7 @@ pub fn emit_lint_report(run: LintRun<'_>) -> Result<Option<DiagnosticReport>> {
 /// Drive one lint surface end to end: run the caller's pipeline
 /// assembly + emit closure, then collapse its outcome into the
 /// terminal `Result<()>`. This is the single kernel both lint handlers
-/// (`specrun lint run`, `specdev lint`) call, so the build → emit →
+/// (`specify lint run`, `specify lint framework`) call, so the build → emit →
 /// finish → blocking-gate sequence lives in one place; the handlers
 /// differ only in the `PipelineConfig` their `build` closure assembles.
 ///

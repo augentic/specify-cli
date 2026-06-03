@@ -173,8 +173,8 @@ fn check_invocation_positionals(framework_root: &Path) -> Result<Vec<Diagnostic>
     let skill_token_re =
         Regex::new(r"/[a-z][a-z0-9-]*:[a-z][a-z0-9-]*").expect("skill token regex");
     let flag_token_re = Regex::new(r"--[a-z][a-z0-9-]*").expect("flag token regex");
-    let cli_command_re = Regex::new(r"\b(specrun|specdev|cargo|gh|git|deno|npm|pnpm|yarn)\s")
-        .expect("cli command regex");
+    let cli_command_re =
+        Regex::new(r"\b(specify|cargo|gh|git|deno|npm|pnpm|yarn)\s").expect("cli command regex");
     let markdown_link_re = Regex::new(r"\]\([^)]+\)").expect("markdown link regex");
 
     let mut targets = collect_walk_targets(&scan_roots, &["md", "mdc"], framework_root)?;
@@ -255,19 +255,19 @@ fn forbidden_patterns() -> Vec<ForbiddenPattern> {
         },
         ForbiddenPattern {
             pattern: Regex::new(r"\bspecify validate\b").expect("forbidden pattern"),
-            fix: "use `specrun slice validate`",
+            fix: "use `specify slice validate`",
         },
         ForbiddenPattern {
             pattern: Regex::new(r"\bspecify merge\b").expect("forbidden pattern"),
-            fix: "use `specrun slice merge run`",
+            fix: "use `specify slice merge run`",
         },
         ForbiddenPattern {
             pattern: Regex::new(r"\bspecify change plan\b").expect("forbidden pattern"),
-            fix: "use `specrun plan`",
+            fix: "use `specify plan`",
         },
         ForbiddenPattern {
             pattern: Regex::new(r"\bspecify change draft\b").expect("forbidden pattern"),
-            fix: "use `/spec:plan` or `specrun plan create`",
+            fix: "use `/spec:plan` or `specify plan create`",
         },
         ForbiddenPattern {
             pattern: Regex::new(r"\b[Ii]nitiative\b").expect("forbidden pattern"),

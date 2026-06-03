@@ -1,4 +1,4 @@
-//! `specrun plan archive` CLI tests, including the working-directory
+//! `specify plan archive` CLI tests, including the working-directory
 //! co-move (L1.K / L3.B).
 
 use crate::support::*;
@@ -43,7 +43,8 @@ fn plan_archive_happy_path_text() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
 
-    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().success();
+    let assert =
+        specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
     assert!(
         stdout.contains("Archived plan to"),
@@ -60,7 +61,7 @@ fn plan_archive_happy_path_json() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "archive"])
         .assert()
@@ -83,7 +84,8 @@ fn plan_archive_refuses_without_force() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+    let assert =
+        specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -105,7 +107,7 @@ fn plan_archive_refuses_json_lists_entries() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "archive"])
         .assert()
@@ -127,7 +129,11 @@ fn plan_archive_with_force_succeeds() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    specrun().current_dir(project.root()).args(["plan", "archive", "--force"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["plan", "archive", "--force"])
+        .assert()
+        .success();
 
     let archived = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
     assert!(archived.exists(), "archived file missing at {}", archived.display());
@@ -152,7 +158,7 @@ slices: []
 ",
     );
 
-    specrun().current_dir(project.root()).args(["plan", "archive"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().success();
 
     let re = regex::Regex::new(r"^my-change-\d{8}\.yaml$").expect("regex compiles");
     let entries: Vec<String> = fs::read_dir(archive_dir(&project))
@@ -177,7 +183,8 @@ fn plan_archive_refuses_when_dest_exists() {
     let dest = dest_dir.join(format!("demo-{}.yaml", today_yyyymmdd()));
     fs::write(&dest, "prior: content\n").expect("seed prior archive");
 
-    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+    let assert =
+        specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -198,7 +205,8 @@ fn plan_archive_missing_file_errors() {
     let project = Project::init();
     // Deliberately do NOT seed plan.yaml.
 
-    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+    let assert =
+        specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(
@@ -230,7 +238,7 @@ fn plan_archive_co_moves_working_dir() {
         &[("discovery.md", b"# discovery\n"), ("proposal.md", b"# proposal\n")],
     );
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "archive"])
         .assert()
@@ -266,7 +274,7 @@ fn plan_archive_no_working_dir_json() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "archive"])
         .assert()
@@ -293,7 +301,8 @@ fn plan_archive_co_move_collision_halts() {
     let dest_dir = archive_dir(&project).join(format!("demo-{}", today_yyyymmdd()));
     fs::create_dir_all(&dest_dir).expect("seed collision dir");
 
-    let assert = specrun().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
+    let assert =
+        specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
     assert_eq!(assert.get_output().status.code(), Some(1));
     let stderr = std::str::from_utf8(&assert.get_output().stderr).expect("utf8 stderr");
     assert!(

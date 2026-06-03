@@ -8,7 +8,7 @@
 //!   schema file from the project tree, after refusing paths that
 //!   escape `project_dir` via `..`.
 //!
-//! `http(s)://` references are rejected so `specrun lint` runs
+//! `http(s)://` references are rejected so `specify lint` runs
 //! offline and reproducibly.
 //!
 //! Per-file targeting follows the v1 default — the hint applies to
@@ -55,7 +55,7 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
 
 /// Run-scoped memo for `kind: schema` evaluation.
 ///
-/// Built once per `specrun lint` / `specdev lint` invocation in
+/// Built once per `specify lint` / `specify lint framework` invocation in
 /// [`super::evaluate_rules`] and threaded by `&mut` into every per-rule
 /// [`super::evaluate`] call, so a schema referenced by N rules compiles
 /// once per run instead of once per rule. Two maps back the two results
@@ -141,7 +141,7 @@ fn compile_schema_for_hint(
         return Err(HintError::SchemaResolve {
             rule_id: rule.rule_id.clone(),
             schema_ref: raw.to_owned(),
-            reason: "external http(s) references are not allowed; specrun lint must run offline"
+            reason: "external http(s) references are not allowed; specify lint must run offline"
                 .to_owned(),
         });
     }

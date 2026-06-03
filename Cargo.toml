@@ -10,12 +10,8 @@ keywords = ["specify", "cli", "spec", "workflow", "automation"]
 readme = "README.md"
 
 [[bin]]
-name = "specrun"
-path = "src/bin/specrun.rs"
-
-[[bin]]
-name = "specdev"
-path = "src/bin/specdev.rs"
+name = "specify"
+path = "src/bin/specify.rs"
 
 [dependencies]
 clap.workspace = true

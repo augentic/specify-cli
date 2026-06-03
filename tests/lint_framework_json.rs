@@ -1,10 +1,10 @@
-//! Golden tests for `specdev lint --format json`.
+//! Golden tests for `specify lint framework --format json`.
 //!
 //! These tests pin the byte-stable wire envelope emitted by the
-//! `specdev` binary's `--format json` mode (CH-22 plumbing, CH-21
+//! `specify lint framework` `--format json` mode (CH-22 plumbing, CH-21
 //! finding mapper, CH-20 severity table) against representative
 //! synthetic framework trees. They exercise the binary surface
-//! directly via [`assert_cmd::Command::cargo_bin("specdev")`] so the
+//! directly via [`assert_cmd::Command::cargo_bin("specify")`] so the
 //! full CLI plumbing — argument parsing, dispatch, envelope emit,
 //! exit-code mapping — stays under test the way RM-10 / CI
 //! integrations will consume it.
@@ -33,7 +33,7 @@
 //!    the normalised finding. The stored fingerprint then reflects
 //!    the placeholder-anchored canonical preimage.
 //! 4. Re-serialise and compare/regenerate the placeholder-anchored
-//!    envelope against `tests/fixtures/specdev-lint/<name>.json`.
+//!    envelope against `tests/fixtures/lint-framework/<name>.json`.
 //!
 //! The resulting goldens are machine-portable and self-consistent:
 //! consumers replaying the test on any host produce the same path
@@ -47,7 +47,7 @@
 //! check predicates:
 //!
 //! ```text
-//! REGENERATE_GOLDENS=1 cargo test --test specdev_check_json
+//! REGENERATE_GOLDENS=1 cargo nextest run --test lint_framework_json
 //! ```
 //!
 //! The helper writes goldens as `serde_json::to_string_pretty` +
@@ -69,7 +69,7 @@ const FRAMEWORK_ROOT_PLACEHOLDER: &str = "<FRAMEWORK_ROOT>";
 
 /// Resolve the directory where golden fixtures live.
 fn goldens_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("specdev-lint")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("lint-framework")
 }
 
 /// Write the minimal directory and file scaffold that
@@ -116,7 +116,7 @@ fn write_scaffold(root: &Path) {
   "name": "test",
   "owner": { "name": "Test Owner", "email": "test@example.com" },
   "metadata": {
-    "description": "Synthetic marketplace for specdev golden tests.",
+    "description": "Synthetic marketplace for specify lint framework golden tests.",
     "version": "0.0.0",
     "pluginRoot": "plugins"
   },
@@ -124,7 +124,7 @@ fn write_scaffold(root: &Path) {
     {
       "name": "test",
       "source": "test",
-      "description": "Synthetic plugin used by specdev golden tests."
+      "description": "Synthetic plugin used by specify lint framework golden tests."
     }
   ]
 }
@@ -141,7 +141,7 @@ fn write_scaffold(root: &Path) {
         r#"{
   "name": "test",
   "displayName": "Test Plugin",
-  "description": "Synthetic plugin used by specdev golden tests.",
+  "description": "Synthetic plugin used by specify lint framework golden tests.",
   "version": "0.0.0"
 }
 "#,
@@ -154,7 +154,7 @@ fn write_scaffold(root: &Path) {
     fs::write(
         &skill_schema,
         r#"{
-  "$comment": "Synthetic skill schema for specdev golden tests; carries the literal 512 description cap.",
+  "$comment": "Synthetic skill schema for specify lint framework golden tests; carries the literal 512 description cap.",
   "type": "object",
   "properties": {
     "description": { "type": "string", "maxLength": 512 }
@@ -195,7 +195,7 @@ fn write_source_adapter_manifest(root: &Path, name: &str) {
             r"name: {name}
 version: 1
 axis: source
-description: Synthetic source adapter for specdev golden tests.
+description: Synthetic source adapter for specify lint framework golden tests.
 briefs:
   survey: briefs/survey.md
   extract: briefs/extract.md
@@ -244,7 +244,7 @@ fn write_target_adapter_manifest(root: &Path, name: &str) {
             r"name: {name}
 version: 1
 axis: target
-description: Synthetic target adapter for specdev golden tests.
+description: Synthetic target adapter for specify lint framework golden tests.
 briefs:
   shape: briefs/shape.md
   build: briefs/build.md
@@ -255,16 +255,16 @@ briefs:
     .expect("adapter.yaml");
 }
 
-/// Run `specdev lint --framework-root <root> --format json` and
+/// Run `specify lint framework --framework-root <root> --format json` and
 /// return the (exit code, stdout, stderr) triple.
-fn run_specdev_json(root: &Path) -> (Option<i32>, Vec<u8>, Vec<u8>) {
-    let output = Command::cargo_bin("specdev")
-        .expect("cargo_bin(specdev)")
-        .args(["lint", "--framework-root"])
+fn run_lint_framework_json(root: &Path) -> (Option<i32>, Vec<u8>, Vec<u8>) {
+    let output = Command::cargo_bin("specify")
+        .expect("cargo_bin(specify)")
+        .args(["lint", "framework", "--framework-root"])
         .arg(root)
         .args(["--format", "json"])
         .output()
-        .expect("specdev invocation");
+        .expect("specify lint framework invocation");
     (output.status.code(), output.stdout, output.stderr)
 }
 
@@ -334,7 +334,7 @@ fn assert_golden(actual: &Value, name: &str) {
     let expected = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
         panic!(
             "golden {} missing ({err}); regenerate via \
-             REGENERATE_GOLDENS=1 cargo test --test specdev_check_json",
+             REGENERATE_GOLDENS=1 cargo nextest run --test lint_framework_json",
             golden_path.display()
         )
     });
@@ -362,7 +362,7 @@ fn clean_tree_emits_empty_envelope() {
         &valid_rule_body("SRC-001"),
     );
 
-    let (code, stdout, stderr) = run_specdev_json(temp.path());
+    let (code, stdout, stderr) = run_lint_framework_json(temp.path());
     assert_eq!(
         code,
         Some(0),
@@ -389,7 +389,7 @@ fn clean_tree_emits_empty_envelope() {
 /// (2) A framework tree carrying one schema violation, one
 /// namespace-ownership violation, and one duplicate-id violation
 /// emits the populated envelope captured by
-/// `tests/fixtures/specdev-lint/violations.json`. Every finding in
+/// `tests/fixtures/lint-framework/violations.json`. Every finding in
 /// the envelope is additionally schema-validated via
 /// [`validate_diagnostic_json`] (CH-16) — covering scenario (3) from
 /// CH-23 in the same test pass.
@@ -434,7 +434,7 @@ Body without trigger and severity.
         &valid_rule_body("FRAME-001"),
     );
 
-    let (code, stdout, stderr) = run_specdev_json(temp.path());
+    let (code, stdout, stderr) = run_lint_framework_json(temp.path());
     assert_eq!(
         code,
         Some(2),
@@ -467,20 +467,20 @@ Body without trigger and severity.
 /// (empty-findings) envelope on stdout. The failure now routes through
 /// the shared runtime `output::report` (A19), so `--format json`
 /// renders the structured `ErrorBody` envelope on stderr — carrying
-/// the `specdev-framework-root` discriminant — exactly as `specrun
+/// the `framework-root` discriminant — exactly as `specify
 /// --format json` does, rather than a bespoke `error:` text line.
 #[test]
 fn missing_framework_root_emits_envelope() {
     let temp = TempDir::new().expect("tempdir");
     let missing = temp.path().join("does-not-exist");
 
-    let output = Command::cargo_bin("specdev")
-        .expect("cargo_bin(specdev)")
-        .args(["lint", "--framework-root"])
+    let output = Command::cargo_bin("specify")
+        .expect("cargo_bin(specify)")
+        .args(["lint", "framework", "--framework-root"])
         .arg(&missing)
         .args(["--format", "json"])
         .output()
-        .expect("specdev invocation");
+        .expect("specify lint framework invocation");
 
     assert_eq!(
         output.status.code(),
@@ -511,7 +511,7 @@ fn missing_framework_root_emits_envelope() {
     });
     assert_eq!(
         error_body.get("error").and_then(Value::as_str),
-        Some("specdev-framework-root"),
+        Some("framework-root"),
         "stderr envelope must carry the infrastructure-error discriminant; got:\n{stderr}",
     );
     assert_eq!(
@@ -523,7 +523,7 @@ fn missing_framework_root_emits_envelope() {
 
 /// (5) Default text output on a clean tree now prints the
 /// diagnostics-formatter set's pretty summary line from the
-/// `specdev lint` extension. Specifically: a `0 finding(s)`
+/// `specify lint framework` extension. Specifically: a `0 finding(s)`
 /// header and a `Summary: 0 critical, 0 important, ...` tally,
 /// driven by `specify_diagnostics::render` with `Format::Pretty`.
 #[test]
@@ -537,13 +537,13 @@ fn text_output_renders_summary() {
         &valid_rule_body("SRC-001"),
     );
 
-    let output = Command::cargo_bin("specdev")
-        .expect("cargo_bin(specdev)")
-        .args(["lint", "--framework-root"])
+    let output = Command::cargo_bin("specify")
+        .expect("cargo_bin(specify)")
+        .args(["lint", "framework", "--framework-root"])
         .arg(temp.path())
         .env("NO_COLOR", "1")
         .output()
-        .expect("specdev invocation");
+        .expect("specify lint framework invocation");
 
     assert_eq!(
         output.status.code(),

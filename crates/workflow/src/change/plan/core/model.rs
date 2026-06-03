@@ -60,7 +60,7 @@ pub enum Status {
 ///
 /// Two stored states only — `pending` (default after `plan create`)
 /// and `approved` (operator-stamped at Gate 1 via
-/// `specrun plan transition <plan-name> approved`). "Currently
+/// `specify plan transition <plan-name> approved`). "Currently
 /// executing" and "drained" are computed from per-entry [`Status`] at
 /// read time via [`Plan::is_executing`] / [`Plan::is_drained`].
 #[derive(
@@ -163,14 +163,14 @@ pub struct Entry {
     /// `Likely` is set by `/spec:plan`'s `propose` sub-step on
     /// materially-disagreeing lead synopses; `Accepted` /
     /// `Rejected` are written by the operator at Gate 1 via
-    /// `specrun plan amend --divergence`. Advisory metadata in v1.
+    /// `specify plan amend --divergence`. Advisory metadata in v1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub divergence: Option<Divergence>,
     /// per-slice authority override — optional per-slice authority override map keyed
     /// by claim kind, valued by source key. Keys are the closed
     /// [`ClaimKind`] enum; values MUST be source keys present in
     /// this slice's own [`Entry::sources`] list — orphan keys are
-    /// rejected by `specrun slice validate` with
+    /// rejected by `specify slice validate` with
     /// `slice-authority-override-orphan-source`. Empty map and
     /// missing field are equivalent.
     #[serde(default, skip_serializing_if = "slice_authority_override_is_empty")]
@@ -191,10 +191,10 @@ pub struct Entry {
 /// divergence and writer-ownership contract — the CLI is the single writer of every variant of
 /// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
 /// disk in the `propose`-driven `/spec:plan` flow (RFC-29 D2) when the
-/// agent runs `specrun plan amend --divergence likely` *after*
-/// `specrun plan propose --from` (the slice writer), because slices
+/// agent runs `specify plan amend --divergence likely` *after*
+/// `specify plan propose --from` (the slice writer), because slices
 /// do not exist until projection runs. `Accepted` / `Rejected` reach
-/// disk via `specrun plan amend --divergence`. `plan amend` is the
+/// disk via `specify plan amend --divergence`. `plan amend` is the
 /// only writer of the field — `plan create` scaffolds an empty plan
 /// and never stamps divergence. `none` is the implicit-absent
 /// default and is never serialised explicitly into a slice record.
@@ -208,7 +208,7 @@ pub enum Divergence {
     #[serde(rename = "none")]
     None,
     /// Staged by the `/spec:plan` agent after `propose --from`, via
-    /// `specrun plan amend --divergence likely`, on
+    /// `specify plan amend --divergence likely`, on
     /// materially-disagreeing lead synopses.
     Likely,
     /// Operator-stamped at Gate 1 — divergence acknowledged and
@@ -300,7 +300,7 @@ impl SourceBinding {
 ///
 /// This is the *resolved* target form, produced by
 /// [`crate::change::plan::core::resolve_target`] from a slice's bound
-/// project topology and surfaced by `specrun plan next`, the slice
+/// project topology and surfaced by `specify plan next`, the slice
 /// `.metadata.yaml`, and the build request. It is no longer a stored
 /// `plan.yaml` field — a slice binds only a `project`, and the target
 /// adapter is resolved on demand.
@@ -602,7 +602,7 @@ pub struct EntryPatch {
     pub context: Option<Vec<String>>,
     /// Set `divergence` when `Some`. `None` leaves the field
     /// untouched. The CLI is the only caller that materialises this
-    /// patch (`specrun plan amend --divergence`) — divergence and writer-ownership contract
+    /// patch (`specify plan amend --divergence`) — divergence and writer-ownership contract
     /// widens the accepted operator surface to include `Likely`
     /// alongside `Accepted` / `Rejected`; the implicit `None` value
     /// is still rejected at the flag-parser level (omit

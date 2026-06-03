@@ -25,7 +25,7 @@ fn plan_add_structured_sources_round_trips() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "--format",
@@ -54,7 +54,7 @@ fn plan_add_bare_source_round_trips() {
 
     // Slice name `add-search-filter`; bare `--sources intent` is
     // sugar for `{ source: intent, lead: add-search-filter }`.
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "add", "add-search-filter", "--sources", "intent"])
         .assert()
@@ -78,7 +78,7 @@ fn plan_add_structured_lead_differs() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "add", "foo", "--sources", "intent=different-candidate"])
         .assert()
@@ -96,7 +96,7 @@ fn add_rejects_dangling_equals() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "add", "foo", "--sources", "intent="])
         .assert()
@@ -110,13 +110,13 @@ fn plan_amend_add_source_appends_binding() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--sources", "intent"])
         .assert()
         .success();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--add-source", "identity-design-notes=user-registration"])
         .assert()
@@ -134,7 +134,7 @@ fn plan_amend_remove_source_drops_binding() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -148,7 +148,7 @@ fn plan_amend_remove_source_drops_binding() {
         .assert()
         .success();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--remove-source", "intent"])
         .assert()
@@ -164,13 +164,13 @@ fn amend_remove_source_unknown_key_errors() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "add", "foo", "--sources", "intent"])
         .assert()
         .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "amend", "foo", "--remove-source", "no-such-key"])
         .assert()
@@ -184,9 +184,9 @@ fn amend_divergence_accepted_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--divergence", "accepted"])
         .assert()
@@ -204,9 +204,9 @@ fn amend_divergence_rejected_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--divergence", "rejected"])
         .assert()
@@ -227,9 +227,9 @@ fn amend_divergence_likely_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "amend", "foo", "--divergence", "likely"])
         .assert()
@@ -247,9 +247,9 @@ fn plan_amend_divergence_none_refused() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specrun().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "amend", "foo", "--divergence", "none"])
         .assert()

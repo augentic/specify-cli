@@ -68,14 +68,14 @@ impl Event {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "payload")]
 pub enum EventKind {
-    /// Gate 1 cleared — `specrun plan transition <plan-name> approved`.
+    /// Gate 1 cleared — `specify plan transition <plan-name> approved`.
     #[serde(rename = "plan.transition.approved", rename_all = "kebab-case")]
     PlanTransitionApproved {
         /// Plan name from `plan.yaml.name`.
         plan_name: PlanName,
     },
     /// Operator walked one rung backwards on per-entry status via
-    /// `specrun plan transition <entry> --undo`. One event per rung
+    /// `specify plan transition <entry> --undo`. One event per rung
     /// (`done → in-progress` and `in-progress → pending` each fire
     /// individually) so the journal records every step the operator
     /// took and replay traces line up with the forward-direction
@@ -92,7 +92,7 @@ pub enum EventKind {
         to: crate::change::Status,
     },
     /// Stamped `slices[].divergence` via
-    /// `specrun plan amend --divergence <likely|accepted|rejected>`.
+    /// `specify plan amend --divergence <likely|accepted|rejected>`.
     /// The CLI is the single writer. In the propose flow the
     /// `/spec:plan` agent stages `likely`
     /// through this event after `propose --from`; the operator later
@@ -131,7 +131,7 @@ pub enum EventKind {
     },
     /// `[conflict]` on a requirement in `spec.md` — same-authority
     /// disagreement the operator must reconcile. Emitted by
-    /// `specrun slice validate` after a successful run.
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.conflict", rename_all = "kebab-case")]
     SliceSynthesisConflict {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -141,7 +141,7 @@ pub enum EventKind {
     },
     /// `[divergence]` on a requirement in `spec.md` — cross-authority
     /// disagreement preserved as inline commentary. Emitted by
-    /// `specrun slice validate` after a successful run.
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.divergence", rename_all = "kebab-case")]
     SliceSynthesisDivergence {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -151,7 +151,7 @@ pub enum EventKind {
     },
     /// `[unknown]` on a requirement in `spec.md` — a gap the operator
     /// must close before the requirement is meaningful. Emitted by
-    /// `specrun slice validate` after a successful run.
+    /// `specify slice validate` after a successful run.
     #[serde(rename = "slice.synthesis.unknown", rename_all = "kebab-case")]
     SliceSynthesisUnknown {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -227,16 +227,16 @@ pub enum EventKind {
         /// Short human reason / finding code for the failure.
         reason: String,
     },
-    /// `specrun slice merge` began folding the slice's deltas into the
+    /// `specify slice merge` began folding the slice's deltas into the
     /// baseline. The `slice.merge.*` pair
-    /// fires on the `specrun slice merge` validator outcome, not on a
+    /// fires on the `specify slice merge` validator outcome, not on a
     /// merge report. One event per slice.
     #[serde(rename = "slice.merge.started", rename_all = "kebab-case")]
     SliceMergeStarted {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// `specrun slice merge` validated and applied the slice's deltas
+    /// `specify slice merge` validated and applied the slice's deltas
     /// to the baseline. Fires on the
     /// validator outcome, not on a merge report. One event per slice.
     #[serde(rename = "slice.merge.succeeded", rename_all = "kebab-case")]
@@ -244,7 +244,7 @@ pub enum EventKind {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// `specrun slice merge` refused to fold the slice into the
+    /// `specify slice merge` refused to fold the slice into the
     /// baseline. Fires on the validator
     /// outcome, not on a merge report. `reason` carries a short human
     /// reason or finding code so the journal records why the merge
@@ -368,8 +368,8 @@ pub enum EventKind {
     },
     /// per-slice authority override — operator set or cleared a per-slice
     /// `authority-override` map at Gate 1. CLI-driven via
-    /// `specrun plan create --authority-override`,
-    /// `specrun plan amend --authority-override`, or the matching
+    /// `specify plan create --authority-override`,
+    /// `specify plan amend --authority-override`, or the matching
     /// `--clear-*` flags.
     #[serde(rename = "plan.amend.authority-override", rename_all = "kebab-case")]
     PlanAmendAuthorityOverride {
@@ -388,10 +388,10 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source: Option<String>,
     },
-    /// `specrun plan propose --from` validated the agent reconciliation
+    /// `specify plan propose --from` validated the agent reconciliation
     /// response and wrote `plan.yaml.slices[]`. One indivisible event
     /// per successful invocation — the `/spec:plan` skill never calls
-    /// `specrun journal emit` here.
+    /// `specify journal emit` here.
     #[serde(rename = "plan.reconcile.completed", rename_all = "kebab-case")]
     PlanReconcileCompleted {
         /// Plan name from `plan.yaml.name`.
@@ -408,7 +408,7 @@ pub enum EventKind {
     /// specs it touched, a one-line outcome summary, and the git SHA
     /// the baseline sat at. The archived slice folder under
     /// `.specify/archive/` is a prunable convenience cache
-    /// (`specrun archive prune`), not the system of record — this
+    /// (`specify archive prune`), not the system of record — this
     /// event plus git history of `.specify/specs/` is.
     #[serde(rename = "slice.archive.created", rename_all = "kebab-case")]
     SliceArchiveCreated {
@@ -432,7 +432,7 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         decisions: Vec<String>,
     },
-    /// `specrun upgrade` self-updated the CLI binary. The new binary
+    /// `specify upgrade` self-updated the CLI binary. The new binary
     /// writes the event; `from` is the version observed before the
     /// upgrade, `to` the version now running, `channel` the resolved
     /// install channel (`cargo | brew | binary`).
@@ -445,7 +445,7 @@ pub enum EventKind {
         /// Resolved install channel (`cargo | brew | binary`).
         channel: String,
     },
-    /// `specrun plugins refresh` invalidated the Cursor plugin cache.
+    /// `specify plugins refresh` invalidated the Cursor plugin cache.
     /// `deleted_paths` are the cache directories removed (wire:
     /// `deleted-paths`); `marketplace` is the resolved marketplace file
     /// path whose top-level `name` scoped the deletion.
@@ -457,7 +457,7 @@ pub enum EventKind {
         /// the deletion.
         marketplace: String,
     },
-    /// `specrun migrate` applied a registered migrator. `kind` is the
+    /// `specify migrate` applied a registered migrator. `kind` is the
     /// stable migrator id (e.g. `v1-to-v2`); the counts (wire:
     /// `files-rewritten`, `files-moved`) summarise the applied plan.
     #[serde(rename = "migration.applied", rename_all = "kebab-case")]
@@ -469,7 +469,7 @@ pub enum EventKind {
         /// Count of files moved (wire: `files-moved`).
         files_moved: usize,
     },
-    /// `specrun migrate` staged a migrator but left the project
+    /// `specify migrate` staged a migrator but left the project
     /// untouched (atomic rollback). `kind` is the migrator id; `reason`
     /// is a short diagnostic (e.g. `staged-validation-failed`).
     #[serde(rename = "migration.skipped", rename_all = "kebab-case")]
@@ -479,7 +479,7 @@ pub enum EventKind {
         /// Short diagnostic (e.g. `staged-validation-failed`).
         reason: String,
     },
-    /// `specrun lint` finished a scan. The payload carries the scan
+    /// `specify lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
     /// `baseline_present` flag (currently hard-coded `false`), and the
     /// CLI exit code the scan resolved to. Emission is
@@ -528,7 +528,7 @@ pub struct LintScope {
     /// to a single target; `None` for project-wide scans.
     pub target: Option<String>,
     /// Slice id from `plan.yaml.slices[].name` when the scan was
-    /// narrowed to one slice (e.g. `specrun lint run --slice <name>`).
+    /// narrowed to one slice (e.g. `specify lint run --slice <name>`).
     pub slice: Option<String>,
     /// Artifact path (relative to project root) when the scan was
     /// narrowed to a single artifact; `None` otherwise.
@@ -777,7 +777,7 @@ fn for_each_line_rev(
 /// invocation, well below the limit.
 ///
 /// Used by CLI verbs that own more than one journal emit per
-/// invocation (e.g. `specrun plan create --auto-approve
+/// invocation (e.g. `specify plan create --auto-approve
 /// --authority-override`, which stages both `plan.transition.approved`
 /// and `plan.amend.authority-override` in the same Gate-1 consent), and
 /// equally by single-event callers via

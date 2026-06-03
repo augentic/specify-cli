@@ -3,7 +3,7 @@
 use specify_standards::framework::Context;
 
 fn framework_root() -> Option<std::path::PathBuf> {
-    std::env::var("SPECDEV_FRAMEWORK_ROOT").ok().map(std::path::PathBuf::from)
+    std::env::var("SPECIFY_FRAMEWORK_ROOT").ok().map(std::path::PathBuf::from)
 }
 
 #[test]

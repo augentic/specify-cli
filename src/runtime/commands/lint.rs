@@ -1,5 +1,5 @@
-//! `specrun lint *` dispatcher umbrella per the standards-layer contract
-//! §"`specrun lint` (Phase 2 CLI)".
+//! `specify lint *` dispatcher umbrella per the standards-layer contract
+//! §"`specify lint` (Phase 2 CLI)".
 //!
 //! Composes the standards-layer pipeline that lives in `specify-standards`
 //! (`lint::index::build` → `lint::eval::evaluate` →
@@ -8,4 +8,5 @@
 //! [`crate::runtime::output`].
 
 pub mod cli;
+pub mod framework;
 pub mod run;

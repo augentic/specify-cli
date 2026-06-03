@@ -1,6 +1,6 @@
 //! CLI self-update support (RFC-30 §D1, Wave C).
 //!
-//! Owns the channel-aware upgrade primitives the `specrun upgrade`
+//! Owns the channel-aware upgrade primitives the `specify upgrade`
 //! command drives: the closed [`InstallChannel`] enum and its
 //! filesystem/path-based [`InstallChannel::detect`]; the shared
 //! latest-release probe ([`latest_release_tag`]) `/spec:init` will reuse
@@ -29,7 +29,7 @@ const REPO_SLUG: &str = "augentic/specify-cli";
 /// Git source `cargo install --git` points at.
 const REPO_GIT_URL: &str = "https://github.com/augentic/specify-cli";
 /// Homebrew tap formula the `brew` channel upgrades.
-const BREW_FORMULA: &str = "augentic/tap/specrun";
+const BREW_FORMULA: &str = "augentic/tap/specify";
 /// Unauthenticated GitHub REST endpoint for the latest release; the
 /// `gh`-less probe fallback reads `tag_name` from its JSON.
 const RELEASES_LATEST_API: &str =
@@ -38,7 +38,7 @@ const RELEASES_LATEST_API: &str =
 /// resolves to it verbatim, skipping `gh`/network. Lets CI and
 /// air-gapped installs pin the target deterministically (and keeps the
 /// command's tests off the network).
-const RELEASE_TAG_ENV: &str = "SPECRUN_RELEASE_TAG";
+const RELEASE_TAG_ENV: &str = "SPECIFY_RELEASE_TAG";
 /// Whole-call cap for the REST probe (DNS + connect + headers + body).
 const PROBE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// TCP + TLS handshake cap for the REST probe.
@@ -48,9 +48,9 @@ const PROBE_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_PROBE_BYTES: u64 = 8 * 1024 * 1024;
 /// User-Agent for the REST probe. GitHub rejects requests without one.
 const PROBE_USER_AGENT: &str =
-    concat!("specrun/", env!("CARGO_PKG_VERSION"), " (+https://github.com/augentic/specify-cli)");
+    concat!("specify/", env!("CARGO_PKG_VERSION"), " (+https://github.com/augentic/specify-cli)");
 
-/// How the running `specrun` binary was installed.
+/// How the running `specify` binary was installed.
 ///
 /// Resolved by [`InstallChannel::detect`] from the binary's on-disk
 /// path; `--channel` on the command overrides detection. Each variant
@@ -165,10 +165,10 @@ fn home_dir() -> Option<PathBuf> {
 /// Resolve the latest published release tag (e.g. `v0.43.0`).
 ///
 /// Resolution order (RFC §"Latest-version probe"): the
-/// `SPECRUN_RELEASE_TAG` env override first; then `gh release view
+/// `SPECIFY_RELEASE_TAG` env override first; then `gh release view
 /// --json tagName -R <repo>` when `gh` is on PATH; then an
 /// unauthenticated GET against the GitHub REST `releases/latest`
-/// endpoint. Both `/spec:init`'s optional probe and `specrun upgrade`
+/// endpoint. Both `/spec:init`'s optional probe and `specify upgrade`
 /// call this.
 ///
 /// Probe failure is a warning, not an error: a missing `gh`, an
@@ -417,7 +417,7 @@ fn binary_channel_guidance(tag: Option<&str>) -> String {
 fn unknown_channel_error() -> Error {
     Error::Diag {
         code: "unknown-install-channel",
-        detail: "could not determine how specrun was installed; upgrade it the way you installed \
+        detail: "could not determine how specify was installed; upgrade it the way you installed \
                  it (cargo, Homebrew, or release archive), or pass --channel to override detection"
             .to_string(),
     }
@@ -430,14 +430,14 @@ mod tests {
     #[test]
     fn classify_cargo_bin() {
         let channel =
-            classify(Path::new("/home/u/.cargo/bin/specrun"), Some(Path::new("/home/u/.cargo")));
+            classify(Path::new("/home/u/.cargo/bin/specify"), Some(Path::new("/home/u/.cargo")));
         assert_eq!(channel, InstallChannel::Cargo);
     }
 
     #[test]
     fn classify_brew_cellar() {
         let channel = classify(
-            Path::new("/opt/homebrew/Cellar/specrun/0.3.0/bin/specrun"),
+            Path::new("/opt/homebrew/Cellar/specify/0.3.0/bin/specify"),
             Some(Path::new("/home/u/.cargo")),
         );
         assert_eq!(channel, InstallChannel::Brew);
@@ -446,14 +446,14 @@ mod tests {
     #[test]
     fn classify_known_binary_location() {
         let channel =
-            classify(Path::new("/usr/local/bin/specrun"), Some(Path::new("/home/u/.cargo")));
+            classify(Path::new("/usr/local/bin/specify"), Some(Path::new("/home/u/.cargo")));
         assert_eq!(channel, InstallChannel::Binary);
     }
 
     #[test]
     fn classify_unknown_path() {
         let channel =
-            classify(Path::new("/tmp/scratch/specrun"), Some(Path::new("/home/u/.cargo")));
+            classify(Path::new("/tmp/scratch/specify"), Some(Path::new("/home/u/.cargo")));
         assert_eq!(channel, InstallChannel::Unknown);
     }
 
@@ -461,7 +461,7 @@ mod tests {
     fn classify_cargo_needs_home() {
         // Without a resolved CARGO_HOME a cargo-bin path cannot be proven,
         // so it falls through to Unknown rather than being misclassified.
-        let channel = classify(Path::new("/home/u/.cargo/bin/specrun"), None);
+        let channel = classify(Path::new("/home/u/.cargo/bin/specify"), None);
         assert_eq!(channel, InstallChannel::Unknown);
     }
 

@@ -95,7 +95,7 @@ pub(super) fn scan_slice_specs(
 ///    over `<slice>/model.yaml` (skipped when absent).
 ///
 /// Provenance no longer has a file-drift gate: it is carried inline in
-/// `model.yaml` and projected on demand (`specrun slice provenance`),
+/// `model.yaml` and projected on demand (`specify slice provenance`),
 /// so there is no second representation to drift against. Spec-level
 /// `Sources:` / `Status:` coherence still runs in [`scan_slice_specs`].
 ///
@@ -191,7 +191,7 @@ fn override_orphans(layout: Layout<'_>, name: &str) -> Result<Vec<Diagnostic>> {
         return Ok(Vec::new());
     }
     let plan = Plan::load(&plan_path)?;
-    // Filter to the named slice only — `specrun slice validate` is
+    // Filter to the named slice only — `specify slice validate` is
     // per-slice by definition, and surfacing findings from other
     // slices would confuse the operator.
     let slice_entries: Vec<_> = plan.entries.iter().filter(|e| e.name == name).cloned().collect();

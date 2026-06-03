@@ -14,7 +14,7 @@
 //! three metadata lines, a blank line, and the body. Render and parse
 //! stay symmetric so the C9 `slice-spec-provenance-stale` check (which
 //! parses the on-disk `spec.md` with that same parser) and
-//! `specrun slice validate` round-trip the output cleanly. The tag is
+//! `specify slice validate` round-trip the output cleanly. The tag is
 //! the status text itself (`divergence`, …), so the parser's
 //! tag↔status coherence rule is satisfied by construction.
 //!

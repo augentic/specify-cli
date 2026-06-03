@@ -1,4 +1,4 @@
-//! `specrun plugins {doctor, refresh}` — Cursor plugin-cache inspection
+//! `specify plugins {doctor, refresh}` — Cursor plugin-cache inspection
 //! and invalidation (RFC-30 §D2, Wave D).
 //!
 //! Bootstrap verbs: they operate on the Cursor plugin cache and the
@@ -30,7 +30,7 @@ use crate::runtime::output;
 const RESTART_NOTICE: &str =
     "Plugin cache cleared. Restart Cursor to repopulate from the marketplace.";
 
-/// Dispatch the `specrun plugins {doctor, refresh}` family.
+/// Dispatch the `specify plugins {doctor, refresh}` family.
 pub(super) fn run(format: Format, action: PluginsAction) -> Result<()> {
     match action {
         PluginsAction::Doctor {
@@ -104,7 +104,7 @@ fn journal_refresh(outcome: &RefreshOutcome) -> Result<bool> {
     Ok(true)
 }
 
-/// Wire-stable `specrun plugins refresh` envelope (text + JSON).
+/// Wire-stable `specify plugins refresh` envelope (text + JSON).
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct RefreshBody {

@@ -1,18 +1,18 @@
-//! Acceptance matrix for the four `specrun init` shapes (RFC-30 Wave E
+//! Acceptance matrix for the four `specify init` shapes (RFC-30 Wave E
 //! item 6): `greenfield`, `brownfield`, `workspace`, and `migrated`.
 //!
-//! Each test drives the real `specrun` binary over a throwaway tempdir
+//! Each test drives the real `specify` binary over a throwaway tempdir
 //! and asserts the on-disk + JSON-envelope contract for one shape:
 //!
-//! - `greenfield` — a fresh `specrun init <adapter>` over an empty dir
+//! - `greenfield` — a fresh `specify init <adapter>` over an empty dir
 //!   scaffolds `.specify/` and pins the current `specify_version`.
-//! - `brownfield` — `specrun init --upgrade` over a populated regular
+//! - `brownfield` — `specify init --upgrade` over a populated regular
 //!   project bumps only the pin, keeps operator artifacts byte-stable,
 //!   and re-runs as a no-op.
 //! - `workspace` — the same re-entry over a populated workspace,
 //!   with the `workspace: true` discriminator and `registry.yaml` preserved.
-//! - `migrated` — the new end-to-end: `specrun migrate` transforms a v1
-//!   tree into the golden v2 tree, then `specrun init --upgrade`
+//! - `migrated` — the new end-to-end: `specify migrate` transforms a v1
+//!   tree into the golden v2 tree, then `specify init --upgrade`
 //!   re-enters the migrated artifact set.
 //!
 //! The `brownfield` / `workspace` headline invariants are also covered with an
@@ -30,9 +30,9 @@ use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
 mod common;
-use common::{copy_dir, omnia_schema_dir, parse_json, repo_root, specrun};
+use common::{copy_dir, omnia_schema_dir, parse_json, repo_root, specify_cmd};
 
-/// Version this binary stamps into `specify_version` (the `specrun`
+/// Version this binary stamps into `specify_version` (the `specify`
 /// crate and this test crate share the workspace version).
 const BINARY_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -41,7 +41,7 @@ const BINARY_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[test]
 fn greenfield() {
     let tmp = tempdir().unwrap();
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init"])
         .arg(omnia_schema_dir())
@@ -91,7 +91,7 @@ fn brownfield() {
     fs::write(tmp.path().join("AGENTS.md"), "# operator AGENTS.md\n").unwrap();
 
     let before = snapshot(tmp.path());
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -128,7 +128,7 @@ fn workspace() {
     fs::write(tmp.path().join("AGENTS.md"), "# workspace sentinel\n").unwrap();
 
     let before = snapshot(tmp.path());
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -164,7 +164,7 @@ fn migrated() {
     fs::write(root.join(".specify/project.yaml"), "name: legacy\nadapter: code-typescript\n")
         .unwrap();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "migrate", "--from", "1.0.0", "--to", "2.0.0", "--yes"])
         .assert()
@@ -211,7 +211,7 @@ fn migrated() {
     // is exercised green in section C below. This arm locks the honest
     // behavior of `migrate` followed by `init --upgrade` on the same
     // tree under a stale binary.
-    let floor = specrun()
+    let floor = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -237,7 +237,7 @@ fn migrated() {
     .unwrap();
 
     let before = snapshot(root2);
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root2)
         .args(["--format", "json", "init", "--upgrade"])
         .assert()
@@ -323,7 +323,7 @@ fn assert_only_project_yaml_changed(
 /// byte-stable no-op (`specify-version-changed: false`, tree unchanged).
 fn assert_second_run_is_noop(root: &Path) {
     let before = snapshot(root);
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "init", "--upgrade"])
         .assert()

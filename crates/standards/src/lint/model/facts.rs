@@ -1,6 +1,6 @@
 //! Entity-fact DTOs for the `WorkspaceModel` envelope.
 //!
-//! Each struct is one fact family the `specrun lint` indexer
+//! Each struct is one fact family the `specify lint` indexer
 //! produces. Nested keys are kebab-case (`line-start`, `from-path`,
 //! `frontmatter-ref`, …) per
 //! `specify-cli/schemas/lint/workspace-model.schema.json`; every

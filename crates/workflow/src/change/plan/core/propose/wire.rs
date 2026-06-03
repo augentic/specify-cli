@@ -30,7 +30,7 @@ pub enum ProposalKind {
 
 /// `kind: request` envelope — the lead-centric catalog the agent groups.
 ///
-/// Emitted by `specrun plan propose --dry-run --format json`: a flat
+/// Emitted by `specify plan propose --dry-run --format json`: a flat
 /// `leads[]` catalog read 1:1 from `discovery.md`, plus the `projects[]`
 /// topology the agent binds slices to.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,7 +115,7 @@ pub struct LeadCatalogEntry {
 
 /// `kind: response` envelope — the agent's slice grouping.
 ///
-/// Consumed by `specrun plan propose --from`. The DTO is shape-only; the
+/// Consumed by `specify plan propose --from`. The DTO is shape-only; the
 /// partition, fan-out, project-binding, and name-derivation invariants
 /// are enforced by the projection kernel (`Plan::propose_from`), not by
 /// serde.

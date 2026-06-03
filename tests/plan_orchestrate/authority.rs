@@ -46,7 +46,7 @@ fn amend_authority_override_round_trips() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -70,7 +70,7 @@ fn amend_authority_override_round_trips() {
     );
 
     // Plan-level validate passes — orphan check only fires for bad keys.
-    specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "validate"]).assert().success();
 
     // Journal carries exactly one PlanAmendAuthorityOverride event.
     let lines = read_journal_lines(&project);
@@ -85,7 +85,7 @@ fn amend_authority_override_round_trips() {
 
 #[test]
 fn plan_amend_override_orphan_refused() {
-    // per-slice authority override gate: refuse the `specrun plan amend` write when
+    // per-slice authority override gate: refuse the `specify plan amend` write when
     // the authority-override value names a source key not present
     // in the slice's `sources[]` list (`phantom`). The orphan
     // check runs in `Plan::validate` (folded in by Change 2.3),
@@ -96,7 +96,7 @@ fn plan_amend_override_orphan_refused() {
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
     let before = fs::read_to_string(project.plan_path()).expect("read plan");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "--format",
@@ -125,7 +125,7 @@ fn plan_amend_override_orphan_refused() {
 
 #[test]
 fn slice_validate_authority_override_orphan() {
-    // per-slice authority override — `specrun slice validate` is the per-slice gate
+    // per-slice authority override — `specify slice validate` is the per-slice gate
     // that mirrors the plan-level check; it runs before refine
     // synthesises any artifacts so a bad override is caught
     // before downstream writes. Hand-edit `plan.yaml` to seed an
@@ -151,7 +151,7 @@ fn slice_validate_authority_override_orphan() {
         project.root().join(".specify").join("slices").join("identity-user-registration");
     fs::create_dir_all(&slices_dir).expect("mkdir slice");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "validate", "identity-user-registration"])
         .assert()
@@ -177,7 +177,7 @@ fn amend_clear_override_removes_one() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -196,7 +196,7 @@ fn amend_clear_override_removes_one() {
     // Wipe the journal so we observe only the second amend's events.
     fs::write(project.root().join(".specify").join("journal.jsonl"), "").expect("clear journal");
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -234,7 +234,7 @@ fn plan_amend_clear_overrides_wipes_map() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -251,7 +251,7 @@ fn plan_amend_clear_overrides_wipes_map() {
         .success();
     fs::write(project.root().join(".specify").join("journal.jsonl"), "").expect("clear journal");
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -288,7 +288,7 @@ fn amend_authority_override_set_then_clear() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -336,7 +336,7 @@ fn add_authority_override_seeds_map() {
         slices: []\n",
     );
 
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -375,7 +375,7 @@ fn amend_override_unknown_slice_refused() {
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
     let before = fs::read_to_string(project.plan_path()).expect("read plan");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "--format",
@@ -405,7 +405,7 @@ fn plan_amend_override_bad_kind_refused() {
     let project = Project::init();
     project.seed_plan(AUTHORITY_OVERRIDE_PLAN);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args([
             "plan",
@@ -431,7 +431,7 @@ fn plan_amend_override_bad_kind_refused() {
 }
 
 // ===================================================================
-// `specrun plan propose` — RFC-29 D2 lead reconciliation
+// `specify plan propose` — RFC-29 D2 lead reconciliation
 // (end-to-end coverage of the shipped command surface).
 //
 // `--dry-run` emits the `kind: request` envelope (flat lead catalog +

@@ -6,7 +6,7 @@
 //! `.specify/project.yaml`; its derived identity — the `surface[]` of
 //! owned units and a `recent[]` tail of merge outcomes — is a
 //! deterministic structural projection of its baseline
-//! (`.specify/specs/` + `.specify/journal.jsonl`). `specrun workspace
+//! (`.specify/specs/` + `.specify/journal.jsonl`). `specify workspace
 //! sync` resolves both into this committed lockfile so workspace plan-time
 //! topology (`workspace_topology`) reads a single derived source offline. The
 //! lockfile is machine-written (write-if-changed, mirroring

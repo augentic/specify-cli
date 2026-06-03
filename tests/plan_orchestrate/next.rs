@@ -1,4 +1,4 @@
-//! `specrun plan next` CLI tests.
+//! `specify plan next` CLI tests.
 
 use crate::support::*;
 
@@ -7,7 +7,8 @@ fn plan_next_picks_first_pending_text() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    let assert = specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    let assert =
+        specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
     assert_eq!(stdout, "b\n", "text next should be bare '<name>\\n', got: {stdout:?}");
 }
@@ -17,7 +18,7 @@ fn plan_next_picks_first_pending_json() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "next"])
         .assert()
@@ -40,11 +41,11 @@ fn plan_next_reports_in_progress() {
     let project = Project::init();
     project.seed_plan(A_IN_PROGRESS);
 
-    let text = specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    let text = specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
     assert!(stdout.contains('a'), "text output should mention 'a': {stdout:?}");
 
-    let json = specrun()
+    let json = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "next"])
         .assert()
@@ -61,11 +62,11 @@ fn plan_next_all_done_text() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
 
-    let text = specrun().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    let text = specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
     assert!(stdout.contains("drained"), "drained text should mention drained, got: {stdout:?}");
 
-    let json = specrun()
+    let json = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "next"])
         .assert()
@@ -82,7 +83,7 @@ fn plan_next_stuck_when_deps_unmet() {
     let project = Project::init();
     project.seed_plan(STUCK_PLAN);
 
-    let json = specrun()
+    let json = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "next"])
         .assert()

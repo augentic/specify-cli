@@ -265,7 +265,7 @@ fn check_project_binding_required(changes: &[Entry], registry: &Registry) -> Vec
 /// claim kind (the `BTreeMap` iteration order on
 /// [`super::model::SliceAuthorityOverride::by_kind`]).
 ///
-/// Public for the per-slice helper at `specrun slice validate` to
+/// Public for the per-slice helper at `specify slice validate` to
 /// surface only the findings relevant to one slice.
 #[must_use]
 pub fn orphan_authority_override_keys(changes: &[Entry]) -> Vec<Diagnostic> {

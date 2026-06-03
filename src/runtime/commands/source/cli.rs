@@ -1,11 +1,11 @@
-//! Clap derive surface for `specrun source *`. The umbrella `cli.rs`
+//! Clap derive surface for `specify source *`. The umbrella `cli.rs`
 //! re-exports `SourceAction`.
 
 use std::path::PathBuf;
 
 use clap::{Subcommand, ValueEnum};
 
-/// Which phase of a two-phase `specrun source` operation
+/// Which phase of a two-phase `specify source` operation
 /// (`survey` / `extract`) to run.
 ///
 /// `tool`-execution adapters ignore the flag — a single call runs the
@@ -57,7 +57,7 @@ pub enum SourceAction {
     },
 
     /// Run a source adapter's survey + extract in isolation
-    /// (`specrun source preview` contract).
+    /// (`specify source preview` contract).
     ///
     /// Resolves the adapter manifest, validates the `--source` path,
     /// scaffolds the output directory with an `evidence/` subtree, and

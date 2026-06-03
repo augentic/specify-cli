@@ -9,7 +9,7 @@
 
 pub use std::fs;
 
-pub use crate::common::{Project, parse_json, specrun};
+pub use crate::common::{Project, parse_json, specify_cmd};
 
 // ---------------------------------------------------------------------------
 // Shared seeds
@@ -64,13 +64,17 @@ tasks: []
 
 /// Stage a slice on disk and seed `<slice>/specs/login/spec.md`
 /// directly, plus optionally a `plan.yaml` at the project root, so the
-/// provenance gate inside `specrun slice validate` has both the spec
+/// provenance gate inside `specify slice validate` has both the spec
 /// file and a plan-level source-bindings context to cross-validate
 /// against. Returns the project handle so the caller can drive
-/// `specrun slice validate` on it.
+/// `specify slice validate` on it.
 pub fn stage_slice_with_spec(spec_md: &str, plan_yaml: Option<&str>) -> Project {
     let project = Project::init().with_schemas();
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let specs_dir = project.slices_dir().join("my-slice/specs/login");
     fs::create_dir_all(&specs_dir).expect("mkdir specs/login");
     fs::write(specs_dir.join("spec.md"), spec_md).expect("write spec.md");

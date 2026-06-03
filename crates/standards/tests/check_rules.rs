@@ -30,7 +30,7 @@ fn valid_rule(id: &str) -> String {
 id: {id}
 title: Test Rule
 severity: important
-trigger: When testing codex validation in specdev lint.
+trigger: When testing codex validation in specify lint framework.
 ---
 
 ## Rule

@@ -1,4 +1,4 @@
-//! Rust-source quality checks when `specdev lint` targets the specify-cli repo.
+//! Rust-source quality checks when `specify lint framework` targets the specify-cli repo.
 
 use std::fs;
 use std::path::Path;

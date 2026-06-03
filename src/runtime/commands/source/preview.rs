@@ -1,5 +1,5 @@
-//! `specrun source preview` handler — workflow-free source adapter
-//! execution scaffolding (`specrun source preview` contract).
+//! `specify source preview` handler — workflow-free source adapter
+//! execution scaffolding (`specify source preview` contract).
 //!
 //! Validates `--source`, then runs the shared [`prep`] seam (adapter
 //! resolution, brief directory, the four-root sandbox layout, and

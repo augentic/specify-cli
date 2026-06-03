@@ -1,6 +1,6 @@
 //! Golden-tree tests for the `V1ToV2` migrator.
 //!
-//! The migrator is a library primitive (the `specrun migrate` command
+//! The migrator is a library primitive (the `specify migrate` command
 //! lands in a later change), so these drive it through the public
 //! `specify_workflow::migrate` surface rather than the CLI. The happy
 //! path copies `migrate/v1-to-v2/before/` into a tempdir, runs `plan`

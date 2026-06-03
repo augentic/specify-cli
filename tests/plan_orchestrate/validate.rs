@@ -1,4 +1,4 @@
-//! `specrun plan validate` CLI tests: base shape rules, the
+//! `specify plan validate` CLI tests: base shape rules, the
 //! registry-shape hook, the planning-path smoke, and the surviving
 //! health diagnostics (`cycle-in-depends-on`, `orphan-source`,
 //! `stale-workspace-clone`, `topology-cache-stale`).
@@ -13,7 +13,7 @@ fn plan_validate_clean_text() {
     project.seed_plan(CLEAN_PLAN);
 
     let assert =
-        specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+        specify_cmd().current_dir(project.root()).args(["plan", "validate"]).assert().success();
     assert_eq!(assert.get_output().status.code(), Some(0));
 
     let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
@@ -26,7 +26,7 @@ fn plan_validate_clean_json() {
     let project = Project::init();
     project.seed_plan(CLEAN_PLAN);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -46,12 +46,12 @@ fn plan_validate_clean_json() {
 fn plan_validate_tolerates_in_progress() {
     // Transient window: `specify change transition <name> in-progress`
     // can run a moment before `.specify/slices/<name>/` exists.
-    // `specrun plan validate` must surface a *warning* (not an
+    // `specify plan validate` must surface a *warning* (not an
     // error) so `passed == true` and skills don't stall on start-up.
     let project = Project::init();
     project.seed_plan(A_IN_PROGRESS);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -82,7 +82,7 @@ fn plan_validate_with_errors_json() {
     let project = Project::init();
     project.seed_plan(DUPLICATE_NAME_PLAN);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -104,9 +104,9 @@ fn plan_validate_with_errors_json() {
 
 // -- registry-shape hook ----------------------------------------------
 
-/// `specrun plan validate` surfaces a malformed `registry.yaml`
+/// `specify plan validate` surfaces a malformed `registry.yaml`
 /// alongside plan validation results — the shape-validation hook
-/// complementing the dedicated `specrun registry validate`
+/// complementing the dedicated `specify registry validate`
 /// verb.
 #[test]
 fn plan_validate_surfaces_registry_errors() {
@@ -118,7 +118,7 @@ fn plan_validate_surfaces_registry_errors() {
     fs::write(project.root().join("registry.yaml"), "version: 2\nprojects: []\n")
         .expect("write bad registry");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "plan", "validate"])
         .assert()
@@ -142,15 +142,15 @@ fn plan_validate_surfaces_registry_errors() {
 #[test]
 fn planning_stage_ab_brief_and_validate() {
     let project = Project::init();
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["plan", "create", "planning-path", "--source", "app=code-typescript:."])
         .assert()
         .success();
-    specrun().current_dir(project.root()).args(["plan", "validate"]).assert().success();
+    specify_cmd().current_dir(project.root()).args(["plan", "validate"]).assert().success();
 }
 
-// ---- specrun plan validate health diagnostics (plan validate health diagnostics) ----
+// ---- specify plan validate health diagnostics (plan validate health diagnostics) ----
 //
 // `plan validate` carries the three surviving health diagnostics
 // (`cycle-in-depends-on`, `orphan-source`,
@@ -159,7 +159,7 @@ fn planning_stage_ab_brief_and_validate() {
 // per-entry `failed`/`skipped` states it relied on.
 
 fn init_omnia_project(tmp: &TempDir) {
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["init"])
         .arg(omnia_schema_dir())
@@ -231,8 +231,10 @@ fn validate_reports_all_health_diagnostics() {
         String::from_utf8_lossy(&remote.stderr)
     );
 
-    let assert =
-        specrun().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert();
     let output = assert.get_output();
     let stdout = String::from_utf8(output.stdout.clone()).expect("utf8");
     let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
@@ -260,7 +262,7 @@ fn validate_reports_topology_cache_stale() {
     // facets; `.specify/topology.lock` is the derived projection. When a
     // materialised slot drifts from the committed cache, `plan validate`
     // emits the warning-only `topology-cache-stale` diagnostic whose fix
-    // is `specrun workspace sync`. (Replaces the former
+    // is `specify workspace sync`. (Replaces the former
     // `adapter-mismatch-workspace` check.)
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
@@ -304,8 +306,10 @@ fn validate_reports_topology_cache_stale() {
     )
     .unwrap();
 
-    let assert =
-        specrun().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert();
     let value: Value =
         serde_json::from_str(&String::from_utf8(assert.get_output().stdout.clone()).expect("utf8"))
             .expect("stdout is JSON");
@@ -351,8 +355,10 @@ fn plan_validate_payloads_round_trip_typed() {
     )
     .unwrap();
 
-    let assert =
-        specrun().current_dir(tmp.path()).args(["--format", "json", "plan", "validate"]).assert();
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert();
     let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
     let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
     let findings = value["findings"].as_array().expect("findings array");
@@ -389,13 +395,13 @@ fn plan_validate_healthy_exits_zero() {
     let tmp = tempdir().unwrap();
     init_omnia_project(&tmp);
 
-    specrun()
+    specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "create", "demo"])
         .assert()
         .success();
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(tmp.path())
         .args(["--format", "json", "plan", "validate"])
         .assert()

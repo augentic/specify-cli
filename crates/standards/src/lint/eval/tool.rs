@@ -4,7 +4,7 @@
 //! evaluator is plumbed with — [`ToolRunner`] — defers WASI host
 //! wiring to the CLI layer so the standards crate stays free of a
 //! `wasmtime` / `specify-tool` crate dependency. The CLI implementation
-//! lives in `specrun lint` (S9); this module only consumes the
+//! lives in `specify lint` (S9); this module only consumes the
 //! abstract trait surface.
 //!
 //! v1 runs the tool once per candidate file and passes the
@@ -47,7 +47,7 @@ const STDERR_MAX_BYTES: usize = 8 * 1024;
 /// Trait the umbrella plumbs into [`super::evaluate`] so the WASI
 /// runtime stays out of the standards crate's dep graph.
 ///
-/// `specrun lint` (S9) supplies a `wasmtime`-backed implementation;
+/// `specify lint` (S9) supplies a `wasmtime`-backed implementation;
 /// integration tests in this crate supply a fake.
 pub trait ToolRunner {
     /// Invoke the named tool with `args` against `project_dir`.

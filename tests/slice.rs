@@ -1,7 +1,7 @@
-//! Integration tests for the `specrun slice` subcommand tree.
+//! Integration tests for the `specify slice` subcommand tree.
 //!
-//! Every test stands up a fresh `.specify/` project via `specrun init`,
-//! drives `specrun slice *` through `assert_cmd`, and inspects both the
+//! Every test stands up a fresh `.specify/` project via `specify init`,
+//! drives `specify slice *` through `assert_cmd`, and inspects both the
 //! structured stdout (`--format json`) and the on-disk side effects the
 //! verb is responsible for.
 //!

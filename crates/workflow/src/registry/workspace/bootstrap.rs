@@ -73,7 +73,7 @@ fn scaffold_greenfield(dest: &Path, adapter: &str) -> Result<(), Error> {
 }
 
 /// Resolve the adapter identifier to pass into a greenfield slot's
-/// `specrun init <adapter>`.
+/// `specify init <adapter>`.
 ///
 /// URL-shaped adapters are already self-contained. Bare registry
 /// adapter identifiers are local to the initiating repo's cache, so

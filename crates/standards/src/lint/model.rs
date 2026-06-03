@@ -2,12 +2,12 @@
 //! §"Core entity families (v1)".
 //!
 //! The model is the deterministic, versioned snapshot of project
-//! facts the `specrun lint` indexer produces once per run
+//! facts the `specify lint` indexer produces once per run
 //! invocation. Per the standards-layer contract §"Persistence and query (v1 decision)" it
 //! is an internal execution artifact: **not** persisted under
 //! `.specify/` and **not** an operator-facing Specify artifact in
 //! v1. `.specify/cache/workspace-model.v1.json` and
-//! `specrun model query <selector>` are reserved surfaces with no
+//! `specify model query <selector>` are reserved surfaces with no
 //! implementation behind them.
 //!
 //! The DTOs round-trip through `specify_schema::WORKSPACE_MODEL_JSON_SCHEMA`
@@ -119,9 +119,9 @@ pub enum ScanProfile {
 /// Important: per the standards-layer contract §"Persistence and query (v1 decision)" the
 /// model is **not** persisted under `.specify/` and is **not** an
 /// operator-facing Specify artifact in v1. v1 ships
-/// `specrun lint --dump-model` only;
+/// `specify lint --dump-model` only;
 /// `.specify/cache/workspace-model.v1.json` and
-/// `specrun model query <selector>` are reserved surfaces.
+/// `specify model query <selector>` are reserved surfaces.
 ///
 /// Top-level keys are `snake_case` to match the schema under
 /// `specify-cli/schemas/lint/workspace-model.schema.json`; nested

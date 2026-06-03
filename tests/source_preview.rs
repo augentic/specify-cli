@@ -1,10 +1,10 @@
-//! Integration tests for `specrun source preview` (`specrun source preview` contract).
+//! Integration tests for `specify source preview` (`specify source preview` contract).
 
 use std::fs;
 use std::path::PathBuf;
 
 mod common;
-use common::{copy_dir, parse_stderr, parse_stdout, repo_root, specrun};
+use common::{copy_dir, parse_stderr, parse_stdout, repo_root, specify_cmd};
 use tempfile::tempdir;
 
 fn plugin_fixtures_root() -> PathBuf {
@@ -26,7 +26,7 @@ fn preview_succeeds_without_specify_dir() {
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
@@ -58,7 +58,7 @@ fn preview_creates_output_directory() {
 
     let out_dir = root.join("custom-out");
 
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
@@ -83,7 +83,7 @@ fn default_out_creates_preview() {
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
-    specrun()
+    specify_cmd()
         .current_dir(root)
         .args(["source", "preview", "code-typescript"])
         .arg("--source")
@@ -108,7 +108,7 @@ fn preview_passes_leads_through() {
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
@@ -132,7 +132,7 @@ fn preview_fails_when_source_path_missing() {
     let root = tmp.path();
     stage_source_adapter(root, "code-typescript");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "code-typescript"])
         .arg("--source")
@@ -155,7 +155,7 @@ fn preview_fails_when_adapter_not_found() {
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(root)
         .args(["--format", "json", "source", "preview", "no-such-adapter"])
         .arg("--source")

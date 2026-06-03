@@ -1,6 +1,6 @@
-//! Integration tests for `specrun slice build` (RFC-29d M3 / D6).
+//! Integration tests for `specify slice build` (RFC-29d M3 / D6).
 //!
-//! Covers the two-phase agent contract that mirrors `specrun source
+//! Covers the two-phase agent contract that mirrors `specify source
 //! survey` / `extract`: `prepare` assembles + persists a schema-valid
 //! build request and emits `target.execution.agent` without
 //! transitioning the slice; `finalize` frames entry with
@@ -12,17 +12,21 @@
 use std::fs;
 
 mod common;
-use common::{Project, parse_json, specrun};
+use common::{Project, parse_json, specify_cmd};
 
 /// Create `my-slice`, seed a `specs/<unit>/spec.md` so the assembled
 /// request carries a non-empty `specs[]`, and transition it to
 /// `refined` — the lifecycle state `slice build` gates out of.
 fn stage_refined_slice(project: &Project) {
-    specrun().current_dir(project.root()).args(["slice", "create", "my-slice"]).assert().success();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
     let spec_dir = project.slices_dir().join("my-slice/specs/identity");
     fs::create_dir_all(&spec_dir).expect("mkdir specs/identity");
     fs::write(spec_dir.join("spec.md"), "# Identity spec\n").expect("write spec.md");
-    specrun()
+    specify_cmd()
         .current_dir(project.root())
         .args(["slice", "transition", "my-slice", "refined"])
         .assert()
@@ -84,7 +88,7 @@ fn prepare_writes_request_no_transition() {
     let project = Project::init();
     stage_refined_slice(&project);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "build", "my-slice"])
         .assert()
@@ -159,7 +163,7 @@ fn finalize_validates_and_gates_built() {
     stage_refined_slice(&project);
     write_report(&project, SUCCESS_REPORT);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "build", "my-slice", "--phase", "finalize"])
         .assert()
@@ -195,7 +199,7 @@ fn finalize_rejects_success_blocking() {
     stage_refined_slice(&project);
     write_report(&project, SUCCESS_WITH_BLOCKING_REPORT);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "build", "my-slice", "--phase", "finalize"])
         .assert()
@@ -226,7 +230,7 @@ fn finalize_missing_report_errors() {
     let project = Project::init();
     stage_refined_slice(&project);
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "build", "my-slice", "--phase", "finalize"])
         .assert()
@@ -256,7 +260,7 @@ fn tool_execution_reports_unsupported_seam() {
     fs::write(&cached, raw.replace("execution: agent", "execution: tool"))
         .expect("rewrite adapter execution mode");
 
-    let assert = specrun()
+    let assert = specify_cmd()
         .current_dir(project.root())
         .args(["--format", "json", "slice", "build", "my-slice"])
         .assert()

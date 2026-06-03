@@ -1,7 +1,7 @@
 //! Target build envelope kernel (RFC-29d M3 / D6).
 //!
 //! Mirrors [`crate::slice::synthesis`]: the pure, IO-free domain pieces
-//! the `specrun slice build` verb composes. [`wire`] holds the
+//! the `specify slice build` verb composes. [`wire`] holds the
 //! closed-shape build request/report DTOs (round-tripping
 //! `schemas/target/build-request.schema.json` and
 //! `schemas/target/build-report.schema.json`) plus the

@@ -1,4 +1,4 @@
-//! `specrun upgrade` — channel-aware CLI self-update (RFC-30 §D1).
+//! `specify upgrade` — channel-aware CLI self-update (RFC-30 §D1).
 //!
 //! Bootstrap verb: it operates on the running binary, not a project, so
 //! it never calls [`ProjectConfig::load`] (the RFC bootstrap carve-out).
@@ -95,7 +95,7 @@ fn journal_upgrade(from: &str, to: &str, channel: InstallChannel) -> Result<bool
     Ok(true)
 }
 
-/// Wire-stable `specrun upgrade` envelope (text + JSON). Change G's
+/// Wire-stable `specify upgrade` envelope (text + JSON). Change G's
 /// `/spec:init` skill parses `channel`, `to`, and `commands` from the
 /// `--dry-run --format json` shape.
 #[derive(Serialize)]

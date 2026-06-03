@@ -1,4 +1,4 @@
-//! `specrun tool run` handler — transparent shim over the underlying
+//! `specify tool run` handler — transparent shim over the underlying
 //! WASI binary that returns the guest's exit byte verbatim via
 //! [`crate::runtime::output::Exit::Code`].
 

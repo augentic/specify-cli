@@ -1,4 +1,4 @@
-//! `specrun source survey` handler — plan-time lead discovery
+//! `specify source survey` handler — plan-time lead discovery
 //! (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
 //!
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
@@ -84,7 +84,7 @@ struct SurveyResult {
     discovery: PathBuf,
 }
 
-/// Run `specrun source survey <source> [--plan <name>]
+/// Run `specify source survey <source> [--plan <name>]
 /// [--phase prepare|finalize]`.
 ///
 /// # Errors
@@ -98,7 +98,7 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
     let binding = plan.sources.get(source).ok_or_else(|| Error::Diag {
         code: "source-unknown",
         detail: format!(
-            "no source `{source}` in plan.yaml.sources; `specrun source survey` resolves \
+            "no source `{source}` in plan.yaml.sources; `specify source survey` resolves \
              its argument against the plan's source keys, not the adapter name"
         ),
     })?;

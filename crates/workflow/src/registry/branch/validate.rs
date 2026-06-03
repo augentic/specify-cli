@@ -17,7 +17,7 @@ pub(super) fn require_git_worktree(
             project,
             Some(branch),
             format!(
-                "`{}` does not exist; run `specrun workspace sync {}` first",
+                "`{}` does not exist; run `specify workspace sync {}` first",
                 slot_path.display(),
                 project.name
             ),

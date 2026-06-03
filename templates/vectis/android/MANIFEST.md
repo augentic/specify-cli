@@ -1,7 +1,7 @@
 # Android Assembly Template Manifest
 
 Human reference for the Android assembly templates. The canonical source-to-target
-registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.android`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specrun tool run vectis -- scaffold android`.
+registry is [`../manifest.yaml`](../manifest.yaml) (`assemblies.android`); `wasi-tools/vectis/build.rs` validates that manifest and emits the embedded `registry.rs` consumed by `specify tool run vectis -- scaffold android`.
 
 Source filenames are flat under `templates/vectis/android/`. Nested target paths (especially `Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/...`) are declared in `manifest.yaml`. The `__APP_NAME__` and `__ANDROID_PACKAGE_PATH__` segments in target paths are substituted when writing each file. `__ANDROID_PACKAGE_PATH__` is derived by replacing `.` with `/` in `__ANDROID_PACKAGE__` at file-write time; it does not appear in file contents.
 

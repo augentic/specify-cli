@@ -30,7 +30,7 @@ fn operational_vocabulary_flags_stale_terms() {
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].rule_id.as_deref(), core_id_for("prose.operational-vocabulary"));
     assert!(snippet(&findings[0]).contains("specify validate"));
-    assert!(snippet(&findings[0]).contains("specrun slice validate"));
+    assert!(snippet(&findings[0]).contains("specify slice validate"));
 }
 
 #[test]

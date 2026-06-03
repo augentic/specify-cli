@@ -1,4 +1,4 @@
-//! `specrun registry validate` handler.
+//! `specify registry validate` handler.
 
 use specify_error::Result;
 use specify_workflow::config::ProjectConfig;
@@ -11,7 +11,7 @@ pub(super) fn run(ctx: &Ctx) -> Result<()> {
     let path = Registry::path(&ctx.project_dir).display().to_string();
     // Workspaces opt into the stricter shape via `project.yaml:workspace:
     // true`. Tolerate a missing/unparseable project.yaml here —
-    // `specrun registry validate` is allowed to run before `specify
+    // `specify registry validate` is allowed to run before `specify
     // init`, in which case there is no workspace flag to honour and the base
     // shape check is the right behaviour.
     let workspace_mode = ProjectConfig::load(&ctx.project_dir).is_ok_and(|cfg| cfg.workspace);

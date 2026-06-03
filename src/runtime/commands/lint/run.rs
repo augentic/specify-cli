@@ -1,4 +1,4 @@
-//! `specrun lint run` handler.
+//! `specify lint run` handler.
 //!
 //! Composes the standards-layer pipeline:
 //!
@@ -44,7 +44,7 @@ use crate::runtime::context::Ctx;
 ///
 /// Assembles the consumer-surface pipeline config and hands it to the
 /// shared [`output::run_lint`] kernel; output, journal, and exit
-/// plumbing live there so this handler differs from `specdev lint`
+/// plumbing live there so this handler differs from `specify lint framework`
 /// only in the config its `build_report` closure builds.
 ///
 /// # Errors
@@ -107,7 +107,7 @@ fn build_report(
         format,
         layout: ctx.layout(),
         scope,
-        command_label: "specrun lint",
+        command_label: "specify lint",
         started_at,
         trailing_newline: true,
     })

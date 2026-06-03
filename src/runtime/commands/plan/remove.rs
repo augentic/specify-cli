@@ -1,4 +1,4 @@
-//! `specrun plan remove` handler — drop one pending plan entry while
+//! `specify plan remove` handler — drop one pending plan entry while
 //! the plan is still replaceable (Gate 1 curation).
 
 use specify_error::Result;

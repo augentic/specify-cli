@@ -546,7 +546,7 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
         });
     };
     // Cross-axis uniqueness invariant — see DECISIONS.md
-    // §"Adapter name uniqueness". `specrun` is fork-and-exit, so the
+    // §"Adapter name uniqueness". `specify` is fork-and-exit, so the
     // pair of `is_file` probes below is cheaper than memoising them
     // behind process-global state; `init` / `init --workspace` and the
     // manifest-cache write boundary call [`check_axis_unique_for_name`]
@@ -594,7 +594,7 @@ fn axis_collision_error(
 /// Validate that installing or resolving `name` on `axis` does not
 /// collide with an existing declaration on the opposite axis.
 ///
-/// Used at `specrun init` time (with `axis = Axis::Target`, since
+/// Used at `specify init` time (with `axis = Axis::Target`, since
 /// `init` only caches target adapters) before the per-axis manifest
 /// cache directory at
 /// `.specify/.cache/manifests/{sources,targets}/<name>/` is rewritten,

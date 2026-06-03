@@ -1,8 +1,8 @@
-//! `specrun slice build <slice> [--phase prepare|finalize]` handler —
+//! `specify slice build <slice> [--phase prepare|finalize]` handler —
 //! target build envelope owner (RFC-29d M3 / D6).
 //!
 //! Mirrors the shipped source two-phase agent contract
-//! (`specrun source survey` / `extract`). The verb resolves the target
+//! (`specify source survey` / `extract`). The verb resolves the target
 //! from the slice's bound `.metadata.yaml`, then owns request assembly,
 //! report validation, the four `target-build-*` aborts, the
 //! `slice.build.*` events, and the `built` transition gate; the target
@@ -87,7 +87,7 @@ struct BuildResult {
     findings: usize,
 }
 
-/// Run `specrun slice build <slice> [--phase prepare|finalize]`.
+/// Run `specify slice build <slice> [--phase prepare|finalize]`.
 ///
 /// # Errors
 ///

@@ -257,14 +257,14 @@ fn evaluate_with_cache(
 /// Fold [`evaluate`] over every rule, accumulating findings, reserved
 /// skips, and the `FIND-NNNN` id counter.
 ///
-/// Shared by both lint surfaces (`specrun lint run` and `specdev lint`)
+/// Shared by both lint surfaces (`specify lint run` and `specify lint framework`)
 /// so the per-rule gating stays identical: rules in `lint-mode:
 /// model-assisted` and rules with no (or empty) `deterministic_hints`
 /// are skipped; `start_id` is threaded forward so ids stay monotonic.
 ///
 /// `rule_filter` is the operator's allow-list: EMPTY means no filtering
 /// (runtime), non-empty keeps only rules whose `rule_id` matches
-/// verbatim (the `specdev lint --rules` surface — exact, case-sensitive).
+/// verbatim (the `specify lint framework --rules` surface — exact, case-sensitive).
 ///
 /// Per-rule [`HintError`]s are mapped through [`map_hint_error`] here so
 /// both call sites collapse to one fallible call.

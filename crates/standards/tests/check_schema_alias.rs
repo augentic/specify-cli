@@ -1,5 +1,5 @@
 //! Integration coverage for the cross-repo rule-schema-alias parity
-//! check. `specdev` carries the canonical `rule.schema.json` embedded in
+//! check. `specify lint framework` carries the canonical `rule.schema.json` embedded in
 //! the binary and lints a framework root that owns the editor mirror at
 //! `.cursor/schemas/rule.schema.json`; this check is the seam that keeps
 //! their hint-kind vocabularies in lockstep across the two repos.

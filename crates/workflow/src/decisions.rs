@@ -2,7 +2,7 @@
 //!
 //! The append-only baseline catalogue at `.specify/decisions/` is the
 //! durable home for design *decisions* — the immutable "why" plus the
-//! rejected alternatives. `specrun slice merge` promotes each
+//! rejected alternatives. `specify slice merge` promotes each
 //! slice-authored record under `.specify/slices/<slice>/decisions/` into
 //! `.specify/decisions/DEC-NNNN-<slug>.md` by whole-file add (the same
 //! opaque-add strategy contracts use), assigning the durable
@@ -170,7 +170,7 @@ fn read_slice_records(src: &Path) -> Result<Vec<SliceRecord>, Error> {
         let (record, body) = parse_file(&text).ok_or_else(|| Error::Diag {
             code: "decision-record-malformed",
             detail: format!(
-                "slice decision `{}` could not be parsed; run `specrun slice validate` first",
+                "slice decision `{}` could not be parsed; run `specify slice validate` first",
                 path.display()
             ),
         })?;
