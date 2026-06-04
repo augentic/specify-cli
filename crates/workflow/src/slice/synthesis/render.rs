@@ -25,6 +25,7 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
+use specify_model::spec::SCENARIO_HEADING;
 use specify_model::spec::provenance::RequirementStatus;
 
 use crate::slice::model::{ModelRequirement, SliceModel};
@@ -140,8 +141,12 @@ fn render_body(req: &ModelRequirement) -> String {
     if !req.statement.is_empty() {
         parts.push(req.statement.clone());
     }
-    if !req.scenarios.is_empty() {
-        parts.push(req.scenarios.iter().map(|s| format!("- {s}")).collect::<Vec<_>>().join("\n"));
+    // Each scenario renders as a `#### Scenario:` H4 heading so the spec
+    // parser (and the `specs.requirements-have-scenarios` rule) recognises
+    // it. A bare-name entry yields a heading-only scenario; a multi-line
+    // entry keeps its WHEN/THEN body under the heading.
+    for scenario in &req.scenarios {
+        parts.push(format!("{SCENARIO_HEADING} {scenario}"));
     }
     if let Some(notes) = req.notes.as_deref().filter(|n| !n.is_empty()) {
         parts.push(notes.to_string());

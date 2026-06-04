@@ -134,7 +134,7 @@ Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKin
 
 ## What was cut and why
 
-`specify adapter *` and `specify change *` retired at 2.0; no compatibility aliases. The 1.x bare-string `sources` shorthand on `plan.yaml.sources.<key>` is gone. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
+`specify adapter *` and `specify change *` are retired; no compatibility aliases. The legacy bare-string `sources` shorthand on `plan.yaml.sources.<key>` is gone. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
 
 ## Note to the implementing agent
 

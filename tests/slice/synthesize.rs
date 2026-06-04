@@ -648,3 +648,260 @@ fn synthesize_from_is_deterministic() {
 
     assert_eq!(first, second, "model.yaml must be byte-identical across two synthesis runs");
 }
+
+/// Plan binding two *same-authority* sources (both `documentation`) to
+/// `my-slice`, each citing the `password-reset.expiry` claim with a
+/// different value. Same-class claims tie at the top authority level, so
+/// the kernel cannot pick a winner.
+const SAME_AUTHORITY_PLAN: &str = "\
+name: same-authority
+lifecycle: pending
+sources:
+  docs-a:
+    adapter: documentation
+    path: ./docs-a
+  docs-b:
+    adapter: documentation
+    path: ./docs-b
+slices:
+  - name: my-slice
+    status: pending
+    project: test-proj
+    sources:
+      - { source: docs-a, lead: my-slice }
+      - { source: docs-b, lead: my-slice }
+";
+
+/// First documentation source: 30-minute expiry criterion.
+const SAME_AUTHORITY_EVIDENCE_A: &str = "authority: documentation
+lead: my-slice
+claims:
+  - id: password-reset.expiry
+    kind: criterion
+    criterion: Reset links expire after 30 minutes.
+    path: docs/a/reset.md#L7
+";
+
+/// Second documentation source: a contradicting 60-minute criterion at
+/// the same authority class.
+const SAME_AUTHORITY_EVIDENCE_B: &str = "authority: documentation
+lead: my-slice
+claims:
+  - id: password-reset.expiry
+    kind: criterion
+    criterion: Reset links expire after 60 minutes.
+    path: docs/b/reset.md#L9
+";
+
+/// Agent response marking the two same-authority claims `disagreed`. The
+/// kernel re-derives `conflict` (a top-class tie has no unique winner).
+const SAME_AUTHORITY_RESPONSE_JSON: &str = r###"{
+  "version": 1,
+  "kind": "response",
+  "slice": "my-slice",
+  "model": {
+    "requirements": [
+      {
+        "title": "Reset link expiry",
+        "unit": "password-reset",
+        "agreement": "disagreed",
+        "claims": [
+          { "source": "docs-a", "id": "password-reset.expiry", "kind": "criterion" },
+          { "source": "docs-b", "id": "password-reset.expiry", "kind": "criterion" }
+        ],
+        "statement": "Reset links expire after a fixed window."
+      }
+    ],
+    "tasks": [
+      { "id": "TASK-001", "text": "Enforce reset link expiry.", "satisfies": ["REQ-001"] }
+    ]
+  },
+  "artifacts": {
+    "proposal": "# Reset expiry\nWhy this slice exists.\n",
+    "design": "# Design\nExpiry handling.\n",
+    "tasks": "# Tasks\n- [ ] TASK-001\n",
+    "specs": [
+      { "unit": "password-reset", "content": "## Reset link expiry\nLinks expire after a fixed window.\n" }
+    ]
+  }
+}
+"###;
+
+/// Stage `my-slice` with two same-authority (`documentation`) sources
+/// disagreeing on `password-reset.expiry`.
+fn stage_same_authority_conflict_slice() -> Project {
+    let project = Project::init().with_schemas();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
+    let evidence_dir = project.slices_dir().join("my-slice/evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
+    fs::write(evidence_dir.join("docs-a.yaml"), SAME_AUTHORITY_EVIDENCE_A).expect("write docs-a");
+    fs::write(evidence_dir.join("docs-b.yaml"), SAME_AUTHORITY_EVIDENCE_B).expect("write docs-b");
+    project.seed_plan(SAME_AUTHORITY_PLAN);
+    project
+}
+
+#[test]
+fn synthesize_same_authority_conflict() {
+    // Two `documentation`-authority claims disagree; they tie at the top
+    // authority class, so the kernel derives `status: conflict` (no
+    // winner), and `spec.md` carries the `[conflict]` heading tag.
+    // Acceptance scenario `same-authority-conflict`.
+    let project = stage_same_authority_conflict_slice();
+    let output = run_synthesize_from(&project, SAME_AUTHORITY_RESPONSE_JSON);
+    assert_eq!(output.status.code(), Some(0), "the same-authority slice synthesizes");
+
+    let show = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "model", "show", "my-slice"])
+        .assert()
+        .success();
+    let model = parse_json(&show.get_output().stdout);
+    let req = &model["requirements"][0];
+    assert_eq!(req["id"], "REQ-001");
+    assert_eq!(req["status"], "conflict");
+    // A top-class tie has no winner: both claims survive without a winner
+    // marker (both values preserved as inline commentary).
+    for idx in [0, 1] {
+        let claim = &req["claims"][idx];
+        assert!(
+            claim.get("winner").is_none() || claim["winner"].is_null(),
+            "a tied-conflict claim carries no winner marker, got:\n{claim}"
+        );
+    }
+    let sources = req["sources"].as_array().expect("sources array");
+    assert_eq!(sources.len(), 2, "both contributing sources are preserved");
+
+    // spec.md carries the `[conflict]` heading tag, the matching Status
+    // line, and both source keys.
+    let spec =
+        fs::read_to_string(project.slices_dir().join("my-slice/specs/password-reset/spec.md"))
+            .expect("spec.md");
+    assert!(
+        spec.contains("[conflict]"),
+        "same-authority disagreement renders [conflict], got:\n{spec}"
+    );
+    assert!(
+        spec.contains("Status: conflict"),
+        "spec.md must carry the projected status, got:\n{spec}"
+    );
+    assert!(spec.contains("docs-a"), "spec.md preserves the first source, got:\n{spec}");
+    assert!(spec.contains("docs-b"), "spec.md preserves the second source, got:\n{spec}");
+}
+
+/// Plan binding a single degenerate `intent` source to `my-slice`. The
+/// binding carries `value` (the operator brief) rather than a `path`,
+/// matching the `intent` adapter contract.
+const INTENT_PLAN: &str = "\
+name: intent-only
+lifecycle: pending
+sources:
+  intent:
+    adapter: intent
+    value: \"Fix the typo in the greeting.\"
+slices:
+  - name: my-slice
+    status: pending
+    project: test-proj
+    sources:
+      - { source: intent, lead: my-slice }
+";
+
+/// Pure-intent Evidence carrying an *id-bearing* `kind: intent` claim,
+/// per the corrected `intent.extract` brief (augentic/specify#149). The
+/// `id` equals the lead so the kernel can anchor the single claim.
+const INTENT_EVIDENCE_YAML: &str = "authority: intent
+lead: my-slice
+claims:
+  - id: my-slice
+    kind: intent
+    statement: \"Fix the typo in the greeting.\"
+";
+
+/// Agent response for the intent slice: one requirement citing the
+/// id-bearing intent claim, with an authored scenario and a proposal
+/// that carries the required `## Why` / `## Units` sections.
+const INTENT_RESPONSE_JSON: &str = r###"{
+  "version": 1,
+  "kind": "response",
+  "slice": "my-slice",
+  "model": {
+    "requirements": [
+      {
+        "title": "Greeting shows corrected spelling",
+        "unit": "greeting",
+        "claims": [
+          { "source": "intent", "id": "my-slice", "kind": "intent" }
+        ],
+        "statement": "The greeting renders the corrected spelling.",
+        "scenarios": ["Corrected spelling shown"]
+      }
+    ],
+    "tasks": [
+      { "id": "TASK-001", "text": "Correct the greeting spelling.", "satisfies": ["REQ-001"] }
+    ]
+  },
+  "artifacts": {
+    "proposal": "# Greeting\n\n## Why\n\nThe greeting has a typo to fix.\n\n## Units\n\n- greeting — the greeting surface\n\n## Non-goals\n\n- No new copy.\n",
+    "design": "# Design\nGreeting fix.\n",
+    "tasks": "# Tasks\n- [ ] TASK-001\n",
+    "specs": [
+      { "unit": "greeting", "content": "## Greeting\nAgent prose body.\n" }
+    ]
+  }
+}
+"###;
+
+/// Stage a degenerate single-`intent` slice with an id-bearing intent
+/// claim, so the kernel can anchor the lone claim end to end.
+fn stage_intent_slice() -> Project {
+    let project = Project::init().with_schemas();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
+    let evidence_dir = project.slices_dir().join("my-slice/evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
+    fs::write(evidence_dir.join("intent.yaml"), INTENT_EVIDENCE_YAML).expect("write intent");
+    project.seed_plan(INTENT_PLAN);
+    project
+}
+
+#[test]
+fn intent_only_slice_validates_clean() {
+    // Regression for the Wave 0 `pure-intent` release blocker
+    // (augentic/specify#149 + #150). A degenerate intent slice whose
+    // Evidence anchors an id-bearing intent claim and whose response
+    // authors a scenario must pass `slice validate` without the two
+    // blockers that previously stalled `/spec:refine`:
+    //   #149 — `spec.requirement-sources-empty` (id-less intent claim
+    //          dropped from the anchor index → empty `Sources:`),
+    //   #150 — `specs.requirements-have-scenarios` (scenarios rendered
+    //          as bullets the parser did not recognise).
+    let project = stage_intent_slice();
+    let output = run_synthesize_from(&project, INTENT_RESPONSE_JSON);
+    assert_eq!(output.status.code(), Some(0), "intent-only synthesize must succeed");
+
+    // #149: the lone intent claim anchored, so `Sources: intent`
+    // rendered (not an empty list). #150: the scenario rendered as a
+    // `#### Scenario:` heading the parser recognises.
+    let spec = fs::read_to_string(project.slices_dir().join("my-slice/specs/greeting/spec.md"))
+        .expect("spec.md");
+    assert!(spec.contains("Sources: intent"), "intent claim must anchor, got:\n{spec}");
+    assert!(
+        spec.contains("#### Scenario: Corrected spelling shown"),
+        "scenarios must render as headings, got:\n{spec}"
+    );
+
+    let validate = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "validate", "my-slice"])
+        .assert();
+    let output = validate.get_output();
+    assert_no_finding(output, "spec.requirement-sources-empty");
+    assert_no_finding(output, "specs.requirements-have-scenarios");
+}

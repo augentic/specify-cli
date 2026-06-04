@@ -69,16 +69,12 @@ const TITLE_MAX_CHARS: usize = 200;
 /// Map an authoring `rule_id` to the closed review [`Severity`] enum.
 ///
 /// `rules.schema-violation` is elevated to `Critical`: a malformed rule
-/// file breaks every downstream consumer of the resolved codex.
-/// `adapter.execution-agent` is demoted to `Suggestion` (RFC-29 D9): a
-/// first-party adapter running via `agent` is informational, not a
-/// defect, so it must never block CI. Every other authoring rule maps
-/// to the `Important` default.
+/// file breaks every downstream consumer of the resolved codex. Every
+/// other authoring rule maps to the `Important` default.
 #[must_use]
 pub fn severity_for(rule_id: &str) -> Severity {
     match rule_id {
         "rules.schema-violation" => Severity::Critical,
-        "adapter.execution-agent" => Severity::Suggestion,
         _ => Severity::Important,
     }
 }

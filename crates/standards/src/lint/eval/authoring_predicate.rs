@@ -25,7 +25,6 @@ use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
 /// Closed authoring `rule_id` values executable via this bridge.
 const SUPPORTED: &[&str] = &[
-    "adapter.execution-agent",
     "adapter.missing-manifest",
     "agent-teams.missing-canonical",
     "agent-teams.non-canonical-overlay",
@@ -126,7 +125,7 @@ fn rebase_location(finding: &mut Diagnostic, framework_root: &Path) {
 
 fn run_predicate(authoring_id: &str, ctx: &Context) -> Vec<Diagnostic> {
     match authoring_id {
-        "adapter.missing-manifest" | "adapter.execution-agent" => run_adapter_check(ctx),
+        "adapter.missing-manifest" => run_adapter_check(ctx),
         "agent-teams.missing-canonical" | "agent-teams.non-canonical-overlay" => {
             AgentTeamsCheck.run(ctx)
         }

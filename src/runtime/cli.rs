@@ -286,7 +286,7 @@ pub enum ChannelArg {
 /// Typed `--source <key>=<adapter>:<binding>` CLI value (top-level
 /// plan source binding).
 ///
-/// Wire grammar (locked at Specify 2.0):
+/// Wire grammar (locked):
 ///
 /// - `--source <key>=<adapter>:<path>` — path-bound binding. The
 ///   adapter is the substring up to the first `:` after `=`; the
@@ -299,9 +299,9 @@ pub enum ChannelArg {
 ///   colons, equals signs).
 ///
 /// Materialises as [`specify_workflow::change::SourceBinding`] under
-/// the structured `{ adapter, path?, value? }` wire form. The 1.x
-/// bare-string `--source <key>=<path>` form was dropped at the 2.0
-/// cut — every binding now carries an explicit adapter name.
+/// the structured `{ adapter, path?, value? }` wire form. The legacy
+/// bare-string `--source <key>=<path>` form was dropped — every
+/// binding now carries an explicit adapter name.
 ///
 /// The [`FromStr`] impl returns a `String` error on malformed input
 /// so clap surfaces a standard usage diagnostic (exit code 2).
