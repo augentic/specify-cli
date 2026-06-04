@@ -103,6 +103,60 @@ fn divergence_emits_tag_and_round_trips() {
 }
 
 #[test]
+fn scenarios_render_as_headings_and_parse() {
+    // Regression for augentic/specify#150: scenarios must render as
+    // `#### Scenario:` H4 headings (not `- ` bullets) so the spec parser
+    // and the `specs.requirements-have-scenarios` rule recognise them.
+    let raw = "version: 1
+slice: greeting
+project: greeting
+requirements:
+  - id: REQ-001
+    title: Fix the typo
+    status: agreed
+    unit: greeting
+    sources: [intent]
+    claims:
+      - source: intent
+        id: greeting
+        kind: intent
+    statement: The greeting renders the corrected spelling.
+    scenarios:
+      - 'Corrected spelling shown'
+tasks: []
+";
+    let model = SliceModel::parse_yaml(raw).expect("model validates");
+    let specs = render_spec_files(&model);
+    assert_eq!(specs.len(), 1);
+
+    assert!(
+        specs[0].content.contains("#### Scenario: Corrected spelling shown"),
+        "scenarios must render as #### Scenario: headings, got:\n{}",
+        specs[0].content
+    );
+    assert!(
+        !specs[0].content.contains("- Corrected spelling shown"),
+        "scenarios must not render as bullets, got:\n{}",
+        specs[0].content
+    );
+
+    // Provenance parser round-trips the block cleanly.
+    let provenance = parse_spec_md(&specs[0].content);
+    assert!(provenance.findings.is_empty(), "rendered scenario output parses cleanly");
+    assert_eq!(provenance.requirements.len(), 1);
+
+    // The baseline parser the `specs.requirements-have-scenarios` rule
+    // consumes now recognises the rendered scenario.
+    let baseline = specify_model::spec::parse_baseline(&specs[0].content);
+    assert_eq!(baseline.requirements.len(), 1);
+    assert_eq!(
+        baseline.requirements[0].scenarios.len(),
+        1,
+        "the baseline parser recognises the rendered scenario"
+    );
+}
+
+#[test]
 fn expected_provenance_lines_match_model() {
     let model = worked_model();
     let expected = expected_provenance_lines(&model);
