@@ -6,12 +6,20 @@ use specify_error::Error;
 
 pub use crate::output::{Format, emit};
 
+/// Process exit code the CLI returns, mapped from a handler result.
+///
+/// [`Exit::from`] (`&Error`) is the single source of truth for the
+/// failure mapping; see DECISIONS.md §"Exit codes".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub enum Exit {
+    /// Command succeeded (exit 0).
     Success,
+    /// Any error without a more specific code (exit 1).
     GenericFailure,
+    /// Validation findings or `Error::Validation` (exit 2).
     ValidationFailed,
+    /// `Error::CliTooOld` — the binary is older than the project floor (exit 3).
     VersionTooOld,
     /// The project's pinned `specify_version` major is older than the
     /// running binary; the operator must run `specify migrate` first.
@@ -26,6 +34,8 @@ pub enum Exit {
 }
 
 impl Exit {
+    /// Numeric process exit code for this outcome.
+    #[must_use]
     pub const fn code(self) -> u8 {
         match self {
             Self::Success => 0,

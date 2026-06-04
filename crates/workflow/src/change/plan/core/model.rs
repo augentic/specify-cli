@@ -177,27 +177,12 @@ pub struct Entry {
     pub authority_override: SliceAuthorityOverride,
 }
 
-/// workflow §Plan-time reconciliation — slice-level reconciliation-outcome enum.
+/// Slice-level reconciliation outcome.
 ///
-/// Closed `none | likely | accepted | rejected` taxonomy. On disk
-/// inside `plan.yaml.slices[].divergence` the field uses
-/// `Option<Divergence>` with `skip_serializing_if = "Option::is_none"`,
-/// so an absent line (`Option::None`) is the implicit default and the
-/// `none` variant never appears in slice records. The journal wire
-/// (`plan.amend.divergence` payload's `from` / `to`) does pin all
-/// four values literally — `Divergence::None` serialises as the
-/// kebab-case `"none"` for that channel.
-///
-/// divergence and writer-ownership contract — the CLI is the single writer of every variant of
-/// this enum on `plan.yaml.slices[].divergence`. `Likely` reaches
-/// disk in the `propose`-driven `/spec:plan` flow (RFC-29 D2) when the
-/// agent runs `specify plan amend --divergence likely` *after*
-/// `specify plan propose --from` (the slice writer), because slices
-/// do not exist until projection runs. `Accepted` / `Rejected` reach
-/// disk via `specify plan amend --divergence`. `plan amend` is the
-/// only writer of the field — `plan create` scaffolds an empty plan
-/// and never stamps divergence. `none` is the implicit-absent
-/// default and is never serialised explicitly into a slice record.
+/// Closed `none | likely | accepted | rejected` taxonomy on
+/// `plan.yaml.slices[].divergence`, written only by `specify plan
+/// amend`. See DECISIONS.md §"`Divergence` enum" for the on-disk/journal
+/// serialisation and writer-ownership contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]

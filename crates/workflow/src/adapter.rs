@@ -32,12 +32,14 @@
 pub mod cache;
 mod core;
 pub(crate) mod operation;
+mod resolve;
+mod validate_manifest;
 
 pub use core::{
     ADAPTER_FILENAME, AdapterLocation, Axis, BuildInputDeclaration, CacheMode, Execution,
     PlatformsCapability, ResolvedTargetAdapter, SourceAdapter, TargetAdapter, cache_dir,
-    check_axis_unique_for_name,
 };
 
 pub use cache::{CacheLayout, SourceOperation, read_index as cache_read_index};
 pub use operation::TargetOperation;
+pub use validate_manifest::check_axis_unique_for_name;

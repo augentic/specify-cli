@@ -9,13 +9,12 @@
 //! umbrella in [`crate::lint::index`] hands to the per-file
 //! extractors.
 
-use std::collections::HashMap;
 use std::path::{MAIN_SEPARATOR, Path, PathBuf};
-use std::sync::LazyLock;
 
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 
+use super::languages::infer_language;
 use super::symlinks::FollowMode;
 use super::{IndexError, symlinks};
 use crate::lint::{FileKind, Symlink};
@@ -209,14 +208,6 @@ fn is_included(relative: &str) -> bool {
     INCLUDE_EXTENSIONS.contains(&ext)
 }
 
-/// Language inference per `WorkspaceModel` file scan. `None` is returned for
-/// extensions outside the documented set (the caller treats unknown
-/// files as language-agnostic).
-fn infer_language(relative: &str) -> Option<String> {
-    let ext = relative.rsplit_once('.').map(|(_, ext)| ext)?;
-    LANGUAGES.get(ext).map(|s| (*s).to_owned())
-}
-
 const INCLUDE_EXTENSIONS: &[&str] = &[
     "md", "yaml", "yml", "json", "toml", "rs", "swift", "kt", "kts", "gradle", "ts", "tsx", "js",
     "jsx", "py", "sql",
@@ -231,27 +222,6 @@ const ALWAYS_IGNORE_GLOBS: &[&str] = &[
     "!out/**",
     "!**/.DS_Store",
 ];
-
-static LANGUAGES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
-    HashMap::from([
-        ("rs", "rust"),
-        ("swift", "swift"),
-        ("kt", "kotlin"),
-        ("kts", "kotlin"),
-        ("gradle", "kotlin"),
-        ("ts", "typescript"),
-        ("tsx", "typescript"),
-        ("js", "javascript"),
-        ("jsx", "javascript"),
-        ("py", "python"),
-        ("sql", "sql"),
-        ("md", "markdown"),
-        ("yaml", "yaml"),
-        ("yml", "yaml"),
-        ("json", "json"),
-        ("toml", "toml"),
-    ])
-});
 
 #[cfg(test)]
 mod tests;

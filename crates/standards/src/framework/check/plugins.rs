@@ -92,7 +92,7 @@ fn check_marketplace_consistency(ctx: &Context) -> Vec<Diagnostic> {
         }
     };
 
-    let mut findings = schema_findings(ctx, &value, &manifest_path);
+    let mut findings = schema_findings(&value, &manifest_path);
     if !findings.is_empty() {
         return findings;
     }
@@ -156,8 +156,8 @@ fn check_marketplace_consistency(ctx: &Context) -> Vec<Diagnostic> {
     findings
 }
 
-fn schema_findings(ctx: &Context, value: &JsonValue, manifest_path: &Path) -> Vec<Diagnostic> {
-    match validate_value(ctx, value, SchemaId::Marketplace) {
+fn schema_findings(value: &JsonValue, manifest_path: &Path) -> Vec<Diagnostic> {
+    match validate_value(value, SchemaId::Marketplace) {
         Ok(()) => Vec::new(),
         Err(SchemaError::Infrastructure(error)) => vec![drift_finding(
             format!("Cannot validate .cursor-plugin/marketplace.json: {error}"),

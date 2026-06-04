@@ -11,8 +11,10 @@
 
 use std::fs;
 
+use serde_json::Value;
+
 mod common;
-use common::{Project, parse_json, specify_cmd};
+use common::{Project, parse_json, read_journal_normalized, specify_cmd};
 
 /// Create `my-slice`, seed a `specs/<unit>/spec.md` so the assembled
 /// request carries a non-empty `specs[]`, and transition it to
@@ -41,8 +43,9 @@ fn write_report(project: &Project, report: &str) {
     fs::write(build_dir.join("report.yaml"), report).expect("write report.yaml");
 }
 
-fn journal(project: &Project) -> String {
-    fs::read_to_string(project.root().join(".specify/journal.jsonl")).expect("read journal.jsonl")
+/// Collect the `event` ids in the slice's journal, in append order.
+fn event_ids(events: &[Value]) -> Vec<&str> {
+    events.iter().filter_map(|e| e["event"].as_str()).collect()
 }
 
 fn metadata(project: &Project) -> String {
@@ -127,22 +130,17 @@ fn prepare_writes_request_no_transition() {
     // prepare emits the agent-dispatch signal, but NOT the
     // `slice.build.started` frame — that is owned by finalize so a
     // prepare-time abort never leaves a dangling `started`.
-    let journal = journal(&project);
-    let agent_line = journal
-        .lines()
-        .find(|l| l.contains(r#""event":"target.execution.agent""#))
+    let events = read_journal_normalized(project.root());
+    let agent = events
+        .iter()
+        .find(|e| e["event"] == "target.execution.agent")
         .expect("prepare emits target.execution.agent");
+    assert_eq!(agent["payload"]["slice"], "my-slice", "agent event names the slice: {agent}");
+    assert_eq!(agent["payload"]["target"], "omnia", "agent event names the target: {agent}");
     assert!(
-        agent_line.contains(r#""slice":"my-slice""#),
-        "agent event names the slice: {agent_line}"
-    );
-    assert!(
-        agent_line.contains(r#""target":"omnia""#),
-        "agent event names the target: {agent_line}"
-    );
-    assert!(
-        !journal.contains(r#""event":"slice.build.started""#),
-        "prepare must NOT emit slice.build.started (finalize owns it), got:\n{journal}"
+        !event_ids(&events).contains(&"slice.build.started"),
+        "prepare must NOT emit slice.build.started (finalize owns it), got: {:?}",
+        event_ids(&events)
     );
 
     // prepare must not transition the slice.
@@ -175,14 +173,15 @@ fn finalize_validates_and_gates_built() {
     assert_eq!(body["status"], "success");
     assert_eq!(body["findings"], 0);
 
-    let journal = journal(&project);
+    let events = read_journal_normalized(project.root());
+    let ids = event_ids(&events);
     assert!(
-        journal.contains(r#""event":"slice.build.started""#),
-        "finalize frames entry with slice.build.started, got:\n{journal}"
+        ids.contains(&"slice.build.started"),
+        "finalize frames entry with slice.build.started, got: {ids:?}"
     );
     assert!(
-        journal.contains(r#""event":"slice.build.succeeded""#),
-        "finalize emits slice.build.succeeded, got:\n{journal}"
+        ids.contains(&"slice.build.succeeded"),
+        "finalize emits slice.build.succeeded, got: {ids:?}"
     );
 
     // The gate transitioned the slice to `built`.
@@ -214,14 +213,15 @@ fn finalize_rejects_success_blocking() {
         "a rejected report must not transition; got:\n{}",
         metadata(&project)
     );
-    let journal = journal(&project);
+    let events = read_journal_normalized(project.root());
+    let ids = event_ids(&events);
     assert!(
-        journal.contains(r#""event":"slice.build.failed""#),
-        "a rejected report emits slice.build.failed, got:\n{journal}"
+        ids.contains(&"slice.build.failed"),
+        "a rejected report emits slice.build.failed, got: {ids:?}"
     );
     assert!(
-        !journal.contains(r#""event":"slice.build.succeeded""#),
-        "a rejected report must not emit slice.build.succeeded, got:\n{journal}"
+        !ids.contains(&"slice.build.succeeded"),
+        "a rejected report must not emit slice.build.succeeded, got: {ids:?}"
     );
 }
 

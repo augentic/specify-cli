@@ -1,10 +1,12 @@
 //! Integration coverage for the framework link reference/directive checks.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use specify_standards::framework::check::links::run_on_root;
 use specify_standards::framework::{core_id_for, snippet};
+
+mod common;
 
 fn fixtures_base() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/links")
@@ -13,25 +15,9 @@ fn fixtures_base() -> PathBuf {
 fn assemble_fixture(case: &str) -> (tempfile::TempDir, PathBuf) {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path().to_path_buf();
-    copy_dir_all(&fixtures_base().join("scaffold"), &root);
-    copy_dir_all(&fixtures_base().join(case), &root);
+    common::copy_dir(&fixtures_base().join("scaffold"), &root);
+    common::copy_dir(&fixtures_base().join(case), &root);
     (temp, root)
-}
-
-fn copy_dir_all(from: &Path, to: &Path) {
-    if !from.is_dir() {
-        return;
-    }
-    fs::create_dir_all(to).expect("create target dir");
-    for entry in fs::read_dir(from).expect("read fixture dir") {
-        let entry = entry.expect("dir entry");
-        let target = to.join(entry.file_name());
-        if entry.file_type().expect("file type").is_dir() {
-            copy_dir_all(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), target).expect("copy fixture file");
-        }
-    }
 }
 
 #[test]

@@ -147,6 +147,14 @@ fn planning_stage_ab_brief_and_validate() {
         .args(["plan", "create", "planning-path", "--source", "app=code-typescript:."])
         .assert()
         .success();
+
+    // Don't trust the bare exit code: assert `plan create` actually
+    // wrote the named plan with the requested source binding before we
+    // validate it (REVIEW.md B4).
+    let plan = load_plan(&project);
+    assert_eq!(plan.name, "planning-path", "create must persist the plan name");
+    assert!(plan.sources.contains_key("app"), "create must persist the `app` source binding");
+
     specify_cmd().current_dir(project.root()).args(["plan", "validate"]).assert().success();
 }
 

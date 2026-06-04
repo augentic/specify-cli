@@ -22,6 +22,7 @@ pub use model::{
     Divergence, Entry, EntryPatch, Lifecycle, Patch, Plan, SliceAuthorityOverride,
     SliceSourceBinding, SourceBinding, Status, TargetRef, TargetRefParseError,
 };
+pub use next::{NextBody, NextReason, plan_next_body};
 pub use propose::{
     LeadCatalog, LeadCatalogEntry, ProjectMissingPlatforms, ProjectRef, ProposalKind,
     ProposalRequest, ProposalResponse, ProposeOutcome, ResponseMember, ResponseSlice,

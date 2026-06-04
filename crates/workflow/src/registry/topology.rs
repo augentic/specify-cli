@@ -12,18 +12,22 @@
 //! lockfile is machine-written (write-if-changed, mirroring
 //! `.specify/context.lock`); operators never hand-edit it.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use specify_diagnostics::{Diagnostic, Severity};
 use specify_error::Error;
 use specify_model::atomic::yaml_write;
 
 use crate::Platform;
 use crate::adapter::TargetAdapter;
+use crate::change::plan_finding;
 use crate::config::ProjectConfig;
 use crate::init::adapter_name_from_value;
+use crate::registry::Registry;
 
 /// Current `topology.lock` schema version (RFC-36 shape).
 pub const CURRENT_TOPOLOGY_LOCK_VERSION: u64 = 1;
@@ -296,6 +300,73 @@ fn validate_topology_platforms(
     }
 
     Ok(())
+}
+
+/// RFC-36: compare the committed `.specify/topology.lock` against each
+/// materialised slot's projection, returning staleness diagnostics.
+///
+/// Compares the lock against each slot's current `project.yaml` *and
+/// baseline projection*
+/// (`surface[]` from `.specify/specs/`, `recent[]` from the journal
+/// ledger), returning a `topology-cache-stale` suggestion on divergence
+/// (the fix is `specify workspace sync`). Because the projection is
+/// deterministic (D36-6), this is a regenerate-and-compare check:
+/// [`TopologyProject::resolve`] re-derives the fresh entry and any drift
+/// in `target` / `description` / `surface` / `recent` trips the warning.
+/// A slot whose topology cannot be re-derived yields a
+/// `workspace-slot-config-unreadable` important finding instead.
+/// Replaces the former registry-authored `adapter-mismatch-workspace`
+/// check — the project's `project.yaml` plus its baseline are now
+/// authoritative and the cache is the derived projection of them.
+///
+/// `workspace_base` is `.specify/workspace`; `topology_lock_path` is
+/// `.specify/topology.lock`. The binary handler renders the returned
+/// diagnostics — it owns no projection logic of its own.
+#[must_use]
+pub fn cache_staleness(
+    registry: &Registry, workspace_base: &Path, topology_lock_path: &Path,
+) -> Vec<Diagnostic> {
+    let mut results = Vec::new();
+    let lock = TopologyLock::load(topology_lock_path).ok().flatten();
+    let cached: HashMap<&str, &TopologyProject> = lock
+        .as_ref()
+        .map(|lock| lock.projects.iter().map(|p| (p.name.as_str(), p)).collect())
+        .unwrap_or_default();
+
+    for rp in &registry.projects {
+        let slot_project_dir = workspace_base.join(&rp.name);
+        if !slot_project_dir.join(".specify").join("project.yaml").exists() {
+            continue;
+        }
+        let fresh = match ProjectConfig::load(&slot_project_dir)
+            .and_then(|cfg| TopologyProject::resolve(&rp.name, &cfg, &slot_project_dir))
+        {
+            Ok(fresh) => fresh,
+            Err(err) => {
+                results.push(plan_finding(
+                    "workspace-slot-config-unreadable",
+                    Severity::Important,
+                    format!("workspace slot '{}' topology could not be derived: {err}", rp.name),
+                    None,
+                ));
+                continue;
+            }
+        };
+        let stale = cached.get(rp.name.as_str()).is_none_or(|cached| **cached != fresh);
+        if stale {
+            results.push(plan_finding(
+                "topology-cache-stale",
+                Severity::Suggestion,
+                format!(
+                    "workspace slot '{}' has drifted from .specify/topology.lock; \
+                     run `specify workspace sync` to regenerate the topology cache",
+                    rp.name
+                ),
+                None,
+            ));
+        }
+    }
+    results
 }
 
 fn malformed(detail: String) -> Error {

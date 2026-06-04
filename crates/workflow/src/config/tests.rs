@@ -1,5 +1,6 @@
 use std::fs;
 
+use proptest::prelude::*;
 use tempfile::tempdir;
 
 use super::*;
@@ -325,4 +326,50 @@ fn platforms_field_preserves_order() {
         cfg.platforms,
         vec![Platform::Core, Platform::Android, Platform::Ios, Platform::Web, Platform::Desktop]
     );
+}
+
+proptest! {
+    // `major` returns the leading component of a well-formed semver.
+    #[test]
+    fn major_extracts_first_component(maj in 0_u64..50, min in 0_u64..50, pat in 0_u64..50) {
+        prop_assert_eq!(major(&format!("{maj}.{min}.{pat}")), Some(maj));
+    }
+
+    // Migration is required exactly when the pinned major is strictly
+    // older than the current major; otherwise the result is `None`.
+    #[test]
+    fn migration_iff_pin_major_older(
+        cur in (0_u64..8, 0_u64..5, 0_u64..5),
+        pin in (0_u64..8, 0_u64..5, 0_u64..5),
+    ) {
+        let current = format!("{}.{}.{}", cur.0, cur.1, cur.2);
+        let pinned = format!("{}.{}.{}", pin.0, pin.1, pin.2);
+        let got = needs_migration(&current, &pinned);
+        if pin.0 < cur.0 {
+            prop_assert_eq!(got, Some((pinned, current)));
+        } else {
+            prop_assert!(got.is_none());
+        }
+    }
+
+    // The relation is antisymmetric: if one direction needs migration the
+    // reverse direction never does.
+    #[test]
+    fn migration_is_antisymmetric(
+        cur in (0_u64..8, 0_u64..5, 0_u64..5),
+        pin in (0_u64..8, 0_u64..5, 0_u64..5),
+    ) {
+        let current = format!("{}.{}.{}", cur.0, cur.1, cur.2);
+        let pinned = format!("{}.{}.{}", pin.0, pin.1, pin.2);
+        if needs_migration(&current, &pinned).is_some() {
+            prop_assert!(needs_migration(&pinned, &current).is_none());
+        }
+    }
+
+    // A version is never older than itself.
+    #[test]
+    fn same_version_never_migrates(maj in 0_u64..50, min in 0_u64..50, pat in 0_u64..50) {
+        let v = format!("{maj}.{min}.{pat}");
+        prop_assert!(needs_migration(&v, &v).is_none());
+    }
 }

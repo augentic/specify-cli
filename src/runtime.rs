@@ -9,6 +9,7 @@ pub(crate) mod output;
 use std::process::ExitCode;
 
 use clap::Parser;
+pub use output::Exit;
 
 /// Parse argv, dispatch the subcommand, and return the process exit
 /// code. The `specify` binary calls into this.

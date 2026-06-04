@@ -4,8 +4,7 @@
 //! `path-pattern` is a candidate-set filter, not a finder. The lint contract
 //! contract is verified indirectly: a rule with `path-pattern: *.rs`
 //! plus `regex: fn` MUST emit findings only for the `*.rs` files
-//! reachable from the workspace model, and the reserved-hint diagnostics reserved-skipped
-//! list MUST stay empty.
+//! reachable from the workspace model.
 
 mod eval_support;
 
@@ -43,7 +42,6 @@ fn path_pattern_narrows_candidates() {
     )
     .expect("evaluate ok");
 
-    assert!(outcome.reserved_skipped.is_empty(), "no reserved kinds in this rule");
     assert_eq!(outcome.findings.len(), 2, "one finding per matched .rs file");
     let mut paths: Vec<&str> = outcome
         .findings

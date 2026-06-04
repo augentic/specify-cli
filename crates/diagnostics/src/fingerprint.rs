@@ -166,6 +166,7 @@ fn evidence_payload(evidence: &FindingEvidence) -> String {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
     use serde_json::json;
 
     use super::{canonical_json, fingerprint, verify_fingerprint};
@@ -432,5 +433,50 @@ mod tests {
             "sha256:f3fee654d173694494b18a4b73a5b7d4be0460896457d2f41ad0c7d752beff72",
             "if this fails, the algorithm has drifted; do not re-pin without a v2 bump"
         );
+    }
+
+    proptest! {
+        // Producer-only fields and the order/content of the excluded
+        // `related_rule_ids` Vec never enter the preimage, so the
+        // fingerprint stays pinned to the baseline regardless.
+        #[test]
+        fn excluded_fields_stable(
+            title in ".{0,40}",
+            ids in prop::collection::vec("[A-Z]{3}-[0-9]{1,4}", 0..6),
+            crit in any::<bool>(),
+            review in any::<bool>(),
+        ) {
+            let baseline = fingerprint(&sample_diagnostic());
+
+            let mut d = sample_diagnostic();
+            d.title = title;
+            d.severity = if crit { Severity::Critical } else { Severity::Important };
+            d.kind = if review { DiagnosticKind::Review } else { DiagnosticKind::Violation };
+
+            let mut ascending = ids.clone();
+            ascending.sort();
+            d.related_rule_ids = Some(ascending);
+            prop_assert_eq!(&fingerprint(&d), &baseline);
+
+            let mut descending = ids;
+            descending.reverse();
+            d.related_rule_ids = Some(descending);
+            prop_assert_eq!(&fingerprint(&d), &baseline);
+        }
+
+        // `rule-id` is part of the preimage, so two distinct ids over an
+        // otherwise-identical diagnostic must fingerprint differently.
+        #[test]
+        fn rule_id_distinguishes(
+            a in "[A-Z]{3}-[0-9]{1,4}",
+            b in "[A-Z]{3}-[0-9]{1,4}",
+        ) {
+            prop_assume!(a != b);
+            let mut da = sample_diagnostic();
+            da.rule_id = Some(a);
+            let mut db = sample_diagnostic();
+            db.rule_id = Some(b);
+            prop_assert_ne!(fingerprint(&da), fingerprint(&db));
+        }
     }
 }

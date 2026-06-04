@@ -15,8 +15,9 @@
 //! 2. Two consecutive invocations produce byte-identical pretty-printed
 //!    JSON envelopes — the §"Stability" guarantee from `WorkspaceModel` stability.
 //!
-//! Regenerate the golden with `REGENERATE_GOLDENS=1` after a
-//! deliberate model change; see [`docs/standards/testing.md`].
+//! Regenerate the golden with
+//! `REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_indexer_consumer`
+//! after a deliberate model change; see [`docs/standards/testing.md`].
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +27,8 @@ use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_val
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::index::build;
 use tempfile::TempDir;
+
+mod common;
 
 const FIXTURE_NAME: &str = "minimal";
 
@@ -41,23 +44,9 @@ fn golden_path() -> PathBuf {
     crate_root().join("tests/fixtures/lint").join(format!("{FIXTURE_NAME}_workspace_model.json"))
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create dst");
-    for entry in fs::read_dir(src).expect("read src") {
-        let entry = entry.expect("entry");
-        let ft = entry.file_type().expect("file type");
-        let to = dst.join(entry.file_name());
-        if ft.is_dir() {
-            copy_dir_recursive(&entry.path(), &to);
-        } else {
-            fs::copy(entry.path(), &to).expect("copy file");
-        }
-    }
-}
-
 fn stage_fixture() -> TempDir {
     let tempdir = tempfile::tempdir().expect("tempdir");
-    copy_dir_recursive(&fixture_src(), tempdir.path());
+    common::copy_dir(&fixture_src(), tempdir.path());
 
     // `.gitignore` + ignored.md cannot be committed cleanly inside
     // the fixture (the .gitignore would cause git to skip the
@@ -126,7 +115,11 @@ fn minimal_fixture_matches_golden() {
     }
 
     let expected = fs::read_to_string(&path).unwrap_or_else(|err| {
-        panic!("missing golden {}: {err}; regenerate with REGENERATE_GOLDENS=1", path.display())
+        panic!(
+            "missing golden {}: {err}; regenerate with \
+             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_indexer_consumer",
+            path.display()
+        )
     });
     let expected_value: Value = serde_json::from_str(&expected).expect("parse golden");
     assert_eq!(

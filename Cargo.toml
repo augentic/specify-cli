@@ -166,6 +166,7 @@ jiff = { version = "0.2", default-features = false, features = ["serde", "std"] 
 jsonschema = { version = "0.46", default-features = false }
 libc = "0.2"
 petgraph = "0.8"
+proptest = "1.11.0"
 rayon = "1"
 regex = "1"
 semver = "1"

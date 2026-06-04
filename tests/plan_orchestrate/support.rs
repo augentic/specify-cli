@@ -12,7 +12,7 @@ pub use std::path::{Path, PathBuf};
 pub use std::process::Command as ProcessCommand;
 
 pub use serde_json::Value;
-pub use specify_workflow::change::Plan;
+pub use specify_workflow::change::{Plan, Status};
 pub use tempfile::{TempDir, tempdir};
 
 pub use crate::common::{
@@ -26,6 +26,45 @@ pub fn plan_fixtures() -> PathBuf {
 
 pub fn assert_golden(name: &str, actual: Value) {
     assert_golden_at(&plan_fixtures(), name, actual);
+}
+
+// -- setup helpers (REVIEW.md B4) -------------------------------------
+
+/// Load and parse the project's `plan.yaml` into the in-memory model.
+/// Used by setup helpers (and tests) that must assert a write actually
+/// landed rather than trusting a bare `.assert().success()`.
+pub fn load_plan(project: &Project) -> Plan {
+    Plan::load(&project.plan_path()).unwrap_or_else(|err| panic!("load plan.yaml: {err}"))
+}
+
+/// Run `specify plan add <name>` as a setup step, asserting BOTH that
+/// it exits 0 AND that the entry actually landed in `plan.yaml` as a
+/// `pending` row. Most call sites previously asserted only `.success()`,
+/// so a silent regression in the plan writer would have slipped past
+/// the setup and surfaced as a confusing failure in the assertion under
+/// test.
+pub fn add_pending_entry(project: &Project, name: &str) {
+    add_entry_with(project, name, &[]);
+}
+
+/// [`add_pending_entry`] with extra `plan add` flags (e.g. `--sources
+/// <key>=<lead>`). Asserts the entry is present and `pending` after the
+/// write so the binding-shaping tests start from a verified state.
+pub fn add_entry_with(project: &Project, name: &str, extra: &[&str]) {
+    let mut args = vec!["plan", "add", name];
+    args.extend_from_slice(extra);
+    specify_cmd().current_dir(project.root()).args(&args).assert().success();
+
+    let plan = load_plan(project);
+    let entry = plan.entries.iter().find(|e| e.name == name).unwrap_or_else(|| {
+        panic!("`plan add {name}` did not append an entry; entries: {:?}", plan.entries)
+    });
+    assert_eq!(
+        entry.status,
+        Status::Pending,
+        "`plan add {name}` must land a pending entry, got {:?}",
+        entry.status
+    );
 }
 
 // -- test seeds --------------------------------------------------------

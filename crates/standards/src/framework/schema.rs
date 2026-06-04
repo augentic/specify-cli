@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
@@ -7,16 +7,13 @@ use specify_schema::{
     MARKETPLACE_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
 };
 
-use crate::framework::context::Context;
 use crate::framework::error::ToolingError;
 use crate::framework::helpers::skill_frontmatter;
 
 /// Framework authoring JSON Schema identifiers.
 ///
-/// Each variant resolves to an embedded constant under
-/// `specify-cli/schemas/authoring/` (or `schemas/rules/` for
-/// [`SchemaId::Rule`]) compiled into the binary via
-/// [`specify_schema`].
+/// Each variant resolves to an embedded `&'static` constant compiled
+/// into the binary via [`specify_schema`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SchemaId {
     Skill,
@@ -26,15 +23,15 @@ pub enum SchemaId {
 }
 
 impl SchemaId {
-    /// Synthetic cache key and embedded schema source for `schema_id`.
-    const fn embedded(self) -> (&'static str, &'static str) {
+    /// Embedded `&'static` schema source for `schema_id`. The pointer
+    /// identity of these constants keys the shared [`specify_schema`]
+    /// validator cache.
+    const fn source(self) -> &'static str {
         match self {
-            Self::Skill => ("<embedded>/authoring/skill.schema.json", SKILL_JSON_SCHEMA),
-            Self::Rule => ("<embedded>/rules/rule.schema.json", RULE_JSON_SCHEMA),
-            Self::Scenario => ("<embedded>/authoring/scenario.schema.json", SCENARIO_JSON_SCHEMA),
-            Self::Marketplace => {
-                ("<embedded>/authoring/marketplace.schema.json", MARKETPLACE_JSON_SCHEMA)
-            }
+            Self::Skill => SKILL_JSON_SCHEMA,
+            Self::Rule => RULE_JSON_SCHEMA,
+            Self::Scenario => SCENARIO_JSON_SCHEMA,
+            Self::Marketplace => MARKETPLACE_JSON_SCHEMA,
         }
     }
 }
@@ -59,25 +56,29 @@ pub struct ValidationError {
     pub message: String,
 }
 
-/// Lazily compile a framework schema via the shared context cache.
-pub fn validator(
-    ctx: &Context, schema_id: SchemaId,
-) -> Result<std::sync::Arc<Validator>, ToolingError> {
-    let (key, source) = schema_id.embedded();
-    ctx.schema_from_source(PathBuf::from(key), source)
+/// Lazily compile a framework schema via the shared [`specify_schema`]
+/// validator cache (one schema-cache implementation, keyed on the
+/// embedded constant's pointer identity).
+///
+/// # Errors
+///
+/// [`ToolingError::Infrastructure`] when the embedded schema cannot be
+/// compiled or the shared cache lock is poisoned (a corrupt-binary or
+/// prior-panic signal).
+pub fn validator(schema_id: SchemaId) -> Result<std::sync::Arc<Validator>, ToolingError> {
+    specify_schema::cached_validator(schema_id.source())
+        .map_err(|err| ToolingError::Infrastructure(err.to_string()))
 }
 
 /// Validate a parsed JSON/YAML value against a framework schema.
-pub fn validate_value(
-    ctx: &Context, value: &JsonValue, schema_id: SchemaId,
-) -> Result<(), SchemaError> {
-    let compiled = validator(ctx, schema_id)?;
+pub fn validate_value(value: &JsonValue, schema_id: SchemaId) -> Result<(), SchemaError> {
+    let compiled = validator(schema_id)?;
     collect_errors(&compiled, value).map_err(SchemaError::Validation)
 }
 
 /// Extract YAML frontmatter from a Markdown file and validate it against `schema_id`.
 pub fn validate_frontmatter(
-    ctx: &Context, path: impl AsRef<Path>, schema_id: SchemaId,
+    path: impl AsRef<Path>, schema_id: SchemaId,
 ) -> Result<(), SchemaError> {
     let path = path.as_ref();
     let content = fs::read_to_string(path).map_err(|source| {
@@ -95,7 +96,7 @@ pub fn validate_frontmatter(
     };
 
     let value = JsonValue::Object(frontmatter.into_iter().collect());
-    validate_value(ctx, &value, schema_id)
+    validate_value(&value, schema_id)
 }
 
 /// Shared validation error collection for checks and acceptance tests.

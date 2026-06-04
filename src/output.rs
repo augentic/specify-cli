@@ -10,6 +10,7 @@ use std::io::Write;
 use std::time::Instant;
 
 use clap::ValueEnum;
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_diagnostics::{
     DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format as DiagnosticsFormat,
@@ -71,6 +72,9 @@ pub struct LintEmit<'a> {
     pub report: &'a DiagnosticReport,
     /// Project (or framework-root) layout the journal event lands under.
     pub layout: Layout<'a>,
+    /// Dispatcher-injected event timestamp for the `lint-completed`
+    /// event (architecture §Time injection); the handler reads the clock.
+    pub now: Timestamp,
     /// Scope facets recorded on the `lint-completed` event.
     pub scope: LintScope,
     /// Command label prefixed onto best-effort journal failures.
@@ -108,6 +112,7 @@ pub fn emit_diagnostic_report(emit: LintEmit<'_>) -> Result<bool, RenderError> {
     let exit_code: i32 = if blocking { 2 } else { 0 };
     journal::emit_lint_completed(
         emit.layout,
+        emit.now,
         emit.scope,
         &emit.report.findings,
         emit.elapsed_ms,
@@ -130,6 +135,9 @@ pub struct LintRun<'a> {
     pub format: DiagnosticsFormat,
     /// Project (or framework-root) layout the journal event lands under.
     pub layout: Layout<'a>,
+    /// Dispatcher-injected event timestamp for the `lint-completed`
+    /// event (architecture §Time injection); the handler reads the clock.
+    pub now: Timestamp,
     /// Scope facets recorded on the `lint-completed` event.
     pub scope: LintScope,
     /// Command label prefixed onto best-effort journal failures.
@@ -163,6 +171,7 @@ pub fn emit_lint_report(run: LintRun<'_>) -> Result<Option<DiagnosticReport>> {
                 format: run.format,
                 report: &report,
                 layout: run.layout,
+                now: run.now,
                 scope: run.scope,
                 command_label: run.command_label,
                 elapsed_ms: run.started_at.elapsed().as_millis(),

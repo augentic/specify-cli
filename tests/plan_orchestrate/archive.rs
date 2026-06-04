@@ -4,9 +4,59 @@
 use crate::support::*;
 
 // -- plan archive (L1.K) ----------------------------------------------
+//
+// REVIEW.md B5 (determinism): the archive verb stamps its filename from
+// `Timestamp::now()` read *inside* the CLI subprocess, and the CLI
+// exposes no clock-injection seam (`Ctx::now()` hardcodes
+// `Timestamp::now()`; `plan archive` passes `Timestamp::now()` straight
+// through). So tests must not reconstruct the stamp from their own
+// clock — a midnight roll between the two reads would desync them.
+// Discovery assertions match the produced `<name>-YYYYMMDD` shape with
+// a regex; the two collision tests, which must pre-create the exact
+// destination, seed the whole `date_window()` instead.
 
-fn today_yyyymmdd() -> String {
-    jiff::Timestamp::now().strftime("%Y%m%d").to_string()
+/// UTC `YYYYMMDD` stamps for yesterday / today / tomorrow. The CLI
+/// reads its clock a beat after the test reads its own, so its stamp is
+/// always within this window; seeding all three guarantees a collision
+/// regardless of a midnight roll.
+fn date_window() -> Vec<String> {
+    let day = jiff::SignedDuration::from_hours(24);
+    let now = jiff::Timestamp::now();
+    [now.checked_sub(day).expect("now - 24h"), now, now.checked_add(day).expect("now + 24h")]
+        .iter()
+        .map(|ts| ts.strftime("%Y%m%d").to_string())
+        .collect()
+}
+
+/// Entry names directly under `.specify/archive/plans` (empty when the
+/// dir is absent).
+fn archived_entries(project: &Project) -> Vec<String> {
+    fs::read_dir(archive_dir(project))
+        .map(|rd| {
+            rd.filter_map(|e| e.ok().and_then(|e| e.file_name().into_string().ok())).collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Locate the archived plan file `<name>-YYYYMMDD.yaml`, if the verb
+/// wrote one — matched by shape rather than a clock-derived literal.
+fn archived_plan_file(project: &Project, name: &str) -> Option<PathBuf> {
+    let re = regex::Regex::new(&format!(r"^{}-\d{{8}}\.yaml$", regex::escape(name)))
+        .expect("regex compiles");
+    archived_entries(project)
+        .into_iter()
+        .find(|f| re.is_match(f))
+        .map(|f| archive_dir(project).join(f))
+}
+
+/// Locate the co-moved archive directory `<name>-YYYYMMDD`, if any.
+fn archived_plan_dir(project: &Project, name: &str) -> Option<PathBuf> {
+    let re =
+        regex::Regex::new(&format!(r"^{}-\d{{8}}$", regex::escape(name))).expect("regex compiles");
+    archived_entries(project)
+        .into_iter()
+        .find(|f| re.is_match(f))
+        .map(|f| archive_dir(project).join(f))
 }
 
 /// Replace any `-YYYYMMDD` date stamp in JSON strings with a stable
@@ -52,8 +102,11 @@ fn plan_archive_happy_path_text() {
     );
 
     assert!(!project.plan_path().exists(), "original plan.yaml must be gone");
-    let archived = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
-    assert!(archived.exists(), "archived file not found at {}", archived.display());
+    assert!(
+        archived_plan_file(&project, "demo").is_some(),
+        "archived plan file not found under {}",
+        archive_dir(&project).display()
+    );
 }
 
 #[test]
@@ -96,8 +149,7 @@ fn plan_archive_refuses_without_force() {
 
     assert!(project.plan_path().exists(), "plan.yaml must still exist");
     assert!(
-        !archive_dir(&project).exists()
-            || !archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd())).exists(),
+        archived_plan_file(&project, "demo").is_none(),
         "no archive file should be written on refusal"
     );
 }
@@ -135,8 +187,8 @@ fn plan_archive_with_force_succeeds() {
         .assert()
         .success();
 
-    let archived = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
-    assert!(archived.exists(), "archived file missing at {}", archived.display());
+    let archived =
+        archived_plan_file(&project, "demo").expect("archived plan file must exist after --force");
     let contents = fs::read_to_string(&archived).expect("read archived yaml");
     assert!(
         contents.contains("name: b"),
@@ -180,8 +232,16 @@ fn plan_archive_refuses_when_dest_exists() {
 
     let dest_dir = archive_dir(&project);
     fs::create_dir_all(&dest_dir).expect("mkdir archive dir");
-    let dest = dest_dir.join(format!("demo-{}.yaml", today_yyyymmdd()));
-    fs::write(&dest, "prior: content\n").expect("seed prior archive");
+    // Seed a collision file for every stamp the CLI's clock might pick
+    // (see `date_window`) so the dest-exists guard fires deterministically.
+    let seeded: Vec<PathBuf> = date_window()
+        .iter()
+        .map(|d| {
+            let dest = dest_dir.join(format!("demo-{d}.yaml"));
+            fs::write(&dest, "prior: content\n").expect("seed prior archive");
+            dest
+        })
+        .collect();
 
     let assert =
         specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
@@ -193,11 +253,13 @@ fn plan_archive_refuses_when_dest_exists() {
     );
 
     assert!(project.plan_path().exists(), "original plan.yaml must be untouched");
-    let dest_contents = fs::read_to_string(&dest).expect("read prior archive");
-    assert_eq!(
-        dest_contents, "prior: content\n",
-        "pre-existing archive destination must not be overwritten"
-    );
+    for dest in &seeded {
+        assert_eq!(
+            fs::read_to_string(dest).expect("read prior archive"),
+            "prior: content\n",
+            "pre-existing archive destination must not be overwritten"
+        );
+    }
 }
 
 #[test]
@@ -257,7 +319,8 @@ fn plan_archive_co_moves_working_dir() {
     );
 
     assert!(!working_dir.exists(), ".specify/plans/demo/ must be gone after archive");
-    let archived_dir = archive_dir(&project).join(format!("demo-{}", today_yyyymmdd()));
+    let archived_dir =
+        archived_plan_dir(&project, "demo").expect("co-moved archive directory must exist");
     assert!(archived_dir.is_dir(), "co-moved dir missing at {}", archived_dir.display());
     assert_eq!(
         fs::read_to_string(archived_dir.join("discovery.md")).expect("read"),
@@ -295,11 +358,18 @@ fn plan_archive_co_move_collision_halts() {
     project.seed_plan(ALL_DONE);
     let working_dir = seed_working_dir(&project, "demo", &[("notes.md", b"# notes\n")]);
 
-    // Pre-create the co-move destination only; the plan.yaml
-    // archive destination is clear, so this hits the working-dir
-    // preflight specifically.
-    let dest_dir = archive_dir(&project).join(format!("demo-{}", today_yyyymmdd()));
-    fs::create_dir_all(&dest_dir).expect("seed collision dir");
+    // Pre-create the co-move destination dir for the whole date window so
+    // the working-dir preflight collides regardless of a midnight roll;
+    // the plan.yaml archive destination stays clear, isolating the
+    // working-dir preflight specifically.
+    let seeded_dirs: Vec<PathBuf> = date_window()
+        .iter()
+        .map(|d| {
+            let dir = archive_dir(&project).join(format!("demo-{d}"));
+            fs::create_dir_all(&dir).expect("seed collision dir");
+            dir
+        })
+        .collect();
 
     let assert =
         specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().failure();
@@ -316,10 +386,14 @@ fn plan_archive_co_move_collision_halts() {
         "plan.yaml MUST be untouched when working-dir preflight fails"
     );
     assert!(working_dir.is_dir(), "source working dir must be untouched on collision");
-    let plan_archive = archive_dir(&project).join(format!("demo-{}.yaml", today_yyyymmdd()));
-    assert!(!plan_archive.exists(), "plan.yaml must not have been archived on collision");
     assert!(
-        dest_dir.is_dir() && fs::read_dir(&dest_dir).expect("read").next().is_none(),
-        "pre-existing collision dir must remain empty"
+        archived_plan_file(&project, "demo").is_none(),
+        "plan.yaml must not have been archived on collision"
     );
+    for dir in &seeded_dirs {
+        assert!(
+            dir.is_dir() && fs::read_dir(dir).expect("read").next().is_none(),
+            "pre-existing collision dir must remain empty"
+        );
+    }
 }

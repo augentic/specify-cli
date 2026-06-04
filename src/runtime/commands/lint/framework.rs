@@ -24,6 +24,7 @@
 use std::path::Path;
 use std::time::Instant;
 
+use jiff::Timestamp;
 use specify_diagnostics::{Diagnostic, DiagnosticReport, Format as DiagnosticsFormat};
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
@@ -91,7 +92,6 @@ fn build_report(
     let config = PipelineConfig {
         profile: ScanProfile::Framework,
         dump_model: action.dump_model,
-        strict_hints: action.strict_hints,
         apply_ignore_directives: true,
         rule_filter: &rule_filter_slice,
         resolver_degradation: ResolverDegradation::SkipDeclarative,
@@ -109,6 +109,7 @@ fn build_report(
         config: &config,
         format,
         layout: Layout::new(&project_dir),
+        now: Timestamp::now(),
         scope,
         command_label: "specify lint framework",
         started_at,

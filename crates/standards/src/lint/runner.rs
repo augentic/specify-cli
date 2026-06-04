@@ -3,10 +3,9 @@
 //! Both lint surfaces (`specify lint` and `specify lint framework`) compose the
 //! identical sequence: resolve the codex, index the workspace, run any
 //! imperative producers, evaluate the declarative deterministic hints,
-//! dedupe by fingerprint, apply the ignore-directive pass, fold in the
-//! reserved-hint summary, and assemble the [`DiagnosticReport`] envelope.
-//! This module owns that sequence so the two handlers stay thin and
-//! cannot drift.
+//! dedupe by fingerprint, apply the ignore-directive pass, and assemble
+//! the [`DiagnosticReport`] envelope. This module owns that sequence so
+//! the two handlers stay thin and cannot drift.
 //!
 //! The surfaces differ only in configuration — scan profile, tool
 //! runner, resolver-degradation policy, and the producer set — which
@@ -24,8 +23,8 @@ use specify_error::Result;
 
 use crate::lint::ScanProfile;
 use crate::lint::diagnostics::{emit_dump_model, map_index_error};
+use crate::lint::eval::evaluate_rules;
 use crate::lint::eval::tool::ToolRunner;
-use crate::lint::eval::{evaluate_rules, reserved_hint_summary};
 use crate::lint::ignore::apply as apply_directives;
 use crate::lint::index::build as build_model;
 use crate::lint::producer::DiagnosticProducer;
@@ -51,9 +50,6 @@ pub struct PipelineConfig<'a> {
     /// When set, emit the indexed `WorkspaceModel` and stop before the
     /// evaluator pass.
     pub dump_model: bool,
-    /// Upgrade the reserved-hint summary severity from `optional` to
-    /// `important`.
-    pub strict_hints: bool,
     /// Apply the ignore-directive demotion pass. Always `true` for the
     /// lint surfaces; lifecycle gates set this `false` so validation
     /// stays non-silenceable.
@@ -75,7 +71,6 @@ impl fmt::Debug for PipelineConfig<'_> {
         f.debug_struct("PipelineConfig")
             .field("profile", &self.profile)
             .field("dump_model", &self.dump_model)
-            .field("strict_hints", &self.strict_hints)
             .field("apply_ignore_directives", &self.apply_ignore_directives)
             .field("rule_filter", &self.rule_filter)
             .field("resolver_degradation", &self.resolver_degradation)
@@ -135,7 +130,7 @@ pub fn run(inputs: &ResolveInputs<'_>, config: &PipelineConfig<'_>) -> Result<Ru
     // The declarative pass continues the `FIND-NNNN` id sequence past
     // the imperative producers so the two passes never collide on id.
     let start_id = u64::try_from(combined.len()).unwrap_or(u64::MAX).saturating_add(1);
-    let (declarative, reserved, mut next_id) = evaluate_rules(
+    let (declarative, mut next_id) = evaluate_rules(
         &resolved.rules,
         &model,
         inputs.project_dir,
@@ -154,9 +149,6 @@ pub fn run(inputs: &ResolveInputs<'_>, config: &PipelineConfig<'_>) -> Result<Ru
         next_id = outcome.next_id_counter;
     }
 
-    if let Some(summary) = reserved_hint_summary(&reserved, config.strict_hints) {
-        combined.push(summary);
-    }
     // `next_id` is intentionally not consumed further in v1; future
     // post-passes (baseline matching, telemetry ids) continue to
     // thread it.

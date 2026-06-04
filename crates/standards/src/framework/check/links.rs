@@ -17,17 +17,10 @@ const RULE_UNRESOLVED_DIRECTIVE: &str = "links.unresolved-directive";
 
 /// Skill reference checks and skill directive validation.
 ///
-/// Broken markdown link detection (formerly `links.unresolved`) was
-/// retired — `CORE-002` ≅ `links.unresolved` now owns
-/// that surface via a `path-pattern` + `reference-resolves`
-/// deterministic hint pair (`adapters/shared/rules/core/CORE-002-links-unresolved.md`
-/// in the framework repo). The parity test
-/// `crates/standards/tests/core_parity_links_unresolved.rs` proves
-/// the declarative interpreter flags the same unresolved-reference
-/// set as the deleted imperative row, with the rule-id mapping
-/// `links.unresolved` ↔ `CORE-002`. Skill reference and skill
-/// directive checks below stay imperative until later cards map
-/// them onto reserved-kind hints.
+/// Broken markdown link detection is owned by the declarative
+/// `CORE-002` rule (`path-pattern` + `reference-resolves` hint pair);
+/// the imperative skill reference and directive checks below remain
+/// here.
 pub struct LinksCheck;
 
 impl Check for LinksCheck {

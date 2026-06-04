@@ -1,6 +1,8 @@
 //! Journal event wire-shape contract tables (split for line limits).
 
 use super::{Event, EventKind, test_timestamp, *};
+use crate::adapter::operation::SourceOperation;
+use crate::change::Divergence;
 
 pub fn assert_wire_rows(rows: &[(EventKind, &[&str])]) {
     for (kind, required) in rows {

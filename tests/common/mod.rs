@@ -10,6 +10,7 @@
     reason = "test helpers shared across integration test binaries; not every binary uses every helper"
 )]
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
@@ -167,6 +168,43 @@ pub fn run_git(root: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).expect("git stdout utf8")
 }
 
+/// Pinned RFC 3339 timestamp every journal-reading suite normalises
+/// event `timestamp` fields to. CLI-driven emits stamp
+/// `Timestamp::now()`; tests rewrite the value to this placeholder so
+/// assertions (and goldens) stay deterministic across runs.
+pub const FIXED_TIMESTAMP: &str = "2026-05-21T20:00:00Z";
+
+/// Read `<root>/.specify/journal.jsonl`, returning one parsed `Value`
+/// per non-blank line with every event's `timestamp` normalised to
+/// [`FIXED_TIMESTAMP`].
+///
+/// This is the single home for the journal-reading + timestamp
+/// normalisation pattern (previously copied into `tests/journal.rs`,
+/// `tests/slice_build.rs`, and `tests/source_survey.rs`): callers that
+/// want structured journal assertions parse the lines here and assert
+/// on fields, rather than substring-matching raw JSON text.
+///
+/// # Panics
+///
+/// Panics if the journal file is missing or a line is not valid JSON.
+pub fn read_journal_normalized(root: &Path) -> Vec<Value> {
+    let path = root.join(".specify").join("journal.jsonl");
+    let raw =
+        fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+    raw.lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let mut value: Value = serde_json::from_str(line).expect("journal line is JSON");
+            if let Value::Object(map) = &mut value
+                && map.contains_key("timestamp")
+            {
+                map.insert("timestamp".to_string(), Value::String(FIXED_TIMESTAMP.to_string()));
+            }
+            value
+        })
+        .collect()
+}
+
 /// Parse a captured stdout buffer as JSON, panicking on UTF-8 or parse
 /// errors with the offending text included for debugging.
 ///
@@ -196,6 +234,31 @@ pub fn copy_dir(src: &Path, dst: &Path) {
             fs::copy(entry.path(), &target).expect("copy");
         }
     }
+}
+
+/// Recursively snapshot every regular file under `root` as a
+/// `relative-path -> bytes` map, so an upgrade's write set can be
+/// asserted by diffing two snapshots.
+///
+/// # Panics
+///
+/// Panics if a directory cannot be read or a file cannot be loaded.
+pub fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
+        for entry in fs::read_dir(dir).expect("read_dir") {
+            let entry = entry.expect("dir entry");
+            let path = entry.path();
+            if entry.file_type().expect("file_type").is_dir() {
+                walk(root, &path, out);
+            } else {
+                let rel = path.strip_prefix(root).expect("strip prefix").to_path_buf();
+                out.insert(rel, fs::read(&path).expect("read file"));
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(root, root, &mut out);
+    out
 }
 
 /// Scaffold an empty workspace project in `tmp` via `specify init --workspace`.
@@ -437,7 +500,8 @@ pub fn assert_golden_at(dir: &Path, name: &str, actual: Value) {
 
     let expected_raw = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
         panic!(
-            "golden {} missing ({err}); regenerate via REGENERATE_GOLDENS=1 cargo test",
+            "golden {} missing ({err}); regenerate via \
+             REGENERATE_GOLDENS=1 cargo nextest run --test <binary>",
             golden_path.display()
         )
     });

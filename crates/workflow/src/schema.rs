@@ -360,7 +360,7 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<Vec<EvidenceDoc>> {
         Ok(docs)
     } else {
         Err(Error::Validation {
-            code: "evidence-schema".to_string(),
+            code: "evidence-schema".into(),
             detail: join_details(&summaries),
         })
     }
@@ -473,7 +473,7 @@ pub fn validate_leads(leads: &[Lead]) -> Result<()> {
         Ok(())
     } else {
         Err(Error::Validation {
-            code: "discovery-lead-schema".to_string(),
+            code: "discovery-lead-schema".into(),
             detail: join_details(&summaries),
         })
     }
@@ -510,7 +510,9 @@ fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationS
 ///
 /// Returns [`Error::Validation`] (keyed on `code`) when parsing or
 /// schema validation fails.
-fn validate_parsed_json(content: &str, schema: &'static str, code: &str, rule: &str) -> Result<()> {
+fn validate_parsed_json(
+    content: &str, schema: &'static str, code: &'static str, rule: &str,
+) -> Result<()> {
     let instance: JsonValue = serde_saphyr::from_str(content)
         .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
     err_from_failures(code, &validation_failures(&instance, schema, code, rule))
@@ -525,7 +527,7 @@ fn validate_parsed_json(content: &str, schema: &'static str, code: &str, rule: &
 /// Returns [`Error::Validation`] (keyed on `code`) when parsing or
 /// schema validation fails.
 fn validate_with_ref_validator(
-    content: &str, validator: &jsonschema::Validator, code: &str, rule: &str,
+    content: &str, validator: &jsonschema::Validator, code: &'static str, rule: &str,
 ) -> Result<()> {
     let instance: JsonValue = serde_saphyr::from_str(content)
         .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
@@ -535,7 +537,7 @@ fn validate_with_ref_validator(
         Ok(())
     } else {
         Err(Error::Validation {
-            code: code.to_string(),
+            code: code.into(),
             detail: failures.join("; "),
         })
     }
@@ -573,12 +575,12 @@ fn validation_failures(
         .collect()
 }
 
-fn err_from_failures(code: &str, results: &[ValidationSummary]) -> Result<()> {
+fn err_from_failures(code: &'static str, results: &[ValidationSummary]) -> Result<()> {
     if results.is_empty() {
         Ok(())
     } else {
         Err(Error::Validation {
-            code: code.to_string(),
+            code: code.into(),
             detail: join_details(results),
         })
     }

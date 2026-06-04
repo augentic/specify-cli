@@ -11,10 +11,10 @@
 use std::fs;
 use std::path::PathBuf;
 
-use serde_json::Value;
-
 mod common;
-use common::{Project, parse_stderr, parse_stdout, repo_root, specify_cmd};
+use common::{
+    Project, parse_stderr, parse_stdout, read_journal_normalized, repo_root, specify_cmd,
+};
 
 fn stage_code_typescript(project: &Project) {
     // The in-repo fixture ships only `adapter.yaml` (execution: agent);
@@ -46,15 +46,6 @@ slices:
 
 fn survey_scratch_dir(project: &Project) -> PathBuf {
     project.root().join(".specify/.cache/extractions/code-typescript/survey/scratch")
-}
-
-fn journal_events(project: &Project) -> Vec<Value> {
-    let path = project.root().join(".specify/journal.jsonl");
-    let raw = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read journal.jsonl: {err}"));
-    raw.lines()
-        .filter(|l| !l.is_empty())
-        .map(|l| serde_json::from_str(l).expect("journal line is JSON"))
-        .collect()
 }
 
 // A `survey` lead-set omits `source`: attribution is CLI-owned,
@@ -105,7 +96,7 @@ fn prepare_prints_envelope_emits_event() {
     // prepare builds the scratch dir up front.
     assert!(survey_scratch_dir(&project).is_dir(), "prepare must create the scratch dir");
 
-    let events = journal_events(&project);
+    let events = read_journal_normalized(project.root());
     assert_eq!(events.len(), 1, "prepare emits exactly one event");
     assert_eq!(events[0]["event"], "source.execution.agent");
     assert_eq!(events[0]["payload"]["source"], "legacy");
@@ -151,7 +142,7 @@ fn finalize_merges_and_cache_miss() {
     );
     assert!(discovery.contains("- source: legacy"), "merged lead records its source");
 
-    let events = journal_events(&project);
+    let events = read_journal_normalized(project.root());
     let miss = events
         .iter()
         .find(|e| e["event"] == "source.survey.cache-miss")
@@ -189,7 +180,7 @@ fn finalize_unparseable_lead_set_errors() {
     );
     assert!(
         !project.root().join(".specify/journal.jsonl").exists()
-            || !journal_events(&project).iter().any(|e| {
+            || !read_journal_normalized(project.root()).iter().any(|e| {
                 e["event"] == "source.survey.cache-miss" || e["event"] == "source.survey.cache-hit"
             }),
         "unparseable lead set must not emit a cache event"
@@ -230,7 +221,7 @@ fn finalize_invalid_lead_set_untouched() {
     // No cache event fires for an invalid lead set.
     assert!(
         !project.root().join(".specify/journal.jsonl").exists()
-            || !journal_events(&project).iter().any(|e| {
+            || !read_journal_normalized(project.root()).iter().any(|e| {
                 e["event"] == "source.survey.cache-miss" || e["event"] == "source.survey.cache-hit"
             }),
         "invalid lead set must not emit a cache event"

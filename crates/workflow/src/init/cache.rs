@@ -219,53 +219,7 @@ fn vendor_spec_runtime(source_adapter_dir: &Path, cached_adapter_dir: &Path) -> 
         copy_dir_recursive(&prebuilt, &dest)?;
         return Ok(());
     }
-    vendor_runtime_tree(&repo_root.join(SHARED_RUNTIME_REL), &dest)?;
-    augment_spec_runtime_from_plugins(&repo_root, &dest)
-}
-
-fn augment_spec_runtime_from_plugins(repo_root: &Path, dest: &Path) -> Result<(), Error> {
-    let plugins_ref = repo_root.join("plugins/spec/references");
-    if !plugins_ref.is_dir() {
-        return Ok(());
-    }
-    let synthesis_dest = dest.join("synthesis");
-    fs::create_dir_all(&synthesis_dest)?;
-    for name in ["authority.md", "tags.md", "provenance.md", "claim-reconciliation.md"] {
-        let src = plugins_ref.join("synthesis").join(name);
-        if src.is_file() {
-            fs::copy(&src, synthesis_dest.join(name))?;
-        }
-    }
-    let cli_dest = dest.join("cli");
-    fs::create_dir_all(&cli_dest)?;
-    let plan_propose = plugins_ref.join("cli/plan-propose.md");
-    if plan_propose.is_file() {
-        fs::copy(&plan_propose, cli_dest.join("plan-propose.md"))?;
-    }
-    let stop_src = repo_root.join("plugins/spec/skills/execute/references/stop-conditions.md");
-    if stop_src.is_file() {
-        fs::copy(&stop_src, dest.join("stop-conditions.md"))?;
-        rewrite_stop_conditions_plan_lock(dest)?;
-    }
-    let plan_lock = plugins_ref.join("plan-lock.md");
-    if plan_lock.is_file() {
-        fs::copy(&plan_lock, dest.join("plan-lock.md"))?;
-    }
-    let review = repo_root.join("docs/reference/review-team-protocol.md");
-    if review.is_file() {
-        fs::copy(&review, dest.join("review-team-protocol.md"))?;
-    }
-    Ok(())
-}
-
-fn rewrite_stop_conditions_plan_lock(dest: &Path) -> Result<(), Error> {
-    let path = dest.join("stop-conditions.md");
-    let content = fs::read_to_string(&path)?;
-    let patched = content.replace("../../../references/plan-lock.md", "./plan-lock.md");
-    if patched != content {
-        fs::write(path, patched)?;
-    }
-    Ok(())
+    vendor_runtime_tree(&repo_root.join(SHARED_RUNTIME_REL), &dest)
 }
 
 fn vendor_runtime_tree(src: &Path, dest: &Path) -> Result<(), Error> {
@@ -325,7 +279,10 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), Error> {
         let entry = entry?;
         let source_path = entry.path();
         let target_path = target.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
+        // Follow directory symlinks (e.g. an adapter's `references/spec-runtime`
+        // symlink into the shared bundle) and dereference file symlinks so the
+        // cached adapter is self-contained with real bytes.
+        if source_path.is_dir() {
             copy_dir_recursive(&source_path, &target_path)?;
         } else {
             fs::copy(&source_path, &target_path)?;

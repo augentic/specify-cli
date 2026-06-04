@@ -6,58 +6,7 @@ use specify_diagnostics::{
     FindingLocation, Severity, fingerprint as compute_fingerprint, validate_evidence_size,
 };
 
-use super::ReservedSkipped;
 use crate::rules::ResolvedRule;
-
-/// Mint the reserved-hint diagnostics reserved-hint summary finding from accumulated
-/// [`ReservedSkipped`] entries, or return `None` when the input is
-/// empty.
-///
-/// `strict_hints` upgrades the finding's severity from `optional` to
-/// `important`; the `rule_id` is `review.reserved-hint-skipped` in
-/// both modes per reserved-hint diagnostics.
-#[must_use]
-pub fn reserved_hint_summary(
-    skipped: &[ReservedSkipped], strict_hints: bool,
-) -> Option<Diagnostic> {
-    if skipped.is_empty() {
-        return None;
-    }
-    let pairs: Vec<serde_json::Value> =
-        skipped.iter().map(|s| serde_json::json!([s.rule_id, s.hint_index])).collect();
-    let evidence = FindingEvidence::Structured {
-        summary: "Reserved hint kinds awaiting implementation".to_string(),
-        data: serde_json::json!({ "pairs": pairs }),
-        locations: None,
-    };
-    let severity = if strict_hints { Severity::Important } else { Severity::Optional };
-    let mut finding = Diagnostic {
-        id: "FIND-RESERVED".to_string(),
-        rule_id: Some("review.reserved-hint-skipped".to_string()),
-        related_rule_ids: None,
-        title: "Reserved hint kinds awaiting implementation".to_string(),
-        severity,
-        source: DiagnosticSource::Deterministic,
-        kind: DiagnosticKind::Violation,
-        target_adapter: None,
-        source_adapter: None,
-        slice: None,
-        change: None,
-        artifact: Artifact::Unknown,
-        location: None,
-        evidence,
-        impact: format!("{} reserved hint occurrence(s) skipped this scan.", skipped.len()),
-        remediation: "Implement the reserved hint kind or remove the hint until support lands."
-            .to_string(),
-        confidence: Some(Confidence::High),
-        fingerprint: String::new(),
-        status: None,
-        disposition: None,
-    };
-    clamp_evidence(&mut finding);
-    finding.fingerprint = compute_fingerprint(&finding);
-    Some(finding)
-}
 
 /// Apply the §"Evidence cap" truncation and stamp the structured lint
 /// finding fingerprint. Clamp BEFORE signing. Shared by every
@@ -251,9 +200,8 @@ mod tests {
         Severity, validate_evidence_size,
     };
 
-    use super::{TRUNCATION_MARKER, clamp_evidence, reserved_hint_summary, single_adapter};
-    use crate::lint::eval::ReservedSkipped;
-    use crate::rules::{HintKind, Origin, PathRoot, ResolvedRule};
+    use super::{TRUNCATION_MARKER, clamp_evidence, single_adapter};
+    use crate::rules::{Origin, PathRoot, ResolvedRule};
 
     fn rule(adapters: Option<Vec<String>>) -> ResolvedRule {
         ResolvedRule {
@@ -288,26 +236,6 @@ mod tests {
     fn single_adapter_none_when_multiple() {
         let r = rule(Some(vec!["omnia".into(), "vectis".into()]));
         assert!(single_adapter(&r).is_none());
-    }
-
-    #[test]
-    fn reserved_summary_empty_when_none() {
-        assert!(reserved_hint_summary(&[], false).is_none());
-    }
-
-    #[test]
-    fn reserved_summary_stable_rule_id() {
-        let skipped = vec![ReservedSkipped {
-            rule_id: "UNI-099".into(),
-            hint_index: 0,
-            kind: HintKind::NamespaceOwner,
-        }];
-        let optional = reserved_hint_summary(&skipped, false).expect("present");
-        let strict = reserved_hint_summary(&skipped, true).expect("present");
-        assert_eq!(optional.rule_id.as_deref(), Some("review.reserved-hint-skipped"));
-        assert_eq!(strict.rule_id.as_deref(), Some("review.reserved-hint-skipped"));
-        assert_eq!(optional.severity, Severity::Optional);
-        assert_eq!(strict.severity, Severity::Important);
     }
 
     #[test]

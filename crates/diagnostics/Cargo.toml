@@ -21,3 +21,6 @@ specify-error.workspace = true
 specify-schema.workspace = true
 specify-digest.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+proptest = { workspace = true }

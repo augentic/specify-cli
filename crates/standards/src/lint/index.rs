@@ -26,6 +26,7 @@ pub mod files;
 pub mod framework;
 pub mod frontmatter;
 pub mod ignore_directives;
+pub mod languages;
 pub mod markdown;
 pub mod marketplace;
 pub mod path_util;

@@ -241,7 +241,11 @@ fn assert_json_golden(result: &DiagnosticReport, golden_name: &str) {
     }
 
     let expected = fs::read_to_string(&golden).unwrap_or_else(|err| {
-        panic!("missing golden {}: {err}; regenerate with REGENERATE_GOLDENS=1", golden.display())
+        panic!(
+            "missing golden {}: {err}; regenerate with \
+             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_ignore_directive_pass",
+            golden.display()
+        )
     });
     let expected_value: Value = serde_json::from_str(&expected).expect("parse golden");
     assert_eq!(
@@ -287,12 +291,17 @@ fn assert_pretty_golden(result: &DiagnosticReport, golden_name: &str) {
         return;
     }
     let expected = fs::read_to_string(&golden).unwrap_or_else(|err| {
-        panic!("missing golden {}: {err}; regenerate with REGENERATE_GOLDENS=1", golden.display())
+        panic!(
+            "missing golden {}: {err}; regenerate with \
+             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_ignore_directive_pass",
+            golden.display()
+        )
     });
     assert_eq!(
         rendered,
         expected,
-        "pretty golden drift at {}; rerender with REGENERATE_GOLDENS=1 if intentional",
+        "pretty golden drift at {}; rerender with \
+         REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_ignore_directive_pass if intentional",
         golden.display()
     );
 }

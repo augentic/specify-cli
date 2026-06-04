@@ -95,7 +95,7 @@ pub fn validate_serialisable<T: Serialize>(
         Ok(())
     } else {
         Err(Error::Validation {
-            code: rule_id.to_string(),
+            code: rule_id.to_string().into(),
             detail: join_details(&failures),
         })
     }
@@ -164,21 +164,25 @@ pub fn validate_value_cached(
 static VALIDATOR_CACHE: LazyLock<RwLock<HashMap<usize, Arc<Validator>>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
-/// Fetch (or compile-and-insert) the validator for a `&'static` schema.
+/// Fetch (or compile-and-insert) the cached validator for a `&'static`
+/// schema, the shared schema-cache entry point for every cache-backed
+/// validator (the embedded-`&'static`-schema callers).
 ///
 /// # Errors
 ///
-/// Propagates the [`compile_schema`] meta-failure ([`Error::Diag`]) when
-/// the embedded schema cannot be parsed or compiled — unreachable in
-/// production (it signals a corrupt binary) but kept honest rather than
-/// `expect`ed so the meta-failure still surfaces as a `Fail` summary.
-fn cached_validator(schema_source: &'static str) -> Result<Arc<Validator>> {
+/// - [`Error::Diag`] (`schema-cache-poisoned`) when the cache lock is
+///   poisoned by a panic on another thread. Recoverable rather than a
+///   propagated panic so a poisoned cache never takes down the CLI.
+/// - Propagates the [`compile_schema`] meta-failure ([`Error::Diag`])
+///   when the embedded schema cannot be parsed or compiled —
+///   unreachable in production (it signals a corrupt binary) but kept
+///   honest rather than `expect`ed.
+pub fn cached_validator(schema_source: &'static str) -> Result<Arc<Validator>> {
     let key = schema_source.as_ptr() as usize;
-    if let Some(validator) = VALIDATOR_CACHE.read().expect("validator cache not poisoned").get(&key)
-    {
+    if let Some(validator) = cache_read()?.get(&key) {
         return Ok(Arc::clone(validator));
     }
-    let mut cache = VALIDATOR_CACHE.write().expect("validator cache not poisoned");
+    let mut cache = cache_write()?;
     if let Some(validator) = cache.get(&key) {
         return Ok(Arc::clone(validator));
     }
@@ -186,6 +190,23 @@ fn cached_validator(schema_source: &'static str) -> Result<Arc<Validator>> {
     cache.insert(key, Arc::clone(&validator));
     drop(cache);
     Ok(validator)
+}
+
+/// Poison-mapped read guard onto [`VALIDATOR_CACHE`].
+fn cache_read() -> Result<std::sync::RwLockReadGuard<'static, HashMap<usize, Arc<Validator>>>> {
+    VALIDATOR_CACHE.read().map_err(|_poison| poisoned())
+}
+
+/// Poison-mapped write guard onto [`VALIDATOR_CACHE`].
+fn cache_write() -> Result<std::sync::RwLockWriteGuard<'static, HashMap<usize, Arc<Validator>>>> {
+    VALIDATOR_CACHE.write().map_err(|_poison| poisoned())
+}
+
+fn poisoned() -> Error {
+    Error::Diag {
+        code: "schema-cache-poisoned",
+        detail: "compiled-validator cache lock was poisoned by a prior panic".to_string(),
+    }
 }
 
 /// Run a compiled `validator` over `instance` and fold its errors into

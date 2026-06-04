@@ -67,10 +67,7 @@ const UNI_023: &str = "UNI-023";
 /// Carries the synthetic `UNI-022` / `UNI-023` findings the runner
 /// appends to the existing finding list plus the updated
 /// `FIND-NNNN` counter so monotonic ids survive into any
-/// post-directive emission (currently the reserved-hint summary uses
-/// a fixed `FIND-RESERVED` id and does not consume the counter, but
-/// keeping the threading explicit pre-empts a footgun if that
-/// changes).
+/// post-directive emission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IgnoreOutcome {
     /// Synthetic `UNI-022` / `UNI-023` findings to append to the

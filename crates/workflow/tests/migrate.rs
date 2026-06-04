@@ -6,7 +6,7 @@
 //! path copies `migrate/v1-to-v2/before/` into a tempdir, runs `plan`
 //! then `apply`, and asserts the resulting file tree is byte-identical
 //! to `migrate/v1-to-v2/after/`. Regenerate `after/` with
-//! `REGENERATE_GOLDENS=1 cargo test -p specify-workflow --test migrate`
+//! `REGENERATE_GOLDENS=1 cargo nextest run -p specify-workflow --test migrate`
 //! and `git diff` the result before committing.
 
 use std::collections::BTreeMap;
@@ -22,22 +22,11 @@ use specify_workflow::migrate::{
 };
 use tempfile::TempDir;
 
+mod common;
+
 fn fixture_dir(leaf: &str) -> PathBuf {
     // `CARGO_MANIFEST_DIR` is `<repo>/crates/workflow/` for this crate.
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/migrate/v1-to-v2").join(leaf)
-}
-
-fn copy_dir_recursive(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).unwrap();
-    for entry in fs::read_dir(src).unwrap() {
-        let entry = entry.unwrap();
-        let target = dst.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_dir_recursive(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), &target).unwrap();
-        }
-    }
 }
 
 /// Collect every file under `root` as `relative-path -> bytes`,
@@ -68,7 +57,7 @@ fn walk(root: &Path, dir: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
 
 fn stage_before() -> TempDir {
     let tmp = tempfile::tempdir().unwrap();
-    copy_dir_recursive(&fixture_dir("before"), tmp.path());
+    common::copy_dir(&fixture_dir("before"), tmp.path());
     tmp
 }
 
@@ -175,7 +164,7 @@ fn precondition_failure_untouched() {
 fn already_v2_tree_is_noop() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path();
-    copy_dir_recursive(&fixture_dir("after"), project);
+    common::copy_dir(&fixture_dir("after"), project);
 
     let before = collect_files(project);
 
@@ -211,7 +200,7 @@ fn probe_v1_tree_reports_actions() {
 #[test]
 fn probe_v2_tree_reports_no_actions() {
     let tmp = tempfile::tempdir().unwrap();
-    copy_dir_recursive(&fixture_dir("after"), tmp.path());
+    common::copy_dir(&fixture_dir("after"), tmp.path());
     let probed = probe(tmp.path(), 1, 2).expect("probe succeeds");
     assert_eq!(probed.len(), 1, "the 1 -> 2 hop is still registered");
     assert!(probed[0].plan.actions.is_empty(), "already-2.0 tree plans nothing");

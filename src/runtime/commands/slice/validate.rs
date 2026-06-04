@@ -45,7 +45,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
             } else {
                 // `slice.synthesis.{conflict,divergence,unknown}` emit
                 // once per tagged requirement after a successful validate.
-                append_synthesis_journal(ctx.layout(), name, synthesis_tags)?;
+                append_synthesis_journal(ctx.layout(), ctx.now(), name, synthesis_tags)?;
                 Ok(())
             }
         }
