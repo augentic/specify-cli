@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use specify_diagnostics::Diagnostic;
+use specify_schema::SKILL_JSON_SCHEMA;
 
 use crate::framework::builder::{framework_finding, loc};
 use crate::framework::check::Check;
@@ -22,39 +23,47 @@ impl Check for NumericCaps {
 }
 
 fn check_skill_numeric_caps(framework_root: &Path) -> Vec<Diagnostic> {
-    let files: [(&str, bool, bool); 2] = [
-        (".cursor/schemas/skill.schema.json", true, false),
-        ("docs/standards/skill-authoring.md", true, true),
-    ];
-
     let mut findings = Vec::new();
-    for (rel, checks_description, checks_body) in files {
-        let path = framework_root.join(rel);
-        let content = match fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(_) => {
+
+    // The canonical skill schema is embedded in the binary; cross-check
+    // the description cap against it rather than a vendored editor mirror.
+    if !SKILL_JSON_SCHEMA.contains(&EXPECTED_DESCRIPTION_CAP.to_string()) {
+        findings.push(framework_finding(
+            RULE_NUMERIC_CAP_EXCEEDED,
+            format!(
+                "Skill description cap drift in embedded skill.schema.json; \
+                 expected {EXPECTED_DESCRIPTION_CAP}"
+            ),
+            None,
+        ));
+    }
+
+    // The standards doc carries both caps in prose and must agree.
+    let rel = "docs/standards/skill-authoring.md";
+    let path = framework_root.join(rel);
+    match fs::read_to_string(&path) {
+        Ok(content) => {
+            if !content.contains(&EXPECTED_DESCRIPTION_CAP.to_string()) {
                 findings.push(framework_finding(
                     RULE_NUMERIC_CAP_EXCEEDED,
-                    format!("Skill numeric cap source missing: {rel}"),
+                    format!(
+                        "Skill description cap drift in {rel}; expected {EXPECTED_DESCRIPTION_CAP}"
+                    ),
                     Some(loc(path.clone(), 1, None)),
                 ));
-                continue;
             }
-        };
-
-        if checks_description && !content.contains(&EXPECTED_DESCRIPTION_CAP.to_string()) {
-            findings.push(framework_finding(
-                RULE_NUMERIC_CAP_EXCEEDED,
-                format!(
-                    "Skill description cap drift in {rel}; expected {EXPECTED_DESCRIPTION_CAP}"
-                ),
-                Some(loc(path.clone(), 1, None)),
-            ));
+            if !content.contains(&EXPECTED_BODY_CAP.to_string()) {
+                findings.push(framework_finding(
+                    RULE_NUMERIC_CAP_EXCEEDED,
+                    format!("Skill body cap drift in {rel}; expected {EXPECTED_BODY_CAP}"),
+                    Some(loc(path.clone(), 1, None)),
+                ));
+            }
         }
-        if checks_body && !content.contains(&EXPECTED_BODY_CAP.to_string()) {
+        Err(_) => {
             findings.push(framework_finding(
                 RULE_NUMERIC_CAP_EXCEEDED,
-                format!("Skill body cap drift in {rel}; expected {EXPECTED_BODY_CAP}"),
+                format!("Skill numeric cap source missing: {rel}"),
                 Some(loc(path.clone(), 1, None)),
             ));
         }

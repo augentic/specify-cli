@@ -35,11 +35,6 @@ fn stage_project(project_dir: &Path) {
     fs::create_dir_all(project_dir.join("adapters/sources")).expect("sources");
     fs::create_dir_all(project_dir.join("adapters/targets")).expect("targets");
 
-    let cursor_schemas = project_dir.join(".cursor/schemas");
-    fs::create_dir_all(&cursor_schemas).expect("cursor schemas");
-    let schema_src = cli_schemas_dir().join("adapter.schema.json");
-    fs::copy(&schema_src, cursor_schemas.join("adapter.schema.json")).expect("copy schema");
-
     let bad_dir = project_dir.join("adapters/sources/bad-source");
     fs::create_dir_all(&bad_dir).expect("bad dir");
     fs::write(bad_dir.join("adapter.yaml"), BAD_MANIFEST).expect("write bad");
@@ -102,7 +97,7 @@ fn matches_imperative_schema_row() {
         "CORE-001",
         vec![
             hint(HintKind::PathPattern, "adapters/**/adapter.yaml"),
-            hint(HintKind::Schema, "./.cursor/schemas/adapter.schema.json"),
+            hint(HintKind::Schema, "adapter"),
         ],
     );
     let runner: &dyn ToolRunner = &NoToolRunner;

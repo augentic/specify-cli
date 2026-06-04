@@ -86,21 +86,6 @@ fn scaffold_framework(root: &Path) {
     )
     .expect("plugins/test/.cursor-plugin/plugin.json");
 
-    let skill_schema = root.join(".cursor").join("schemas").join("skill.schema.json");
-    fs::create_dir_all(skill_schema.parent().expect("skill schema parent"))
-        .expect("mkdir .cursor/schemas");
-    fs::write(
-        &skill_schema,
-        r#"{
-  "type": "object",
-  "properties": {
-    "description": { "type": "string", "maxLength": 512 }
-  }
-}
-"#,
-    )
-    .expect("skill.schema.json");
-
     let standards = root.join("docs").join("standards").join("skill-authoring.md");
     fs::create_dir_all(standards.parent().expect("standards parent"))
         .expect("mkdir docs/standards");
