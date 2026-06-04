@@ -82,21 +82,46 @@ pub(crate) fn evaluate(
         source: std::io::Error::other(err.to_string()),
     })?;
 
+    // The imperative predicates anchor `location.path` at the
+    // canonicalised framework root (`Check::run` contract). Rebase
+    // against that same root so the bridge emits the project-relative
+    // form `diagnostic.schema.json` requires — mirroring what
+    // `framework::check::finalize` does for the CORE-009 imperative
+    // producer. Without this, a firing predicate's absolute path fails
+    // the pre-emit envelope schema and empties the report.
+    let root = ctx.framework_root().to_path_buf();
     let raw = run_predicate(authoring_id, &ctx);
     let filtered = filter_authoring(raw, authoring_id);
     let mut out = Vec::with_capacity(filtered.len());
     for finding in filtered {
-        out.push(remap_for_rule(finding, rule, *next_id));
+        out.push(remap_for_rule(finding, rule, &root, *next_id));
         *next_id += 1;
     }
     Ok(out)
 }
 
-fn remap_for_rule(mut finding: Diagnostic, rule: &ResolvedRule, id_num: u64) -> Diagnostic {
+fn remap_for_rule(
+    mut finding: Diagnostic, rule: &ResolvedRule, framework_root: &Path, id_num: u64,
+) -> Diagnostic {
     finding.rule_id = Some(rule.rule_id.clone());
     finding.severity = rule.severity;
+    rebase_location(&mut finding, framework_root);
     stamp_id(&mut finding, id_num);
     finding
+}
+
+/// Rebase an authoring-predicate finding's absolute `location.path` to
+/// the project-relative forward-slash form. Runs before [`stamp_id`] so
+/// the fingerprint preimage signs the relative path consumers re-verify.
+fn rebase_location(finding: &mut Diagnostic, framework_root: &Path) {
+    let Some(location) = finding.location.as_mut() else {
+        return;
+    };
+    let prefix = framework_root.to_string_lossy().replace('\\', "/");
+    let normalised = location.path.replace('\\', "/");
+    location.path = normalised
+        .strip_prefix(&prefix)
+        .map_or_else(|| normalised.clone(), |rest| rest.trim_start_matches('/').to_string());
 }
 
 fn run_predicate(authoring_id: &str, ctx: &Context) -> Vec<Diagnostic> {

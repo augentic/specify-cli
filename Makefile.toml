@@ -65,10 +65,16 @@ cargo outdated --workspace --exit-code 1 --depth 1
 install_crate = "cargo-outdated"
 
 # Test
+#
+# `clean` was dropped from the dependency list (REVIEW.md B5): the
+# `RUSTFLAGS=-Dwarnings` override already differs from the default
+# profile, so cargo rebuilds the workspace under these flags regardless,
+# making a `cargo clean` cold rebuild redundant cost on every run. The
+# `vectis-wasm` fixture build is kept — some integration tests need it.
 [tasks.test]
 command = "cargo"
 args = ["nextest", "run", "--all", "--all-features", "--no-tests=pass"]
-dependencies = ["clean", "vectis-wasm"]
+dependencies = ["vectis-wasm"]
 env = { RUSTFLAGS = "-Dwarnings" }
 
 # Test Doc

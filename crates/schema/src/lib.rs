@@ -23,6 +23,6 @@ pub use constants::{
     TOOL_SIDECAR_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA,
 };
 pub use validate::{
-    ValidationStatus, ValidationSummary, compile_schema, join_details, read_yaml_as_json,
-    validate_serialisable, validate_value, validate_value_cached,
+    ValidationStatus, ValidationSummary, cached_validator, compile_schema, join_details,
+    read_yaml_as_json, validate_serialisable, validate_value, validate_value_cached,
 };

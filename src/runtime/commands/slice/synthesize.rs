@@ -356,7 +356,7 @@ fn read_response_file(path: &Path) -> Result<String> {
 /// journal event.
 fn failure_reason(err: &Error) -> String {
     match err {
-        Error::Validation { code, .. } => code.clone(),
+        Error::Validation { code, .. } => code.to_string(),
         Error::Diag { code, .. } => (*code).to_string(),
         other => other.to_string(),
     }

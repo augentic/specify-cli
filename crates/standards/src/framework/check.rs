@@ -14,7 +14,6 @@ pub mod rules;
 pub mod rust_source;
 pub mod rust_test_naming;
 pub mod scenarios;
-pub mod schema_alias;
 pub mod schema_links;
 pub mod skill_body;
 pub mod skill_frontmatter;
@@ -44,7 +43,6 @@ pub use scenarios::{
     RULE_STALE_RECORDED_TRACE, ScenariosCheck, check_recorded_trace_freshness,
     validate_scenario_frontmatter,
 };
-pub use schema_alias::SchemaAliasCheck;
 pub use schema_links::SchemaLinksCheck;
 pub use skill_body::{
     InlineJsonTooLong, InvalidCriticalPath, MissingCriticalPath, SectionLineCount,

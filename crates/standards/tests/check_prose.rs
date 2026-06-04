@@ -25,7 +25,7 @@ fn context_for_fixture(name: &str) -> Context {
 fn skill_numeric_caps_detects_drift() {
     let ctx = context_for_fixture("cap-drift");
     let findings = NumericCaps.run(&ctx);
-    assert_eq!(findings.len(), 3);
+    assert_eq!(findings.len(), 2);
     assert!(
         findings.iter().all(|f| f.rule_id.as_deref() == core_id_for("prose.numeric-cap-exceeded"))
     );

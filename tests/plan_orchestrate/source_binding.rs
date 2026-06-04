@@ -110,11 +110,7 @@ fn plan_amend_add_source_appends_binding() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify_cmd()
-        .current_dir(project.root())
-        .args(["plan", "add", "foo", "--sources", "intent"])
-        .assert()
-        .success();
+    add_entry_with(&project, "foo", &["--sources", "intent"]);
 
     specify_cmd()
         .current_dir(project.root())
@@ -134,19 +130,11 @@ fn plan_amend_remove_source_drops_binding() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify_cmd()
-        .current_dir(project.root())
-        .args([
-            "plan",
-            "add",
-            "foo",
-            "--sources",
-            "intent",
-            "--sources",
-            "identity-design-notes=foo",
-        ])
-        .assert()
-        .success();
+    add_entry_with(
+        &project,
+        "foo",
+        &["--sources", "intent", "--sources", "identity-design-notes=foo"],
+    );
 
     specify_cmd()
         .current_dir(project.root())
@@ -164,11 +152,7 @@ fn amend_remove_source_unknown_key_errors() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify_cmd()
-        .current_dir(project.root())
-        .args(["plan", "add", "foo", "--sources", "intent"])
-        .assert()
-        .success();
+    add_entry_with(&project, "foo", &["--sources", "intent"]);
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -184,7 +168,7 @@ fn amend_divergence_accepted_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    add_pending_entry(&project, "foo");
 
     specify_cmd()
         .current_dir(project.root())
@@ -204,7 +188,7 @@ fn amend_divergence_rejected_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    add_pending_entry(&project, "foo");
 
     specify_cmd()
         .current_dir(project.root())
@@ -227,7 +211,7 @@ fn amend_divergence_likely_writes() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    add_pending_entry(&project, "foo");
 
     specify_cmd()
         .current_dir(project.root())
@@ -247,7 +231,7 @@ fn plan_amend_divergence_none_refused() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);
 
-    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    add_pending_entry(&project, "foo");
 
     let assert = specify_cmd()
         .current_dir(project.root())

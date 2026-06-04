@@ -7,7 +7,7 @@
 //! drive the CLI through `assert_cmd`. JSON shapes are pinned by
 //! checked-in fixtures under `tests/fixtures/plan/`; regenerate them
 //! with
-//! `REGENERATE_GOLDENS=1 cargo test --test plan_orchestrate`.
+//! `REGENERATE_GOLDENS=1 cargo nextest run --test plan_orchestrate`.
 //!
 //! The suite is split across themed submodules under
 //! `tests/plan_orchestrate/`, grouped by `plan` command family; shared

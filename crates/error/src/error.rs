@@ -4,6 +4,8 @@
 //! types directly into the crate's error surface; callers that don't
 //! care which API tripped can continue to `?`-propagate.
 
+use std::borrow::Cow;
+
 /// Structured error type for all `specify-*` crates.
 ///
 /// Variants carry enough context for the CLI to assign exit codes and
@@ -49,8 +51,11 @@ pub enum Error {
     /// via [`Self::validation_failed`].
     #[error("{code}: {detail}")]
     Validation {
-        /// Stable kebab-case discriminant surfaced as the JSON `error` field.
-        code: String,
+        /// Stable kebab-case discriminant surfaced as the JSON `error`
+        /// field. `Cow` so the common literal-code path borrows a
+        /// `&'static str` (no per-construction or per-render allocation)
+        /// while dynamic codes can still own a `String`.
+        code: Cow<'static, str>,
         /// Human-readable message.
         detail: String,
     },
@@ -176,13 +181,12 @@ impl Error {
     /// [`Self::Filesystem`] is the lone owned arm, composing
     /// `filesystem-<op>`.
     #[must_use]
-    pub fn variant_str(&self) -> std::borrow::Cow<'static, str> {
-        use std::borrow::Cow;
+    pub fn variant_str(&self) -> Cow<'static, str> {
         match self {
             Self::NotInitialized => Cow::Borrowed("not-initialized"),
             Self::Diag { code, .. } => Cow::Borrowed(*code),
             Self::Argument { .. } => Cow::Borrowed("argument"),
-            Self::Validation { code, .. } => Cow::Owned(code.clone()),
+            Self::Validation { code, .. } => code.clone(),
             Self::CliTooOld { .. } => Cow::Borrowed("specify-version-too-old"),
             Self::ProjectNeedsMigration { .. } => Cow::Borrowed("project-needs-migration"),
             Self::ArtifactNotFound { .. } => Cow::Borrowed("artifact-not-found"),
@@ -208,7 +212,7 @@ impl Error {
     /// [`Diagnostic`]: https://docs.rs/specify-diagnostics
     #[must_use]
     pub fn validation_failed(
-        code: impl Into<String>, rule: impl Into<String>, detail: impl Into<String>,
+        code: impl Into<Cow<'static, str>>, rule: impl Into<String>, detail: impl Into<String>,
     ) -> Self {
         let rule = rule.into();
         let detail = detail.into();
@@ -222,6 +226,10 @@ impl Error {
 
 #[cfg(test)]
 mod tests {
+    // Exit-code mapping for these variants is locked down by the binary's
+    // `tests/cli_errors.rs`; these unit tests cover the type's own
+    // surface — the kebab discriminant (`variant_str`), the `Display`
+    // body, and `hint` — without duplicating the `Exit::from` table.
     use super::Error;
 
     #[test]
@@ -232,5 +240,48 @@ mod tests {
         };
         assert_eq!(err.variant_str(), "kebab-prefix");
         assert_eq!(err.to_string(), "kebab-prefix: specific detail");
+    }
+
+    #[test]
+    fn cli_too_old_discriminant_display() {
+        let err = Error::CliTooOld {
+            required: "1.0.0".to_string(),
+            found: "0.9.0".to_string(),
+        };
+        assert_eq!(err.variant_str(), "specify-version-too-old");
+        let msg = err.to_string();
+        assert!(msg.contains("0.9.0") && msg.contains("1.0.0"), "both versions in display: {msg}");
+        assert!(err.hint().is_none(), "CliTooOld has no recovery hint");
+    }
+
+    #[test]
+    fn needs_migration_discriminant_hint() {
+        let err = Error::ProjectNeedsMigration {
+            from: "1".to_string(),
+            to: "2".to_string(),
+        };
+        assert_eq!(err.variant_str(), "project-needs-migration");
+        assert!(err.to_string().contains("specify migrate"), "display names the fix command");
+        assert_eq!(
+            err.hint(),
+            Some("run `specify migrate` to bring the project up to the running major.")
+        );
+    }
+
+    #[test]
+    fn validation_static_code_and_display() {
+        // The common path borrows a `&'static str` code, and
+        // `validation_failed` folds `rule` + `detail` into one message.
+        let err = Error::validation_failed("bad-thing", "rule", "detail");
+        assert_eq!(err.variant_str(), "bad-thing");
+        assert_eq!(err.to_string(), "bad-thing: rule: detail");
+    }
+
+    #[test]
+    fn validation_empty_rule_omits_prefix() {
+        // Edge: an empty `rule` must not leave a dangling `": "` prefix.
+        let err = Error::validation_failed("code", "", "just detail");
+        assert_eq!(err.to_string(), "code: just detail");
+        assert_eq!(err.variant_str(), "code");
     }
 }

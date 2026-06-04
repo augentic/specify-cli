@@ -30,7 +30,7 @@ use crate::registry::Registry;
 /// [`Severity::Suggestion`] for a non-blocking advisory.
 #[must_use]
 pub fn plan_finding(
-    code: &str, severity: Severity, message: impl Into<String>, entry: Option<String>,
+    code: &'static str, severity: Severity, message: impl Into<String>, entry: Option<String>,
 ) -> Diagnostic {
     let message = message.into();
     let mut diagnostic = Diagnostic::finding(
@@ -56,7 +56,7 @@ pub fn plan_finding(
 /// `slice` and the structured evidence are set.
 #[must_use]
 pub fn plan_finding_structured(
-    code: &str, severity: Severity, message: impl Into<String>, entry: Option<String>,
+    code: &'static str, severity: Severity, message: impl Into<String>, entry: Option<String>,
     summary: impl Into<String>, data: serde_json::Value,
 ) -> Diagnostic {
     let mut diagnostic = plan_finding(code, severity, message, entry);

@@ -1,14 +1,9 @@
-//! Target build request/report wire DTOs + the success-blocking gate
-//! (RFC-29d M3 / D6).
+//! Closed-shape target build request/report wire DTOs and the
+//! success-blocking gate.
 //!
-//! Both envelopes are closed-shape and schema-validated by
-//! [`crate::schema::validate_build_request_json`] /
-//! [`crate::schema::validate_build_report_json`] before the verb
-//! deserialises here. The request omits `target`, `execution`, brief
-//! paths, and `model.yaml` (RFC-29d §"Build request"); target-specific
-//! input growth is the explicit [`BuildArtifacts::additional`] list.
-//! [`enforce_report_no_blocking_on_success`] is the typed gate the verb
-//! applies to a deserialised report.
+//! Both envelopes are schema-validated (`validate_build_request_json` /
+//! `validate_build_report_json`) before the verb deserialises here. See
+//! DECISIONS.md §"Target build envelope (D6, D9 target side, D7 proof)".
 
 use std::path::{Path, PathBuf};
 
@@ -113,7 +108,7 @@ pub struct BuildReport {
     pub target: String,
     /// `success` or `failure`.
     pub status: BuildStatus,
-    /// RFC-28 diagnostics; defaults to `[]`.
+    /// Diagnostic findings; defaults to `[]`.
     #[serde(default)]
     pub findings: Vec<Diagnostic>,
     /// Per-platform build outputs; defaults to `[]` for backward
@@ -124,11 +119,11 @@ pub struct BuildReport {
 }
 
 /// Reject a [`BuildStatus::Success`] report carrying any blocking
-/// finding (RFC-29d §"Build report").
+/// finding.
 ///
-/// A finding blocks per the RFC-28 [`blocking`] predicate (an open
-/// `critical` / `important` violation). On [`BuildStatus::Failure`]
-/// blocking findings are allowed, so the gate is a no-op.
+/// A finding blocks per the [`blocking`] predicate (an open `critical`
+/// / `important` violation). On [`BuildStatus::Failure`] blocking
+/// findings are allowed, so the gate is a no-op.
 ///
 /// # Errors
 ///

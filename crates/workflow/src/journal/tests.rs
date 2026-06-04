@@ -1,5 +1,6 @@
 use tempfile::tempdir;
 
+use super::append::{DROPPED_FILE_NAME, append_dropped};
 use super::{wire_shapes, *};
 
 fn read_lines(layout: Layout<'_>) -> Vec<String> {
@@ -97,6 +98,7 @@ fn append_failure_records_dropped_sidecar() {
 
     emit_best_effort(
         layout,
+        test_timestamp("2026-05-21T20:02:00Z"),
         EventKind::SliceMergeSucceeded {
             slice_name: "checkout".into(),
         },

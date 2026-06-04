@@ -5,7 +5,7 @@
 //! [`specify_workflow::journal::append_batch`] helper can be driven directly
 //! from a synthesised event. Golden files under
 //! `tests/fixtures/journal/` pin the canonical JSON-line shape; rerun
-//! with `REGENERATE_GOLDENS=1 cargo test --test journal` to refresh.
+//! with `REGENERATE_GOLDENS=1 cargo nextest run --test journal` to refresh.
 
 use std::fs;
 use std::path::{Path, PathBuf};

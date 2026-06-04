@@ -45,11 +45,17 @@ pub fn make_rule_with_adapter(rule_id: &str, adapter: &str, hints: Vec<RuleHint>
 }
 
 pub fn hint(kind: HintKind, value: &str) -> RuleHint {
+    hint_with_config(kind, value, None)
+}
+
+pub fn hint_with_config(
+    kind: HintKind, value: &str, config: Option<serde_json::Value>,
+) -> RuleHint {
     RuleHint {
         kind,
         value: value.to_string(),
         description: None,
-        config: None,
+        config,
     }
 }
 

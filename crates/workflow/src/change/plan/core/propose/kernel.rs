@@ -1,9 +1,7 @@
-//! The `Plan::propose_from` projection kernel and its semantic
-//! invariants (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
-//!
-//! The schema gate (`validate_proposal_json`) runs at the CLI boundary;
-//! this module enforces only the invariants the schema cannot express
-//! and projects a validated response onto `plan.yaml.slices[]`.
+//! Projects a schema-validated agent reconciliation response onto
+//! `plan.yaml.slices[]`, enforcing the semantic invariants the schema
+//! gate (`validate_proposal_json`) cannot express. See DECISIONS.md
+//! §"Lead reconciliation (D2)".
 
 use std::collections::{BTreeSet, HashSet};
 
@@ -35,8 +33,7 @@ pub struct ProposeOutcome {
 
 impl Plan {
     /// Project a validated agent reconciliation response onto
-    /// `plan.yaml.slices[]` (RFC-29 D2 projection kernel;
-    /// DECISIONS.md §"Lead reconciliation (D2)").
+    /// `plan.yaml.slices[]` (DECISIONS.md §"Lead reconciliation (D2)").
     ///
     /// `response` is assumed to have already passed JSON-Schema
     /// validation (`validate_proposal_json`) at the CLI boundary, so this
@@ -132,9 +129,8 @@ fn check_lead_orphans(slices: &[ResponseSlice], catalog: &LeadCatalog) -> Result
 }
 
 /// Per-slice source set, enforcing at-most-one-lead-per-source
-/// (`plan-reconcile-slice-source-collision`). This per-slice shape check
-/// is independent of the removed `scope` grouping (RFC-29 review F3) — a
-/// slice that named the same source twice is malformed regardless.
+/// (`plan-reconcile-slice-source-collision`). A slice that names the
+/// same source twice is malformed regardless of slice membership.
 fn slice_source_sets(slices: &[ResponseSlice]) -> Result<Vec<SliceMembership>> {
     let mut out = Vec::with_capacity(slices.len());
     for slice in slices {
@@ -159,10 +155,9 @@ fn slice_source_sets(slices: &[ResponseSlice]) -> Result<Vec<SliceMembership>> {
 }
 
 /// Total lead coverage: every surveyed lead is referenced by at least
-/// one slice (`plan-reconcile-partition`). With the `scope` grouping
-/// removed (RFC-29 review F3) a lead may legally appear in more than one
-/// slice — that is fan-out, not a double-count — so coverage is the only
-/// remaining invariant: nothing surveyed is left unplanned.
+/// one slice (`plan-reconcile-partition`). A lead may legally appear in
+/// more than one slice — that is fan-out, not a double-count — so
+/// coverage is the only invariant: nothing surveyed is left unplanned.
 fn check_coverage(source_sets: &[SliceMembership], catalog: &LeadCatalog) -> Result<()> {
     let mut covered: HashSet<(&str, &str)> = HashSet::new();
     for set in source_sets {
@@ -266,9 +261,8 @@ fn parse_project_target(project: &ProjectRef) -> Result<TargetRef> {
 }
 
 /// Collect each slice's explicit `name`, validating kebab-case
-/// (`plan-reconcile-slice-name-invalid`). With `scope` removed (RFC-29
-/// review F3) there is no kernel name derivation — the agent names every
-/// slice and the kernel writes the name verbatim.
+/// (`plan-reconcile-slice-name-invalid`). The agent names every slice
+/// and the kernel writes the name verbatim — there is no derivation.
 fn slice_names(slices: &[ResponseSlice]) -> Result<Vec<String>> {
     let mut names = Vec::with_capacity(slices.len());
     for slice in slices {

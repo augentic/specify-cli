@@ -2,7 +2,7 @@
 
 Status: **complete** (engine extensions landed; predicate retirement completed in Phase 3–4).
 
-Parent: [RFC-31 — Declarative lint completion](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md) (Accepted). Phase 1: [`rfc-31-phase1-spike.md`](./rfc-31-phase1-spike.md).
+Parent: [RFC-31 — Declarative lint completion](https://github.com/augentic/specify/blob/main/rfcs/done/rfc-31-declarative-lints.md) (Accepted, implemented). Phase 1: [`rfc-31-phase1-spike.md`](./rfc-31-phase1-spike.md).
 
 ## Landed (Phase 2a)
 
@@ -38,4 +38,4 @@ rule_hints:
 
 ## Completed (Phase 3–4)
 
-- Imperative retirement per [RFC inventory](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md#migration-inventory): 52 `CORE-*` rule files; `CORE_ID_TABLE` is CORE-009-only; `AuthoringProducer` runs namespace bridge only.
+- Imperative retirement per [RFC inventory](https://github.com/augentic/specify/blob/main/rfcs/done/rfc-31-declarative-lints.md#migration-inventory): 52 `CORE-*` rule files; `CORE_ID_TABLE` is CORE-009-only; `AuthoringProducer` runs namespace bridge only.

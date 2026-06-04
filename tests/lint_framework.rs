@@ -86,21 +86,6 @@ fn scaffold_framework(root: &Path) {
     )
     .expect("plugins/test/.cursor-plugin/plugin.json");
 
-    let skill_schema = root.join(".cursor").join("schemas").join("skill.schema.json");
-    fs::create_dir_all(skill_schema.parent().expect("skill schema parent"))
-        .expect("mkdir .cursor/schemas");
-    fs::write(
-        &skill_schema,
-        r#"{
-  "type": "object",
-  "properties": {
-    "description": { "type": "string", "maxLength": 512 }
-  }
-}
-"#,
-    )
-    .expect("skill.schema.json");
-
     let standards = root.join("docs").join("standards").join("skill-authoring.md");
     fs::create_dir_all(standards.parent().expect("standards parent"))
         .expect("mkdir docs/standards");
@@ -221,6 +206,93 @@ fn lint_completed_event_lands_in_journal() {
         payload.get("baseline_present").and_then(Value::as_bool),
         Some(false),
         "baseline_present must be false",
+    );
+}
+
+/// Write the migrated `CORE-042` rule that drives the retired
+/// imperative `skill.missing-frontmatter` predicate through the RFC-31
+/// `kind: authoring-predicate` bridge. Mirrors the live rule shape in
+/// `augentic/specify`'s `adapters/shared/rules/core/`.
+fn write_authoring_predicate_rule(root: &Path) {
+    let path = root.join("adapters/shared/rules/core/CORE-042-skill-missing-frontmatter.md");
+    fs::create_dir_all(path.parent().expect("core rules dir")).expect("mkdir core rules");
+    fs::write(
+        &path,
+        "---\n\
+id: CORE-042\n\
+title: Skill Missing Frontmatter\n\
+severity: important\n\
+trigger: SKILL.md is missing YAML frontmatter.\n\
+rule_hints:\n\
+\x20 - kind: authoring-predicate\n\
+\x20   value: skill.missing-frontmatter\n\
+---\n\n\
+## Rule\n\n\
+Delegates to the imperative `skill.missing-frontmatter` predicate via the RFC-31 bridge.\n",
+    )
+    .expect("write CORE-042 rule");
+}
+
+/// Author a SKILL.md under `plugins/test/skills/<name>/`.
+fn write_skill(root: &Path, name: &str, body: &str) {
+    let path = root.join("plugins").join("test").join("skills").join(name).join("SKILL.md");
+    fs::create_dir_all(path.parent().expect("skill parent")).expect("mkdir skill parent");
+    fs::write(&path, body).expect("write SKILL.md");
+}
+
+/// Parse the framework run's stdout envelope, panicking with stderr
+/// context on a non-JSON body.
+fn envelope(stdout: &[u8], stderr: &[u8]) -> Value {
+    serde_json::from_slice(stdout).unwrap_or_else(|err| {
+        panic!("stdout is not JSON: {err}; stderr:\n{}", String::from_utf8_lossy(stderr))
+    })
+}
+
+/// A migrated `CORE-*` rule carrying `kind: authoring-predicate` resolves
+/// and fires through the bridge: a frontmatter-less SKILL.md surfaces a
+/// `CORE-042` finding and blocks the run (exit 2).
+#[test]
+fn authoring_predicate_rule_fires() {
+    let temp = TempDir::new().expect("tempdir");
+    scaffold_framework(temp.path());
+    write_authoring_predicate_rule(temp.path());
+    write_skill(temp.path(), "broken", "# Broken Skill\n\nThis SKILL.md has no frontmatter.\n");
+
+    let (code, stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "json"]);
+    let envelope = envelope(&stdout, &stderr);
+    let findings = envelope.get("findings").and_then(Value::as_array).expect("findings array");
+    let core_042: Vec<&Value> = findings
+        .iter()
+        .filter(|f| f.get("rule-id").and_then(Value::as_str) == Some("CORE-042"))
+        .collect();
+    assert_eq!(
+        core_042.len(),
+        1,
+        "the authoring-predicate rule must surface exactly one CORE-042 finding; got envelope:\n{envelope:#}",
+    );
+    assert_eq!(
+        core_042[0].get("impact").and_then(Value::as_str),
+        Some("Authoring check 'skill.missing-frontmatter' failed."),
+        "the finding's impact must carry the bridged predicate id",
+    );
+    assert_eq!(code, Some(2), "a firing important finding blocks with exit 2");
+}
+
+/// The same rule passes when the predicate finds nothing to flag: a
+/// tree with no authored skills yields no `CORE-042` finding, proving
+/// the bridge evaluates (rather than unconditionally emitting).
+#[test]
+fn authoring_predicate_clean_tree() {
+    let temp = TempDir::new().expect("tempdir");
+    scaffold_framework(temp.path());
+    write_authoring_predicate_rule(temp.path());
+
+    let (_code, stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "json"]);
+    let envelope = envelope(&stdout, &stderr);
+    let findings = envelope.get("findings").and_then(Value::as_array).expect("findings array");
+    assert!(
+        !findings.iter().any(|f| f.get("rule-id").and_then(Value::as_str) == Some("CORE-042")),
+        "no skill authored means the predicate passes; got envelope:\n{envelope:#}",
     );
 }
 

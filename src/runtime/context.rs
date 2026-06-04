@@ -1,6 +1,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::Error;
 use specify_workflow::adapter::{ResolvedTargetAdapter, TargetAdapter};
@@ -71,6 +72,19 @@ impl Ctx {
     /// `plan.yaml` / `registry.yaml`.
     pub(crate) fn layout(&self) -> Layout<'_> {
         Layout::new(&self.project_dir)
+    }
+
+    /// Single dispatcher-boundary read of the wall clock. Library crates
+    /// never call `Timestamp::now()` (architecture §Time injection); a
+    /// handler reads `now` here once and threads it into the workflow
+    /// functions that stamp serialised artifacts, so tests pin time by
+    /// driving those functions with a fixed `Timestamp`.
+    #[expect(
+        clippy::unused_self,
+        reason = "the clock read is the named seam on Ctx so a future injected test clock has one home; keeping it a method keeps handler call sites uniform (ctx.now())"
+    )]
+    pub(crate) fn now(&self) -> Timestamp {
+        Timestamp::now()
     }
 
     pub(crate) fn slices_dir(&self) -> PathBuf {

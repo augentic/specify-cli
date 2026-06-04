@@ -47,7 +47,7 @@ fn schema_violation_missing_field() {
     let root = scaffold_framework_root(tmp.path());
     write_scenario(
         &root,
-        "tests/demo/scenario.md",
+        "acceptance/suites/demo/scenario.md",
         &format!("{VALID_FRONTMATTER}\n# Demo\n\nScenario ID: `demo-scenario`\n")
             .replace("owner: demo\n", ""),
     );
@@ -70,7 +70,7 @@ fn stages_not_contiguous_emits_finding() {
     let root = scaffold_framework_root(tmp.path());
     write_scenario(
         &root,
-        "tests/demo/scenario.md",
+        "acceptance/suites/demo/scenario.md",
         &format!("{VALID_FRONTMATTER}\n# Demo\n")
             .replace("stages: [plan]", "stages: [plan, build]"),
     );
@@ -90,7 +90,7 @@ fn path_unsafe_rejects_parent_escape() {
     let root = scaffold_framework_root(tmp.path());
     write_scenario(
         &root,
-        "tests/demo/scenario.md",
+        "acceptance/suites/demo/scenario.md",
         &format!("{VALID_FRONTMATTER}\n# Demo\n").replace(
             "isolation: fresh-project",
             "isolation: fresh-project\nexpected-artifacts:\n  - ../escape.yaml",
@@ -110,7 +110,7 @@ fn path_unsafe_rejects_parent_escape() {
 fn recorded_trace_invalid_header() {
     let tmp = TempDir::new().expect("tempdir");
     let root = scaffold_framework_root(tmp.path());
-    let trace = root.join("tests/recorded/demo.jsonl");
+    let trace = root.join("acceptance/recorded/demo.jsonl");
     fs::create_dir_all(trace.parent().unwrap()).expect("recorded dir");
     fs::write(&trace, r#"{"kind":"wrong"}"#).expect("bad trace");
 

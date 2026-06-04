@@ -19,7 +19,7 @@ const TRACE_REQUIRED_FIELDS: [&str; 6] =
 
 /// Run recorded-trace header validation and best-effort recency hints.
 pub fn check_recorded_trace_freshness(ctx: &Context) -> Vec<Diagnostic> {
-    let recorded_root = ctx.framework_root().join("tests").join("recorded");
+    let recorded_root = ctx.framework_root().join("acceptance").join("recorded");
     if !recorded_root.is_dir() {
         return Vec::new();
     }

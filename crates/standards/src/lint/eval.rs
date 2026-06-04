@@ -3,8 +3,7 @@
 //!
 //! v1 (Phase 2) ships the four executable hint kinds the contract lists
 //! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
-//! [`HintKind::Tool`]) plus the reserved-hint diagnostics reserved-kind summary policy
-//! (`review.reserved-hint-skipped`). The framework-convergence
+//! [`HintKind::Tool`]). The framework-convergence
 //! family adds [`HintKind::ReferenceResolves`], [`HintKind::Unique`],
 //! [`HintKind::SetCoverage`], [`HintKind::Cardinality`],
 //! [`HintKind::ConstantEq`], [`HintKind::SetEq`],
@@ -25,22 +24,9 @@
 //! their own [`crate::lint::FileKind`] filter (e.g. regex skips
 //! binaries).
 //!
-//! # Reserved-kind policy (reserved-hint diagnostics)
-//!
-//! After C17 NO hint kind is reserved — every [`HintKind`] variant has
-//! an executable interpreter and the partition above is exhaustive
-//! over executable arms. The reserved-kind machinery
-//! ([`ReservedSkipped`], [`HintEvalOutcome::reserved_skipped`],
-//! [`reserved_hint_summary`], the `review.reserved-hint-skipped`
-//! finding) stays as forward-compat scaffolding: a future kind landed
-//! as reserved before its interpreter would push a [`ReservedSkipped`]
-//! entry, the caller would accumulate the entries across every rule it
-//! evaluates, and [`reserved_hint_summary`] would fold them into a
-//! single `review.reserved-hint-skipped` summary finding (strict mode
-//! upgrades the severity from `optional` to `important`; the `rule_id`
-//! is the same in both modes so dashboards aggregate across strict /
-//! non-strict runs). With no reserved kind present,
-//! [`HintEvalOutcome::reserved_skipped`] is always empty in real runs.
+//! Every [`HintKind`] variant has an executable interpreter and the
+//! partition is exhaustive over executable arms — no hint kind is
+//! reserved.
 //!
 //! # Evidence cap (the structured evidence union)
 //!
@@ -76,7 +62,6 @@ pub mod unique;
 use std::path::{Path, PathBuf};
 
 pub use error::HintError;
-pub use finding::reserved_hint_summary;
 pub(crate) use finding::{SyntheticFinding, make_finding, make_synthetic_finding, restamp_finding};
 use specify_diagnostics::Diagnostic;
 use specify_error::Error as CliError;
@@ -86,30 +71,11 @@ use crate::lint::WorkspaceModel;
 use crate::lint::diagnostics::map_hint_error;
 use crate::rules::{HintKind, LintMode, ResolvedRule, RuleHint};
 
-/// One reserved-kind hint occurrence captured per call to [`evaluate`].
-///
-/// Caller accumulates [`ReservedSkipped`] entries across every rule
-/// in the scan and feeds the aggregate to [`reserved_hint_summary`]
-/// to mint the single reserved-hint diagnostics summary finding.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReservedSkipped {
-    /// Rule that carried the reserved hint.
-    pub rule_id: String,
-    /// Index of the hint inside the rule's `rule_hints`
-    /// list (0-based).
-    pub hint_index: usize,
-    /// The reserved kind that was skipped.
-    pub kind: HintKind,
-}
-
 /// Per-rule output of [`evaluate`].
 #[derive(Debug, Clone)]
 pub struct HintEvalOutcome {
     /// Findings minted for this rule's executable hints.
     pub findings: Vec<Diagnostic>,
-    /// Reserved-kind hint occurrences encountered while iterating
-    /// the rule's hints.
-    pub reserved_skipped: Vec<ReservedSkipped>,
     /// Finding-id counter passed into the next [`evaluate`] call so
     /// `FIND-NNNN` ids stay monotonic across rules in the same scan.
     pub next_id_counter: u64,
@@ -121,9 +87,7 @@ pub struct HintEvalOutcome {
 /// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → namespace-owner → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
-/// consume. No hint kind is reserved after C17, so
-/// [`HintEvalOutcome::reserved_skipped`] stays empty in real runs; the
-/// field remains for forward-compat with any future reserved kind.
+/// consume.
 ///
 /// `start_id_counter` seeds the `FIND-NNNN` id sequence; the caller
 /// threads [`HintEvalOutcome::next_id_counter`] into the next call so
@@ -163,9 +127,6 @@ fn evaluate_with_cache(
     tool_runner: &dyn ToolRunner, start_id_counter: u64, schema_cache: &mut schema::SchemaCache,
 ) -> Result<HintEvalOutcome, HintError> {
     let mut findings: Vec<Diagnostic> = Vec::new();
-    // No hint kind is reserved after C17; the machinery stays as
-    // forward-compat scaffolding for any future kind landed reserved.
-    let reserved_skipped: Vec<ReservedSkipped> = Vec::new();
     let mut next_id = start_id_counter;
 
     let mut path_pattern_hints: Vec<&RuleHint> = Vec::new();
@@ -275,13 +236,12 @@ fn evaluate_with_cache(
 
     Ok(HintEvalOutcome {
         findings,
-        reserved_skipped,
         next_id_counter: next_id,
     })
 }
 
-/// Fold [`evaluate`] over every rule, accumulating findings, reserved
-/// skips, and the `FIND-NNNN` id counter.
+/// Fold [`evaluate`] over every rule, accumulating findings and the
+/// `FIND-NNNN` id counter.
 ///
 /// Shared by both lint surfaces (`specify lint run` and `specify lint framework`)
 /// so the per-rule gating stays identical: rules in `lint-mode:
@@ -302,9 +262,8 @@ fn evaluate_with_cache(
 pub fn evaluate_rules(
     rules: &[ResolvedRule], model: &WorkspaceModel, project_dir: &Path, runner: &dyn ToolRunner,
     start_id: u64, rule_filter: &[&str],
-) -> Result<(Vec<Diagnostic>, Vec<ReservedSkipped>, u64), CliError> {
+) -> Result<(Vec<Diagnostic>, u64), CliError> {
     let mut findings: Vec<Diagnostic> = Vec::new();
-    let mut reserved: Vec<ReservedSkipped> = Vec::new();
     let mut next_id = start_id;
     // One cache per run: a schema referenced by many rules compiles once.
     let mut schema_cache = schema::SchemaCache::default();
@@ -340,11 +299,10 @@ pub fn evaluate_rules(
         )
         .map_err(|err| map_hint_error(rule, err))?;
         findings.extend(outcome.findings);
-        reserved.extend(outcome.reserved_skipped);
         next_id = outcome.next_id_counter;
     }
 
-    Ok((findings, reserved, next_id))
+    Ok((findings, next_id))
 }
 
 fn build_candidate_set(

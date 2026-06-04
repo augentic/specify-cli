@@ -4,7 +4,6 @@
 //! the clap-level invariants around the positional `<adapter>`
 //! argument and the `--workspace` flag.
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,7 +11,13 @@ use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
 mod common;
-use common::{omnia_schema_dir, specify_cmd};
+use common::{copy_dir, omnia_schema_dir, repo_root, snapshot_tree, specify_cmd};
+
+/// In-repo vectis stub target adapter that declares
+/// `platforms: { required: true, allowed: [core, ios, android, web, desktop] }`.
+fn vectis_stub_dir() -> PathBuf {
+    repo_root().join("tests/fixtures/adapters/targets/vectis-stub")
+}
 
 #[test]
 fn init_text_format_succeeds() {
@@ -120,6 +125,113 @@ fn init_writes_adapter_field_for_url_arg() {
             "regular init must not pre-touch `{absent}` at the repo root"
         );
     }
+}
+
+// ---- `specify init --platforms` (RFC: project platform set) ----
+
+#[test]
+fn init_platforms_persists_declared_set() {
+    // Happy path: a target that requires platforms accepts a valid
+    // `--platforms core,ios,android` set and persists it verbatim into
+    // `project.yaml.platforms`. Init does not scaffold shell trees — the
+    // declared set is the contract the later bootstrap-slice flow reads.
+    let tmp = tempdir().unwrap();
+    let adapter = tmp.path().join("adapters/targets/vectis-stub");
+    copy_dir(&vectis_stub_dir(), &adapter);
+
+    specify_cmd()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(&adapter)
+        .args(["--name", "platform-app", "--platforms", "core,ios,android"])
+        .assert()
+        .success();
+
+    let cfg = ProjectConfig::load(tmp.path()).expect("reload project.yaml");
+    let declared: Vec<String> = cfg.platforms.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        declared,
+        vec!["core", "ios", "android"],
+        "init must persist the declared --platforms set verbatim"
+    );
+}
+
+#[test]
+fn init_platforms_not_allowed_errors() {
+    // Error path: a platform outside the target's `allowed` set aborts
+    // with the `project-platforms-not-allowed` validation discriminant
+    // (exit 2) and never scaffolds the project.
+    let tmp = tempdir().unwrap();
+    let adapter = tmp.path().join("adapters/targets/adapter-limited");
+    fs::create_dir_all(adapter.join("briefs")).unwrap();
+    fs::write(
+        adapter.join("adapter.yaml"),
+        "name: adapter-limited\nversion: 1\naxis: target\nexecution: agent\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  merge: briefs/merge.md\ndescription: Stub adapter that only allows core + ios\nplatforms:\n  required: true\n  allowed: [core, ios]\n  default: [core, ios]\n",
+    )
+    .unwrap();
+    for brief in ["shape.md", "build.md", "merge.md"] {
+        fs::write(adapter.join("briefs").join(brief), "# Stub\n").unwrap();
+    }
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "init"])
+        .arg(&adapter)
+        .args(["--name", "demo", "--platforms", "core,ios,android"])
+        .assert()
+        .failure();
+
+    assert_eq!(
+        assert.get_output().status.code(),
+        Some(2),
+        "a disallowed platform maps to the validation exit code"
+    );
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stderr).expect("stderr is the JSON envelope");
+    assert_eq!(envelope["error"], "project-platforms-not-allowed");
+    assert_eq!(envelope["exit-code"], 2);
+    assert!(
+        !tmp.path().join(".specify/project.yaml").exists(),
+        "a rejected init must not scaffold the project"
+    );
+}
+
+// ---- `specify init` AGENTS.md context fences + context.lock ----
+
+#[test]
+fn init_writes_agents_fences_and_lock() {
+    // A greenfield init both renders the fenced `AGENTS.md` context
+    // block and writes the `.specify/context.lock` fingerprint sidecar
+    // the re-generation flow diffs against. `tests/init_shapes.rs`
+    // covers the `.specify/` skeleton dirs but neither of these two
+    // generated artifacts.
+    let tmp = tempdir().unwrap();
+    specify_cmd()
+        .current_dir(tmp.path())
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "fenced-proj"])
+        .assert()
+        .success();
+
+    let agents =
+        fs::read_to_string(tmp.path().join("AGENTS.md")).expect("AGENTS.md must be written");
+    assert!(
+        agents.contains("<!-- specify:context begin")
+            && agents.contains("<!-- specify:context end -->"),
+        "AGENTS.md must carry both Specify context-fence markers, got:\n{agents}"
+    );
+
+    let lock_path = tmp.path().join(".specify/context.lock");
+    assert!(lock_path.is_file(), ".specify/context.lock must be written on greenfield init");
+    let lock: serde_json::Value =
+        serde_saphyr::from_str(&fs::read_to_string(&lock_path).expect("read context.lock"))
+            .expect("context.lock parses as YAML");
+    assert_eq!(lock["version"], 1, "context.lock must pin the v1 schema marker");
+    assert!(
+        lock["fingerprint"].as_str().is_some(),
+        "context.lock must carry an aggregate fingerprint, got:\n{lock}"
+    );
 }
 
 #[test]
@@ -269,27 +381,6 @@ fn init_workspace_refuses_when_present() {
 }
 
 // ---- `specify init --upgrade` (RFC-30 §D5 re-entry version bump) ----
-
-/// Recursively snapshot every regular file under `root` as a
-/// `relative-path -> bytes` map, so an upgrade's write set can be
-/// asserted by diffing two snapshots.
-fn snapshot_tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
-    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
-        for entry in fs::read_dir(dir).expect("read_dir") {
-            let entry = entry.expect("dir entry");
-            let path = entry.path();
-            if entry.file_type().expect("file_type").is_dir() {
-                walk(root, &path, out);
-            } else {
-                let rel = path.strip_prefix(root).expect("strip prefix").to_path_buf();
-                out.insert(rel, fs::read(&path).expect("read file"));
-            }
-        }
-    }
-    let mut out = BTreeMap::new();
-    walk(root, root, &mut out);
-    out
-}
 
 /// Populate a brownfield regular project: an older-but-same-major pin
 /// (`0.2.0`; the binary is `0.3.0`, same major `0`, so no migration),

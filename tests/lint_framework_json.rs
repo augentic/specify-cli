@@ -88,10 +88,10 @@ fn goldens_dir() -> PathBuf {
 ///   plus an empty `plugins/test/skills/` directory so
 ///   `MarketplaceDriftCheck` finds the manifest the marketplace
 ///   declares.
-/// - Writes `.cursor/schemas/skill.schema.json` and
-///   `docs/standards/skill-authoring.md` containing the literal
+/// - Writes `docs/standards/skill-authoring.md` containing the literal
 ///   `512` (description cap) and `200` (body cap) tokens so
-///   `prose.numeric-cap-exceeded` short-circuits.
+///   `prose.numeric-cap-exceeded` short-circuits (the description cap is
+///   cross-checked against the embedded `skill.schema.json`).
 /// - Writes `docs/reference/review-team-protocol.md` so the
 ///   `agent-teams.missing-canonical` predicate has a canonical doc
 ///   to hash against; per-target `references/agent-teams.md` files
@@ -148,22 +148,6 @@ fn write_scaffold(root: &Path) {
     )
     .expect("plugins/test/.cursor-plugin/plugin.json");
 
-    let skill_schema = root.join(".cursor").join("schemas").join("skill.schema.json");
-    fs::create_dir_all(skill_schema.parent().expect("skill schema parent"))
-        .expect("mkdir .cursor/schemas");
-    fs::write(
-        &skill_schema,
-        r#"{
-  "$comment": "Synthetic skill schema for specify lint framework golden tests; carries the literal 512 description cap.",
-  "type": "object",
-  "properties": {
-    "description": { "type": "string", "maxLength": 512 }
-  }
-}
-"#,
-    )
-    .expect("skill.schema.json");
-
     let standards = root.join("docs").join("standards").join("skill-authoring.md");
     fs::create_dir_all(standards.parent().expect("standards parent"))
         .expect("mkdir docs/standards");
@@ -186,12 +170,6 @@ fn write_scaffold(root: &Path) {
 /// without relying on rule-file parse failures (which abort codex resolve).
 fn write_core_adapter_schema_rule(root: &Path) {
     fs::create_dir_all(root.join("adapters/shared/rules/core")).expect("core rules dir");
-    let schema_src =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas").join("adapter.schema.json");
-    let schema_dst = root.join(".cursor/schemas/adapter.schema.json");
-    fs::create_dir_all(schema_dst.parent().expect("adapter schema parent"))
-        .expect("mkdir .cursor/schemas");
-    fs::copy(&schema_src, &schema_dst).expect("adapter.schema.json");
     write_codex_rule(
         root,
         "adapters/shared/rules/core/CORE-001-adapter-schema.md",
@@ -204,7 +182,7 @@ rule_hints:
   - kind: path-pattern
     value: adapters/**/adapter.yaml
   - kind: schema
-    value: ./.cursor/schemas/adapter.schema.json
+    value: adapter
 ---
 
 ## Rule

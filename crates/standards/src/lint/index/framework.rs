@@ -17,12 +17,12 @@
 //! that subtree.
 
 use std::path::{MAIN_SEPARATOR, Path, PathBuf};
-use std::sync::LazyLock;
 
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 
 use super::files::DiscoveredFile;
+use super::languages::infer_language;
 use super::symlinks::FollowMode;
 use super::{IndexError, agent_teams, symlinks};
 use crate::lint::{AgentTeam, FileKind, Symlink};
@@ -233,11 +233,6 @@ fn is_included(relative: &str) -> bool {
     matches!(file_name, "AGENTS.md" | "REVIEW.md")
 }
 
-fn infer_language(relative: &str) -> Option<String> {
-    let ext = relative.rsplit_once('.').map(|(_, ext)| ext)?;
-    LANGUAGES.iter().find_map(|(token, lang)| (*token == ext).then(|| (*lang).to_owned()))
-}
-
 const INCLUDE_PREFIXES: &[&str] = &[
     "adapters/",
     "plugins/",
@@ -251,28 +246,6 @@ const INCLUDE_PREFIXES: &[&str] = &[
 
 const ALWAYS_IGNORE_GLOBS: &[&str] =
     &["!target/**", "!**/node_modules/**", "!.git/**", "!dist/**", "!.specify/**", "!**/.DS_Store"];
-
-static LANGUAGES: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
-    vec![
-        ("md", "markdown"),
-        ("yaml", "yaml"),
-        ("yml", "yaml"),
-        ("json", "json"),
-        ("toml", "toml"),
-        ("rs", "rust"),
-        ("swift", "swift"),
-        ("kt", "kotlin"),
-        ("kts", "kotlin"),
-        ("gradle", "kotlin"),
-        ("ts", "typescript"),
-        ("tsx", "typescript"),
-        ("js", "javascript"),
-        ("jsx", "javascript"),
-        ("py", "python"),
-        ("sql", "sql"),
-        ("sh", "shell"),
-    ]
-});
 
 #[cfg(test)]
 mod tests;

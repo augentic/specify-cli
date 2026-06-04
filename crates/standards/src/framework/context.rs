@@ -1,16 +1,21 @@
+use std::any::Any;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use jsonschema::Validator;
-use serde_json::Value as JsonValue;
-
 use crate::framework::error::ToolingError;
 
-/// Shared scan context: framework root and schema cache.
+/// Type-erased per-scan memo store: a memo key to its cached value.
+type ScanCache = HashMap<&'static str, Arc<dyn Any + Send + Sync>>;
+
+/// Shared scan context: framework root plus a generic per-scan memo so
+/// a check that re-derives the same expensive scan (e.g. the skill-file
+/// walk shared across the five SKILL.md predicates) computes it once
+/// per [`Context`]. JSON Schema validators are cached process-wide by
+/// [`specify_schema::cached_validator`], not here.
 pub struct Context {
     framework_root: PathBuf,
-    schema_cache: Mutex<HashMap<PathBuf, Arc<Validator>>>,
+    scan_cache: Mutex<ScanCache>,
 }
 
 impl Context {
@@ -27,7 +32,7 @@ impl Context {
             framework_root: root.canonicalize().map_err(|source| {
                 ToolingError::Infrastructure(format!("canonicalize path: {source}"))
             })?,
-            schema_cache: Mutex::new(HashMap::new()),
+            scan_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -44,7 +49,7 @@ impl Context {
             framework_root: framework_root.canonicalize().map_err(|source| {
                 ToolingError::Infrastructure(format!("canonicalize path: {source}"))
             })?,
-            schema_cache: Mutex::new(HashMap::new()),
+            scan_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -73,63 +78,40 @@ impl Context {
         self.framework_root.join("adapters").join("shared")
     }
 
-    /// Editor-facing schema aliases under `.cursor/schemas/`.
-    pub fn cursor_schema_dir(&self) -> PathBuf {
-        self.framework_root.join(".cursor").join("schemas")
-    }
-
     /// CLI-owned JSON Schemas from the local `specify-cli` checkout.
     pub fn specify_cli_schemas_dir(&self) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("schemas")
     }
 
-    /// Lazily compile and cache a JSON Schema loaded from `path`.
-    pub fn schema(&self, path: impl AsRef<Path>) -> Result<Arc<Validator>, ToolingError> {
-        let path = path.as_ref().to_path_buf();
-        let mut cache = self.lock_cache()?;
-        if let Some(schema) = cache.get(&path) {
-            return Ok(Arc::clone(schema));
+    /// Memoise an expensive, deterministic scan under `key` for this
+    /// [`Context`]'s lifetime, returning a shared handle.
+    ///
+    /// The first call runs `build`; later calls for the same `key`
+    /// return the cached value without re-running it. Only successful
+    /// builds are cached — an error is propagated and the next call
+    /// retries. Used by the SKILL.md predicates so the skill-file walk
+    /// is performed once per [`Context`] and shared across the five
+    /// frontmatter checks rather than re-walked per check.
+    pub fn memoize<T, F>(&self, key: &'static str, build: F) -> Result<Arc<T>, ToolingError>
+    where
+        T: Send + Sync + 'static,
+        F: FnOnce() -> Result<T, ToolingError>,
+    {
+        if let Some(cached) = self.lock_scan_cache()?.get(key) {
+            return Ok(Arc::clone(cached)
+                .downcast::<T>()
+                .expect("scan-cache value type matches its key"));
         }
-        let contents = std::fs::read_to_string(&path).map_err(|source| {
-            ToolingError::Infrastructure(format!("read schema {}: {source}", path.display()))
-        })?;
-        let compiled = compile(&contents, &path)?;
-        cache.insert(path, Arc::clone(&compiled));
-        Ok(compiled)
+        let built = Arc::new(build()?);
+        self.lock_scan_cache()?.insert(key, Arc::clone(&built) as Arc<dyn Any + Send + Sync>);
+        Ok(built)
     }
 
-    /// Lazily compile and cache a JSON Schema from an in-memory `source`,
-    /// keyed under the synthetic `key` so the cache stays uniform with
-    /// filesystem-backed schemas.
-    pub fn schema_from_source(
-        &self, key: PathBuf, source: &str,
-    ) -> Result<Arc<Validator>, ToolingError> {
-        let mut cache = self.lock_cache()?;
-        if let Some(schema) = cache.get(&key) {
-            return Ok(Arc::clone(schema));
-        }
-        let compiled = compile(source, &key)?;
-        cache.insert(key, Arc::clone(&compiled));
-        Ok(compiled)
-    }
-
-    fn lock_cache(
-        &self,
-    ) -> Result<std::sync::MutexGuard<'_, HashMap<PathBuf, Arc<Validator>>>, ToolingError> {
-        self.schema_cache
+    fn lock_scan_cache(&self) -> Result<std::sync::MutexGuard<'_, ScanCache>, ToolingError> {
+        self.scan_cache
             .lock()
-            .map_err(|_| ToolingError::Infrastructure("schema cache poisoned".into()))
+            .map_err(|_| ToolingError::Infrastructure("scan cache poisoned".into()))
     }
-}
-
-fn compile(source: &str, key: &Path) -> Result<Arc<Validator>, ToolingError> {
-    let value: JsonValue = serde_json::from_str(source).map_err(|err| {
-        ToolingError::Infrastructure(format!("parse schema {}: {err}", key.display()))
-    })?;
-    let compiled = jsonschema::validator_for(&value).map_err(|error| {
-        ToolingError::Infrastructure(format!("compile schema {}: {error}", key.display()))
-    })?;
-    Ok(Arc::new(compiled))
 }
 
 fn is_framework_root(path: &Path) -> bool {

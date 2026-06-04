@@ -37,9 +37,12 @@ fn plan_add_appends_pending_entry_json() {
     assert_eq!(actual["entry"]["status-reason"], Value::Null);
     assert_eq!(actual["plan"]["name"], "demo");
 
-    let saved = fs::read_to_string(project.plan_path()).expect("read plan.yaml");
-    assert!(saved.contains("name: foo"), "saved plan missing new entry:\n{saved}");
-    assert!(saved.contains("status: pending"), "saved plan missing pending status:\n{saved}");
+    // Parse the persisted plan and assert the entry's fields rather than
+    // substring-matching the raw YAML (REVIEW.md B3).
+    let plan = load_plan(&project);
+    let entry =
+        plan.entries.iter().find(|e| e.name == "foo").expect("saved plan must contain entry `foo`");
+    assert_eq!(entry.status, Status::Pending, "saved entry must be pending");
 
     assert_golden("create-foo.json", actual);
 }
@@ -49,7 +52,7 @@ fn plan_add_rejects_duplicate_name_text() {
     let project = Project::init();
     project.seed_plan(EMPTY_PLAN);
 
-    specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().success();
+    add_pending_entry(&project, "foo");
 
     let assert =
         specify_cmd().current_dir(project.root()).args(["plan", "add", "foo"]).assert().failure();
@@ -182,9 +185,16 @@ slices:
 
     assert_golden("amend-replace-depends-on.json", actual);
 
-    let saved = fs::read_to_string(project.plan_path()).expect("read");
-    assert!(saved.contains("- a"), "saved depends-on missing 'a':\n{saved}");
-    assert!(saved.contains("- b"), "saved depends-on missing 'b':\n{saved}");
+    // Assert the persisted `depends-on` as a parsed list, not a pair of
+    // raw-YAML substring probes (REVIEW.md B3).
+    let plan = load_plan(&project);
+    let entry =
+        plan.entries.iter().find(|e| e.name == "foo").expect("amended entry must be present");
+    assert_eq!(
+        entry.depends_on,
+        vec!["a", "b"],
+        "amended depends-on must round-trip to disk in order"
+    );
 }
 
 #[test]

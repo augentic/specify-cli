@@ -169,7 +169,7 @@ pub fn validate_model_doc(value: &JsonValue) -> Result<()> {
         Ok(())
     } else {
         Err(Error::Validation {
-            code: "slice-model-schema".to_string(),
+            code: "slice-model-schema".into(),
             detail: join_details(&failures),
         })
     }

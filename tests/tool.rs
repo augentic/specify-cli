@@ -145,6 +145,43 @@ fn help_lists_active_verbs() {
 }
 
 #[test]
+fn gc_prunes_orphaned_cache_entry() {
+    // Install `echo` into the cache via `tool run`, then drop it from
+    // the manifest so the cached version is no longer referenced by the
+    // live merged inventory; `tool gc` must remove the orphaned
+    // `<scope>/echo/0.1.0/` directory.
+    let fixtures = ToolFixtures::new();
+    let project = fixtures.project();
+    let cache = cache_dir("gc-prune");
+
+    specify_cmd()
+        .current_dir(&project)
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["tool", "run", "echo", "--", "seed"])
+        .assert()
+        .success();
+    let echo_dir = cache.join("project--tools-test/echo/0.1.0");
+    assert!(echo_dir.is_dir(), "tool run must populate the cache before gc");
+
+    // Drop every declared tool so the cached `echo` becomes an orphan.
+    write_project_manifest(&project, "name: tools-test\nworkspace: true\n");
+
+    let assert = specify_cmd()
+        .current_dir(&project)
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["--format", "json", "tool", "gc"])
+        .assert()
+        .success();
+    let body = parse_json(&assert.get_output().stdout);
+    let removed = body["removed"].as_array().expect("removed array");
+    assert!(
+        removed.iter().any(|p| p.as_str().is_some_and(|s| s.contains("echo/0.1.0"))),
+        "gc must report the orphaned echo cache dir as removed, got: {body}"
+    );
+    assert!(!echo_dir.exists(), "gc must delete the orphaned cache directory");
+}
+
+#[test]
 fn manifest_validation_reports_rule_ids() {
     let fixtures = ToolFixtures::new();
     let project = fixtures.project();

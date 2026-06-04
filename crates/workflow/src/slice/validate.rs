@@ -114,19 +114,20 @@ pub fn pre_adapter_gates(layout: Layout<'_>, name: &str) -> Result<PreAdapter> {
 }
 
 /// Append one `slice.synthesis.*` journal line per `(requirement-id,
-/// tag)` pair gathered during the spec scan. Skipped when the slice has
-/// no tagged requirements.
+/// tag)` pair gathered during the spec scan.
+///
+/// Each event is stamped with the dispatcher-injected `now` (workflow
+/// §Time injection). Skipped when the slice has no tagged requirements.
 ///
 /// # Errors
 ///
 /// Propagates the journal write error from [`append_batch`].
 pub fn append_synthesis_journal(
-    layout: Layout<'_>, slice_name: &str, tags: Vec<(String, RequirementTag)>,
+    layout: Layout<'_>, now: Timestamp, slice_name: &str, tags: Vec<(String, RequirementTag)>,
 ) -> Result<()> {
     if tags.is_empty() {
         return Ok(());
     }
-    let now = Timestamp::now();
     let events: Vec<Event> = tags
         .into_iter()
         .map(|(requirement_id, tag)| {

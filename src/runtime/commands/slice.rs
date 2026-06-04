@@ -57,17 +57,22 @@ fn bracket<T>(
     ctx: &Ctx, scope: &str, started: EventKind, succeeded: EventKind,
     failed: impl FnOnce(String) -> EventKind, work: impl FnOnce() -> Result<T>,
 ) -> Result<T> {
-    journal::emit_best_effort(ctx.layout(), started, scope);
+    journal::emit_best_effort(ctx.layout(), ctx.now(), started, scope);
     match work() {
         Ok(value) => {
-            journal::emit_best_effort(ctx.layout(), succeeded, scope);
+            journal::emit_best_effort(ctx.layout(), ctx.now(), succeeded, scope);
             Ok(value)
         }
         Err(err) => {
             // `reason` is the error's stable kebab discriminant. The
             // failed event is best-effort, but the original error still
             // propagates so the exit code is unchanged.
-            journal::emit_best_effort(ctx.layout(), failed(err.variant_str().into_owned()), scope);
+            journal::emit_best_effort(
+                ctx.layout(),
+                ctx.now(),
+                failed(err.variant_str().into_owned()),
+                scope,
+            );
             Err(err)
         }
     }

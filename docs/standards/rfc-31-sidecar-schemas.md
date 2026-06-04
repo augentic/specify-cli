@@ -2,7 +2,7 @@
 
 Status: **design record** (Phase 2c); implementation lands in Phase 3.
 
-Parent: [RFC-31](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md).
+Parent: [RFC-31](https://github.com/augentic/specify/blob/main/rfcs/done/rfc-31-declarative-lints.md).
 
 ## Problem
 

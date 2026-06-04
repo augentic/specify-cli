@@ -24,7 +24,9 @@ Living burn-down for the [quality improvement plan](https://github.com/augentic/
 
 ## Archaeology hotspots
 
-Strip RFC/Phase prose from module docs in: `init/`, `registry/topology.rs`, `change/plan/core/propose.rs`, `schema.rs`, `journal/tests.rs`.
+`rust.archaeology-in-doc-comment` is burn-down-only (NOT a hard gate). Genuine historical narrative was stripped from `change/plan/core/propose/kernel.rs`, `slice/build/wire.rs`, `change/plan/core/model.rs` (`Divergence`), and `framework/check/links.rs` (history moved to `DECISIONS.md` pointers, ≤3-line "what today" kept). Workspace count went **214 → 202**.
+
+The residual 202 are the canonical `RFC-NN` / `Phase N` / `DECISIONS.md §…` contract vocabulary the codebase and `AGENTS.md` use as stable anchor names (e.g. "RFC-29 D2", "RFC-36"), not migration history. The predicate's `RFC-`/`Phase ` markers over-fire on them, so promoting a hard gate would be perpetually red; it stays burn-down. Promote only after the markers are narrowed to actual history phrases.
 
 ## Test naming / vocabulary
 
@@ -32,7 +34,9 @@ Strip RFC/Phase prose from module docs in: `init/`, `registry/topology.rs`, `cha
 - Renamed top-level `init/tests.rs` fns.
 - Tempdir `"hub"` already absent; workspace tests use `"workspace"`.
 - `RustTestNaming` / `RustSourceQuality` via `cargo test --test rust_quality` (specify-cli roots only).
-- Test-name burn-down complete: every `#[test]` / `#[tokio::test]` fn is `<= 40` chars and `tests/rust_quality.rs::no_long_test_fn_names` now hard-gates `rust.test-fn-name-too-long`. `RustSourceQuality` archaeology remains the only burn-down-tracked predicate.
+- Test-name burn-down complete: every `#[test]` / `#[tokio::test]` fn is `<= 40` chars and `tests/rust_quality.rs::no_long_test_fn_names` now hard-gates `rust.test-fn-name-too-long`.
+- Bare-`#[allow]` burn-down complete: the scanned tree (`crates/` + `src/`) carries zero `#[allow(…)]` without a `reason`, and `tests/rust_quality.rs::no_bare_allow_attributes` now hard-gates `rust.allow-without-reason`.
+- `rust.archaeology-in-doc-comment` is the only remaining burn-down-tracked predicate (see "Archaeology hotspots" — deferred, not gated).
 
 ## Trait audit (keep unless noted)
 

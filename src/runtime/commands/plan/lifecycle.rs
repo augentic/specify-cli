@@ -8,11 +8,10 @@ use specify_diagnostics::{
 };
 use specify_error::{Error, Result};
 use specify_workflow::change::{
-    Lifecycle, Plan, SliceSourceBinding, Status, detect, plan_doctor, plan_finding, resolve_target,
-    resolve_topology,
+    Lifecycle, NextBody, NextReason, Plan, Status, plan_doctor, plan_finding, plan_next_body,
 };
-use specify_workflow::config::{ProjectConfig, with_state};
-use specify_workflow::registry::{Registry, TopologyLock, TopologyProject};
+use specify_workflow::config::with_state;
+use specify_workflow::registry::Registry;
 
 use super::{Ref, plan_ref, require_file};
 use crate::runtime::context::Ctx;
@@ -34,7 +33,12 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         results.push(plan_finding("registry-shape", Severity::Important, err.to_string(), None));
     }
     if let Some(reg) = &registry {
-        topology_cache_staleness(ctx, reg, &mut results);
+        let workspace_base = ctx.layout().specify_dir().join("workspace");
+        results.extend(specify_workflow::registry::cache_staleness(
+            reg,
+            &workspace_base,
+            &ctx.layout().topology_lock_path(),
+        ));
     }
 
     let has_errors = blocking_present(&results);
@@ -50,130 +54,23 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
     }
 }
 
-/// RFC-36: compare the committed `.specify/topology.lock` against each
-/// materialised slot's current `project.yaml` *and baseline projection*
-/// (`surface[]` from `.specify/specs/`, `recent[]` from the journal
-/// ledger), emitting `topology-cache-stale` on divergence (the fix is
-/// `specify workspace sync`). Because the projection is deterministic
-/// (D36-6), this is a regenerate-and-compare check: `TopologyProject::resolve`
-/// re-derives the fresh entry and any drift in `target` / `description`
-/// / `surface` / `recent` trips the warning. Replaces the former
-/// registry-authored `adapter-mismatch-workspace` check — the project's
-/// `project.yaml` plus its baseline are now authoritative and the cache
-/// is the derived projection of them.
-fn topology_cache_staleness(ctx: &Ctx, registry: &Registry, results: &mut Vec<Diagnostic>) {
-    let workspace_base = ctx.layout().specify_dir().join("workspace");
-    let lock = TopologyLock::load(&ctx.layout().topology_lock_path()).ok().flatten();
-    let cached: std::collections::HashMap<&str, &TopologyProject> = lock
-        .as_ref()
-        .map(|lock| lock.projects.iter().map(|p| (p.name.as_str(), p)).collect())
-        .unwrap_or_default();
-
-    for rp in &registry.projects {
-        let slot_project_dir = workspace_base.join(&rp.name);
-        if !slot_project_dir.join(".specify").join("project.yaml").exists() {
-            continue;
-        }
-        let fresh = match ProjectConfig::load(&slot_project_dir)
-            .and_then(|cfg| TopologyProject::resolve(&rp.name, &cfg, &slot_project_dir))
-        {
-            Ok(fresh) => fresh,
-            Err(err) => {
-                results.push(plan_finding(
-                    "workspace-slot-config-unreadable",
-                    Severity::Important,
-                    format!("workspace slot '{}' topology could not be derived: {err}", rp.name),
-                    None,
-                ));
-                continue;
-            }
-        };
-        let stale = cached.get(rp.name.as_str()).is_none_or(|cached| **cached != fresh);
-        if stale {
-            results.push(plan_finding(
-                "topology-cache-stale",
-                Severity::Suggestion,
-                format!(
-                    "workspace slot '{}' has drifted from .specify/topology.lock; \
-                     run `specify workspace sync` to regenerate the topology cache",
-                    rp.name
-                ),
-                None,
-            ));
-        }
-    }
-}
-
 /// `specify plan next` — return the active in-progress entry, or
 /// transition the next eligible `Pending` entry to `InProgress` and
 /// return it. The only writer of per-entry `in-progress` per
 /// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
-    let slices_dir = ctx.layout().slices_dir();
     // The slice's target adapter is no longer stored in `plan.yaml`; it
-    // is resolved on demand from the bound project's topology. Capture
-    // the topology inputs so the advanced entry's `$TARGET` can be
-    // resolved inside the state closure (lazily — only when an entry is
-    // actually selected, so a drained / stuck plan never needs them).
-    // Resolution is best-effort: when the topology cannot be resolved
-    // (no resolvable target adapter, or an unbindable project) the
-    // entry's `target` reports `null` rather than failing `plan next`,
-    // mirroring the pre-removal behaviour for entries that carried no
-    // target. The build phase re-resolves the target before use.
+    // is resolved on demand from the bound project's topology, so the
+    // topology inputs (`config` / `project_dir`) ride into the state
+    // closure for `plan_next_body` to resolve the advanced entry's
+    // `$TARGET` lazily. All projection logic lives in `specify-workflow`;
+    // the handler only renders the returned body.
+    let slices_dir = ctx.layout().slices_dir();
     let config = ctx.config.clone();
     let project_dir = ctx.project_dir.clone();
 
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        let validate_results = plan.validate(Some(&slices_dir), None);
-        if blocking_present(&validate_results) {
-            return Err(Error::validation_failed(
-                "plan-structural-errors",
-                "plan must be free of structural errors",
-                "run 'specify plan validate' for detail",
-            ));
-        }
-        if !detect(&plan.entries).is_empty() {
-            return Err(Error::validation_failed(
-                "plan-structural-errors",
-                "plan must be free of structural errors",
-                "run 'specify plan validate' for detail",
-            ));
-        }
-
-        // workflow §CLI surface: "plan next returns the active
-        // in-progress entry before selecting a new pending entry,
-        // and reports drained only when no active or pending
-        // entries remain."
-        let was_executing = plan.is_executing();
-        let advanced = plan.advance_next()?;
-        Ok(match advanced {
-            None => {
-                let reason = if plan.is_drained() { "drained" } else { "stuck" };
-                NextBody {
-                    reason: Some(reason.into()),
-                    ..NextBody::default()
-                }
-            }
-            Some(entry) if was_executing => NextBody {
-                reason: Some("in-progress".into()),
-                active: Some(entry.name.to_string()),
-                ..NextBody::default()
-            },
-            Some(entry) => {
-                let target = resolve_topology(&config, &project_dir)
-                    .and_then(|topology| resolve_target(entry, &topology))
-                    .ok()
-                    .map(|t| t.to_string());
-                NextBody {
-                    next: Some(entry.name.to_string()),
-                    project: entry.project.clone(),
-                    target,
-                    description: entry.description.clone(),
-                    sources: Some(entry.sources.clone()),
-                    ..NextBody::default()
-                }
-            }
-        })
+        plan_next_body(plan, &slices_dir, &config, &project_dir)
     })?;
     ctx.write(&body, write_next_text)?;
     Ok(())
@@ -434,24 +331,12 @@ fn write_validate_row_text(w: &mut dyn Write, finding: &Diagnostic) -> std::io::
     writeln!(w, "{label} {:<32} {:<24} {}", code, entry_col, finding.impact)
 }
 
-#[derive(Serialize, Default)]
-#[serde(rename_all = "kebab-case")]
-struct NextBody {
-    next: Option<String>,
-    reason: Option<String>,
-    active: Option<String>,
-    project: Option<String>,
-    target: Option<String>,
-    description: Option<String>,
-    sources: Option<Vec<SliceSourceBinding>>,
-}
-
 fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {
     if let Some(active) = &body.active {
         writeln!(w, "Active change in progress: {active}")
     } else if let Some(name) = &body.next {
         writeln!(w, "{name}")
-    } else if body.reason.as_deref() == Some("drained") {
+    } else if body.reason == Some(NextReason::Drained) {
         writeln!(w, "Plan drained — no per-entry pending or in-progress remains.")
     } else {
         writeln!(

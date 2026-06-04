@@ -12,6 +12,13 @@ use crate::framework::helpers::relative_display;
 
 const RULE_ARCHAEOLOGY: &str = "rust.archaeology-in-doc-comment";
 const RULE_ALLOW_NO_REASON: &str = "rust.allow-without-reason";
+const RULE_WORKFLOW_CLOCK: &str = "rust.workflow-clock-read";
+
+/// Forward-slash prefix marking `specify-workflow` library sources. Time
+/// injection (architecture §Time injection) forbids `Timestamp::now()`
+/// here; the clock is read once in `src/runtime/commands/**` handlers and
+/// threaded down.
+const WORKFLOW_SRC_PREFIX: &str = "crates/workflow/src/";
 
 const ARCHAEOLOGY_MARKERS: &[&str] = &[
     "RFC-",
@@ -64,15 +71,40 @@ fn walk_rust_sources(root: &Path, dir: &Path, findings: &mut Vec<Diagnostic>) {
     }
 }
 
+/// True for `specify-workflow` library sources subject to the
+/// time-injection rule. Test modules (`tests.rs` files or anything under
+/// a `tests/` directory) are exempt — they pin the clock with fixtures.
+fn is_workflow_runtime_source(rel: &str) -> bool {
+    rel.starts_with(WORKFLOW_SRC_PREFIX) && !rel.ends_with("/tests.rs") && !rel.contains("/tests/")
+}
+
 fn check_rust_file(root: &Path, path: &Path, findings: &mut Vec<Diagnostic>) {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return,
     };
     let rel = relative_display(root, path);
+    let workflow_clock_scope = is_workflow_runtime_source(&rel);
 
     for (line_idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
+
+        // Time injection: library code never reads the wall clock. Skip
+        // comment lines so doc comments may still name the API.
+        if workflow_clock_scope
+            && !trimmed.starts_with("//")
+            && trimmed.contains("Timestamp::now()")
+        {
+            findings.push(framework_finding(
+                RULE_WORKFLOW_CLOCK,
+                format!(
+                    "`Timestamp::now()` in {rel}:{} — specify-workflow must accept an injected `now`; read the clock once in a `src/runtime/commands/**` handler and thread it down (architecture §Time injection)",
+                    line_idx + 1
+                ),
+                Some(loc(path, line_idx + 1, None)),
+            ));
+        }
+
         if trimmed.starts_with("//!") || trimmed.starts_with("///") {
             for marker in ARCHAEOLOGY_MARKERS {
                 if trimmed.contains(marker) {

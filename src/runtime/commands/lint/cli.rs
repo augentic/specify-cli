@@ -86,12 +86,6 @@ pub struct FrameworkArgs {
     #[arg(long)]
     pub dump_model: bool,
 
-    /// Upgrade the reserved-hint diagnostics summary finding's
-    /// severity from `optional` to `important`, contributing to a
-    /// non-zero exit code per the lint exit map.
-    #[arg(long)]
-    pub strict_hints: bool,
-
     /// Output format. Closed Phase 2 set per the diagnostics
     /// formatter set: `{ json, pretty, github, compact }`. When
     /// unset, derived from the global `--format` flag: `json` →
@@ -148,12 +142,6 @@ pub struct RunArgs {
     /// stdout emit; skips hint evaluation entirely.
     #[arg(long)]
     pub dump_model: bool,
-
-    /// Upgrade the reserved-hint diagnostics reserved-hint summary finding's
-    /// severity from `optional` to `important`, which
-    /// contributes to a non-zero exit code per lint exit mapping.
-    #[arg(long)]
-    pub strict_hints: bool,
 
     /// Include `CORE-*` rules resolved from
     /// `adapters/shared/rules/core/`.

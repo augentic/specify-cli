@@ -200,7 +200,7 @@ pub fn reject_orphan_overrides(plan: &Plan) -> Result<()> {
     };
     let detail = findings.iter().map(|f| f.impact.clone()).collect::<Vec<_>>().join("; ");
     Err(Error::Validation {
-        code: first.rule_id.clone().unwrap_or_default(),
+        code: first.rule_id.clone().unwrap_or_default().into(),
         detail,
     })
 }

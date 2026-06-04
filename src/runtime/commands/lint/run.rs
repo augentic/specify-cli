@@ -9,9 +9,8 @@
 //! 3. Build the consumer `WorkspaceModel` (`lint::index::build`).
 //! 4. Evaluate executable deterministic hints per rule, skipping
 //!    `lint-mode: model-assisted` rules.
-//! 5. Mint the reserved-hint diagnostics reserved-hint summary finding.
-//! 6. Render the `DiagnosticReport` envelope via `specify_diagnostics::render`.
-//! 7. Decide exit: any `critical | important` finding lands the
+//! 5. Render the `DiagnosticReport` envelope via `specify_diagnostics::render`.
+//! 6. Decide exit: any `critical | important` finding lands the
 //!    process on `Exit::ValidationFailed` (code 2) per lint exit mapping.
 //!
 //! Every failure path routes through a closed `Error` variant so
@@ -85,7 +84,6 @@ fn build_report(
     let config = PipelineConfig {
         profile: ScanProfile::Consumer,
         dump_model: args.dump_model,
-        strict_hints: args.strict_hints,
         apply_ignore_directives: true,
         rule_filter: &[],
         resolver_degradation: ResolverDegradation::Fatal,
@@ -106,6 +104,7 @@ fn build_report(
         config: &config,
         format,
         layout: ctx.layout(),
+        now: ctx.now(),
         scope,
         command_label: "specify lint",
         started_at,

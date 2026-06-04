@@ -1,6 +1,5 @@
-//! Integration tests for the `kind: tool` evaluator contract `tool` evaluator plus the
-//! reserved-hint diagnostics reserved-kind summary policy and the §"Acceptance" evidence
-//! cap.
+//! Integration tests for the `kind: tool` evaluator contract `tool` evaluator and the
+//! §"Acceptance" evidence cap.
 //!
 //! The `kind: tool` evaluator contract `tool` evaluator is exercised through a fake
 //! [`specify_standards::lint::eval::ToolRunner`] that simulates the
@@ -15,7 +14,7 @@ use std::fs;
 use eval_support::{FakeToolRunner, NoToolRunner, hint, make_rule};
 use specify_diagnostics::{FindingEvidence, Severity, validate_evidence_size};
 use specify_standards::lint::ScanProfile;
-use specify_standards::lint::eval::{ReservedSkipped, ToolRunner, evaluate, reserved_hint_summary};
+use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::HintKind;
 
@@ -132,35 +131,4 @@ fn tool_failure_truncates_stderr() {
         panic!("expected snippet evidence on tool.invocation-failed");
     }
     assert!(finding.fingerprint.starts_with("sha256:"));
-}
-
-// After C17 no hint kind is reserved, so `evaluate` can no longer
-// populate `reserved_skipped`. The reserved-kind machinery survives as
-// forward-compat scaffolding for any future kind landed reserved; this
-// test exercises the summary-minting fold directly by constructing a
-// `ReservedSkipped` value (its `kind` is just a `HintKind` field, so
-// any variant works as a sample) and asserting `reserved_hint_summary`
-// still mints the `review.reserved-hint-skipped` finding in both modes.
-#[test]
-fn reserved_summary_folds_skipped() {
-    let skipped = vec![ReservedSkipped {
-        rule_id: "UNI-906".to_string(),
-        hint_index: 0,
-        kind: HintKind::NamespaceOwner,
-    }];
-
-    let optional = reserved_hint_summary(&skipped, false).expect("present");
-    assert_eq!(optional.rule_id.as_deref(), Some("review.reserved-hint-skipped"));
-    assert_eq!(optional.severity, Severity::Optional);
-
-    let strict = reserved_hint_summary(&skipped, true).expect("present");
-    assert_eq!(strict.rule_id.as_deref(), Some("review.reserved-hint-skipped"));
-    assert_eq!(strict.severity, Severity::Important);
-
-    if let FindingEvidence::Structured { data, .. } = &optional.evidence {
-        let pairs = data.get("pairs").expect("pairs present");
-        assert!(pairs.is_array(), "pairs must be an array");
-    } else {
-        panic!("reserved-kind summary must carry structured evidence");
-    }
 }

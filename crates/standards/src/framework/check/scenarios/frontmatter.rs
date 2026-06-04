@@ -29,7 +29,7 @@ struct ScenarioFile {
 
 /// Run scenario frontmatter validation only (tests / direct invocation).
 pub fn validate_scenario_frontmatter(ctx: &Context) -> Vec<Diagnostic> {
-    let validator = match crate::framework::schema::validator(ctx, SchemaId::Scenario) {
+    let validator = match crate::framework::schema::validator(SchemaId::Scenario) {
         Ok(v) => v,
         Err(error) => {
             return vec![finding(

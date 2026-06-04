@@ -2,16 +2,17 @@
 
 Status record for the lint unification work originally tracked as **A19** (unify lint output path + framework/consumer dispatch) and **A16** (imperative→declarative lint burn-down). The two former binaries (`specrun` runtime + `specdev` authoring lint) have since converged onto a single `specify` binary; the framework authoring lint is now `specify lint framework`.
 
-This document was rewritten after an audit of the live tree (2026-06) found the earlier implementation plan's baseline stale: A19 is complete, the A16 "Wave 0" retirements already landed, and the remaining A16 burn-down is gated on engine work that no amount of author-side rule writing can substitute for. **[RFC-31](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md)** (Accepted) is that engine program; Phases 0–1 spike status lives in [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md). Until RFC-31 Phase 4 completes, the imperative predicates behind `framework::check::run` remain authoritative for migratable ids not yet retired at parity.
+**RFC-31** (Accepted, Phases 0–4 complete, 2026-06) landed the engine program and steady-state posture below. Spike records: [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md), [`rfc-31-phase2-spike.md`](./docs/standards/rfc-31-phase2-spike.md). Historical RFC: [augentic/specify `rfcs/done/rfc-31-declarative-lints.md`](https://github.com/augentic/specify/blob/main/rfcs/done/rfc-31-declarative-lints.md).
 
 Scope: `augentic/specify-cli` (primary) and `augentic/specify` (CORE rule files, docs).
 
 Related docs:
 
 - [DECISIONS.md §"Drained `Error::Validation` and the `Diagnostic` substrate"](./DECISIONS.md#drained-errorvalidation-and-the-diagnostic-substrate)
-- [DECISIONS.md §"Crate layout"](./DECISIONS.md) — the framework-authoring-checks paragraph that governs the steady-state posture
+- [DECISIONS.md §"Crate layout"](./DECISIONS.md) — framework-authoring-checks steady state
 - [docs/standards/handler-shape.md](./docs/standards/handler-shape.md) — "The two lint handlers share one tail"
 - [adapters/shared/rules/core/README.md](https://github.com/augentic/specify/blob/main/adapters/shared/rules/core/README.md) (framework repo)
+- [docs/contributing/checks.md](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md) — parity contract and extension guide (framework repo)
 - [docs/quality-debt.md](./docs/quality-debt.md) — suppression burn-down tied to A16
 
 ---
@@ -36,41 +37,29 @@ Verification: `cargo make check`; `cargo nextest run -p specify-standards --test
 
 ---
 
-## A16 — Imperative→declarative lint burn-down — BOUNDED; STEADY STATE
+## A16 — Imperative→declarative lint burn-down — COMPLETE (steady state)
 
-### What already landed (no further work)
+### Steady-state architecture
 
-- **CORE-001..008** — the imperative predicates were already retired. `CORE_ID_TABLE` in [builder.rs](./crates/standards/src/framework/builder.rs) has no entry for any of them; the nine `crates/standards/tests/core_parity_*.rs` tests anchor the old behavior as inline reference code (e.g. `core_parity_links_unresolved.rs` "reproduces the *deleted* imperative `check::links::check_markdown_links` body inline"). Declarative `CORE-*` rule files own these checks today.
-- **CORE-009** — `rules.namespace-ownership-violation` deliberately stays imperative. As `core_parity_rule_namespace_owner.rs` documents, the declarative `namespace-owner` rule is an intentional smoke-test that does **not** subsume the fused `run_rules_check` predicate (which also owns the `FRAME-*` reservation, dynamic source-adapter owner discovery, and the unknown-owner diagnostic). "No imperative `Check` row is retired by this card."
+| Tier | Ids | How it runs |
+| --- | --- | --- |
+| Native declarative | `CORE-001..008` | `rule_hints` only; no `CORE_ID_TABLE` row |
+| Imperative (permanent) | `CORE-009` | `AuthoringProducer` + `framework::check::run` namespace bridge (`run_rules_check`: ownership, `FRAME-*`, dynamic owners, unknown-owner) |
+| Declarative + bridge | `CORE-010..052` | `CORE-*` rule files; `kind: authoring-predicate` dispatches closed imperative `rule_id` until native hints reach parity |
 
-The result: there is no "Wave 0" duplicate-evaluation left to remove. The remaining imperative predicates emit `CORE-009..051` and have no declarative counterpart.
+There is no Wave-0 duplicate evaluation. `specify lint framework` resolves all `CORE-*` / `UNI-*` rules in one declarative pass, then runs the CORE-009 bridge — not the former full `Check` batch on every invocation.
 
-### Why the remaining burn-down is engine-gated (audited 2026-06)
+### CORE-009 policy (unchanged)
 
-The migration invariant requires a retiring predicate to reach **parity** with a declarative rule on a fixed fixture — and DECISIONS.md forbids retiring a predicate "by weakening checks." The only declarative hint kinds that can express a *new* check without new Rust are `path-pattern`, line-based `regex`, and `schema`; every fact-consuming kind (`unique`, `cardinality`, `set-coverage`, `set-eq`, `constant-eq`, `content-digest-eq`, `reference-resolves`, `namespace-owner`) is hardcoded to exactly one `source` discriminator, all spent on `CORE-001..009`.
+The declarative `namespace-owner` rule is an intentional smoke test. It does **not** subsume fused `run_rules_check`. Do not retire the imperative row by weakening checks.
 
-DECISIONS.md lists roughly nine ids as "cleanly migratable author-side" (`CORE-016, 025, 038, 050, 051` via `path-pattern`+`regex`; `035, 036, 044, 047` via `schema`). An audit of the actual predicate bodies, however, found that none of them retire at parity with today's closed kinds:
+### Optional follow-on (not RFC-31 scope)
 
-- **CORE-016** (`HistoryCitation`, [docs_quality.rs](./crates/standards/src/framework/check/docs_quality.rs)) — parses the integer after an `RFC`/`rfc` token and fires only when `number < 100`, to admit standards references like "RFC 3339" / "RFC 5322". The `regex` kind uses the Rust `regex` crate (no lookaround) and matches per line with `find_iter`; it cannot express the numeric threshold or the `RFC-5` vs `RFC-555` boundary.
-- **CORE-025** (`OperationalVocabulary`, [prose.rs](./crates/standards/src/framework/check/prose.rs)) — scans `docs`/`plugins`/`.cursor` but **excludes** `docs/explanation/decision-log.md`, `release-notes.md`, `docs/proposals/`, and any `/fixtures/` or `/archive/` segment. `path-pattern` is inclusive-only and cannot express those exclusions; per-line `is_match` also differs from the eval's per-match `find_iter` counting.
-- **CORE-050** (`DeclaredToolInvocations`, [tools.rs](./crates/standards/src/framework/check/tools.rs)) — special-cases `specify-contract`, flagging a match only when it is **not** followed by `-validate` (`!line[m.end()..].starts_with("-validate")`). A negative-lookahead condition the lookaround-free, unconditional-per-match `regex` kind cannot express; the candidate set is also a bespoke `active_brief_and_skill_files` walk, not a glob.
-- **CORE-035 / 036 / 047** (`ArgumentHintGrammar` / `DescriptionGrammar` / `UnknownTool`, [skill_frontmatter.rs](./crates/standards/src/framework/check/skill_frontmatter.rs)) — these validate skill frontmatter fields (`argument-hint` token grammar, `description` leading imperative verb against a Rust allowlist, `allowed-tools` against a Rust `KNOWN_TOOLS` table plus `mcp__` prefix). Expressing them via `schema` folds them back into the skill JSON Schema that `FrontmatterSchema` (CORE-044) already validates imperatively, producing double emission unless a separate sidecar schema is introduced; the per-token / per-tool finding counts and messages also diverge from a single schema-pattern violation.
-- **CORE-044** (`FrontmatterSchema`) and **CORE-051** (`adapter.execution-agent`) are **fused** predicates: `check_schema` emits both `skill.schema-violation` (CORE-044) and `skill.missing-frontmatter` (CORE-042) from one loop; `AdapterCheck` emits both `adapter.execution-agent` (CORE-051) and `adapter.missing-manifest` (CORE-010). Retiring one id means surgically splitting a predicate whose sibling id has no declarative home — exactly the fused-predicate weakening DECISIONS.md cautions against.
+Migrating `CORE-010..052` off `authoring-predicate` to native hints is incremental: each id needs parity per [checks.md § Parity contract](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md#parity-contract-for-predicate-retirement). Sidecar schemas for CORE-035/036/047 vs CORE-044: [`rfc-31-sidecar-schemas.md`](./docs/standards/rfc-31-sidecar-schemas.md).
 
-So "cleanly migratable author-side" means a CORE rule *file* can be authored — not that the imperative predicate can be retired with parity. The retirement half is engine-gated.
+### Performance (post–Phase 4)
 
-### RFC-31 scope (the path forward for A16)
-
-[RFC-31](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md) adds, per migrated predicate class:
-
-1. **`RuleHint.config`** (becoming `RuleHint.config` after the rename step) — per-kind sub-schemas so fact-consuming kinds can express a second metric/policy without new Rust variants for every case.
-2. **Extended `regex` and `path-pattern` evaluators** — numeric-capture threshold, negative-match, suffix guards, exclusion globs (Phase 1 lands `regex` config; Phase 2 lands `path-pattern` exclusions).
-3. **New `WorkspaceModel` indexer facts** — fence-context, frontmatter granularity, trace-staleness (RFC Phase 2).
-4. **De-fusing** — split multi-id predicates before retirement (RFC Phase 2–3).
-
-**Phase 1–2 (complete):** see [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md) and [`docs/standards/rfc-31-phase2-spike.md`](./docs/standards/rfc-31-phase2-spike.md) for engine extensions and binding records.
-
-RFC-31 Phase 4 (2026-06): migratable predicates run via declarative `kind: authoring-predicate` on `CORE-*` rule files; `AuthoringProducer` is CORE-009-only. Do not weaken checks to fake completion.
+`make lint` on `augentic/specify` (2026-06-04): **~247s** wall (`real 246.75`); pre-teardown baseline not captured in-tree. Benchmark locally with `/usr/bin/time make lint`.
 
 ---
 
@@ -83,21 +72,23 @@ RFC-31 Phase 4 (2026-06): migratable predicates run via declarative `kind: autho
 - [x] `Exit::from(&Error)` is the only exit mapping for lint on both binaries.
 - [x] [handler-shape.md](./docs/standards/handler-shape.md) documents the lint kernel explicitly.
 
-### A16 — bounded, not closeable today
+### A16 — done (steady state; bridge burn-down optional)
 
 - [x] CORE-001..008 imperative predicates retired; declarative rules own them.
 - [x] CORE-009 retained imperative by design (smoke-test declarative counterpart).
 - [x] RFC-31 Phase 4: `CORE_ID_TABLE` is CORE-009-only; `check::run` is namespace bridge only; migratable ids use `authoring-predicate` hints.
-- [x] Framework lint no longer runs the full imperative `Check` batch on every `make lint` (declarative pass owns migratable ids). Post-Phase-4 `make lint` on augentic/specify: **~247s** wall (`real 246.75`, 2026-06-04); pre-teardown baseline not captured in-tree.
-- [x] RFC-31 Accepted; Phase 1 spike doc at [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md).
+- [x] Framework lint no longer runs the full imperative `Check` batch on every `make lint`.
+- [x] RFC-31 Accepted; spike docs under `docs/standards/rfc-31-*.md`.
 
 ---
 
 ## Cross-repo touchpoints
 
-| Change | Repository | Files |
+| Topic | Repository | Files |
 | --- | --- | --- |
-| Steady-state posture | specify-cli | [DECISIONS.md](./DECISIONS.md) §"Crate layout" |
+| Steady-state posture | specify-cli | [DECISIONS.md](./DECISIONS.md) §"Crate layout", this file §A16 |
+| Parity + extension guide | specify | [docs/contributing/checks.md](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md) |
+| CORE rule authoring | specify | [adapters/shared/rules/core/README.md](https://github.com/augentic/specify/blob/main/adapters/shared/rules/core/README.md) |
+| Declarative CORE rules | specify | `adapters/shared/rules/core/CORE-*.md` |
+| Parity harness | specify-cli | [crates/standards/tests/core_parity.rs](./crates/standards/tests/core_parity.rs) |
 | Suppression burn-down | specify-cli | [docs/quality-debt.md](./docs/quality-debt.md) |
-| Declarative CORE rules (existing) | specify | `adapters/shared/rules/core/CORE-00{1..9}-*.md` |
-| Imperative predicate docs | specify | [docs/contributing/checks.md](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md) |

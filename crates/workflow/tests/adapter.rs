@@ -25,6 +25,8 @@ use specify_workflow::adapter::{
     cache_dir, check_axis_unique_for_name,
 };
 
+mod common;
+
 fn fixtures_root() -> PathBuf {
     // `crates/workflow/tests/` -> `tests/fixtures/plugins/`.
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/plugins")
@@ -37,22 +39,8 @@ fn fixtures_root() -> PathBuf {
 fn local_project() -> (tempfile::TempDir, PathBuf) {
     let tmp = tempfile::tempdir().expect("tempdir");
     let project = tmp.path().to_path_buf();
-    copy_dir_recursive(&fixtures_root(), &project);
+    common::copy_dir(&fixtures_root(), &project);
     (tmp, project)
-}
-
-fn copy_dir_recursive(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create dst");
-    for entry in fs::read_dir(src).expect("read fixtures") {
-        let entry = entry.expect("entry");
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        if from.is_dir() {
-            copy_dir_recursive(&from, &to);
-        } else {
-            fs::copy(&from, &to).expect("copy fixture file");
-        }
-    }
 }
 
 #[test]

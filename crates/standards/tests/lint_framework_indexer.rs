@@ -19,13 +19,15 @@
 //!    bytes per the standards-layer contract §F1.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde_json::Value;
 use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::index::build;
 use tempfile::TempDir;
+
+mod common;
 
 const FIXTURE_NAME: &str = "framework_minimal";
 
@@ -37,25 +39,11 @@ fn fixture_src() -> PathBuf {
     crate_root().join("tests/fixtures/lint").join(FIXTURE_NAME)
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create dst");
-    for entry in fs::read_dir(src).expect("read src") {
-        let entry = entry.expect("entry");
-        let ft = entry.file_type().expect("file type");
-        let to = dst.join(entry.file_name());
-        if ft.is_dir() {
-            copy_dir_recursive(&entry.path(), &to);
-        } else {
-            fs::copy(entry.path(), &to).expect("copy file");
-        }
-    }
-}
-
 /// Stage the fixture into a tempdir and add the followable
 /// `agent-teams.md` symlink at runtime.
 fn stage_fixture() -> TempDir {
     let tempdir = tempfile::tempdir().expect("tempdir");
-    copy_dir_recursive(&fixture_src(), tempdir.path());
+    common::copy_dir(&fixture_src(), tempdir.path());
 
     // `agent-teams.md` symlink in `adapters/targets/omnia/references/`
     // pointing at the canonical `docs/reference/review-team-protocol.md`.

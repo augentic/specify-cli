@@ -84,7 +84,7 @@ pub fn run_rules_schema_check(ctx: &Context) -> Vec<Diagnostic> {
             }
         };
 
-        match validate_frontmatter(ctx, &path, SchemaId::Rule) {
+        match validate_frontmatter(&path, SchemaId::Rule) {
             Ok(()) => {}
             Err(SchemaError::Infrastructure(error)) => {
                 findings.push(finding_at(

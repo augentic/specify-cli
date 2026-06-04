@@ -1,23 +1,23 @@
 //! `slice merge run | preview | conflict-check`. Owns the merge-side
-//! JSON DTOs, summarisers, and the workspace-clone auto-commit shim.
+//! JSON DTOs and summarisers; the workspace-clone auto-commit git side
+//! effects live in `specify_workflow::merge::clone_commit`.
 
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::{Plan, Status};
-use specify_workflow::config::{Layout, is_slot, with_state};
+use specify_workflow::config::with_state;
 use specify_workflow::journal::{self, Event, EventKind};
 use specify_workflow::merge::{
-    BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, conflict_check, slice,
+    BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, clone_commit,
+    conflict_check, slice,
 };
 
 use super::artifact_classes;
 use crate::runtime::context::Ctx;
-
-const WORKSPACE_MERGE_COMMIT_PATHS: [&str; 2] = [".specify/specs", ".specify/archive"];
 
 pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     // RFC-29d: the `slice.merge.*` pair fires on the validator outcome.
@@ -52,14 +52,20 @@ fn commit_run(ctx: &Ctx, name: &str) -> Result<()> {
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
 
-    let now = Timestamp::now();
+    // Single clock read for the whole merge: the commit, the
+    // outcome-ledger event, and the archive path date all derive from the
+    // same `now` so they cannot disagree across a midnight boundary.
+    let now = ctx.now();
     let merged = slice::commit(&slice_dir, &classes, &archive_dir, now)?;
 
     // The merge-owned workspace commit is limited to the baseline spec
-    // tree and archived slice. Opaque/generated outputs remain as residue
-    // for the execute driver.
-    if is_clone_eligible(&ctx.project_dir) {
-        auto_commit(&ctx.project_dir, name);
+    // tree and archived slice (opaque/generated outputs remain as residue
+    // for the execute driver). The git side effects live in
+    // `specify-workflow`; the handler renders the returned warnings.
+    if clone_commit::is_clone_eligible(&ctx.project_dir) {
+        for warning in clone_commit::auto_commit(&ctx.project_dir, name) {
+            eprintln!("{warning}");
+        }
     }
 
     // Append the durable outcome-ledger entry (decision-log §"History
@@ -70,7 +76,7 @@ fn commit_run(ctx: &Ctx, name: &str) -> Result<()> {
 
     stamp_plan_entry_done(ctx, name)?;
 
-    let today = Timestamp::now().strftime("%Y-%m-%d").to_string();
+    let today = now.strftime("%Y-%m-%d").to_string();
     let archive_path = archive_dir.join(format!("{today}-{name}"));
 
     ctx.write(
@@ -107,24 +113,13 @@ fn emit_archive_created(
             slice_name: name.into(),
             touched_specs,
             outcome_summary,
-            merge_sha: git_head_sha(&ctx.project_dir),
+            merge_sha: clone_commit::head_sha(&ctx.project_dir),
             decisions: decisions.to_vec(),
         },
     );
     if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
         eprintln!("warning: slice.archive.created journal append: {err}");
     }
-}
-
-/// Read the current git HEAD SHA, or `None` when the project is not a
-/// git repository or `git` is unavailable.
-fn git_head_sha(project_dir: &Path) -> Option<String> {
-    let output = git(project_dir, &["rev-parse", "HEAD"]).ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let sha = String::from_utf8(output.stdout).ok()?.trim().to_string();
-    if sha.is_empty() { None } else { Some(sha) }
 }
 
 /// workflow §Workflow: `/spec:merge` is the sole writer of per-entry
@@ -318,114 +313,4 @@ fn summarise_ops(ops: &[MergeOperation]) -> String {
     let parts: Vec<String> =
         counts.iter().filter(|(c, _)| *c > 0).map(|(c, label)| format!("{c} {label}")).collect();
     if parts.is_empty() { "no-op".to_string() } else { parts.join(", ") }
-}
-
-// ---------------------------------------------------------------------------
-// Workspace-clone auto-commit.
-// ---------------------------------------------------------------------------
-
-/// Detect whether a project directory is inside a workspace clone.
-/// The path must contain `/.specify/workspace/*/` as an ancestor via
-/// structural component walk, and `.specify/plan.yaml` must be absent
-/// — the plan file's presence indicates an in-flight change rather
-/// than a freshly merged clone. The `.specify/project.yaml` check is
-/// already enforced upstream by `Ctx::load`.
-fn is_clone_eligible(project_dir: &Path) -> bool {
-    if !is_slot(project_dir) {
-        return false;
-    }
-    !Layout::new(project_dir).plan_path().exists()
-}
-
-fn git(project_dir: &Path, args: &[&str]) -> std::io::Result<std::process::Output> {
-    specify_workflow::cmd::git(&specify_workflow::cmd::real_cmd, Some(project_dir), args)
-}
-
-fn auto_commit(project_dir: &Path, name: &str) {
-    let pathspecs: Vec<&'static str> = WORKSPACE_MERGE_COMMIT_PATHS
-        .iter()
-        .copied()
-        .filter(|path| project_dir.join(path).exists())
-        .collect();
-    if pathspecs.is_empty() {
-        return;
-    }
-    let mut add_args = vec!["add", "--"];
-    add_args.extend(pathspecs.iter().copied());
-    let add = match git(project_dir, &add_args) {
-        Ok(output) => output,
-        Err(err) => return eprintln!("warning: workspace auto-commit git-add: {err}"),
-    };
-    if !add.status.success() {
-        let stderr = String::from_utf8_lossy(&add.stderr);
-        return eprintln!("warning: workspace auto-commit git-add: {stderr}");
-    }
-
-    let mut diff_args = vec!["diff", "--cached", "--quiet", "--"];
-    diff_args.extend(pathspecs.iter().copied());
-    match git(project_dir, &diff_args).map(|o| o.status) {
-        Ok(status) if status.success() => return,
-        Ok(status) if status.code() == Some(1) => {}
-        Ok(status) => {
-            eprintln!("warning: workspace auto-commit diff check: status {status}");
-            return;
-        }
-        Err(err) => return eprintln!("warning: workspace auto-commit diff check: {err}"),
-    }
-
-    let commit_msg = format!("specify: merge {name}");
-    let mut commit_args = vec!["commit", "-m", &commit_msg, "--"];
-    commit_args.extend(pathspecs.iter().copied());
-    match git(project_dir, &commit_args) {
-        Ok(commit) if !commit.status.success() => {
-            let stderr = String::from_utf8_lossy(&commit.stderr);
-            eprintln!("warning: workspace auto-commit commit: {stderr}");
-        }
-        Ok(_) => {}
-        Err(err) => eprintln!("warning: workspace auto-commit commit: {err}"),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::*;
-
-    fn workspace_clone_dir(suffix: &str) -> tempfile::TempDir {
-        let tmp = tempfile::tempdir().unwrap();
-        let slot = tmp.path().join(".specify").join("workspace").join(suffix);
-        std::fs::create_dir_all(slot.join(".specify")).unwrap();
-        std::fs::write(slot.join(".specify").join("project.yaml"), "name: stub\n").unwrap();
-        tmp
-    }
-
-    #[test]
-    fn workspace_clone_path() {
-        let tmp = workspace_clone_dir("traffic");
-        let path = tmp.path().join(".specify").join("workspace").join("traffic");
-        assert!(is_clone_eligible(&path));
-    }
-
-    #[test]
-    fn rejects_normal_project_root() {
-        let path = Path::new("/home/user/project/");
-        assert!(!is_clone_eligible(path));
-    }
-
-    #[test]
-    fn rejects_bare_specify_dir() {
-        let path = Path::new("/home/user/project/.specify/");
-        assert!(!is_clone_eligible(path));
-    }
-
-    #[test]
-    fn deeply_nested_workspace_clone() {
-        let tmp = workspace_clone_dir("mobile");
-        let path =
-            tmp.path().join(".specify").join("workspace").join("mobile").join("sub").join("dir");
-        std::fs::create_dir_all(path.join(".specify")).unwrap();
-        std::fs::write(path.join(".specify").join("project.yaml"), "name: stub\n").unwrap();
-        assert!(is_clone_eligible(&path));
-    }
 }

@@ -9,23 +9,11 @@ use specify_validate::validate_slice;
 use specify_workflow::slice::SLICES_DIR_NAME;
 use tempfile::TempDir;
 
+mod common;
+
 fn repo_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     manifest.parent().and_then(|p| p.parent()).expect("repo root exists").to_path_buf()
-}
-
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) {
-    fs::create_dir_all(dst).unwrap();
-    for entry in fs::read_dir(src).unwrap() {
-        let entry = entry.unwrap();
-        let ft = entry.file_type().unwrap();
-        let target = dst.join(entry.file_name());
-        if ft.is_dir() {
-            copy_dir_recursive(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), &target).unwrap();
-        }
-    }
 }
 
 /// Stage an empty project dir.
@@ -88,7 +76,7 @@ fn validate_slice_passes_all_rules() {
     let fixture = repo.join("crates/workflow/tests/fixtures/change-good");
     let (_guard, project_dir) = stage_project();
     let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join("change-good");
-    copy_dir_recursive(&fixture, &slice_dir);
+    common::copy_dir(&fixture, &slice_dir);
 
     let findings = validate_slice(&slice_dir).expect("validate_slice ok");
 

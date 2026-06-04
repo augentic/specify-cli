@@ -34,3 +34,6 @@ pub fn discard(
     let target = archive(slice_dir, archive_dir, now)?;
     Ok((metadata, target))
 }
+
+#[cfg(test)]
+mod tests;

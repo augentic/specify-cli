@@ -211,23 +211,7 @@ published binary's dependency graph — and since the `specrun`/`specdev`
 binaries converged onto the single `specify` binary, `specify lint
 framework` is the only surface that runs them.
 
-The declarative burn-down deletes this imperative code incrementally as each
-predicate migrates to a `CORE-NNN` rule file — but the migration is **bounded
-by a deliberate engine constraint, and the imperative predicates behind
-`framework::check::run` are the intended steady state until that constraint is
-lifted**. An empirical audit of the `CORE-010..051` predicates (2026-06) found
-that every *fact-consuming* declarative hint kind (`unique`, `cardinality`,
-`set-coverage`, `set-eq`, `constant-eq`, `content-digest-eq`,
-`reference-resolves`, `namespace-owner`) is hardcoded to exactly **one**
-`source` discriminator, each already spent on a `CORE-001..009` migration.
-Only `path-pattern`, line-based `regex`, and `schema` can express a *new*
-author-side check without new Rust. Consequently most surviving predicates
-cannot move to declarative rules without either (a) new hint-kind
-discriminators + new `WorkspaceModel` indexer facts (engine work), or (b)
-weakening fused multi-finding predicates (e.g. `ScenariosCheck` emits 7 ids,
-`RulesCheck` emits 3), procedural/structural checks (per-section line counts,
-fence-context, def/use dataflow), dynamic registries, or the `git`-subprocess
-trace-staleness WARN. **[RFC-31](https://github.com/augentic/specify/blob/main/rfcs/RFC-31-declarative-lints.md)** (Accepted) is the coordinated program to lift that constraint (hint `config`, extended `regex` / `path-pattern`, indexer facts, de-fusing). Until those phases complete: do **not** retire imperative predicates or remove `AuthoringProducer` by weakening checks. Phase 1 spike work is tracked in [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md) and [DIAGNOSTICS.md §"A16"](./DIAGNOSTICS.md). The headline "remove `AuthoringProducer` / ~2× framework lint" payoff only lands when the *last migratable* predicate is retired.
+**RFC-31 steady state (2026-06, complete).** [`CORE-001..008`](https://github.com/augentic/specify/tree/main/adapters/shared/rules/core) are native declarative rules (no `CORE_ID_TABLE` row). **`CORE-009`** (`rules.namespace-ownership-violation`) stays imperative: the declarative `namespace-owner` hint is a smoke test only; fused `run_rules_check` also owns `FRAME-*` reservation, dynamic source-adapter owner discovery, and unknown-owner diagnostics. **`CORE-010..052`** ship as declarative `CORE-*` rule files; behaviour runs through `kind: authoring-predicate` on each file until native hint parity replaces the bridge. `AuthoringProducer` and `framework::check::run` are **CORE-009-only**; the full imperative `Check` batch no longer runs on every `specify lint framework` invocation. Do **not** weaken checks to remove the bridge or namespace row. Retiring a bridge requires the [parity contract](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md#parity-contract-for-predicate-retirement) and a green `mod core_NNN` in [`core_parity.rs`](./crates/standards/tests/core_parity.rs). Engine extensions (`RuleHint.config`, extended `regex` / `path-pattern`, indexer facts, de-fusing) are recorded in [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md), [`rfc-31-phase2-spike.md`](./docs/standards/rfc-31-phase2-spike.md), and [DIAGNOSTICS.md §"A16"](./DIAGNOSTICS.md). Historical program: [RFC-31](https://github.com/augentic/specify/blob/main/rfcs/done/rfc-31-declarative-lints.md).
 
 ## Tool architecture
 
