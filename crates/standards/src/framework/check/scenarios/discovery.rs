@@ -1,4 +1,4 @@
-//! Scenario-file discovery across the test, target, and plugin trees.
+//! Scenario-file discovery across acceptance suites, target tests, and plugin fixtures.
 
 use std::path::{Path, PathBuf};
 
@@ -11,9 +11,7 @@ pub(super) fn discover_scenario_candidates(ctx: &Context) -> Vec<PathBuf> {
     let root = ctx.framework_root();
     let mut candidates = Vec::new();
 
-    collect_tests_suite_scenarios(&root.join("tests"), 2, &mut candidates);
-    collect_tests_suite_scenarios(&root.join("tests").join("suites"), 2, &mut candidates);
-    collect_plan_scenarios(&root.join("tests").join("plan"), &mut candidates);
+    collect_acceptance_suite_scenarios(&root.join("acceptance").join("suites"), &mut candidates);
     collect_target_scenarios(&ctx.targets_dir(), &mut candidates);
     collect_plugin_fixture_scenarios(&root.join("plugins"), root, &mut candidates);
 
@@ -22,11 +20,13 @@ pub(super) fn discover_scenario_candidates(ctx: &Context) -> Vec<PathBuf> {
     candidates
 }
 
-fn collect_tests_suite_scenarios(dir: &Path, max_depth: usize, out: &mut Vec<PathBuf>) {
-    if !dir.is_dir() {
+/// Collects `acceptance/suites/<pack>/scenario.md` (umbrella) and
+/// `acceptance/suites/<pack>/<id>/scenario.md` (per-scenario).
+fn collect_acceptance_suite_scenarios(suites_dir: &Path, out: &mut Vec<PathBuf>) {
+    if !suites_dir.is_dir() {
         return;
     }
-    for entry in WalkDir::new(dir).max_depth(max_depth).follow_links(false).into_iter().flatten() {
+    for entry in WalkDir::new(suites_dir).max_depth(3).follow_links(false).into_iter().flatten() {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -34,28 +34,9 @@ fn collect_tests_suite_scenarios(dir: &Path, max_depth: usize, out: &mut Vec<Pat
         if path.file_name().and_then(|name| name.to_str()) != Some("scenario.md") {
             continue;
         }
-        let rel = path.strip_prefix(dir).unwrap_or(&path);
+        let rel = path.strip_prefix(suites_dir).unwrap_or(&path);
         let parts: Vec<_> = rel.components().collect();
-        if parts.len() == 2 {
-            out.push(path);
-        }
-    }
-}
-
-fn collect_plan_scenarios(dir: &Path, out: &mut Vec<PathBuf>) {
-    if !dir.is_dir() {
-        return;
-    }
-    for entry in WalkDir::new(dir).max_depth(1).follow_links(false).into_iter().flatten() {
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let path = entry.into_path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
-            continue;
-        }
-        let rel = path.strip_prefix(dir).unwrap_or(&path);
-        if rel.components().count() == 1 {
+        if parts.len() == 2 || parts.len() == 3 {
             out.push(path);
         }
     }
