@@ -648,3 +648,146 @@ fn synthesize_from_is_deterministic() {
 
     assert_eq!(first, second, "model.yaml must be byte-identical across two synthesis runs");
 }
+
+/// Plan binding two *same-authority* sources (both `documentation`) to
+/// `my-slice`, each citing the `password-reset.expiry` claim with a
+/// different value. Same-class claims tie at the top authority level, so
+/// the kernel cannot pick a winner.
+const SAME_AUTHORITY_PLAN: &str = "\
+name: same-authority
+lifecycle: pending
+sources:
+  docs-a:
+    adapter: documentation
+    path: ./docs-a
+  docs-b:
+    adapter: documentation
+    path: ./docs-b
+slices:
+  - name: my-slice
+    status: pending
+    project: test-proj
+    sources:
+      - { source: docs-a, lead: my-slice }
+      - { source: docs-b, lead: my-slice }
+";
+
+/// First documentation source: 30-minute expiry criterion.
+const SAME_AUTHORITY_EVIDENCE_A: &str = "authority: documentation
+lead: my-slice
+claims:
+  - id: password-reset.expiry
+    kind: criterion
+    criterion: Reset links expire after 30 minutes.
+    path: docs/a/reset.md#L7
+";
+
+/// Second documentation source: a contradicting 60-minute criterion at
+/// the same authority class.
+const SAME_AUTHORITY_EVIDENCE_B: &str = "authority: documentation
+lead: my-slice
+claims:
+  - id: password-reset.expiry
+    kind: criterion
+    criterion: Reset links expire after 60 minutes.
+    path: docs/b/reset.md#L9
+";
+
+/// Agent response marking the two same-authority claims `disagreed`. The
+/// kernel re-derives `conflict` (a top-class tie has no unique winner).
+const SAME_AUTHORITY_RESPONSE_JSON: &str = r###"{
+  "version": 1,
+  "kind": "response",
+  "slice": "my-slice",
+  "model": {
+    "requirements": [
+      {
+        "title": "Reset link expiry",
+        "unit": "password-reset",
+        "agreement": "disagreed",
+        "claims": [
+          { "source": "docs-a", "id": "password-reset.expiry", "kind": "criterion" },
+          { "source": "docs-b", "id": "password-reset.expiry", "kind": "criterion" }
+        ],
+        "statement": "Reset links expire after a fixed window."
+      }
+    ],
+    "tasks": [
+      { "id": "TASK-001", "text": "Enforce reset link expiry.", "satisfies": ["REQ-001"] }
+    ]
+  },
+  "artifacts": {
+    "proposal": "# Reset expiry\nWhy this slice exists.\n",
+    "design": "# Design\nExpiry handling.\n",
+    "tasks": "# Tasks\n- [ ] TASK-001\n",
+    "specs": [
+      { "unit": "password-reset", "content": "## Reset link expiry\nLinks expire after a fixed window.\n" }
+    ]
+  }
+}
+"###;
+
+/// Stage `my-slice` with two same-authority (`documentation`) sources
+/// disagreeing on `password-reset.expiry`.
+fn stage_same_authority_conflict_slice() -> Project {
+    let project = Project::init().with_schemas();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
+    let evidence_dir = project.slices_dir().join("my-slice/evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
+    fs::write(evidence_dir.join("docs-a.yaml"), SAME_AUTHORITY_EVIDENCE_A).expect("write docs-a");
+    fs::write(evidence_dir.join("docs-b.yaml"), SAME_AUTHORITY_EVIDENCE_B).expect("write docs-b");
+    project.seed_plan(SAME_AUTHORITY_PLAN);
+    project
+}
+
+#[test]
+fn synthesize_resolves_same_authority_conflict() {
+    // Two `documentation`-authority claims disagree; they tie at the top
+    // authority class, so the kernel derives `status: conflict` (no
+    // winner), and `spec.md` carries the `[conflict]` heading tag.
+    // Acceptance scenario `same-authority-conflict`.
+    let project = stage_same_authority_conflict_slice();
+    let output = run_synthesize_from(&project, SAME_AUTHORITY_RESPONSE_JSON);
+    assert_eq!(output.status.code(), Some(0), "the same-authority slice synthesizes");
+
+    let show = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "model", "show", "my-slice"])
+        .assert()
+        .success();
+    let model = parse_json(&show.get_output().stdout);
+    let req = &model["requirements"][0];
+    assert_eq!(req["id"], "REQ-001");
+    assert_eq!(req["status"], "conflict");
+    // A top-class tie has no winner: both claims survive without a winner
+    // marker (both values preserved as inline commentary).
+    for idx in [0, 1] {
+        let claim = &req["claims"][idx];
+        assert!(
+            claim.get("winner").is_none() || claim["winner"].is_null(),
+            "a tied-conflict claim carries no winner marker, got:\n{claim}"
+        );
+    }
+    let sources = req["sources"].as_array().expect("sources array");
+    assert_eq!(sources.len(), 2, "both contributing sources are preserved");
+
+    // spec.md carries the `[conflict]` heading tag, the matching Status
+    // line, and both source keys.
+    let spec =
+        fs::read_to_string(project.slices_dir().join("my-slice/specs/password-reset/spec.md"))
+            .expect("spec.md");
+    assert!(
+        spec.contains("[conflict]"),
+        "same-authority disagreement renders [conflict], got:\n{spec}"
+    );
+    assert!(
+        spec.contains("Status: conflict"),
+        "spec.md must carry the projected status, got:\n{spec}"
+    );
+    assert!(spec.contains("docs-a"), "spec.md preserves the first source, got:\n{spec}");
+    assert!(spec.contains("docs-b"), "spec.md preserves the second source, got:\n{spec}");
+}

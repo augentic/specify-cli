@@ -312,6 +312,52 @@ fn finalize_invalid_persists_no_file() {
     );
 }
 
+/// Acceptance scenario `extract-failure` — the extract step fails to
+/// produce Evidence (the agent's extract brief ran but staged nothing in
+/// `$SCRATCH_DIR`). finalize fails closed with `extract-evidence-missing`,
+/// persists no Evidence, emits no cache event, and leaves the slice
+/// `refining` so no synthesis can run. Distinct from
+/// `finalize_invalid_persists_no_file` (schema failure on a *present*
+/// document) and `sandbox_denies_out_of_scope` (a document staged outside
+/// the granted scratch root).
+#[test]
+fn finalize_missing_evidence_stays_refining() {
+    let project = Project::init();
+    stage_code_typescript(&project);
+    seed_plan_with_legacy_source(&project);
+    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
+
+    // The agent produced nothing: scratch exists but holds no evidence.yaml.
+    let scratch = extract_scratch_dir(&project, "code-typescript", "identity");
+    fs::create_dir_all(&scratch).expect("create empty scratch dir");
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "source", "extract", "legacy", "user-registration"])
+        .args(["--slice", "identity", "--phase", "finalize"])
+        .assert()
+        .failure();
+
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "extract-evidence-missing");
+    assert_eq!(stderr["exit-code"], 1);
+
+    // No Evidence persisted: the slice never leaves refining, so no
+    // synthesis can run against it.
+    assert!(
+        !slice_evidence_path(&project, "identity", "legacy").exists(),
+        "a failed extract must persist no Evidence"
+    );
+    // A failed extract fires no cache event.
+    assert!(
+        !project.root().join(".specify/journal.jsonl").exists()
+            || !journal_events(&project).iter().any(|e| {
+                e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
+            }),
+        "a failed extract must not emit a cache event"
+    );
+}
+
 /// Scenario `5j` — source-adapter sandbox path-denied (the parent
 /// `augentic/specify` repo's `docs/contributing/acceptance.md`
 /// §Scenario IDs, stub `05j-source-sandbox-denied.md`).
