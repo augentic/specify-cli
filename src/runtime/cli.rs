@@ -43,16 +43,20 @@ pub struct Cli {
 pub enum Commands {
     /// Initialize .specify/ in a project.
     ///
-    /// Pass `<adapter>` (bare name or URL) for a regular project, or
-    /// `--workspace` for a registry-only workspace. The two are mutually
-    /// exclusive — clap enforces the `<adapter>` xor `--workspace` shape
-    /// and exits `2` with its standard parse-error diagnostic when the
-    /// invariant is violated.
+    /// Pass `<adapter>` (first-party shorthand, local path, or URL) for
+    /// a regular project, or `--workspace` for a registry-only
+    /// workspace. The two are mutually exclusive — clap enforces the
+    /// `<adapter>` xor `--workspace` shape and exits `2` with its
+    /// standard parse-error diagnostic when the invariant is violated.
     Init {
-        /// Adapter identifier or URL (e.g. `omnia`,
-        /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`).
-        /// Required unless `--workspace`, `--check-migration`, or `--upgrade`
-        /// is set; mutually exclusive with `--workspace`.
+        /// Adapter identifier. First-party shorthand (`omnia`,
+        /// `omnia@v1` — ref defaults to `v1`) resolves against
+        /// `$SPECIFY_FRAMEWORK_ROOT` when set, else the published
+        /// adapter on GitHub. Also accepts a local path
+        /// (`./adapters/targets/omnia`, `file://…`) or a full
+        /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`
+        /// URL. Required unless `--workspace`, `--check-migration`, or
+        /// `--upgrade` is set; mutually exclusive with `--workspace`.
         #[arg(
             conflicts_with = "workspace",
             required_unless_present_any = ["workspace", "check_migration", "upgrade"]

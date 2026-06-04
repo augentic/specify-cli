@@ -32,8 +32,11 @@ Both build envelopes are closed-shape YAML, keyed on `(slice, target)`, schema-v
 
 1. `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/` — agent-populated mirror.
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo manifest.
+3. `$SPECIFY_FRAMEWORK_ROOT/adapters/{sources,targets}/<name>/` — on-disk framework checkout named by the env var. Offline/dev/acceptance fallback only, probed last; skipped when the env var is unset.
 
 The `{sources,targets}` segment is keyed by `Axis`. See [`DECISIONS.md` §"Adapter loader axis routing"](../../DECISIONS.md#adapter-loader-axis-routing) and [`DECISIONS.md` §"Cache layout"](../../DECISIONS.md#cache-layout).
+
+`specify init <adapter>` additionally accepts a first-party **shorthand** (`omnia`, `omnia@v1`; ref defaults to `v1`) that resolves against `$SPECIFY_FRAMEWORK_ROOT` when set, else the published adapter on GitHub. See [`DECISIONS.md` §"First-party `<adapter>` shorthand at init"](../../DECISIONS.md#first-party-adapter-shorthand-at-init).
 
 The `source resolve` / `target resolve` JSON envelope carries `briefs-dir` — the absolute path to the resolved adapter's `briefs/` directory — alongside `resolved-path`, `operations`, and `description`. The source-operation prep seam consumes it for brief-directory resolution.
 

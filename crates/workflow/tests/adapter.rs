@@ -191,6 +191,42 @@ fn missing_adapter_reports_not_found() {
 }
 
 #[test]
+#[expect(
+    unsafe_code,
+    reason = "env::set_var / env::remove_var are unsafe under Rust 2024; nextest runs each test in its own process so the SPECIFY_FRAMEWORK_ROOT mutation is not observed by any parallel thread."
+)]
+fn resolves_from_framework_root_env_fallback() {
+    // With no project-local `adapters/` tree and no manifest cache, a
+    // `$SPECIFY_FRAMEWORK_ROOT` checkout supplies first-party adapters
+    // (offline dev + acceptance). Resolution falls back to the env
+    // root only after the cache and project-dir probes miss.
+    let project = tempfile::tempdir().expect("empty project tempdir");
+
+    // SAFETY: nextest grants this binary a fresh process per test, so
+    // no other thread reads SPECIFY_FRAMEWORK_ROOT while it is set.
+    let () = unsafe { std::env::remove_var("SPECIFY_FRAMEWORK_ROOT") };
+    let missing = TargetAdapter::resolve("omnia", project.path())
+        .expect_err("omnia must be absent without a framework root or local tree");
+    assert!(missing.to_string().contains("adapter-not-found"), "{missing}");
+
+    // SAFETY: same single-test process-isolation argument as above.
+    let () = unsafe { std::env::set_var("SPECIFY_FRAMEWORK_ROOT", fixtures_root()) };
+    let resolved = TargetAdapter::resolve("omnia", project.path());
+    // SAFETY: same single-test process-isolation argument as above.
+    let () = unsafe { std::env::remove_var("SPECIFY_FRAMEWORK_ROOT") };
+
+    let resolved = resolved.expect("omnia resolves via the SPECIFY_FRAMEWORK_ROOT fallback");
+    assert_eq!(resolved.manifest.name, "omnia");
+    assert_eq!(resolved.manifest.axis, Axis::Target);
+    assert!(matches!(resolved.location, AdapterLocation::Local(_)));
+    assert!(
+        resolved.location.path().ends_with("adapters/targets/omnia"),
+        "framework-root resolution must land on the fixture adapter dir, got: {}",
+        resolved.location.path().display()
+    );
+}
+
+#[test]
 fn schema_violations_reject_at_load_time() {
     // Source-axis adapter with the wrong brief key set — `shape` is
     // not a source operation, and `extract` is required by
