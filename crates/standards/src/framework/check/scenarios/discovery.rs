@@ -26,7 +26,8 @@ fn collect_lifecycle_scenarios(lifecycle_dir: &Path, out: &mut Vec<PathBuf>) {
     if !lifecycle_dir.is_dir() {
         return;
     }
-    for entry in WalkDir::new(lifecycle_dir).max_depth(1).follow_links(false).into_iter().flatten() {
+    for entry in WalkDir::new(lifecycle_dir).max_depth(1).follow_links(false).into_iter().flatten()
+    {
         if !entry.file_type().is_file() {
             continue;
         }
