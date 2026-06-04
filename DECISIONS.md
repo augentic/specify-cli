@@ -792,9 +792,7 @@ All eight first-party manifests (five sources, three targets) ship
 `execution: agent` — none owns a deterministic tool yet, so `agent` is
 the truthful value and the `tool` branch is wired and schema-valid but
 unexercised by first-party adapters until a source or target gains a
-real tool. A `suggestion`-severity `adapter.execution-agent` standards
-finding (CORE-051) flags first-party `agent` adapters only (never
-third-party), nudging toward a future `tool` path. M1 landed the source
+real tool. M1 landed the source
 side; RFC-29d M3 landed the target side (`build` / `merge` dispatch —
 §"Target build envelope (D6, D9 target side, D7 proof)"), and target
 manifests still carry `agent` because no first-party target owns a build

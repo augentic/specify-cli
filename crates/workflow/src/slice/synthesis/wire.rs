@@ -169,7 +169,7 @@ impl SynthesisSourceInput {
     /// # Errors
     ///
     /// Returns [`Error::YamlDe`] when `raw` is not valid YAML.
-    pub fn from_evidence_yaml(source: &str, raw: &str) -> Result<Self> {
+    pub(crate) fn from_evidence_yaml(source: &str, raw: &str) -> Result<Self> {
         let doc: JsonValue = serde_saphyr::from_str(raw)?;
         let lead = doc.get("lead").and_then(JsonValue::as_str).unwrap_or_default().to_string();
         let claims = doc.get("claims").and_then(JsonValue::as_array).cloned().unwrap_or_default();
