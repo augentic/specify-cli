@@ -338,6 +338,14 @@ verbatim:
    agent-populated manifest cache, fetched by the plan/slice flow.
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo
    manifests checked into the project's source tree.
+3. `$SPECIFY_FRAMEWORK_ROOT/adapters/{sources,targets}/<name>/` — an
+   on-disk checkout of the framework repo named by the
+   `SPECIFY_FRAMEWORK_ROOT` env var (the same var the lint surface
+   honours). Offline/dev/acceptance fallback only: it lets a disposable
+   project resolve first-party adapters without a project-local
+   `adapters/` tree or a manifest-cache mirror. Probed last, so a
+   project that vendors its own adapter always wins. Skipped when the
+   env var is unset.
 
 The axis segment (`sources` for `Axis::Source`, `targets` for
 `Axis::Target`) keeps source and target adapters with colliding names
@@ -348,6 +356,25 @@ The sibling extraction cache lives in a disjoint tree under
 `<project_dir>/.specify/.cache/extractions/<adapter>/`; see §"Cache
 layout". Refer to workflow §"Resolver and cache" before changing the
 probe order or manifest-cache layout.
+
+### First-party `<adapter>` shorthand at init
+
+`specify init <adapter>` accepts a first-party **shorthand** —
+`^[a-z][a-z0-9-]*(@v\d+)?$` (`omnia`, `omnia@v1`; the ref defaults to
+`v1`) — alongside the existing local-path and `https://github.com/…`
+forms. `AdapterUri::parse` (`crates/workflow/src/init/adapter_uri.rs`)
+expands the shorthand before the local-path branch:
+
+- prefer `$SPECIFY_FRAMEWORK_ROOT/adapters/targets/<name>/` when the env
+  var names a checkout that carries the adapter (offline dev +
+  acceptance), recording a `file://` `adapter:` value; else
+- fall back to the canonical published adapter
+  `https://github.com/augentic/specify/adapters/targets/<name>@<ref>`.
+
+`init` is target-only, so the shorthand resolves under
+`adapters/targets/`. Paths (`./foo`, `/abs`, `file://…`) and URLs
+(anything carrying `:` or `/`) are not shorthand and continue through
+`from_local` / `from_github` unchanged.
 
 ## Plan lifecycle: two stored states
 

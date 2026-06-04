@@ -1,6 +1,12 @@
-//! Parsing the `<adapter>` argument: bare local paths, `file://`
-//! URIs, and `https://github.com/...` URIs (with optional `@ref` or
+//! Parsing the `<adapter>` argument: first-party shorthand
+//! (`omnia`, `omnia@v1`), bare local paths, `file://` URIs, and
+//! `https://github.com/...` URIs (with optional `@ref` or
 //! `tree/<ref>` discriminators).
+//!
+//! First-party shorthand resolves a bare adapter name against the
+//! framework repo: an on-disk checkout named by
+//! `$SPECIFY_FRAMEWORK_ROOT` when set (offline dev + acceptance), else
+//! the canonical published adapter on GitHub (ref defaults to `v1`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,6 +29,9 @@ impl AdapterUri {
         if is_github_url(adapter) {
             return Self::from_github(adapter);
         }
+        if let Some((name, reference)) = parse_first_party_shorthand(adapter) {
+            return Self::from_shorthand(name, reference, framework_root_env().as_deref());
+        }
         Self::from_local(adapter, project_dir)
     }
 
@@ -30,11 +39,19 @@ impl AdapterUri {
         let path =
             adapter.strip_prefix("file://").map_or_else(|| PathBuf::from(adapter), PathBuf::from);
         let source_dir = if path.is_absolute() { path } else { project_dir.join(path) };
-        ensure_adapter_dir(&source_dir, adapter)?;
-        let canonical = fs::canonicalize(&source_dir).map_err(|err| Error::Diag {
+        Self::from_resolved_dir(&source_dir, adapter)
+    }
+
+    /// Build an [`AdapterUri`] from an already-resolved local directory,
+    /// recording a `file://` `adapter_value`. Shared by [`Self::from_local`]
+    /// (bare/`file://` paths) and [`Self::from_shorthand`] (a first-party
+    /// shorthand resolved against an on-disk framework checkout).
+    fn from_resolved_dir(source_dir: &Path, original: &str) -> Result<Self, Error> {
+        ensure_adapter_dir(source_dir, original)?;
+        let canonical = fs::canonicalize(source_dir).map_err(|err| Error::Diag {
             code: "adapter-canonicalize-failed",
             detail: format!(
-                "failed to canonicalize local adapter `{adapter}` at {}: {err}",
+                "failed to canonicalize local adapter `{original}` at {}: {err}",
                 source_dir.display()
             ),
         })?;
@@ -46,6 +63,32 @@ impl AdapterUri {
             source_dir: canonical,
             _checkout_guard: None,
         })
+    }
+
+    /// Resolve a first-party shorthand (`omnia`, `omnia@v1`) to a
+    /// concrete adapter source. Prefers an on-disk framework checkout
+    /// named by `framework_root` (the `$SPECIFY_FRAMEWORK_ROOT` value,
+    /// for offline dev + acceptance) and otherwise falls back to the
+    /// canonical published adapter on GitHub. `init` is target-only, so
+    /// the shorthand resolves under `adapters/targets/<name>/`.
+    ///
+    /// `framework_root` is threaded explicitly so unit tests can drive
+    /// resolution without mutating process-global environment.
+    fn from_shorthand(
+        name: &str, reference: &str, framework_root: Option<&Path>,
+    ) -> Result<Self, Error> {
+        if let Some(root) = framework_root {
+            let candidate = root
+                .join(crate::adapter::ADAPTERS_DIR)
+                .join(crate::adapter::Axis::Target.dir_segment())
+                .join(name);
+            if candidate.join(crate::adapter::ADAPTER_FILENAME).is_file() {
+                return Self::from_resolved_dir(&candidate, name);
+            }
+        }
+        let url =
+            format!("https://github.com/augentic/specify/adapters/targets/{name}@{reference}");
+        Self::from_github(&url)
     }
 
     fn from_github(adapter: &str) -> Result<Self, Error> {
@@ -128,6 +171,48 @@ impl GithubAdapterUri {
 
 fn is_github_url(adapter: &str) -> bool {
     adapter.starts_with("https://github.com/")
+}
+
+/// Read the optional `$SPECIFY_FRAMEWORK_ROOT` override pointing at a
+/// local checkout of the framework repo (the same env the lint surface
+/// honours). Used to resolve first-party adapter shorthand offline.
+fn framework_root_env() -> Option<PathBuf> {
+    std::env::var_os("SPECIFY_FRAMEWORK_ROOT").map(PathBuf::from)
+}
+
+/// Recognise a first-party adapter shorthand and split it into
+/// `(name, ref)`, defaulting the ref to `v1`. Returns `None` for paths
+/// (`./foo`, `/abs`, `file://…`) and URLs (anything carrying `:` or
+/// `/`), so those keep flowing through [`AdapterUri::from_local`] /
+/// [`AdapterUri::from_github`]. Accepts `^[a-z][a-z0-9-]*(@v\d+)?$`.
+fn parse_first_party_shorthand(adapter: &str) -> Option<(&str, &str)> {
+    if adapter.contains('/') || adapter.contains(':') {
+        return None;
+    }
+    match adapter.split_once('@') {
+        Some((name, reference)) if is_first_party_name(name) && is_version_ref(reference) => {
+            Some((name, reference))
+        }
+        None if is_first_party_name(adapter) => Some((adapter, "v1")),
+        Some(_) | None => None,
+    }
+}
+
+/// `^[a-z][a-z0-9-]*$` — a kebab-case first-party adapter name.
+fn is_first_party_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_lowercase()
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// `^v\d+$` — a major-version ref discriminator (`v1`, `v2`, …).
+fn is_version_ref(reference: &str) -> bool {
+    reference
+        .strip_prefix('v')
+        .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn split_ref_suffix(adapter: &str) -> (&str, Option<&str>) {

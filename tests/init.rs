@@ -84,6 +84,52 @@ fn init_github_directory_uri_succeeds() {
         .success();
 }
 
+#[test]
+fn init_shorthand_via_framework_root() {
+    // `specify init omnia@v1` in an empty dir resolves the first-party
+    // shorthand against an on-disk `$SPECIFY_FRAMEWORK_ROOT` checkout —
+    // no hand-made `adapters/` symlink and no network. This is the
+    // offline path the acceptance sweep relies on.
+    let framework = tempdir().unwrap();
+    copy_dir(&omnia_schema_dir(), &framework.path().join("adapters/targets/omnia"));
+
+    let project = tempdir().unwrap();
+    let assert = specify_cmd()
+        .current_dir(project.path())
+        .env("SPECIFY_FRAMEWORK_ROOT", framework.path())
+        .args(["--format", "json", "init", "omnia@v1", "--name", "demo"])
+        .assert()
+        .success();
+
+    let value: serde_json::Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("stdout is JSON");
+    assert_eq!(
+        value["adapter-name"], "omnia",
+        "shorthand must resolve to the omnia target adapter"
+    );
+
+    let project_yaml = fs::read_to_string(project.path().join(".specify/project.yaml"))
+        .expect("read project.yaml");
+    assert!(
+        project_yaml.contains("adapters/targets/omnia"),
+        "project.yaml must record the resolved framework-root adapter, got:\n{project_yaml}"
+    );
+}
+
+#[test]
+#[ignore = "networked GitHub fetch smoke test"]
+fn init_shorthand_github_fallback() {
+    // Absent `$SPECIFY_FRAMEWORK_ROOT`, the shorthand falls back to the
+    // published first-party adapter on GitHub (sparse checkout). Networked.
+    let tmp = tempdir().unwrap();
+    specify_cmd()
+        .current_dir(tmp.path())
+        .env_remove("SPECIFY_FRAMEWORK_ROOT")
+        .args(["init", "omnia@v1", "--name", "demo"])
+        .assert()
+        .success();
+}
+
 // ---- `specify init` adapter/workspace invariant: positional <adapter> + --workspace mutual exclusion ----
 
 #[test]
