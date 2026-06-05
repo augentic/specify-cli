@@ -60,7 +60,7 @@ fn empty_model_round_trips() {
 
     assert_eq!(value.get("version"), Some(&Value::from(1)));
     assert_eq!(value.get("project_dir").and_then(Value::as_str), Some("."));
-    assert_eq!(value.get("scan_profile").and_then(Value::as_str), Some("consumer"));
+    assert_eq!(value.get("scan_profile").and_then(Value::as_str), Some("product"));
     for required_array in [
         "artifact_paths",
         "languages",

@@ -175,6 +175,43 @@ fn review_emits_important_exits_2() {
     assert_eq!(rule_id, "UNI-100", "envelope:\n{envelope:#}");
 }
 
+/// Bare `specify lint` (no `product` subcommand) is shorthand for the
+/// product scan: the flattened `ProductArgs` carry the invocation, so
+/// the same UNI-100 finding lands and the run exits 2 — byte-identical
+/// to the explicit `specify lint product` form.
+#[test]
+fn bare_lint_routes_to_product() {
+    let fx = build_fixture();
+
+    let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
+    cmd.arg("--format")
+        .arg("json")
+        .arg("lint")
+        .arg("--target")
+        .arg("omnia")
+        .arg("--project-dir")
+        .arg(&fx.project)
+        .arg("--output-format")
+        .arg("json")
+        .arg("--rules-root")
+        .arg(&fx.codex)
+        .env_remove("RULES_ROOT");
+    let bare = cmd.output().expect("specify invocation");
+
+    assert_eq!(
+        bare.status.code(),
+        Some(2),
+        "bare `specify lint` must exit 2 like `lint product`; stderr:\n{}",
+        String::from_utf8_lossy(&bare.stderr)
+    );
+
+    let explicit = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        bare.stdout, explicit.stdout,
+        "bare `specify lint` must emit byte-identical output to `specify lint product`"
+    );
+}
+
 /// `DiagnosticReport` envelope byte-stability: two back-to-back runs against the same fixture
 /// must emit byte-identical stdout. Pins the deterministic ordering
 /// contract through the CLI boundary.

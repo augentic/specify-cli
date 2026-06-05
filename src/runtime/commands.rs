@@ -20,12 +20,12 @@ use std::path::{Path, PathBuf};
 
 use clap::CommandFactory;
 use serde::Serialize;
-use specify_error::Result;
+use specify_error::{Error, Result};
 use specify_workflow::adapter::{Axis, SourceAdapter, TargetAdapter};
 
 use crate::runtime::cli::{Cli, Commands, Format};
 use crate::runtime::commands::journal::cli::JournalAction;
-use crate::runtime::commands::lint::cli::LintAction;
+use crate::runtime::commands::lint::cli::{LintAction, ProductArgs};
 use crate::runtime::commands::rules::cli::RulesAction;
 use crate::runtime::commands::source::cli::SourceAction;
 use crate::runtime::commands::target::cli::TargetAction;
@@ -77,12 +77,7 @@ pub fn run(cli: Cli) -> Exit {
                 run_tool_with(format, &name, vec!["schema".to_string(), schema])
             }
         },
-        Commands::Lint { action } => match action {
-            LintAction::Product(args) => {
-                scoped_at(format, &args.project_dir, |ctx| lint::product::run(ctx, &args))
-            }
-            LintAction::Framework(args) => dispatch(format, || lint::framework::run(format, &args)),
-        },
+        Commands::Lint { action, product } => dispatch_lint(format, action, product),
         Commands::Journal { action } => match action {
             JournalAction::Emit { event, payload } => {
                 scoped(format, |ctx| journal::emit::emit(ctx, &event, payload.as_deref()))
@@ -167,6 +162,38 @@ fn dispatch_source(format: Format, action: SourceAction) -> Exit {
             slice,
             phase,
         } => scoped(format, |ctx| source::extract::run(ctx, &source, &lead, &slice, phase)),
+    }
+}
+
+/// Dispatch the `specify lint {product, framework}` family, including
+/// the bare `specify lint` default.
+///
+/// Bare `specify lint` is shorthand for `specify lint product`: the
+/// flattened [`ProductArgs`] carry the invocation. clap requires
+/// `--target` on that path, so `product` is `Some` whenever `action`
+/// is `None` here; the inner `None` arm is an unreachable defensive
+/// fallback that mirrors clap's own missing-argument exit.
+fn dispatch_lint(format: Format, action: Option<LintAction>, product: Option<ProductArgs>) -> Exit {
+    match action {
+        Some(LintAction::Product(args)) => {
+            scoped_at(format, &args.project_dir, |ctx| lint::product::run(ctx, &args))
+        }
+        Some(LintAction::Framework(args)) => {
+            dispatch(format, || lint::framework::run(format, &args))
+        }
+        None => match product {
+            Some(args) => {
+                scoped_at(format, &args.project_dir, |ctx| lint::product::run(ctx, &args))
+            }
+            None => dispatch(format, || {
+                Err(Error::Argument {
+                    flag: "--target",
+                    detail: "specify lint requires --target (the product scan's target adapter) \
+                             or an explicit subcommand (`product` / `framework`)"
+                        .to_string(),
+                })
+            }),
+        },
     }
 }
 
