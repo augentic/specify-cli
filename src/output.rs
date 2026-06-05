@@ -123,7 +123,7 @@ pub fn emit_diagnostic_report(emit: LintEmit<'_>) -> Result<bool, RenderError> {
 }
 
 /// Everything [`emit_lint_report`] needs to run one lint pipeline and
-/// render its envelope. The two lint surfaces (`specify lint run`,
+/// render its envelope. The two lint surfaces (`specify lint product`,
 /// `specify lint framework`) differ only in the inputs and config they assemble
 /// here — the render → journal → blocking-decision tail is shared.
 pub struct LintRun<'a> {
@@ -186,7 +186,7 @@ pub fn emit_lint_report(run: LintRun<'_>) -> Result<Option<DiagnosticReport>> {
 /// Drive one lint surface end to end: run the caller's pipeline
 /// assembly + emit closure, then collapse its outcome into the
 /// terminal `Result<()>`. This is the single kernel both lint handlers
-/// (`specify lint run`, `specify lint framework`) call, so the build → emit →
+/// (`specify lint product`, `specify lint framework`) call, so the build → emit →
 /// finish → blocking-gate sequence lives in one place; the handlers
 /// differ only in the `PipelineConfig` their `build` closure assembles.
 ///

@@ -22,7 +22,7 @@ fn flags_invalid_frontmatter() {
     let bad = "---\nid: UNI-999\ntitle: Bad\nseverity: bogus\ntrigger: trigger\n---\n## Rule\n";
     fs::write(tmp.path().join("rule.md"), bad).expect("write rule.md");
 
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule(
         "UNI-904",
         vec![hint(HintKind::PathPattern, "rule.md"), hint(HintKind::Schema, "rule")],
@@ -56,7 +56,7 @@ fn flags_invalid_frontmatter() {
 fn schema_hint_rejects_http_reference() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("x.json"), "{}").expect("write");
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule =
         make_rule("UNI-905", vec![hint(HintKind::Schema, "https://example.com/schema.json")]);
     let runner: &dyn ToolRunner = &NoToolRunner;

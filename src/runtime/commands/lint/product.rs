@@ -1,4 +1,4 @@
-//! `specify lint run` handler.
+//! `specify lint product` handler.
 //!
 //! Composes the standards-layer pipeline:
 //!
@@ -6,7 +6,7 @@
 //! 2. Build the resolved codex (`specify_standards::build_resolved_rules`)
 //!    using the same artifact / language filters as the indexer so
 //!    the resolved rule set and the scan set agree.
-//! 3. Build the consumer `WorkspaceModel` (`lint::index::build`).
+//! 3. Build the product `WorkspaceModel` (`lint::index::build`).
 //! 4. Evaluate executable deterministic hints per rule, skipping
 //!    `lint-mode: model-assisted` rules.
 //! 5. Render the `DiagnosticReport` envelope via `specify_diagnostics::render`.
@@ -35,13 +35,13 @@ use specify_tool::manifest::ToolScope;
 use specify_workflow::journal::LintScope;
 
 use crate::output::{self, LintRun};
-use crate::runtime::commands::lint::cli::RunArgs;
+use crate::runtime::commands::lint::cli::ProductArgs;
 use crate::runtime::commands::tool::{Inventory, ScopedTool, build_inventory};
 use crate::runtime::context::Ctx;
 
 /// Handler entry point dispatched from `src/runtime/commands.rs`.
 ///
-/// Assembles the consumer-surface pipeline config and hands it to the
+/// Assembles the product-surface pipeline config and hands it to the
 /// shared [`output::run_lint`] kernel; output, journal, and exit
 /// plumbing live there so this handler differs from `specify lint framework`
 /// only in the config its `build_report` closure builds.
@@ -51,16 +51,16 @@ use crate::runtime::context::Ctx;
 /// Closed mapping per lint exit mapping — `map_index_error` /
 /// `map_hint_error` from the pipeline, `map_render_error` /
 /// `map_resolve_error` from the shared tail.
-pub fn run(ctx: &Ctx, args: &RunArgs) -> Result<()> {
+pub fn run(ctx: &Ctx, args: &ProductArgs) -> Result<()> {
     let format: DiagnosticsFormat = args.output_format.into();
     output::run_lint(format, || build_report(ctx, args, format))
 }
 
-/// Assemble the consumer-surface inputs and config, then run the
+/// Assemble the product-surface inputs and config, then run the
 /// shared pipeline + emit tail. Every `?` here is a pre-emit abort
 /// that [`output::run_lint`] turns into the JSON fallback envelope.
 fn build_report(
-    ctx: &Ctx, args: &RunArgs, format: DiagnosticsFormat,
+    ctx: &Ctx, args: &ProductArgs, format: DiagnosticsFormat,
 ) -> Result<Option<DiagnosticReport>> {
     let started_at = Instant::now();
     let target = args.target.as_str();
@@ -82,7 +82,7 @@ fn build_report(
 
     let tool_runner = WasiToolRunner::new(ctx)?;
     let config = PipelineConfig {
-        profile: ScanProfile::Consumer,
+        profile: ScanProfile::Product,
         dump_model: args.dump_model,
         apply_ignore_directives: true,
         rule_filter: &[],
@@ -106,7 +106,7 @@ fn build_report(
         layout: ctx.layout(),
         now: ctx.now(),
         scope,
-        command_label: "specify lint",
+        command_label: "specify lint product",
         started_at,
         trailing_newline: true,
     })
@@ -247,5 +247,5 @@ impl ToolRunner for WasiToolRunner {
 }
 
 #[cfg(test)]
-#[path = "run_tests.rs"]
+#[path = "product_tests.rs"]
 mod tests;

@@ -1,6 +1,6 @@
 //! Shared lint pipeline runner.
 //!
-//! Both lint surfaces (`specify lint` and `specify lint framework`) compose the
+//! Both lint surfaces (`specify lint product` and `specify lint framework`) compose the
 //! identical sequence: resolve the codex, index the workspace, run any
 //! imperative producers, evaluate the declarative deterministic hints,
 //! dedupe by fingerprint, apply the ignore-directive pass, and assemble
@@ -33,7 +33,7 @@ use crate::rules::{ResolveInputs, ResolvedRules, build_resolved_rules, map_resol
 /// How the runner treats a codex-resolution failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolverDegradation {
-    /// Surface the resolver error and abort the run (`specify lint`).
+    /// Surface the resolver error and abort the run (`specify lint product`).
     Fatal,
     /// Log the resolver error to stderr and continue with an empty
     /// declarative pass (`specify lint framework`): the imperative `Check` pass
@@ -44,7 +44,7 @@ pub enum ResolverDegradation {
 
 /// Configuration for one [`run`] of the shared lint pipeline.
 pub struct PipelineConfig<'a> {
-    /// Indexer profile (`Consumer` for `specify lint`, `Framework` for
+    /// Indexer profile (`Product` for `specify lint product`, `Framework` for
     /// `specify lint framework`).
     pub profile: ScanProfile,
     /// When set, emit the indexed `WorkspaceModel` and stop before the

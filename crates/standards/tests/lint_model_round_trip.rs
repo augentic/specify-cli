@@ -37,7 +37,7 @@ fn empty_model_round_trips() {
     let model = WorkspaceModel {
         version: WorkspaceModelVersion,
         project_dir: ".".into(),
-        scan_profile: ScanProfile::Consumer,
+        scan_profile: ScanProfile::Product,
         artifact_paths: vec![],
         languages: vec![],
         files: vec![],
@@ -102,7 +102,7 @@ fn populated_model_round_trips() {
     let model = WorkspaceModel {
         version: WorkspaceModelVersion,
         project_dir: ".".into(),
-        scan_profile: ScanProfile::Consumer,
+        scan_profile: ScanProfile::Product,
         artifact_paths: vec!["src/lib.rs".into()],
         languages: vec!["rust".into()],
         files: vec![File {

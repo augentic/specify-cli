@@ -91,7 +91,7 @@ fn core_025_exclusion_parity() {
     let imperative = imperative_flagged_lines(dir.path());
     assert_eq!(imperative.len(), 1);
 
-    let model = build(dir.path(), ScanProfile::Consumer, &[], &[]).expect("index");
+    let model = build(dir.path(), ScanProfile::Product, &[], &[]).expect("index");
     let mut hints = vec![
         hint(HintKind::PathPattern, "docs/**/*.md"),
         hint(HintKind::PathPattern, "!docs/explanation/decision-log.md"),

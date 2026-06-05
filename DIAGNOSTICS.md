@@ -19,7 +19,7 @@ Related docs:
 
 ## A19 — Unify lint output path and dispatch — COMPLETE
 
-Both lint surfaces converge on one kernel. `specify lint run` ([src/runtime/commands/lint/run.rs](./src/runtime/commands/lint/run.rs)) and `specify lint framework` ([src/runtime/commands/lint/framework.rs](./src/runtime/commands/lint/framework.rs)) each return `Result<()>` and call `output::run_lint(format, || build_report(...))` in [src/output.rs](./src/output.rs). The kernel owns the shared tail — `emit_lint_report` runs the pipeline and renders the envelope, the internal `finish_lint` collapses the outcome into the terminal `Result<()>` (`deny_blocking_findings` on success, the empty-envelope JSON fallback on a pre-emit abort). The two handlers differ only in the `PipelineConfig` their `build_report` closure assembles.
+Both lint surfaces converge on one kernel. `specify lint product` ([src/runtime/commands/lint/product.rs](./src/runtime/commands/lint/product.rs)) and `specify lint framework` ([src/runtime/commands/lint/framework.rs](./src/runtime/commands/lint/framework.rs)) each return `Result<()>` and call `output::run_lint(format, || build_report(...))` in [src/output.rs](./src/output.rs). The kernel owns the shared tail — `emit_lint_report` runs the pipeline and renders the envelope, the internal `finish_lint` collapses the outcome into the terminal `Result<()>` (`deny_blocking_findings` on success, the empty-envelope JSON fallback on a pre-emit abort). The two handlers differ only in the `PipelineConfig` their `build_report` closure assembles.
 
 What this closed (relative to the original A19 gap list):
 
@@ -30,7 +30,7 @@ What this closed (relative to the original A19 gap list):
 
 Pinned wire contract (unchanged):
 
-- `LintEmit::trailing_newline` — `true` for `specify lint`, `false` for `specify lint framework` — preserves each surface's historical stdout shape. It is caller config, not normalised, until an intentional wire bump.
+- `LintEmit::trailing_newline` — `true` for `specify lint product`, `false` for `specify lint framework` — preserves each surface's historical stdout shape. It is caller config, not normalised, until an intentional wire bump.
 - `--format json` / `--output-format json` emit a `DiagnosticReport` on stdout even on infrastructure failure (empty all-zero envelope), so CI consumers keep a stable shape.
 
 Verification: `cargo make check`; `cargo nextest run -p specify-standards --test lint_diagnostics_json --test lint_diagnostics_pretty`; `cargo nextest run -p specify lint`.

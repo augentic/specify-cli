@@ -26,7 +26,7 @@ fn matches_text_skips_binaries() {
     fs::write(tmp.path().join(".specify/blob.bin"), b"\x00\x00binary contents https://hidden\n")
         .expect("write blob");
 
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule("UNI-014", vec![hint(HintKind::Regex, "https?://")]);
     let runner: &dyn ToolRunner = &NoToolRunner;
 
@@ -63,7 +63,7 @@ fn matches_text_skips_binaries() {
 fn regex_compile_failure_is_hard_error() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("a.rs"), "let x = 1;\n").expect("write");
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule("UNI-903", vec![hint(HintKind::Regex, "(unclosed")]);
     let runner: &dyn ToolRunner = &NoToolRunner;
     let err = evaluate(

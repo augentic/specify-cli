@@ -97,19 +97,19 @@ pub enum AdapterAxis {
 /// Closed scan-profile discriminant per the standards-layer contract §"`WorkspaceModel`"
 /// extraction inputs.
 ///
-/// `consumer` is the only Phase 2 profile. `framework` is reserved
-/// for a future framework scan; the v1 indexer refuses it. The variant exists
-/// here so the v1 schema covers both names without execution.
+/// `product` scans a downstream product project's files; `framework`
+/// scans this framework repo's authoring artifacts. The two profiles
+/// select different extractor sets in the indexer.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum ScanProfile {
-    /// Consumer project scan; the only profile implemented in
-    /// Phase 2.
+    /// Product project scan: the files produced with Specify in a
+    /// downstream consumer project.
     #[default]
-    Consumer,
-    /// Framework repo scan; reserved for a future framework scan.
+    Product,
+    /// Framework repo scan: this repo's authoring artifacts.
     Framework,
 }
 
@@ -178,7 +178,7 @@ pub struct WorkspaceModel {
     pub fenced_blocks: Vec<FencedBlock>,
     /// `brief` facts from `adapters/**/briefs/*.md` under the
     /// framework scan profile. Optional in v1 envelopes; producers
-    /// omit the field when empty so the consumer profile's wire
+    /// omit the field when empty so the product profile's wire
     /// shape is unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub briefs: Vec<Brief>,

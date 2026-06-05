@@ -1,4 +1,4 @@
-//! End-to-end binary tests for `specify lint run` (`specify
+//! End-to-end binary tests for `specify lint product` (`specify
 //! review` (Phase 2 CLI)").
 //!
 //! Exercises the wired clap surface, `--rules-root` resolution per rules-root resolution,
@@ -126,7 +126,7 @@ fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::proc
     // The global `--format` toggles the error-envelope shape; the
     // per-subcommand `--output-format` selects the the diagnostics formatter set closed set.
     cmd.arg("--format").arg("json");
-    cmd.arg("lint").arg("run");
+    cmd.arg("lint").arg("product");
     cmd.arg("--target").arg("omnia");
     cmd.arg("--project-dir").arg(project);
     cmd.arg("--output-format").arg("json");
@@ -337,7 +337,7 @@ fn review_missing_rules_root_exits_2() {
     cmd.arg("--format")
         .arg("json")
         .arg("lint")
-        .arg("run")
+        .arg("product")
         .arg("--target")
         .arg("omnia")
         .arg("--project-dir")

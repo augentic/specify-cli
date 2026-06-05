@@ -99,7 +99,7 @@ pub fn discover(
     builder
         .follow_links(false)
         .standard_filters(true)
-        // `.specify/` is hidden by default; the consumer profile
+        // `.specify/` is hidden by default; the product profile
         // walks it explicitly per `WorkspaceModel` file scan.
         .hidden(false)
         // `.gitignore` must be honoured even when the consumer project

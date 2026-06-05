@@ -1,4 +1,4 @@
-//! Integration test for the `WorkspaceModel` file scan consumer indexer.
+//! Integration test for the `WorkspaceModel` file scan product indexer.
 //!
 //! Drives `lint::index::build` against the checked-in
 //! `fixtures/lint/minimal/` tree, augmenting it at runtime with the
@@ -16,7 +16,7 @@
 //!    JSON envelopes — the §"Stability" guarantee from `WorkspaceModel` stability.
 //!
 //! Regenerate the golden with
-//! `REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_indexer_consumer`
+//! `REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_indexer_product`
 //! after a deliberate model change; see [`docs/standards/testing.md`].
 
 use std::fs;
@@ -101,7 +101,7 @@ fn assert_schema_valid(value: &Value) {
 #[test]
 fn minimal_fixture_matches_golden() {
     let tempdir = stage_fixture();
-    let model = build(tempdir.path(), ScanProfile::Consumer, &[], &[]).expect("build ok");
+    let model = build(tempdir.path(), ScanProfile::Product, &[], &[]).expect("build ok");
     let value = serde_json::to_value(&model).expect("serialise");
     assert_schema_valid(&value);
 
@@ -117,7 +117,7 @@ fn minimal_fixture_matches_golden() {
     let expected = fs::read_to_string(&path).unwrap_or_else(|err| {
         panic!(
             "missing golden {}: {err}; regenerate with \
-             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_indexer_consumer",
+             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_indexer_product",
             path.display()
         )
     });
@@ -131,8 +131,8 @@ fn minimal_fixture_matches_golden() {
 #[test]
 fn byte_stable_across_runs() {
     let tempdir = stage_fixture();
-    let first = build(tempdir.path(), ScanProfile::Consumer, &[], &[]).expect("first build");
-    let second = build(tempdir.path(), ScanProfile::Consumer, &[], &[]).expect("second build");
+    let first = build(tempdir.path(), ScanProfile::Product, &[], &[]).expect("first build");
+    let second = build(tempdir.path(), ScanProfile::Product, &[], &[]).expect("second build");
     let first_json = serde_json::to_string_pretty(&first).expect("first serialise");
     let second_json = serde_json::to_string_pretty(&second).expect("second serialise");
     assert_eq!(first_json, second_json, "two indexer runs must produce byte-identical JSON");

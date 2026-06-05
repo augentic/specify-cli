@@ -45,7 +45,7 @@ fn synthetic_envelope_stdout() -> Vec<u8> {
 fn tool_findings_thread_through() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("openapi.json"), "{}").expect("write openapi");
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule("CONTRACT-001", vec![hint(HintKind::Tool, "contract")]);
     let runner: &dyn ToolRunner = &FakeToolRunner {
         declared: true,
@@ -77,7 +77,7 @@ fn tool_findings_thread_through() {
 fn tool_undeclared_emits_synthetic_finding() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("openapi.json"), "{}").expect("write openapi");
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule("CONTRACT-002", vec![hint(HintKind::Tool, "contract")]);
     let runner: &dyn ToolRunner = &NoToolRunner;
 
@@ -101,7 +101,7 @@ fn tool_undeclared_emits_synthetic_finding() {
 fn tool_failure_truncates_stderr() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("openapi.json"), "{}").expect("write openapi");
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule("CONTRACT-003", vec![hint(HintKind::Tool, "contract")]);
     let huge_stderr = vec![b'x'; 4 * 1024 * 1024];
     let runner: &dyn ToolRunner = &FakeToolRunner {

@@ -78,8 +78,8 @@ pub fn run(cli: Cli) -> Exit {
             }
         },
         Commands::Lint { action } => match action {
-            LintAction::Run(args) => {
-                scoped_at(format, &args.project_dir, |ctx| lint::run::run(ctx, &args))
+            LintAction::Product(args) => {
+                scoped_at(format, &args.project_dir, |ctx| lint::product::run(ctx, &args))
             }
             LintAction::Framework(args) => dispatch(format, || lint::framework::run(format, &args)),
         },

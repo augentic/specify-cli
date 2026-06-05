@@ -56,7 +56,7 @@ codes — anything actionable by the operator is in the JSON envelope's
 
 Code `4` (`Exit::MigrationRequired`) is the RFC-30 addition. `Error::ProjectNeedsMigration { from, to }` fires from `ProjectConfig::load` when the pinned `project.yaml.specify_version` MAJOR is **older** than the binary's, instructing the operator to run `specify migrate` (the variant's `hint()`). It is the asymmetric twin of code `3`: a pin MAJOR **older** than the binary is exit `4` (the project must migrate up), while a pin **newer** than the binary is exit `3` (`Error::CliTooOld` — the binary must catch up). Because `specify migrate --to` pins `specify_version` **verbatim** to the requested `--to` rather than to the running binary, migrating to a major newer than the running binary legitimately leaves the project on exit `3` until the binary is upgraded. The bootstrap verbs (`migrate`, `upgrade`, `plugins {doctor,refresh}`, `init --upgrade`) sidestep both guards via the `ProjectConfig::load_for_migration` carve-out — they operate on projects that are deliberately in the "needs migration" state. See §"Bootstrap, upgrade, and migration lifecycle (RFC-30)".
 
-`specify lint run` is the one finding-driven exit slot in the table.
+`specify lint product` is the one finding-driven exit slot in the table.
 Its decision is **status-aware severity**: it returns `2` only when a
 finding has `status: open` AND `severity ∈ {critical, important}`.
 Findings with `status: ignored` or `status: false-positive` remain in
@@ -548,7 +548,7 @@ variants are `snake_case` and bridge to the wire via
 | `slice.archive.created` | `specify slice merge`'s archive step (the append-only outcome ledger). Payload carries `slice-name`, `touched-specs`, `outcome-summary`, and the optional `merge-sha`. See §"History via git plus an outcome ledger". |
 | `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
 | `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
-| `lint-completed` | `specify lint run` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the journal payload verbatim. |
+| `lint-completed` | `specify lint product` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the journal payload verbatim. |
 | `cli.upgraded` | `specify upgrade` after the new binary self-updates; payload carries `from`, `to`, and the resolved install `channel` (`cargo \| brew \| binary`). |
 | `plugins.refreshed` | `specify plugins refresh` after it invalidates the Cursor plugin cache; payload carries the removed `deleted-paths[]` and the resolved `marketplace` file path. |
 | `migration.applied` | `specify migrate` after a registered migrator applies; payload carries the migrator `kind` and the `files-rewritten` / `files-moved` counts. |
@@ -1231,7 +1231,7 @@ without churning callers — every consumer that exhausts the enum is
 already required to tolerate unknown values under the additive
 schema-evolution policy.
 
-`specify lint run` resolves the process exit using **status-aware
+`specify lint product` resolves the process exit using **status-aware
 severity** rather than severity alone:
 
 > Exit `2` only when there is a finding with `status: open` AND

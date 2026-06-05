@@ -25,7 +25,7 @@ fn path_pattern_narrows_candidates() {
     fs::write(tmp.path().join("readme.md"), "Function-shaped fn-text inside markdown.\n")
         .expect("write readme");
 
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule(
         "UNI-901",
         vec![hint(HintKind::PathPattern, "*.rs"), hint(HintKind::Regex, "\\bfn\\b")],
@@ -60,7 +60,7 @@ fn path_pattern_narrows_candidates() {
 fn path_pattern_empty_drops_findings() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("readme.md"), "fn-shaped content\n").expect("write readme");
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule(
         "UNI-902",
         vec![hint(HintKind::PathPattern, "*.rs"), hint(HintKind::Regex, "fn")],
@@ -86,7 +86,7 @@ fn path_pattern_exclusion_carves_out_paths() {
     fs::write(tmp.path().join("docs/explanation/decision-log.md"), "fn other() {}\n")
         .expect("write allowlisted");
 
-    let model = build(tmp.path(), ScanProfile::Consumer, &[], &[]).expect("build");
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
     let rule = make_rule(
         "UNI-903",
         vec![
