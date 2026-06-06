@@ -1,4 +1,4 @@
-//! Scenario-file discovery across the acceptance lifecycle pack, target tests, and plugin fixtures.
+//! Scenario-file discovery across the acceptance scenario pack, target tests, and plugin fixtures.
 
 use std::path::{Path, PathBuf};
 
@@ -11,7 +11,7 @@ pub(super) fn discover_scenario_candidates(ctx: &Context) -> Vec<PathBuf> {
     let root = ctx.framework_root();
     let mut candidates = Vec::new();
 
-    collect_lifecycle_scenarios(&root.join("acceptance").join("lifecycle"), &mut candidates);
+    collect_acceptance_scenarios(&root.join("acceptance").join("scenarios"), &mut candidates);
     collect_target_scenarios(&ctx.targets_dir(), &mut candidates);
     collect_plugin_fixture_scenarios(&root.join("plugins"), root, &mut candidates);
 
@@ -20,13 +20,13 @@ pub(super) fn discover_scenario_candidates(ctx: &Context) -> Vec<PathBuf> {
     candidates
 }
 
-/// Collects the flat `acceptance/lifecycle/<id>.md` scenario files (one self-contained
+/// Collects the flat `acceptance/scenarios/<id>.md` scenario files (one self-contained
 /// scenario per `.md`), skipping the pack `README.md` catalog.
-fn collect_lifecycle_scenarios(lifecycle_dir: &Path, out: &mut Vec<PathBuf>) {
-    if !lifecycle_dir.is_dir() {
+fn collect_acceptance_scenarios(scenarios_dir: &Path, out: &mut Vec<PathBuf>) {
+    if !scenarios_dir.is_dir() {
         return;
     }
-    for entry in WalkDir::new(lifecycle_dir).max_depth(1).follow_links(false).into_iter().flatten()
+    for entry in WalkDir::new(scenarios_dir).max_depth(1).follow_links(false).into_iter().flatten()
     {
         if !entry.file_type().is_file() {
             continue;
