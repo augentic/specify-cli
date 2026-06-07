@@ -458,7 +458,7 @@ fn suggestion_finding_present_exits_0() {
 /// blocking tier — not by raw finding count. Proves the exit is severity-
 /// gated, complementing `suggestion_finding_present_exits_0`.
 #[test]
-fn blocking_tier_drives_exit_over_suggestion() {
+fn blocking_tier_drives_exit() {
     let fx = build_fixture();
     // `build_fixture` already wrote the `important` UNI-100 (matches
     // `TODO`). Add a `suggestion` rule matching `scaffolding`, also
