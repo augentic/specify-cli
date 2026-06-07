@@ -342,11 +342,7 @@ mod tests {
                 ("core".to_string(), BTreeSet::from(["CORE".to_string()])),
                 (
                     "omnia".to_string(),
-                    BTreeSet::from([
-                        "OMNIA".to_string(),
-                        "RUST".to_string(),
-                        "SEC".to_string(),
-                    ]),
+                    BTreeSet::from(["OMNIA".to_string(), "RUST".to_string(), "SEC".to_string()]),
                 ),
                 ("vectis".to_string(), BTreeSet::from(["VECTIS".to_string()])),
             ]),

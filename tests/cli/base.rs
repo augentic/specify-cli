@@ -10,8 +10,7 @@ use std::fs;
 
 use tempfile::tempdir;
 
-mod common;
-use common::{omnia_schema_dir, specify_cmd};
+use crate::common::{omnia_schema_dir, specify_cmd};
 
 #[test]
 fn help_exits_zero_and_prints_usage() {

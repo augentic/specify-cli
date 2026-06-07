@@ -91,7 +91,10 @@ fn known_schema_row(row: &JsonValue) -> Option<KnownSchema> {
         .iter()
         .filter_map(|s| s.as_str().map(str::to_string))
         .collect();
-    Some(KnownSchema { tool: tool.to_string(), schemas })
+    Some(KnownSchema {
+        tool: tool.to_string(),
+        schemas,
+    })
 }
 
 fn print_report(findings: &[LinkFinding]) {
@@ -161,7 +164,9 @@ impl Finding {
             source: "tool".to_string(),
             artifact: "unknown".to_string(),
             location: finding.path.clone().map(|path| Location { path }),
-            evidence: Evidence::Snippet { value: finding.message.clone() },
+            evidence: Evidence::Snippet {
+                value: finding.message.clone(),
+            },
             impact: impact.to_string(),
             remediation: remediation.to_string(),
             fingerprint: PLACEHOLDER_FINGERPRINT.to_string(),

@@ -10,8 +10,7 @@
 
 use std::fs;
 
-mod common;
-use common::{Project, parse_json, specify_cmd};
+use crate::common::{Project, parse_json, specify_cmd};
 
 // ---------------------------------------------------------------------------
 // Fixtures

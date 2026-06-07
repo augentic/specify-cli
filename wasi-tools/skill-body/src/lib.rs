@@ -45,14 +45,16 @@ static WHITESPACE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"\s+"));
 static LIST_LINE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^(?:\d+\.|-|\*)\s+\S"));
 static VAR_DEF_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"(?m)^\$([A-Z_][A-Z_0-9]*)\s*="));
 static VAR_USE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"\$([A-Z_][A-Z_0-9]*)"));
-static ARGS_HEADING_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"(?m)^## (?:Derived )?Arguments"));
+static ARGS_HEADING_RE: LazyLock<Regex> =
+    LazyLock::new(|| cached(r"(?m)^## (?:Derived )?Arguments"));
 static TEXT_CODE_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"```text\n([\s\S]*?)```"));
 static FENCE_STRIP_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"```[\s\S]*?```"));
 static INLINE_CODE_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"`[^`]+`"));
 static ALL_CAPS_VAR_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^[A-Z][A-Z_]+$"));
 
 fn cached(pattern: &str) -> Regex {
-    Regex::new(pattern).unwrap_or_else(|err| unreachable!("static skill-body regex must compile: {err}"))
+    Regex::new(pattern)
+        .unwrap_or_else(|err| unreachable!("static skill-body regex must compile: {err}"))
 }
 
 /// One skill-body violation: its codex `rule_id`, the offending file's
@@ -87,7 +89,8 @@ pub fn check_invalid_critical_path(
         if lines.len() < min_body_lines {
             continue;
         }
-        let Some(heading_index) = lines.iter().position(|line| line.trim() == CRITICAL_PATH_HEADING)
+        let Some(heading_index) =
+            lines.iter().position(|line| line.trim() == CRITICAL_PATH_HEADING)
         else {
             continue;
         };
@@ -179,9 +182,8 @@ pub fn check_variable_coverage(
         };
         let heading_idx = heading_match.start();
         let after_heading = &content[heading_match.end()..];
-        let section_end = after_heading
-            .find("\n## ")
-            .map_or(content.len(), |idx| heading_match.end() + idx);
+        let section_end =
+            after_heading.find("\n## ").map_or(content.len(), |idx| heading_match.end() + idx);
         let args_section = &content[heading_idx..section_end];
 
         let mut defined = HashSet::new();
@@ -220,16 +222,23 @@ pub fn check_variable_coverage(
                 findings.push(SkillBodyFinding {
                     rule_id: RULE_VARIABLE_COVERAGE,
                     path: rel.clone(),
-                    message: format!("Unused variable: {rel} — ${var} defined but never referenced in body"),
+                    message: format!(
+                        "Unused variable: {rel} — ${var} defined but never referenced in body"
+                    ),
                 });
             }
         }
         for var in &used_in_body_strict {
-            if !defined.contains(var) && !is_builtin_var(var, builtin_vars) && ALL_CAPS_VAR_RE.is_match(var) {
+            if !defined.contains(var)
+                && !is_builtin_var(var, builtin_vars)
+                && ALL_CAPS_VAR_RE.is_match(var)
+            {
                 findings.push(SkillBodyFinding {
                     rule_id: RULE_VARIABLE_COVERAGE,
                     path: rel.clone(),
-                    message: format!("Undefined variable: {rel} — ${var} used but not defined in Arguments"),
+                    message: format!(
+                        "Undefined variable: {rel} — ${var} used but not defined in Arguments"
+                    ),
                 });
             }
         }
@@ -436,7 +445,8 @@ mod tests {
     #[test]
     fn invalid_critical_path_flags_wrong_count() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let body = format!("## Critical Path\n\n1. one\n2. two\n3. three\n4. four\n\n{}", padding(150));
+        let body =
+            format!("## Critical Path\n\n1. one\n2. two\n3. three\n4. four\n\n{}", padding(150));
         write_skill(dir.path(), "bad", &body);
         let findings = check_invalid_critical_path(dir.path(), 150, 5, 7);
         assert_eq!(findings.len(), 1);

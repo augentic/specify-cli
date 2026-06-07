@@ -52,7 +52,7 @@ There is no Wave-0 duplicate evaluation. `specify lint framework` resolves all `
 
 ### Policy lives in `specify`, not the engine
 
-Every rule-specific value (a line cap, an owner→prefix map, an expected operation set, a canonical-doc path) rides the rule's `config:` in the `specify` repo — CORE-009's owner→prefix map, source-axis prefixes, and reserved-namespace owners included. The Layer-3 guard test [`crates/standards/tests/lint_no_embedded_policy.rs`](./crates/standards/tests/lint_no_embedded_policy.rs) fails if any eval arm or `framework/check` module reintroduces such a literal; the duplicated owner maps (`BUILTIN_NAMESPACES` / `TARGET_OWNERS`) are deleted.
+Every rule-specific value (a line cap, an owner→prefix map, an expected operation set, a canonical-doc path) rides the rule's `config:` in the `specify` repo — CORE-009's owner→prefix map, source-axis prefixes, and reserved-namespace owners included. The Layer-3 guard test [`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) fails if any eval arm or `framework/check` module reintroduces such a literal; the duplicated owner maps (`BUILTIN_NAMESPACES` / `TARGET_OWNERS`) are deleted.
 
 ### Framework tools
 
@@ -92,6 +92,6 @@ Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-re
 | Contributor model + extension guide | specify | [docs/contributing/checks.md](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md) |
 | CORE rule authoring | specify | [adapters/shared/rules/core/README.md](https://github.com/augentic/specify/blob/main/adapters/shared/rules/core/README.md) |
 | Declarative CORE rules | specify | `adapters/shared/rules/core/CORE-*.md` |
-| Layer-3 policy guard | specify-cli | [crates/standards/tests/lint_no_embedded_policy.rs](./crates/standards/tests/lint_no_embedded_policy.rs) |
+| Layer-3 policy guard | specify-cli | [crates/standards/tests/lint_engine_guards/no_embedded_policy.rs](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) |
 | Per-kind evaluator suite | specify-cli | `crates/standards/tests/lint_hint_*.rs` |
 | Suppression burn-down | specify-cli | [docs/quality-debt.md](./docs/quality-debt.md) |

@@ -83,9 +83,8 @@ pub fn check_numeric_caps(
                 )));
             }
         }
-        Err(_) => findings.push(standards_finding(format!(
-            "Skill numeric cap source missing: {STANDARDS_REL}"
-        ))),
+        Err(_) => findings
+            .push(standards_finding(format!("Skill numeric cap source missing: {STANDARDS_REL}"))),
     }
 
     findings

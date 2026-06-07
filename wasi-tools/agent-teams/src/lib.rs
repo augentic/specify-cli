@@ -79,7 +79,8 @@ pub fn run(project_dir: &Path, canonical_rel: &str) -> Vec<AgentTeamsFinding> {
 
     let mut findings = Vec::new();
     for target in entries {
-        match check_overlay(project_dir, &canonical_canon, canonical_rel, &canonical_hash, &target) {
+        match check_overlay(project_dir, &canonical_canon, canonical_rel, &canonical_hash, &target)
+        {
             Overlay::Clean => {}
             Overlay::Drifted(finding) => findings.push(finding),
         }
@@ -112,9 +113,12 @@ fn check_overlay(
     if metadata.is_file() {
         return match fs::read(&ref_path) {
             Ok(local_bytes) if sha256(&local_bytes) != canonical_hash => {
-                Overlay::Drifted(non_canonical(&ref_rel, format!(
-                    "Agent-teams overlay: {ref_rel} — content drifted from canonical '{canonical_rel}' (replace with a symlink or re-sync the file)"
-                )))
+                Overlay::Drifted(non_canonical(
+                    &ref_rel,
+                    format!(
+                        "Agent-teams overlay: {ref_rel} — content drifted from canonical '{canonical_rel}' (replace with a symlink or re-sync the file)"
+                    ),
+                ))
             }
             Ok(_) => Overlay::Clean,
             Err(source) => Overlay::Drifted(non_canonical(
@@ -124,9 +128,12 @@ fn check_overlay(
         };
     }
 
-    Overlay::Drifted(non_canonical(&ref_rel, format!(
-        "Agent-teams overlay: {ref_rel} — must be a regular file or symlink, found unsupported entry type"
-    )))
+    Overlay::Drifted(non_canonical(
+        &ref_rel,
+        format!(
+            "Agent-teams overlay: {ref_rel} — must be a regular file or symlink, found unsupported entry type"
+        ),
+    ))
 }
 
 fn check_symlink(
@@ -141,10 +148,13 @@ fn check_symlink(
     if resolved == *canonical_canon {
         Overlay::Clean
     } else {
-        Overlay::Drifted(non_canonical(ref_rel, format!(
-            "Agent-teams overlay: {ref_rel} — symlink resolves to '{}', expected '{canonical_rel}'",
-            path_relative(project_dir, &resolved)
-        )))
+        Overlay::Drifted(non_canonical(
+            ref_rel,
+            format!(
+                "Agent-teams overlay: {ref_rel} — symlink resolves to '{}', expected '{canonical_rel}'",
+                path_relative(project_dir, &resolved)
+            ),
+        ))
     }
 }
 
@@ -167,10 +177,7 @@ fn sha256(bytes: &[u8]) -> String {
 }
 
 fn path_relative(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
+    path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
 }
 
 #[cfg(test)]

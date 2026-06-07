@@ -139,8 +139,7 @@ fn verify_all_present_exits_clean() {
     let result = run(&args).expect("verify should succeed");
     let findings = result["findings"].as_array().expect("findings array");
 
-    let errors: Vec<&Value> =
-        findings.iter().filter(|f| f["severity"] == "error").collect();
+    let errors: Vec<&Value> = findings.iter().filter(|f| f["severity"] == "error").collect();
     assert!(errors.is_empty(), "expected no error findings: {result}");
     assert_eq!(verify_exit_code(&result), 0);
 }
@@ -158,8 +157,7 @@ fn verify_missing_shell_exits_one() {
     let result = run(&args).expect("verify should succeed");
     let findings = result["findings"].as_array().expect("findings array");
 
-    let errors: Vec<&Value> =
-        findings.iter().filter(|f| f["severity"] == "error").collect();
+    let errors: Vec<&Value> = findings.iter().filter(|f| f["severity"] == "error").collect();
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0]["id"], "platform-shell-missing");
     assert!(errors[0]["message"].as_str().unwrap().contains("ios"));
@@ -179,12 +177,10 @@ fn verify_web_desktop_emit_info_not_error() {
     let result = run(&args).expect("verify should succeed");
     let findings = result["findings"].as_array().expect("findings array");
 
-    let errors: Vec<&Value> =
-        findings.iter().filter(|f| f["severity"] == "error").collect();
+    let errors: Vec<&Value> = findings.iter().filter(|f| f["severity"] == "error").collect();
     assert!(errors.is_empty(), "web/desktop should not produce errors: {result}");
 
-    let infos: Vec<&Value> =
-        findings.iter().filter(|f| f["severity"] == "info").collect();
+    let infos: Vec<&Value> = findings.iter().filter(|f| f["severity"] == "info").collect();
     assert_eq!(infos.len(), 2);
     assert!(infos.iter().all(|f| f["id"] == "platform-not-yet-supported"));
     assert_eq!(verify_exit_code(&result), 0);
@@ -207,11 +203,8 @@ fn missing_project_yaml_returns_error() {
 #[test]
 fn project_yaml_without_platforms_returns_error() {
     let tmp = tempdir().unwrap();
-    std::fs::write(
-        tmp.path().join("project.yaml"),
-        "name: test-app\nadapter: vectis\n",
-    )
-    .expect("write project.yaml");
+    std::fs::write(tmp.path().join("project.yaml"), "name: test-app\nadapter: vectis\n")
+        .expect("write project.yaml");
 
     let args = VerifyArgs {
         mode: VerifyMode::Detect,

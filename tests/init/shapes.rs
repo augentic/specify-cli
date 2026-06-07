@@ -29,8 +29,7 @@ use serde_json::Value;
 use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
-mod common;
-use common::{copy_dir, omnia_schema_dir, parse_json, repo_root, specify_cmd};
+use crate::common::{copy_dir, omnia_schema_dir, parse_json, repo_root, specify_cmd};
 
 /// Version this binary stamps into `specify_version` (the `specify`
 /// crate and this test crate share the workspace version).

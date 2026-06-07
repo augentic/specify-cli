@@ -16,7 +16,7 @@
 //!    JSON envelopes — the §"Stability" guarantee from `WorkspaceModel` stability.
 //!
 //! Regenerate the golden with
-//! `REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_indexer_project`
+//! `REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_index`
 //! after a deliberate model change; see [`docs/standards/testing.md`].
 
 use std::fs;
@@ -27,8 +27,6 @@ use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_val
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::index::build;
 use tempfile::TempDir;
-
-mod common;
 
 const FIXTURE_NAME: &str = "minimal";
 
@@ -46,7 +44,7 @@ fn golden_path() -> PathBuf {
 
 fn stage_fixture() -> TempDir {
     let tempdir = tempfile::tempdir().expect("tempdir");
-    common::copy_dir(&fixture_src(), tempdir.path());
+    crate::common::copy_dir(&fixture_src(), tempdir.path());
 
     // `.gitignore` + ignored.md cannot be committed cleanly inside
     // the fixture (the .gitignore would cause git to skip the
@@ -117,7 +115,7 @@ fn minimal_fixture_matches_golden() {
     let expected = fs::read_to_string(&path).unwrap_or_else(|err| {
         panic!(
             "missing golden {}: {err}; regenerate with \
-             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_indexer_project",
+             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_index",
             path.display()
         )
     });

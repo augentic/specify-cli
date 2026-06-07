@@ -439,5 +439,5 @@ fn plan_amend_override_bad_kind_refused() {
 // agent response, projects it onto `plan.yaml.slices[]`, and emits the
 // paired `plan.reconcile.{agent,completed}` journal events. JSON shapes
 // are pinned by goldens under `tests/fixtures/plan/`; regenerate with
-// `REGENERATE_GOLDENS=1 cargo nextest run --test plan_orchestrate`.
+// `REGENERATE_GOLDENS=1 cargo nextest run --test plan`.
 // ===================================================================

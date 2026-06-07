@@ -47,12 +47,9 @@
 //! algorithm side); the pretty goldens leave fingerprints implicit
 //! because the pretty formatter does not render them.
 
-mod eval_support;
-
 use std::fs;
 use std::path::PathBuf;
 
-use eval_support::{NoToolRunner, hint, make_rule};
 use serde_json::Value;
 use specify_diagnostics::{
     Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, Format, Severity,
@@ -63,6 +60,8 @@ use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::ignore::apply as apply_directives;
 use specify_standards::lint::index::build;
 use specify_standards::rules::{HintKind, Origin, PathRoot, ResolvedRule};
+
+use crate::eval_support::{NoToolRunner, hint, make_rule};
 
 /// Pre-directive-pass fingerprint snapshot for the URL fixture below.
 ///

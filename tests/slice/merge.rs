@@ -10,8 +10,7 @@ use std::fs::{self, File, FileTimes};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-mod common;
-use common::{Project, copy_dir, parse_json, repo_root, specify_cmd};
+use crate::common::{Project, copy_dir, parse_json, repo_root, specify_cmd};
 
 /// Stamp `path` with a fixed mtime comfortably after the 2020
 /// `defined_at` the drift tests seed, so `slice merge conflict-check`'s

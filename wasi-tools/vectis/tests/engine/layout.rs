@@ -1,15 +1,14 @@
 //! Layout-mode integration tests. Exercises the unwired-subset rule
 //! and the structural-identity engine.
 
-mod engine_support;
-
 use std::path::PathBuf;
 
-use engine_support::{errors_array, warnings_array, write_named};
 use serde_json::Value;
 use specify_vectis::validate::__test_internals::composition_validator;
 use specify_vectis::validate::error::VectisError;
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
+
+use crate::engine_support::{errors_array, warnings_array, write_named};
 
 /// Appendix C verbatim. Pinned here as the happy-path schema fixture
 /// so any future drift surfaces in this test first. The example

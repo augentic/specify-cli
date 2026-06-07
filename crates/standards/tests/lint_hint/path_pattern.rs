@@ -6,16 +6,15 @@
 //! plus `regex: fn` MUST emit findings only for the `*.rs` files
 //! reachable from the workspace model.
 
-mod eval_support;
-
 use std::fs;
 
-use eval_support::{NoToolRunner, hint, make_rule};
 use specify_diagnostics::Severity;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::HintKind;
+
+use crate::eval_support::{NoToolRunner, hint, make_rule};
 
 #[test]
 fn path_pattern_narrows_candidates() {

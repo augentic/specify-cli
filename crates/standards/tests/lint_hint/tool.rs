@@ -7,16 +7,15 @@
 //! `specify-tool` (Wasmtime stays at the `specify lint` CLI boundary);
 //! the CLI integration is S9's responsibility.
 
-mod eval_support;
-
 use std::fs;
 
-use eval_support::{FakeToolRunner, NoToolRunner, hint, make_rule};
 use specify_diagnostics::{FindingEvidence, Severity, validate_evidence_size};
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::HintKind;
+
+use crate::eval_support::{FakeToolRunner, NoToolRunner, hint, make_rule};
 
 fn synthetic_envelope_stdout() -> Vec<u8> {
     let body = serde_json::json!({

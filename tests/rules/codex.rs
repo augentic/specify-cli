@@ -9,8 +9,7 @@ use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;
 
-mod common;
-use common::{copy_dir, omnia_schema_dir, parse_json, specify_cmd};
+use crate::common::{copy_dir, omnia_schema_dir, parse_json, specify_cmd};
 
 /// Write a schema-valid shared rule under
 /// `<root>/adapters/shared/rules/universal/<id>.md`.

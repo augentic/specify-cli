@@ -5,16 +5,15 @@
 //! in the closed enum) MUST yield at least one finding with a
 //! `Structured` evidence payload carrying the failing JSON pointer.
 
-mod eval_support;
-
 use std::fs;
 
-use eval_support::{NoToolRunner, hint, make_rule};
 use specify_diagnostics::FindingEvidence;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::HintKind;
+
+use crate::eval_support::{NoToolRunner, hint, make_rule};
 
 #[test]
 fn flags_invalid_frontmatter() {

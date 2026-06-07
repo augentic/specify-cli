@@ -227,7 +227,7 @@ impl Error {
 #[cfg(test)]
 mod tests {
     // Exit-code mapping for these variants is locked down by the binary's
-    // `tests/cli_errors.rs`; these unit tests cover the type's own
+    // `tests/cli/errors.rs`; these unit tests cover the type's own
     // surface — the kebab discriminant (`variant_str`), the `Display`
     // body, and `hint` — without duplicating the `Exit::from` table.
     use super::Error;

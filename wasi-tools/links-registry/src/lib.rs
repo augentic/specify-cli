@@ -145,7 +145,9 @@ pub fn check_directives(project_dir: &Path) -> Vec<LinkFinding> {
                 None => findings.push(LinkFinding {
                     rule_id: RULE_UNRESOLVED_DIRECTIVE,
                     path: Some(rel.clone()),
-                    message: format!("Invalid skill directive: {rel} — plugin '{plugin}' not found"),
+                    message: format!(
+                        "Invalid skill directive: {rel} — plugin '{plugin}' not found"
+                    ),
                 }),
                 Some(skills) if !skills.contains(skill) => findings.push(LinkFinding {
                     rule_id: RULE_UNRESOLVED_DIRECTIVE,

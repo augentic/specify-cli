@@ -47,7 +47,7 @@
 //! check predicates:
 //!
 //! ```text
-//! REGENERATE_GOLDENS=1 cargo nextest run --test lint_framework_json
+//! REGENERATE_GOLDENS=1 cargo nextest run --test lint
 //! ```
 //!
 //! The helper writes goldens as `serde_json::to_string_pretty` +
@@ -401,7 +401,7 @@ fn assert_golden(actual: &Value, name: &str) {
     let expected = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
         panic!(
             "golden {} missing ({err}); regenerate via \
-             REGENERATE_GOLDENS=1 cargo nextest run --test lint_framework_json",
+             REGENERATE_GOLDENS=1 cargo nextest run --test lint",
             golden_path.display()
         )
     });

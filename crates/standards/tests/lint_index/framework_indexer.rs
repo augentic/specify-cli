@@ -27,8 +27,6 @@ use specify_standards::lint::ScanProfile;
 use specify_standards::lint::index::build;
 use tempfile::TempDir;
 
-mod common;
-
 const FIXTURE_NAME: &str = "framework_minimal";
 
 fn crate_root() -> PathBuf {
@@ -43,7 +41,7 @@ fn fixture_src() -> PathBuf {
 /// `agent-teams.md` symlink at runtime.
 fn stage_fixture() -> TempDir {
     let tempdir = tempfile::tempdir().expect("tempdir");
-    common::copy_dir(&fixture_src(), tempdir.path());
+    crate::common::copy_dir(&fixture_src(), tempdir.path());
 
     // `agent-teams.md` symlink in `adapters/targets/omnia/references/`
     // pointing at the canonical `docs/reference/review-team-protocol.md`.

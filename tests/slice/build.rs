@@ -13,8 +13,7 @@ use std::fs;
 
 use serde_json::Value;
 
-mod common;
-use common::{Project, parse_json, read_journal_normalized, specify_cmd};
+use crate::common::{Project, parse_json, read_journal_normalized, specify_cmd};
 
 /// Create `my-slice`, seed a `specs/<unit>/spec.md` so the assembled
 /// request carries a non-empty `specs[]`, and transition it to

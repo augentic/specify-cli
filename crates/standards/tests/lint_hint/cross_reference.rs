@@ -10,18 +10,17 @@
 //! discriminator in the engine arm, and the test cites no specify rule
 //! id.
 
-mod eval_support;
-
 use std::fs;
 use std::path::Path;
 
-use eval_support::{NoToolRunner, hint_with_config, make_rule};
 use serde_json::json;
 use specify_diagnostics::FindingEvidence;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::{HintKind, RuleHint};
+
+use crate::eval_support::{NoToolRunner, hint_with_config, make_rule};
 
 /// Create an adapter directory under `adapters/<axis>/<name>`, with an
 /// `adapter.yaml` manifest when `manifest` is `Some`.

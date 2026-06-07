@@ -471,17 +471,10 @@ fn build_node_skeleton(node: &Value) -> Skeleton {
 /// prior validation step — a present-but-invalid file must surface as
 /// a composition-mode error rather than being silently skipped.
 fn parse_catalog_file(path: &Path) -> std::result::Result<Value, String> {
-    let source = std::fs::read_to_string(path).map_err(|err| {
-        format!(
-            "component catalog at {} is not readable: {err}",
-            path.display()
-        )
-    })?;
+    let source = std::fs::read_to_string(path)
+        .map_err(|err| format!("component catalog at {} is not readable: {err}", path.display()))?;
     serde_saphyr::from_str::<Value>(&source).map_err(|err| {
-        format!(
-            "component catalog at {} contains invalid YAML: {err}",
-            path.display()
-        )
+        format!("component catalog at {} contains invalid YAML: {err}", path.display())
     })
 }
 

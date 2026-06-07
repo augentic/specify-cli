@@ -144,7 +144,9 @@ impl Finding {
             source: "tool".to_string(),
             artifact: "unknown".to_string(),
             location: finding.path.clone().map(|path| Location { path }),
-            evidence: Evidence::Snippet { value: finding.message.clone() },
+            evidence: Evidence::Snippet {
+                value: finding.message.clone(),
+            },
             impact: impact.to_string(),
             remediation: remediation.to_string(),
             fingerprint: PLACEHOLDER_FINGERPRINT.to_string(),

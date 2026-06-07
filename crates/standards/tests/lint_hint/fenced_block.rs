@@ -7,18 +7,17 @@
 //! banned `config.substrings` token — over a framework model, with no
 //! reference to any specify rule id.
 
-mod eval_support;
-
 use std::fs;
 use std::path::Path;
 
-use eval_support::{NoToolRunner, hint, hint_with_config, make_rule};
 use serde_json::json;
 use specify_diagnostics::FindingEvidence;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::{HintKind, RuleHint};
+
+use crate::eval_support::{NoToolRunner, hint, hint_with_config, make_rule};
 
 fn write_skill(project: &Path, body: &str) {
     let content = format!("---\nname: p-s\ndescription: Fixture.\n---\n\n{body}\n");

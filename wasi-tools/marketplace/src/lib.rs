@@ -101,8 +101,10 @@ pub fn check_marketplace_drift(project_dir: &Path) -> Vec<MarketplaceFinding> {
         match std::fs::metadata(&skills_dir) {
             Ok(metadata) if metadata.is_dir() => {}
             Ok(_) => {
-                findings
-                    .push(drift(&manifest_rel, &format!("Plugin '{name}' has no skills/ directory")));
+                findings.push(drift(
+                    &manifest_rel,
+                    &format!("Plugin '{name}' has no skills/ directory"),
+                ));
                 continue;
             }
             Err(_) => {
@@ -120,7 +122,9 @@ pub fn check_marketplace_drift(project_dir: &Path) -> Vec<MarketplaceFinding> {
             Ok(metadata) if metadata.is_file() => {}
             Ok(_) => findings.push(drift(
                 &plugin_manifest_rel,
-                &format!("Plugin '{name}' has skills/ but .cursor-plugin/plugin.json is not a file"),
+                &format!(
+                    "Plugin '{name}' has skills/ but .cursor-plugin/plugin.json is not a file"
+                ),
             )),
             Err(_) => findings.push(drift(
                 &plugin_manifest_rel,
@@ -264,8 +268,10 @@ mod tests {
         write_plugin(dir.path(), "orphan");
         let findings = check_marketplace_drift(dir.path());
         assert!(
-            findings.iter().any(|f| f.message.contains("orphan")
-                && f.message.contains("not in marketplace.json")),
+            findings
+                .iter()
+                .any(|f| f.message.contains("orphan")
+                    && f.message.contains("not in marketplace.json")),
             "expected undeclared plugin finding, got {findings:?}"
         );
     }

@@ -31,9 +31,8 @@ pub mod schema;
 pub mod validate;
 pub mod verify;
 
-pub use error::{EXIT_FAILURE, VectisError};
-
 use clap::{Parser, Subcommand};
+pub use error::{EXIT_FAILURE, VectisError};
 use serde_json::Value;
 
 /// Render a payload as pretty-printed JSON without a trailing newline.

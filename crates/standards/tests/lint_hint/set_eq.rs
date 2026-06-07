@@ -8,19 +8,18 @@
 //! expected operation sets are policy supplied by the rule's `config`,
 //! never a `const` in the engine arm.
 
-mod eval_support;
-
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use eval_support::{NoToolRunner, hint, hint_with_config, make_rule};
 use serde_json::json;
 use specify_diagnostics::FindingEvidence;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::{HintKind, RuleHint};
+
+use crate::eval_support::{NoToolRunner, hint, hint_with_config, make_rule};
 
 fn write_manifest(project: &Path, rel: &str, body: &str) {
     let path = project.join(rel);

@@ -1,15 +1,14 @@
 //! Tokens-mode integration tests. Exercises the embedded
 //! `tokens.schema.json` plus the `specify_vectis::validate::run` dispatcher.
 
-mod engine_support;
-
 use std::path::PathBuf;
 
-use engine_support::{errors_array, warnings_array, write_named};
 use serde_json::Value;
 use specify_vectis::validate::__test_internals::{assets_validator, tokens_validator};
 use specify_vectis::validate::error::VectisError;
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
+
+use crate::engine_support::{errors_array, warnings_array, write_named};
 
 /// Appendix D verbatim. Pinned here as an integration test so the
 /// embedded schema stays in lock-step with the worked example -- if a

@@ -10,7 +10,7 @@ Use `cargo make test` rather than `cargo test`. It runs `cargo nextest run --all
 
 ## Integration-first policy
 
-Integration tests under `tests/` use `assert_cmd::Command::cargo_bin("specify")`, drive the binary through clap, and assert against stdout JSON or filesystem state. Test-binary names are `tests/<area>.rs` (`cache`, `cli`, `contract_tool`, `e2e`, `fan_in_fan_out`, `init`, `journal`, `plan`, `plan_orchestrate`, `registry`, `slice`, `slice_merge`, `source`, `source_preview`, `target`, `tool`, `tool_schema`, `workspace`).
+Integration tests under `tests/` use `assert_cmd::Command::cargo_bin("specify")`, drive the binary through clap, and assert against stdout JSON or filesystem state. Test-binary names are `tests/<area>.rs` (`bootstrap`, `cache`, `cli`, `e2e`, `init`, `journal`, `lint`, `plan`, `registry`, `rules`, `rust_quality`, `slice`, `source`, `target`, `tool`, `workspace`); areas with several themed suites collapse their submodules under a sibling `tests/<area>/` directory via `#[path]` (e.g. `tests/slice/`, `tests/source/`, `tests/plan_orchestrate/`).
 
 One file per integration binary is the intentional layout — `tests/it.rs` consolidation was measured and dropped, see [DECISIONS.md "Integration tests"](../../DECISIONS.md#integration-tests--keep-per-file-binaries-no-testsitrs-umbrella). The cold-build win was 7.3 % cargo-reported (well below the 20 % bar we apply to "Idiomatic Rust Cleanup" chunks) and the per-binary split keeps `cargo test --test <area>` cheap for local iteration.
 
@@ -20,7 +20,7 @@ If a function needs unit tests, it belongs in a workspace crate, not the binary 
 
 Test function names are identifiers, not sentences — the same brevity rules as production code ([coding-standards.md §"Naming"](./coding-standards.md#naming)) apply. The enclosing context already names the subject: an integration binary `tests/<area>.rs` supplies `<area>`, and an in-file `mod tests` (or `mod doctor`) supplies its module. Don't restate it in every `fn`.
 
-- Drop tokens the binary name or enclosing module already supplies: in `engine_layout.rs`, write `different_skeletons_error`, not `layout_different_skeletons_is_an_error`.
+- Drop tokens the binary name or enclosing module already supplies: in `engine/layout.rs`, write `different_skeletons_error`, not `layout_different_skeletons_is_an_error`.
 - Group a cluster that shares a subject under a nested `mod <subject>` rather than repeating the subject as a prefix: six `mark_complete_*` tests become `mod mark_complete { fn idempotent() … }`.
 - Compress outcome tails to the assertion's shape: `_is_an_error` / `_returns_…_error` → `_errors`; `_validates_cleanly` → `_validates`; `_surfaces_as_a_single_error_entry` → `_one_error`.
 - Push the full narrative into the test body or a `//` comment above the `fn`, not the identifier.
@@ -34,7 +34,7 @@ Test function names are identifiers, not sentences — the same brevity rules as
 - Prefer structural assertions (status fields, exit codes, JSON shape) over byte-for-byte prose comparisons.
 - Tests that need git operations set the four `GIT_*` env vars from `tests/common::GIT_ENV` so authorship is deterministic.
 
-`tests/fan_in_fan_out.rs` is the RM-05 (multi-repo acceptance) deterministic CLI proof — the end-to-end fan-in-twice / fan-out-once path (`source survey` → `plan propose --dry-run | --from` → per-slice `source extract` → `slice synthesize` → `slice build` → `slice merge`, plus `depends-on` ordering and byte-identical kernel re-projection). Read it first when extending multi-repo coverage; the exhaustive reconcile-code coverage over the same fan-out shape lives in `tests/plan_orchestrate/`.
+`tests/plan/fan_in_fan_out.rs` is the RM-05 (multi-repo acceptance) deterministic CLI proof — the end-to-end fan-in-twice / fan-out-once path (`source survey` → `plan propose --dry-run | --from` → per-slice `source extract` → `slice synthesize` → `slice build` → `slice merge`, plus `depends-on` ordering and byte-identical kernel re-projection). Read it first when extending multi-repo coverage; the exhaustive reconcile-code coverage over the same fan-out shape lives in `tests/plan_orchestrate/`.
 
 ## Golden file discipline
 

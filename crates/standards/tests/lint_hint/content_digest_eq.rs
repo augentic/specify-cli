@@ -8,19 +8,18 @@
 //! is policy supplied by the rule's `config`, never a `const` in the
 //! engine arm.
 
-mod eval_support;
-
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use eval_support::{NoToolRunner, hint_with_config, make_rule};
 use serde_json::json;
 use specify_diagnostics::FindingEvidence;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::HintKind;
+
+use crate::eval_support::{NoToolRunner, hint_with_config, make_rule};
 
 const CANONICAL_REL: &str = "docs/reference/review-team-protocol.md";
 const CANONICAL_BODY: &str = "# Review Team Protocol\n\nCanonical body.\n";

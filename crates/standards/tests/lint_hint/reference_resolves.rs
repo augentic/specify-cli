@@ -5,17 +5,16 @@
 //! filters, and the `symlink` source scoped by `path-prefix` — over a
 //! framework model, with no reference to any specify rule id.
 
-mod eval_support;
-
 use std::fs;
 
-use eval_support::{NoToolRunner, hint, hint_with_config, make_rule};
 use serde_json::json;
 use specify_diagnostics::FindingEvidence;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::{HintKind, RuleHint};
+
+use crate::eval_support::{NoToolRunner, hint, hint_with_config, make_rule};
 
 fn run(project: &std::path::Path, rule_id: &str, hints: Vec<RuleHint>) -> Vec<(String, String)> {
     let model = build(project, ScanProfile::Framework, &[], &[]).expect("framework build");

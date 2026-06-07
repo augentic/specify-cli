@@ -9,8 +9,7 @@
 
 use std::fs;
 
-mod common;
-use common::{Project, parse_json, specify_cmd};
+use crate::common::{Project, parse_json, specify_cmd};
 
 /// Body of a well-formed slice-authored Decision Record.
 fn record(slug: &str, status: &str, supersedes: &[&str]) -> String {

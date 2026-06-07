@@ -5,8 +5,7 @@ use std::path::PathBuf;
 
 use tempfile::{TempDir, tempdir};
 
-mod common;
-use common::{parse_json, repo_root, sha256_hex, specify_cmd};
+use crate::common::{parse_json, repo_root, sha256_hex, specify_cmd};
 
 fn contract_wasm() -> PathBuf {
     repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")

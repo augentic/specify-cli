@@ -2,15 +2,14 @@
 //! artifact validation (schema + structural-identity + auto-invoke +
 //! cross-artifact resolution) end-to-end.
 
-mod engine_support;
-
 use std::path::{Path, PathBuf};
 
-use engine_support::{errors_array, warnings_array};
 use serde_json::Value;
 use specify_vectis::validate::error::VectisError;
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
 use tempfile::TempDir;
+
+use crate::engine_support::{errors_array, warnings_array};
 
 /// Materialise a composition document plus optional sibling
 /// `tokens.yaml` and `assets.yaml` on disk under a fresh tempdir,
@@ -625,9 +624,7 @@ fn missing_file_invalid_project() {
 
 /// Materialise a composition project with an optional component
 /// catalog at `.specify/design-system/components.yaml`.
-fn write_composition_with_catalog(
-    composition: &str, catalog: Option<&str>,
-) -> (TempDir, PathBuf) {
+fn write_composition_with_catalog(composition: &str, catalog: Option<&str>) -> (TempDir, PathBuf) {
     let tmp = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
     let comp_path = tmp.path().join("composition.yaml");
@@ -764,10 +761,11 @@ screens:
     assert!(errors_array(&envelope).is_empty(), "unreferenced confirmed = no error: {envelope}");
     let warns = warnings_array(&envelope);
     assert!(
-        warns.iter().any(|w| w["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("confirmed catalog entry `tab-bar` has no `component: tab-bar` reference")),
+        warns
+            .iter()
+            .any(|w| w["message"].as_str().unwrap_or("").contains(
+                "confirmed catalog entry `tab-bar` has no `component: tab-bar` reference"
+            )),
         "expected unreferenced-confirmed warning: {warns:?}"
     );
 }

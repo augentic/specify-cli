@@ -17,8 +17,9 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
-mod common;
-use common::{Project, TEMPDIR_PLACEHOLDER, parse_stderr, parse_stdout, repo_root, specify_cmd};
+use crate::common::{
+    Project, TEMPDIR_PLACEHOLDER, parse_stderr, parse_stdout, repo_root, specify_cmd,
+};
 
 /// Stage the path-bound `code-typescript` source adapter (the in-repo
 /// fixture ships only `adapter.yaml`; author the `extract` brief the

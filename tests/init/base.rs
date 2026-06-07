@@ -10,8 +10,7 @@ use std::path::{Path, PathBuf};
 use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
-mod common;
-use common::{copy_dir, omnia_schema_dir, repo_root, snapshot_tree, specify_cmd};
+use crate::common::{copy_dir, omnia_schema_dir, repo_root, snapshot_tree, specify_cmd};
 
 /// In-repo vectis stub target adapter that declares
 /// `platforms: { required: true, allowed: [core, ios, android, web, desktop] }`.

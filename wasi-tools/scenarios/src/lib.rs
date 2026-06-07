@@ -58,9 +58,8 @@ pub struct ScenarioFinding {
 pub fn run(project_dir: &Path) -> Vec<ScenarioFinding> {
     let mut findings = validate_scenario_frontmatter(project_dir);
     findings.extend(check_recorded_trace_freshness(project_dir));
-    findings.sort_by(|a, b| {
-        (a.rule_id, &a.path, &a.message).cmp(&(b.rule_id, &b.path, &b.message))
-    });
+    findings
+        .sort_by(|a, b| (a.rule_id, &a.path, &a.message).cmp(&(b.rule_id, &b.path, &b.message)));
     findings
 }
 
@@ -238,7 +237,8 @@ fn check_recorded_trace_freshness(project_dir: &Path) -> Vec<ScenarioFinding> {
         let parsed: JsonValue = match serde_json::from_str(first_line) {
             Ok(value) => value,
             Err(source) => {
-                findings.push(trace_finding(&rel, &format!("first line is not valid JSON: {source}")));
+                findings
+                    .push(trace_finding(&rel, &format!("first line is not valid JSON: {source}")));
                 continue;
             }
         };
@@ -495,11 +495,7 @@ mod tests {
     #[test]
     fn flags_non_contiguous_acceptance_scenario() {
         let dir = tempfile::tempdir().expect("tempdir");
-        write_scenario(
-            dir.path(),
-            "good.md",
-            &valid_frontmatter("good"),
-        );
+        write_scenario(dir.path(), "good.md", &valid_frontmatter("good"));
         let mut bad = valid_frontmatter("bad");
         bad = bad.replace("[refine, build]", "[plan, build]");
         write_scenario(dir.path(), "bad.md", &bad);

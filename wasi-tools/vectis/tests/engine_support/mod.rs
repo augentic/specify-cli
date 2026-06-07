@@ -3,10 +3,7 @@
 //! target, so individual helpers look "dead" to whichever binary
 //! does not call them; silence the lint at module scope.
 
-#![allow(
-    dead_code,
-    reason = "shared test helpers; not every integration binary uses every helper"
-)]
+#![allow(dead_code, reason = "shared test helpers; not every integration binary uses every helper")]
 
 use std::io::Write;
 use std::path::PathBuf;

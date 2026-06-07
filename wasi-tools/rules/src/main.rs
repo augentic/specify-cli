@@ -86,7 +86,11 @@ fn parse_policy(config: Option<&JsonValue>) -> Option<OwnerPolicy> {
     let source_axis_prefixes =
         config.get("source-axis-prefixes").map(parse_string_set).unwrap_or_default();
     let reserved = config.get("reserved-namespaces").map(parse_string_map).unwrap_or_default();
-    Some(OwnerPolicy { owner_prefixes, source_axis_prefixes, reserved })
+    Some(OwnerPolicy {
+        owner_prefixes,
+        source_axis_prefixes,
+        reserved,
+    })
 }
 
 /// Parse an `{ owner: [prefix, …] }` object into the owner→prefix map.
@@ -192,7 +196,9 @@ impl Finding {
             source: "tool".to_string(),
             artifact: "unknown".to_string(),
             location: finding.path.clone().map(|path| Location { path }),
-            evidence: Evidence::Snippet { value: finding.message.clone() },
+            evidence: Evidence::Snippet {
+                value: finding.message.clone(),
+            },
             impact: impact.to_string(),
             remediation: remediation.to_string(),
             fingerprint: PLACEHOLDER_FINGERPRINT.to_string(),

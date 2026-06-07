@@ -1,13 +1,14 @@
 //! Assets-mode integration tests. Exercises the embedded
 //! `assets.schema.json` plus the cross-artifact resolution layer.
 
-mod engine_support;
-
 use std::path::PathBuf;
 
-use engine_support::{errors_array, warnings_array, write_assets_project, write_specs_composition};
 use specify_vectis::validate::error::VectisError;
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
+
+use crate::engine_support::{
+    errors_array, warnings_array, write_assets_project, write_specs_composition,
+};
 
 /// Appendix E verbatim. Pinned here as the happy-path schema fixture
 /// so any future drift surfaces first in this test.

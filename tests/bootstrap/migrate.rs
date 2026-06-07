@@ -18,8 +18,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use tempfile::TempDir;
 
-mod common;
-use common::{copy_dir, parse_json, repo_root, specify_cmd};
+use crate::common::{copy_dir, parse_json, repo_root, specify_cmd};
 
 /// Root of the checked-in B2 fixture (`before/` + `after/`).
 fn fixture_dir(leaf: &str) -> PathBuf {

@@ -259,7 +259,7 @@ the values they enforce.
 directly; Road B has it forwarded by the engine as a second positional
 argument (`lint/eval/tool.rs`) — the engine relays, it never interprets.
 This is enforced permanently by the Layer-3 guard test
-[`crates/standards/tests/lint_no_embedded_policy.rs`](./crates/standards/tests/lint_no_embedded_policy.rs),
+[`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs),
 which fails if any eval arm or `framework/check` module reintroduces a
 rule-specific literal (operation-set array, owner→prefix map, value-bearing
 discriminator, canonical-doc path, or an un-allow-listed numeric cap). The
@@ -298,7 +298,7 @@ rule files, the engine, and the wire contract untouched. The exit
 condition for the interim posture is exactly that source move.
 
 **Test coverage** rests on the generic per-kind evaluator suite
-(`crates/standards/tests/lint_hint_*.rs`), the `lint_no_embedded_policy`
+(`crates/standards/tests/lint_hint/*.rs`), the `lint_no_embedded_policy`
 Layer-3 guard, the `rule.schema.json` ↔ `crates/schema/tests/schemas.rs`
 byte-match gate, and each tool crate's in-crate unit tests. The
 transitional `core_parity` family and the Road B integration parity tests
@@ -1035,7 +1035,7 @@ RFC-29d build-request schema — is introduced.
 
 **Build outputs are not cached** in either execution mode (D9 target side); generated code is reproduced by re-running the build, never served from a fingerprint cache.
 
-**Acceptance proof (D7).** RFC-29 is complete only when one end-to-end fixture proves fan-in twice (Lead sets, then per-source Evidence) and fan-out once (multiple slices from a shared source-claim set) together. The deterministic integration test lives at [`tests/fan_in_fan_out.rs`](./tests/fan_in_fan_out.rs) over `tests/fixtures/rfc-29/fan-in-fan-out/` — it asserts envelope/ordering/determinism (survey → propose → extract → synthesize → build → merge, `depends-on` ordering, byte-identical kernel re-projection). The separate *generated-output-correctness* release gate — each target build passing its replay/golden suite plus `cargo check` / `cargo test` for generated crates — is a manual/CI acceptance step, not part of the deterministic test.
+**Acceptance proof (D7).** RFC-29 is complete only when one end-to-end fixture proves fan-in twice (Lead sets, then per-source Evidence) and fan-out once (multiple slices from a shared source-claim set) together. The deterministic integration test lives at [`tests/plan/fan_in_fan_out.rs`](./tests/plan/fan_in_fan_out.rs) over `tests/fixtures/rfc-29/fan-in-fan-out/` — it asserts envelope/ordering/determinism (survey → propose → extract → synthesize → build → merge, `depends-on` ordering, byte-identical kernel re-projection). The separate *generated-output-correctness* release gate — each target build passing its replay/golden suite plus `cargo check` / `cargo test` for generated crates — is a manual/CI acceptance step, not part of the deterministic test.
 
 ## Workspace terminology
 

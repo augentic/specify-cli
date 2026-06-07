@@ -30,7 +30,8 @@ use specify_scenarios::{
 
 /// Placeholder fingerprint; the host recomputes it on fold. Kept in the
 /// `sha256:<64 hex>` wire shape so the envelope deserialises.
-const PLACEHOLDER_FINGERPRINT: &str = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+const PLACEHOLDER_FINGERPRINT: &str =
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Every codex id this tool can emit, scanned for in the positional
 /// args to scope a single invocation to one rule.

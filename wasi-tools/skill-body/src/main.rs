@@ -22,8 +22,9 @@ use std::process::ExitCode;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use specify_skill_body::{
-    RULE_INVALID_CRITICAL_PATH, RULE_STEP_BODY_DUPLICATES, RULE_VARIABLE_COVERAGE, SkillBodyFinding,
-    check_invalid_critical_path, check_step_body_duplicates, check_variable_coverage,
+    RULE_INVALID_CRITICAL_PATH, RULE_STEP_BODY_DUPLICATES, RULE_VARIABLE_COVERAGE,
+    SkillBodyFinding, check_invalid_critical_path, check_step_body_duplicates,
+    check_variable_coverage,
 };
 
 /// Placeholder fingerprint; the host recomputes it on fold.
@@ -49,9 +50,10 @@ fn main() -> ExitCode {
             usize_field(config.as_ref(), "max-items"),
         ),
         Some(RULE_STEP_BODY_DUPLICATES) => check_step_body_duplicates(&project_dir),
-        Some(RULE_VARIABLE_COVERAGE) => {
-            check_variable_coverage(&project_dir, &string_array_field(config.as_ref(), "builtin-vars"))
-        }
+        Some(RULE_VARIABLE_COVERAGE) => check_variable_coverage(
+            &project_dir,
+            &string_array_field(config.as_ref(), "builtin-vars"),
+        ),
         _ => Vec::new(),
     };
     print_report(&findings);
@@ -154,8 +156,12 @@ impl Finding {
             severity: "important".to_string(),
             source: "tool".to_string(),
             artifact: "unknown".to_string(),
-            location: Location { path: finding.path.clone() },
-            evidence: Evidence::Snippet { value: finding.message.clone() },
+            location: Location {
+                path: finding.path.clone(),
+            },
+            evidence: Evidence::Snippet {
+                value: finding.message.clone(),
+            },
             impact: impact.to_string(),
             remediation: remediation.to_string(),
             fingerprint: PLACEHOLDER_FINGERPRINT.to_string(),

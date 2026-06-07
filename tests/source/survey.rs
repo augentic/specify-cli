@@ -11,8 +11,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-mod common;
-use common::{
+use crate::common::{
     Project, parse_stderr, parse_stdout, read_journal_normalized, repo_root, specify_cmd,
 };
 

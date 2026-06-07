@@ -8,8 +8,7 @@
 //! unit-tested in the workflow crate; this asserts the wire shape Change
 //! G's `/spec:init` skill parses (`channel`, `to`, `commands`).
 
-mod common;
-use common::{parse_json, specify_cmd};
+use crate::common::{parse_json, specify_cmd};
 
 #[test]
 fn dry_run_reports_channel_commands() {

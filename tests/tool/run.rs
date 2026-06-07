@@ -10,8 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
-mod common;
-use common::{copy_dir, parse_json, repo_root, sha256_hex, specify_cmd};
+use crate::common::{copy_dir, parse_json, repo_root, sha256_hex, specify_cmd};
 
 fn fixtures_root() -> PathBuf {
     repo_root().join("tests").join("fixtures")

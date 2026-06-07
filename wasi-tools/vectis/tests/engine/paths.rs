@@ -1,14 +1,13 @@
 //! Path-resolver and `validate all` integration tests.
 
-mod engine_support;
-
-use engine_support::write_specify_project;
 use serde_json::Value;
 use specify_vectis::validate::__test_internals::{
     discover_artifact, expand_path_template, find_project_root, paths_for_key,
     resolve_default_path_with_root,
 };
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
+
+use crate::engine_support::write_specify_project;
 
 /// `find_project_root` walks up from a starting path until it finds a
 /// `.specify/` ancestor. A starting path that is itself the project

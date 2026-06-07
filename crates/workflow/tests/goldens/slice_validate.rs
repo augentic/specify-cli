@@ -22,8 +22,6 @@ use specify_validate::validate_slice;
 use specify_workflow::slice::SLICES_DIR_NAME;
 use tempfile::TempDir;
 
-mod common;
-
 fn repo_root() -> PathBuf {
     // `CARGO_MANIFEST_DIR` is `<repo>/crates/workflow/` for this crate.
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -39,7 +37,7 @@ fn stage_fixture(fixture_name: &str) -> (TempDir, PathBuf) {
     let project_dir = tempdir.path().to_path_buf();
 
     let slice_dir = project_dir.join(".specify").join(SLICES_DIR_NAME).join(fixture_name);
-    common::copy_dir(&fixture_src, &slice_dir);
+    crate::common::copy_dir(&fixture_src, &slice_dir);
 
     (tempdir, slice_dir)
 }

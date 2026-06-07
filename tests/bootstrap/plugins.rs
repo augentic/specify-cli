@@ -15,8 +15,7 @@ use std::path::Path;
 use serde_json::Value;
 use tempfile::TempDir;
 
-mod common;
-use common::{parse_json, run_git, specify_cmd};
+use crate::common::{parse_json, run_git, specify_cmd};
 
 /// Write a schema-valid marketplace.json declaring `plugins` at
 /// `<project>/.cursor-plugin/marketplace.json`.

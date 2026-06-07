@@ -156,11 +156,7 @@ fn verify_detect_all_present_exits_zero() {
     scaffold_ios(tmp.path());
     scaffold_android(tmp.path());
 
-    let assert = vectis_verify()
-        .args(["--mode", "detect"])
-        .arg(tmp.path())
-        .assert()
-        .success();
+    let assert = vectis_verify().args(["--mode", "detect"]).arg(tmp.path()).assert().success();
     let value = parse_json(&assert.get_output().stdout);
 
     assert_eq!(value["mode"], "detect");
@@ -174,11 +170,7 @@ fn verify_detect_missing_shell_exits_zero_with_missing() {
     write_project_yaml(tmp.path(), &["core", "ios"]);
     scaffold_core(tmp.path());
 
-    let assert = vectis_verify()
-        .args(["--mode", "detect"])
-        .arg(tmp.path())
-        .assert()
-        .success();
+    let assert = vectis_verify().args(["--mode", "detect"]).arg(tmp.path()).assert().success();
     let value = parse_json(&assert.get_output().stdout);
 
     assert_eq!(value["mode"], "detect");
@@ -193,11 +185,7 @@ fn verify_verify_missing_shell_exits_one() {
     write_project_yaml(tmp.path(), &["core", "android"]);
     scaffold_core(tmp.path());
 
-    let assert = vectis_verify()
-        .args(["--mode", "verify"])
-        .arg(tmp.path())
-        .assert()
-        .failure();
+    let assert = vectis_verify().args(["--mode", "verify"]).arg(tmp.path()).assert().failure();
     let output = assert.get_output();
     let value = parse_json(&output.stdout);
 
@@ -211,11 +199,7 @@ fn verify_verify_missing_shell_exits_one() {
 fn verify_missing_project_yaml_exits_two() {
     let tmp = tempdir().unwrap();
 
-    let assert = vectis_verify()
-        .args(["--mode", "detect"])
-        .arg(tmp.path())
-        .assert()
-        .failure();
+    let assert = vectis_verify().args(["--mode", "detect"]).arg(tmp.path()).assert().failure();
     let output = assert.get_output();
     let value = parse_json(&output.stdout);
 

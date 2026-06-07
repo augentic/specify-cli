@@ -62,7 +62,7 @@ slices:
     let expected = fs::read_to_string(&fixture_path).unwrap_or_else(|err| {
         panic!(
             "fixture {} missing ({err}); regenerate via \
-                 REGENERATE_GOLDENS=1 cargo nextest run --test plan_orchestrate",
+                 REGENERATE_GOLDENS=1 cargo nextest run --test plan",
             fixture_path.display()
         )
     });

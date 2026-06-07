@@ -5,16 +5,15 @@
 //! even when its path passes the path-pattern filter) and the
 //! per-finding location / snippet shape.
 
-mod eval_support;
-
 use std::fs;
 
-use eval_support::{NoToolRunner, hint, make_rule};
 use specify_diagnostics::FindingEvidence;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::{ToolRunner, evaluate};
 use specify_standards::lint::index::build;
 use specify_standards::rules::HintKind;
+
+use crate::eval_support::{NoToolRunner, hint, make_rule};
 
 #[test]
 fn matches_text_skips_binaries() {

@@ -62,8 +62,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
-mod common;
-use common::{
+use crate::common::{
     copy_dir, init_workspace, omnia_schema_dir, parse_json, parse_stderr, parse_stdout, repo_root,
     specify_cmd,
 };
@@ -598,7 +597,7 @@ fn assert_no_staleness(output: &std::process::Output) {
 /// target/adapter field.
 #[test]
 fn kernel_projection_deterministic() {
-    let project = common::Project::init().with_schemas();
+    let project = crate::common::Project::init().with_schemas();
     let root = project.root();
 
     // Two slices bound to different targets; `slice build` resolves the
