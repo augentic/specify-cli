@@ -445,7 +445,8 @@ fn suggestion_finding_present_exits_0() {
     );
     let important =
         envelope.pointer("/summary/important").and_then(Value::as_u64).unwrap_or_default();
-    let critical = envelope.pointer("/summary/critical").and_then(Value::as_u64).unwrap_or_default();
+    let critical =
+        envelope.pointer("/summary/critical").and_then(Value::as_u64).unwrap_or_default();
     assert_eq!(
         important + critical,
         0,
