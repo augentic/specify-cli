@@ -31,7 +31,7 @@
 //! one (matched dispositions and synthetic findings).
 //!
 //! Regenerate via `REGENERATE_GOLDENS=1 cargo nextest run -p
-//! specify-standards --test lint_ignore_directive_pass` and review every
+//! specify-standards --test lint_hint` and review every
 //! diff before committing per `docs/standards/testing.md`.
 //!
 //! The JSON goldens are normalised to strip `id` (the producer-side
@@ -242,7 +242,7 @@ fn assert_json_golden(result: &DiagnosticReport, golden_name: &str) {
     let expected = fs::read_to_string(&golden).unwrap_or_else(|err| {
         panic!(
             "missing golden {}: {err}; regenerate with \
-             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_ignore_directive_pass",
+             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_hint",
             golden.display()
         )
     });
@@ -292,7 +292,7 @@ fn assert_pretty_golden(result: &DiagnosticReport, golden_name: &str) {
     let expected = fs::read_to_string(&golden).unwrap_or_else(|err| {
         panic!(
             "missing golden {}: {err}; regenerate with \
-             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_ignore_directive_pass",
+             REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_hint",
             golden.display()
         )
     });
@@ -300,7 +300,7 @@ fn assert_pretty_golden(result: &DiagnosticReport, golden_name: &str) {
         rendered,
         expected,
         "pretty golden drift at {}; rerender with \
-         REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_ignore_directive_pass if intentional",
+         REGENERATE_GOLDENS=1 cargo nextest run -p specify-standards --test lint_hint if intentional",
         golden.display()
     );
 }

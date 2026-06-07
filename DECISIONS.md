@@ -209,6 +209,17 @@ producer emits the canonical `Diagnostic` directly. The dissolution does
 not change crates.io exposure: the root `specify` crate already pulled
 the predicates into the published binary's dependency graph.
 
+## Integration tests: one binary per area, themed submodules via `#[path]`
+
+**Decision (2026-06).** Each `tests/*.rs` compiles to its own integration binary that links the entire crate-under-test, so total link time scales with the *number* of binaries, not lines of test code. We keep **one binary per area** rather than either extreme:
+
+- A single `tests/it.rs` umbrella (all integration tests in one binary) was measured and rejected — the cold-build win was 7.3 % cargo-reported, below the 20 % bar we apply to "Idiomatic Rust Cleanup" chunks, and a mega-binary makes `cargo test --test <area>` useless for local iteration.
+- Strictly one file per binary leaves dozens of near-identical binaries that each re-link the crate-under-test.
+
+The middle ground: conceptually-related suites that share a helper module collapse their themed files under a sibling `tests/<area>/` directory wired with `#[path = "<area>/<concern>.rs"] mod <concern>;`. The hub `tests/<area>.rs` declares the shared helper once (`mod common;` / `mod eval_support;` / `mod engine_support;`); submodules reference it as `crate::common` etc. Merges never cross crate boundaries — each crate's `tests/` is its own compilation unit, and helpers like `copy_dir` are single-sourced per crate.
+
+This collapsed 73 integration binaries to 30 (standards 24 → 5, host 34 → 16, workflow 9 → 7, vectis 6 → 2) while keeping every area runnable via `cargo test --test <area>` and every golden refreshable through the hub binary name (`REGENERATE_GOLDENS=1 cargo nextest run [-p <crate>] --test <area>`).
+
 ## Framework lint engine: generic dispatcher (Road A / Road B)
 
 **Decision (2026-06).** The `specify lint framework` engine is a generic,
