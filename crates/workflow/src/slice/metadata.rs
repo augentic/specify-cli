@@ -21,11 +21,6 @@ pub const SLICES_DIR_NAME: &str = "slices";
 #[serde(rename_all = "kebab-case")]
 pub struct SliceMetadata {
     /// Target-adapter identifier (e.g. `omnia@v1`).
-    ///
-    /// Renamed from `adapter` in Wave 0.2 — the on-disk and
-    /// in-memory field is now `target`. The pre-2.0 `adapter`
-    /// alias was dropped together with the schema tightening that
-    /// shipped in the same change.
     pub target: String,
     /// Current lifecycle state.
     pub status: crate::slice::LifecycleStatus,

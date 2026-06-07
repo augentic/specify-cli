@@ -166,7 +166,7 @@ projects:
 
 #[test]
 fn registry_accepts_missing_adapter() {
-    // RFC-36: the registry `adapter` is an optional greenfield seed. A
+    // The registry `adapter` is an optional greenfield seed. A
     // project without it parses and validates; its target adapter lives
     // in its own `project.yaml`.
     let yaml = "\
@@ -235,9 +235,9 @@ projects:
 
 #[test]
 fn registry_accepts_empty_string_adapter() {
-    // RFC-36: an empty `adapter` seed is harmless — the registry no
-    // longer authors the project's target adapter, so the former
-    // `registry-project-adapter-empty` invariant is retired.
+    // An empty `adapter` seed is harmless — the registry does not
+    // author the project's target adapter, which lives in its own
+    // `project.yaml`.
     let yaml = "\
 version: 1
 projects:
@@ -356,9 +356,8 @@ projects:
 
 #[test]
 fn multi_project_missing_description() {
-    // RFC-36: the registry no longer authors descriptions, so the former
-    // `registry-description-missing-multi-repo` invariant is retired —
-    // descriptions live in each project's `project.yaml`.
+    // The registry does not author descriptions — descriptions live in
+    // each project's `project.yaml`.
     let yaml = "\
 version: 1
 projects:

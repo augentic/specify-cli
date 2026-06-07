@@ -1,5 +1,4 @@
-//! `specify source survey` handler — plan-time lead discovery
-//! (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
+//! `specify source survey` handler — plan-time lead discovery.
 //!
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Survey`]) for adapter
@@ -8,11 +7,10 @@
 //! branches on the adapter's `execution` mode:
 //!
 //! - `tool`: single-phase. Probe the extraction cache; on a hit read the
-//!   cached `lead-set.md`, on a miss dispatch the declared tool (an M1
-//!   seam — no first-party source declares a survey tool yet). Either
+//!   cached `lead-set.md`, on a miss dispatch the declared tool (no
+//!   first-party source declares a survey tool yet). Either
 //!   way validate the lead set and merge it into `discovery.md`.
-//! - `agent`: two-phase (RFC-29 D9; DECISIONS.md §"Adapter execution
-//!   mode (D9)"). The CLI never blocks on agent work.
+//! - `agent`: two-phase. The CLI never blocks on agent work.
 //!   - `--phase prepare` (default): build scratch, emit
 //!     `source.execution.agent`, and print the survey handoff envelope
 //!     (`{ adapter, version, briefs-dir, source-dir?, scratch-dir,
@@ -43,12 +41,12 @@ use crate::runtime::commands::source::{op, prep};
 use crate::runtime::context::Ctx;
 
 /// Cache-index `slice` lane for the slice-less `survey` operation —
-/// mirrors the `survey/` scratch segment (preflight §1) so survey
+/// mirrors the `survey/` scratch segment so survey
 /// results occupy their own discoverable lane in `index.jsonl`.
 const SURVEY_LANE: &str = "survey";
 
-/// Survey handoff envelope printed by the agent `prepare` phase
-/// (preflight §2). No `evidence-dir`: survey merges a lead set via
+/// Survey handoff envelope printed by the agent `prepare` phase.
+/// No `evidence-dir`: survey merges a lead set via
 /// `merge_survey`, it does not persist Evidence.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -61,7 +59,7 @@ struct SurveyHandoff {
     source_dir: Option<PathBuf>,
     scratch_dir: PathBuf,
     /// Existing leads for this source — the re-survey baseline. Always
-    /// present (empty on a fresh survey) per preflight §2.
+    /// present (empty on a fresh survey).
     leads: Vec<String>,
     execution: &'static str,
 }
@@ -197,8 +195,8 @@ impl<'a> op::Flow<'a> for SurveyFlow<'a> {
         }
     }
 
-    /// M1 ships no first-party survey tool; the WASI survey dispatch
-    /// protocol is out of scope for RFC-29 M1. The shared flow is wired
+    /// No first-party source declares a survey tool; the WASI survey
+    /// dispatch protocol is not yet wired. The shared flow is wired
     /// correctly (cache probe, lead-set read, validate-before-visible
     /// merge) so the only seam left is the actual tool invocation.
     fn dispatch_tool(&self) -> Result<()> {
@@ -215,7 +213,7 @@ impl<'a> op::Flow<'a> for SurveyFlow<'a> {
 
 /// Parse, schema-validate, and merge a lead set into `discovery.md`.
 /// Returns the merged lead ids. The schema check gates the merge, so an
-/// invalid lead set leaves `discovery.md` untouched (RFC-29 D1).
+/// invalid lead set leaves `discovery.md` untouched.
 fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>> {
     let mut leads = Discovery::parse_lead_set(raw)?.into_leads();
     if leads.is_empty() && !raw.trim().is_empty() {

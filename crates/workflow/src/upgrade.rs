@@ -1,4 +1,4 @@
-//! CLI self-update support (RFC-30 §D1, Wave C).
+//! CLI self-update support.
 //!
 //! Owns the channel-aware upgrade primitives the `specify upgrade`
 //! command drives: the closed [`InstallChannel`] enum and its

@@ -183,32 +183,32 @@ fn transition_rejects_per_entry_in_progress() {
 
 #[test]
 fn plan_transition_rejects_retired_states() {
-    // `blocked`, `failed`, and `skipped` were retired in source/target adapter split.
+    // `blocked`, `failed`, and `skipped` are not valid per-entry states.
     // Each must be rejected with the same argument-shape error.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
 
-    for retired in ["blocked", "failed", "skipped"] {
+    for invalid in ["blocked", "failed", "skipped"] {
         let assert = specify_cmd()
             .current_dir(project.root())
-            .args(["plan", "transition", "foo", retired])
+            .args(["plan", "transition", "foo", invalid])
             .assert()
             .failure();
         assert_eq!(
             assert.get_output().status.code(),
             Some(2),
-            "retired target `{retired}` must yield exit 2"
+            "invalid state `{invalid}` must yield exit 2"
         );
     }
 }
 
-// pre-2.0 `plan transition <name> failed --reason <text>` retired
-// alongside the per-entry `failed` state — see
+// `plan transition <name> failed --reason <text>` is not a valid form —
+// there is no per-entry `failed` state; see
 // `plan_transition_rejects_retired_states` above.
 
 #[test]
 fn transition_rejects_unknown_reason() {
-    // `--reason` was retired in source/target adapter split (no v1 per-entry state accepts a
+    // `--reason` is not a valid flag (no per-entry state accepts a
     // reason). Clap surfaces unknown flags as exit 2 with `--reason`
     // named in stderr.
     let project = Project::init();

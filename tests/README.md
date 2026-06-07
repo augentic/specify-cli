@@ -31,7 +31,6 @@ flips a kebab-case error `code` is a public-contract change, not a refresh.
 | `specify` | `rules` | `tests/fixtures/rules-export/` |
 | `specify` | `lint` | `tests/fixtures/lint-framework/` |
 | `specify-workflow` | `goldens` | `crates/workflow/tests/fixtures/*.golden.json` |
-| `specify-workflow` | `migrate` | `crates/workflow/tests/migrate/v1-to-v2/{before,after}/` |
 | `specify-standards` | `lint_index` | `crates/standards/tests/fixtures/lint/` |
 | `specify-standards` | `lint_hint` | JSON: `crates/standards/tests/fixtures/lint/`; pretty: `crates/standards/tests/goldens/` |
 

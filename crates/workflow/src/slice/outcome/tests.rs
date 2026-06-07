@@ -36,8 +36,8 @@ fn round_trips_through_yaml() {
 
 #[test]
 fn unknown_variant_errors() {
-    // A retired/typo'd outcome (e.g. the removed per-entry `skipped`
-    // state) must fail the closed enum rather than silently default.
+    // An unknown outcome (e.g. a `skipped` value outside the closed
+    // set) must fail the closed enum rather than silently default.
     serde_json::from_str::<Kind>("\"skipped\"")
         .expect_err("unknown outcome kind must not deserialise");
 }

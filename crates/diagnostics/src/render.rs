@@ -1,6 +1,6 @@
 //! Diagnostic formatter umbrella.
 //!
-//! Ships the four formatters of the closed Phase 2 set
+//! Ships the four formatters of the closed set
 //! ([`Format::Json`], [`Format::Pretty`], [`Format::Github`],
 //! [`Format::Compact`]). Rendering lives in this crate so every
 //! surface that emits a [`DiagnosticReport`] (`specify lint`, `specify
@@ -20,7 +20,7 @@ use thiserror::Error;
 
 use crate::diagnostic::DiagnosticReport;
 
-/// Closed Phase 2 formatter discriminant.
+/// Closed formatter discriminant.
 ///
 /// Kept clap-free at the substrate boundary; CLI surfaces adapt this
 /// enum to their own `clap::ValueEnum`.

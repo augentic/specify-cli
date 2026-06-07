@@ -1,4 +1,4 @@
-//! Target build envelope kernel (RFC-29d M3 / D6).
+//! Target build envelope kernel.
 //!
 //! Mirrors [`crate::slice::synthesis`]: the pure, IO-free domain pieces
 //! the `specify slice build` verb composes. [`wire`] holds the

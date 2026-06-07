@@ -1,5 +1,5 @@
 //! `specify slice build <slice> [--phase prepare|finalize]` handler —
-//! target build envelope owner (RFC-29d M3 / D6).
+//! target build envelope owner.
 //!
 //! Mirrors the shipped source two-phase agent contract
 //! (`specify source survey` / `extract`). The verb resolves the target
@@ -9,8 +9,8 @@
 //! `build` brief owns only code generation.
 //!
 //! - `execution: tool`: single-phase. Assemble + schema-validate the
-//!   request, then dispatch the declared build tool. RFC-29d M3 ships no
-//!   first-party build tool, so the dispatch itself is a clear
+//!   request, then dispatch the declared build tool. No first-party
+//!   build tool exists yet, so the dispatch itself is a clear
 //!   unsupported seam ([`dispatch_build_tool`], mirroring source survey's
 //!   `dispatch_survey_tool`); the request-side aborts still fire so a
 //!   future tool slots in behind the same flow.
@@ -30,7 +30,7 @@
 //!     (mirroring the `slice merge run` idiom), so a prepare-time abort
 //!     never leaves a dangling `started`.
 //!
-//! Journal posture (RFC-29d, mirroring `slice merge` C5): every
+//! Journal posture (mirroring `slice merge`): every
 //! `slice.build.*` / `target.execution.agent` append is best-effort — a
 //! journal-write failure is logged and swallowed so it can never change
 //! the verb's exit code. A genuine build failure (failed report, schema
@@ -155,7 +155,7 @@ fn prepare(
 /// Agent `finalize` phase: validate the agent-produced report, gate the
 /// `built` transition, and bracket the outcome with
 /// `slice.build.succeeded` / `slice.build.failed`. Mirrors the
-/// `slice merge run` lifecycle-pair idiom (C5).
+/// `slice merge run` lifecycle-pair idiom.
 fn finalize(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<()> {
     emit_event(
         ctx,
@@ -231,7 +231,7 @@ fn finalize_report(name: &str, slice_dir: &Path, project_dir: &Path) -> Result<B
 
 /// Single-phase `tool` execution: assemble + schema-validate the request
 /// (so the request-side aborts still fire), then dispatch the declared
-/// build tool. The dispatch itself is the M3 seam.
+/// build tool. The dispatch itself is the unsupported seam.
 fn run_tool(ctx: &Ctx, name: &str, slice_dir: &Path, manifest: &TargetAdapter) -> Result<()> {
     assemble_and_write_request(ctx, name, slice_dir, &manifest.inputs)?;
     dispatch_build_tool(manifest)
@@ -239,8 +239,8 @@ fn run_tool(ctx: &Ctx, name: &str, slice_dir: &Path, manifest: &TargetAdapter) -
 
 /// Dispatch the declared `build` WASI tool / built-in Rust path.
 ///
-/// RFC-29d M3 ships no first-party build tool; the WASI build dispatch
-/// protocol is out of scope for this milestone (every first-party target
+/// No first-party build tool exists yet; the WASI build dispatch
+/// protocol is not yet wired (every first-party target
 /// declares `execution: agent`). The surrounding control flow — request
 /// assembly + schema validation in [`run_tool`], and the
 /// validate / gate finalize tail shared with the agent path — is wired
@@ -249,8 +249,8 @@ fn dispatch_build_tool(manifest: &TargetAdapter) -> Result<()> {
     Err(Error::Diag {
         code: "target-build-tool-unsupported",
         detail: format!(
-            "target adapter `{}` declares `execution: tool`, but RFC-29d M3 ships no `build` \
-             tool dispatch; no first-party target declares a build tool",
+            "target adapter `{}` declares `execution: tool`, but no `build` tool dispatch is \
+             wired; no first-party target declares a build tool",
             manifest.name
         ),
     })

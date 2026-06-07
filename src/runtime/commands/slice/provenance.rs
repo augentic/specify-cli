@@ -1,5 +1,5 @@
 //! `slice provenance` — project the audit-only provenance view from a
-//! slice's single `model.yaml` (RFC-29c §"Provenance projection").
+//! slice's single `model.yaml`.
 //!
 //! Provenance is carried inline in `model.yaml`; this command reshapes
 //! it into the per-requirement audit shape on demand. There is no
@@ -26,7 +26,7 @@ fn generator() -> String {
 /// Mirrors the slice-entry lookup in `slice validate`: when no plan
 /// exists, or the plan carries no entry for `name`, the override map is
 /// empty and the provenance projection falls back to the default
-/// authority ordering (RFC-29c §"Authority resolution").
+/// authority ordering.
 fn slice_overrides(ctx: &Ctx, name: &str) -> Result<BTreeMap<ClaimKind, String>> {
     let plan_path = ctx.layout().plan_path();
     if !plan_path.exists() {

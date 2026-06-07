@@ -1,10 +1,9 @@
 //! Brief path-classification helpers.
 //!
 //! The brief size cap (CORE-013) is enforced by the config-driven
-//! `cardinality` deterministic hints over the `Brief` fact family; the
-//! former imperative `BriefCheck` predicate and its line-cap constants
-//! are retired. Only the pure parent/phase path classifiers survive,
-//! shared with the brief-frontmatter parity reference.
+//! `cardinality` deterministic hints over the `Brief` fact family. This
+//! module holds the pure parent/phase path classifiers, shared with the
+//! brief-frontmatter parity reference.
 
 static PARENT_BRIEF_NAMES: &[&str] =
     &["shape.md", "build.md", "merge.md", "survey.md", "extract.md"];

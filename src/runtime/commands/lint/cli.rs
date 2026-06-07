@@ -86,7 +86,7 @@ pub struct FrameworkArgs {
     #[arg(long)]
     pub dump_model: bool,
 
-    /// Output format. Closed Phase 2 set per the diagnostics
+    /// Output format. Closed set per the diagnostics
     /// formatter set: `{ json, pretty, github, compact }`. When
     /// unset, derived from the global `--format` flag: `json` →
     /// `Json`, `text` → `Pretty`.
@@ -150,7 +150,7 @@ pub struct ProjectArgs {
     #[arg(long)]
     pub include_core: bool,
 
-    /// Output format. Closed Phase 2 set per the diagnostics formatter set:
+    /// Output format. Closed set per the diagnostics formatter set:
     /// `{ json, pretty, github, compact }`; default `pretty`.
     ///
     /// Spelled `--output-format` rather than `--format` to

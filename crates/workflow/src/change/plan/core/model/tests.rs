@@ -138,7 +138,7 @@ status: pending
 
 #[test]
 fn project_only_round_trips() {
-    // The target adapter is no longer stored on the slice; a slice
+    // The target adapter is not stored on the slice; a slice
     // carries only its `project` (or omits it to resolve the sole
     // topology project). The bound project survives a YAML round-trip.
     let yaml = r"name: test

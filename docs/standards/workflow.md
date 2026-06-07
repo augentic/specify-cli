@@ -74,7 +74,7 @@ Closed enum `intent > documentation > behaviour`. v1 resolution order per `(sour
 
 ## Execution model
 
-`pending → approved` plan-level (Gate 1; operator-only). Per-entry: `pending → in-progress → done`. `done` is absorbing in v1; the operator-reversed flow lives behind `specify plan transition --undo` (added Phase 6 — see [`DECISIONS.md` §"Plan lifecycle: two stored states"](../../DECISIONS.md#plan-lifecycle-two-stored-states)).
+`pending → approved` plan-level (Gate 1; operator-only). Per-entry: `pending → in-progress → done`. `done` is absorbing in v1; the operator-reversed flow lives behind `specify plan transition --undo` (see [`DECISIONS.md` §"Plan lifecycle: two stored states"](../../DECISIONS.md#plan-lifecycle-two-stored-states)).
 
 ## Refinement
 
@@ -129,7 +129,7 @@ Per-entry status writes route to exactly one CLI verb each — `plan add` / `pla
 
 ## Observability
 
-Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names). Source operations add `source.survey.cache-hit` / `.cache-miss` and `source.execution.agent`. `specify slice synthesize` adds `slice.synthesize.{started,agent,completed,failed}` (§"Slice synthesis"), distinct from the per-requirement `slice.synthesis.{conflict,divergence,unknown}` tag events. `specify plan propose --from` emits a single `plan.reconcile.completed` event on a successful write (the former `plan.reconcile.agent` + `plan.reconcile.completed` pair was folded into one indivisible event). `specify slice build` adds `target.execution.agent` (on the agent `prepare` phase) and brackets finalize with `slice.build.started` then `slice.build.succeeded` / `slice.build.failed`; `specify slice merge` fires `slice.merge.started` / `.succeeded` / `.failed` on its validator outcome (not on a merge report) alongside the durable `slice.archive.created` (§"Target adapter contract"). Agent-orchestrated phases that lack a deterministic emit command write through `specify journal emit <event-id> [--payload <json>]` — a guarded front door onto the same closed taxonomy, errors `journal-emit-unknown-event` / `journal-emit-payload-schema` (exit 2). See [`DECISIONS.md` §"`specify journal emit` — guarded front door (D12)"](../../DECISIONS.md#specify-journal-emit--guarded-front-door-d12).
+Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKind` taxonomy lives in [`crates/workflow/src/journal.rs`](../../crates/workflow/src/journal.rs); the per-event table is in [`DECISIONS.md` §"Journal event names"](../../DECISIONS.md#journal-event-names). Source operations add `source.survey.cache-hit` / `.cache-miss` and `source.execution.agent`. `specify slice synthesize` adds `slice.synthesize.{started,agent,completed,failed}` (§"Slice synthesis"), distinct from the per-requirement `slice.synthesis.{conflict,divergence,unknown}` tag events. `specify plan propose --from` emits a single `plan.reconcile.completed` event on a successful write. `specify slice build` adds `target.execution.agent` (on the agent `prepare` phase) and brackets finalize with `slice.build.started` then `slice.build.succeeded` / `slice.build.failed`; `specify slice merge` fires `slice.merge.started` / `.succeeded` / `.failed` on its validator outcome (not on a merge report) alongside the durable `slice.archive.created` (§"Target adapter contract"). Agent-orchestrated phases that lack a deterministic emit command write through `specify journal emit <event-id> [--payload <json>]` — a guarded front door onto the same closed taxonomy, errors `journal-emit-unknown-event` / `journal-emit-payload-schema` (exit 2). See [`DECISIONS.md` §"`specify journal emit` — guarded front door (D12)"](../../DECISIONS.md#specify-journal-emit--guarded-front-door-d12).
 
 ## Operations typed at parse boundary
 
@@ -137,7 +137,7 @@ Newline-delimited JSON journal at `.specify/journal.jsonl`. The closed `EventKin
 
 ## What was cut and why
 
-`specify adapter *` and `specify change *` are retired; no compatibility aliases. The legacy bare-string `sources` shorthand on `plan.yaml.sources.<key>` is gone. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
+There is no `specify adapter *` or `specify change *` namespace, and no bare-string `sources` shorthand on `plan.yaml.sources.<key>`. See [`DECISIONS.md` §"Plan source bindings"](../../DECISIONS.md#plan-source-bindings).
 
 ## Note to the implementing agent
 
@@ -149,7 +149,7 @@ Touching `Slice.target`, `SliceSourceBinding`, `Divergence`, `crates/model/src/s
 
 ## D2 — Per-kind authority on Evidence (deferred)
 
-A per-Evidence `authority-overrides` map keyed by claim kind is **deferred to a future RFC** (decision-log §"Authority: document-level plus one override (v1)"). v1 resolves authority at document level via the Evidence `authority:` field, with the per-slice `authority-override` on `plan.yaml` as the sole override surface (D3). See [`DECISIONS.md` §"Authority: document-level plus one override (v1)"](../../DECISIONS.md#authority-document-level-plus-one-override-v1) and [`crates/model/src/evidence/authority.rs`](../../crates/model/src/evidence/authority.rs).
+A per-Evidence `authority-overrides` map keyed by claim kind is **deferred to a future RFC**. v1 resolves authority at document level via the Evidence `authority:` field, with the per-slice `authority-override` on `plan.yaml` as the sole override surface (D3). See [`DECISIONS.md` §"Authority: document-level plus one override (v1)"](../../DECISIONS.md#authority-document-level-plus-one-override-v1) and [`crates/model/src/evidence/authority.rs`](../../crates/model/src/evidence/authority.rs).
 
 ## D3 — Per-slice authority on `plan.yaml`
 
@@ -157,7 +157,7 @@ A per-Evidence `authority-overrides` map keyed by claim kind is **deferred to a 
 
 ## D4 — Provenance is an on-demand projection
 
-Provenance is carried inline in the single `model.yaml` artifact; `spec.md` is the authoritative artifact. There is no persisted `provenance.yaml` — `specify slice provenance <slice> [--format]` projects the audit view on demand. Projection schema at [`schemas/slice/provenance.schema.json`](../../schemas/slice/provenance.schema.json); projector at [`crates/workflow/src/slice/provenance.rs`](../../crates/workflow/src/slice/provenance.rs). See [`DECISIONS.md` §"Single slice-model artifact (RFC-29 M2b simplification)"](../../DECISIONS.md#single-slice-model-artifact-rfc-29-m2b-simplification).
+Provenance is carried inline in the single `model.yaml` artifact; `spec.md` is the authoritative artifact. There is no persisted `provenance.yaml` — `specify slice provenance <slice> [--format]` projects the audit view on demand. Projection schema at [`schemas/slice/provenance.schema.json`](../../schemas/slice/provenance.schema.json); projector at [`crates/workflow/src/slice/provenance.rs`](../../crates/workflow/src/slice/provenance.rs). See [`DECISIONS.md` §"Single slice-model artifact"](../../DECISIONS.md#single-slice-model-artifact).
 
 ## D5 — Operator-driven `divergence`
 

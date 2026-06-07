@@ -1,5 +1,5 @@
 //! `slice validate` gates: the workflow §Requirement-block provenance
-//! contract, the pre-2.0 provenance skip, and the
+//! contract, the metadata-free provenance skip, and the
 //! `discovery-lead-synopsis-thin` advisory.
 
 use crate::support::*;
@@ -132,12 +132,12 @@ fn validate_rejects_tag_status_mismatch() {
 
 #[test]
 fn skips_provenance_no_metadata() {
-    // pre-2.0 (or pre-synthesis) state. The provenance gate must
+    // Metadata-free (pre-synthesis) state. The provenance gate must
     // not fire and the slice progresses to the existing adapter rule
     // run. The adapter rules will still surface deferred /
     // pass-style results — we only assert the provenance rule ids
     // are NOT present.
-    let spec = "### Requirement: pre-2.0 body\n\n\
+    let spec = "### Requirement: metadata-free body\n\n\
                 ID: REQ-001\n\n\
                 body that has no Sources or Status yet\n";
     let project = stage_slice_with_spec(spec, None);
@@ -155,7 +155,7 @@ fn skips_provenance_no_metadata() {
             let rule_id = finding["rule-id"].as_str().unwrap_or("");
             assert!(
                 !rule_id.starts_with("spec.requirement-"),
-                "no provenance rule should fire on a pre-2.0 spec.md, got: {rule_id}"
+                "no provenance rule should fire on a metadata-free spec.md, got: {rule_id}"
             );
         }
     }

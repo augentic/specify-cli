@@ -1,5 +1,4 @@
-//! Deterministic baseline identity projection (RFC-36 §"Projection
-//! contract").
+//! Deterministic baseline identity projection.
 //!
 //! Projects a materialised project/slot directory into the
 //! `surface[]` / `recent[]` pair carried by `.specify/topology.lock`
@@ -7,7 +6,7 @@
 //! structural — unit slugs, requirement-block headings, and the
 //! journal's `slice.archive.created` outcome summaries — never an LLM
 //! summary, so the committed lock is verifiable by
-//! regenerate-and-compare (D36-6).
+//! regenerate-and-compare.
 
 use std::path::Path;
 
@@ -19,24 +18,24 @@ use super::topology::{Decision, Surface};
 use crate::config::Layout;
 use crate::journal::{self, EventKind};
 
-/// Maximum requirement titles projected per unit (RFC-36 §"Surface
-/// bounds", `K`). A unit with more emits a `more:` count of the
-/// elided tail rather than the titles themselves.
+/// Maximum requirement titles projected per unit (`K`). A unit with
+/// more emits a `more:` count of the elided tail rather than the
+/// titles themselves.
 pub const SURFACE_TITLE_CAP: usize = 8;
 
 /// Maximum `slice.archive.created` outcome summaries projected into
-/// `recent[]` (RFC-36 §"Surface bounds", `M`). The tail suffices —
-/// older merges are already reflected in `surface[]`.
+/// `recent[]` (`M`). The tail suffices — older merges are already
+/// reflected in `surface[]`.
 pub const RECENT_TAIL: usize = 10;
 
 /// Maximum accepted Decision Records projected into `decisions[]`
-/// (RFC-36 §"Projection contract", `K`). A catalogue with more emits a
-/// `decisions-more` count of the elided remainder.
+/// (`K`). A catalogue with more emits a `decisions-more` count of the
+/// elided remainder.
 pub const DECISIONS_CAP: usize = 8;
 
 /// The deterministic identity projection of a project's baseline: the
-/// `surface[]` / `recent[]` (RFC-36) plus the accepted-decision
-/// `decisions[]` axis (RFC-36) with its overflow count.
+/// `surface[]` / `recent[]` pair plus the accepted-decision
+/// `decisions[]` axis with its overflow count.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IdentityProjection {
     /// Owned units + bounded requirement titles.
@@ -75,9 +74,9 @@ pub fn project_baseline(project_dir: &Path) -> Result<IdentityProjection, Error>
     })
 }
 
-/// Project `.specify/decisions/` into the bounded `decisions[]` axis
-/// (RFC-36 §"Projection contract"). Only `status: accepted` records
-/// contribute; superseded and rejected records describe past or
+/// Project `.specify/decisions/` into the bounded `decisions[]` axis.
+/// Only `status: accepted` records contribute; superseded and rejected
+/// records describe past or
 /// not-taken posture and are excluded from *current* identity. The most
 /// recent [`DECISIONS_CAP`] (highest `DEC` ids) are kept, then emitted in
 /// `DEC` ascending order; the overflow count is returned alongside.

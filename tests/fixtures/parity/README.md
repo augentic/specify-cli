@@ -1,6 +1,6 @@
 # Parity fixtures (frozen regression baseline)
 
-Ground-truth fixtures for the spec parser and merge engine in `specify_model::spec` / `specify_workflow::merge`. These were originally captured from the archived Python reference implementation; the Python script has since been retired. The fixtures are now a **frozen regression baseline** against the current Rust implementation.
+Ground-truth fixtures for the spec parser and merge engine in `specify_model::spec` / `specify_workflow::merge`. They are a **frozen regression baseline** against the current Rust implementation.
 
 Each case directory contains a subset of:
 

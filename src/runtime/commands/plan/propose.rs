@@ -1,5 +1,4 @@
-//! `specify plan propose` handler — plan-time lead reconciliation
-//! (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
+//! `specify plan propose` handler — plan-time lead reconciliation.
 //!
 //! Two mutually exclusive modes wrap the agent-led reconciliation kernel
 //! that lives in `crates/workflow/src/change/plan/core/propose.rs`:
@@ -203,8 +202,8 @@ fn load_discovery(ctx: &Ctx) -> Result<Discovery> {
 }
 
 /// Resolve the project topology the request embeds and the response binds
-/// to — the committed `.specify/topology.lock` projection for a workspace
-/// (RFC-36), or the sole project synthesised from `project.yaml`.
+/// to — the committed `.specify/topology.lock` projection for a workspace,
+/// or the sole project synthesised from `project.yaml`.
 fn load_topology(ctx: &Ctx) -> Result<Vec<ProjectRef>> {
     let config = ProjectConfig::load(&ctx.project_dir)?;
     resolve_topology(&config, &ctx.project_dir)

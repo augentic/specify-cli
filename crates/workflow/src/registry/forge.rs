@@ -18,7 +18,7 @@ pub const SPECIFY_BRANCH_PREFIX: &str = "specify/";
 pub struct PrView {
     /// `OPEN` / `CLOSED` / `MERGED`.
     pub state: PrState,
-    /// `true` once a PR has landed; otherwise `false`.
+    /// `true` once a PR has merged; otherwise `false`.
     pub merged: bool,
     /// Branch name on the head side (the PR's source branch).
     #[serde(rename = "headRefName")]

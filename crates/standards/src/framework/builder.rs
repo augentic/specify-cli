@@ -2,12 +2,10 @@
 //! to the canonical [`Diagnostic`] currency.
 //!
 //! Every predicate constructs its findings through
-//! [`framework_finding`], which is the former binary-boundary
-//! `map_one` mapper minus the `id` / `fingerprint` assignment (those
-//! are stamped by the finalize pass in `crate::framework::check`
-//! once the deduplicated order is known — the fingerprint preimage
-//! excludes `id`, so deferring both is safe). The unification deleted
-//! the lightweight `specify_authoring::Finding` / `Location` types: the
+//! [`framework_finding`], which stamps everything except the `id` /
+//! `fingerprint` assignment (those are stamped by the finalize pass in
+//! `crate::framework::check` once the deduplicated order is known — the
+//! fingerprint preimage excludes `id`, so deferring both is safe). The
 //! predicates speak [`Diagnostic`] end-to-end.
 //!
 //! ## Decision: imperative `rule_id` mapped onto the closed codex `rule-id`
@@ -20,7 +18,7 @@
 //! `CORE_ID_TABLE` assigns every still-active predicate a `CORE-NNN`
 //! id. A mapped finding sets `rule_id: Some("CORE-NNN")` and emits a
 //! clean `title`; an unmapped id falls back to `rule_id: None` with the
-//! legacy `[rule_id]` title prefix so a newly-added predicate is never
+//! `[rule_id]` title prefix so a newly-added predicate is never
 //! silently dropped from the wire.
 
 use std::path::{Path, PathBuf};
@@ -37,11 +35,10 @@ use crate::framework::error::ToolingError;
 /// closed codex `CORE-NNN` id.
 ///
 /// Empty today: no imperative
-/// authoring predicate runs as a `specify lint framework` producer, and
-/// the `kind: authoring-predicate` bridge has been removed. Every
-/// `CORE-*` rule is a declarative rule file or a referenced WASI tool
-/// (CORE-009 / CORE-026 run through the `rules` tool). The table stays so
-/// a future predicate could opt back in without re-plumbing
+/// authoring predicate runs as a `specify lint framework` producer.
+/// Every `CORE-*` rule is a declarative rule file or a referenced WASI
+/// tool (CORE-009 / CORE-026 run through the `rules` tool). The table
+/// stays so a future predicate could opt back in without re-plumbing
 /// [`framework_finding`].
 const CORE_ID_TABLE: &[(&str, &str)] = &[];
 

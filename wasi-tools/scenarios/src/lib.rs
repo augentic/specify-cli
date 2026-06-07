@@ -1,20 +1,16 @@
 //! Pure scenario-pack checks for the `scenarios` framework-authoring
-//! tool, lifted from the host CLI's retiring `ScenariosCheck` imperative
-//! predicate (Road B framework tool).
+//! tool (Road B framework tool).
 //!
 //! The tool covers the filesystem-only scenario family: CORE-028
 //! (artifact-path safety), CORE-029 (body↔frontmatter id), CORE-031
 //! (recorded-trace header validation), and CORE-033 (stage
 //! contiguity). CORE-030 (whole-tree duplicate id) and CORE-032
-//! (frontmatter schema) moved to Road A declarative hints over the
-//! `scenario` fact family and are no longer served here. The discovery
-//! walk mirrors the host's `discover_scenario_candidates`; every check
-//! mirrors its counterpart in `framework::check::scenarios`. CORE-034's
-//! git-only staleness advisory is *not* lifted (it shells out to `git`,
-//! unfit for the WASI sandbox, and is removed in Phase 8). Carve-out
-//! posture: this crate owns its logic, depending only on `serde` /
-//! `serde-saphyr` / `serde_json` / `regex`, never the host diagnostics
-//! crate (`main.rs` renders the wire envelope).
+//! (frontmatter schema) are covered by Road A declarative hints over
+//! the `scenario` fact family. CORE-034's git-only staleness advisory
+//! is not covered here (it shells out to `git`, unfit for the WASI
+//! sandbox). Carve-out posture: this crate owns its logic, depending
+//! only on `serde` / `serde-saphyr` / `serde_json` / `regex`, never
+//! the host diagnostics crate (`main.rs` renders the wire envelope).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

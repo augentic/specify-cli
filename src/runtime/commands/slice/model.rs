@@ -1,5 +1,5 @@
 //! `slice model show` — read-only viewer over a slice's single
-//! `model.yaml` (RFC-29 §"Operator surface").
+//! `model.yaml`.
 //!
 //! `--format json` serialises the persisted [`SliceModel`] verbatim;
 //! text renders a concise header + requirement + task summary. The

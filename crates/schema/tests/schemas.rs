@@ -230,8 +230,8 @@ fn synthesis_schema_compiles() {
     let _validator = synthesis_validator();
 }
 
-/// The RFC-29c §"Synthesis response" worked example validates against
-/// the synthesis schema with the model `$ref` resolved.
+/// The synthesis-response worked example validates against the
+/// synthesis schema with the model `$ref` resolved.
 #[test]
 fn synthesis_accepts_example() {
     let validator = synthesis_validator();
@@ -283,7 +283,7 @@ fn decision_schema_compiles() {
     compile_schema(DECISION_JSON_SCHEMA).expect("decision schema compiles");
 }
 
-/// The RFC-36 §"Record shape" slice-authored example validates without
+/// The slice-authored Decision Record example validates without
 /// the engine-stamped `id` / `slice` / `date` fields — proving the
 /// optional-field design that lets one schema serve both the slice form
 /// and the persisted baseline form.
@@ -307,7 +307,7 @@ fn decision_accepts_slice_form() {
     );
 }
 
-/// The RFC-36 §"Record shape" promoted baseline example validates with
+/// The promoted baseline Decision Record example validates with
 /// the engine-stamped header fields present.
 #[test]
 fn decision_accepts_baseline_form() {
@@ -487,7 +487,7 @@ fn build_request_schema_compiles() {
     compile_schema(BUILD_REQUEST_JSON_SCHEMA).expect("build-request schema compiles");
 }
 
-/// The RFC-29d §"Build request" worked example validates.
+/// The build-request worked example validates.
 #[test]
 fn build_request_schema_accepts_rfc_example() {
     let instance = json!({
@@ -509,7 +509,7 @@ fn build_request_schema_accepts_rfc_example() {
         &instance,
         BUILD_REQUEST_JSON_SCHEMA,
         "build-request",
-        "RFC-29d build request example",
+        "build request example",
     );
     assert!(
         summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
@@ -544,7 +544,7 @@ fn build_report_schema_compiles() {
     let _validator = build_report_validator();
 }
 
-/// The RFC-29d §"Build report" success example validates.
+/// The build-report success example validates.
 #[test]
 fn build_report_schema_accepts_success() {
     let validator = build_report_validator();
@@ -559,7 +559,7 @@ fn build_report_schema_accepts_success() {
     assert!(errors.is_empty(), "success report must validate; errors: {errors:?}");
 }
 
-/// The RFC-29d §"Build report" failure (no findings) example validates.
+/// The build-report failure (no findings) example validates.
 #[test]
 fn build_report_failure_no_findings() {
     let validator = build_report_validator();
@@ -610,8 +610,8 @@ fn build_report_no_outputs() {
     assert!(errors.is_empty(), "report without outputs must validate; errors: {errors:?}");
 }
 
-/// The RFC-29d §"Build report" failure-with-findings example validates,
-/// proving the relative diagnostic `$ref` accepts a full RFC-28 finding.
+/// The build-report failure-with-findings example validates, proving
+/// the relative diagnostic `$ref` accepts a full finding.
 #[test]
 fn build_report_failure_with_findings() {
     let validator = build_report_validator();

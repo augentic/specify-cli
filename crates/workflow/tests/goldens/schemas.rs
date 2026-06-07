@@ -351,11 +351,11 @@ fn lead_rejects_source_id_tentative() {
     let v = load("discovery/lead.schema.json");
     assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
-    // `tentative` was retired (DECISIONS §Lead reconciliation D2.3); the schema is
-    // `additionalProperties: false`, so a lead carrying it now fails.
+    // `tentative` is not a lead field (DECISIONS §Lead reconciliation D2.3); the schema
+    // is `additionalProperties: false`, so a lead carrying it fails.
     assert_invalid(&v, &yaml(LEAD_INVALID_TENTATIVE_REMOVED), "lead/retired-tentative");
-    // `aliases` was retired; the schema is `additionalProperties: false`, so a lead
-    // carrying it now fails.
+    // `aliases` is not a lead field; the schema is `additionalProperties: false`, so a
+    // lead carrying it fails.
     assert_invalid(&v, &yaml(LEAD_INVALID_ALIASES_REMOVED), "lead/retired-aliases");
 }
 

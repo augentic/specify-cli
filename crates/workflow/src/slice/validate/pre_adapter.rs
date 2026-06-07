@@ -94,7 +94,7 @@ pub(super) fn scan_slice_specs(
 /// 4. typed-model drift — the seven drift-validation findings
 ///    over `<slice>/model.yaml` (skipped when absent).
 ///
-/// Provenance no longer has a file-drift gate: it is carried inline in
+/// Provenance has no file-drift gate: it is carried inline in
 /// `model.yaml` and projected on demand (`specify slice provenance`),
 /// so there is no second representation to drift against. Spec-level
 /// `Sources:` / `Status:` coherence still runs in [`scan_slice_specs`].

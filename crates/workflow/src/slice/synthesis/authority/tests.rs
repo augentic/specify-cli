@@ -16,7 +16,7 @@ fn overrides(pairs: &[(ClaimKind, &str)]) -> BTreeMap<ClaimKind, String> {
     pairs.iter().map(|(kind, source)| (*kind, (*source).to_string())).collect()
 }
 
-// -- Status derivation table (RFC-29c §"Status derivation") -------
+// -- Status derivation table -------
 
 #[test]
 fn zero_claims_are_unknown_no_evidence() {
@@ -100,7 +100,7 @@ fn multi_disagreed_tied_top_is_conflict() {
     assert_eq!(resolved.winners, vec![None, None]);
 }
 
-// -- Resolution order (RFC-29c §"Authority resolution") -----------
+// -- Resolution order -----------
 
 #[test]
 fn step_1_per_slice_override_wins() {
@@ -181,7 +181,7 @@ fn resolution_order_step_4_tie_is_conflict() {
     assert_eq!(resolved.resolution, ProvenanceResolution::TiedConflict);
 }
 
-// -- Mixed-kind requirements (RFC-29c §"Per-claim resolution") ----
+// -- Mixed-kind requirements ----
 
 #[test]
 fn mixed_kinds_picks_winner() {

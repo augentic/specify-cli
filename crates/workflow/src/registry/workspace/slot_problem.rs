@@ -42,7 +42,7 @@ impl Problem {
 pub enum Reason {
     /// Project name cannot map to exactly `.specify/workspace/<project>/`.
     SlotPathEscapesWorkspace,
-    /// The registry's local/relative URL no longer resolves.
+    /// The registry's local/relative URL does not resolve.
     LocalTargetUnresolved,
     /// A local/relative registry entry points at a non-symlink slot.
     LocalSlotIsNotSymlink,

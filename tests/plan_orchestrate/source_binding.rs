@@ -1,9 +1,7 @@
-//! Wave 1.1 — per-slice source binding flag reshape on `plan add` /
-//! `plan amend`.
+//! Per-slice source binding flag shape on `plan add` / `plan amend`.
 //!
-//! The reshape replaces 1.x's bare `--sources <key>` repeater with the
-//! `<key>=<lead>` wire form, accepting the bare `<key>`
-//! shorthand only as sugar for `{ source, lead: <slice.name> }`
+//! The binding flag uses the `<key>=<lead>` wire form, accepting the bare
+//! `<key>` shorthand only as sugar for `{ source, lead: <slice.name> }`
 //! per workflow §`Slice.sources`.
 
 use crate::support::*;

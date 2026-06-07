@@ -60,7 +60,7 @@ Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-re
 
 ### Performance (post-migration)
 
-`make lint` on `augentic/specify` (release build, 2026-06-07): single-digit seconds — **~8s** wall (`real 8.7` for `make lint`, `real 7.8` for the bare release binary). Always measure against a `cargo build --release` binary; a debug/unoptimized build is many times slower and is not representative. (The retired `~247s` figure was a pre-migration debug-era measurement.) Benchmark on your own hardware with `/usr/bin/time make lint`.
+`make lint` on `augentic/specify` (release build, 2026-06-07): single-digit seconds — **~8s** wall (`real 8.7` for `make lint`, `real 7.8` for the bare release binary). Always measure against a `cargo build --release` binary; a debug/unoptimized build is many times slower and is not representative. Benchmark on your own hardware with `/usr/bin/time make lint`.
 
 ---
 
@@ -75,7 +75,7 @@ Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-re
 
 ### A16 — done (steady state; engine is a generic dispatcher)
 
-- [x] CORE-001..008 imperative predicates retired; declarative rules own them.
+- [x] CORE-001..008 are owned by declarative rules.
 - [x] CORE-009 + CORE-026 migrated to the `rules` WASI tool; `CORE_ID_TABLE` is empty; the CORE-009 `AuthoringProducer` and `framework::check::run` are deleted.
 - [x] CORE-034 removed; the `kind: authoring-predicate` bridge (`HintKind::AuthoringPredicate`, `lint/eval/authoring_predicate.rs`, `ScenariosCheck`) deleted. No imperative-predicate bridge remains.
 - [x] No rule policy in the engine; `lint_no_embedded_policy` Layer-3 guard is green. `BUILTIN_NAMESPACES` / `TARGET_OWNERS` deleted.

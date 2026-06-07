@@ -1,7 +1,7 @@
-//! `specify upgrade` — channel-aware CLI self-update (RFC-30 §D1).
+//! `specify upgrade` — channel-aware CLI self-update.
 //!
 //! Bootstrap verb: it operates on the running binary, not a project, so
-//! it never calls [`ProjectConfig::load`] (the RFC bootstrap carve-out).
+//! it never calls [`ProjectConfig::load`] (the bootstrap carve-out).
 //! It resolves the install channel (flag override or
 //! [`InstallChannel::detect`]), probes the latest release, and either
 //! reports the plan (`--dry-run`) or, with `--yes`, runs the

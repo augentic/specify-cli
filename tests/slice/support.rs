@@ -103,7 +103,7 @@ pub fn assert_no_finding(output: &std::process::Output, rule_id: &str) {
 }
 
 /// Locate the rendered diagnostic on stdout for `rule_id` and return
-/// its operator-facing `impact` (the former `detail` row). Asserts exit
+/// its operator-facing `impact` row. Asserts exit
 /// 2 along the way so callers can focus on the impact text.
 pub fn find_finding_impact(output: &std::process::Output, rule_id: &str) -> String {
     let err = parse_json(&output.stderr);

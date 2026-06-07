@@ -1,18 +1,16 @@
-//! Migration framework (RFC-30 §D3).
+//! Migration framework.
 //!
-//! Holds the closed [`MigrationKind`] registry, the [`Migrator`] trait,
-//! the [`MigrationPlan`] / [`MigrationReport`] DTOs, and the shared
+//! Holds the [`MigrationKind`] registry, the [`Migrator`] trait, the
+//! [`MigrationPlan`] / [`MigrationReport`] DTOs, and the shared
 //! staged-write-then-rename apply harness ([`apply_staged`]) every
 //! migrator reuses.
 //!
 //! [`MigrationKind::id`] is the single source of truth for a migrator's
 //! stable kebab-case id; concrete [`Migrator`] impls echo it from
 //! [`Migrator::id`] and stamp it onto every plan and report they emit.
-//! This module owns the framework only — the concrete `V1ToV2`
-//! transforms and the `specify migrate` command land in their own
-//! changes and do not emit journal events from here (the command layer
+//! No major-version migrators are registered yet; the command layer
 //! derives `migration.applied` / `migration.skipped` from the returned
-//! [`MigrationReport`]).
+//! [`MigrationReport`].
 
 use std::path::{Path, PathBuf};
 
@@ -22,42 +20,16 @@ use specify_error::Error;
 
 use crate::config::Layout;
 
-mod v1_to_v2;
-
-pub use v1_to_v2::V1ToV2;
-
-/// Closed registry of per-major migration paths.
+/// Registry of per-major migration paths.
 ///
-/// Adding a major version requires a new variant *and* a registered
-/// [`Migrator`] impl *and* a golden fixture under
+/// Registering the first migrator adds a variant here, a matching
+/// [`Migrator`] impl reached through [`migrator_for`], a `(from, to)`
+/// adjacency in [`MigrationKind::resolve`], and a golden fixture under
 /// `tests/migrate/<from>-to-<to>/`.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum MigrationKind {
-    /// 1.x → 2.0 structural migration.
-    V1ToV2,
-    // V2ToV3 lands when 3.0 is cut.
-}
-
-/// One single-major adjacency in the migration walk.
-struct Hop {
-    /// Major version the hop migrates from.
-    from: u64,
-    /// Major version the hop migrates to.
-    to: u64,
-    /// Migrator covering the hop.
-    kind: MigrationKind,
-}
-
-/// Ordered registry of the known major-version hops. Adding `V2ToV3`
-/// is a one-line append here, paired with its [`MigrationKind`] variant
-/// and [`Migrator`] impl.
-const HOPS: &[Hop] = &[Hop {
-    from: 1,
-    to: 2,
-    kind: MigrationKind::V1ToV2,
-}];
+pub enum MigrationKind {}
 
 impl MigrationKind {
     /// Stable kebab-case id — the single source of truth.
@@ -66,29 +38,19 @@ impl MigrationKind {
     /// the `kebab-case` serde wire form of the variant.
     #[must_use]
     pub const fn id(self) -> &'static str {
-        match self {
-            Self::V1ToV2 => "v1-to-v2",
-        }
+        match self {}
     }
 
     /// Ordered list of migrations to walk major `from` to major `to`.
     ///
-    /// Composes one registered hop per major (e.g. `1 → 3` yields
-    /// `[V1ToV2, V2ToV3]` once both hops are registered). Empty when
-    /// `to <= from`, or when no contiguous chain of registered
-    /// migrators reaches `to` (a gap in the hop registry).
+    /// Dormant until the first migrator is registered: with no
+    /// major-version adjacencies it always returns an empty chain.
+    /// Registering a migrator turns this into a walk that composes one
+    /// hop per major (e.g. `1 → 3` chains the `1→2` and `2→3` migrators).
     #[must_use]
-    pub fn resolve(from: u64, to: u64) -> Vec<Self> {
-        let mut chain = Vec::new();
-        let mut cursor = from;
-        while cursor < to {
-            let Some(hop) = HOPS.iter().find(|hop| hop.from == cursor) else {
-                return Vec::new();
-            };
-            chain.push(hop.kind);
-            cursor = hop.to;
-        }
-        if cursor == to { chain } else { Vec::new() }
+    pub const fn resolve(from: u64, to: u64) -> Vec<Self> {
+        let _ = (from, to);
+        Vec::new()
     }
 }
 
@@ -106,7 +68,7 @@ pub fn major(version: &str) -> Option<u64> {
 ///
 /// Object-safe so the command layer can dispatch over `&dyn Migrator`.
 pub trait Migrator {
-    /// Stable kebab-case id, e.g. `v1-to-v2`. Concrete impls return
+    /// Stable kebab-case id, e.g. `v2-to-v3`. Concrete impls return
     /// their [`MigrationKind::id`].
     fn id(&self) -> &'static str;
 
@@ -134,13 +96,11 @@ pub trait Migrator {
 /// The command layer (`specify migrate`, `specify init
 /// --check-migration`) maps each kind [`MigrationKind::resolve`]
 /// returns through this function to drive `plan` / `apply`. The match
-/// is exhaustive over the closed [`MigrationKind`] enum, so a new hop
+/// is exhaustive over the [`MigrationKind`] enum, so a new variant
 /// cannot be registered without also registering its migrator here.
 #[must_use]
 pub fn migrator_for(kind: MigrationKind) -> &'static dyn Migrator {
-    match kind {
-        MigrationKind::V1ToV2 => &V1ToV2,
-    }
+    match kind {}
 }
 
 /// One `(kind, plan)` pair from the read-only migration [`probe`].
@@ -204,9 +164,8 @@ pub enum MigrationAction {
         /// Resulting file contents.
         contents: String,
     },
-    /// Delete a file from the live tree. Used by the `V1ToV2`
-    /// adapter-split transform to drop the monolithic `adapter.yaml`
-    /// after its axis-split replacement has been written — a
+    /// Delete a file from the live tree. A migrator uses this to drop a
+    /// file once a replacement has been written — a
     /// [`MigrationAction::Move`] cannot delete, and a
     /// [`MigrationAction::Rewrite`] cannot either, so removal is its
     /// own action. The source path must exist; a missing target aborts
@@ -342,7 +301,7 @@ enum Staged {
     },
 }
 
-/// Shared staged-write-then-rename apply harness (RFC-30 §Atomicity).
+/// Shared staged-write-then-rename apply harness.
 ///
 /// Resolves every action first; a precondition failure (a missing move
 /// source or removal target) aborts before any mutation, so the

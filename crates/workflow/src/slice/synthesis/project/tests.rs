@@ -58,7 +58,7 @@ fn task(id: &str, text: &str, satisfies: &[&str]) -> ModelTask {
     }
 }
 
-/// The RFC-29c §"Slice model (D4)" envelope: REQ-001 is a
+/// The slice-model envelope: REQ-001 is a
 /// multi-claim agreement; REQ-002 is a per-kind divergence where the
 /// documentation `criterion` beats the behaviour `example`.
 fn rfc_response() -> SliceModel {
@@ -138,7 +138,7 @@ fn projects_model_to_valid_output() {
 fn normalizes_agent_supplied_kernel_fields() {
     // The agent pre-assigns wrong kernel/header values; the kernel
     // ignores and re-derives every one of them (normalize, never
-    // reject) — RFC-29c §"Synthesis response".
+    // reject).
     let mut response = rfc_response();
     response.version = Some(99);
     response.slice = Some("bogus-slice".to_string());
@@ -166,8 +166,8 @@ fn normalizes_agent_supplied_kernel_fields() {
 
 #[test]
 fn kernel_is_deterministic() {
-    // RFC-29c §"Shape-brief scope (D8)" kernel determinism: identical
-    // inputs yield byte-identical output. Target-independence holds by
+    // Kernel determinism: identical inputs yield byte-identical
+    // output. Target-independence holds by
     // construction — `project` takes no `target` or shape-brief input.
     let first =
         project(rfc_response(), header(), &rfc_authority(), &BTreeMap::new(), &rfc_evidence())

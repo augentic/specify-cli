@@ -161,7 +161,7 @@ impl MigrateBody {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct KindOutcome {
-    /// Stable migrator id (e.g. `v1-to-v2`).
+    /// Stable migrator id (e.g. `v2-to-v3`).
     kind: String,
     /// `planned` (dry-run), `applied`, or `skipped` (empty plan).
     status: &'static str,

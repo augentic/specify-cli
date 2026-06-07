@@ -1,9 +1,8 @@
 //! Framework authoring predicates.
 //! No imperative `Check` predicate runs as a `specify lint framework`
-//! producer, and the `kind: authoring-predicate` bridge is gone — every
-//! framework rule resolves through declarative hints or referenced WASI
-//! tools. The only surviving predicates are the Rust-quality
-//! predicates ([`RustTestNaming`], [`RustSourceQuality`]), run through
+//! producer — every framework rule resolves through declarative hints
+//! or referenced WASI tools. The Rust-quality predicates
+//! ([`RustTestNaming`], [`RustSourceQuality`]) run through
 //! [`run_rust_quality`] for this repo's own `cargo test --test
 //! rust_quality` gate.
 

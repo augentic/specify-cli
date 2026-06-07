@@ -24,9 +24,9 @@ Living burn-down for the [quality improvement plan](https://github.com/augentic/
 
 ## Archaeology hotspots
 
-`rust.archaeology-in-doc-comment` is burn-down-only (NOT a hard gate). Genuine historical narrative was stripped from `change/plan/core/propose/kernel.rs`, `slice/build/wire.rs`, `change/plan/core/model.rs` (`Divergence`), and `framework/check/links.rs` (history moved to `DECISIONS.md` pointers, ≤3-line "what today" kept). Workspace count went **214 → 202**.
+`rust.archaeology-in-doc-comment` is burn-down-only (NOT a hard gate). Doc comments are kept to a ≤3-line "what today" description; historical narrative is deleted rather than relocated.
 
-The residual 202 are the canonical `RFC-NN` / `Phase N` / `DECISIONS.md §…` contract vocabulary the codebase and `AGENTS.md` use as stable anchor names (e.g. "RFC-29 D2", "RFC-36"), not migration history. The predicate's `RFC-`/`Phase ` markers over-fire on them, so promoting a hard gate would be perpetually red; it stays burn-down. Promote only after the markers are narrowed to actual history phrases.
+The predicate's `RFC-`/`Phase ` markers over-fire on the forward-looking references that legitimately remain (future RFCs, roadmap items), so promoting it to a hard gate would be perpetually red; it stays burn-down. Promote only after the markers are narrowed to actual history phrases.
 
 ## Test naming / vocabulary
 

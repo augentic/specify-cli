@@ -1,5 +1,4 @@
-//! `specify source extract` handler — slice-time Evidence extraction
-//! (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
+//! `specify source extract` handler — slice-time Evidence extraction.
 //!
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Extract`]) for adapter
@@ -10,22 +9,21 @@
 //!
 //! - `tool`: single-phase. Probe the extraction cache; on a hit read
 //!   the cached `evidence.yaml`, on a miss dispatch the declared tool
-//!   (an M1 seam — no first-party source declares an `extract` tool
+//!   (no first-party source declares an `extract` tool
 //!   yet). Either way validate the Evidence and persist it.
-//! - `agent`: two-phase (RFC-29 D9; DECISIONS.md §"Adapter execution
-//!   mode (D9)"). The CLI never blocks on agent work.
+//! - `agent`: two-phase. The CLI never blocks on agent work.
 //!   - `--phase prepare` (default): build scratch + the `evidence/`
 //!     target, emit `source.execution.agent`, and print the extract
 //!     handoff envelope (`{ adapter, version, briefs-dir, source-dir? |
 //!     value-inline?, scratch-dir, evidence-dir, leads:[<lead>],
 //!     execution }`). For value-bound sources (e.g. `intent`)
 //!     `source-dir` is absent and `value-inline` carries the literal
-//!     binding body (preflight §2). Control returns to the agent.
+//!     binding body. Control returns to the agent.
 //!   - `--phase finalize`: validate the agent-produced Evidence
 //!     against `schemas/evidence.schema.json` *before* it becomes
 //!     visible to synthesis, persist it to
 //!     `.specify/slices/<slice>/evidence/<source>.yaml`, run the
-//!     extraction-cache fingerprint (RFC-27, with the `lead` input),
+//!     extraction-cache fingerprint (with the `lead` input),
 //!     and emit `slice.extract.cache-hit` / `cache-miss`. Under the
 //!     `execution: agent` forced opt-out this is always a `cache-miss`
 //!     with `reason: adapter-opt-out`. A validation failure returns
@@ -54,8 +52,8 @@ use crate::runtime::commands::source::cli::Phase;
 use crate::runtime::commands::source::{op, prep};
 use crate::runtime::context::Ctx;
 
-/// Extract handoff envelope printed by the agent `prepare` phase
-/// (preflight §2). Carries `evidence-dir` (the slice's `evidence/`
+/// Extract handoff envelope printed by the agent `prepare` phase.
+/// Carries `evidence-dir` (the slice's `evidence/`
 /// target) and exactly one source representation: `source-dir` for
 /// path bindings, `value-inline` for value bindings (e.g. `intent`).
 #[derive(Serialize)]
@@ -70,14 +68,14 @@ struct ExtractHandoff {
     source_dir: Option<PathBuf>,
     /// Literal `value:` body — present for value-bound sources, absent
     /// for path bindings. The value half of the minimal two-field
-    /// source request (preflight §2).
+    /// source request.
     #[serde(skip_serializing_if = "Option::is_none")]
     value_inline: Option<String>,
     scratch_dir: PathBuf,
     /// `.specify/slices/<slice>/evidence/` — where the CLI persists
     /// the validated `<source>.yaml` in finalize.
     evidence_dir: PathBuf,
-    /// The single lead being extracted (preflight §2).
+    /// The single lead being extracted.
     leads: Vec<String>,
     execution: &'static str,
 }
@@ -228,8 +226,8 @@ impl<'a> op::Flow<'a> for ExtractFlow<'a> {
         }
     }
 
-    /// M1 ships no first-party extract tool; the WASI extract dispatch
-    /// protocol is out of scope for RFC-29 M1. The shared flow is wired
+    /// No first-party source declares an extract tool; the WASI extract
+    /// dispatch protocol is not yet wired. The shared flow is wired
     /// correctly (cache probe, Evidence read, validate-before-visible
     /// persist) so the only seam left is the actual tool invocation.
     fn dispatch_tool(&self) -> Result<()> {

@@ -1,5 +1,4 @@
-//! Projection kernel — `project(response) -> SliceModel` (RFC-29c M2b,
-//! §"Persist pipeline", §"Agent and kernel responsibilities").
+//! Projection kernel — `project(response) -> SliceModel`.
 //!
 //! The agent owns cross-modal reconciliation — which requirements exist
 //! and how claims merge or split. Everything around that judgment that
@@ -9,11 +8,11 @@
 //! kernel **normalizes, never rejects** — any kernel-owned field the
 //! agent happened to set (`id`, `status`, claim `winner`, rendered
 //! `sources`) and any header field it supplied are ignored and
-//! re-derived / re-stamped (RFC-29c §"Synthesis response").
+//! re-derived / re-stamped.
 //!
 //! Four conditions the kernel cannot project around are hard aborts,
-//! mirroring the drift findings `specify slice validate` re-checks
-//! (RFC-29c §"Drift validation"): a claim that anchors no on-disk
+//! mirroring the drift findings `specify slice validate` re-checks:
+//! a claim that anchors no on-disk
 //! Evidence (`slice-model-source-orphan`), a claim whose `kind`
 //! disagrees with Evidence (`slice-model-claim-kind-mismatch`), a
 //! `satisfies[]` `REQ` ref with no projected target
@@ -25,7 +24,7 @@
 //! the plan to build the [`ProjectionHeader`], the per-source
 //! `authority` map, the per-slice `overrides` map, and the
 //! `evidence_claims` anchor index, then hands them in. **Kernel
-//! determinism** (RFC-29c §"Shape-brief scope (D8)"): given fixed
+//! determinism**: given fixed
 //! inputs the output is byte-identical, and target-independent by
 //! construction — no `target` or shape-brief input reaches this
 //! function.
@@ -38,8 +37,7 @@ use specify_model::evidence::{AuthorityClass, ClaimKind};
 use crate::slice::model::{ModelClaim, SliceModel};
 use crate::slice::synthesis::authority::{ClaimRef, resolve};
 
-/// The header fields the kernel stamps onto the persisted `model.yaml`
-/// (RFC-29c §"Slice model (D4)").
+/// The header fields the kernel stamps onto the persisted `model.yaml`.
 ///
 /// Built by the caller from the slice's name and its bound project;
 /// `target` is **not** a header field — it is resolved on demand from
@@ -55,7 +53,7 @@ pub struct ProjectionHeader {
 }
 
 /// Project the agent's synthesis-response `model` into a fully-derived
-/// persisted [`SliceModel`] (RFC-29c §"Persist pipeline" steps 1–2).
+/// persisted [`SliceModel`].
 ///
 /// `model` is the structure the agent returned; any kernel-owned or
 /// header field it set is ignored and re-derived. `header` is the
@@ -135,8 +133,7 @@ pub fn project(
 
 /// Reject any claim that does not anchor an on-disk Evidence claim
 /// (`slice-model-source-orphan`) or whose `kind` disagrees with the kind
-/// Evidence records for that `(source, id)` (`slice-model-claim-kind-mismatch`)
-/// — RFC-29c §"Claim contract (D13)".
+/// Evidence records for that `(source, id)` (`slice-model-claim-kind-mismatch`).
 fn check_claim_anchors(
     model: &SliceModel, evidence_claims: &BTreeMap<(String, String), ClaimKind>,
 ) -> Result<()> {
@@ -172,8 +169,7 @@ fn check_claim_anchors(
 }
 
 /// Reject any `tasks[].satisfies[]` `REQ` reference that does not name a
-/// projected `requirements[].id` (`slice-model-cross-ref-orphan`,
-/// RFC-29c §"Drift validation").
+/// projected `requirements[].id` (`slice-model-cross-ref-orphan`).
 fn check_cross_refs(model: &SliceModel) -> Result<()> {
     let projected: BTreeSet<&str> =
         model.requirements.iter().filter_map(|req| req.id.as_deref()).collect();
@@ -192,7 +188,7 @@ fn check_cross_refs(model: &SliceModel) -> Result<()> {
 }
 
 /// Reject any `REQ` or `TASK` id outside its closed three-digit grammar
-/// (`slice-model-id-grammar`, RFC-29c §"ID grammar"). `REQ` ids are
+/// (`slice-model-id-grammar`). `REQ` ids are
 /// kernel-assigned and always pass; `TASK` ids are agent-authored, so
 /// the gate is load-bearing for them.
 fn check_id_grammar(model: &SliceModel) -> Result<()> {
@@ -226,7 +222,7 @@ fn id_grammar_error(kind: &str, id: &str) -> Error {
 }
 
 /// Render the distinct source keys of `claims`, highest effective
-/// authority first (RFC-29c §"Authority resolution"). Each source's
+/// authority first. Each source's
 /// standing is the strongest effective level among its contributing
 /// claims; a stable sort over the declaration-order list breaks ties by
 /// first appearance.

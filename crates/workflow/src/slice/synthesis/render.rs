@@ -1,4 +1,4 @@
-//! `spec.md` provenance-line rendering (RFC-29c M2b §"Rendering").
+//! `spec.md` provenance-line rendering.
 //!
 //! The render step is the third synthesis phase: given a projected
 //! [`SliceModel`], it emits one `specs/<unit>/spec.md` per owning unit,

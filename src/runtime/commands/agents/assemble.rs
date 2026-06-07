@@ -149,7 +149,7 @@ fn dependency_peers(registry: Option<&Registry>, project_dir: &Path) -> Vec<rend
         return Vec::new();
     }
 
-    // RFC-36: peer adapter/description come from the committed
+    // Peer adapter/description come from the committed
     // `.specify/topology.lock` (each member project's authored
     // `project.yaml`). A fresh workspace may not have synced a cache yet, so
     // fall back to the registry's optional greenfield seed.

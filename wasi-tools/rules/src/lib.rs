@@ -1,15 +1,14 @@
-//! Pure rule-tree checks for the `rules` framework-authoring tool,
-//! lifted from the host CLI's retiring `framework::check::rules`
-//! imperative surface (Road B framework tool).
+//! Pure rule-tree checks for the `rules` framework-authoring tool
+//! (Road B framework tool).
 //!
 //! The tool covers the whole-tree `rules.*` family:
 //!
 //! - CORE-009 (`rules.namespace-ownership-violation`) — each rule
 //!   markdown file's id-namespace prefix must be authored only under the
-//!   rules directory that owns that namespace. Preserves all four
-//!   branches of the retired predicate: the reserved-namespace
-//!   reservation (`FRAME-*`), dynamic source-owner discovery, the
-//!   unknown-owner diagnostic, and the placement check.
+//!   rules directory that owns that namespace. Covers all four
+//!   branches: the reserved-namespace reservation (`FRAME-*`), dynamic
+//!   source-owner discovery, the unknown-owner diagnostic, and the
+//!   placement check.
 //! - CORE-026 (`rules.duplicate-rule-id`) — a rule id declared in more
 //!   than one rules markdown file is a whole-tree duplicate.
 //! - CORE-053 (`rules.body-heading-missing`) — every rule markdown file's
@@ -75,9 +74,8 @@ pub struct OwnerPolicy {
 }
 
 /// CORE-009: assert each rule file's id-namespace prefix is owned by its
-/// containing rules directory. Walks the same trees as the retired
-/// `discover_rule_files` (target + source axes, then the shared
-/// `universal` / `core` packs) and applies, in the retired predicate's
+/// containing rules directory. Walks the rule trees (target + source
+/// axes, then the shared `universal` / `core` packs) and applies, in
 /// order: reserved-namespace reservation, unknown-owner, placement.
 #[must_use]
 pub fn check_namespace_ownership(project_dir: &Path, policy: &OwnerPolicy) -> Vec<RulesFinding> {
@@ -136,8 +134,7 @@ pub fn check_namespace_ownership(project_dir: &Path, policy: &OwnerPolicy) -> Ve
 }
 
 /// CORE-026: a rule id declared in more than one rules markdown file is a
-/// whole-tree duplicate. Mirrors the duplicate-id half of the retired
-/// `run_rules_schema_check`.
+/// whole-tree duplicate.
 #[must_use]
 pub fn check_duplicate_rule_id(project_dir: &Path) -> Vec<RulesFinding> {
     let mut ids_by_value: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -228,7 +225,7 @@ fn allowed_prefixes<'a>(
 
 /// Discover every rules markdown file under the target / source axes
 /// (`<adapter>/rules/**`) and the shared `universal` / `core` packs,
-/// skipping `README.md`. Mirrors the retired `discover_rule_files`.
+/// skipping `README.md`.
 fn discover_rule_files(project_dir: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     for axis in ["sources", "targets"] {

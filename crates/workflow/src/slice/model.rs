@@ -1,7 +1,7 @@
 //! Slice model — `model.yaml`.
 //!
 //! One structured artifact per slice at
-//! `.specify/slices/<slice>/model.yaml` (RFC-29 M2b). The single
+//! `.specify/slices/<slice>/model.yaml`. The single
 //! `schemas/slice/model.schema.json` validates both the agent's
 //! synthesis-response `model` and the persisted file: kernel-owned and
 //! header fields are optional so the kernel re-derives/stamps them on
@@ -10,7 +10,7 @@
 //! demand by `specify slice provenance` rather than persisted as a
 //! second file. See [`DECISIONS.md` §"Single slice-model artifact"][model-artifact].
 //!
-//! [model-artifact]: ../../../../DECISIONS.md#single-slice-model-artifact-rfc-29-m2b-simplification
+//! [model-artifact]: ../../../../DECISIONS.md#single-slice-model-artifact
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -31,8 +31,7 @@ use crate::slice::provenance::{
 use crate::slice::synthesis::authority::{Agreement, ClaimRef, resolve};
 
 /// In-memory view of `model.yaml`, holding the header, the requirement
-/// set with inline provenance, and the task list (RFC-29c §"Slice model
-/// (D4)").
+/// set with inline provenance, and the task list.
 ///
 /// The model carries only the earned core today — `requirements[]` and
 /// `tasks[]`; the deferred non-requirements sections (`domain`, `apis`,
@@ -56,7 +55,7 @@ pub struct SliceModel {
     /// The requirement set with inline provenance.
     #[serde(default)]
     pub requirements: Vec<ModelRequirement>,
-    /// Requirement→task tracing list (RFC-29c §"Slice model (D4)").
+    /// Requirement→task tracing list.
     #[serde(default)]
     pub tasks: Vec<ModelTask>,
 }
@@ -67,10 +66,8 @@ pub struct SliceModel {
 /// `scenarios`, `notes`, `unit`), the `agreement` verdict, and the
 /// contributing `claims`; the kernel-owned fields (`id`, `status`,
 /// `sources`, claim `winner`) are optional because the agent omits them
-/// and the kernel re-derives them on projection (RFC-29c §"Synthesis
-/// response"). The `resolution` label is not stored here — the
-/// provenance projection recomputes it (RFC-29c §"Provenance
-/// projection").
+/// and the kernel re-derives them on projection. The `resolution` label
+/// is not stored here — the provenance projection recomputes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct ModelRequirement {
@@ -111,7 +108,7 @@ pub struct ModelRequirement {
 /// One inline claim under [`ModelRequirement::claims`].
 ///
 /// The stable `(source, id, kind)` triple traces the claim to its
-/// Evidence (RFC-29c §"Claim contract"). The single-line `value` and
+/// Evidence (the claim contract). The single-line `value` and
 /// `path` anchor are read from `evidence/<source>.yaml` by the
 /// provenance projection rather than copied here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,14 +118,14 @@ pub struct ModelClaim {
     pub source: String,
     /// Claim id within that source's Evidence file.
     pub id: String,
-    /// Claim kind (D13).
+    /// Claim kind.
     pub kind: ClaimKind,
     /// Kernel-projected winner marker (divergence only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub winner: Option<bool>,
 }
 
-/// One `tasks[]` entry (RFC-29c §"Slice model (D4)"). Ids follow the
+/// One `tasks[]` entry. Ids follow the
 /// `TASK-NNN` / `REQ-NNN` grammars; grammar validation lives in the
 /// drift validators, so these are plain strings here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,7 +209,7 @@ impl SliceModel {
     }
 
     /// Project the audit-only provenance view from this model plus the
-    /// slice's on-disk Evidence (RFC-29c §"Provenance projection").
+    /// slice's on-disk Evidence.
     ///
     /// The persisted model carries the load-bearing provenance inline
     /// (`status`, claim `winner` markers, rendered `sources`); the two
@@ -387,7 +384,7 @@ impl EvidenceIndex {
 }
 
 /// Closed list of preferred single-line `value` body fields, in
-/// precedence order (RFC-29c §"Provenance projection"). A `requirement`
+/// precedence order. A `requirement`
 /// carries `statement`, a `criterion` carries `criterion`, a `decision`
 /// carries `decision`, an `example` carries `output`.
 const VALUE_FIELDS: [&str; 4] = ["statement", "criterion", "decision", "output"];

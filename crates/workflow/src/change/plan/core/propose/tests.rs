@@ -191,7 +191,7 @@ fn hub_config() -> ProjectConfig {
 
 #[test]
 fn resolve_topology_hub_reads_topology_lock() {
-    // RFC-36: workspace topology is projected from the committed
+    // Workspace topology is projected from the committed
     // `.specify/topology.lock`, not `registry.yaml`.
     let dir = tempfile::tempdir().expect("tempdir");
     let specify = dir.path().join(".specify");
@@ -447,7 +447,7 @@ fn propose_n1_auto_binds_sole_project() {
     let entry = &plan.entries[0];
     assert_eq!(entry.name, "fix-typo");
     assert_eq!(entry.project.as_deref(), Some("my-app"));
-    // Target is no longer stored; it resolves from the bound project.
+    // Target is not stored; it resolves from the bound project.
     assert_eq!(resolve_target(entry, &topo).unwrap().to_string(), "omnia@v1");
     assert_eq!(entry.status, Status::Pending);
     assert!(entry.depends_on.is_empty());
@@ -512,7 +512,7 @@ slices:
         vec![Some("identity-contracts"), Some("identity-service"), Some("identity-service")]
     );
 
-    // Targets are no longer stored; each resolves from its bound project.
+    // Targets are not stored; each resolves from its bound project.
     let targets: Vec<String> =
         plan.entries.iter().map(|e| resolve_target(e, &topo).unwrap().to_string()).collect();
     assert_eq!(

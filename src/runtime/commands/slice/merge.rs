@@ -20,7 +20,7 @@ use super::artifact_classes;
 use crate::runtime::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
-    // RFC-29d: the `slice.merge.*` pair fires on the validator outcome.
+    // The `slice.merge.*` pair fires on the validator outcome.
     // `started` brackets entry; the fallible body runs the validator +
     // apply and (on success) the durable `slice.archive.created` ledger
     // entry; `succeeded` brackets a fully completed run. Ordering is
@@ -68,7 +68,7 @@ fn commit_run(ctx: &Ctx, name: &str) -> Result<()> {
         }
     }
 
-    // Append the durable outcome-ledger entry (decision-log §"History
+    // Append the durable outcome-ledger entry (DECISIONS.md §"History
     // via git plus an outcome ledger"). Best-effort: a journal write
     // failure must not undo a committed merge, so the error is logged,
     // not propagated.

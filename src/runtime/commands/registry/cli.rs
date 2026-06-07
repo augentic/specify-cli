@@ -17,7 +17,7 @@ pub enum RegistryAction {
         /// `http(s)://` / `ssh://` / `git+...` remote.
         #[arg(long)]
         url: String,
-        /// Optional greenfield scaffold seed (RFC-36) — the adapter
+        /// Optional greenfield scaffold seed — the adapter
         /// written into a brand-new project's `project.yaml` when
         /// `workspace sync` clones an empty repo. Not read for plan-time
         /// topology.

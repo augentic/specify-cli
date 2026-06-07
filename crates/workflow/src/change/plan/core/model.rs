@@ -99,8 +99,8 @@ pub struct Plan {
     /// Human-readable plan name, e.g. `platform-v2`.
     pub name: PlanName,
     /// Plan-level lifecycle gate (workflow §Workflow vocabulary).
-    /// Defaults to [`Lifecycle::Pending`] on parse so 1.x fixtures
-    /// without a `lifecycle:` field load cleanly.
+    /// Defaults to [`Lifecycle::Pending`] on parse so a `plan.yaml`
+    /// without a `lifecycle:` field loads cleanly.
     #[serde(default)]
     pub lifecycle: Lifecycle,
     /// Named source bindings referenced by [`Entry::sources`].
@@ -237,10 +237,9 @@ fn slice_authority_override_is_empty(o: &SliceAuthorityOverride) -> bool {
 /// source).
 ///
 /// On the wire (workflow §Source) the binding is always the structured
-/// `{ adapter, path?, value? }` object form — 2.0 dropped the
-/// 1.x bare-string shorthand. The `oneOf` exclusion between `path`
-/// and `value` is enforced by `plan.schema.json` and re-checked at
-/// the loader boundary via [`crate::schema::validate_plan`].
+/// `{ adapter, path?, value? }` object form. The `oneOf` exclusion
+/// between `path` and `value` is enforced by `plan.schema.json` and
+/// re-checked at the loader boundary via [`crate::schema::validate_plan`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SourceBinding {
@@ -286,7 +285,7 @@ impl SourceBinding {
 /// This is the *resolved* target form, produced by
 /// [`crate::change::plan::core::resolve_target`] from a slice's bound
 /// project topology and surfaced by `specify plan next`, the slice
-/// `.metadata.yaml`, and the build request. It is no longer a stored
+/// `.metadata.yaml`, and the build request. It is not a stored
 /// `plan.yaml` field — a slice binds only a `project`, and the target
 /// adapter is resolved on demand.
 ///

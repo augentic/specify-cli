@@ -1,5 +1,5 @@
-//! Acceptance matrix for the four `specify init` shapes (RFC-30 Wave E
-//! item 6): `greenfield`, `brownfield`, `workspace`, and `migrated`.
+//! Acceptance matrix for the three `specify init` shapes:
+//! `greenfield`, `brownfield`, and `workspace`.
 //!
 //! Each test drives the real `specify` binary over a throwaway tempdir
 //! and asserts the on-disk + JSON-envelope contract for one shape:
@@ -11,25 +11,21 @@
 //!   and re-runs as a no-op.
 //! - `workspace` — the same re-entry over a populated workspace,
 //!   with the `workspace: true` discriminator and `registry.yaml` preserved.
-//! - `migrated` — the new end-to-end: `specify migrate` transforms a v1
-//!   tree into the golden v2 tree, then `specify init --upgrade`
-//!   re-enters the migrated artifact set.
 //!
 //! The `brownfield` / `workspace` headline invariants are also covered with an
-//! exhaustive byte-level write-set diff by Change E's
+//! exhaustive byte-level write-set diff by
 //! `init_upgrade_bumps_only_version_and_preserves_artifacts` and
 //! `init_upgrade_preserves_workspace_and_registry` in `tests/init.rs`; the
-//! versions here keep all four shapes co-located as one readable matrix.
+//! versions here keep all three shapes co-located as one readable matrix.
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
 use specify_workflow::config::ProjectConfig;
 use tempfile::tempdir;
 
-use crate::common::{copy_dir, omnia_schema_dir, parse_json, repo_root, specify_cmd};
+use crate::common::{omnia_schema_dir, parse_json, specify_cmd};
 
 /// Version this binary stamps into `specify_version` (the `specify`
 /// crate and this test crate share the workspace version).
@@ -146,118 +142,7 @@ fn workspace() {
     assert_second_run_is_noop(tmp.path());
 }
 
-// ---- migrated (end-to-end: migrate -> init --upgrade) ----
-
-#[test]
-fn migrated() {
-    // === A. migrate v1 -> v2 (real cross-major transform) ===
-    //
-    // Cross-major migration is driven with explicit `--from` / `--to`
-    // because the binary is pre-1.0: a same-major `resolve` is empty at
-    // major 0, so only an explicit major-2 target fires the `v1-to-v2`
-    // hop.
-    let tmp = tempdir().unwrap();
-    let root = tmp.path();
-    copy_dir(&migrate_fixture("before"), root);
-    fs::create_dir_all(root.join(".specify")).unwrap();
-    fs::write(root.join(".specify/project.yaml"), "name: legacy\nadapter: code-typescript\n")
-        .unwrap();
-
-    let assert = specify_cmd()
-        .current_dir(root)
-        .args(["--format", "json", "migrate", "--from", "1.0.0", "--to", "2.0.0", "--yes"])
-        .assert()
-        .success();
-    let body = parse_json(&assert.get_output().stdout);
-    assert_eq!(body["migrated"], true);
-    let kind = &body["kinds"].as_array().expect("kinds array")[0];
-    assert_eq!(kind["kind"], "v1-to-v2");
-    assert_eq!(kind["status"], "applied");
-    assert_eq!(kind["files-rewritten"], 6, "2 adapter manifests + 2 notes + discovery + plan");
-    assert_eq!(kind["files-moved"], 5, "2 source briefs + 3 target briefs");
-    let removed =
-        kind["files"].as_array().unwrap().iter().filter(|f| f["change"] == "removed").count();
-    assert_eq!(removed, 2, "2 monolithic adapter.yaml files removed");
-
-    // The migrated tree is byte-identical to the golden `after/`.
-    let produced = snapshot_no_specify(root);
-    let expected = snapshot_no_specify(&migrate_fixture("after"));
-    assert_eq!(
-        produced.keys().collect::<Vec<_>>(),
-        expected.keys().collect::<Vec<_>>(),
-        "migrated tree file set must match after/",
-    );
-    for (rel, bytes) in &expected {
-        assert_eq!(produced.get(rel), Some(bytes), "byte mismatch for {}", rel.display());
-    }
-
-    // The pin was bumped to the migration target and the apply journaled
-    // its counts.
-    assert_eq!(load_cfg(root).specify_version.as_deref(), Some("2.0.0"));
-    let events = journal_events(root);
-    assert_eq!(events.len(), 1, "exactly one migration.applied event");
-    assert_eq!(events[0]["event"], "migration.applied");
-    assert_eq!(events[0]["payload"]["kind"], "v1-to-v2");
-    assert_eq!(events[0]["payload"]["files-rewritten"], 6);
-    assert_eq!(events[0]["payload"]["files-moved"], 5);
-
-    // === B. init --upgrade on the freshly-migrated tree ===
-    //
-    // The pre-1.0 test binary is older than the 2.0.0 floor migrate just
-    // wrote, so the re-entry upgrade hits the version floor and refuses
-    // (exit 3, `specify-version-too-old`). A production >=2.x binary
-    // would instead bump to its own version and no-op — that bump path
-    // is exercised green in section C below. This arm locks the honest
-    // behavior of `migrate` followed by `init --upgrade` on the same
-    // tree under a stale binary.
-    let floor = specify_cmd()
-        .current_dir(root)
-        .args(["--format", "json", "init", "--upgrade"])
-        .assert()
-        .failure();
-    assert_eq!(floor.get_output().status.code(), Some(3), "stale binary maps to exit 3");
-    assert_eq!(parse_json(&floor.get_output().stderr)["error"], "specify-version-too-old");
-
-    // === C. init --upgrade re-enters the migrated artifact set ===
-    //
-    // Re-stage the migrated `after/` artifacts under a same-line older
-    // pin so the re-entry upgrade the migrated shape promises runs green:
-    // it bumps the pin to the binary version, leaves every migrated
-    // artifact byte-stable, and a second run is a no-op. This is the
-    // behavior a >=2.x binary exhibits over a freshly-migrated project.
-    let tmp2 = tempdir().unwrap();
-    let root2 = tmp2.path();
-    copy_dir(&migrate_fixture("after"), root2);
-    fs::create_dir_all(root2.join(".specify")).unwrap();
-    fs::write(
-        root2.join(".specify/project.yaml"),
-        "name: migrated\nadapter: omnia\nspecify_version: 0.2.0\n",
-    )
-    .unwrap();
-
-    let before = snapshot(root2);
-    let assert = specify_cmd()
-        .current_dir(root2)
-        .args(["--format", "json", "init", "--upgrade"])
-        .assert()
-        .success();
-    let body = parse_json(&assert.get_output().stdout);
-    assert_eq!(body["specify-version"], BINARY_VERSION);
-    assert_eq!(body["specify-version-changed"], true);
-    assert_eq!(body["adapter-name"], "omnia");
-
-    assert_only_project_yaml_changed(&before, &snapshot(root2));
-    assert_eq!(load_cfg(root2).specify_version.as_deref(), Some(BINARY_VERSION));
-
-    assert_second_run_is_noop(root2);
-}
-
 // ---- helpers ----
-
-/// Root of the checked-in B2 migrate fixture (`before/` + `after/`).
-fn migrate_fixture(leaf: &str) -> PathBuf {
-    repo_root().join("crates/workflow/tests/migrate/v1-to-v2").join(leaf)
-}
 
 /// Parse `.specify/project.yaml` under `root` into a [`ProjectConfig`].
 fn load_cfg(root: &Path) -> ProjectConfig {
@@ -265,42 +150,22 @@ fn load_cfg(root: &Path) -> ProjectConfig {
     serde_saphyr::from_str(&text).expect("parse project.yaml")
 }
 
-/// Journal events appended to `<root>/.specify/journal.jsonl`, or an
-/// empty vector when the file is absent.
-fn journal_events(root: &Path) -> Vec<Value> {
-    let raw = fs::read_to_string(root.join(".specify/journal.jsonl")).unwrap_or_default();
-    raw.lines().filter(|l| !l.is_empty()).map(|l| serde_json::from_str(l).unwrap()).collect()
-}
-
 /// Snapshot every regular file under `root` as `relative-path -> bytes`.
 fn snapshot(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
-    collect(root, false)
-}
-
-/// Snapshot every regular file under `root`, skipping the `.specify/`
-/// state tree the migrator owns.
-fn snapshot_no_specify(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
-    collect(root, true)
-}
-
-fn collect(root: &Path, skip_specify: bool) -> BTreeMap<PathBuf, Vec<u8>> {
-    fn walk(root: &Path, dir: &Path, skip_specify: bool, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
+    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) {
         for entry in fs::read_dir(dir).expect("read_dir") {
             let entry = entry.expect("dir entry");
             let path = entry.path();
             let rel = path.strip_prefix(root).expect("strip prefix").to_path_buf();
-            if skip_specify && rel.starts_with(".specify") {
-                continue;
-            }
             if entry.file_type().expect("file_type").is_dir() {
-                walk(root, &path, skip_specify, out);
+                walk(root, &path, out);
             } else {
                 out.insert(rel, fs::read(&path).expect("read file"));
             }
         }
     }
     let mut out = BTreeMap::new();
-    walk(root, root, skip_specify, &mut out);
+    walk(root, root, &mut out);
     out
 }
 

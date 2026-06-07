@@ -70,11 +70,10 @@ enum Kind { /* ... */ }
 
 ## No archaeology in code
 
-Module and crate docs describe what the code *does today*, in ≤ 3 lines. "Phase 1 …", "old contract renamed …", "previously lived in …", "to avoid the X → Y cycle" belong in [DECISIONS.md](../../DECISIONS.md) or are deleted.
+Module and crate docs describe what the code *does today*, in ≤ 3 lines. Historical framing — "Phase 1 …", "old contract renamed …", "previously lived in …", "to avoid the X → Y cycle" — is deleted, not relocated; git history is the record.
 
 ```rust
 // BAD
-//! This module owns the current behavior; migration history belongs in DECISIONS.md.
 //! the pre-cutover name was `initiative`. To avoid the
 //! foo → bar → foo cycle we re-export `Layout` from here.
 // GOOD

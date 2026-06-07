@@ -1,7 +1,7 @@
 //! Integration tests for `specify_workflow::registry::workspace` and
 //! `specify_workflow::registry::forge`.
 //!
-//! Pins the public surface lifted from the binary by the workspace split 2.2:
+//! Pins the public surface of the workspace registry:
 //! `github_slug`, `sync_projects` (registry-absent short-circuit at the
 //! caller, `.gitignore` upkeep), `workspace_status` (returns `None`
 //! when no registry), `is_specify_branch`, and `branches_match`.
@@ -1047,7 +1047,7 @@ projects:
     assert!(Path::new(&project_dir.join(".specify/workspace")).is_dir());
 }
 
-// ---------- RFC-36 topology.lock regeneration ------------------------
+// ---------- topology.lock regeneration ------------------------
 
 /// Stage a materialised slot with a resolvable omnia adapter and the
 /// given `project.yaml` body under `.specify/workspace/<name>/`.
@@ -1069,7 +1069,7 @@ fn topology_lock_projects_baseline() {
 
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
-    // A stale `capabilities:` key is silently ignored (RFC-36); routing
+    // A stale `capabilities:` key is silently ignored; routing
     // identity is derived from the slot's baseline, not re-authored.
     stage_topology_slot(
         project_dir,

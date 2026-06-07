@@ -10,7 +10,7 @@
 //! wire-stable diagnostic codes via a match on the op.
 //!
 //! [`run`] drives the whole flow: `tool` adapters run single-phase;
-//! `agent` adapters split into `prepare` / `finalize` (RFC-29 D9). Each
+//! `agent` adapters split into `prepare` / `finalize`. Each
 //! operation supplies its handoff envelope, commit step (lead-set merge
 //! / Evidence persist), cache event, and tool-dispatch error through
 //! the [`Flow`] trait, while [`Common`] carries the shared inputs.
@@ -34,8 +34,8 @@ use crate::runtime::context::Ctx;
 
 /// The `$SCRATCH_DIR` host path the prep mounted for this operation.
 ///
-/// `survey` / `extract` prep always mounts a scratch root (preflight
-/// §1); a `None` is an unreachable prep-invariant violation surfaced as
+/// `survey` / `extract` prep always mounts a scratch root; a `None` is
+/// an unreachable prep-invariant violation surfaced as
 /// a diagnostic rather than a panic (REVIEW.md A6).
 ///
 /// # Errors
@@ -83,7 +83,7 @@ pub(super) fn read_artifact(path: &Path, op: SourceOperation) -> Result<String> 
     })
 }
 
-/// Build the closed [`CacheFingerprint`] (RFC-27) for a source
+/// Build the closed [`CacheFingerprint`] for a source
 /// operation: source identity, `<name>@<version>`, the operation's
 /// brief sha256, the declared tool versions, and the optional `lead`
 /// input (`None` for `survey`, `Some(<lead>)` for `extract`).
@@ -239,14 +239,14 @@ pub(super) trait Flow<'a> {
     /// The cache hit/miss journal event kind for this operation.
     fn cache_event(&self, lookup: &cache::CacheLookup) -> EventKind;
 
-    /// Dispatch the declared WASI tool — an M1 seam that returns the
-    /// operation's `*-tool-unsupported` diagnostic.
+    /// Dispatch the declared WASI tool — an unsupported seam that returns
+    /// the operation's `*-tool-unsupported` diagnostic.
     fn dispatch_tool(&self) -> Result<()>;
 }
 
 /// Drive the shared two-phase source-operation flow: `tool` adapters
-/// run single-phase; `agent` adapters split into `prepare` / `finalize`
-/// (RFC-29 D9). The CLI never blocks on agent work.
+/// run single-phase; `agent` adapters split into `prepare` / `finalize`.
+/// The CLI never blocks on agent work.
 ///
 /// # Errors
 ///
