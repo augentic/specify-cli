@@ -24,25 +24,25 @@ in `src/runtime/output.rs` is the single source of truth; every dispatcher route
 its error through it. `Exit::Code(u8)` is reserved for `specify tool
 run` WASI passthrough.
 
-| Code | Name                     | When                                                                                          |
-|------|--------------------------|-----------------------------------------------------------------------------------------------|
-| 0    | `EXIT_SUCCESS`           | Command succeeded.                                                                            |
-| 1    | `EXIT_GENERIC_FAILURE`   | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...). |
-| 2    | `EXIT_VALIDATION_FAILED` | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority and slice-model kebab discriminants `slice-authority-override-orphan-source` and `slice-model-source-orphan`, routed through `Error::validation_failed`. |
-| 3    | `EXIT_VERSION_TOO_OLD`   | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                             |
-| 4    | `EXIT_MIGRATION_REQUIRED` | `Error::ProjectNeedsMigration` — `project.yaml.specify_version` major is older than `CARGO_PKG_VERSION`; run `specify migrate`. |
+| Code | Name                      | When                                                                                                                                                                                                                                                                               |
+| ---- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | `EXIT_SUCCESS`            | Command succeeded.                                                                                                                                                                                                                                                                 |
+| 1    | `EXIT_GENERIC_FAILURE`    | Any `Error` variant not listed below (I/O, YAML, schema, merge, tool resolver/runtime, ...).                                                                                                                                                                                       |
+| 2    | `EXIT_VALIDATION_FAILED`  | Validation findings, `Error::Validation`, `Error::Argument`, or a tool request rejected as undeclared. Also the authority and slice-model kebab discriminants `slice-authority-override-orphan-source` and `slice-model-source-orphan`, routed through `Error::validation_failed`. |
+| 3    | `EXIT_VERSION_TOO_OLD`    | `project.yaml.specify_version` is newer than `CARGO_PKG_VERSION`.                                                                                                                                                                                                                  |
+| 4    | `EXIT_MIGRATION_REQUIRED` | `Error::ProjectNeedsMigration` — `project.yaml.specify_version` major is older than `CARGO_PKG_VERSION`; run `specify migrate`.                                                                                                                                                    |
 
 The Rust `Exit` enum carries six named variants (plus `Exit::Code(u8)`
 for WASI tool passthrough) which collapse onto these five wire codes
 via `Exit::from(&Error)`:
 
-| Variant                  | Code |
-|--------------------------|------|
-| `Exit::Success`          | `0`  |
-| `Exit::GenericFailure`   | `1`  |
-| `Exit::ValidationFailed` | `2`  |
-| `Exit::ArgumentError`    | `2`  |
-| `Exit::VersionTooOld`    | `3`  |
+| Variant                   | Code |
+| ------------------------- | ---- |
+| `Exit::Success`           | `0`  |
+| `Exit::GenericFailure`    | `1`  |
+| `Exit::ValidationFailed`  | `2`  |
+| `Exit::ArgumentError`     | `2`  |
+| `Exit::VersionTooOld`     | `3`  |
 | `Exit::MigrationRequired` | `4`  |
 
 `Exit::ArgumentError` and `Exit::ValidationFailed` share code `2` so the
@@ -426,14 +426,13 @@ verbatim:
    agent-populated manifest cache, fetched by the plan/slice flow.
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo
    manifests checked into the project's source tree.
-3. `$SPECIFY_FRAMEWORK_ROOT/adapters/{sources,targets}/<name>/` — an
-   on-disk checkout of the framework repo named by the
-   `SPECIFY_FRAMEWORK_ROOT` env var (the same var the lint surface
-   honours). Offline/dev/acceptance fallback only: it lets a disposable
-   project resolve first-party adapters without a project-local
-   `adapters/` tree or a manifest-cache mirror. Probed last, so a
-   project that vendors its own adapter always wins. Skipped when the
-   env var is unset.
+
+Resolution is project-local only: there is no environment-variable
+fallback to an out-of-tree framework checkout. A project must either
+carry a manifest-cache mirror or a vendored `adapters/` tree, or — for
+first-party adapters at `init` time — let the shorthand fetch from
+GitHub (see below). When neither location matches, resolution fails
+with `adapter-not-found`.
 
 The axis segment (`sources` for `Axis::Source`, `targets` for
 `Axis::Target`) keeps source and target adapters with colliding names
@@ -451,13 +450,10 @@ probe order or manifest-cache layout.
 `^[a-z][a-z0-9-]*(@v\d+)?$` (`omnia`, `omnia@v1`; the ref defaults to
 `v1`) — alongside the existing local-path and `https://github.com/…`
 forms. `AdapterUri::parse` (`crates/workflow/src/init/adapter_uri.rs`)
-expands the shorthand before the local-path branch:
-
-- prefer `$SPECIFY_FRAMEWORK_ROOT/adapters/targets/<name>/` when the env
-  var names a checkout that carries the adapter (offline dev +
-  acceptance), recording a `file://` `adapter:` value; else
-- fall back to the canonical published adapter
-  `https://github.com/augentic/specify/adapters/targets/<name>@<ref>`.
+expands the shorthand before the local-path branch, resolving it to the
+canonical published adapter
+`https://github.com/augentic/specify/adapters/targets/<name>@<ref>`
+(a networked sparse checkout).
 
 `init` is target-only, so the shorthand resolves under
 `adapters/targets/`. Paths (`./foo`, `/abs`, `file://…`) and URLs
@@ -581,32 +577,32 @@ taxonomy. The wire ids are dotted kebab-case; the Rust `EventKind`
 variants are `snake_case` and bridge to the wire via
 `#[serde(rename = "…")]`. The taxonomy is:
 
-| Wire id | Emitted by |
-|---|---|
-| `plan.transition.approved` | `specify plan transition <plan> approved` (Gate 1 stamp). |
-| `plan.transition.undone` | `specify plan transition <entry> --undo` (per-entry reverse rung; one event per rung). |
-| `plan.amend.divergence` | `specify plan amend --divergence likely\|accepted\|rejected` on any change to a slice's `divergence` field (the `/spec:plan` agent stages `likely`; the operator flips `accepted`/`rejected`). |
-| `slice.transition.refined` | `specify slice transition <slice> refined`. |
-| `slice.extract.completed` | The `/spec:refine` skill, after the serial `extract` loop closes. |
-| `slice.synthesize.started` | `specify slice synthesize --from` at the start of the projecting/persisting pass. Payload carries `slice-name`. |
-| `slice.synthesize.agent` | `specify slice synthesize --dry-run` after assembling the agent inputs envelope. One event per invocation; payload carries `slice-name`. |
-| `slice.synthesize.completed` | `specify slice synthesize --from` once every artifact validated and persisted. Payload carries `slice-name` and the persisted `artifacts[]`. |
-| `slice.synthesize.failed` | `specify slice synthesize --from` aborted before all artifacts were persisted. Payload carries `slice-name` and a short `reason` / finding code. |
-| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. (Distinct from the `slice.synthesize.*` lifecycle quartet above — see §"Slice synthesis engine (RFC-29 M2b)".) |
-| `slice.build.started` / `.succeeded` / `.failed` | `/spec:build`'s target-adapter build flow (RFC-29d M3); one per slice. Payloads carry `slice-name`; the `.failed` variant adds a short `reason` / finding code. |
-| `slice.merge.started` / `.succeeded` / `.failed` | `specify slice merge`'s validator outcome (RFC-29d M3) — fires on the validator result, not on a merge report. Payloads carry `slice-name`; the `.failed` variant adds a short `reason` / finding code. |
-| `slice.extract.cache-hit` / `.cache-miss` | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract. |
-| `source.survey.cache-hit` / `.cache-miss` | The `specify source survey` runner's cache probe; payloads carry `source`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`). |
-| `source.execution.agent` | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`). |
-| `target.execution.agent` | `/spec:build`'s target-adapter build flow on every agent invocation (RFC-29d M3); payload carries `slice` and `target` derived from the bound project. |
-| `slice.archive.created` | `specify slice merge`'s archive step (the append-only outcome ledger). Payload carries `slice-name`, `touched-specs`, `outcome-summary`, and the optional `merge-sha`. See §"History via git plus an outcome ledger". |
-| `slice.replay.completed` | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics. |
-| `plan.amend.authority-override` | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics. |
-| `lint-completed` | `specify lint project` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the journal payload verbatim. |
-| `cli.upgraded` | `specify upgrade` after the new binary self-updates; payload carries `from`, `to`, and the resolved install `channel` (`cargo \| brew \| binary`). |
-| `plugins.refreshed` | `specify plugins refresh` after it invalidates the Cursor plugin cache; payload carries the removed `deleted-paths[]` and the resolved `marketplace` file path. |
-| `migration.applied` | `specify migrate` after a registered migrator applies; payload carries the migrator `kind` and the `files-rewritten` / `files-moved` counts. |
-| `migration.skipped` | `specify migrate` when a staged migrator left the project untouched (atomic rollback); payload carries the migrator `kind` and a short `reason`. |
+| Wire id                                                 | Emitted by                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `plan.transition.approved`                              | `specify plan transition <plan> approved` (Gate 1 stamp).                                                                                                                                                                                                                                              |
+| `plan.transition.undone`                                | `specify plan transition <entry> --undo` (per-entry reverse rung; one event per rung).                                                                                                                                                                                                                 |
+| `plan.amend.divergence`                                 | `specify plan amend --divergence likely\|accepted\|rejected` on any change to a slice's `divergence` field (the `/spec:plan` agent stages `likely`; the operator flips `accepted`/`rejected`).                                                                                                         |
+| `slice.transition.refined`                              | `specify slice transition <slice> refined`.                                                                                                                                                                                                                                                            |
+| `slice.extract.completed`                               | The `/spec:refine` skill, after the serial `extract` loop closes.                                                                                                                                                                                                                                      |
+| `slice.synthesize.started`                              | `specify slice synthesize --from` at the start of the projecting/persisting pass. Payload carries `slice-name`.                                                                                                                                                                                        |
+| `slice.synthesize.agent`                                | `specify slice synthesize --dry-run` after assembling the agent inputs envelope. One event per invocation; payload carries `slice-name`.                                                                                                                                                               |
+| `slice.synthesize.completed`                            | `specify slice synthesize --from` once every artifact validated and persisted. Payload carries `slice-name` and the persisted `artifacts[]`.                                                                                                                                                           |
+| `slice.synthesize.failed`                               | `specify slice synthesize --from` aborted before all artifacts were persisted. Payload carries `slice-name` and a short `reason` / finding code.                                                                                                                                                       |
+| `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. (Distinct from the `slice.synthesize.*` lifecycle quartet above — see §"Slice synthesis engine (RFC-29 M2b)".)                                                                                               |
+| `slice.build.started` / `.succeeded` / `.failed`        | `/spec:build`'s target-adapter build flow (RFC-29d M3); one per slice. Payloads carry `slice-name`; the `.failed` variant adds a short `reason` / finding code.                                                                                                                                        |
+| `slice.merge.started` / `.succeeded` / `.failed`        | `specify slice merge`'s validator outcome (RFC-29d M3) — fires on the validator result, not on a merge report. Payloads carry `slice-name`; the `.failed` variant adds a short `reason` / finding code.                                                                                                |
+| `slice.extract.cache-hit` / `.cache-miss`               | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract.                                                                                                                                                      |
+| `source.survey.cache-hit` / `.cache-miss`               | The `specify source survey` runner's cache probe; payloads carry `source`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`).                                                                            |
+| `source.execution.agent`                                | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`).                                                                                                                                 |
+| `target.execution.agent`                                | `/spec:build`'s target-adapter build flow on every agent invocation (RFC-29d M3); payload carries `slice` and `target` derived from the bound project.                                                                                                                                                 |
+| `slice.archive.created`                                 | `specify slice merge`'s archive step (the append-only outcome ledger). Payload carries `slice-name`, `touched-specs`, `outcome-summary`, and the optional `merge-sha`. See §"History via git plus an outcome ledger".                                                                                  |
+| `slice.replay.completed`                                | Target adapter's `build` step when it consumes runtime captures; optional in v1. runtime capture semantics.                                                                                                                                                                                            |
+| `plan.amend.authority-override`                         | `specify plan create --authority-override`, `specify plan amend --authority-override` / `--clear-authority-override` / `--clear-authority-overrides`. per-slice authority override semantics.                                                                                                          |
+| `lint-completed`                                        | `specify lint project` after each scan; payload carries `scope`, `duration_ms`, per-status `counts.{open, ignored, false_positive}`, `baseline_present` (hard-coded `false` until RFC-33b lands), and the resolved `exit_code`. Wire field names are snake_case to match the journal payload verbatim. |
+| `cli.upgraded`                                          | `specify upgrade` after the new binary self-updates; payload carries `from`, `to`, and the resolved install `channel` (`cargo \| brew \| binary`).                                                                                                                                                     |
+| `plugins.refreshed`                                     | `specify plugins refresh` after it invalidates the Cursor plugin cache; payload carries the removed `deleted-paths[]` and the resolved `marketplace` file path.                                                                                                                                        |
+| `migration.applied`                                     | `specify migrate` after a registered migrator applies; payload carries the migrator `kind` and the `files-rewritten` / `files-moved` counts.                                                                                                                                                           |
+| `migration.skipped`                                     | `specify migrate` when a staged migrator left the project untouched (atomic rollback); payload carries the migrator `kind` and a short `reason`.                                                                                                                                                       |
 
 Events persist as newline-delimited JSON at
 `<project_dir>/.specify/journal.jsonl`. The closed `from` / `to`
@@ -658,13 +654,13 @@ Per-entry status writes route to exactly one CLI verb. Skill bodies
 never write status by hand; the CLI is the single source of truth for
 each transition:
 
-| State | Writer | Trigger |
-|---|---|---|
-| `pending` (per-entry) | `specify plan add` / `specify plan amend` | Operator (or `/spec:plan`) authors / edits a slice row. |
-| `in-progress` (per-entry) | `specify plan next` | Sole writer; the `/spec:execute` loop calls it once per slice. |
-| `done` (per-entry) | `specify plan transition <entry> done` | Called by `/spec:merge` after `specify slice merge` succeeds. |
-| `pending` (plan-level) | `specify plan create` | `/spec:plan` scaffolds the plan in `pending`. |
-| `reviewed` (plan-level) | `specify plan transition <plan> approved` | Operator-only (Gate 1). The CLI is ungated; `/spec:plan` MUST NOT call this verb — `--help` text documents the rule and the skill body is the actual gate. |
+| State                     | Writer                                    | Trigger                                                                                                                                                    |
+| ------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pending` (per-entry)     | `specify plan add` / `specify plan amend` | Operator (or `/spec:plan`) authors / edits a slice row.                                                                                                    |
+| `in-progress` (per-entry) | `specify plan next`                       | Sole writer; the `/spec:execute` loop calls it once per slice.                                                                                             |
+| `done` (per-entry)        | `specify plan transition <entry> done`    | Called by `/spec:merge` after `specify slice merge` succeeds.                                                                                              |
+| `pending` (plan-level)    | `specify plan create`                     | `/spec:plan` scaffolds the plan in `pending`.                                                                                                              |
+| `reviewed` (plan-level)   | `specify plan transition <plan> approved` | Operator-only (Gate 1). The CLI is ungated; `/spec:plan` MUST NOT call this verb — `--help` text documents the rule and the skill body is the actual gate. |
 
 The plan-level `reviewed` row is the lightest-touch shape the workflow
 allows: a wholly operator-driven stamp with no CLI-side authentication.
@@ -686,9 +682,9 @@ and the Rust loader (`specify_workflow::change::SourceBinding`).
 The `specify plan create --source` flag grammar mirrors the wire
 shape:
 
-| Form | Materialises as |
-|---|---|
-| `--source <key>=<adapter>:<path>` | `SourceBinding { adapter, path: Some(<path>), value: None }` |
+| Form                                       | Materialises as                                                 |
+| ------------------------------------------ | --------------------------------------------------------------- |
+| `--source <key>=<adapter>:<path>`          | `SourceBinding { adapter, path: Some(<path>), value: None }`    |
 | `--source <key>=<adapter>:value:<literal>` | `SourceBinding { adapter, path: None, value: Some(<literal>) }` |
 
 The adapter is the substring up to the first `:` after `=`; the
@@ -1004,11 +1000,11 @@ RFC-29d build-request schema — is introduced.
 
 The word **workspace** overloads three related concepts. Use them verbatim in operator-facing prose:
 
-| Term | Meaning |
-| --- | --- |
-| **Workspace** | Registry-only platform repo: `workspace: true` in `project.yaml`, `registry.yaml`, plan artifacts at the repo root |
-| **Workspace slot** | Materialised peer at `.specify/workspace/<project>/` |
-| **Workspace sync** | `specify workspace sync` — materialise slots and regenerate `topology.lock` |
+| Term               | Meaning                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| **Workspace**      | Registry-only platform repo: `workspace: true` in `project.yaml`, `registry.yaml`, plan artifacts at the repo root |
+| **Workspace slot** | Materialised peer at `.specify/workspace/<project>/`                                                               |
+| **Workspace sync** | `specify workspace sync` — materialise slots and regenerate `topology.lock`                                        |
 
 `/spec:init workspace` and `specify init --workspace` scaffold a workspace; init chains an initial workspace sync before returning.
 
@@ -1244,13 +1240,13 @@ kebab-case enum on the wire. The fingerprint algorithm excludes both `status` an
 `disposition`, so demoting a finding from `open` to `ignored` (or
 `false-positive`) never changes its identity.
 
-| Value            | Set by                | Meaning                                                                                                                                |
-|------------------|-----------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `open`           | scanner (default)     | Freshly emitted finding before post-passes run. The only value that contributes to the `specify lint` exit-code decision by default.   |
-| `ignored`        | directive pass        | An in-source `specify-ignore` directive matched the finding's `(path, line, rule-id)`. Carries `disposition.directive`.                |
-| `false-positive` | directive pass        | A directive matched and the rationale was prefixed `false-positive:`. Reported separately in dashboards.                                |
-| `fixed`          | reserved              | Reserved for the cross-run baseline diff verb. No producer in v1.                                                                      |
-| `accepted`       | reserved              | Reserved for explicit operator acceptance via the baseline file. No producer in v1.                                                    |
+| Value            | Set by            | Meaning                                                                                                                              |
+| ---------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `open`           | scanner (default) | Freshly emitted finding before post-passes run. The only value that contributes to the `specify lint` exit-code decision by default. |
+| `ignored`        | directive pass    | An in-source `specify-ignore` directive matched the finding's `(path, line, rule-id)`. Carries `disposition.directive`.              |
+| `false-positive` | directive pass    | A directive matched and the rationale was prefixed `false-positive:`. Reported separately in dashboards.                             |
+| `fixed`          | reserved          | Reserved for the cross-run baseline diff verb. No producer in v1.                                                                    |
+| `accepted`       | reserved          | Reserved for explicit operator acceptance via the baseline file. No producer in v1.                                                  |
 
 `disposition` is an optional sibling object on `Diagnostic`, populated
 only when `status != open`:

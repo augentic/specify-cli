@@ -149,13 +149,6 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
         AdapterLocation::Cached(cached)
     } else if local.is_dir() {
         AdapterLocation::Local(local)
-    } else if let Some(framework) = framework_root_axis_dir(axis, name) {
-        // Offline/dev/acceptance fallback: a checkout of the framework
-        // repo named by `$SPECIFY_FRAMEWORK_ROOT` supplies first-party
-        // source/target adapters without a project-local `adapters/`
-        // tree or a manifest-cache mirror. Reported as `Local` — it is
-        // a local filesystem resolution.
-        AdapterLocation::Local(framework)
     } else {
         return Err(Error::Diag {
             code: "adapter-not-found",
@@ -176,15 +169,4 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
         return Err(axis_collision_error(name, axis, location.path(), &sibling));
     }
     Ok(location)
-}
-
-/// `$SPECIFY_FRAMEWORK_ROOT/adapters/{sources,targets}/<name>` when the
-/// env var names a checkout that actually carries the adapter directory.
-/// The offline/dev/acceptance fallback probed after the manifest-cache
-/// and project-dir locations in [`locate_axis`]; returns `None` when the
-/// env var is unset or the directory is absent.
-fn framework_root_axis_dir(axis: Axis, name: &str) -> Option<PathBuf> {
-    let root = std::env::var_os("SPECIFY_FRAMEWORK_ROOT")?;
-    let dir = adapter_axis_dir(Path::new(&root), axis).join(name);
-    dir.is_dir().then_some(dir)
 }
