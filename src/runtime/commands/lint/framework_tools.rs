@@ -76,7 +76,8 @@ const PROSE_WASM: &[u8] =
 
 /// `rules` framework checker component, built from `wasi-tools/rules/`
 /// via `cargo make rules-wasm` (Road B rule-tree family: CORE-009
-/// namespace ownership, CORE-026 duplicate rule id).
+/// namespace ownership, CORE-026 duplicate rule id, CORE-053 body
+/// heading missing).
 const RULES_WASM: &[u8] =
     include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/wasi-tools/rules/dist/rules-0.1.0.wasm"));
 

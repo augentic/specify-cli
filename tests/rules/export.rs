@@ -1,74 +1,32 @@
-//! Golden tests for `specify rules export`.
+//! Tests for `specify rules export`.
 //!
 //! Exercises the runtime rules export contract — `ResolvedRules` export
-//! rules export" and §"Codex root resolution (v1)" — via the
-//! [`specify_standards::build_resolved_rules`] library entrypoint
-//! for the positive scenarios and `assert_cmd` for the negative
-//! `rules-root-required` scenario (the latter end-to-end proof that
-//! the CH-17 CLI plumbing wires through to `Exit::ValidationFailed`).
+//! and §"Codex root resolution (v1)" — via the
+//! [`specify_standards::build_resolved_rules`] library entrypoint for the
+//! resolver scenarios and `assert_cmd` for the CLI-plumbing scenarios
+//! (`--include-core`, JSON-only, `rules-root-required`).
 //!
-//! ## Sibling-repo dependency
-//!
-//! Golden tests resolve their rules root against the
-//! [`augentic/specify`](https://github.com/augentic/specify) plugin
-//! checkout — the canonical source of `UNI-*`, target overlays, and
-//! the CH-05 `SRC-001` fixture. The checkout location is configurable
-//! via the `SPECIFY_PLUGIN_REPO` env var and defaults to `../specify`
-//! relative to the CLI repo (the standard layout per `AGENTS.md`).
-//!
-//! When the checkout is absent (e.g. CI without the sibling clone),
-//! every scenario prints a `SKIP` line and returns early. The negative
-//! scenario does not depend on the sibling tree and always runs.
-//!
-//! ## Regenerating goldens
-//!
-//! Golden JSON fixtures live under
-//! `tests/fixtures/rules-export/<scenario>.json`. They are
-//! pretty-printed (`serde_json::to_string_pretty`, 2-space indent) with
-//! a single trailing newline. To refresh after an intentional change to
-//! the export shape or sibling-repo codex content:
-//!
-//! ```text
-//! REGENERATE_GOLDENS=1 cargo nextest run --test rules
-//! ```
-//!
-//! Regeneration only writes files for tests that ran (sibling repo
-//! present); the negative test has no golden.
+//! Every scenario is self-contained: it builds a synthetic rules-root
+//! tree under a tempdir, so the suite has no dependency on the sibling
+//! `augentic/specify` checkout. Rule-*content* validation (e.g. the
+//! `## Rule` body heading) is enforced separately by the framework lint
+//! (CORE-053), run over the plugin repo by its own `make lint`.
 
-use std::path::{Path, PathBuf};
-use std::{env, fs};
+use std::fs;
+use std::path::Path;
 
 use assert_cmd::Command;
 use serde_json::Value;
-use specify_standards::{ResolveInputs, ResolvedRules, build_resolved_rules};
+use specify_standards::{Origin, ResolveInputs, ResolvedRules, build_resolved_rules};
 use tempfile::tempdir;
 
-/// Locate the `augentic/specify` plugin-repo checkout. Returns
-/// `None` (and the caller should `SKIP`) when the path does not exist.
-fn plugin_repo_path() -> Option<PathBuf> {
-    // CARGO_MANIFEST_DIR is the CLI repo root; `../specify` resolves
-    // to the sibling clone per AGENTS.md.
-    let path = env::var("SPECIFY_PLUGIN_REPO").map_or_else(
-        |_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("specify"),
-        PathBuf::from,
-    );
-    path.is_dir().then_some(path)
-}
-
-/// Resolve the directory where golden fixtures live.
-fn goldens_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("rules-export")
-}
-
-/// Build the export envelope by calling the library entrypoint
-/// directly. The project dir is a fresh tempdir so no project-local
-/// adapter rungs interfere with the rules-root fallback path.
-fn run_export(
-    rules_root: &Path, target: &str, sources: &[String], include_deprecated: bool,
+/// Build the export envelope by calling the library entrypoint directly
+/// against an explicit synthetic rules root and project dir.
+fn resolve_rules(
+    rules_root: &Path, project: &Path, target: &str, sources: &[String], include_deprecated: bool,
 ) -> ResolvedRules {
-    let project = tempdir().expect("project tempdir");
     let inputs = ResolveInputs {
-        project_dir: project.path(),
+        project_dir: project,
         rules_root: Some(rules_root),
         target_adapter: target,
         source_adapters: sources,
@@ -81,171 +39,149 @@ fn run_export(
     build_resolved_rules(&inputs).expect("build_resolved_rules succeeds")
 }
 
-/// Compare `actual` against `<goldens_dir>/<name>.json`, or write the
-/// fixture when `REGENERATE_GOLDENS` is set.
-///
-/// Goldens are pretty-printed JSON with a single trailing newline so
-/// the file diffs as one logical record per rule.
-#[track_caller]
-fn assert_golden(actual: &Value, name: &str) {
-    let golden_path = goldens_dir().join(format!("{name}.json"));
-    let mut rendered = serde_json::to_string_pretty(actual).expect("pretty json");
-    rendered.push('\n');
-
-    if env::var_os("REGENERATE_GOLDENS").is_some() {
-        fs::create_dir_all(golden_path.parent().unwrap()).expect("mkdir golden parent");
-        fs::write(&golden_path, &rendered).expect("write golden");
-        return;
+/// Write arbitrary rule markdown, creating parent dirs as needed.
+fn write_rule_md(path: &Path, contents: &str) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("create parent dir");
     }
+    fs::write(path, contents).expect("write rule fixture");
+}
 
-    let expected = fs::read_to_string(&golden_path).unwrap_or_else(|err| {
-        panic!(
-            "golden {} missing ({err}); regenerate via \
-             REGENERATE_GOLDENS=1 cargo nextest run --test rules",
-            golden_path.display()
-        )
-    });
+/// Minimal frontmatter + body that parses through the CH-11 parser and
+/// validates against `rule.schema.json`.
+fn basic_rule(id: &str, title: &str, severity: &str) -> String {
+    format!(
+        "---\nid: {id}\ntitle: {title}\nseverity: {severity}\ntrigger: Synthetic resolver fixture trigger sentence long enough for schema.\n---\n\n## Rule\n\nBody for {id}.\n"
+    )
+}
 
-    assert_eq!(
-        rendered,
-        expected,
-        "golden divergence at {}\n--- actual (truncated head) ---\n{}\n--- expected (truncated head) ---\n{}",
-        golden_path.display(),
-        rendered.chars().take(400).collect::<String>(),
-        expected.chars().take(400).collect::<String>(),
+/// A deprecated rule. Authored with the `snake_case` `replaced_by` key
+/// (the CH-11 parser lifts it to the kebab-case `replaced-by` wire form);
+/// schema validation runs on the pre-lift YAML.
+fn deprecated_rule(id: &str, replaced_by: &str) -> String {
+    format!(
+        "---\nid: {id}\ntitle: Deprecated fixture\nseverity: important\ntrigger: Synthetic deprecated fixture trigger sentence long enough for schema.\ndeprecated:\n  reason: superseded by a fixture replacement\n  replaced_by: {replaced_by}\n---\n\n## Rule\n\nBody for {id}.\n"
+    )
+}
+
+/// Target overlay rolls up alongside the shared `UNI-*` pack, each with
+/// the contract origin tier.
+#[test]
+fn target_overlay_rolls_up_with_shared() {
+    let rules_root = tempdir().expect("rules root");
+    let project = tempdir().expect("project");
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+        &basic_rule("UNI-001", "Shared anchor", "important"),
     );
+    write_rule_md(
+        &project.path().join("adapters/targets/omnia/rules/omnia-001.md"),
+        &basic_rule("OMNIA-001", "Target overlay", "important"),
+    );
+
+    let resolved = resolve_rules(rules_root.path(), project.path(), "omnia", &[], false);
+
+    let uni = resolved.rules.iter().find(|r| r.rule_id == "UNI-001").expect("UNI-001 present");
+    let omnia =
+        resolved.rules.iter().find(|r| r.rule_id == "OMNIA-001").expect("OMNIA-001 present");
+    assert_eq!(uni.origin, Origin::Shared, "UNI-001 must carry origin=shared");
+    assert_eq!(omnia.origin, Origin::Target, "OMNIA-001 must carry origin=target");
 }
 
-/// `ResolvedRules` export contract: exporting against the `omnia`
-/// target carries shared `UNI-*` rules plus the omnia overlay.
+/// A source-adapter overlay flows in as `origin: source` when the source
+/// is bound to the export context.
 #[test]
-fn omnia_golden() {
-    let Some(rules_root) = plugin_repo_path() else {
-        eprintln!("SKIP omnia_golden: ../specify checkout not found");
-        return;
-    };
-    let resolved = run_export(&rules_root, "omnia", &[], false);
-    let value = serde_json::to_value(&resolved).expect("to_value");
-    assert_golden(&value, "omnia");
-}
+fn source_overlay_carries_origin_source() {
+    let rules_root = tempdir().expect("rules root");
+    let project = tempdir().expect("project");
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+        &basic_rule("UNI-001", "Shared anchor", "important"),
+    );
+    write_rule_md(
+        &project.path().join("adapters/sources/documentation/rules/src-001.md"),
+        &basic_rule("SRC-001", "Source overlay", "important"),
+    );
 
-/// `vectis` target overlay rolls up alongside the shared rules.
-#[test]
-fn vectis_golden() {
-    let Some(rules_root) = plugin_repo_path() else {
-        eprintln!("SKIP vectis_golden: ../specify checkout not found");
-        return;
-    };
-    let resolved = run_export(&rules_root, "vectis", &[], false);
-    let value = serde_json::to_value(&resolved).expect("to_value");
-    assert_golden(&value, "vectis");
-}
-
-/// `contracts` target overlay rolls up alongside the shared rules.
-#[test]
-fn contracts_golden() {
-    let Some(rules_root) = plugin_repo_path() else {
-        eprintln!("SKIP contracts_golden: ../specify checkout not found");
-        return;
-    };
-    let resolved = run_export(&rules_root, "contracts", &[], false);
-    let value = serde_json::to_value(&resolved).expect("to_value");
-    assert_golden(&value, "contracts");
-}
-
-/// CH-05 `SRC-001` source overlay flows in as `origin: source` when
-/// the `documentation` source adapter is bound to the export context.
-#[test]
-fn omnia_with_documentation_source_overlay() {
-    let Some(rules_root) = plugin_repo_path() else {
-        eprintln!("SKIP omnia_with_documentation_source_overlay: ../specify checkout not found");
-        return;
-    };
     let sources = vec!["documentation".to_string()];
-    let resolved = run_export(&rules_root, "omnia", &sources, false);
+    let resolved = resolve_rules(rules_root.path(), project.path(), "omnia", &sources, false);
 
-    let src_001 = resolved
+    let src = resolved
         .rules
         .iter()
         .find(|r| r.rule_id == "SRC-001")
         .expect("SRC-001 must appear when documentation source is bound");
-    assert_eq!(
-        src_001.origin,
-        specify_standards::Origin::Source,
-        "SRC-001 must carry origin=source"
+    assert_eq!(src.origin, Origin::Source, "SRC-001 must carry origin=source");
+}
+
+/// `--include-deprecated` toggles the deprecation filter: deprecated
+/// rules are dropped by default and surface only with the flag set.
+#[test]
+fn include_deprecated_surfaces_rule() {
+    let rules_root = tempdir().expect("rules root");
+    let project = tempdir().expect("project");
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+        &basic_rule("UNI-001", "Active shared", "important"),
+    );
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-009.md"),
+        &deprecated_rule("UNI-009", "UNI-001"),
     );
 
-    let value = serde_json::to_value(&resolved).expect("to_value");
-    assert_golden(&value, "omnia-with-documentation");
-}
-
-/// `--include-deprecated` toggles the deprecation filter on. If no
-/// first-party rules are currently deprecated the resulting envelope
-/// matches the no-flag `omnia` golden exactly; pinning both goldens
-/// makes a future deprecation visible as a focused diff.
-#[test]
-fn omnia_include_deprecated() {
-    let Some(rules_root) = plugin_repo_path() else {
-        eprintln!("SKIP omnia_include_deprecated: ../specify checkout not found");
-        return;
-    };
-    let resolved = run_export(&rules_root, "omnia", &[], true);
-    let value = serde_json::to_value(&resolved).expect("to_value");
-    assert_golden(&value, "omnia-include-deprecated");
-}
-
-/// CLI-level byte-stability sanity check — two back-to-back calls with
-/// the same inputs must emit byte-identical JSON. CH-14's library
-/// tests already cover this against the typed envelope; this guard
-/// pins the property at the `serde_json::to_string_pretty` boundary
-/// the goldens themselves use.
-#[test]
-fn stable_ordering_byte_identical() {
-    let Some(rules_root) = plugin_repo_path() else {
-        eprintln!("SKIP stable_ordering_byte_identical: ../specify checkout not found");
-        return;
-    };
-    let first = serde_json::to_string_pretty(&run_export(&rules_root, "omnia", &[], false))
-        .expect("first pretty");
-    let second = serde_json::to_string_pretty(&run_export(&rules_root, "omnia", &[], false))
-        .expect("second pretty");
-    assert_eq!(first, second, "two consecutive exports must be byte-identical");
-}
-
-/// Agent-consumable invariants on the `omnia` envelope.
-///
-/// - At least one rule body contains the `## Rule` heading verbatim
-///   (the codex file shape requires reviewing agents to see the
-///   policy text intact).
-/// - At least one rule carries a non-empty `references` list when a
-///   source overlay that ships references is bound (CH-05's
-///   `documentation/SRC-001` is the canonical fixture). This pins the
-///   downstream review skills' "follow the citation" contract.
-/// - Every `path` is anchored (no leading `/`, no Windows drive
-///   prefix, no backslash separators) — durable proof that no
-///   absolute machine path leaks into the wire envelope.
-/// - When `--include-deprecated` is set and any deprecated rule
-///   exists, its `deprecated.replaced-by` field (when populated) is
-///   spelled with the kebab-case wire key.
-#[test]
-fn omnia_agent_consumable_assertions() {
-    let Some(rules_root) = plugin_repo_path() else {
-        eprintln!("SKIP omnia_agent_consumable_assertions: ../specify checkout not found");
-        return;
-    };
-    let sources = vec!["documentation".to_string()];
-    let resolved = run_export(&rules_root, "omnia", &sources, true);
-
+    let without = resolve_rules(rules_root.path(), project.path(), "omnia", &[], false);
     assert!(
-        resolved.rules.iter().any(|r| r.body.contains("## Rule")),
-        "at least one rule body must carry the verbatim `## Rule` heading",
-    );
-    assert!(
-        resolved.rules.iter().any(|r| r.references.as_ref().is_some_and(|refs| !refs.is_empty())),
-        "at least one rule (e.g. SRC-001 from the documentation overlay) must carry \
-         non-empty `references` for agent citation follow",
+        !without.rules.iter().any(|r| r.rule_id == "UNI-009"),
+        "deprecated UNI-009 must be filtered out without --include-deprecated",
     );
 
+    let with = resolve_rules(rules_root.path(), project.path(), "omnia", &[], true);
+    assert!(
+        with.rules.iter().any(|r| r.rule_id == "UNI-009"),
+        "deprecated UNI-009 must surface with --include-deprecated",
+    );
+}
+
+/// The deprecation successor serialises with the kebab-case `replaced-by`
+/// wire key; the `snake_case` spelling never appears in the envelope.
+#[test]
+fn replaced_by_uses_kebab_wire_key() {
+    let rules_root = tempdir().expect("rules root");
+    let project = tempdir().expect("project");
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+        &basic_rule("UNI-001", "Active shared", "important"),
+    );
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-009.md"),
+        &deprecated_rule("UNI-009", "UNI-001"),
+    );
+
+    let resolved = resolve_rules(rules_root.path(), project.path(), "omnia", &[], true);
+    let body = serde_json::to_string(&resolved).expect("serialise");
+    assert!(body.contains("\"replaced-by\""), "kebab-case `replaced-by` wire key must be present");
+    assert!(
+        !body.contains("\"replaced_by\""),
+        "snake_case wire key `replaced_by` must not appear in the export envelope",
+    );
+}
+
+/// Every wire `path` is anchored (no leading `/`, no Windows drive
+/// prefix, no backslash separators) — no absolute machine path leaks.
+#[test]
+fn paths_anchored_not_absolute() {
+    let rules_root = tempdir().expect("rules root");
+    let project = tempdir().expect("project");
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+        &basic_rule("UNI-001", "Shared anchor", "important"),
+    );
+    write_rule_md(
+        &project.path().join("adapters/targets/omnia/rules/omnia-001.md"),
+        &basic_rule("OMNIA-001", "Target overlay", "important"),
+    );
+
+    let resolved = resolve_rules(rules_root.path(), project.path(), "omnia", &[], false);
     for rule in &resolved.rules {
         assert!(
             !rule.path.starts_with('/'),
@@ -267,17 +203,44 @@ fn omnia_agent_consumable_assertions() {
             rule.path,
         );
     }
+}
 
-    // Wire-key check: serialise the envelope and verify the
-    // kebab-case `replaced-by` form is the only spelling present, per
-    // `ResolvedRules` export contract. This holds whether or not any
-    // deprecated rule actually appears today (no `replaced_by` token
-    // can exist either way).
-    let body = serde_json::to_string(&resolved).expect("serialise");
-    assert!(
-        !body.contains("\"replaced_by\""),
-        "snake_case wire key `replaced_by` must not appear in the export envelope",
+/// Two back-to-back exports with the same inputs emit byte-identical
+/// JSON — pins determinism at the `serde_json` boundary.
+#[test]
+fn stable_ordering_byte_identical() {
+    let rules_root = tempdir().expect("rules root");
+    let project = tempdir().expect("project");
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
+        &basic_rule("UNI-001", "Critical shared", "critical"),
     );
+    write_rule_md(
+        &rules_root.path().join("adapters/shared/rules/universal/uni-002.md"),
+        &basic_rule("UNI-002", "Optional shared", "optional"),
+    );
+    write_rule_md(
+        &project.path().join("adapters/targets/omnia/rules/omnia-001.md"),
+        &basic_rule("OMNIA-001", "Target overlay", "important"),
+    );
+
+    let first = serde_json::to_string_pretty(&resolve_rules(
+        rules_root.path(),
+        project.path(),
+        "omnia",
+        &[],
+        false,
+    ))
+    .expect("first pretty");
+    let second = serde_json::to_string_pretty(&resolve_rules(
+        rules_root.path(),
+        project.path(),
+        "omnia",
+        &[],
+        false,
+    ))
+    .expect("second pretty");
+    assert_eq!(first, second, "two consecutive exports must be byte-identical");
 }
 
 /// CLI smoke test: a hand-built rules-root tree with

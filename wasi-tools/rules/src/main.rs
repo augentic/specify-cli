@@ -25,8 +25,9 @@ use std::process::ExitCode;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use specify_rules::{
-    OwnerPolicy, RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, RulesFinding,
-    check_duplicate_rule_id, check_namespace_ownership,
+    OwnerPolicy, RULE_BODY_HEADING_MISSING, RULE_DUPLICATE_RULE_ID,
+    RULE_NAMESPACE_OWNERSHIP_VIOLATION, RulesFinding, check_duplicate_rule_id,
+    check_namespace_ownership, check_rule_body_heading,
 };
 
 /// Placeholder fingerprint; the host recomputes it on fold. Kept in the
@@ -36,7 +37,8 @@ const PLACEHOLDER_FINGERPRINT: &str =
 
 /// Every codex id this tool can emit, scanned for in the positional args
 /// to scope a single invocation to one rule.
-const RULES: &[&str] = &[RULE_NAMESPACE_OWNERSHIP_VIOLATION, RULE_DUPLICATE_RULE_ID];
+const RULES: &[&str] =
+    &[RULE_NAMESPACE_OWNERSHIP_VIOLATION, RULE_DUPLICATE_RULE_ID, RULE_BODY_HEADING_MISSING];
 
 fn main() -> ExitCode {
     let Ok(project_dir) = std::env::var("PROJECT_DIR").map(PathBuf::from) else {
@@ -57,6 +59,9 @@ fn main() -> ExitCode {
     }
     if scoped.is_none() || scoped == Some(RULE_DUPLICATE_RULE_ID) {
         findings.extend(check_duplicate_rule_id(&project_dir));
+    }
+    if scoped.is_none() || scoped == Some(RULE_BODY_HEADING_MISSING) {
+        findings.extend(check_rule_body_heading(&project_dir));
     }
     print_report(&findings);
     ExitCode::SUCCESS
@@ -212,6 +217,10 @@ fn guidance(rule_id: &str) -> (&'static str, &'static str) {
         RULE_DUPLICATE_RULE_ID => (
             "The same rule id appears in more than one rules markdown file, so codex consumers cannot resolve a single rule.",
             "Rename the colliding rules so each frontmatter id is unique across the rules tree.",
+        ),
+        RULE_BODY_HEADING_MISSING => (
+            "A rule markdown file's body is missing the `## Rule` heading, so reviewing agents cannot locate the policy text.",
+            "Add a verbatim `## Rule` heading on its own line above the rule's policy statement.",
         ),
         _ => (
             "A rule's id-namespace prefix is not owned by the rules directory it lives under, so the codex namespace ownership invariant is broken.",

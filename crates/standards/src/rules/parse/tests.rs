@@ -50,6 +50,27 @@ fn parses_verbatim_fixture() {
     assert!(rule.body.contains("\n## Rule\n"));
 }
 
+/// [`parse_rule_file`] reads a path and delegates to [`parse_rule`].
+/// Synthetic tempfile coverage of the thin I/O wrapper (no sibling
+/// checkout required).
+#[test]
+fn parse_rule_file_reads_and_delegates() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("UNI-001.md");
+    fs::write(
+        &path,
+        "---\nid: UNI-001\ntitle: File wrapper\nseverity: important\ntrigger: Synthetic parse_rule_file fixture trigger sentence long enough for schema.\n---\n\n## Rule\n\nBody.\n",
+    )
+    .expect("write rule file");
+
+    let rule = parse_rule_file(&path).expect("parse_rule_file parses a real file");
+    assert_eq!(rule.id, "UNI-001");
+    assert!(rule.body.contains("## Rule"));
+
+    let missing = parse_rule_file(&dir.path().join("absent.md"));
+    assert!(matches!(missing, Err(ParseError::Io(_))), "missing file maps to Io error");
+}
+
 /// `snake_case` authoring keys lift to the kebab-case wire shape
 /// carried by [`Rule`]. Covers every documented rename:
 /// `lint_mode`, `rule_hints`, and the nested

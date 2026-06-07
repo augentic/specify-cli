@@ -12,6 +12,9 @@
 //!   unknown-owner diagnostic, and the placement check.
 //! - CORE-026 (`rules.duplicate-rule-id`) — a rule id declared in more
 //!   than one rules markdown file is a whole-tree duplicate.
+//! - CORE-053 (`rules.body-heading-missing`) — every rule markdown file's
+//!   body must carry the verbatim `## Rule` heading the frontmatter schema
+//!   (CORE-027) does not cover.
 //!
 //! Policy is `specify`-owned, never baked here: the owner→allowed-prefix
 //! map, the source-axis prefixes, and the reserved-namespace owners all
@@ -34,6 +37,7 @@ use serde_json::Value as JsonValue;
 /// Codex ids each check stamps onto its findings (closed `CORE-NNN`).
 pub const RULE_NAMESPACE_OWNERSHIP_VIOLATION: &str = "CORE-009";
 pub const RULE_DUPLICATE_RULE_ID: &str = "CORE-026";
+pub const RULE_BODY_HEADING_MISSING: &str = "CORE-053";
 
 /// Shared `universal` / `core` rules-pack directory names under
 /// `adapters/shared/rules/`. Mechanism (filesystem layout), not policy:
@@ -160,6 +164,54 @@ pub fn check_duplicate_rule_id(project_dir: &Path) -> Vec<RulesFinding> {
         }
     }
     findings
+}
+
+/// CORE-053: every rules markdown file's body must carry the verbatim
+/// `## Rule` heading on its own line. The frontmatter schema (CORE-027)
+/// does not cover body conventions, so the heading is enforced here over
+/// the same rule-tree walk as the namespace and duplicate-id checks.
+#[must_use]
+pub fn check_rule_body_heading(project_dir: &Path) -> Vec<RulesFinding> {
+    let mut findings = Vec::new();
+    for path in discover_rule_files(project_dir) {
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if !has_rule_heading(&content) {
+            let rel = relative_display(project_dir, &path);
+            findings.push(RulesFinding {
+                rule_id: RULE_BODY_HEADING_MISSING,
+                path: Some(rel.clone()),
+                message: format!(
+                    "Rule body heading: {rel} — rule markdown must carry a verbatim `## Rule` heading in its body"
+                ),
+            });
+        }
+    }
+    findings
+}
+
+/// True when the post-frontmatter body carries a `## Rule` heading on its
+/// own line. Matches the host parser's body convention.
+fn has_rule_heading(content: &str) -> bool {
+    body_after_frontmatter(content).lines().any(|line| line == "## Rule")
+}
+
+/// The content after the YAML frontmatter block, or the whole content
+/// when no frontmatter is present.
+fn body_after_frontmatter(content: &str) -> &str {
+    let Some(rest) = content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n"))
+    else {
+        return content;
+    };
+    let Some(end) = rest.find("\n---") else {
+        return content;
+    };
+    let after_fence = &rest[end + 1..];
+    match after_fence.find('\n') {
+        Some(newline) => &after_fence[newline + 1..],
+        None => "",
+    }
 }
 
 /// Resolve the allowed id-prefix set for a rule file: the source-axis
@@ -335,6 +387,15 @@ mod tests {
         std::fs::write(path, body).expect("write rule");
     }
 
+    fn write_rule_without_heading(root: &Path, rel: &str, id: &str) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().expect("rule parent")).expect("mkdir");
+        let body = format!(
+            "---\nid: {id}\ntitle: Fixture\nseverity: optional\ntrigger: Namespace fixture.\n---\n\nBody without the heading.\n"
+        );
+        std::fs::write(path, body).expect("write rule");
+    }
+
     fn policy() -> OwnerPolicy {
         OwnerPolicy {
             owner_prefixes: BTreeMap::from([
@@ -360,6 +421,23 @@ mod tests {
         write_rule(dir.path(), "adapters/sources/documentation/rules/SRC-001.md", "SRC-001");
         assert!(check_namespace_ownership(dir.path(), &policy()).is_empty());
         assert!(check_duplicate_rule_id(dir.path()).is_empty());
+        assert!(check_rule_body_heading(dir.path()).is_empty());
+    }
+
+    #[test]
+    fn flags_missing_rule_heading() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_rule(dir.path(), "adapters/shared/rules/core/CORE-001.md", "CORE-001");
+        write_rule_without_heading(
+            dir.path(),
+            "adapters/shared/rules/universal/UNI-001.md",
+            "UNI-001",
+        );
+        let findings = check_rule_body_heading(dir.path());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, RULE_BODY_HEADING_MISSING);
+        assert_eq!(findings[0].path.as_deref(), Some("adapters/shared/rules/universal/UNI-001.md"));
+        assert!(findings[0].message.contains("`## Rule`"));
     }
 
     #[test]
