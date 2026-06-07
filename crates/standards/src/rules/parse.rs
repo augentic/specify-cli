@@ -143,6 +143,10 @@ pub fn parse_rule_file(path: &Path) -> Result<Rule, ParseError> {
 /// (the one immediately after the closing `---`) is stripped so
 /// callers see body content starting at column 0; everything else
 /// is verbatim.
+///
+/// A sibling `Option`-returning copy lives at `specify-model`'s
+/// `decision::split_frontmatter`; the `specify-standards` ⊥
+/// `specify-model` dependency-direction invariant blocks one shared impl.
 fn split_frontmatter(content: &str) -> Result<(&str, &str), ParseError> {
     let rest = if let Some(rest) = content.strip_prefix("---\n") {
         rest

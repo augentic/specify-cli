@@ -448,6 +448,74 @@ mod tests {
         assert!(err.to_string().contains("tool.lifecycle-state-write-denied"), "{err}");
     }
 
+    // `map_guest_error` is the boundary between a WASI guest's process
+    // exit and the host's typed error. The clamp to `0..=255` and the
+    // "trap is not an exit" branch are both easy to get subtly wrong
+    // (e.g. saturating vs wrapping, or treating a trap as exit 0).
+    #[test]
+    fn guest_exit_code_clamps() {
+        let in_range: wasmtime::Error = I32Exit(42).into();
+        assert_eq!(map_guest_error(&in_range).expect("exit is not an error"), 42);
+
+        let over: wasmtime::Error = I32Exit(300).into();
+        assert_eq!(map_guest_error(&over).expect("over clamps"), 255);
+
+        let negative: wasmtime::Error = I32Exit(-5).into();
+        assert_eq!(map_guest_error(&negative).expect("negative clamps"), 0);
+
+        let trap = wasmtime::Error::msg("guest trapped");
+        let err = map_guest_error(&trap).expect_err("a non-exit trap is an error");
+        assert!(
+            matches!(
+                err,
+                ToolError::Diag {
+                    code: "tool-runtime",
+                    ..
+                }
+            ),
+            "{err}"
+        );
+    }
+
+    // `prepare_preopens` folds read/write templates through a `BTreeMap`,
+    // so duplicate read entries must collapse to one preopen and the
+    // surviving set must come out in sorted host-path order regardless of
+    // declaration order — the determinism the WASI sandbox relies on.
+    #[test]
+    fn preopens_dedup_and_sort() {
+        let tmp = tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(project.join("beta")).expect("beta");
+        fs::create_dir_all(project.join("alpha")).expect("alpha");
+        let project = project.canonicalize().expect("project");
+
+        let resolved = resolved(
+            ToolScope::Project {
+                project_name: "demo".to_string(),
+            },
+            tool_with_permissions(
+                vec![
+                    "$PROJECT_DIR/beta".to_string(),
+                    "$PROJECT_DIR/alpha".to_string(),
+                    "$PROJECT_DIR/alpha".to_string(),
+                ],
+                Vec::new(),
+            ),
+            tmp.path().join("missing.wasm"),
+        );
+
+        let preopens = prepare_preopens(&resolved, &project, None).expect("preopens");
+        let host_paths: Vec<PathBuf> = preopens.iter().map(|p| p.host_path.clone()).collect();
+        assert_eq!(
+            host_paths,
+            vec![
+                project.join("alpha").canonicalize().expect("alpha canonical"),
+                project.join("beta").canonicalize().expect("beta canonical"),
+            ]
+        );
+        assert!(preopens.iter().all(|p| !p.writable), "read templates stay read-only");
+    }
+
     #[test]
     fn invalid_component_bytes_error() {
         let tmp = tempdir().expect("tempdir");

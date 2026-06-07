@@ -496,4 +496,117 @@ mod tests {
         assert!(looks_like_template_path("$PROJECT_DIR"));
         assert!(looks_like_template_path("$CAPABILITY_DIR"));
     }
+
+    // `parse_wire` is the single classifier every wire string flows
+    // through; one drift in the prefix order (e.g. classifying a
+    // `$PROJECT_DIR` template as a package because it contains no `:`)
+    // would silently mis-route a source. Pin each arm, including the
+    // Windows-absolute branch that string-prefix checks alone miss.
+    #[test]
+    fn parse_wire_classifies_each_scheme() {
+        assert!(matches!(
+            ToolSource::parse_wire("https://example.com/t.wasm"),
+            Ok(ToolSource::HttpsUri(_))
+        ));
+        assert!(matches!(ToolSource::parse_wire("file:///opt/t.wasm"), Ok(ToolSource::FileUri(_))));
+        assert!(matches!(
+            ToolSource::parse_wire("/opt/specify/t.wasm"),
+            Ok(ToolSource::LocalPath(_))
+        ));
+        assert!(matches!(ToolSource::parse_wire(r"C:\tools\t.wasm"), Ok(ToolSource::LocalPath(_))));
+        assert!(matches!(ToolSource::parse_wire("C:/tools/t.wasm"), Ok(ToolSource::LocalPath(_))));
+        assert!(matches!(
+            ToolSource::parse_wire("$PROJECT_DIR/tools/t.wasm"),
+            Ok(ToolSource::TemplatePath(_))
+        ));
+        assert!(matches!(
+            ToolSource::parse_wire("$CAPABILITY_DIR"),
+            Ok(ToolSource::TemplatePath(_))
+        ));
+        assert!(matches!(
+            ToolSource::parse_wire("specify:contract@1.0.0"),
+            Ok(ToolSource::Package(_))
+        ));
+        ToolSource::parse_wire("relative/t.wasm").expect_err("relative path is unclassifiable");
+    }
+
+    // `PackageRequest::parse` is deliberately permissive so structural
+    // validation can emit stable rule ids; verify the split points so a
+    // refactor of the `@` / `:` handling cannot quietly swap which field
+    // captures a missing separator.
+    #[test]
+    fn package_request_parse_edges() {
+        let full = PackageRequest::parse("specify:contract@1.2.3");
+        assert_eq!(
+            (full.namespace.as_str(), full.name.as_str(), full.version.as_str()),
+            ("specify", "contract", "1.2.3")
+        );
+
+        let no_version = PackageRequest::parse("specify:contract");
+        assert_eq!(
+            (no_version.namespace.as_str(), no_version.name.as_str(), no_version.version.as_str()),
+            ("specify", "contract", "")
+        );
+
+        let no_namespace = PackageRequest::parse("contract@1.2.3");
+        assert_eq!(
+            (
+                no_namespace.namespace.as_str(),
+                no_namespace.name.as_str(),
+                no_namespace.version.as_str()
+            ),
+            ("", "contract", "1.2.3")
+        );
+
+        let bare = PackageRequest::parse("contract");
+        assert_eq!(
+            (bare.namespace.as_str(), bare.name.as_str(), bare.version.as_str()),
+            ("", "contract", "")
+        );
+
+        // The version split happens before the namespace split, so a
+        // second `@` stays inside the version segment.
+        let extra_at = PackageRequest::parse("specify:contract@1@2");
+        assert_eq!(extra_at.version, "1@2");
+    }
+
+    #[test]
+    fn sha256_hex_form_is_strict() {
+        let valid = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert!(looks_like_sha256_hex(valid));
+        assert!(!looks_like_sha256_hex(&valid[..63]), "63 chars is too short");
+        assert!(!looks_like_sha256_hex(&format!("{valid}0")), "65 chars is too long");
+        assert!(!looks_like_sha256_hex(&valid.to_ascii_uppercase()), "uppercase hex is rejected");
+        let with_g = format!("g{}", &valid[1..]);
+        assert!(!looks_like_sha256_hex(&with_g), "non-hex letter rejected");
+    }
+
+    #[test]
+    fn windows_absolute_requires_drive_shape() {
+        assert!(looks_like_windows_absolute(r"C:\dir"));
+        assert!(looks_like_windows_absolute("C:/dir"));
+        assert!(!looks_like_windows_absolute("C:dir"), "drive without separator is not absolute");
+        assert!(!looks_like_windows_absolute("1:/dir"), "drive letter must be alphabetic");
+        assert!(!looks_like_windows_absolute("C"), "too short");
+    }
+
+    // The first-party `specify:vectis` scalar must inherit the embedded
+    // read+write permission catalog; a regression here would silently
+    // grant a tool zero filesystem authority.
+    #[test]
+    fn scalar_vectis_embeds_permissions() {
+        let manifest: ToolManifest =
+            serde_saphyr::from_str("tools:\n  - \"specify:vectis@0.3.0\"\n")
+                .expect("parse vectis scalar");
+        let tool = &manifest.tools[0];
+        assert_eq!(tool.name, "vectis");
+        assert_eq!(tool.version, "0.3.0");
+        assert_eq!(
+            tool.permissions,
+            ToolPermissions {
+                read: vec!["$PROJECT_DIR".to_string(), "$CAPABILITY_DIR".to_string()],
+                write: vec!["$PROJECT_DIR".to_string()],
+            }
+        );
+    }
 }

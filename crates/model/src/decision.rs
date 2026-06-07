@@ -267,6 +267,10 @@ fn h1_title(body: &str) -> Option<String> {
 ///
 /// Exposed so the merge promotion kernel can re-serialise a record's
 /// front-matter while preserving its Markdown body verbatim.
+///
+/// A sibling `Result`-returning copy lives at `specify-standards`'
+/// `rules::parse::split_frontmatter`; the `specify-standards` ⊥
+/// `specify-model` dependency-direction invariant blocks one shared impl.
 #[must_use]
 pub fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
     let rest = content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n"))?;

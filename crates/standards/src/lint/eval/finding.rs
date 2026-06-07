@@ -239,6 +239,75 @@ mod tests {
     }
 
     #[test]
+    fn single_adapter_none_when_unconstrained() {
+        // No applicability block at all.
+        assert!(single_adapter(&rule(None)).is_none());
+        // An applicability block whose adapter list is empty is not a
+        // single-adapter rule.
+        assert!(single_adapter(&rule(Some(vec![]))).is_none());
+    }
+
+    fn base_finding(evidence: FindingEvidence) -> Diagnostic {
+        Diagnostic {
+            id: "FIND-0001".into(),
+            rule_id: Some("UNI-001".into()),
+            related_rule_ids: None,
+            title: "t".into(),
+            severity: Severity::Important,
+            source: DiagnosticSource::Deterministic,
+            kind: DiagnosticKind::Violation,
+            target_adapter: None,
+            source_adapter: None,
+            slice: None,
+            change: None,
+            artifact: Artifact::Code,
+            location: None,
+            evidence,
+            impact: "i".into(),
+            remediation: "r".into(),
+            confidence: Some(Confidence::High),
+            fingerprint: String::new(),
+            status: None,
+            disposition: None,
+        }
+    }
+
+    // The structured-evidence clamp arm collapses oversize `data` to the
+    // `{ "truncated": true }` sentinel and drops `locations`. This is a
+    // separate branch from the snippet halving and is otherwise unexercised.
+    #[test]
+    fn clamp_collapses_oversize_structured() {
+        let mut finding = base_finding(FindingEvidence::Structured {
+            summary: "s".into(),
+            data: serde_json::json!({ "blob": "x".repeat(128 * 1024) }),
+            locations: Some(Vec::new()),
+        });
+        clamp_evidence(&mut finding);
+        validate_evidence_size(&finding).expect("evidence fits within cap");
+        let FindingEvidence::Structured { data, locations, .. } = &finding.evidence else {
+            panic!("structured variant preserved");
+        };
+        assert_eq!(*data, serde_json::json!({ "truncated": true }));
+        assert!(locations.is_none(), "locations dropped on truncation");
+    }
+
+    // The snippet clamp halves on a UTF-8 char boundary; a buffer of
+    // multi-byte characters must not be split mid-codepoint (which would
+    // panic in `truncate`) and the result must stay valid UTF-8.
+    #[test]
+    fn clamp_snippet_respects_char_boundary() {
+        let mut finding = base_finding(FindingEvidence::Snippet {
+            value: "🎉".repeat(64 * 1024),
+        });
+        clamp_evidence(&mut finding);
+        validate_evidence_size(&finding).expect("evidence fits within cap");
+        let FindingEvidence::Snippet { value } = &finding.evidence else {
+            panic!("snippet variant preserved");
+        };
+        assert!(value.ends_with(TRUNCATION_MARKER));
+    }
+
+    #[test]
     fn clamp_truncates_oversize_snippet() {
         let mut finding = Diagnostic {
             id: "FIND-0001".into(),

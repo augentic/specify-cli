@@ -256,4 +256,72 @@ mod tests {
         assert!(matches!(err, ToolError::PermissionDenied { .. }), "{err}");
         assert!(err.to_string().contains(LIFECYCLE_RULE_ID), "{err}");
     }
+
+    // `canonicalise_under` is the symlink-escape gate. The empty-roots
+    // arm is a defensive deny (no roots means nothing is allowed); the
+    // multi-root arm must accept a target under the *second* root, not
+    // just the first.
+    #[test]
+    fn canonicalise_root_handling() {
+        let tmp = tempdir().expect("tempdir");
+        let first = tmp.path().join("first");
+        let second = tmp.path().join("second");
+        let nested = second.join("nested");
+        fs::create_dir_all(&first).expect("first");
+        fs::create_dir_all(&nested).expect("nested");
+
+        let no_roots = canonicalise_under(&nested, &[]).expect_err("empty roots must deny");
+        assert!(matches!(no_roots, ToolError::PermissionDenied { .. }), "{no_roots}");
+
+        let canonical =
+            canonicalise_under(&nested, &[first.as_path(), second.as_path()]).expect("second root");
+        assert_eq!(canonical, nested.canonicalize().expect("canonical nested"));
+    }
+
+    // The `$`-variable scanner has to distinguish a named variable from a
+    // bare `$`. A `$` with no following name, and a fully unsupported
+    // name, must both fail; multiple supported variables in one template
+    // must all expand.
+    #[test]
+    fn substitute_variable_grammar() {
+        let project = Path::new("/tmp/project");
+        let adapter = Path::new("/tmp/adapter");
+
+        let bare_dollar = substitute("$/contracts", project, Some(adapter))
+            .expect_err("bare `$` is not a named variable");
+        assert!(matches!(bare_dollar, ToolError::InvalidPermission { .. }), "{bare_dollar}");
+
+        let trailing_dollar =
+            substitute("$PROJECT_DIR/sub$", project, Some(adapter)).expect_err("trailing bare `$`");
+        assert!(
+            matches!(trailing_dollar, ToolError::InvalidPermission { .. }),
+            "{trailing_dollar}"
+        );
+
+        assert_eq!(
+            substitute("$PROJECT_DIR/$CAPABILITY_DIR-mixed", project, Some(adapter))
+                .expect("both variables expand"),
+            "/tmp/project//tmp/adapter-mixed"
+        );
+    }
+
+    // `deny_lifecycle_write` must match `.specify` as a path *component*,
+    // not a textual prefix: a sibling like `.specify-data` is a legitimate
+    // write target and must NOT be denied, while a descendant of
+    // `.specify` must be.
+    #[test]
+    fn lifecycle_boundary_is_component_wise() {
+        let tmp = tempdir().expect("tempdir");
+        let project = tmp.path().join("project");
+        fs::create_dir_all(&project).expect("project");
+        let canonical_project = project.canonicalize().expect("canonical project");
+
+        let sibling = canonical_project.join(".specify-data");
+        deny_lifecycle_write(&sibling, &project).expect("sibling of .specify is writable");
+
+        let descendant = canonical_project.join(".specify").join("slices");
+        let err = deny_lifecycle_write(&descendant, &project)
+            .expect_err("descendant of .specify is denied");
+        assert!(err.to_string().contains(LIFECYCLE_RULE_ID), "{err}");
+    }
 }

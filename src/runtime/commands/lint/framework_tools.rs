@@ -7,16 +7,29 @@
 //! dispatch by name — the standards engine never calls the imperative
 //! check in-process, which is the decoupling lever the plan requires.
 //!
-//! Interim posture (B-2): the `.wasm` artifact is built from
-//! `wasi-tools/scenarios/` and embedded into this binary, so a framework
-//! `kind: tool` rule resolves with no separate build step at lint time and
-//! no digest pinning yet. The artifact lives in `specify-cli` only as
-//! explicitly temporary **versioned-artifact coupling**: nothing here
-//! reimplements rule logic or bakes rule policy into the engine — it stages
-//! a generic component and runs it by name. Exit condition: when the tool
-//! source moves to its colocated framework-tools home, this inventory
-//! switches to `specify_tool::resolver::resolve` with a pinned `sha256`,
-//! leaving the rule files, the engine, and the parity tests untouched.
+//! Interim posture (B-2): each `.wasm` artifact is built from its
+//! `wasi-tools/<name>/` crate and embedded into this binary, so a framework
+//! `kind: tool` rule resolves with no separate build step at lint time. The
+//! artifact lives in `specify-cli` only as explicitly temporary
+//! **versioned-artifact coupling**: nothing here reimplements rule logic or
+//! bakes rule policy into the engine — it stages a generic component and runs
+//! it by name. Exit condition: when the tool source moves to its colocated
+//! framework-tools home, this inventory switches to
+//! `specify_tool::resolver::resolve` with a registry-pinned `sha256`, leaving
+//! the rule files, the engine, and the parity tests untouched.
+//!
+//! Integrity pinning: each embedded blob is paired with a checked-in
+//! `wasi-tools/<name>/dist/<name>-<version>.wasm.sha256` sidecar (the
+//! `shasum -a 256` checkfile format the `vectis` build already emits),
+//! regenerated alongside the blob by the `cargo make framework-wasm` recipe.
+//! The `tests::dist_digests_pinned` drift guard recomputes the digest of the
+//! embedded bytes and asserts it matches the sidecar, so a stale or tampered
+//! `dist/*.wasm` fails the build rather than being silently trusted. The
+//! staged [`ResolvedTool`] keeps `sha256: None` deliberately: the host
+//! [`WasiRunner`](specify_tool::host::WasiRunner) compiles the staged bytes
+//! directly and never re-verifies `ResolvedTool.tool.sha256`, so pinning a
+//! digest there — over bytes embedded from the same source — would be dead,
+//! circular code. The sidecar + drift test is the trust anchor instead.
 
 use std::path::{Path, PathBuf};
 
@@ -27,7 +40,7 @@ use specify_tool::manifest::{Tool, ToolPermissions, ToolScope, ToolSource};
 use specify_tool::resolver::ResolvedTool;
 
 /// `scenarios` framework checker component, built from
-/// `wasi-tools/scenarios/` via `cargo make scenarios-wasm` (Road B
+/// `wasi-tools/scenarios/` via `cargo make framework-wasm scenarios` (Road B
 /// scenario family: CORE-028, 029, 031, 033; CORE-030 and CORE-032
 /// moved to Road A `scenario`-fact hints).
 const SCENARIOS_WASM: &[u8] = include_bytes!(concat!(
@@ -36,7 +49,7 @@ const SCENARIOS_WASM: &[u8] = include_bytes!(concat!(
 ));
 
 /// `skill-body` framework checker component, built from
-/// `wasi-tools/skill-body/` via `cargo make skill-body-wasm` (Road B
+/// `wasi-tools/skill-body/` via `cargo make framework-wasm skill-body` (Road B
 /// skill body family: CORE-040, 046, 048; CORE-041 moved to Road A
 /// `kind: presence` `markdown-section`).
 const SKILL_BODY_WASM: &[u8] = include_bytes!(concat!(
@@ -45,7 +58,7 @@ const SKILL_BODY_WASM: &[u8] = include_bytes!(concat!(
 ));
 
 /// `agent-teams` framework checker component, built from
-/// `wasi-tools/agent-teams/` via `cargo make agent-teams-wasm` (Road B
+/// `wasi-tools/agent-teams/` via `cargo make framework-wasm agent-teams` (Road B
 /// agent-teams overlay drift: CORE-012; CORE-011 moved to Road A
 /// `kind: presence` `file`).
 const AGENT_TEAMS_WASM: &[u8] = include_bytes!(concat!(
@@ -54,7 +67,7 @@ const AGENT_TEAMS_WASM: &[u8] = include_bytes!(concat!(
 ));
 
 /// `links-registry` framework checker component, built from
-/// `wasi-tools/links-registry/` via `cargo make links-registry-wasm`
+/// `wasi-tools/links-registry/` via `cargo make framework-wasm links-registry`
 /// (Road B link-registry family: CORE-018, 020).
 const LINKS_REGISTRY_WASM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -62,7 +75,7 @@ const LINKS_REGISTRY_WASM: &[u8] = include_bytes!(concat!(
 ));
 
 /// `marketplace` framework checker component, built from
-/// `wasi-tools/marketplace/` via `cargo make marketplace-wasm` (Road B
+/// `wasi-tools/marketplace/` via `cargo make framework-wasm marketplace` (Road B
 /// marketplace drift: CORE-022).
 const MARKETPLACE_WASM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -70,12 +83,12 @@ const MARKETPLACE_WASM: &[u8] = include_bytes!(concat!(
 ));
 
 /// `prose` framework checker component, built from `wasi-tools/prose/`
-/// via `cargo make prose-wasm` (Road B numeric-cap scan: CORE-024).
+/// via `cargo make framework-wasm prose` (Road B numeric-cap scan: CORE-024).
 const PROSE_WASM: &[u8] =
     include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/wasi-tools/prose/dist/prose-0.1.0.wasm"));
 
 /// `rules` framework checker component, built from `wasi-tools/rules/`
-/// via `cargo make rules-wasm` (Road B rule-tree family: CORE-009
+/// via `cargo make framework-wasm rules` (Road B rule-tree family: CORE-009
 /// namespace ownership, CORE-026 duplicate rule id, CORE-053 body
 /// heading missing).
 const RULES_WASM: &[u8] =
@@ -224,5 +237,43 @@ impl ToolRunner for FrameworkToolRunner {
             stderr: captured.stderr,
             exit_code: captured.exit_code,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use specify_digest::sha256_hex;
+
+    use super::FRAMEWORK_TOOLS;
+
+    /// Every embedded framework component must hash to the digest recorded in
+    /// its checked-in `dist/<name>-<version>.wasm.sha256` sidecar. Goes red if
+    /// a `.wasm` is rebuilt without regenerating its sidecar (or vice versa),
+    /// closing the silent-trust gap on the embedded blobs.
+    #[test]
+    fn dist_digests_pinned() {
+        for tool in FRAMEWORK_TOOLS {
+            let sidecar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("wasi-tools")
+                .join(tool.name)
+                .join("dist")
+                .join(format!("{}-{}.wasm.sha256", tool.name, tool.version));
+            let contents = fs::read_to_string(&sidecar)
+                .unwrap_or_else(|err| panic!("read sidecar {}: {err}", sidecar.display()));
+            let recorded = contents
+                .split_whitespace()
+                .next()
+                .unwrap_or_else(|| panic!("sidecar {} is empty", sidecar.display()));
+            assert_eq!(
+                sha256_hex(tool.bytes),
+                recorded,
+                "embedded {} component drifted from sidecar {}",
+                tool.name,
+                sidecar.display()
+            );
+        }
     }
 }

@@ -302,6 +302,289 @@ fn duplicate_rule_id_skips_declarative_pass() {
     assert_eq!(code, Some(0), "a skipped declarative pass still completes");
 }
 
+/// Write one `lint_mode: deterministic` universal rule under the
+/// framework root's shared-rules tree, with `hints` supplied verbatim
+/// (each line already indented two spaces to sit under `rule_hints:`).
+/// Severity is fixed `important` so a single finding gates the run to
+/// exit 2 and a clean pass exits 0.
+///
+/// These rules exercise the five Road A kinds bound to framework-only
+/// fact families (`unique`, `constant-eq`, `set-eq`, `content-digest-eq`,
+/// `cross-reference`); the consumer `specify lint project` profile never
+/// indexes the adapter / skill / scenario / agent-team facts they read,
+/// so they are unreachable there and proven through `lint framework`
+/// here (see `tests/lint/project.rs` for the project-profile kinds).
+fn write_universal_rule(root: &Path, id: &str, hints: &str) {
+    let slug = id.to_ascii_lowercase();
+    let dir = root.join("adapters/shared/rules/universal");
+    fs::create_dir_all(&dir).expect("mkdir universal rules");
+    fs::write(
+        dir.join(format!("{slug}.md")),
+        format!(
+            "---\n\
+             id: {id}\n\
+             title: Synthetic {id}\n\
+             severity: important\n\
+             trigger: Synthetic framework hint-kind coverage rule for {id}.\n\
+             lint_mode: deterministic\n\
+             rule_hints:\n\
+             {hints}\
+             ---\n\
+             ## Rule\n\nSynthetic rule body for {id}.\n",
+        ),
+    )
+    .unwrap_or_else(|err| panic!("write rule {id}: {err}"));
+}
+
+/// Run the framework lint filtered to a single rule id and emit the
+/// JSON envelope, returning `(exit, parsed-envelope)`. The `--rule`
+/// filter restricts the declarative pass to `rule_id` so no scaffold
+/// CORE rule or WASI-tool check perturbs the asserted findings.
+fn run_single_rule(root: &Path, rule_id: &str) -> (Option<i32>, Value) {
+    let (code, stdout, stderr) =
+        run_lint_framework(root, &["--rule", rule_id, "--output-format", "json"]);
+    (code, envelope(&stdout, &stderr))
+}
+
+/// Findings on `envelope` whose `rule-id` equals `rule_id`, in wire
+/// order.
+fn findings_for<'a>(envelope: &'a Value, rule_id: &str) -> Vec<&'a Value> {
+    envelope
+        .get("findings")
+        .and_then(Value::as_array)
+        .map(|findings| {
+            findings
+                .iter()
+                .filter(|f| f.get("rule-id").and_then(Value::as_str) == Some(rule_id))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Write a minimal opt-in scenario file under `acceptance/scenarios/`
+/// carrying the supplied frontmatter `id`. Mirrors the crate-level
+/// `unique` test's scenario shape.
+fn write_scenario(root: &Path, name: &str, id: &str) {
+    let path = root.join("acceptance/scenarios").join(name);
+    fs::create_dir_all(path.parent().expect("scenario parent")).expect("mkdir scenarios");
+    fs::write(
+        &path,
+        format!(
+            "---\nid: {id}\nowner: spec\nkind: skill\nbackend: manual\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n",
+        ),
+    )
+    .expect("write scenario");
+}
+
+/// `kind: unique` (the `scenario` source) through the binary: two
+/// scenario files sharing a frontmatter `id` are flagged as a
+/// whole-tree duplicate while a distinct id passes. Mirrors the
+/// crate-level `flags_duplicate_scenario_id`.
+#[test]
+fn unique_flags_duplicate_scenario_id() {
+    let temp = TempDir::new().expect("tempdir");
+    scaffold_framework(temp.path());
+    write_scenario(temp.path(), "a.md", "shared-id");
+    write_scenario(temp.path(), "b.md", "shared-id");
+    write_scenario(temp.path(), "c.md", "solo-id");
+    write_universal_rule(
+        temp.path(),
+        "UNI-210",
+        "  - kind: unique\n    value: scenario\n    config:\n      field: id\n",
+    );
+
+    let (code, envelope) = run_single_rule(temp.path(), "UNI-210");
+    assert_eq!(code, Some(2), "the duplicate scenario id must gate; envelope:\n{envelope:#}");
+    let findings = findings_for(&envelope, "UNI-210");
+    assert_eq!(findings.len(), 1, "only the shared id is flagged; envelope:\n{envelope:#}");
+    assert_eq!(
+        findings[0].pointer("/evidence/data/id").and_then(Value::as_str),
+        Some("shared-id"),
+        "the finding must name the duplicated id; envelope:\n{envelope:#}",
+    );
+}
+
+/// Write a `plugins/<plugin>/skills/<skill>/SKILL.md` with the given
+/// frontmatter `name`. Mirrors the crate-level `constant-eq` test's
+/// skill shape.
+fn write_skill(root: &Path, plugin: &str, skill: &str, name: &str) {
+    let path = root.join(format!("plugins/{plugin}/skills/{skill}/SKILL.md"));
+    fs::create_dir_all(path.parent().expect("skill parent")).expect("mkdir skill");
+    fs::write(&path, format!("---\nname: {name}\ndescription: Fixture.\n---\n\n# Body\n"))
+        .expect("write skill");
+}
+
+/// `kind: constant-eq` (the `skill-name-plugin-prefix` source) through
+/// the binary: a well-formed skill `name` that does not begin with its
+/// plugin's `<plugin>-` prefix is flagged while a conforming sibling
+/// passes. Mirrors the crate-level `flags_names_missing_plugin_prefix`.
+#[test]
+fn constant_eq_flags_skill_name_prefix() {
+    let temp = TempDir::new().expect("tempdir");
+    scaffold_framework(temp.path());
+    write_skill(temp.path(), "alpha", "good", "alpha-good");
+    write_skill(temp.path(), "alpha", "bad", "wrong-name");
+    write_universal_rule(
+        temp.path(),
+        "UNI-211",
+        "  - kind: path-pattern\n    value: \"plugins/**/SKILL.md\"\n  - kind: constant-eq\n    value: skill-name-plugin-prefix\n    config:\n      overrides: {}\n",
+    );
+
+    let (code, envelope) = run_single_rule(temp.path(), "UNI-211");
+    assert_eq!(code, Some(2), "the mis-prefixed skill name must gate; envelope:\n{envelope:#}");
+    let names: Vec<&str> = findings_for(&envelope, "UNI-211")
+        .iter()
+        .filter_map(|f| f.pointer("/evidence/data/skill").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        names,
+        vec!["wrong-name"],
+        "only the mismatched name is flagged; the prefixed one passes; envelope:\n{envelope:#}",
+    );
+}
+
+/// Write a target-adapter manifest at
+/// `adapters/targets/<name>/adapter.yaml` with `body` verbatim.
+fn write_target_manifest(root: &Path, name: &str, body: &str) {
+    let path = root.join(format!("adapters/targets/{name}/adapter.yaml"));
+    fs::create_dir_all(path.parent().expect("manifest parent")).expect("mkdir manifest");
+    fs::write(&path, body).expect("write manifest");
+}
+
+/// `kind: set-eq` (the `adapter-briefs` source) through the binary: a
+/// target adapter whose `briefs.keys()` set diverges from the
+/// rule-supplied expected operation set is flagged on both halves of
+/// the symmetric difference (a `missing` op and an `unexpected` key).
+/// Mirrors the crate-level `flags_missing_and_unexpected_operations`.
+#[test]
+fn set_eq_flags_brief_divergence() {
+    let temp = TempDir::new().expect("tempdir");
+    scaffold_framework(temp.path());
+    write_target_manifest(
+        temp.path(),
+        "bad-target",
+        "name: bad-target\nversion: 1\naxis: target\ndescription: Missing merge, stray key.\nbriefs:\n  shape: briefs/shape.md\n  build: briefs/build.md\n  extra: briefs/extra.md\n",
+    );
+    write_universal_rule(
+        temp.path(),
+        "UNI-212",
+        "  - kind: path-pattern\n    value: \"adapters/targets/*/adapter.yaml\"\n  - kind: set-eq\n    value: adapter-briefs\n    config:\n      expected-operations:\n        sources:\n          - survey\n          - extract\n        targets:\n          - shape\n          - build\n          - merge\n",
+    );
+
+    let (code, envelope) = run_single_rule(temp.path(), "UNI-212");
+    assert_eq!(code, Some(2), "the divergent brief set must gate; envelope:\n{envelope:#}");
+    let divergences: std::collections::BTreeSet<(String, String)> =
+        findings_for(&envelope, "UNI-212")
+            .iter()
+            .filter_map(|f| {
+                let divergence = f.pointer("/evidence/data/divergence").and_then(Value::as_str)?;
+                let operation = f.pointer("/evidence/data/operation").and_then(Value::as_str)?;
+                Some((divergence.to_owned(), operation.to_owned()))
+            })
+            .collect();
+    let expected: std::collections::BTreeSet<(String, String)> =
+        [("missing", "merge"), ("unexpected", "extra")]
+            .into_iter()
+            .map(|(d, o)| (d.to_owned(), o.to_owned()))
+            .collect();
+    assert_eq!(
+        divergences, expected,
+        "both halves of the symmetric difference are flagged; envelope:\n{envelope:#}",
+    );
+}
+
+/// Symlink `adapters/targets/<adapter>/references/agent-teams.md` at a
+/// `target_rel` document relative to the framework root. Mirrors the
+/// crate-level `content-digest-eq` link helper.
+fn link_agent_teams(root: &Path, adapter: &str, target_rel: &str) {
+    let link_dir = root.join("adapters/targets").join(adapter).join("references");
+    fs::create_dir_all(&link_dir).expect("mkdir references");
+    let link_path = link_dir.join("agent-teams.md");
+    // adapters/targets/<adapter>/references/ is four levels deep.
+    let link_target = format!("../../../../{target_rel}");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&link_target, &link_path).expect("unix symlink");
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(&link_target, &link_path).expect("windows symlink");
+}
+
+/// `kind: content-digest-eq` (the `agent-teams-match-canonical` source)
+/// through the binary: of two `agent-teams.md` overlays, the one
+/// resolving to a non-canonical document is flagged while the one
+/// matching the canonical digest passes. Mirrors the crate-level
+/// `flags_only_drifted_overlay`. The scaffold already writes the
+/// canonical `docs/reference/review-team-protocol.md`.
+#[test]
+fn content_digest_eq_flags_drifted_overlay() {
+    let temp = TempDir::new().expect("tempdir");
+    scaffold_framework(temp.path());
+    let divergent = temp.path().join("docs/reference/legacy-review-team.md");
+    fs::write(&divergent, "# Legacy\n\nDrifted copy.\n").expect("write divergent doc");
+
+    link_agent_teams(temp.path(), "aligned", "docs/reference/review-team-protocol.md");
+    link_agent_teams(temp.path(), "drifted", "docs/reference/legacy-review-team.md");
+    write_universal_rule(
+        temp.path(),
+        "UNI-213",
+        "  - kind: content-digest-eq\n    value: agent-teams-match-canonical\n    config:\n      canonical-path: docs/reference/review-team-protocol.md\n",
+    );
+
+    let (code, envelope) = run_single_rule(temp.path(), "UNI-213");
+    assert_eq!(code, Some(2), "the drifted overlay must gate; envelope:\n{envelope:#}");
+    let overlays: Vec<String> = findings_for(&envelope, "UNI-213")
+        .iter()
+        .filter_map(|f| f.pointer("/evidence/data/agent-team").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(overlays.len(), 1, "exactly one overlay is flagged; envelope:\n{envelope:#}");
+    assert!(
+        overlays[0].ends_with("adapters/targets/drifted/references/agent-teams.md"),
+        "only the overlay resolving to a divergent digest is flagged; got {overlays:?}",
+    );
+}
+
+/// Create an adapter directory under `adapters/<axis>/<name>`, with an
+/// `adapter.yaml` manifest when `manifest` is `Some`. Mirrors the
+/// crate-level `cross-reference` write helper.
+fn write_adapter_dir(root: &Path, axis: &str, name: &str, manifest: Option<&str>) {
+    let dir = root.join(format!("adapters/{axis}/{name}"));
+    fs::create_dir_all(&dir).expect("mkdir adapter dir");
+    if let Some(body) = manifest {
+        fs::write(dir.join("adapter.yaml"), body).expect("write manifest");
+    }
+}
+
+/// `kind: cross-reference` (the `adapter-dir` → `adapter-manifest`
+/// presence join) through the binary: an adapter directory with no
+/// resolvable `adapter.yaml` is flagged while directories carrying a
+/// manifest pass. Mirrors the crate-level `flags_dir_without_manifest`.
+#[test]
+fn cross_reference_flags_orphan_dir() {
+    let temp = TempDir::new().expect("tempdir");
+    scaffold_framework(temp.path());
+    write_adapter_dir(temp.path(), "targets", "omnia", Some("name: omnia\n"));
+    write_adapter_dir(temp.path(), "targets", "orphan", None);
+    write_adapter_dir(temp.path(), "sources", "intent", Some("name: intent\n"));
+    write_universal_rule(
+        temp.path(),
+        "UNI-214",
+        "  - kind: cross-reference\n    value: adapter-dir\n    config:\n      target: adapter-manifest\n",
+    );
+
+    let (code, envelope) = run_single_rule(temp.path(), "UNI-214");
+    assert_eq!(code, Some(2), "the orphan adapter dir must gate; envelope:\n{envelope:#}");
+    let orphans: Vec<String> = findings_for(&envelope, "UNI-214")
+        .iter()
+        .filter_map(|f| f.pointer("/evidence/data/path").and_then(Value::as_str))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(orphans.len(), 1, "only the manifest-less dir is flagged; envelope:\n{envelope:#}");
+    assert!(
+        orphans[0].ends_with("adapters/targets/orphan"),
+        "the flagged dir must be the orphan; got {orphans:?}",
+    );
+}
+
 /// `--output-format pretty` produces a non-empty stdout body that
 /// includes the diagnostics-formatter header — confirms the four
 /// formatters from [`specify_diagnostics`] are wired

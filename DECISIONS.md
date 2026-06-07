@@ -294,7 +294,7 @@ tool.
 diagnostics crate), embeds its own schema copies as mechanism, ships a
 prebuilt `dist/<name>-<ver>.wasm` embedded into the binary via
 `FrameworkToolRunner` ([`src/runtime/commands/lint/framework_tools.rs`](./src/runtime/commands/lint/framework_tools.rs)),
-and is rebuilt by `cargo make <name>-wasm`. (A tool's emitted `Artifact`
+and is rebuilt by `cargo make framework-wasm <name>` (no argument rebuilds all seven). (A tool's emitted `Artifact`
 must be a valid enum value — e.g. `"unknown"` — or the host silently
 drops the report.)
 

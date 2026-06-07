@@ -96,6 +96,60 @@ mod tests {
         assert_eq!(cached_bytes(&scope, &correct_tool), b"new-good");
     }
 
+    fn acquired(bytes: &[u8]) -> AcquiredBytes {
+        let temp = tempfile::NamedTempFile::new().expect("create acquired tempfile");
+        fs::write(temp.path(), bytes).expect("write acquired bytes");
+        AcquiredBytes {
+            temp,
+            sha256: sha256_hex(bytes),
+            package_metadata: None,
+        }
+    }
+
+    // `validate` is the digest gate every acquired source flows through.
+    // The empty-bytes guard, the pinned-mismatch guard, and the two
+    // pass-through arms (pinned match / unpinned) each gate a different
+    // failure mode; assert all four directly so a refactor of the early
+    // returns cannot collapse one into another.
+    #[test]
+    fn validate_gates_empty_and_mismatch() {
+        let good = acquired(b"good-bytes");
+        let empty = acquired(b"");
+        let correct = sha256_hex(b"good-bytes");
+        let wrong = "f".repeat(64);
+
+        let empty_err = validate("src", &empty, None).expect_err("empty bytes are rejected");
+        assert!(
+            matches!(&empty_err, ToolError::Diag { code: "tool-resolver", detail }
+                if detail.contains("produced empty bytes")),
+            "{empty_err}"
+        );
+
+        let mismatch =
+            validate("src", &good, Some(&wrong)).expect_err("pinned mismatch is rejected");
+        assert!(
+            matches!(&mismatch, ToolError::Diag { code: "tool-resolver", detail }
+                if detail.contains("sha256 mismatch")),
+            "{mismatch}"
+        );
+
+        validate("src", &good, Some(&correct)).expect("matching pin passes");
+        validate("src", &good, None).expect("unpinned non-empty passes");
+    }
+
+    // `cached_matches` short-circuits to `Ok(true)` for an unpinned tool
+    // without touching the filesystem, but surfaces a typed I/O error
+    // when a pinned tool's cached module is missing.
+    #[test]
+    fn cached_matches_pin_handling() {
+        let absent = Path::new("/definitely/missing/module.wasm");
+        assert!(cached_matches(absent, None).expect("unpinned hit ignores missing bytes"));
+
+        let err =
+            cached_matches(absent, Some(&"a".repeat(64))).expect_err("pinned miss must read bytes");
+        assert!(matches!(err, ToolError::Diag { code: "tool-io", .. }), "{err}");
+    }
+
     #[test]
     fn cached_bytes_rehashed_on_pinned_hit() {
         let cache_dir = scratch_dir("resolver-hit-digest-cache");

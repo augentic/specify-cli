@@ -203,3 +203,33 @@ fn mint(rule: &ResolvedRule, path: &str, summary: &str, next_id: &mut u64) -> Di
     *next_id += 1;
     finding
 }
+
+#[cfg(test)]
+mod tests {
+    use ::regex::Regex;
+
+    use super::first_invalid_token;
+
+    // `first_invalid_token` is the per-token gate behind CORE-035. The
+    // integration test only exercises the leading-token case; the subtle
+    // contract is: an empty/whitespace value passes vacuously (returns
+    // None), every-token-matches returns None, and when a *later* token
+    // is the offender the scanner must return that later token, not the
+    // first one it saw.
+    #[test]
+    fn vacuous_and_first_offender() {
+        let re = Regex::new(r"^[<\[][a-z][a-z0-9-]*[>\]]$").expect("compile");
+
+        assert_eq!(first_invalid_token("", &re), None, "empty value passes vacuously");
+        assert_eq!(first_invalid_token("   \t ", &re), None, "whitespace-only passes vacuously");
+        assert_eq!(first_invalid_token("<slice-dir> [crate]", &re), None, "all tokens conform");
+        // The first token is fine; the second is prose — that second
+        // token must be the one reported.
+        assert_eq!(first_invalid_token("<slice-dir> the name", &re).as_deref(), Some("the"));
+        assert_eq!(
+            first_invalid_token("prose first", &re).as_deref(),
+            Some("prose"),
+            "a leading bad token is reported"
+        );
+    }
+}

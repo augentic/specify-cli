@@ -244,4 +244,103 @@ mod tests {
         assert!(targets.has_test);
         assert!(targets.has_checks);
     }
+
+    // A `.PHONY: test checks` declaration names the targets but is itself
+    // skipped (it starts with `.`); without a real `test:` / `checks:`
+    // rule nothing should be detected. Recipe lines (tab-indented) and
+    // comments must not register either. This is the boundary that keeps
+    // detection from firing on a bare `.PHONY` line.
+    #[test]
+    fn make_targets_ignore_phony_recipes_and_comments() {
+        let only_phony = parse_make_targets(".PHONY: test checks\n");
+        assert!(!only_phony.has_test, "a .PHONY line alone is not a target");
+        assert!(!only_phony.has_checks);
+
+        let recipe_and_comment = parse_make_targets("\ttest:\n# checks: real\n");
+        assert!(!recipe_and_comment.has_test, "tab-indented line is a recipe, not a target");
+        assert!(!recipe_and_comment.has_checks, "commented line is not a target");
+
+        // A multi-name target line and an exact-name requirement.
+        let multi = parse_make_targets("build test: deps\ntesting:\n");
+        assert!(multi.has_test, "`test` among several names on one line counts");
+        let mismatched = parse_make_targets("testing:\n\ttest stuff\n");
+        assert!(!mismatched.has_test, "`testing` is not the `test` target");
+    }
+
+    #[test]
+    fn go_version_parsing() {
+        assert_eq!(parse_go_version("module demo\n\ngo 1.22\n").as_deref(), Some("1.22"));
+        assert_eq!(parse_go_version("  go 1.21.0  \n").as_deref(), Some("1.21.0"));
+        // First `go` directive wins.
+        assert_eq!(parse_go_version("go 1.20\ngo 1.30\n").as_deref(), Some("1.20"));
+        // `golang` is not the `go ` directive; a bare `go` and an empty
+        // version both yield nothing.
+        assert_eq!(parse_go_version("golang 1.0\n"), None);
+        assert_eq!(parse_go_version("go\n"), None);
+        assert_eq!(parse_go_version("go \n"), None);
+        assert_eq!(parse_go_version("module demo\n"), None);
+    }
+
+    // `strip_json_comments` must only strip `//` that sits outside a JSON
+    // string. A `//` inside a string value (the classic `"http://..."`
+    // trap), a single `/`, and an escaped quote that keeps the scanner
+    // "in string" must all be preserved.
+    #[test]
+    fn json_comments_respect_strings() {
+        assert_eq!(strip_json_comments("{\"a\": 1} // tail").trim_end(), "{\"a\": 1}");
+        assert_eq!(strip_json_comments("{\"url\": \"http://x/y\"}"), "{\"url\": \"http://x/y\"}");
+        assert_eq!(strip_json_comments("{\"a/b\": 1}"), "{\"a/b\": 1}");
+        // The escaped quote keeps the scanner inside the string, so the
+        // following `//` is data, not a comment.
+        assert_eq!(strip_json_comments("{\"a\\\"//b\": 1}"), "{\"a\\\"//b\": 1}");
+    }
+
+    #[test]
+    fn toml_marker_reads_nested_and_array_tables() {
+        let nested = TomlMarker::parse("[tool.poetry]\nname = \"demo\"\n").expect("parse nested");
+        assert_eq!(nested.value(["tool", "poetry"], "name"), Some("demo"));
+        // A section-arity mismatch must not match.
+        assert_eq!(nested.value(["tool"], "name"), None);
+
+        let array_table =
+            TomlMarker::parse("[[bin]]\npath = 'src/main.rs'\n").expect("parse [[..]]");
+        assert_eq!(array_table.value(["bin"], "path"), Some("src/main.rs"));
+
+        // Bare scalars round-trip; container values are skipped (None
+        // scalar -> stored empty) but must not derail parsing.
+        let scalars = TomlMarker::parse(
+            "[toolchain]\nchannel = \"stable\" # pinned\ncount = 3\nlist = [1, 2]\n",
+        )
+        .expect("parse scalars");
+        assert_eq!(scalars.value(["toolchain"], "channel"), Some("stable"));
+        assert_eq!(scalars.value(["toolchain"], "count"), Some("3"));
+        assert_eq!(scalars.value(["toolchain"], "list"), Some(""));
+
+        // A multi-line array balances its delimiters across lines.
+        let multiline =
+            TomlMarker::parse("members = [\n  \"a\",\n  \"b\",\n]\nedition = \"2021\"\n")
+                .expect("parse multiline array");
+        assert_eq!(multiline.value([], "edition"), Some("2021"));
+    }
+
+    #[test]
+    fn toml_marker_rejects_malformed_input() {
+        TomlMarker::parse("members = [\n  \"a\",\n").expect_err("unterminated array");
+        TomlMarker::parse("count = ]\n").expect_err("unexpected closing delimiter");
+        TomlMarker::parse("name = \"unterminated\n").expect_err("unterminated string");
+        TomlMarker::parse("[]\n").expect_err("empty section header");
+        TomlMarker::parse("= value\n").expect_err("empty key");
+    }
+
+    #[test]
+    fn relative_marker_path_uses_forward_slashes() {
+        let project = Path::new("/proj");
+        assert_eq!(
+            relative_marker_path(project, Path::new("/proj/nested/Cargo.toml")),
+            "nested/Cargo.toml"
+        );
+        // A path outside the project is returned as-is, not panicked on.
+        let outside = relative_marker_path(project, Path::new("/elsewhere/go.mod"));
+        assert!(outside.ends_with("go.mod"), "{outside}");
+    }
 }

@@ -8,6 +8,19 @@
 //! literal `TODO` token in the project — chosen because the regex
 //! evaluator is the simplest Phase 2 hint that surfaces an
 //! `important` finding without requiring a WASI tool to be built.
+//!
+//! Beyond `regex` / `schema` / `kind: tool`, the per-kind cases below
+//! drive every Road A declarative kind reachable under the
+//! `ScanProfile::Project` fact set the consumer surface builds —
+//! `path-pattern`, `presence`, `field-grammar`, `set-coverage`,
+//! `cardinality`, `reference-resolves`, `fenced-block` — through the
+//! binary, mirroring the crate-level `crates/standards/tests/lint_hint/`
+//! cases at integration level. The five kinds bound to framework-only
+//! fact families (`cross-reference`, `set-eq`, `constant-eq`,
+//! `content-digest-eq`, `unique`) are unreachable through `lint project`
+//! because the project profile never indexes adapter / skill / scenario
+//! / agent-team facts; they are proven through `specify lint framework`
+//! in `tests/lint/framework.rs` instead.
 
 use std::fs;
 use std::path::Path;
@@ -451,6 +464,347 @@ fn suggestion_finding_present_exits_0() {
         important + critical,
         0,
         "no blocking-tier finding should exist; envelope:\n{envelope:#}"
+    );
+}
+
+/// One throwaway project + codex pair carrying exactly the facts one
+/// hint-kind case needs. Mirrors [`Fixture`] but parameterises the
+/// project tree so each per-kind scenario supplies only the files its
+/// rule consumes, instead of the fixed `notes.md` / UNI-100 pair.
+struct HintFixture {
+    _root: TempDir,
+    project: std::path::PathBuf,
+    codex: std::path::PathBuf,
+}
+
+/// Scaffold a [`HintFixture`]: an initialised project carrying each
+/// `(relative-path, body)` in `files`, plus an empty universal-rules
+/// tree the caller fills with [`write_hint_rule`].
+fn scaffold_hint_fixture(files: &[(&str, &str)]) -> HintFixture {
+    let root = TempDir::new().expect("create tempdir");
+    let project = root.path().join("project");
+    let codex = root.path().join("rules");
+    fs::create_dir_all(project.join(".specify")).expect("mkdir project/.specify");
+    fs::create_dir_all(codex.join("adapters/shared/rules/universal")).expect("mkdir codex");
+    fs::write(project.join(".specify").join("project.yaml"), "name: hint-kind-e2e\n")
+        .expect("write project.yaml");
+    for (rel, body) in files {
+        let path = project.join(rel);
+        fs::create_dir_all(path.parent().expect("file parent")).expect("mkdir file parent");
+        fs::write(&path, body).unwrap_or_else(|err| panic!("write {rel}: {err}"));
+    }
+    HintFixture {
+        _root: root,
+        project,
+        codex,
+    }
+}
+
+/// Write one `lint_mode: deterministic` UNI rule whose `rule_hints:`
+/// body is `hints` verbatim (each line already indented two spaces to
+/// sit under the `rule_hints:` key, terminated by a newline). Severity
+/// is fixed `important` so a single finding gates the scan to exit 2
+/// and a clean pass exits 0 — the same exit contract the regex happy
+/// path relies on.
+fn write_hint_rule(codex: &Path, id: &str, hints: &str) {
+    let slug = id.to_ascii_lowercase();
+    fs::write(
+        codex.join(format!("adapters/shared/rules/universal/{slug}.md")),
+        format!(
+            "---\n\
+             id: {id}\n\
+             title: Synthetic {id}\n\
+             severity: important\n\
+             trigger: Synthetic hint-kind coverage rule for {id}.\n\
+             lint_mode: deterministic\n\
+             rule_hints:\n\
+             {hints}\
+             ---\n\
+             ## Rule\n\nSynthetic rule body for {id}.\n",
+        ),
+    )
+    .unwrap_or_else(|err| panic!("write rule {id}: {err}"));
+}
+
+/// Parse a `run_review` invocation's stdout into the `DiagnosticReport`
+/// envelope, panicking with stderr context on a non-JSON body.
+#[track_caller]
+fn parse_envelope(output: &std::process::Output) -> Value {
+    let stdout = std::str::from_utf8(&output.stdout).expect("utf8 stdout");
+    serde_json::from_str(stdout).unwrap_or_else(|err| {
+        panic!("stdout is not JSON ({err}); stderr:\n{}", String::from_utf8_lossy(&output.stderr))
+    })
+}
+
+/// Findings on `envelope` whose `rule-id` equals `rule_id`, in wire
+/// order.
+fn findings_for<'a>(envelope: &'a Value, rule_id: &str) -> Vec<&'a Value> {
+    envelope
+        .get("findings")
+        .and_then(Value::as_array)
+        .map(|findings| {
+            findings
+                .iter()
+                .filter(|f| f.get("rule-id").and_then(Value::as_str) == Some(rule_id))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The `location.path` of a finding, or `""` when absent.
+fn finding_path(finding: &Value) -> &str {
+    finding.pointer("/location/path").and_then(Value::as_str).unwrap_or_default()
+}
+
+/// `kind: path-pattern` through the binary: a rule pairing
+/// `path-pattern: *.rs` with `regex: \bfn\b` must let the regex see
+/// only the `*.rs` candidate, so the `fn` token in a sibling `.md`
+/// file is never flagged. Mirrors the crate-level
+/// `path_pattern_narrows_candidates`.
+#[test]
+fn path_pattern_scopes_regex() {
+    let fx = scaffold_hint_fixture(&[
+        ("lib.rs", "fn main() {}\n"),
+        ("notes.md", "Prose that mentions fn outside any Rust file.\n"),
+    ]);
+    write_hint_rule(
+        &fx.codex,
+        "UNI-200",
+        "  - kind: path-pattern\n    value: \"*.rs\"\n  - kind: regex\n    value: '\\bfn\\b'\n",
+    );
+    let output = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the .rs match must gate the scan; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let envelope = parse_envelope(&output);
+    let findings = findings_for(&envelope, "UNI-200");
+    assert!(
+        !findings.is_empty(),
+        "the path-pattern survivor must be flagged; envelope:\n{envelope:#}"
+    );
+    for finding in &findings {
+        assert_eq!(
+            finding_path(finding),
+            "lib.rs",
+            "regex must only see path-pattern survivors, never the .md sibling; envelope:\n{envelope:#}",
+        );
+    }
+}
+
+/// `kind: presence` (the `file` selector) through the binary: a rule
+/// requiring an absent `config: { path }` flags the missing file, and
+/// the same rule rewritten to require a present path produces no
+/// finding. Mirrors the crate-level `file_flags_missing_required_path`.
+#[test]
+fn presence_file_flags_missing() {
+    let fx = scaffold_hint_fixture(&[("docs/reference/present.md", "# Present\n")]);
+
+    write_hint_rule(
+        &fx.codex,
+        "UNI-201",
+        "  - kind: presence\n    value: file\n    config:\n      path: docs/reference/absent.md\n",
+    );
+    let missing = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        missing.status.code(),
+        Some(2),
+        "the absent required file must gate the scan; stderr:\n{}",
+        String::from_utf8_lossy(&missing.stderr),
+    );
+    let missing_env = parse_envelope(&missing);
+    assert_eq!(
+        findings_for(&missing_env, "UNI-201").len(),
+        1,
+        "exactly one presence finding for the absent path; envelope:\n{missing_env:#}",
+    );
+
+    write_hint_rule(
+        &fx.codex,
+        "UNI-201",
+        "  - kind: presence\n    value: file\n    config:\n      path: docs/reference/present.md\n",
+    );
+    let present = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        present.status.code(),
+        Some(0),
+        "a satisfied presence requirement must not gate; stderr:\n{}",
+        String::from_utf8_lossy(&present.stderr),
+    );
+    assert!(
+        findings_for(&parse_envelope(&present), "UNI-201").is_empty(),
+        "a present required path produces no finding",
+    );
+}
+
+/// `kind: field-grammar` (the `field-first-word` mode) through the
+/// binary: a rule requiring each `.md`'s `description` frontmatter to
+/// begin with an allow-listed verb flags only the prose-leading
+/// description. Mirrors the crate-level `first_word_flags_bad_and_passes_good`.
+#[test]
+fn field_grammar_flags_first_word() {
+    let fx = scaffold_hint_fixture(&[
+        ("good.md", "---\ndescription: Build the fixtures.\n---\n\nBody.\n"),
+        ("bad.md", "---\ndescription: The thing that runs.\n---\n\nBody.\n"),
+    ]);
+    write_hint_rule(
+        &fx.codex,
+        "UNI-202",
+        "  - kind: path-pattern\n    value: \"*.md\"\n  - kind: field-grammar\n    value: field-first-word\n    config:\n      field: description\n      allowed:\n        - build\n        - run\n",
+    );
+    let output = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the non-verb description must gate; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let envelope = parse_envelope(&output);
+    let paths: Vec<&str> =
+        findings_for(&envelope, "UNI-202").iter().map(|f| finding_path(f)).collect();
+    assert_eq!(
+        paths,
+        vec!["bad.md"],
+        "only the prose-leading description is flagged; the allowed-verb one passes; envelope:\n{envelope:#}",
+    );
+}
+
+/// `kind: set-coverage` (the `skill-allowed-tools` source) through the
+/// binary: an `allowed-tools` frontmatter entry outside the rule's
+/// `config: { allowed }` set is flagged. The source reads the
+/// frontmatter fact family, so it fires under the project profile
+/// without needing the framework-only skill facts. Mirrors the
+/// crate-level `flags_only_uncovered_tools`.
+#[test]
+fn set_coverage_flags_uncovered_tool() {
+    let fx = scaffold_hint_fixture(&[(
+        "skillish.md",
+        "---\nallowed-tools: Read NotATool\n---\n\nBody.\n",
+    )]);
+    write_hint_rule(
+        &fx.codex,
+        "UNI-203",
+        "  - kind: path-pattern\n    value: \"*.md\"\n  - kind: set-coverage\n    value: skill-allowed-tools\n    config:\n      allowed:\n        - Read\n",
+    );
+    let output = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the uncovered tool must gate; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let envelope = parse_envelope(&output);
+    let findings = findings_for(&envelope, "UNI-203");
+    assert_eq!(findings.len(), 1, "only the unrecognised tool is flagged; envelope:\n{envelope:#}");
+    assert_eq!(
+        findings[0].pointer("/evidence/data/tool").and_then(Value::as_str),
+        Some("NotATool"),
+        "the finding must name the uncovered tool; envelope:\n{envelope:#}",
+    );
+}
+
+/// `kind: cardinality` (the `markdown-h2-section-body-line-count`
+/// metric) through the binary: an over-cap level-2 section is flagged
+/// while a section under the cap passes. The metric reads the
+/// markdown-section fact family, available under the project profile.
+/// Mirrors the crate-level `flags_h2_sections_over_cap`.
+#[test]
+fn cardinality_flags_long_section() {
+    let fx = scaffold_hint_fixture(&[("doc.md", "## Big\nl1\nl2\nl3\nl4\n\n## Small\nl1\n")]);
+    write_hint_rule(
+        &fx.codex,
+        "UNI-204",
+        "  - kind: path-pattern\n    value: \"*.md\"\n  - kind: cardinality\n    value: markdown-h2-section-body-line-count\n    config:\n      max: 3\n",
+    );
+    let output = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the over-cap section must gate; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let envelope = parse_envelope(&output);
+    let titles: Vec<&str> = findings_for(&envelope, "UNI-204")
+        .iter()
+        .filter_map(|f| f.pointer("/evidence/data/title").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        titles,
+        vec!["Big"],
+        "only the over-cap H2 section is flagged; envelope:\n{envelope:#}",
+    );
+}
+
+/// `kind: reference-resolves` (the `markdown-link` source) through the
+/// binary: a relative link to a missing file is flagged while a link to
+/// a real sibling resolves. Mirrors the crate-level
+/// `flags_only_unresolved_markdown_links`.
+#[test]
+fn reference_resolves_flags_broken_link() {
+    let fx = scaffold_hint_fixture(&[
+        ("docs/there.md", "# there\n"),
+        ("docs/a.md", "[ok](./there.md) and [bad](./missing.md)\n"),
+    ]);
+    write_hint_rule(
+        &fx.codex,
+        "UNI-205",
+        "  - kind: path-pattern\n    value: \"docs/**/*.md\"\n  - kind: reference-resolves\n    value: markdown-link\n",
+    );
+    let output = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the broken link must gate; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let envelope = parse_envelope(&output);
+    let targets: Vec<&str> = findings_for(&envelope, "UNI-205")
+        .iter()
+        .filter_map(|f| f.pointer("/evidence/value").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        targets,
+        vec!["./missing.md"],
+        "only the unresolved target is flagged; the real sibling resolves; envelope:\n{envelope:#}",
+    );
+}
+
+/// `kind: fenced-block` (the `inline-json-too-long` source) through the
+/// binary: a json fence whose body exceeds `config: { max-lines }` is
+/// flagged while a short json fence passes. The fenced-block fact
+/// family is built under the project profile. Mirrors the crate-level
+/// `flags_long_json_fences_only`.
+#[test]
+fn fenced_block_flags_long_json() {
+    let fx = scaffold_hint_fixture(&[(
+        "doc.md",
+        "# Doc\n\n```json\n1\n2\n3\n4\n5\n```\n\n```json\nx\n```\n",
+    )]);
+    write_hint_rule(
+        &fx.codex,
+        "UNI-206",
+        "  - kind: path-pattern\n    value: \"*.md\"\n  - kind: fenced-block\n    value: inline-json-too-long\n    config:\n      langs:\n        - json\n      max-lines: 3\n",
+    );
+    let output = run_review(&fx.project, Some(&fx.codex), &[]);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the over-long json fence must gate; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let envelope = parse_envelope(&output);
+    assert_eq!(
+        findings_for(&envelope, "UNI-206").len(),
+        1,
+        "only the 5-line json fence is flagged, not the short one; envelope:\n{envelope:#}",
     );
 }
 
