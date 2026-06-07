@@ -24,9 +24,8 @@ use std::process::ExitCode;
 
 use serde::Serialize;
 use specify_scenarios::{
-    RULE_ARTIFACT_PATH_UNSAFE, RULE_BODY_ID_MISMATCH, RULE_DUPLICATE_ID,
-    RULE_RECORDED_TRACE_VIOLATION, RULE_SCHEMA_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS,
-    ScenarioFinding, run,
+    RULE_ARTIFACT_PATH_UNSAFE, RULE_BODY_ID_MISMATCH, RULE_RECORDED_TRACE_VIOLATION,
+    RULE_STAGES_NOT_CONTIGUOUS, ScenarioFinding, run,
 };
 
 /// Placeholder fingerprint; the host recomputes it on fold. Kept in the
@@ -38,9 +37,7 @@ const PLACEHOLDER_FINGERPRINT: &str = "sha256:0000000000000000000000000000000000
 const RULES: &[&str] = &[
     RULE_ARTIFACT_PATH_UNSAFE,
     RULE_BODY_ID_MISMATCH,
-    RULE_DUPLICATE_ID,
     RULE_RECORDED_TRACE_VIOLATION,
-    RULE_SCHEMA_VIOLATION,
     RULE_STAGES_NOT_CONTIGUOUS,
 ];
 
@@ -152,17 +149,9 @@ fn guidance(rule_id: &str) -> (&'static str, &'static str) {
             "A scenario's visible 'Scenario ID' body line disagrees with its frontmatter id, so readers cannot trust the citation.",
             "Align the body 'Scenario ID: `…`' line with the frontmatter `id`.",
         ),
-        RULE_DUPLICATE_ID => (
-            "Two or more scenarios share an id; scenario ids must be unique across the whole tree.",
-            "Rename the colliding scenarios so each frontmatter `id` is unique.",
-        ),
         RULE_RECORDED_TRACE_VIOLATION => (
             "A recorded-trace file's first line is not a well-formed `recorded-trace-header`, so replay cannot trust its provenance.",
             "Make the first line a JSON `recorded-trace-header` object with schemaVersion 1 and every required field populated.",
-        ),
-        RULE_SCHEMA_VIOLATION => (
-            "A scenario's frontmatter does not satisfy scenario.schema.json, so it cannot be consumed by the acceptance tooling.",
-            "Fix the scenario frontmatter to satisfy scenario.schema.json (see the finding message for the failing field).",
         ),
         _ => (
             "Scenario stages are not a contiguous slice of the slice loop; the pack does not describe a runnable lifecycle window.",

@@ -135,7 +135,10 @@
               { "const": "constant-eq" },
               { "const": "set-eq" },
               { "const": "content-digest-eq" },
-              { "const": "fenced-block" }
+              { "const": "fenced-block" },
+              { "const": "presence" },
+              { "const": "field-grammar" },
+              { "const": "cross-reference" }
             ]
           },
           "value": {
@@ -149,7 +152,7 @@
             "description": "Optional human explanation for the hint."
           },
           "config": {
-            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `content-digest-eq` -> agentTeamsHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (skill) -> argumentHintGrammarHintConfig or descriptionGrammarHintConfig; `tool` (agent-teams) -> agentTeamsHintConfig; `tool` (adapter) -> firstPartyToolsHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig.",
+            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `content-digest-eq` -> agentTeamsHintConfig; `presence` (file / markdown-section) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (agent-teams) -> agentTeamsHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig.",
             "oneOf": [
               { "$ref": "#/$defs/regexHintConfig" },
               { "$ref": "#/$defs/referenceResolvesHintConfig" },
@@ -163,13 +166,13 @@
               { "$ref": "#/$defs/constantFieldEqHintConfig" },
               { "$ref": "#/$defs/criticalPathHintConfig" },
               { "$ref": "#/$defs/variableCoverageHintConfig" },
-              { "$ref": "#/$defs/argumentHintGrammarHintConfig" },
-              { "$ref": "#/$defs/descriptionGrammarHintConfig" },
               { "$ref": "#/$defs/agentTeamsHintConfig" },
-              { "$ref": "#/$defs/firstPartyToolsHintConfig" },
               { "$ref": "#/$defs/schemaRegistryHintConfig" },
               { "$ref": "#/$defs/numericCapHintConfig" },
-              { "$ref": "#/$defs/nsOwnerHintConfig" }
+              { "$ref": "#/$defs/nsOwnerHintConfig" },
+              { "$ref": "#/$defs/presenceHintConfig" },
+              { "$ref": "#/$defs/fieldGrammarHintConfig" },
+              { "$ref": "#/$defs/crossReferenceHintConfig" }
             ]
           }
         }
@@ -497,31 +500,81 @@
         }
       }
     },
-    "argumentHintGrammarHintConfig": {
+    "fieldGrammarHintConfig": {
+      "description": "`kind: field-grammar` hint configuration. The `field-tokens` mode carries `{ field, token-pattern }` (CORE-035); the `field-first-word` mode carries `{ field, allowed }` (CORE-036). Each mode has a unique required key (`token-pattern` vs `allowed`) so the oneOf disambiguates; both require `field`. All values are policy supplied by the rule, not the engine.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "token-pattern"],
+          "description": "`field-tokens` mode: every whitespace-separated token of the named frontmatter field must match the grammar regex.",
+          "properties": {
+            "field": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Frontmatter field whose whitespace-separated tokens are checked (e.g. `argument-hint`)."
+            },
+            "token-pattern": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Anchored regular expression every whitespace-separated token of the field must match."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "allowed"],
+          "description": "`field-first-word` mode: the first alphabetic word of the named frontmatter field must be in the allow-list.",
+          "properties": {
+            "field": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Frontmatter field whose first alphabetic word is checked (e.g. `description`)."
+            },
+            "allowed": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Lowercase words the field's first alphabetic word may equal (e.g. the imperative-verb allow-list)."
+            }
+          }
+        }
+      ]
+    },
+    "crossReferenceHintConfig": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["token-pattern"],
-      "description": "`kind: tool` (`skill`) configuration for the `argument-hint` grammar check (CORE-035). The token grammar is policy supplied by the rule, not the tool.",
+      "required": ["target"],
+      "description": "`kind: cross-reference` hint configuration. `target` names the target fact family the source (the hint `value`) is joined against; the required `target` key disambiguates the oneOf. With a fact-family source (e.g. `value: adapter-dir`) the join is presence-only: source items with no corresponding target item are flagged. With the `value: expected-set` source the rule supplies the optional `entries` table (each `{ key, value }`) and the join is value-equality against the target on `key`. The source / target selectors and the join keys are mechanism; which family is which, and the expected entries / values, are policy supplied by the rule, not the engine.",
       "properties": {
-        "token-pattern": {
+        "target": {
           "type": "string",
           "minLength": 1,
-          "description": "Anchored regular expression every whitespace-separated `argument-hint` token must match."
-        }
-      }
-    },
-    "descriptionGrammarHintConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["allowed-verbs"],
-      "description": "`kind: tool` (`skill`) configuration for the `description` first-verb check (CORE-036). The imperative-verb allow-list is policy supplied by the rule, not the tool.",
-      "properties": {
-        "allowed-verbs": {
+          "description": "Target fact-family selector the source is joined against (e.g. `adapter-manifest` for a presence join, `adapter-tool` for a value-equality join)."
+        },
+        "entries": {
           "type": "array",
           "minItems": 1,
-          "uniqueItems": true,
-          "items": { "type": "string", "minLength": 1 },
-          "description": "Lowercase imperative verbs a skill `description` may begin with."
+          "description": "Expected-set rows for the `value: expected-set` source. Each row's `key` is joined against the target family; the matched target value must equal `value`. Absent for fact-family sources.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "value"],
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Join key composed against the target family's documented key mechanism (e.g. `<adapter-dir>/<tool>` for `adapter-tool`)."
+              },
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Value the matched target entry must equal (e.g. the pinned tool version)."
+              }
+            }
+          }
         }
       }
     },
@@ -535,42 +588,6 @@
           "type": "string",
           "minLength": 1,
           "description": "Project-relative path to the canonical review-team-protocol document every per-target agent-teams.md overlay must mirror."
-        }
-      }
-    },
-    "firstPartyToolsHintConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["expected-tools"],
-      "description": "`kind: tool` (`adapter`) configuration for the first-party tool declaration check (CORE-049). The per-adapter, version-pinned policy table is supplied by the rule, not the tool; the engine relays this block to the tool verbatim.",
-      "properties": {
-        "expected-tools": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "description": "Per-adapter `{adapter, tool, package}` policy rows. Each names the target adapter, the declared tool name, and the exact pinned package request the declaration must equal.",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["adapter", "tool", "package"],
-            "properties": {
-              "adapter": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Target adapter the tool must be declared under."
-              },
-              "tool": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Declared tool name."
-              },
-              "package": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Full version-pinned package request the declaration must equal (e.g. `specify:contract@0.3.0`)."
-              }
-            }
-          }
         }
       }
     },
@@ -656,6 +673,61 @@
           "description": "`<reserved namespace> -> <sole owner>` map (e.g. `FRAME -> universal`). A rule whose id carries a reserved namespace under any other owner is flagged."
         }
       }
+    },
+    "presenceHintConfig": {
+      "description": "`kind: presence` hint configuration. The `file` selector carries `{ path }`; the `markdown-section` selector carries `{ title, level, when: { metric, min } }`. The `frontmatter` selector carries no config. Each variant has a unique required key (`path` vs `title`) so the oneOf disambiguates. All values are policy supplied by the rule, not the engine.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "description": "`file` selector: the single project-relative path that must exist on the tree.",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Project-relative path the rule requires to be present."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["title", "level", "when"],
+          "description": "`markdown-section` selector: the required heading and the metric threshold that gates the requirement.",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Heading text the required markdown section must carry (e.g. `Critical Path`)."
+            },
+            "level": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 6,
+              "description": "Heading level the required section must use (2 for an H2)."
+            },
+            "when": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["metric", "min"],
+              "description": "Threshold gate: the section is required only when the named fact metric reaches `min`.",
+              "properties": {
+                "metric": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Fact metric the threshold gates on (e.g. `skill-body-line-count`)."
+                },
+                "min": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Inclusive threshold: at or above this metric value the section is required."
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "ruleId": {
       "type": "string",

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Framework-authoring validator for scenario packs — stage-contiguity and frontmatter structure checks (CORE-028..033)"
+description = "Framework-authoring validator for scenario packs — artifact-path, body-id, recorded-trace, and stage-contiguity checks (CORE-028, 029, 031, 033)"
 readme = "../../README.md"
 categories = ["development-tools", "command-line-utilities"]
 keywords = ["specify", "scenarios", "validate", "lint", "framework"]
@@ -21,7 +21,6 @@ name = "specify_scenarios"
 path = "src/lib.rs"
 
 [dependencies]
-jsonschema.workspace = true
 regex = "1"
 serde = { workspace = true, features = ["derive"] }
 serde-saphyr.workspace = true

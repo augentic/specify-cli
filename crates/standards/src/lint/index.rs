@@ -19,6 +19,7 @@
 //! `Exit::from(&Error)`.
 
 pub mod adapter;
+pub mod adapter_dir;
 pub mod agent_teams;
 pub mod brief;
 pub mod discover;
@@ -30,6 +31,7 @@ pub mod languages;
 pub mod markdown;
 pub mod marketplace;
 pub mod path_util;
+pub mod scenario;
 pub mod skill;
 pub mod symlinks;
 
@@ -185,6 +187,8 @@ fn build_project(
         fenced_blocks: fenced_blocks_out,
         briefs: Vec::new(),
         agent_teams: Vec::new(),
+        scenarios: Vec::new(),
+        adapter_dirs: Vec::new(),
     })
 }
 
@@ -315,6 +319,8 @@ fn build_framework(
         fenced_blocks: fenced_blocks_out,
         briefs: briefs_out,
         agent_teams: agent_teams_facts,
+        scenarios: scenario::extract(project_dir),
+        adapter_dirs: adapter_dir::extract(project_dir),
     })
 }
 

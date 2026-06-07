@@ -114,7 +114,10 @@
         "constant-eq",
         "set-eq",
         "content-digest-eq",
-        "fenced-block"
+        "fenced-block",
+        "presence",
+        "field-grammar",
+        "cross-reference"
       ],
       "description": "Closed v1 deterministic-hint kind enum. Every kind is executable; `specify lint` owns execution semantics."
     },

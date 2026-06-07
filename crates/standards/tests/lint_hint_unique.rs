@@ -27,6 +27,36 @@ fn write_skill(project: &Path, plugin: &str, skill: &str, name: &str) {
     fs::write(&path, content).expect("write skill");
 }
 
+fn write_scenario(project: &Path, name: &str, id: &str) {
+    let content = format!(
+        "---\nid: {id}\nowner: spec\nkind: skill\nbackend: manual\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n"
+    );
+    let path = project.join(format!("acceptance/scenarios/{name}"));
+    fs::create_dir_all(path.parent().expect("parent")).expect("scenario dir");
+    fs::write(&path, content).expect("write scenario");
+}
+
+fn duplicate_ids(project: &Path, hints: Vec<RuleHint>) -> Vec<String> {
+    let model = build(project, ScanProfile::Framework, &[], &[]).expect("framework build");
+    let rule = make_rule("UNI-961", hints);
+    let runner: &dyn ToolRunner = &NoToolRunner;
+    let outcome =
+        evaluate(&rule, rule.rule_hints.as_deref().unwrap_or_default(), &model, project, runner, 1)
+            .expect("evaluate");
+    let mut ids: Vec<String> = outcome
+        .findings
+        .iter()
+        .filter_map(|f| match &f.evidence {
+            FindingEvidence::Structured { data, .. } => {
+                data.get("id").and_then(|v| v.as_str()).map(str::to_string)
+            }
+            _ => None,
+        })
+        .collect();
+    ids.sort();
+    ids
+}
+
 fn duplicate_names(project: &Path, hints: Vec<RuleHint>) -> Vec<String> {
     let model = build(project, ScanProfile::Framework, &[], &[]).expect("framework build");
     let rule = make_rule("UNI-960", hints);
@@ -83,4 +113,35 @@ fn distinct_values_pass() {
         ],
     );
     assert!(flagged.is_empty(), "all-distinct names produce no findings: {flagged:?}");
+}
+
+#[test]
+fn flags_duplicate_scenario_id() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    write_scenario(tmp.path(), "a.md", "shared-id");
+    write_scenario(tmp.path(), "b.md", "shared-id");
+    write_scenario(tmp.path(), "c.md", "solo-id");
+
+    let flagged = duplicate_ids(
+        tmp.path(),
+        vec![hint_with_config(HintKind::Unique, "scenario", Some(json!({ "field": "id" })))],
+    );
+    assert_eq!(
+        flagged,
+        vec!["shared-id".to_string()],
+        "only the id shared by two files is flagged; the solo id passes",
+    );
+}
+
+#[test]
+fn distinct_scenario_ids_pass() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    write_scenario(tmp.path(), "a.md", "alpha-id");
+    write_scenario(tmp.path(), "b.md", "beta-id");
+
+    let flagged = duplicate_ids(
+        tmp.path(),
+        vec![hint_with_config(HintKind::Unique, "scenario", Some(json!({ "field": "id" })))],
+    );
+    assert!(flagged.is_empty(), "all-distinct scenario ids produce no findings: {flagged:?}");
 }

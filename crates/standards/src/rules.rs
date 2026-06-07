@@ -94,7 +94,8 @@ pub enum LintMode {
 ///
 /// After C17 every kind is executable: `path-pattern`, `regex`,
 /// `schema`, `tool`, `reference-resolves`, `unique`, `set-coverage`,
-/// `cardinality`, `constant-eq`, `set-eq`, and `content-digest-eq`.
+/// `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`,
+/// `fenced-block`, `presence`, `field-grammar`, and `cross-reference`.
 /// No kind is reserved. (Whole-tree namespace-ownership runs through the
 /// `rules` WASI tool via `kind: tool`, not a dedicated hint kind.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -139,6 +140,28 @@ pub enum HintKind {
     /// Fence-aware body predicate over [`crate::lint::FencedBlock`] facts
     /// (`skill-envelope-json-in-body`, …).
     FencedBlock,
+    /// Assert that a required artifact is present (v1 mechanism
+    /// selectors: `frontmatter` — candidate files absent from the
+    /// frontmatter fact family; `file` — a single required path in
+    /// `config: { path }`; `markdown-section` — skills over a
+    /// `config: { when: { metric, min } }` threshold lacking the
+    /// `config: { title, level }` section).
+    Presence,
+    /// Assert that a candidate's named frontmatter field obeys a
+    /// token / first-word grammar (v1 mechanism modes: `field-tokens` —
+    /// every whitespace token of `config: { field }` matches the
+    /// `config: { token-pattern }` regex; `field-first-word` — the first
+    /// alphabetic word of `config: { field }` is in the
+    /// `config: { allowed }` list).
+    FieldGrammar,
+    /// Assert that every element of a source fact family has a
+    /// corresponding element in a target fact family (a relational
+    /// set-difference join); flag the unmatched source items. `value`
+    /// selects the source family, `config: { target }` the target
+    /// family; the join key is the per-family mechanism (v1 source
+    /// selector: `adapter-dir` joined against the `adapter-manifest`
+    /// target on the manifest's containing directory).
+    CrossReference,
 }
 
 /// Inclusive narrowing filter — all populated dimensions match (AND).

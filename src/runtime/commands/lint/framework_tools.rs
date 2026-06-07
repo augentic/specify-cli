@@ -28,7 +28,8 @@ use specify_tool::resolver::ResolvedTool;
 
 /// `scenarios` framework checker component, built from
 /// `wasi-tools/scenarios/` via `cargo make scenarios-wasm` (Road B
-/// scenario family: CORE-028..033).
+/// scenario family: CORE-028, 029, 031, 033; CORE-030 and CORE-032
+/// moved to Road A `scenario`-fact hints).
 const SCENARIOS_WASM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/wasi-tools/scenarios/dist/scenarios-0.1.0.wasm"
@@ -36,32 +37,20 @@ const SCENARIOS_WASM: &[u8] = include_bytes!(concat!(
 
 /// `skill-body` framework checker component, built from
 /// `wasi-tools/skill-body/` via `cargo make skill-body-wasm` (Road B
-/// skill body family: CORE-040, 041, 046, 048).
+/// skill body family: CORE-040, 046, 048; CORE-041 moved to Road A
+/// `kind: presence` `markdown-section`).
 const SKILL_BODY_WASM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/wasi-tools/skill-body/dist/skill-body-0.1.0.wasm"
 ));
 
-/// `skill` framework checker component, built from `wasi-tools/skill/`
-/// via `cargo make skill-wasm` (Road B skill frontmatter family:
-/// CORE-042, 035, 036).
-const SKILL_WASM: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/wasi-tools/skill/dist/skill-0.1.0.wasm"));
-
 /// `agent-teams` framework checker component, built from
 /// `wasi-tools/agent-teams/` via `cargo make agent-teams-wasm` (Road B
-/// agent-teams overlay family: CORE-011, 012).
+/// agent-teams overlay drift: CORE-012; CORE-011 moved to Road A
+/// `kind: presence` `file`).
 const AGENT_TEAMS_WASM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/wasi-tools/agent-teams/dist/agent-teams-0.1.0.wasm"
-));
-
-/// `adapter` framework checker component, built from
-/// `wasi-tools/adapter/` via `cargo make adapter-wasm` (Road B
-/// adapter-structure family: CORE-010, 049).
-const ADAPTER_WASM: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/wasi-tools/adapter/dist/adapter-0.1.0.wasm"
 ));
 
 /// `links-registry` framework checker component, built from
@@ -113,19 +102,9 @@ const FRAMEWORK_TOOLS: &[FrameworkTool] = &[
         bytes: SKILL_BODY_WASM,
     },
     FrameworkTool {
-        name: "skill",
-        version: "0.1.0",
-        bytes: SKILL_WASM,
-    },
-    FrameworkTool {
         name: "agent-teams",
         version: "0.1.0",
         bytes: AGENT_TEAMS_WASM,
-    },
-    FrameworkTool {
-        name: "adapter",
-        version: "0.1.0",
-        bytes: ADAPTER_WASM,
     },
     FrameworkTool {
         name: "links-registry",

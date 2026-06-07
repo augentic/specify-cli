@@ -86,6 +86,8 @@ mod unit {
             briefs: vec![],
             agent_teams: vec![],
             fenced_blocks: vec![],
+            scenarios: vec![],
+            adapter_dirs: vec![],
         }
     }
 

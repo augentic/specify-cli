@@ -32,8 +32,8 @@ use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 use specify_schema::{
     ADAPTER_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA,
     DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA,
-    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SKILL_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA,
-    compile_schema,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
+    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
 };
 
 use super::{HintError, make_finding};
@@ -49,6 +49,7 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
         ("review-finding", DIAGNOSTIC_JSON_SCHEMA),
         ("review-result", DIAGNOSTIC_REPORT_JSON_SCHEMA),
         ("workspace-model", WORKSPACE_MODEL_JSON_SCHEMA),
+        ("scenario", SCENARIO_JSON_SCHEMA),
         ("plan", PLAN_JSON_SCHEMA),
         ("evidence", EVIDENCE_JSON_SCHEMA),
         ("provenance", PROVENANCE_JSON_SCHEMA),
@@ -99,11 +100,24 @@ impl SchemaCache {
     }
 }
 
+/// Fact-family selector that validates the whole `scenarios` fact
+/// family directly rather than per-candidate file. Naming the fact
+/// family is mechanism; the schema it resolves to is registered.
+const SCENARIO_FACT_FAMILY: &str = "scenario";
+
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], project_dir: &Path,
     model: &WorkspaceModel, next_id: &mut u64, cache: &mut SchemaCache,
 ) -> Result<Vec<Diagnostic>, HintError> {
     let validator = compile_schema_for_hint(rule, hint, project_dir, cache)?;
+
+    // The `scenario` selector validates the dedicated scenario fact
+    // family whole-tree (like `content-digest-eq`): scenario files are
+    // kept out of `model.files`, so the candidate set can never select
+    // them and the `candidates` argument is intentionally unused here.
+    if hint.value.trim() == SCENARIO_FACT_FAMILY {
+        return Ok(evaluate_scenarios(rule, &validator, model, next_id));
+    }
 
     let mut out: Vec<Diagnostic> = Vec::new();
     for candidate in candidates {
@@ -134,6 +148,39 @@ pub(crate) fn evaluate(
         }
     }
     Ok(out)
+}
+
+/// Validate every `scenario` fact's parsed frontmatter against the
+/// scenario schema, emitting one finding per schema error with the
+/// scenario file as the finding location (mirrors the per-candidate
+/// loop, but driven by the fact family rather than candidate files).
+fn evaluate_scenarios(
+    rule: &ResolvedRule, validator: &Validator, model: &WorkspaceModel, next_id: &mut u64,
+) -> Vec<Diagnostic> {
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for scenario in &model.scenarios {
+        let instance = Value::Object(scenario.fields.clone());
+        for error in validator.iter_errors(&instance) {
+            let pointer = error.instance_path().to_string();
+            let evidence = FindingEvidence::Structured {
+                summary: error.to_string(),
+                data: serde_json::json!({ "json_pointer": pointer }),
+                locations: None,
+            };
+            let location = FindingLocation {
+                path: scenario.path.clone(),
+                line: None,
+                column: None,
+                end_line: None,
+                end_column: None,
+            };
+            let title = format!("{}: schema validation failed", rule.title);
+            let finding = make_finding(rule, *next_id, title, Some(location), evidence);
+            *next_id += 1;
+            out.push(finding);
+        }
+    }
+    out
 }
 
 fn compile_schema_for_hint(

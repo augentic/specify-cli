@@ -3,15 +3,15 @@
 //! retiring `framework::check::agent_teams` imperative predicate
 //! (Road B framework tool).
 //!
-//! The tool covers the agent-teams overlay family: CORE-011
-//! (`agent-teams.missing-canonical` — the canonical review-team-protocol
-//! document is absent, so per-adapter copies cannot be validated) and
-//! CORE-012 (`agent-teams.non-canonical-overlay`). CORE-012 is
-//! deliberately stricter than the already-native CORE-008
+//! The tool covers CORE-012 (`agent-teams.non-canonical-overlay`).
+//! CORE-012 is deliberately stricter than the already-native CORE-008
 //! (`content-digest-eq`): it preserves the symlink path-equality,
 //! regular-file content-drift, and unsupported-entry-type branches that
 //! the symlink-only `AgentTeam` fact behind CORE-008 cannot express. All
-//! branches are lifted verbatim from `check_overlays`.
+//! branches are lifted verbatim from `check_overlays`. (CORE-011 —
+//! missing canonical document — moved to the native Road A
+//! `kind: presence` `file` selector; when the canonical document is
+//! absent this tool emits nothing, leaving the absence to that rule.)
 //!
 //! Policy is `specify`-owned, never baked here: the canonical document
 //! path arrives as a parameter the entrypoint reads from the rule's
@@ -28,8 +28,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-/// Codex ids each check stamps onto its findings (closed `CORE-NNN`).
-pub const RULE_MISSING_CANONICAL: &str = "CORE-011";
+/// Codex id this check stamps onto its findings (closed `CORE-NNN`).
 pub const RULE_NON_CANONICAL: &str = "CORE-012";
 
 /// One agent-teams overlay violation: its codex `rule_id`, the offending
@@ -46,27 +45,25 @@ pub struct AgentTeamsFinding {
 }
 
 /// Walk every per-target `agent-teams.md` overlay under
-/// `<project_dir>/adapters/targets/*/references/` and return all
-/// findings, each stamped CORE-011 (canonical missing) or CORE-012
-/// (overlay drift). The `canonical_rel` path — the rule's policy — names
-/// the canonical document every overlay must mirror.
+/// `<project_dir>/adapters/targets/*/references/` and return the
+/// CORE-012 (overlay drift) findings. The `canonical_rel` path — the
+/// rule's policy — names the canonical document every overlay must
+/// mirror.
 ///
-/// When the canonical document itself is missing the scan stops early
-/// with a single CORE-011 finding (the overlays cannot be validated
-/// against a missing baseline), mirroring the retired imperative.
+/// When the canonical document itself is missing the scan returns no
+/// findings: the native `kind: presence` `file` rule (CORE-011) owns
+/// that absence, and the overlays cannot be validated against a missing
+/// baseline.
 #[must_use]
 pub fn run(project_dir: &Path, canonical_rel: &str) -> Vec<AgentTeamsFinding> {
     let canonical_path = project_dir.join(canonical_rel);
     let Ok(canonical_bytes) = fs::read(&canonical_path) else {
-        return vec![AgentTeamsFinding {
-            rule_id: RULE_MISSING_CANONICAL,
-            path: Some(canonical_rel.to_string()),
-            message: format!(
-                "Agent-teams canonical: {canonical_rel} is missing — cannot validate per-adapter copies"
-            ),
-        }];
+        return Vec::new();
     };
     let canonical_hash = sha256(&canonical_bytes);
+    let Ok(canonical_canon) = fs::canonicalize(&canonical_path) else {
+        return Vec::new();
+    };
 
     let targets_dir = project_dir.join("adapters").join("targets");
     let Ok(targets) = fs::read_dir(&targets_dir) else {
@@ -82,30 +79,23 @@ pub fn run(project_dir: &Path, canonical_rel: &str) -> Vec<AgentTeamsFinding> {
 
     let mut findings = Vec::new();
     for target in entries {
-        match check_overlay(project_dir, &canonical_path, canonical_rel, &canonical_hash, &target) {
+        match check_overlay(project_dir, &canonical_canon, canonical_rel, &canonical_hash, &target) {
             Overlay::Clean => {}
             Overlay::Drifted(finding) => findings.push(finding),
-            Overlay::CanonicalGone(finding) => {
-                findings.push(finding);
-                break;
-            }
         }
     }
 
     findings
 }
 
-/// Outcome of checking one target adapter's overlay. `CanonicalGone`
-/// signals the canonical document vanished mid-scan: it is recorded and
-/// the whole scan stops, mirroring the retired imperative's early break.
+/// Outcome of checking one target adapter's overlay.
 enum Overlay {
     Clean,
     Drifted(AgentTeamsFinding),
-    CanonicalGone(AgentTeamsFinding),
 }
 
 fn check_overlay(
-    project_dir: &Path, canonical_path: &Path, canonical_rel: &str, canonical_hash: &str,
+    project_dir: &Path, canonical_canon: &Path, canonical_rel: &str, canonical_hash: &str,
     target: &Path,
 ) -> Overlay {
     let ref_path = target.join("references").join("agent-teams.md");
@@ -116,7 +106,7 @@ fn check_overlay(
     };
 
     if metadata.file_type().is_symlink() {
-        return check_symlink(project_dir, canonical_path, canonical_rel, &ref_path, &ref_rel);
+        return check_symlink(project_dir, canonical_canon, canonical_rel, &ref_path, &ref_rel);
     }
 
     if metadata.is_file() {
@@ -140,7 +130,7 @@ fn check_overlay(
 }
 
 fn check_symlink(
-    project_dir: &Path, canonical_path: &Path, canonical_rel: &str, ref_path: &Path, ref_rel: &str,
+    project_dir: &Path, canonical_canon: &Path, canonical_rel: &str, ref_path: &Path, ref_rel: &str,
 ) -> Overlay {
     let Ok(resolved) = fs::canonicalize(ref_path) else {
         return Overlay::Drifted(non_canonical(
@@ -148,19 +138,7 @@ fn check_symlink(
             format!("Agent-teams overlay: {ref_rel} — symlink does not resolve"),
         ));
     };
-    let expected = match fs::canonicalize(canonical_path) {
-        Ok(path) => path,
-        Err(source) => {
-            return Overlay::CanonicalGone(AgentTeamsFinding {
-                rule_id: RULE_MISSING_CANONICAL,
-                path: Some(canonical_rel.to_string()),
-                message: format!(
-                    "Agent-teams canonical: {canonical_rel} is missing — cannot validate per-adapter copies ({source})"
-                ),
-            });
-        }
-    };
-    if resolved == expected {
+    if resolved == *canonical_canon {
         Overlay::Clean
     } else {
         Overlay::Drifted(non_canonical(ref_rel, format!(
@@ -214,12 +192,12 @@ mod tests {
     }
 
     #[test]
-    fn missing_canonical_flags_once() {
+    fn missing_canonical_is_silent() {
         let dir = tempfile::tempdir().expect("tempdir");
         target_ref(dir.path(), "omnia");
-        let findings = run(dir.path(), CANONICAL_REL);
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].rule_id, RULE_MISSING_CANONICAL);
+        // The missing canonical is owned by the native CORE-011 presence
+        // rule now; this tool emits nothing without a baseline to diff.
+        assert!(run(dir.path(), CANONICAL_REL).is_empty());
     }
 
     #[test]

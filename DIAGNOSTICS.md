@@ -45,8 +45,8 @@ The engine is a generic dispatcher. Every framework `CORE-*` check is one of two
 
 | Road | Ids (example) | How it runs |
 | --- | --- | --- |
-| Road A — declarative hint | most of `CORE-001..052` | a generic per-kind evaluator (`lint/eval/*`) interprets the rule's `kind:` (`schema`, `reference-resolves`, `cardinality`, `set-coverage`, `set-eq`, `constant-eq`, `content-digest-eq`, `unique`, `fenced-block`, `regex`, `path-pattern`) over `WorkspaceModel` facts; caps/sets/maps ride the rule's `config:` |
-| Road B — referenced WASI tool | `CORE-009`, `CORE-026`, the scenarios / skill / skill-body / agent-teams / adapter / links-registry / marketplace / prose families | `kind: tool` value `<tool>` + a sentinel `path-pattern`; the engine resolves the tool by name and folds its `DiagnosticReport`. Policy rides the rule's `config:`, forwarded as a second positional arg |
+| Road A — declarative hint | most of `CORE-001..052` | a generic per-kind evaluator (`lint/eval/*`) interprets the rule's `kind:` (`schema`, `reference-resolves`, `cardinality`, `set-coverage`, `set-eq`, `constant-eq`, `content-digest-eq`, `unique`, `fenced-block`, `regex`, `path-pattern`, `presence`, `field-grammar`, `cross-reference`) over `WorkspaceModel` facts; the mechanism selector rides `hint.value` (including the whole-tree `value: scenario` selector on `schema` and `unique`) and caps/sets/maps ride the rule's `config:` |
+| Road B — referenced WASI tool | `CORE-009`, `CORE-026`, the scenarios / skill-body / agent-teams / links-registry / marketplace / prose families | `kind: tool` value `<tool>` + a sentinel `path-pattern`; the engine resolves the tool by name and folds its `DiagnosticReport`. Policy rides the rule's `config:`, forwarded as a second positional arg |
 
 There is no Wave-0 duplicate evaluation. `specify lint framework` resolves all `CORE-*` / `UNI-*` rules in one pass; no imperative `Check` producer runs on any invocation, and the `kind: authoring-predicate` bridge is fully removed. CORE-034 (`scenarios.stale-recorded-trace`, a git-only advisory that emitted no finding) was removed rather than ported; its sibling CORE-031 filesystem header validation lives in the `scenarios` tool.
 
@@ -56,7 +56,7 @@ Every rule-specific value (a line cap, an owner→prefix map, an expected operat
 
 ### Framework tools
 
-Nine framework checkers — `scenarios`, `skill`, `skill-body`, `agent-teams`, `adapter`, `links-registry`, `marketplace`, `prose`, `rules` — live in `wasi-tools/<name>/`, ship a prebuilt `dist/<name>-<ver>.wasm` embedded into the binary via `FrameworkToolRunner` ([`src/runtime/commands/lint/framework_tools.rs`](./src/runtime/commands/lint/framework_tools.rs)), and are name-resolved with `sha256: None` (digest pinning deferred until the source moves to its colocated home).
+Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-registry`, `marketplace`, `prose`, `rules` — live in `wasi-tools/<name>/`, ship a prebuilt `dist/<name>-<ver>.wasm` embedded into the binary via `FrameworkToolRunner` ([`src/runtime/commands/lint/framework_tools.rs`](./src/runtime/commands/lint/framework_tools.rs)), and are name-resolved with `sha256: None` (digest pinning deferred until the source moves to its colocated home).
 
 ### Performance (post-migration)
 

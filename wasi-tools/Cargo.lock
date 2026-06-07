@@ -1098,16 +1098,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
-name = "specify-adapter"
-version = "0.4.0"
-dependencies = [
- "serde",
- "serde-saphyr",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "specify-agent-teams"
 version = "0.4.0"
 dependencies = [
@@ -1171,18 +1161,6 @@ dependencies = [
 
 [[package]]
 name = "specify-scenarios"
-version = "0.4.0"
-dependencies = [
- "jsonschema",
- "regex",
- "serde",
- "serde-saphyr",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "specify-skill"
 version = "0.4.0"
 dependencies = [
  "regex",

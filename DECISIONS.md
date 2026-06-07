@@ -219,11 +219,36 @@ the values they enforce.
 
 - **Road A — declarative hint.** The rule carries a `kind:` ∈ `schema |
   reference-resolves | cardinality | set-coverage | set-eq | constant-eq
-  | content-digest-eq | unique | fenced-block | regex | path-pattern`,
-  interpreted by a generic per-kind evaluator in
-  `crates/standards/src/lint/eval/*` over the `WorkspaceModel` facts. The
-  evaluator is rule-agnostic: it reads the cap / set / map / constant
-  from the rule's `config:` and never embeds it.
+  | content-digest-eq | unique | fenced-block | regex | path-pattern |
+  presence | field-grammar | cross-reference`, interpreted by a generic
+  per-kind evaluator in `crates/standards/src/lint/eval/*` over the
+  `WorkspaceModel` facts. The evaluator is rule-agnostic: it reads the
+  cap / set / map / constant from the rule's `config:` and never embeds
+  it. `hint.value` names the mechanism selector and `hint.config` carries
+  the policy:
+  - **`presence`** flags a missing required artifact under one of three
+    selectors — `frontmatter` (a candidate file absent from
+    `model.frontmatter`), `file` + `config: { path }` (a missing required
+    path), `markdown-section` + `config: { title, level, when: { metric,
+    min } }` (a candidate over a fact metric threshold lacking a section).
+  - **`field-grammar`** flags a frontmatter field that violates a grammar
+    under `field-tokens` + `config: { field, token-pattern }` (each
+    whitespace token matches the regex) or `field-first-word` + `config:
+    { field, allowed }` (the first alphabetic word is allow-listed).
+  - **`cross-reference`** is a generic relational set-difference /
+    value-equality join: a source selector (`adapter-dir` fact family,
+    presence-only; or `expected-set` + `config: { entries: [{ key, value
+    }] }`, value-equality) joined against a `config: { target }` family
+    (`adapter-manifest`, `adapter-tool`).
+  - The existing **`schema`** and **`unique`** kinds each gained a
+    whole-tree `value: scenario` selector (the latter with `config: {
+    field: id }`) that reads the scoped `scenarios` fact family directly.
+  These join over scoped fact families the framework indexer emits
+  out-of-band of `model.files` — `scenarios` (`index/scenario.rs`),
+  `adapter_dirs` (`index/adapter_dir.rs`), and `AdapterManifest.tools`
+  (`index/adapter.rs`) — so no other rule's candidate set changes
+  (`WorkspaceModelVersion` is unchanged at 1; each family is
+  omit-when-empty).
 - **Road B — referenced WASI tool.** The rule carries `kind: tool, value:
   <tool>` plus a sentinel `path-pattern`. `lint/eval/tool.rs` resolves
   the tool **by name** from a declared inventory, runs it once per lint,
@@ -251,9 +276,9 @@ a git-only advisory that emitted no finding) was removed rather than ported;
 its sibling CORE-031 filesystem header validation lives in the `scenarios`
 tool.
 
-**Nine framework tools.** `scenarios`, `skill`, `skill-body`,
-`agent-teams`, `adapter`, `links-registry`, `marketplace`, `prose`,
-`rules` live in `wasi-tools/<name>/`. Each is a carve-out (deps:
+**Seven framework tools.** `scenarios`, `skill-body`, `agent-teams`,
+`links-registry`, `marketplace`, `prose`, `rules` live in
+`wasi-tools/<name>/`. Each is a carve-out (deps:
 `serde` / `serde-saphyr` / `jsonschema` / `regex` only — never the host
 diagnostics crate), embeds its own schema copies as mechanism, ships a
 prebuilt `dist/<name>-<ver>.wasm` embedded into the binary via

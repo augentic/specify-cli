@@ -84,6 +84,73 @@ fn resolves_registered_skill_schema() {
 }
 
 #[test]
+fn flags_scenario_schema_violation() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    // Opted-in scenario (leading `---`) missing required fields — the
+    // `scenario` selector must validate the fact family whole-tree and
+    // flag it, even though scenario files never enter `model.files`.
+    let thin = "---\nid: thin\nstages: [refine, build]\n---\n\nBody.\n";
+    let path = tmp.path().join("acceptance/scenarios/thin.md");
+    fs::create_dir_all(path.parent().expect("parent")).expect("scenario dir");
+    fs::write(&path, thin).expect("write scenario");
+
+    let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
+    let rule = make_rule("UNI-907", vec![hint(HintKind::Schema, "scenario")]);
+    let runner: &dyn ToolRunner = &NoToolRunner;
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert!(
+        !outcome.findings.is_empty(),
+        "a scenario missing required fields must flag the scenario schema selector"
+    );
+    assert!(
+        outcome
+            .findings
+            .iter()
+            .all(|f| f.location.as_ref().is_some_and(|l| l.path == "acceptance/scenarios/thin.md")),
+        "findings must locate the offending scenario file"
+    );
+}
+
+#[test]
+fn valid_scenario_passes_schema_selector() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let ok = "---\nid: ok\nowner: spec\nkind: skill\nbackend: manual\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n";
+    let path = tmp.path().join("acceptance/scenarios/ok.md");
+    fs::create_dir_all(path.parent().expect("parent")).expect("scenario dir");
+    fs::write(&path, ok).expect("write scenario");
+
+    let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
+    let rule = make_rule("UNI-908", vec![hint(HintKind::Schema, "scenario")]);
+    let runner: &dyn ToolRunner = &NoToolRunner;
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert!(
+        outcome.findings.is_empty(),
+        "a schema-valid scenario flags nothing: {:?}",
+        outcome.findings
+    );
+}
+
+#[test]
 fn schema_hint_rejects_http_reference() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("x.json"), "{}").expect("write");

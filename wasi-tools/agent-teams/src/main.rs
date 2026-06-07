@@ -22,7 +22,7 @@ use std::process::ExitCode;
 
 use serde::Serialize;
 use serde_json::Value as JsonValue;
-use specify_agent_teams::{AgentTeamsFinding, RULE_MISSING_CANONICAL, RULE_NON_CANONICAL, run};
+use specify_agent_teams::{AgentTeamsFinding, RULE_NON_CANONICAL, run};
 
 /// Placeholder fingerprint; the host recomputes it on fold. Kept in the
 /// `sha256:<64 hex>` wire shape so the envelope deserialises.
@@ -31,7 +31,7 @@ const PLACEHOLDER_FINGERPRINT: &str =
 
 /// Every codex id this tool can emit, scanned for in the positional args
 /// to scope a single invocation to one rule.
-const RULES: &[&str] = &[RULE_MISSING_CANONICAL, RULE_NON_CANONICAL];
+const RULES: &[&str] = &[RULE_NON_CANONICAL];
 
 fn main() -> ExitCode {
     let Ok(project_dir) = std::env::var("PROJECT_DIR").map(PathBuf::from) else {
@@ -152,18 +152,13 @@ impl Finding {
     }
 }
 
-/// Per-rule operator-facing impact / remediation prose.
-fn guidance(rule_id: &str) -> (&'static str, &'static str) {
-    match rule_id {
-        RULE_MISSING_CANONICAL => (
-            "The canonical review-team-protocol document is missing, so per-target agent-teams.md overlays cannot be validated against a baseline.",
-            "Restore the canonical review-team-protocol document at the path named in the rule's config.",
-        ),
-        _ => (
-            "A target adapter's agent-teams.md overlay does not match the canonical review-team-protocol document, so the overlay has drifted.",
-            "Replace the overlay with a symlink to the canonical document, or re-sync its contents so the digests match.",
-        ),
-    }
+/// Operator-facing impact / remediation prose for CORE-012 overlay
+/// drift (the only rule this tool now emits).
+fn guidance(_rule_id: &str) -> (&'static str, &'static str) {
+    (
+        "A target adapter's agent-teams.md overlay does not match the canonical review-team-protocol document, so the overlay has drifted.",
+        "Replace the overlay with a symlink to the canonical document, or re-sync its contents so the digests match.",
+    )
 }
 
 #[derive(Serialize)]

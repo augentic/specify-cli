@@ -37,8 +37,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 mod facts;
 
 pub use facts::{
-    AdapterManifest, AgentTeam, Brief, BriefScope, FencedBlock, File, Frontmatter, IgnoreDirective,
-    MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, Skill, Symlink, TextMatch,
+    AdapterDir, AdapterManifest, AdapterTool, AgentTeam, Brief, BriefScope, FencedBlock, File,
+    Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry,
+    Scenario, Skill, Symlink, TextMatch,
 };
 
 /// Type-level pin of the `WorkspaceModel` envelope version.
@@ -188,6 +189,20 @@ pub struct WorkspaceModel {
     /// profile's wire shape is unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_teams: Vec<AgentTeam>,
+    /// `scenario` facts from the dedicated scenario discovery pass over
+    /// the opt-in scenario roots under the framework scan profile.
+    /// Optional in v1 envelopes; producers omit the field when empty so
+    /// the project profile's wire shape is unchanged. Kept out of
+    /// [`Self::files`] so no other rule's candidate set changes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenarios: Vec<Scenario>,
+    /// `adapter_dir` facts from the dedicated adapter-directory pass over
+    /// the immediate children of `adapters/{sources,targets}` under the
+    /// framework scan profile. Optional in v1 envelopes; producers omit
+    /// the field when empty so the project profile's wire shape is
+    /// unchanged. The source side of the `kind: cross-reference` join.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adapter_dirs: Vec<AdapterDir>,
 }
 
 #[cfg(test)]

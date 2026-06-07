@@ -158,21 +158,6 @@ cp target/wasm32-wasip2/release/specify-skill-body.wasm skill-body/dist/skill-bo
 echo "skill-body WASI component written to wasi-tools/skill-body/dist/skill-body-0.1.0.wasm"
 '''
 
-# Build the first-party `skill` framework-authoring WASI tool and refresh
-# the checked-in prebuilt component embedded by
-# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
-# the Road B skill parity tests). Rerun this after editing
-# `wasi-tools/skill/` so the embedded artifact reflects the new checks.
-# Mirrors the `scenarios-wasm` pattern; the target is `wasm32-wasip2`.
-[tasks.skill-wasm]
-script = '''
-set -euo pipefail
-cd wasi-tools
-cargo build -p specify-skill --target wasm32-wasip2 --release
-cp target/wasm32-wasip2/release/specify-skill.wasm skill/dist/skill-0.1.0.wasm
-echo "skill WASI component written to wasi-tools/skill/dist/skill-0.1.0.wasm"
-'''
-
 # Build the first-party `agent-teams` framework-authoring WASI tool and
 # refresh the checked-in prebuilt component embedded by
 # `src/runtime/commands/lint/framework_tools.rs` (and read directly by
@@ -187,21 +172,6 @@ cd wasi-tools
 cargo build -p specify-agent-teams --target wasm32-wasip2 --release
 cp target/wasm32-wasip2/release/specify-agent-teams.wasm agent-teams/dist/agent-teams-0.1.0.wasm
 echo "agent-teams WASI component written to wasi-tools/agent-teams/dist/agent-teams-0.1.0.wasm"
-'''
-
-# Build the first-party `adapter` framework-authoring WASI tool and
-# refresh the checked-in prebuilt component embedded by
-# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
-# the Road B adapter parity tests). Rerun this after editing
-# `wasi-tools/adapter/` so the embedded artifact reflects the new checks.
-# Mirrors the `scenarios-wasm` pattern; the target is `wasm32-wasip2`.
-[tasks.adapter-wasm]
-script = '''
-set -euo pipefail
-cd wasi-tools
-cargo build -p specify-adapter --target wasm32-wasip2 --release
-cp target/wasm32-wasip2/release/specify-adapter.wasm adapter/dist/adapter-0.1.0.wasm
-echo "adapter WASI component written to wasi-tools/adapter/dist/adapter-0.1.0.wasm"
 '''
 
 # Build the first-party `links-registry` framework-authoring WASI tool

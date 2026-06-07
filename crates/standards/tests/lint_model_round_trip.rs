@@ -14,9 +14,10 @@
 use serde_json::{Map, Value, json};
 use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 use specify_standards::lint::{
-    AdapterAxis, AdapterManifest, AgentTeam, Brief, BriefScope, File, FileKind, Frontmatter,
-    IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, ScanProfile,
-    Skill, Symlink, TextMatch, WorkspaceModel, WorkspaceModelVersion,
+    AdapterAxis, AdapterDir, AdapterManifest, AdapterTool, AgentTeam, Brief, BriefScope, File,
+    FileKind, Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry,
+    RuleIndexEntry, ScanProfile, Scenario, Skill, Symlink, TextMatch, WorkspaceModel,
+    WorkspaceModelVersion,
 };
 use specify_standards::rules::Origin;
 
@@ -54,6 +55,8 @@ fn empty_model_round_trips() {
         briefs: vec![],
         agent_teams: vec![],
         fenced_blocks: vec![],
+        scenarios: vec![],
+        adapter_dirs: vec![],
     };
 
     let value = serde_json::to_value(&model).expect("serialise empty model");
@@ -98,6 +101,10 @@ fn populated_model_round_trips() {
     let mut frontmatter_fields: Map<String, Value> = Map::new();
     frontmatter_fields.insert("title".into(), json!("Refine"));
     frontmatter_fields.insert("description".into(), json!("Refine a Specify slice"));
+
+    let mut scenario_fields: Map<String, Value> = Map::new();
+    scenario_fields.insert("id".into(), json!("refine-happy-path"));
+    scenario_fields.insert("stages".into(), json!(["refine", "build"]));
 
     let model = WorkspaceModel {
         version: WorkspaceModelVersion,
@@ -150,6 +157,10 @@ fn populated_model_round_trips() {
             path: "adapters/targets/omnia/adapter.yaml".into(),
             version: Some("1".into()),
             brief_keys: vec!["build".into(), "merge".into(), "shape".into()],
+            tools: vec![AdapterTool {
+                name: "omnia".into(),
+                version: "0.1.0".into(),
+            }],
         }],
         marketplace_entries: vec![MarketplaceEntry {
             plugin: "spec".into(),
@@ -191,6 +202,19 @@ fn populated_model_round_trips() {
             target_sha256: Some("0".repeat(64)),
         }],
         fenced_blocks: vec![],
+        scenarios: vec![Scenario {
+            path: "acceptance/scenarios/refine-happy-path.md".into(),
+            id: Some("refine-happy-path".into()),
+            stages: vec!["refine".into(), "build".into()],
+            expected_artifacts: vec!["spec.md".into()],
+            body_id: Some("refine-happy-path".into()),
+            fields: scenario_fields,
+        }],
+        adapter_dirs: vec![AdapterDir {
+            path: "adapters/targets/omnia".into(),
+            axis: AdapterAxis::Targets,
+            name: "omnia".into(),
+        }],
     };
 
     let value = serde_json::to_value(&model).expect("serialise populated model");
@@ -237,6 +261,12 @@ fn populated_model_round_trips() {
     let fm = value.pointer("/frontmatter/0").expect("populated frontmatter has index 0");
     assert!(fm.get("schema-id").is_some(), "frontmatter.schema-id missing");
     assert!(fm.get("schema_id").is_none());
+
+    let scenario = value.pointer("/scenarios/0").expect("populated scenarios has index 0");
+    assert!(scenario.get("expected-artifacts").is_some(), "scenario.expected-artifacts missing");
+    assert!(scenario.get("expected_artifacts").is_none());
+    assert!(scenario.get("body-id").is_some(), "scenario.body-id missing");
+    assert!(scenario.get("body_id").is_none());
 
     assert_schema_valid(&value);
 

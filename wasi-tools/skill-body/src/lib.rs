@@ -3,14 +3,15 @@
 //! `skill_body` imperative predicates (Road B framework tool).
 //!
 //! The tool covers the filesystem-only skill-body family: CORE-040
-//! (critical-path shape), CORE-041 (threshold-gated critical-path
-//! presence), CORE-046 (step-body duplicates critical path), and
-//! CORE-048 (`$VAR` definition / reference coverage). Each check mirrors
-//! its counterpart in `framework::check::skill_body`; the discovery walk
-//! mirrors the host's `walk_skill_files`.
+//! (critical-path shape), CORE-046 (step-body duplicates critical path),
+//! and CORE-048 (`$VAR` definition / reference coverage). Each check
+//! mirrors its counterpart in `framework::check::skill_body`; the
+//! discovery walk mirrors the host's `walk_skill_files`. (CORE-041 —
+//! threshold-gated critical-path presence — moved to the native Road A
+//! `kind: presence` `markdown-section` selector.)
 //!
 //! Policy is `specify`-owned, never baked here: the line threshold and
-//! item bounds (CORE-040 / CORE-041) and the built-in variable allow-list
+//! item bounds (CORE-040) and the built-in variable allow-list
 //! (CORE-048) arrive as call parameters the entrypoint reads from the
 //! rule's `config:` (forwarded by the `kind: tool` evaluator). The only
 //! literals in this crate are mechanism — the section heading names and
@@ -28,7 +29,6 @@ use regex::Regex;
 
 /// Codex ids each check stamps onto its findings (closed `CORE-NNN`).
 pub const RULE_INVALID_CRITICAL_PATH: &str = "CORE-040";
-pub const RULE_MISSING_CRITICAL_PATH: &str = "CORE-041";
 pub const RULE_STEP_BODY_DUPLICATES: &str = "CORE-046";
 pub const RULE_VARIABLE_COVERAGE: &str = "CORE-048";
 
@@ -99,39 +99,6 @@ pub fn check_invalid_critical_path(
                 path: rel.clone(),
                 message: format!(
                     "Invalid Critical Path: {rel} — expected {min_items}-{max_items} bullets or numbered items, found {item_count}"
-                ),
-            });
-        }
-    }
-    findings
-}
-
-/// CORE-041: a skill whose body is at least `min_body_lines` long must
-/// carry a `## Critical Path` section.
-#[must_use]
-pub fn check_missing_critical_path(
-    project_dir: &Path, min_body_lines: usize,
-) -> Vec<SkillBodyFinding> {
-    let mut findings = Vec::new();
-    for path in walk_skill_files(project_dir) {
-        let rel = relative_display(project_dir, &path);
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let Some(lines) = skill_body_lines(&content) else {
-            continue;
-        };
-        if lines.len() < min_body_lines {
-            continue;
-        }
-        let has_heading = lines.iter().any(|line| line.trim() == CRITICAL_PATH_HEADING);
-        if !has_heading {
-            findings.push(SkillBodyFinding {
-                rule_id: RULE_MISSING_CRITICAL_PATH,
-                path: rel.clone(),
-                message: format!(
-                    "Missing Critical Path: {rel} — {} body lines requires '{CRITICAL_PATH_HEADING}'",
-                    lines.len()
                 ),
             });
         }
@@ -214,8 +181,7 @@ pub fn check_variable_coverage(
         let after_heading = &content[heading_match.end()..];
         let section_end = after_heading
             .find("\n## ")
-            .map(|idx| heading_match.end() + idx)
-            .unwrap_or(content.len());
+            .map_or(content.len(), |idx| heading_match.end() + idx);
         let args_section = &content[heading_idx..section_end];
 
         let mut defined = HashSet::new();
@@ -478,15 +444,6 @@ mod tests {
     }
 
     #[test]
-    fn missing_critical_path_flags_long_skill() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        write_skill(dir.path(), "long", &padding(160));
-        let findings = check_missing_critical_path(dir.path(), 150);
-        assert_eq!(findings.len(), 1);
-        assert!(findings[0].message.contains("requires '## Critical Path'"));
-    }
-
-    #[test]
     fn variable_coverage_flags_undefined_use() {
         let dir = tempfile::tempdir().expect("tempdir");
         let body = "## Arguments\n\n```text\n$SLICE=<name>\n```\n\n## Steps\n\nValidate $PROJECT for $SLICE before continuing.";
@@ -502,7 +459,6 @@ mod tests {
     fn clean_short_skill_is_silent() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_skill(dir.path(), "ok", "Just a short body.");
-        assert!(check_missing_critical_path(dir.path(), 150).is_empty());
         assert!(check_invalid_critical_path(dir.path(), 150, 5, 7).is_empty());
         assert!(check_step_body_duplicates(dir.path()).is_empty());
     }

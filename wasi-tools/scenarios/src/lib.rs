@@ -3,22 +3,21 @@
 //! predicate (Road B framework tool).
 //!
 //! The tool covers the filesystem-only scenario family: CORE-028
-//! (artifact-path safety), CORE-029 (body↔frontmatter id), CORE-030
-//! (whole-tree duplicate id), CORE-031 (recorded-trace header
-//! validation), CORE-032 (frontmatter schema), and CORE-033 (stage
-//! contiguity). The discovery walk mirrors the host's
-//! `discover_scenario_candidates`; every check mirrors its counterpart
-//! in `framework::check::scenarios`. CORE-034's git-only staleness
-//! advisory is *not* lifted (it shells out to `git`, unfit for the WASI
-//! sandbox, and is removed in Phase 8). Carve-out posture: this crate
-//! owns its logic and embeds its own copy of `scenario.schema.json`,
-//! depending only on `serde` / `serde-saphyr` / `serde_json` /
-//! `jsonschema` / `regex`, never the host diagnostics crate (`main.rs`
-//! renders the wire envelope).
+//! (artifact-path safety), CORE-029 (body↔frontmatter id), CORE-031
+//! (recorded-trace header validation), and CORE-033 (stage
+//! contiguity). CORE-030 (whole-tree duplicate id) and CORE-032
+//! (frontmatter schema) moved to Road A declarative hints over the
+//! `scenario` fact family and are no longer served here. The discovery
+//! walk mirrors the host's `discover_scenario_candidates`; every check
+//! mirrors its counterpart in `framework::check::scenarios`. CORE-034's
+//! git-only staleness advisory is *not* lifted (it shells out to `git`,
+//! unfit for the WASI sandbox, and is removed in Phase 8). Carve-out
+//! posture: this crate owns its logic, depending only on `serde` /
+//! `serde-saphyr` / `serde_json` / `regex`, never the host diagnostics
+//! crate (`main.rs` renders the wire envelope).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 
 use regex::Regex;
 use serde_json::Value as JsonValue;
@@ -26,15 +25,8 @@ use serde_json::Value as JsonValue;
 /// Codex ids each check stamps onto its findings (closed `CORE-NNN`).
 pub const RULE_ARTIFACT_PATH_UNSAFE: &str = "CORE-028";
 pub const RULE_BODY_ID_MISMATCH: &str = "CORE-029";
-pub const RULE_DUPLICATE_ID: &str = "CORE-030";
 pub const RULE_RECORDED_TRACE_VIOLATION: &str = "CORE-031";
-pub const RULE_SCHEMA_VIOLATION: &str = "CORE-032";
 pub const RULE_STAGES_NOT_CONTIGUOUS: &str = "CORE-033";
-
-/// Tool-owned copy of the canonical scenario frontmatter schema
-/// (`schemas/authoring/scenario.schema.json`). Embedded so the tool
-/// never reaches back into the host engine for policy (Road B B-2).
-const SCENARIO_SCHEMA_SOURCE: &str = include_str!("../embedded/scenario.schema.json");
 
 /// The fixed slice-loop stage order a scenario's `stages` list must be a
 /// contiguous slice of, anchored at any element.
@@ -79,50 +71,23 @@ struct ScenarioFile {
     frontmatter: BTreeMap<String, JsonValue>,
 }
 
-/// Lazily compiled scenario validator built from the embedded schema.
-fn scenario_validator() -> Result<&'static jsonschema::Validator, String> {
-    static VALIDATOR: OnceLock<Result<jsonschema::Validator, String>> = OnceLock::new();
-    VALIDATOR
-        .get_or_init(|| {
-            let schema: JsonValue = serde_json::from_str(SCENARIO_SCHEMA_SOURCE)
-                .map_err(|err| format!("embedded scenario.schema.json is not JSON: {err}"))?;
-            jsonschema::validator_for(&schema)
-                .map_err(|err| format!("embedded scenario.schema.json failed to compile: {err}"))
-        })
-        .as_ref()
-        .map_err(Clone::clone)
-}
-
-/// Run the frontmatter family of checks: schema (CORE-032), stages
-/// (CORE-033), body-id (CORE-029), artifact-path (CORE-028), and
-/// whole-tree duplicate id (CORE-030). Mirrors the host's
-/// `validate_scenario_frontmatter`.
+/// Run the frontmatter family of checks: stages (CORE-033), body-id
+/// (CORE-029), and artifact-path (CORE-028). Schema (CORE-032) and
+/// whole-tree duplicate id (CORE-030) moved to Road A. Mirrors the
+/// host's `validate_scenario_frontmatter`.
 fn validate_scenario_frontmatter(project_dir: &Path) -> Vec<ScenarioFinding> {
-    let validator = match scenario_validator() {
-        Ok(validator) => validator,
-        Err(error) => {
-            return vec![ScenarioFinding {
-                rule_id: RULE_SCHEMA_VIOLATION,
-                path: None,
-                message: format!("Scenario frontmatter: cannot load scenario schema: {error}"),
-            }];
-        }
-    };
-
-    let (opted, mut findings) = collect_opted_scenarios(project_dir);
-    findings.extend(check_schema(validator, &opted));
-    findings.extend(check_stages(&opted));
+    let opted = collect_opted_scenarios(project_dir);
+    let mut findings = check_stages(&opted);
     findings.extend(check_body_id(&opted));
     findings.extend(check_artifact_paths(&opted));
-    findings.extend(check_duplicate_ids(&opted));
     findings
 }
 
 /// Read and parse every discovered scenario, returning the opted-in
-/// files plus any YAML-parse `scenarios.schema-violation` findings.
-fn collect_opted_scenarios(project_dir: &Path) -> (Vec<ScenarioFile>, Vec<ScenarioFinding>) {
+/// files. An opted-in file whose YAML fails to parse is skipped here;
+/// the Road A `scenario` schema hint flags it instead (CORE-032).
+fn collect_opted_scenarios(project_dir: &Path) -> Vec<ScenarioFile> {
     let mut opted = Vec::new();
-    let mut findings = Vec::new();
     for path in discover_scenario_candidates(project_dir) {
         let Ok(content) = std::fs::read_to_string(&path) else {
             continue;
@@ -131,41 +96,15 @@ fn collect_opted_scenarios(project_dir: &Path) -> (Vec<ScenarioFile>, Vec<Scenar
         let Some(block) = frontmatter_block(&content) else {
             continue;
         };
-        match parse_frontmatter_yaml(block) {
-            Ok(frontmatter) => opted.push(ScenarioFile {
+        if let Ok(frontmatter) = parse_frontmatter_yaml(block) {
+            opted.push(ScenarioFile {
                 rel,
                 content,
                 frontmatter,
-            }),
-            Err(msg) => findings.push(ScenarioFinding {
-                rule_id: RULE_SCHEMA_VIOLATION,
-                path: Some(rel.clone()),
-                message: format!("Scenario frontmatter: {rel} — invalid YAML: {msg}"),
-            }),
-        }
-    }
-    (opted, findings)
-}
-
-/// CORE-032: validate each opted file's frontmatter against the embedded
-/// scenario schema, one finding per schema error.
-fn check_schema(validator: &jsonschema::Validator, opted: &[ScenarioFile]) -> Vec<ScenarioFinding> {
-    let mut findings = Vec::new();
-    for sc in opted {
-        let value = JsonValue::Object(sc.frontmatter.clone().into_iter().collect());
-        for error in validator.iter_errors(&value) {
-            let instance_path = error.instance_path().to_string();
-            let at = if instance_path.is_empty() { "/".to_string() } else { instance_path };
-            findings.push(ScenarioFinding {
-                rule_id: RULE_SCHEMA_VIOLATION,
-                path: Some(sc.rel.clone()),
-                message: format!("Scenario frontmatter: {} — {} {}", sc.rel, at, error)
-                    .trim()
-                    .to_string(),
             });
         }
     }
-    findings
+    opted
 }
 
 /// CORE-033: each non-empty frontmatter's `stages` must be a contiguous
@@ -256,32 +195,6 @@ fn check_artifact_paths(opted: &[ScenarioFile]) -> Vec<ScenarioFinding> {
                 rule_id: RULE_ARTIFACT_PATH_UNSAFE,
                 path: Some(sc.rel.clone()),
                 message: format!("Scenario frontmatter: {} — {detail}", sc.rel),
-            });
-        }
-    }
-    findings
-}
-
-/// CORE-030: scenario ids must be unique across the whole tree.
-fn check_duplicate_ids(opted: &[ScenarioFile]) -> Vec<ScenarioFinding> {
-    let mut ids_by_value: HashMap<String, Vec<String>> = HashMap::new();
-    for sc in opted {
-        let Some(JsonValue::String(id)) = sc.frontmatter.get("id") else {
-            continue;
-        };
-        ids_by_value.entry(id.clone()).or_default().push(sc.rel.clone());
-    }
-    let mut findings = Vec::new();
-    for (id, mut paths) in ids_by_value {
-        if paths.len() > 1 {
-            paths.sort();
-            findings.push(ScenarioFinding {
-                rule_id: RULE_DUPLICATE_ID,
-                path: None,
-                message: format!(
-                    "Scenario frontmatter: duplicate scenario id '{id}' across files: {}",
-                    paths.join(", ")
-                ),
             });
         }
     }
@@ -593,24 +506,6 @@ mod tests {
 
         let stages = flagged(&run(dir.path()), RULE_STAGES_NOT_CONTIGUOUS);
         assert_eq!(stages, vec![Some("acceptance/scenarios/bad.md".to_string())]);
-    }
-
-    #[test]
-    fn flags_schema_violation_for_missing_required_fields() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        write_scenario(dir.path(), "thin.md", "---\nid: thin\nstages: [refine, build]\n---\n\nBody.\n");
-        let schema = flagged(&run(dir.path()), RULE_SCHEMA_VIOLATION);
-        assert!(!schema.is_empty(), "missing required fields must flag CORE-032");
-        assert!(schema.iter().all(|p| p.as_deref() == Some("acceptance/scenarios/thin.md")));
-    }
-
-    #[test]
-    fn flags_duplicate_id_across_files() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        write_scenario(dir.path(), "a.md", &valid_frontmatter("shared"));
-        write_scenario(dir.path(), "b.md", &valid_frontmatter("shared"));
-        let dup = flagged(&run(dir.path()), RULE_DUPLICATE_ID);
-        assert_eq!(dup, vec![None], "duplicate id is whole-tree (no single path)");
     }
 
     #[test]

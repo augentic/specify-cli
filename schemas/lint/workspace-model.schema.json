@@ -119,6 +119,16 @@
       "type": "array",
       "items": { "$ref": "#/$defs/agentTeam" },
       "description": "`WorkspaceModel` entity: `agent_team` facts from followed `agent-teams.md` symlinks under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
+    },
+    "scenarios": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scenario" },
+      "description": "`WorkspaceModel` entity: `scenario` facts from the dedicated scenario discovery pass over the opt-in scenario roots (`acceptance/scenarios/*.md`, `adapters/targets/*/tests/**`, plugin skill fixtures) under the framework scan profile. Kept out of `files` so no other rule's candidate set changes. Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
+    },
+    "adapter_dirs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/adapterDir" },
+      "description": "`WorkspaceModel` entity: `adapter_dir` facts from the dedicated adapter-directory pass over the immediate children of `adapters/{sources,targets}` under the framework scan profile (one fact per child directory, with or without an `adapter.yaml`). The source side of the `kind: cross-reference` join. Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
     }
   },
   "$defs": {
@@ -371,6 +381,82 @@
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 },
           "description": "`WorkspaceModel` entity: operation slugs declared as the `briefs:` map keys in the manifest body. Empty / absent when the manifest omits the field. Consumed by the `kind: set-coverage` and `kind: set-eq` interpreters (`adapter-briefs` source discriminator)."
+        },
+        "tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/adapterTool" },
+          "description": "`WorkspaceModel` entity: well-formed `tools[]` declarations from the manifest body. Only `{ name, version }` entries are recorded; malformed entries are dropped (their shape is the `adapter` registered schema's concern). Empty / absent when the manifest omits the field. Consumed by the `kind: cross-reference` `adapter-tool` target selector."
+        }
+      }
+    },
+    "adapterTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: declared WASI tool name (kebab-case identifier)."
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: declared semver-pinned tool version (e.g. `0.4.0`)."
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "fields"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: scenario frontmatter `id` value when present and a scalar string."
+        },
+        "stages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "`WorkspaceModel` entity: scenario frontmatter `stages` tokens, in declared order."
+        },
+        "expected-artifacts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "`WorkspaceModel` entity: scenario frontmatter `expected-artifacts` paths."
+        },
+        "body-id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: scenario body `Scenario ID:` line value (backticks stripped)."
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "`WorkspaceModel` entity: parsed YAML frontmatter field map. Per-key shape is rule-specific; empty when the opted-in frontmatter failed to parse."
+        }
+      }
+    },
+    "adapterDir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "axis", "name"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath",
+          "description": "`WorkspaceModel` entity: project-relative path of the adapter directory itself (e.g. `adapters/targets/vectis`); the join key against the containing directory of each `adapter_manifest` path."
+        },
+        "axis": {
+          "type": "string",
+          "enum": ["sources", "targets"],
+          "description": "`WorkspaceModel` entity: `sources` xor `targets` (the parent directory under `adapters/`)."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: directory name (the final path segment, e.g. `vectis`)."
         }
       }
     },
