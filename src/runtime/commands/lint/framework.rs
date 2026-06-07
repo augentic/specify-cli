@@ -5,7 +5,7 @@
 //! The shared pipeline lives in [`specify_standards::lint::runner`] and
 //! the shared output/journal/exit tail in [`crate::output`]; this
 //! handler is thin and obeys the same `Result<()>` contract as the
-//! product `lint product` handler, differing only in the framework-surface
+//! project `lint project` handler, differing only in the framework-surface
 //! config it assembles:
 //!
 //! 1. Resolve the framework root and load the imperative

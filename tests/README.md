@@ -32,7 +32,7 @@ flips a kebab-case error `code` is a public-contract change, not a refresh.
 | `specify` | `lint_framework_json` | `tests/fixtures/lint-framework/` |
 | `specify-workflow` | `goldens` | `crates/workflow/tests/fixtures/*.golden.json` |
 | `specify-workflow` | `migrate` | `crates/workflow/tests/migrate/v1-to-v2/{before,after}/` |
-| `specify-standards` | `lint_indexer_product` | `crates/standards/tests/fixtures/lint/` |
+| `specify-standards` | `lint_indexer_project` | `crates/standards/tests/fixtures/lint/` |
 | `specify-standards` | `lint_framework_indexer` | `crates/standards/tests/fixtures/lint/` |
 | `specify-standards` | `lint_ignore_directive_pass` | JSON: `crates/standards/tests/fixtures/lint/`; pretty: `crates/standards/tests/goldens/` |
 

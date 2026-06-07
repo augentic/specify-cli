@@ -1,4 +1,4 @@
-//! End-to-end binary tests for `specify lint product` (`specify
+//! End-to-end binary tests for `specify lint project` (`specify
 //! review` (Phase 2 CLI)").
 //!
 //! Exercises the wired clap surface, `--rules-root` resolution per rules-root resolution,
@@ -126,7 +126,7 @@ fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::proc
     // The global `--format` toggles the error-envelope shape; the
     // per-subcommand `--output-format` selects the the diagnostics formatter set closed set.
     cmd.arg("--format").arg("json");
-    cmd.arg("lint").arg("product");
+    cmd.arg("lint").arg("project");
     cmd.arg("--target").arg("omnia");
     cmd.arg("--project-dir").arg(project);
     cmd.arg("--output-format").arg("json");
@@ -175,40 +175,27 @@ fn review_emits_important_exits_2() {
     assert_eq!(rule_id, "UNI-100", "envelope:\n{envelope:#}");
 }
 
-/// Bare `specify lint` (no `product` subcommand) is shorthand for the
-/// product scan: the flattened `ProductArgs` carry the invocation, so
-/// the same UNI-100 finding lands and the run exits 2 — byte-identical
-/// to the explicit `specify lint product` form.
+/// Bare `specify lint` without a subcommand must fail at clap parse time.
 #[test]
-fn bare_lint_routes_to_product() {
-    let fx = build_fixture();
-
+fn bare_lint_requires_subcommand() {
     let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
-    cmd.arg("--format")
-        .arg("json")
-        .arg("lint")
-        .arg("--target")
-        .arg("omnia")
-        .arg("--project-dir")
-        .arg(&fx.project)
-        .arg("--output-format")
-        .arg("json")
-        .arg("--rules-root")
-        .arg(&fx.codex)
-        .env_remove("RULES_ROOT");
-    let bare = cmd.output().expect("specify invocation");
+    cmd.arg("lint");
+    let output = cmd.output().expect("specify invocation");
 
-    assert_eq!(
-        bare.status.code(),
-        Some(2),
-        "bare `specify lint` must exit 2 like `lint product`; stderr:\n{}",
-        String::from_utf8_lossy(&bare.stderr)
+    assert!(
+        !output.status.success(),
+        "bare `specify lint` must fail; stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
-
-    let explicit = run_review(&fx.project, Some(&fx.codex), &[]);
-    assert_eq!(
-        bare.stdout, explicit.stdout,
-        "bare `specify lint` must emit byte-identical output to `specify lint product`"
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        combined.contains("project") || combined.contains("subcommand"),
+        "failure must hint at required subcommand; got:\n{combined}"
     );
 }
 
@@ -374,7 +361,7 @@ fn review_missing_rules_root_exits_2() {
     cmd.arg("--format")
         .arg("json")
         .arg("lint")
-        .arg("product")
+        .arg("project")
         .arg("--target")
         .arg("omnia")
         .arg("--project-dir")

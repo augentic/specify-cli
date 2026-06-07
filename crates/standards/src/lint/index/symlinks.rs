@@ -26,7 +26,7 @@ use crate::lint::Symlink;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FollowMode {
     /// Record the link without resolving the canonical target.
-    /// The product profile's default.
+    /// The project profile's default.
     Record,
     /// Record the link and resolve the canonical target so both
     /// endpoints appear in the model. The framework profile's

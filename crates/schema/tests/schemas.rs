@@ -372,7 +372,7 @@ fn workspace_model_accepts_minimal() {
     let instance = json!({
         "version": 1,
         "project_dir": ".",
-        "scan_profile": "product",
+        "scan_profile": "project",
         "artifact_paths": [],
         "languages": [],
         "files": [],

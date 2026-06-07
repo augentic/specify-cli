@@ -34,7 +34,7 @@
     },
     "scan_profile": {
       "type": "string",
-      "enum": ["product", "framework"],
+      "enum": ["project", "framework"],
       "description": "`WorkspaceModel` extraction inputs: controls which extractors run. `product` scans a downstream product project; `framework` scans this framework repo's authoring artifacts."
     },
     "artifact_paths": {
@@ -113,12 +113,12 @@
     "briefs": {
       "type": "array",
       "items": { "$ref": "#/$defs/brief" },
-      "description": "`WorkspaceModel` entity: `brief` facts from `adapters/**/briefs/**/*.md` (parent briefs and phase sub-briefs) under the framework scan profile (§F1). Optional in v1 envelopes; absent under the product profile so the product wire shape is unchanged."
+      "description": "`WorkspaceModel` entity: `brief` facts from `adapters/**/briefs/**/*.md` (parent briefs and phase sub-briefs) under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
     },
     "agent_teams": {
       "type": "array",
       "items": { "$ref": "#/$defs/agentTeam" },
-      "description": "`WorkspaceModel` entity: `agent_team` facts from followed `agent-teams.md` symlinks under the framework scan profile (§F1). Optional in v1 envelopes; absent under the product profile so the product wire shape is unchanged."
+      "description": "`WorkspaceModel` entity: `agent_team` facts from followed `agent-teams.md` symlinks under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
     }
   },
   "$defs": {
@@ -252,7 +252,7 @@
         },
         "resolved-target": {
           "$ref": "#/$defs/relativePath",
-          "description": "`WorkspaceModel` entity: project-relative path of the resolved canonical endpoint after symlink traversal. Populated only by the framework scan profile (§F1 follow mode); absent under the product profile and absent when the target resolves outside the project tree or could not be canonicalised."
+          "description": "`WorkspaceModel` entity: project-relative path of the resolved canonical endpoint after symlink traversal. Populated only by the framework scan profile (§F1 follow mode); absent under the project profile and absent when the target resolves outside the project tree or could not be canonicalised."
         }
       }
     },
@@ -279,7 +279,7 @@
         "body-line-count": {
           "type": "integer",
           "minimum": 0,
-          "description": "`WorkspaceModel` entity: number of non-frontmatter body lines under the skill body. Populated by the framework scan profile; absent under the product profile."
+          "description": "`WorkspaceModel` entity: number of non-frontmatter body lines under the skill body. Populated by the framework scan profile; absent under the project profile."
         }
       }
     },

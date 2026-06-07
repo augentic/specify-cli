@@ -218,7 +218,7 @@ fn evaluate_with_cache(
 /// Fold [`evaluate`] over every rule, accumulating findings and the
 /// `FIND-NNNN` id counter.
 ///
-/// Shared by both lint surfaces (`specify lint product` and `specify lint framework`)
+/// Shared by both lint surfaces (`specify lint project` and `specify lint framework`)
 /// so the per-rule gating stays identical: rules in `lint-mode:
 /// model-assisted` and rules with no (or empty) `rule_hints`
 /// are skipped; `start_id` is threaded forward so ids stay monotonic.

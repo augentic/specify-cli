@@ -48,7 +48,7 @@ Part of the CLI wire contract. `Exit::from(&Error)` in [`src/runtime/output.rs`]
 ## Repository map
 
 ```text
-src/runtime/          specify dispatch (the single CLI; lint product + lint framework)
+src/runtime/          specify dispatch (the single CLI; lint project + lint framework)
 crates/workflow/        workflow domain logic
 crates/standards/src/framework/  framework Check substrate (repo-local rust-quality predicates; no CORE rule producer)
 ```

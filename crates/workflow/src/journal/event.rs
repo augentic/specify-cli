@@ -505,7 +505,7 @@ pub struct LintScope {
     /// to a single target; `None` for project-wide scans.
     pub target: Option<String>,
     /// Slice id from `plan.yaml.slices[].name` when the scan was
-    /// narrowed to one slice (e.g. `specify lint product --slice <name>`).
+    /// narrowed to one slice (e.g. `specify lint project --slice <name>`).
     pub slice: Option<String>,
     /// Artifact path (relative to project root) when the scan was
     /// narrowed to a single artifact; `None` otherwise.

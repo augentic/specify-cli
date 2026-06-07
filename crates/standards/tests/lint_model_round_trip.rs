@@ -37,7 +37,7 @@ fn empty_model_round_trips() {
     let model = WorkspaceModel {
         version: WorkspaceModelVersion,
         project_dir: ".".into(),
-        scan_profile: ScanProfile::Product,
+        scan_profile: ScanProfile::Project,
         artifact_paths: vec![],
         languages: vec![],
         files: vec![],
@@ -60,7 +60,7 @@ fn empty_model_round_trips() {
 
     assert_eq!(value.get("version"), Some(&Value::from(1)));
     assert_eq!(value.get("project_dir").and_then(Value::as_str), Some("."));
-    assert_eq!(value.get("scan_profile").and_then(Value::as_str), Some("product"));
+    assert_eq!(value.get("scan_profile").and_then(Value::as_str), Some("project"));
     for required_array in [
         "artifact_paths",
         "languages",
@@ -102,7 +102,7 @@ fn populated_model_round_trips() {
     let model = WorkspaceModel {
         version: WorkspaceModelVersion,
         project_dir: ".".into(),
-        scan_profile: ScanProfile::Product,
+        scan_profile: ScanProfile::Project,
         artifact_paths: vec!["src/lib.rs".into()],
         languages: vec!["rust".into()],
         files: vec![File {

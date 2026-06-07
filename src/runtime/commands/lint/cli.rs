@@ -16,21 +16,21 @@ use specify_diagnostics::Format as DiagnosticsFormat;
 
 #[derive(Subcommand)]
 pub enum LintAction {
-    /// Resolve applicable rules, build a `WorkspaceModel`,
-    /// evaluate deterministic hints, and emit the structured review
-    /// envelope.
-    Product(ProductArgs),
+    /// Downstream consumer-project scan: resolve applicable codex
+    /// rules, build a `WorkspaceModel`, evaluate deterministic hints,
+    /// and emit the structured review envelope.
+    Project(ProjectArgs),
     /// Framework authoring lint over the `augentic/specify` repo.
     ///
     /// Composes the imperative `Check` predicates with the declarative
     /// deterministic-hint interpreter and emits one structured
     /// envelope per run. Defaults `--framework-root` to `.`, hard-codes
     /// the framework scan profile, and always evaluates `CORE-*` rules.
-    /// Contributor surface — operators reach for `lint product`.
+    /// Contributor surface — operators reach for `lint framework`.
     Framework(FrameworkArgs),
 }
 
-/// Flag surface for `specify lint framework`. Mirrors [`ProductArgs`]
+/// Flag surface for `specify lint framework`. Mirrors [`ProjectArgs`]
 /// modulo these pinned defaults:
 ///
 /// - `--framework-root` defaults to `.` (the framework repo itself
@@ -52,7 +52,7 @@ pub struct FrameworkArgs {
     /// Target-adapter name (kebab, optionally `<name>@v<major>`).
     /// Defaults to the literal `none` because framework scans rarely
     /// scope to one target adapter; when supplied, narrows the
-    /// applicability filter the same way `lint product --target` does.
+    /// applicability filter the same way `lint project --target` does.
     #[arg(long, default_value = "none")]
     pub target: String,
 
@@ -98,11 +98,11 @@ pub struct FrameworkArgs {
     pub output_format: Option<LintFormat>,
 }
 
-/// Flag surface for `specify lint product`. Grouped into one struct so the
+/// Flag surface for `specify lint project`. Grouped into one struct so the
 /// handler threads a single reference instead of a positional argument
 /// list.
 #[derive(Args)]
-pub struct ProductArgs {
+pub struct ProjectArgs {
     /// Codex root supplying shared `UNI-*` rules. Resolution
     /// order (rules-root resolution): this flag / `$RULES_ROOT` env →
     /// monorepo `adapters/shared/rules/universal/` under the project →

@@ -11,7 +11,7 @@ use specify_model::evidence::ClaimKind;
 pub use crate::output::Format;
 use crate::runtime::commands::archive::cli::ArchiveAction;
 use crate::runtime::commands::journal::cli::JournalAction;
-use crate::runtime::commands::lint::cli::{LintAction, ProductArgs};
+use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
 use crate::runtime::commands::plugins::cli::PluginsAction;
 use crate::runtime::commands::registry::cli::RegistryAction;
@@ -147,18 +147,12 @@ pub enum Commands {
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
     /// and emits the `DiagnosticReport` envelope. Read-only.
     ///
-    /// Bare `specify lint` is shorthand for the `product` subcommand
-    /// (the downstream product-project scan); the flattened
-    /// [`ProductArgs`] carry that default invocation. `specify lint
-    /// framework` selects the framework authoring scan instead.
-    /// `args_conflicts_with_subcommands` keeps the flattened product
-    /// flags from colliding with an explicit subcommand.
-    #[command(args_conflicts_with_subcommands = true)]
+    /// Requires an explicit subcommand: `project` (downstream consumer
+    /// scan) or `framework` (authoring scan over `augentic/specify`).
+    #[command(subcommand_required = true)]
     Lint {
         #[command(subcommand)]
-        action: Option<LintAction>,
-        #[command(flatten)]
-        product: Option<ProductArgs>,
+        action: LintAction,
     },
 
     /// Slice lifecycle operations — one `refine → build → merge` loop.

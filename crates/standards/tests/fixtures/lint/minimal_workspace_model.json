@@ -131,7 +131,7 @@
       "rule-id": "UNI-099"
     }
   ],
-  "scan_profile": "product",
+  "scan_profile": "project",
   "skills": [],
   "symlinks": [
     {

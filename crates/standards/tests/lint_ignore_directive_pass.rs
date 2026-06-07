@@ -165,7 +165,7 @@ fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("app.rs"), scenario.fixture_body).expect("write fixture");
 
-    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build model");
+    let model = build(tmp.path(), ScanProfile::Project, &[], &[]).expect("build model");
 
     let url_rule = make_rule(scenario.primary_rule_id, vec![hint(HintKind::Regex, "https?://")]);
     let runner: &dyn ToolRunner = &NoToolRunner;
