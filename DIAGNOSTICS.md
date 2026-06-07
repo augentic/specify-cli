@@ -60,7 +60,7 @@ Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-re
 
 ### Performance (post-migration)
 
-`make lint` on `augentic/specify` (2026-06-04): **~247s** wall (`real 246.75`); pre-teardown baseline not captured in-tree. Benchmark locally with `/usr/bin/time make lint`.
+`make lint` on `augentic/specify` (release build, 2026-06-07): single-digit seconds — **~8s** wall (`real 8.7` for `make lint`, `real 7.8` for the bare release binary). Always measure against a `cargo build --release` binary; a debug/unoptimized build is many times slower and is not representative. (The retired `~247s` figure was a pre-migration debug-era measurement.) Benchmark on your own hardware with `/usr/bin/time make lint`.
 
 ---
 

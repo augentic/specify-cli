@@ -121,6 +121,33 @@ fn build_fixture() -> Fixture {
     }
 }
 
+/// Write a `kind: regex` UNI rule into `codex` at the given severity.
+///
+/// Mirrors the inline rule `build_fixture` writes, but parameterised on
+/// `id` / `severity` / `pattern` so the blocking-tier tests can stand up
+/// `suggestion`-severity rules (which never gate) alongside the default
+/// `important` one (which does).
+fn write_regex_rule(codex: &Path, id: &str, severity: &str, pattern: &str) {
+    let slug = id.to_ascii_lowercase();
+    fs::write(
+        codex.join(format!("adapters/shared/rules/universal/{slug}.md")),
+        format!(
+            "---\n\
+             id: {id}\n\
+             title: Forbid scaffolding {pattern}\n\
+             severity: {severity}\n\
+             trigger: {pattern} tokens leak development scaffolding into shipped artefacts.\n\
+             lint_mode: deterministic\n\
+             rule_hints:\n\
+             \x20 - kind: regex\n\
+             \x20   value: {pattern}\n\
+             ---\n\
+             ## Rule\n\nStrip scaffolding {pattern} before merge.\n",
+        ),
+    )
+    .unwrap_or_else(|err| panic!("write rule {id}: {err}"));
+}
+
 fn run_review(project: &Path, codex: Option<&Path>, extra: &[&str]) -> std::process::Output {
     let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
     // The global `--format` toggles the error-envelope shape; the
@@ -381,5 +408,83 @@ fn review_missing_rules_root_exits_2() {
     assert!(
         stderr.contains("rules-root-required"),
         "stderr must mention rules-root-required; got:\n{stderr}"
+    );
+}
+
+/// Blocking-tier exit decision (non-blocking half): a `suggestion`-severity
+/// rule that matches still surfaces a finding on the envelope, but the scan
+/// exits `0` because only `critical | important` violations gate. Pins the
+/// `blocking` predicate (`crates/diagnostics/src/diagnostic.rs`) through the
+/// CLI boundary — today's tests only cover `important` -> exit 2 and the
+/// directive-demoted / `--dump-model` exit-0 paths, never a present-but-
+/// non-blocking finding.
+#[test]
+fn suggestion_finding_present_exits_0() {
+    let fx = build_fixture();
+    // Overwrite the default `important` UNI-100 with a `suggestion`-tier
+    // rule matching the same `TODO` token in `notes.md`.
+    write_regex_rule(&fx.codex, "UNI-100", "suggestion", "TODO");
+    let output = run_review(&fx.project, Some(&fx.codex), &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "a suggestion-tier finding is non-blocking; scan must exit 0; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = std::str::from_utf8(&output.stdout).expect("utf8 stdout");
+    let envelope: Value = serde_json::from_str(stdout).expect("parse envelope");
+    let suggestion = envelope
+        .pointer("/summary/suggestion")
+        .and_then(Value::as_u64)
+        .expect("summary.suggestion present");
+    assert!(
+        suggestion >= 1,
+        "the finding must still surface in the envelope, just non-blocking; envelope:\n{envelope:#}"
+    );
+    let important =
+        envelope.pointer("/summary/important").and_then(Value::as_u64).unwrap_or_default();
+    let critical = envelope.pointer("/summary/critical").and_then(Value::as_u64).unwrap_or_default();
+    assert_eq!(
+        important + critical,
+        0,
+        "no blocking-tier finding should exist; envelope:\n{envelope:#}"
+    );
+}
+
+/// Blocking-tier exit decision (mixed half): with one `important` rule and
+/// one `suggestion` rule both matching, the scan exits `2` driven by the
+/// blocking tier — not by raw finding count. Proves the exit is severity-
+/// gated, complementing `suggestion_finding_present_exits_0`.
+#[test]
+fn blocking_tier_drives_exit_over_suggestion() {
+    let fx = build_fixture();
+    // `build_fixture` already wrote the `important` UNI-100 (matches
+    // `TODO`). Add a `suggestion` rule matching `scaffolding`, also
+    // present in `notes.md` ("TODO: drop scaffolding.").
+    write_regex_rule(&fx.codex, "UNI-101", "suggestion", "scaffolding");
+    let output = run_review(&fx.project, Some(&fx.codex), &[]);
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "the important finding must drive exit 2 despite a co-present suggestion; stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = std::str::from_utf8(&output.stdout).expect("utf8 stdout");
+    let envelope: Value = serde_json::from_str(stdout).expect("parse envelope");
+    let important = envelope
+        .pointer("/summary/important")
+        .and_then(Value::as_u64)
+        .expect("summary.important present");
+    let suggestion = envelope
+        .pointer("/summary/suggestion")
+        .and_then(Value::as_u64)
+        .expect("summary.suggestion present");
+    assert!(
+        important >= 1 && suggestion >= 1,
+        "both tiers must surface (exit driven by the blocking tier, not count); envelope:\n{envelope:#}"
     );
 }
