@@ -79,7 +79,7 @@ fn brownfield() {
     fs::create_dir_all(specify.join("slices/my-slice")).unwrap();
     fs::write(
         specify.join("project.yaml"),
-        "name: brownfield\nadapter: omnia\nspecify_version: 0.2.0\nrules:\n  specs: specs.md\n",
+        "name: brownfield\nadapter: omnia\nspecify_version: 0.1.0\nrules:\n  specs: specs.md\n",
     )
     .unwrap();
     fs::write(specify.join("slices/my-slice/spec.md"), "# operator slice\n").unwrap();
@@ -116,7 +116,7 @@ fn workspace() {
     fs::create_dir_all(&specify).unwrap();
     fs::write(
         specify.join("project.yaml"),
-        "name: platform-workspace\nspecify_version: 0.2.0\nworkspace: true\n",
+        "name: platform-workspace\nspecify_version: 0.1.0\nworkspace: true\n",
     )
     .unwrap();
     fs::write(tmp.path().join("registry.yaml"), "version: 1\nprojects: []\n").unwrap();
