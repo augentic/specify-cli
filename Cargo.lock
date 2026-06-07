@@ -4598,7 +4598,7 @@ dependencies = [
 
 [[package]]
 name = "specify"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -4628,7 +4628,7 @@ dependencies = [
 
 [[package]]
 name = "specify-agents"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -4642,7 +4642,7 @@ dependencies = [
 
 [[package]]
 name = "specify-diagnostics"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "jsonschema",
  "proptest",
@@ -4656,7 +4656,7 @@ dependencies = [
 
 [[package]]
 name = "specify-digest"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "base16ct",
  "sha2 0.11.0",
@@ -4664,7 +4664,7 @@ dependencies = [
 
 [[package]]
 name = "specify-error"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "jiff",
  "serde",
@@ -4676,7 +4676,7 @@ dependencies = [
 
 [[package]]
 name = "specify-model"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "regex",
  "serde",
@@ -4690,7 +4690,7 @@ dependencies = [
 
 [[package]]
 name = "specify-schema"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "jsonschema",
  "serde",
@@ -4702,7 +4702,7 @@ dependencies = [
 
 [[package]]
 name = "specify-standards"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "glob",
  "ignore",
@@ -4724,7 +4724,7 @@ dependencies = [
 
 [[package]]
 name = "specify-tool"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "base16ct",
  "futures-util",
@@ -4750,7 +4750,7 @@ dependencies = [
 
 [[package]]
 name = "specify-validate"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "glob",
  "regex",
@@ -4765,7 +4765,7 @@ dependencies = [
 
 [[package]]
 name = "specify-workflow"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "glob",

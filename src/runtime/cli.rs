@@ -50,8 +50,7 @@ pub enum Commands {
     /// standard parse-error diagnostic when the invariant is violated.
     Init {
         /// Adapter identifier. First-party shorthand (`omnia`,
-        /// `omnia@v1` — ref defaults to `v1`) resolves against
-        /// `$SPECIFY_FRAMEWORK_ROOT` when set, else the published
+        /// `omnia@v1` — ref defaults to `v1`) resolves to the published
         /// adapter on GitHub. Also accepts a local path
         /// (`./adapters/targets/omnia`, `file://…`) or a full
         /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`

@@ -32,11 +32,12 @@ Both build envelopes are closed-shape YAML, keyed on `(slice, target)`, schema-v
 
 1. `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/` — agent-populated mirror.
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo manifest.
-3. `$SPECIFY_FRAMEWORK_ROOT/adapters/{sources,targets}/<name>/` — on-disk framework checkout named by the env var. Offline/dev/acceptance fallback only, probed last; skipped when the env var is unset.
+
+Resolution is project-local only; there is no environment-variable fallback to an out-of-tree framework checkout. When neither location matches, resolution fails with `adapter-not-found`.
 
 The `{sources,targets}` segment is keyed by `Axis`. See [`DECISIONS.md` §"Adapter loader axis routing"](../../DECISIONS.md#adapter-loader-axis-routing) and [`DECISIONS.md` §"Cache layout"](../../DECISIONS.md#cache-layout).
 
-`specify init <adapter>` additionally accepts a first-party **shorthand** (`omnia`, `omnia@v1`; ref defaults to `v1`) that resolves against `$SPECIFY_FRAMEWORK_ROOT` when set, else the published adapter on GitHub. See [`DECISIONS.md` §"First-party `<adapter>` shorthand at init"](../../DECISIONS.md#first-party-adapter-shorthand-at-init).
+`specify init <adapter>` additionally accepts a first-party **shorthand** (`omnia`, `omnia@v1`; ref defaults to `v1`) that resolves to the published adapter on GitHub. See [`DECISIONS.md` §"First-party `<adapter>` shorthand at init"](../../DECISIONS.md#first-party-adapter-shorthand-at-init).
 
 The `source resolve` / `target resolve` JSON envelope carries `briefs-dir` — the absolute path to the resolved adapter's `briefs/` directory — alongside `resolved-path`, `operations`, and `description`. The source-operation prep seam consumes it for brief-directory resolution.
 
@@ -91,15 +92,15 @@ Closed enum `intent > documentation > behaviour`. v1 resolution order per `(sour
 
 **Drift validators.** `specify slice validate` adds seven blocking typed-model findings (exit 2), emitted as `Diagnostic` findings on the `DiagnosticReport` surface:
 
-| Finding | Meaning |
-|---|---|
-| `slice-model-schema` | `model.yaml` does not match `schemas/slice/model.schema.json`. |
-| `slice-spec-provenance-stale` | Kernel-rendered provenance lines in `spec.md` disagree with `model.yaml`. |
-| `slice-model-target-drift` | `model.yaml.project` disagrees with `plan.yaml.slices[<slice>].project`. (`target` is not persisted, so there is no target half.) |
-| `slice-model-source-orphan` | A claim references an absent source key or Evidence claim id. |
-| `slice-model-cross-ref-orphan` | A `satisfies[]` `REQ-*` reference is missing from `requirements[].id`. |
-| `slice-model-claim-kind-mismatch` | A claim `kind` (D13) disagrees with the Evidence kind for that `(source, id)`. |
-| `slice-model-id-grammar` | A `REQ` or `TASK` id does not match its closed three-digit grammar. |
+| Finding                           | Meaning                                                                                                                           |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `slice-model-schema`              | `model.yaml` does not match `schemas/slice/model.schema.json`.                                                                    |
+| `slice-spec-provenance-stale`     | Kernel-rendered provenance lines in `spec.md` disagree with `model.yaml`.                                                         |
+| `slice-model-target-drift`        | `model.yaml.project` disagrees with `plan.yaml.slices[<slice>].project`. (`target` is not persisted, so there is no target half.) |
+| `slice-model-source-orphan`       | A claim references an absent source key or Evidence claim id.                                                                     |
+| `slice-model-cross-ref-orphan`    | A `satisfies[]` `REQ-*` reference is missing from `requirements[].id`.                                                            |
+| `slice-model-claim-kind-mismatch` | A claim `kind` (D13) disagrees with the Evidence kind for that `(source, id)`.                                                    |
+| `slice-model-id-grammar`          | A `REQ` or `TASK` id does not match its closed three-digit grammar.                                                               |
 
 ## Extraction
 

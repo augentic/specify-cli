@@ -46,7 +46,7 @@ pub struct FrameworkArgs {
     /// Framework repo root used as both rules-root and scan-root.
     /// Defaults to the current directory so a contributor in a
     /// fresh clone can run bare `specify lint framework`.
-    #[arg(long, env = "SPECIFY_FRAMEWORK_ROOT", alias = "rules-root", default_value = ".")]
+    #[arg(long, env = "SPECIFY_ROOT", alias = "rules-root", default_value = ".")]
     pub framework_root: PathBuf,
 
     /// Target-adapter name (kebab, optionally `<name>@v<major>`).

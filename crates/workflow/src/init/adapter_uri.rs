@@ -3,10 +3,8 @@
 //! `https://github.com/...` URIs (with optional `@ref` or
 //! `tree/<ref>` discriminators).
 //!
-//! First-party shorthand resolves a bare adapter name against the
-//! framework repo: an on-disk checkout named by
-//! `$SPECIFY_FRAMEWORK_ROOT` when set (offline dev + acceptance), else
-//! the canonical published adapter on GitHub (ref defaults to `v1`).
+//! First-party shorthand resolves a bare adapter name to the
+//! canonical published adapter on GitHub (ref defaults to `v1`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,7 +28,7 @@ impl AdapterUri {
             return Self::from_github(adapter);
         }
         if let Some((name, reference)) = parse_first_party_shorthand(adapter) {
-            return Self::from_shorthand(name, reference, framework_root_env().as_deref());
+            return Self::from_shorthand(name, reference);
         }
         Self::from_local(adapter, project_dir)
     }
@@ -43,9 +41,8 @@ impl AdapterUri {
     }
 
     /// Build an [`AdapterUri`] from an already-resolved local directory,
-    /// recording a `file://` `adapter_value`. Shared by [`Self::from_local`]
-    /// (bare/`file://` paths) and [`Self::from_shorthand`] (a first-party
-    /// shorthand resolved against an on-disk framework checkout).
+    /// recording a `file://` `adapter_value`. Used by [`Self::from_local`]
+    /// for bare and `file://` paths.
     fn from_resolved_dir(source_dir: &Path, original: &str) -> Result<Self, Error> {
         ensure_adapter_dir(source_dir, original)?;
         let canonical = fs::canonicalize(source_dir).map_err(|err| Error::Diag {
@@ -65,27 +62,10 @@ impl AdapterUri {
         })
     }
 
-    /// Resolve a first-party shorthand (`omnia`, `omnia@v1`) to a
-    /// concrete adapter source. Prefers an on-disk framework checkout
-    /// named by `framework_root` (the `$SPECIFY_FRAMEWORK_ROOT` value,
-    /// for offline dev + acceptance) and otherwise falls back to the
+    /// Resolve a first-party shorthand (`omnia`, `omnia@v1`) to the
     /// canonical published adapter on GitHub. `init` is target-only, so
     /// the shorthand resolves under `adapters/targets/<name>/`.
-    ///
-    /// `framework_root` is threaded explicitly so unit tests can drive
-    /// resolution without mutating process-global environment.
-    fn from_shorthand(
-        name: &str, reference: &str, framework_root: Option<&Path>,
-    ) -> Result<Self, Error> {
-        if let Some(root) = framework_root {
-            let candidate = root
-                .join(crate::adapter::ADAPTERS_DIR)
-                .join(crate::adapter::Axis::Target.dir_segment())
-                .join(name);
-            if candidate.join(crate::adapter::ADAPTER_FILENAME).is_file() {
-                return Self::from_resolved_dir(&candidate, name);
-            }
-        }
+    fn from_shorthand(name: &str, reference: &str) -> Result<Self, Error> {
         let url =
             format!("https://github.com/augentic/specify/adapters/targets/{name}@{reference}");
         Self::from_github(&url)
@@ -171,13 +151,6 @@ impl GithubAdapterUri {
 
 fn is_github_url(adapter: &str) -> bool {
     adapter.starts_with("https://github.com/")
-}
-
-/// Read the optional `$SPECIFY_FRAMEWORK_ROOT` override pointing at a
-/// local checkout of the framework repo (the same env the lint surface
-/// honours). Used to resolve first-party adapter shorthand offline.
-fn framework_root_env() -> Option<PathBuf> {
-    std::env::var_os("SPECIFY_FRAMEWORK_ROOT").map(PathBuf::from)
 }
 
 /// Recognise a first-party adapter shorthand and split it into
