@@ -26,12 +26,13 @@ use std::path::Path;
 
 use assert_cmd::Command;
 use serde_json::Value;
+use specify_standards::rules::{HintKind, ParseError, parse_rule};
 use tempfile::TempDir;
 
 /// Scaffold a minimal framework tree that passes
 /// `specify_standards::framework::context::Context::from_framework_root` and
-/// supplies the marketplace + canonical-doc files the imperative
-/// `Check` predicates expect. Intentionally identical in shape to
+/// supplies the marketplace + canonical-doc files the framework rules'
+/// referenced tools expect. Intentionally identical in shape to
 /// the scaffold used by `tests/lint_framework_json.rs` so both
 /// surfaces exercise the same fixture profile.
 fn scaffold_framework(root: &Path) {
@@ -209,35 +210,27 @@ fn lint_completed_event_lands_in_journal() {
     );
 }
 
-/// Write the migrated `CORE-042` rule that drives the retired
-/// imperative `skill.missing-frontmatter` predicate through the RFC-31
-/// `kind: authoring-predicate` bridge. Mirrors the live rule shape in
-/// `augentic/specify`'s `adapters/shared/rules/core/`.
-fn write_authoring_predicate_rule(root: &Path) {
-    let path = root.join("adapters/shared/rules/core/CORE-042-skill-missing-frontmatter.md");
-    fs::create_dir_all(path.parent().expect("core rules dir")).expect("mkdir core rules");
-    fs::write(
-        &path,
-        "---\n\
-id: CORE-042\n\
-title: Skill Missing Frontmatter\n\
+/// Write two data rule files that share the id `CORE-100`, which the
+/// `rules.duplicate-rule-id` predicate flags as a whole-tree duplicate.
+/// Both are otherwise schema-valid and carry no hints, so the only
+/// finding the predicate produces is the duplicate-id collision.
+fn write_duplicate_rule_id(root: &Path) {
+    let core_dir = root.join("adapters/shared/rules/core");
+    fs::create_dir_all(&core_dir).expect("mkdir core rules");
+    for file in ["CORE-100-first.md", "CORE-100-second.md"] {
+        fs::write(
+            core_dir.join(file),
+            "---\n\
+id: CORE-100\n\
+title: Synthetic Duplicate\n\
 severity: important\n\
-trigger: SKILL.md is missing YAML frontmatter.\n\
-rule_hints:\n\
-\x20 - kind: authoring-predicate\n\
-\x20   value: skill.missing-frontmatter\n\
+trigger: A synthetic rule used to exercise duplicate-id detection.\n\
 ---\n\n\
 ## Rule\n\n\
-Delegates to the imperative `skill.missing-frontmatter` predicate via the RFC-31 bridge.\n",
-    )
-    .expect("write CORE-042 rule");
-}
-
-/// Author a SKILL.md under `plugins/test/skills/<name>/`.
-fn write_skill(root: &Path, name: &str, body: &str) {
-    let path = root.join("plugins").join("test").join("skills").join(name).join("SKILL.md");
-    fs::create_dir_all(path.parent().expect("skill parent")).expect("mkdir skill parent");
-    fs::write(&path, body).expect("write SKILL.md");
+Synthetic data rule sharing an id with its sibling.\n",
+        )
+        .expect("write duplicate rule");
+    }
 }
 
 /// Parse the framework run's stdout envelope, panicking with stderr
@@ -248,52 +241,65 @@ fn envelope(stdout: &[u8], stderr: &[u8]) -> Value {
     })
 }
 
-/// A migrated `CORE-*` rule carrying `kind: authoring-predicate` resolves
-/// and fires through the bridge: a frontmatter-less SKILL.md surfaces a
-/// `CORE-042` finding and blocks the run (exit 2).
+/// Post-bridge invariant: the `kind: authoring-predicate` mechanism is
+/// gone. Rule-agnostic — it pins the
+/// *mechanism*, not any `CORE-NNN`: the closed `HintKind` enum no longer
+/// carries the bridge discriminant, and a rule file that still declares
+/// it fails `rule.schema.json` validation rather than dispatching to an
+/// in-engine imperative predicate. The framework lint therefore resolves
+/// every rule through declarative hints + referenced tools only.
 #[test]
-fn authoring_predicate_rule_fires() {
+fn authoring_predicate_kind_is_removed() {
+    assert!(
+        serde_json::from_value::<HintKind>(Value::String("authoring-predicate".into())).is_err(),
+        "HintKind must no longer carry the authoring-predicate bridge variant",
+    );
+
+    let rule = "---\n\
+id: CORE-999\n\
+title: Retired Bridge Kind\n\
+severity: important\n\
+trigger: A rule that still declares the removed authoring-predicate bridge kind.\n\
+rule_hints:\n\
+\x20 - kind: authoring-predicate\n\
+\x20   value: scenarios.stale-recorded-trace\n\
+---\n\n\
+## Rule\n\n\
+The authoring-predicate bridge has been removed.\n";
+    let err = parse_rule(rule).expect_err("the retired bridge kind must no longer parse");
+    assert!(
+        matches!(err, ParseError::Schema(_)),
+        "expected a rule-schema rejection of the retired kind, got: {err:?}",
+    );
+}
+
+/// The engine's resolver-level duplicate-id guard skips the entire
+/// declarative pass when two rule files share an id: every declarative
+/// rule (now including the `rules` WASI tool that owns CORE-026) is
+/// pre-empted, so no `rules.*` finding can surface through the binary on a
+/// duplicate-id tree. The run still completes (exit 0) with the skip
+/// signalled on stderr. Pinned so Phase 7 (CORE-026 -> rules tool)
+/// accounts for the shadowing rather than assuming the tool ever fired
+/// here.
+#[test]
+fn duplicate_rule_id_skips_declarative_pass() {
     let temp = TempDir::new().expect("tempdir");
     scaffold_framework(temp.path());
-    write_authoring_predicate_rule(temp.path());
-    write_skill(temp.path(), "broken", "# Broken Skill\n\nThis SKILL.md has no frontmatter.\n");
+    write_duplicate_rule_id(temp.path());
 
     let (code, stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "json"]);
     let envelope = envelope(&stdout, &stderr);
     let findings = envelope.get("findings").and_then(Value::as_array).expect("findings array");
-    let core_042: Vec<&Value> = findings
-        .iter()
-        .filter(|f| f.get("rule-id").and_then(Value::as_str) == Some("CORE-042"))
-        .collect();
-    assert_eq!(
-        core_042.len(),
-        1,
-        "the authoring-predicate rule must surface exactly one CORE-042 finding; got envelope:\n{envelope:#}",
-    );
-    assert_eq!(
-        core_042[0].get("impact").and_then(Value::as_str),
-        Some("Authoring check 'skill.missing-frontmatter' failed."),
-        "the finding's impact must carry the bridged predicate id",
-    );
-    assert_eq!(code, Some(2), "a firing important finding blocks with exit 2");
-}
-
-/// The same rule passes when the predicate finds nothing to flag: a
-/// tree with no authored skills yields no `CORE-042` finding, proving
-/// the bridge evaluates (rather than unconditionally emitting).
-#[test]
-fn authoring_predicate_clean_tree() {
-    let temp = TempDir::new().expect("tempdir");
-    scaffold_framework(temp.path());
-    write_authoring_predicate_rule(temp.path());
-
-    let (_code, stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "json"]);
-    let envelope = envelope(&stdout, &stderr);
-    let findings = envelope.get("findings").and_then(Value::as_array).expect("findings array");
     assert!(
-        !findings.iter().any(|f| f.get("rule-id").and_then(Value::as_str) == Some("CORE-042")),
-        "no skill authored means the predicate passes; got envelope:\n{envelope:#}",
+        !findings.iter().any(|f| f.get("rule-id").and_then(Value::as_str) == Some("CORE-026")),
+        "the resolver guard pre-empts the declarative pass, so CORE-026 never fires; got envelope:\n{envelope:#}",
     );
+    let stderr_text = String::from_utf8_lossy(&stderr);
+    assert!(
+        stderr_text.contains("declarative pass skipped"),
+        "a duplicate rule id must skip the declarative pass; stderr:\n{stderr_text}",
+    );
+    assert_eq!(code, Some(0), "a skipped declarative pass still completes");
 }
 
 /// `--output-format pretty` produces a non-empty stdout body that

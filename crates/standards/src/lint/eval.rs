@@ -7,16 +7,16 @@
 //! family adds [`HintKind::ReferenceResolves`], [`HintKind::Unique`],
 //! [`HintKind::SetCoverage`], [`HintKind::Cardinality`],
 //! [`HintKind::ConstantEq`], [`HintKind::SetEq`],
-//! [`HintKind::ContentDigestEq`], and [`HintKind::NamespaceOwner`] in
+//! and [`HintKind::ContentDigestEq`] in
 //! the same family. Each rule's
 //! hints are partitioned by kind and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → namespace-owner → regex → tool`
+//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → regex → tool`
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
 //! When a rule carries multiple include `path-pattern` hints they UNION.
 //! Hints whose `value` starts with `!` are exclusions applied after the
-//! include union (RFC-31 Phase 2). When a rule carries only exclusions,
+//! include union. When a rule carries only exclusions,
 //! the starting set is every file in the model. When a rule carries zero
 //! `path-pattern` hints the
 //! candidate set defaults to every [`crate::lint::File`] in
@@ -42,14 +42,12 @@
 //! truncation loop bails on them rather than synthesising a bogus
 //! payload.
 
-pub mod authoring_predicate;
 pub mod cardinality;
 pub mod constant_eq;
 pub mod content_digest_eq;
 mod error;
 pub mod fenced_block;
 mod finding;
-pub mod namespace_owner;
 pub mod path_pattern;
 pub mod reference_resolves;
 pub mod regex;
@@ -84,7 +82,7 @@ pub struct HintEvalOutcome {
 /// Evaluate a single rule's hints against the workspace model.
 ///
 /// Hints are partitioned by kind and run in the order
-/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → namespace-owner → regex → tool`
+/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
 /// consume.
@@ -118,10 +116,6 @@ pub fn evaluate(
 /// run-scoped cache; the standalone [`evaluate`] entry point passes a
 /// fresh per-call cache (behaviour is identical either way — the cache
 /// only elides recompilation).
-#[expect(
-    clippy::too_many_lines,
-    reason = "hint-kind dispatch arms grow with each RFC-31 eval extension; splitting would fragment the fixed evaluation order"
-)]
 fn evaluate_with_cache(
     rule: &ResolvedRule, hints: &[RuleHint], model: &WorkspaceModel, project_dir: &Path,
     tool_runner: &dyn ToolRunner, start_id_counter: u64, schema_cache: &mut schema::SchemaCache,
@@ -138,11 +132,9 @@ fn evaluate_with_cache(
     let mut constant_eq_hints: Vec<&RuleHint> = Vec::new();
     let mut set_eq_hints: Vec<&RuleHint> = Vec::new();
     let mut content_digest_eq_hints: Vec<&RuleHint> = Vec::new();
-    let mut namespace_owner_hints: Vec<&RuleHint> = Vec::new();
     let mut fenced_block_hints: Vec<&RuleHint> = Vec::new();
     let mut regex_hints: Vec<&RuleHint> = Vec::new();
     let mut tool_hints: Vec<&RuleHint> = Vec::new();
-    let mut authoring_predicate_hints: Vec<&RuleHint> = Vec::new();
 
     for hint in hints {
         match hint.kind {
@@ -155,11 +147,9 @@ fn evaluate_with_cache(
             HintKind::ConstantEq => constant_eq_hints.push(hint),
             HintKind::SetEq => set_eq_hints.push(hint),
             HintKind::ContentDigestEq => content_digest_eq_hints.push(hint),
-            HintKind::NamespaceOwner => namespace_owner_hints.push(hint),
             HintKind::FencedBlock => fenced_block_hints.push(hint),
             HintKind::Regex => regex_hints.push(hint),
             HintKind::Tool => tool_hints.push(hint),
-            HintKind::AuthoringPredicate => authoring_predicate_hints.push(hint),
         }
     }
 
@@ -205,10 +195,6 @@ fn evaluate_with_cache(
         let mut new = content_digest_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in namespace_owner_hints {
-        let mut new = namespace_owner::evaluate(rule, hint, &candidates, model, &mut next_id)?;
-        findings.append(&mut new);
-    }
     for hint in fenced_block_hints {
         let mut new = fenced_block::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
@@ -220,17 +206,6 @@ fn evaluate_with_cache(
     for hint in tool_hints {
         let mut new =
             tool::evaluate(rule, hint, &candidates, project_dir, tool_runner, &mut next_id)?;
-        findings.append(&mut new);
-    }
-    for hint in authoring_predicate_hints {
-        let mut new = authoring_predicate::evaluate(
-            rule,
-            hint,
-            &candidates,
-            model,
-            project_dir,
-            &mut next_id,
-        )?;
         findings.append(&mut new);
     }
 
@@ -341,7 +316,7 @@ fn build_candidate_set(
 /// set the fact-iterating sub-evaluators test membership against.
 ///
 /// Every fact-iterating kind (`set-coverage`, `set-eq`, `constant-eq`,
-/// `reference-resolves`, `unique`, `cardinality`, `namespace-owner`)
+/// `reference-resolves`, `unique`, `cardinality`)
 /// narrows its facts to the `path-pattern` candidate set by string
 /// path. Sharing the conversion keeps that lookup identical across
 /// kinds.

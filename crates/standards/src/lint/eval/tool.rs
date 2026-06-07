@@ -7,13 +7,17 @@
 //! lives in `specify lint` (S9); this module only consumes the
 //! abstract trait surface.
 //!
-//! v1 runs the tool once per candidate file and passes the
-//! candidate's project-relative path as the sole positional argument.
-//! The closed `{artifact}` / `{project_dir}` / `{rule_id}` placeholder
-//! set named in the contract cannot be expanded in v1 because the
-//! closed [`crate::rules::RuleHint`] shape carries no
-//! `args:` field; extending the hint shape is the rules schema's responsibility,
-//! not this evaluator's.
+//! The tool runs once per candidate file. The candidate's
+//! project-relative path is the first positional argument; when the
+//! rule's `kind: tool` hint carries a `config:` block, its JSON
+//! serialisation is forwarded as a second positional argument so the
+//! tool reads its policy (caps, allow-lists, grammars) from the rule
+//! file — the engine relays the value, it never interprets it (the
+//! no-embedded-policy invariant). The closed `{artifact}` /
+//! `{project_dir}` / `{rule_id}` placeholder set named in the contract
+//! cannot be expanded in v1 because the closed [`crate::rules::RuleHint`]
+//! shape carries no `args:` field; extending the hint shape is the rules
+//! schema's responsibility, not this evaluator's.
 //!
 //! Per `kind: tool` evaluator contract:
 //!
@@ -99,7 +103,7 @@ pub(crate) fn evaluate(
     }
     let mut out: Vec<Diagnostic> = Vec::new();
     for candidate in candidates {
-        let args = vec![candidate.to_string_lossy().into_owned()];
+        let args = tool_args(candidate, hint);
         let output = runner.run(&hint.value, &args, project_dir).map_err(|err| {
             HintError::ToolInvocation {
                 rule_id: rule.rule_id.clone(),
@@ -121,6 +125,25 @@ pub(crate) fn evaluate(
         }
     }
     Ok(out)
+}
+
+/// Build the positional args for one tool invocation: the candidate's
+/// project-relative path, plus — when the rule declares one — its
+/// `config:` serialised as JSON.
+///
+/// Forwarding `config` is how a referenced tool reads its policy
+/// (caps, allow-lists, grammars) from the rule file rather than baking
+/// a rule-specific literal into the tool source (the no-embedded-policy
+/// invariant). The shape stays generic — the engine never interprets the
+/// payload; it relays the rule-owned value to the tool that consumes it.
+fn tool_args(candidate: &Path, hint: &RuleHint) -> Vec<String> {
+    let mut args = vec![candidate.to_string_lossy().into_owned()];
+    if let Some(config) = &hint.config
+        && let Ok(serialised) = serde_json::to_string(config)
+    {
+        args.push(serialised);
+    }
+    args
 }
 
 fn parse_tool_findings(output: &ToolOutput) -> Vec<Diagnostic> {

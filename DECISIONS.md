@@ -195,23 +195,89 @@ instead. Adapter-specific logic never lands as a workspace crate
 The framework authoring checks behind `specify lint framework` (originally the
 plugin repo's retired `tooling/` crate, then the publish-disabled
 `specify-authoring` crate) were dissolved into the `specify_standards::framework`
-module. The imperative `Check` predicates are retained as-is; only their
-output type was unified — every predicate now emits the canonical
-`Diagnostic` directly (via the `framework::builder` `framework_finding()`
-/ `loc()` helpers and the `CORE_ID_TABLE`), and `framework::check::run`
-runs the single finalize pass (rebase locations → fingerprint → assign
-sequential `FIND-NNNN` ids). The lightweight `Finding` / `Location` types
-and the binary-boundary `map_finding.rs` mapper are gone. The framework
-lint's `AuthoringProducer` stays as the lone `DiagnosticProducer` bridge
-because the predicates need `&Context` (framework root + schema cache),
-which the `DiagnosticProducer::produce(&WorkspaceModel, project_dir)`
-signature does not carry. The dissolution does not change crates.io
-exposure: the root `specify` crate already pulled the predicates into the
-published binary's dependency graph — and since the `specrun`/`specdev`
-binaries converged onto the single `specify` binary, `specify lint
-framework` is the only surface that runs them.
+module. No framework `CORE-*` rule runs as an in-process `Check` any
+longer — every framework check resolves through the generic lint
+dispatcher (declarative hint or name-resolved WASI tool); see
+[§"Framework lint engine: generic dispatcher (Road A / Road B)"](#framework-lint-engine-generic-dispatcher-road-a--road-b)
+for the full end-state. The surviving `framework::check` substrate hosts
+only the repo-local Rust-quality predicates (`RustTestNaming` /
+`RustSourceQuality`, run via `run_rust_quality` for this repo's own
+`rust_quality` gate) and the pure brief path-classifiers the indexer
+reuses; `CORE_ID_TABLE` is empty. The lightweight `Finding` / `Location`
+types and the binary-boundary `map_finding.rs` mapper are gone — every
+producer emits the canonical `Diagnostic` directly. The dissolution does
+not change crates.io exposure: the root `specify` crate already pulled
+the predicates into the published binary's dependency graph.
 
-**RFC-31 steady state (2026-06, complete).** [`CORE-001..008`](https://github.com/augentic/specify/tree/main/adapters/shared/rules/core) are native declarative rules (no `CORE_ID_TABLE` row). **`CORE-009`** (`rules.namespace-ownership-violation`) stays imperative: the declarative `namespace-owner` hint is a smoke test only; fused `run_rules_check` also owns `FRAME-*` reservation, dynamic source-adapter owner discovery, and unknown-owner diagnostics. **`CORE-010..052`** ship as declarative `CORE-*` rule files; behaviour runs through `kind: authoring-predicate` on each file until native hint parity replaces the bridge. `AuthoringProducer` and `framework::check::run` are **CORE-009-only**; the full imperative `Check` batch no longer runs on every `specify lint framework` invocation. Do **not** weaken checks to remove the bridge or namespace row. Retiring a bridge requires the [parity contract](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md#parity-contract-for-predicate-retirement) and a green `mod core_NNN` in [`core_parity.rs`](./crates/standards/tests/core_parity.rs). Engine extensions (`RuleHint.config`, extended `regex` / `path-pattern`, indexer facts, de-fusing) are recorded in [`docs/standards/rfc-31-phase1-spike.md`](./docs/standards/rfc-31-phase1-spike.md), [`rfc-31-phase2-spike.md`](./docs/standards/rfc-31-phase2-spike.md), and [DIAGNOSTICS.md §"A16"](./DIAGNOSTICS.md). Historical program: [RFC-31](https://github.com/augentic/specify/blob/main/rfcs/done/rfc-31-declarative-lints.md).
+## Framework lint engine: generic dispatcher (Road A / Road B)
+
+**Decision (2026-06).** The `specify lint framework` engine is a generic,
+rule-agnostic dispatcher. It carries **no rule-specific check logic and
+no rule policy**. Every framework `CORE-*` check resolves through one of
+two roads, and `specify` (the framework repo) owns both the checks and
+the values they enforce.
+
+- **Road A — declarative hint.** The rule carries a `kind:` ∈ `schema |
+  reference-resolves | cardinality | set-coverage | set-eq | constant-eq
+  | content-digest-eq | unique | fenced-block | regex | path-pattern`,
+  interpreted by a generic per-kind evaluator in
+  `crates/standards/src/lint/eval/*` over the `WorkspaceModel` facts. The
+  evaluator is rule-agnostic: it reads the cap / set / map / constant
+  from the rule's `config:` and never embeds it.
+- **Road B — referenced WASI tool.** The rule carries `kind: tool, value:
+  <tool>` plus a sentinel `path-pattern`. `lint/eval/tool.rs` resolves
+  the tool **by name** from a declared inventory, runs it once per lint,
+  and folds its `DiagnosticReport` (findings stamped with the tool's own
+  `rule_id` / `severity`; the engine restamps only `id` / `fingerprint`).
+
+**Policy lives in the rule's `config:`**, in `specify`. Road A reads it
+directly; Road B has it forwarded by the engine as a second positional
+argument (`lint/eval/tool.rs`) — the engine relays, it never interprets.
+This is enforced permanently by the Layer-3 guard test
+[`crates/standards/tests/lint_no_embedded_policy.rs`](./crates/standards/tests/lint_no_embedded_policy.rs),
+which fails if any eval arm or `framework/check` module reintroduces a
+rule-specific literal (operation-set array, owner→prefix map, value-bearing
+discriminator, canonical-doc path, or an un-allow-listed numeric cap). The
+only engine-side constants left are mechanism (evidence-size / snippet /
+iteration bounds, the repo-local rust-quality threshold).
+
+**The `kind: authoring-predicate` bridge is gone.** This supersedes the
+former "imperative predicates run behind a bridge" posture (the
+`HintKind::AuthoringPredicate` variant, `lint/eval/authoring_predicate.rs`,
+the `framework/check/*` rule predicates including the CORE-009
+`AuthoringProducer`, and the duplicated owner maps `BUILTIN_NAMESPACES` /
+`TARGET_OWNERS` are all deleted). CORE-034 (`scenarios.stale-recorded-trace`,
+a git-only advisory that emitted no finding) was removed rather than ported;
+its sibling CORE-031 filesystem header validation lives in the `scenarios`
+tool.
+
+**Nine framework tools.** `scenarios`, `skill`, `skill-body`,
+`agent-teams`, `adapter`, `links-registry`, `marketplace`, `prose`,
+`rules` live in `wasi-tools/<name>/`. Each is a carve-out (deps:
+`serde` / `serde-saphyr` / `jsonschema` / `regex` only — never the host
+diagnostics crate), embeds its own schema copies as mechanism, ships a
+prebuilt `dist/<name>-<ver>.wasm` embedded into the binary via
+`FrameworkToolRunner` ([`src/runtime/commands/lint/framework_tools.rs`](./src/runtime/commands/lint/framework_tools.rs)),
+and is rebuilt by `cargo make <name>-wasm`. (A tool's emitted `Artifact`
+must be a valid enum value — e.g. `"unknown"` — or the host silently
+drops the report.)
+
+**B-2 interim posture.** Tool source still lives in
+`specify-cli/wasi-tools/`, name-resolved, with `sha256: None`. Digest
+pinning is **deferred** until the source moves to its colocated home
+(adapter-specific validators follow their adapter into its own repo;
+framework checkers move to a `specify`-owned framework-tools home).
+Because resolution is by name, that relocation is mechanical — move the
+crate, repoint the artifact source, turn on the `sha256` — leaving the
+rule files, the engine, and the wire contract untouched. The exit
+condition for the interim posture is exactly that source move.
+
+**Test coverage** rests on the generic per-kind evaluator suite
+(`crates/standards/tests/lint_hint_*.rs`), the `lint_no_embedded_policy`
+Layer-3 guard, the `rule.schema.json` ↔ `crates/schema/tests/schemas.rs`
+byte-match gate, and each tool crate's in-crate unit tests. The
+transitional `core_parity` family and the Road B integration parity tests
+were cutover-only scaffolding and have been deleted.
 
 ## Tool architecture
 

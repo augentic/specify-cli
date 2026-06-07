@@ -60,7 +60,7 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^(!?)(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)\\.\\.(?:/|$)).+$",
-      "description": "Project-relative path or glob. A leading `!` marks an exclusion path-pattern hint (RFC-31 Phase 2). Mirrors `rule.schema.json#/$defs/relativePathPattern`."
+      "description": "Project-relative path or glob. A leading `!` marks an exclusion path-pattern hint. Mirrors `rule.schema.json#/$defs/relativePathPattern`."
     },
     "severity": {
       "type": "string",
@@ -114,16 +114,14 @@
         "constant-eq",
         "set-eq",
         "content-digest-eq",
-        "namespace-owner",
-        "fenced-block",
-        "authoring-predicate"
+        "fenced-block"
       ],
       "description": "Closed v1 deterministic-hint kind enum. Every kind is executable; `specify lint` owns execution semantics."
     },
     "regexHintConfig": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Optional `kind: regex` hint configuration (RFC-31 Phase 1).",
+      "description": "Optional `kind: regex` hint configuration.",
       "properties": {
         "negative-match": {
           "type": "boolean",

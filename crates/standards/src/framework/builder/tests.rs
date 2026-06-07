@@ -1,9 +1,6 @@
 use specify_diagnostics::Severity;
 
 use super::{core_id_for, severity_for};
-use crate::framework::check::{
-    RULE_DUPLICATE_RULE_ID, RULE_MISSING_MANIFEST, RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-};
 
 /// `rules.schema-violation` is the one rule the table elevates to
 /// `Critical` — schema breakage blocks every downstream consumer of
@@ -57,10 +54,13 @@ fn unclassified_defaults_important() {
     assert_eq!(severity_for("totally.made.up"), Severity::Important);
 }
 
-/// The imperative bridge maps only CORE-009 onto the codex table.
+/// The codex id table is empty: no imperative
+/// authoring predicate runs as a producer, so every id falls through to
+/// the `rule_id: None` form. CORE-009 / CORE-026 now run through the
+/// `rules` WASI tool, which stamps its own codex ids on the wire.
 #[test]
-fn imperative_bridge_maps_core_009_only() {
-    assert_eq!(core_id_for(RULE_NAMESPACE_OWNERSHIP_VIOLATION), Some("CORE-009"));
-    assert!(core_id_for(RULE_MISSING_MANIFEST).is_none());
-    assert!(core_id_for(RULE_DUPLICATE_RULE_ID).is_none());
+fn codex_id_table_is_empty() {
+    assert!(core_id_for("rules.namespace-ownership-violation").is_none());
+    assert!(core_id_for("rules.duplicate-rule-id").is_none());
+    assert!(core_id_for("adapter.missing-manifest").is_none());
 }

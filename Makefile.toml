@@ -126,6 +126,146 @@ cd wasi-tools
 cargo build -p specify-contract --target wasm32-wasip2 --release
 '''
 
+# Build the first-party `scenarios` framework-authoring WASI tool and
+# refresh the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B scenario parity tests). Rerun this after editing
+# `wasi-tools/scenarios/` so the embedded artifact reflects the new
+# checks. Mirrors the `contract-wasm` pattern; the target is
+# `wasm32-wasip2`.
+[tasks.scenarios-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-scenarios --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-scenarios.wasm scenarios/dist/scenarios-0.1.0.wasm
+echo "scenarios WASI component written to wasi-tools/scenarios/dist/scenarios-0.1.0.wasm"
+'''
+
+# Build the first-party `skill-body` framework-authoring WASI tool and
+# refresh the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B skill-body parity tests). Rerun this after editing
+# `wasi-tools/skill-body/` so the embedded artifact reflects the new
+# checks. Mirrors the `scenarios-wasm` pattern; the target is
+# `wasm32-wasip2`.
+[tasks.skill-body-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-skill-body --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-skill-body.wasm skill-body/dist/skill-body-0.1.0.wasm
+echo "skill-body WASI component written to wasi-tools/skill-body/dist/skill-body-0.1.0.wasm"
+'''
+
+# Build the first-party `skill` framework-authoring WASI tool and refresh
+# the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B skill parity tests). Rerun this after editing
+# `wasi-tools/skill/` so the embedded artifact reflects the new checks.
+# Mirrors the `scenarios-wasm` pattern; the target is `wasm32-wasip2`.
+[tasks.skill-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-skill --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-skill.wasm skill/dist/skill-0.1.0.wasm
+echo "skill WASI component written to wasi-tools/skill/dist/skill-0.1.0.wasm"
+'''
+
+# Build the first-party `agent-teams` framework-authoring WASI tool and
+# refresh the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B agent-teams parity tests). Rerun this after editing
+# `wasi-tools/agent-teams/` so the embedded artifact reflects the new
+# checks. Mirrors the `scenarios-wasm` pattern; the target is
+# `wasm32-wasip2`.
+[tasks.agent-teams-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-agent-teams --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-agent-teams.wasm agent-teams/dist/agent-teams-0.1.0.wasm
+echo "agent-teams WASI component written to wasi-tools/agent-teams/dist/agent-teams-0.1.0.wasm"
+'''
+
+# Build the first-party `adapter` framework-authoring WASI tool and
+# refresh the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B adapter parity tests). Rerun this after editing
+# `wasi-tools/adapter/` so the embedded artifact reflects the new checks.
+# Mirrors the `scenarios-wasm` pattern; the target is `wasm32-wasip2`.
+[tasks.adapter-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-adapter --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-adapter.wasm adapter/dist/adapter-0.1.0.wasm
+echo "adapter WASI component written to wasi-tools/adapter/dist/adapter-0.1.0.wasm"
+'''
+
+# Build the first-party `links-registry` framework-authoring WASI tool
+# and refresh the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B links-registry parity tests). Rerun this after editing
+# `wasi-tools/links-registry/` so the embedded artifact reflects the new
+# checks. Mirrors the `scenarios-wasm` pattern; the target is
+# `wasm32-wasip2`.
+[tasks.links-registry-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-links-registry --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-links-registry.wasm links-registry/dist/links-registry-0.1.0.wasm
+echo "links-registry WASI component written to wasi-tools/links-registry/dist/links-registry-0.1.0.wasm"
+'''
+
+# Build the first-party `marketplace` framework-authoring WASI tool and
+# refresh the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B marketplace parity test). Rerun this after editing
+# `wasi-tools/marketplace/` so the embedded artifact reflects the new
+# checks. Mirrors the `scenarios-wasm` pattern; the target is
+# `wasm32-wasip2`.
+[tasks.marketplace-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-marketplace --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-marketplace.wasm marketplace/dist/marketplace-0.1.0.wasm
+echo "marketplace WASI component written to wasi-tools/marketplace/dist/marketplace-0.1.0.wasm"
+'''
+
+# Build the first-party `prose` framework-authoring WASI tool and refresh
+# the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B prose parity test). Rerun this after editing
+# `wasi-tools/prose/` so the embedded artifact reflects the new checks.
+# Mirrors the `scenarios-wasm` pattern; the target is `wasm32-wasip2`.
+[tasks.prose-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-prose --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-prose.wasm prose/dist/prose-0.1.0.wasm
+echo "prose WASI component written to wasi-tools/prose/dist/prose-0.1.0.wasm"
+'''
+
+# Build the first-party `rules` framework-authoring WASI tool and refresh
+# the checked-in prebuilt component embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B rules parity tests). Rerun this after editing
+# `wasi-tools/rules/` so the embedded artifact reflects the new checks.
+# Mirrors the `scenarios-wasm` pattern; the target is `wasm32-wasip2`.
+[tasks.rules-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+cargo build -p specify-rules --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-rules.wasm rules/dist/rules-0.1.0.wasm
+echo "rules WASI component written to wasi-tools/rules/dist/rules-0.1.0.wasm"
+'''
+
 # Build the `vectis` WASI tool locally with sha256 sidecars for
 # pre-release smoke tests. Delegates to `scripts/build-vectis-local.sh`;
 # override `VECTIS_WASI_DIST_DIR` to control the output directory.

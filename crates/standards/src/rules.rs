@@ -94,8 +94,9 @@ pub enum LintMode {
 ///
 /// After C17 every kind is executable: `path-pattern`, `regex`,
 /// `schema`, `tool`, `reference-resolves`, `unique`, `set-coverage`,
-/// `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`, and
-/// `namespace-owner`. No kind is reserved.
+/// `cardinality`, `constant-eq`, `set-eq`, and `content-digest-eq`.
+/// No kind is reserved. (Whole-tree namespace-ownership runs through the
+/// `rules` WASI tool via `kind: tool`, not a dedicated hint kind.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HintKind {
@@ -108,41 +109,36 @@ pub enum HintKind {
     /// Invoke a declared WASI tool.
     Tool,
     /// Assert that some field across a candidate set is unique
-    /// (v1 source discriminator: `skill-name`).
+    /// (v1 fact-family selector: `skill`; field in `config: { field }`).
     Unique,
     /// Every reference resolves (v1 source discriminator: `markdown-link`).
     ReferenceResolves,
     /// Assert that the values some candidate file declares cover a
-    /// closed expected set (v1 source discriminator:
-    /// `adapter-briefs-cover-operations`).
+    /// closed expected set (v1 source discriminators: `adapter-briefs`,
+    /// `skill-allowed-tools`; the expected set rides `config`).
     SetCoverage,
     /// Assert that some countable property of a candidate is within
-    /// configured bounds (v1 source discriminator:
-    /// `skill-body-line-count-max-200`).
+    /// configured bounds (v1 metric selectors: `skill-body-line-count`,
+    /// `markdown-h2-section-body-line-count`, `brief-*-body-line-count`;
+    /// the cap rides `config: { max }`).
     Cardinality,
     /// Assert that an extracted field on a candidate fact equals a
-    /// configured constant (v1 source discriminator:
-    /// `adapter-manifest-version-equals-v1`).
+    /// configured constant (v1 source discriminators:
+    /// `adapter-manifest-field`, `skill-name-plugin-prefix`; the value
+    /// rides `config`).
     ConstantEq,
     /// Assert that the values some candidate file declares are
     /// exactly equal to a closed expected set — the two-sided
     /// tightening of [`Self::SetCoverage`] (v1 source discriminator:
-    /// `adapter-briefs-equal-operations`).
+    /// `adapter-briefs`; the expected set rides `config`).
     SetEq,
     /// Assert that the content digest (SHA-256) of one file equals an
     /// expected digest (v1 source discriminator:
     /// `agent-teams-match-canonical`).
     ContentDigestEq,
-    /// Assert that each rule file's id-namespace prefix is authored
-    /// only under the directory that owns that namespace (v1 source
-    /// discriminator: `rule-namespace-matches-owner`).
-    NamespaceOwner,
     /// Fence-aware body predicate over [`crate::lint::FencedBlock`] facts
-    /// (RFC-31 Phase 2: `skill-envelope-json-in-body`, …).
+    /// (`skill-envelope-json-in-body`, …).
     FencedBlock,
-    /// Invoke a closed imperative authoring predicate by `rule_id`
-    /// (RFC-31 Phase 3 bridge until native hint parity lands).
-    AuthoringPredicate,
 }
 
 /// Inclusive narrowing filter — all populated dimensions match (AND).

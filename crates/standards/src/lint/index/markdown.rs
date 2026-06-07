@@ -206,13 +206,15 @@ fn parse_heading(line: &str) -> Option<(u8, String)> {
     if title.is_empty() { None } else { Some((hashes, title)) }
 }
 
-/// Scan a single line for `[label](target)` markdown links. The
-/// scanner is intentionally simple: it ignores backslash escapes,
-/// reference-style links, and image links (which already mismatch the
-/// `[label]` shape via the leading `!`). Inline code spans (single,
-/// double, or triple backticks) are skipped so a literal
-/// `` `[label](target)` `` snippet in prose does not surface as a
-/// link fact.
+/// Scan a single line for `[label](target)` markdown links and
+/// `![alt](src)` image embeds. The scanner is intentionally simple:
+/// it ignores backslash escapes and reference-style links. Image
+/// embeds are recorded with [`MarkdownLink::image`] set so resolution
+/// hints can opt in to them (e.g. the missing-diagram-asset check)
+/// while plain-link consumers keep their existing flat-link view.
+/// Inline code spans (single, double, or triple backticks) are
+/// skipped so a literal `` `[label](target)` `` snippet in prose does
+/// not surface as a link fact.
 fn scan_line_for_links(line: &str, from_path: &str, line_no: u32, out: &mut Vec<MarkdownLink>) {
     let bytes = line.as_bytes();
     let mut i = 0;
@@ -229,12 +231,9 @@ fn scan_line_for_links(line: &str, from_path: &str, line_no: u32, out: &mut Vec<
             i += 1;
             continue;
         }
-        // Image links (`![alt](src)`) share the `[…](…)` shape but
-        // are not link facts; skip when preceded by `!`.
-        if i > 0 && bytes[i - 1] == b'!' {
-            i += 1;
-            continue;
-        }
+        // An `![alt](src)` image embed shares the `[…](…)` shape and
+        // is recorded as a link fact flagged `image: true`.
+        let image = i > 0 && bytes[i - 1] == b'!';
         let Some(close_bracket) = find_unescaped(bytes, i + 1, b']') else {
             break;
         };
@@ -253,6 +252,7 @@ fn scan_line_for_links(line: &str, from_path: &str, line_no: u32, out: &mut Vec<
                 to_raw: target.to_owned(),
                 line: line_no,
                 resolves: None,
+                image,
             });
         }
         i = close_paren + 1;

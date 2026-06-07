@@ -1,61 +1,123 @@
 //! `kind: cardinality` evaluator.
 //!
-//! Asserts that some countable property of a candidate file is within
-//! configured bounds. v1 supports one source discriminator —
-//! `skill-body-line-count-max-200` — which consumes the
-//! [`crate::lint::Skill`] facts the framework-profile indexer already
-//! produced (see [`crate::lint::index::skill::extract`], whose
-//! `body_line_count` field is the canonical count of non-frontmatter
-//! body lines) and flags each `plugins/<plugin>/skills/<skill>/SKILL.md`
-//! whose body exceeds the 200-line cap pinned by
-//! [`docs/standards/skill-authoring.md`](https://github.com/augentic/specify/blob/main/docs/standards/skill-authoring.md).
-//! The interpreter emits one [`specify_diagnostics::Diagnostic`] per
-//! over-budget skill with the SKILL.md path as the finding's location
-//! and the `(actual, max)` pair surfaced via
-//! [`specify_diagnostics::FindingEvidence::Structured`] for downstream
-//! tooling.
+//! Asserts that some countable property of a candidate fact is within a
+//! configured bound. The `value` is a pure *metric selector* naming
+//! which fact family and field to count; the numeric cap is **policy
+//! supplied by the rule's `config: { max }`**, never a `const` in this
+//! arm (per the standards-layer policy-in-`specify` rule).
 //!
-//! Skills whose `path` is not in the caller-supplied candidate set
-//! are ignored, so the closed `path-pattern` filter the umbrella
-//! evaluator builds still drives candidate selection. Skills the
-//! indexer drops upstream (missing frontmatter, malformed path,
-//! missing `name:`) never reach this layer; skills whose
-//! `body_line_count` is `None` (consumer-profile facts) are skipped
-//! silently.
+//! Metric selectors that ship today:
 //!
-//! The single source discriminator hardcodes both the metric
-//! (`Skill.body_line_count`) and the upper bound (200) — the
-//! predicate-migration map pins exactly this cap, so a richer config
-//! shape (`metric: …, max: …`) is deferred until a second consumer
-//! arrives. Future hint values may extend the closed source set;
-//! unknown discriminators are rejected as
-//! [`super::HintError::Unsupported`] so authoring drift surfaces at
-//! hint-evaluation time rather than silently passing.
+//! - `markdown-h2-section-body-line-count` — counts the body lines of
+//!   every level-2 [`crate::lint::MarkdownSection`] in the candidate set
+//!   and flags each section whose `body_line_count` exceeds
+//!   `config.max`. One finding per over-budget section, located at the
+//!   heading line, with the `(actual, max)` pair surfaced via
+//!   [`specify_diagnostics::FindingEvidence::Structured`].
+//! - `brief-parent-body-line-count` / `brief-phase-body-line-count` —
+//!   count the body lines of every [`crate::lint::Brief`] of the
+//!   matching [`crate::lint::BriefScope`] and flag each brief whose
+//!   `body_line_count` exceeds `config.max`. The two scopes carry
+//!   distinct caps (a rule supplies both via `config`), so a rule that
+//!   enforces both budgets ships two `cardinality` hints. Like
+//!   `content-digest-eq`, the brief metrics narrow on a dedicated fact
+//!   family already scoped to brief paths, so they do not consult the
+//!   `path-pattern` candidate set.
+//! - `skill-body-line-count` — counts the body lines of every
+//!   [`crate::lint::Skill`] in the candidate set (CORE-005) and flags
+//!   each skill whose `body_line_count` exceeds `config.max`. The cap
+//!   is policy supplied by the rule, never a `const` in this arm.
+//!
+//! Facts whose `path` is not in the caller-supplied candidate set are
+//! ignored, so the closed `path-pattern` filter the umbrella evaluator
+//! builds still drives candidate selection. Unknown metric selectors are
+//! rejected as [`super::HintError::Unsupported`] so authoring drift
+//! surfaces at hint-evaluation time rather than silently passing.
 
 use std::path::PathBuf;
 
+use serde::Deserialize;
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
-use crate::lint::WorkspaceModel;
+use crate::lint::{BriefScope, WorkspaceModel};
 use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
-const SOURCE_SKILL_BODY_LINE_COUNT_MAX_200: &str = "skill-body-line-count-max-200";
-const SKILL_BODY_LINE_MAX: u32 = 200;
+/// Config-driven metric: whole-skill body-line cap (CORE-005). The
+/// cap is read from `config.max`.
+const SOURCE_SKILL_BODY_LINE_COUNT: &str = "skill-body-line-count";
+
+/// Config-driven metric: per-section H2 body-line cap (CORE-045). The
+/// cap is read from `config.max`.
+const SOURCE_MARKDOWN_H2_SECTION_BODY_LINE_COUNT: &str = "markdown-h2-section-body-line-count";
+
+/// Config-driven metric: parent-brief body-line cap (CORE-013). The
+/// cap is read from `config.max`.
+const SOURCE_BRIEF_PARENT_BODY_LINE_COUNT: &str = "brief-parent-body-line-count";
+
+/// Config-driven metric: phase sub-brief body-line cap (CORE-013). The
+/// cap is read from `config.max`.
+const SOURCE_BRIEF_PHASE_BODY_LINE_COUNT: &str = "brief-phase-body-line-count";
+
+/// Parsed `cardinality` hint configuration. `max` is the upper bound
+/// the rule file supplies; this arm never embeds a numeric cap for a
+/// config-driven metric.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+struct CardinalityConfig {
+    max: u32,
+}
+
+impl CardinalityConfig {
+    fn parse(rule: &ResolvedRule, hint: &RuleHint) -> Result<Self, HintError> {
+        let raw = hint.config.as_ref().ok_or_else(|| HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::Cardinality,
+            reason: "this cardinality metric requires a `config: { max }`",
+        })?;
+        serde_json::from_value(raw.clone()).map_err(|_ignored| HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::Cardinality,
+            reason: "invalid cardinality hint config JSON",
+        })
+    }
+}
 
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
-    let source = hint.value.trim();
-    if source != SOURCE_SKILL_BODY_LINE_COUNT_MAX_200 {
-        return Err(HintError::Unsupported {
+    match hint.value.trim() {
+        SOURCE_SKILL_BODY_LINE_COUNT => {
+            let cfg = CardinalityConfig::parse(rule, hint)?;
+            Ok(skill_body(rule, candidates, model, cfg.max, next_id))
+        }
+        SOURCE_MARKDOWN_H2_SECTION_BODY_LINE_COUNT => {
+            let cfg = CardinalityConfig::parse(rule, hint)?;
+            Ok(markdown_h2_sections(rule, candidates, model, cfg.max, next_id))
+        }
+        SOURCE_BRIEF_PARENT_BODY_LINE_COUNT => {
+            let cfg = CardinalityConfig::parse(rule, hint)?;
+            Ok(briefs(rule, model, BriefScope::Parent, cfg.max, next_id))
+        }
+        SOURCE_BRIEF_PHASE_BODY_LINE_COUNT => {
+            let cfg = CardinalityConfig::parse(rule, hint)?;
+            Ok(briefs(rule, model, BriefScope::Phase, cfg.max, next_id))
+        }
+        _ => Err(HintError::Unsupported {
             rule_id: rule.rule_id.clone(),
             kind: HintKind::Cardinality,
-            reason: "only `skill-body-line-count-max-200` is supported in v1",
-        });
+            reason: "unknown cardinality metric selector",
+        }),
     }
+}
 
+/// Config-driven CORE-005 whole-skill body-line cap. The cap is the
+/// `max` the rule file supplies.
+fn skill_body(
+    rule: &ResolvedRule, candidates: &[PathBuf], model: &WorkspaceModel, max: u32,
+    next_id: &mut u64,
+) -> Vec<Diagnostic> {
     let candidate_set = super::candidate_set(candidates);
 
     let mut out: Vec<Diagnostic> = Vec::new();
@@ -64,7 +126,7 @@ pub(crate) fn evaluate(
             continue;
         }
         let Some(actual) = skill.body_line_count else { continue };
-        if actual <= SKILL_BODY_LINE_MAX {
+        if actual <= max {
             continue;
         }
         let location = FindingLocation {
@@ -75,25 +137,118 @@ pub(crate) fn evaluate(
             end_column: None,
         };
         let evidence = FindingEvidence::Structured {
-            summary: format!(
-                "skill '{}' body has {} lines (limit {})",
-                skill.name, actual, SKILL_BODY_LINE_MAX,
-            ),
+            summary: format!("skill '{}' body has {} lines (limit {})", skill.name, actual, max),
             data: serde_json::json!({
                 "skill": skill.name,
                 "path": skill.path,
                 "actual": actual,
-                "max": SKILL_BODY_LINE_MAX,
+                "max": max,
             }),
             locations: None,
         };
         let title = format!(
             "{}: skill '{}' body exceeds the {}-line cap ({} lines)",
-            rule.title, skill.name, SKILL_BODY_LINE_MAX, actual,
+            rule.title, skill.name, max, actual,
         );
         let finding = make_finding(rule, *next_id, title, Some(location), evidence);
         *next_id += 1;
         out.push(finding);
     }
-    Ok(out)
+    out
+}
+
+/// Config-driven CORE-045 per-section H2 body-line cap. The cap is the
+/// `max` the rule file supplies.
+fn markdown_h2_sections(
+    rule: &ResolvedRule, candidates: &[PathBuf], model: &WorkspaceModel, max: u32,
+    next_id: &mut u64,
+) -> Vec<Diagnostic> {
+    let candidate_set = super::candidate_set(candidates);
+
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for section in &model.markdown_sections {
+        if section.level != 2 {
+            continue;
+        }
+        if !candidate_set.contains(&section.path) {
+            continue;
+        }
+        if section.body_line_count <= max {
+            continue;
+        }
+        let location = FindingLocation {
+            path: section.path.clone(),
+            line: Some(section.line_start),
+            column: None,
+            end_line: None,
+            end_column: None,
+        };
+        let evidence = FindingEvidence::Structured {
+            summary: format!(
+                "section '{}' has {} lines (limit {})",
+                section.title, section.body_line_count, max,
+            ),
+            data: serde_json::json!({
+                "title": section.title,
+                "path": section.path,
+                "actual": section.body_line_count,
+                "max": max,
+            }),
+            locations: None,
+        };
+        let title = format!(
+            "{}: section '{}' exceeds the {}-line cap ({} lines)",
+            rule.title, section.title, max, section.body_line_count,
+        );
+        let finding = make_finding(rule, *next_id, title, Some(location), evidence);
+        *next_id += 1;
+        out.push(finding);
+    }
+    out
+}
+
+/// Config-driven CORE-013 per-brief body-line cap, scoped to one
+/// [`BriefScope`]. The cap is the `max` the rule file supplies. The
+/// `Brief` fact family is already restricted to brief paths, so this
+/// metric evaluates it directly rather than narrowing by the
+/// `path-pattern` candidate set (mirroring `content-digest-eq`).
+fn briefs(
+    rule: &ResolvedRule, model: &WorkspaceModel, scope: BriefScope, max: u32, next_id: &mut u64,
+) -> Vec<Diagnostic> {
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for brief in &model.briefs {
+        if brief.scope != scope {
+            continue;
+        }
+        if brief.body_line_count <= max {
+            continue;
+        }
+        let location = FindingLocation {
+            path: brief.path.clone(),
+            line: Some(1),
+            column: None,
+            end_line: None,
+            end_column: None,
+        };
+        let evidence = FindingEvidence::Structured {
+            summary: format!(
+                "brief '{}' body has {} lines (limit {})",
+                brief.path, brief.body_line_count, max,
+            ),
+            data: serde_json::json!({
+                "path": brief.path,
+                "actual": brief.body_line_count,
+                "max": max,
+            }),
+            locations: None,
+        };
+        let title = format!(
+            "{}: brief '{}' exceeds the {}-line cap ({} lines)",
+            rule.title, brief.path, max, brief.body_line_count,
+        );
+        let finding = make_finding(rule, *next_id, title, Some(location), evidence);
+        *next_id += 1;
+        out.push(finding);
+    }
+    out
 }

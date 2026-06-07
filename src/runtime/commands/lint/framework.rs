@@ -9,36 +9,33 @@
 //! config it assembles:
 //!
 //! 1. Resolve the framework root and load the imperative
-//!    [`AuthoringContext`].
-//! 2. Wrap the CORE-009 namespace imperative bridge as a
-//!    [`DiagnosticProducer`] ([`AuthoringProducer`]) so the runner
-//!    composes it with the declarative pass and dedupes by fingerprint.
-//! 3. Configure the runner for the framework surface
-//!    ([`ScanProfile::Framework`], [`NoopToolRunner`],
+//!    [`AuthoringContext`] (framework-root canonicalisation only — every
+//!    `rules.*` check now runs through the `rules` WASI tool, so no
+//!    imperative producer is wired in).
+//! 2. Configure the runner for the framework surface
+//!    ([`ScanProfile::Framework`], [`FrameworkToolRunner`],
 //!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
-//! 4. Hand the config to the shared [`crate::output::run_lint`] kernel
+//! 3. Hand the config to the shared [`crate::output::run_lint`] kernel
 //!    (via [`crate::output::emit_lint_report`]), which renders the
 //!    envelope, appends one `lint-completed` event, decides the
 //!    blocking exit, and owns the JSON fallback on abort.
 
-use std::path::Path;
 use std::time::Instant;
 
 use jiff::Timestamp;
-use specify_diagnostics::{Diagnostic, DiagnosticReport, Format as DiagnosticsFormat};
+use specify_diagnostics::{DiagnosticReport, Format as DiagnosticsFormat};
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
-use specify_standards::framework::check;
 use specify_standards::framework::context::Context as AuthoringContext;
-use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
+use specify_standards::lint::ScanProfile;
 use specify_standards::lint::producer::DiagnosticProducer;
 use specify_standards::lint::runner::{PipelineConfig, ResolverDegradation};
-use specify_standards::lint::{ScanProfile, WorkspaceModel};
 use specify_workflow::config::Layout;
 use specify_workflow::journal::LintScope;
 
 use crate::output::{self, Format, LintRun};
 use crate::runtime::commands::lint::cli::{FrameworkArgs, LintFormat};
+use crate::runtime::commands::lint::framework_tools::FrameworkToolRunner;
 
 /// Handler entry point dispatched from `src/runtime/commands.rs`.
 ///
@@ -85,10 +82,12 @@ fn build_report(
         include_core: true,
     };
 
-    let producer = AuthoringProducer { ctx: &authoring_ctx };
-    let producers: [&dyn DiagnosticProducer; 1] = [&producer];
+    // No imperative producer: every `rules.*` check (CORE-009 namespace
+    // ownership, CORE-026 duplicate id) now runs through the `rules` WASI
+    // tool via `kind: tool`, folded by the declarative pass.
+    let producers: [&dyn DiagnosticProducer; 0] = [];
     let rule_filter_slice: Vec<&str> = action.rules.iter().map(String::as_str).collect();
-    let tool_runner = NoopToolRunner;
+    let tool_runner = FrameworkToolRunner::new()?;
     let config = PipelineConfig {
         profile: ScanProfile::Framework,
         dump_model: action.dump_model,
@@ -128,44 +127,5 @@ fn pick_format(global: Format, output_format: Option<LintFormat>) -> Diagnostics
     match global {
         Format::Json => DiagnosticsFormat::Json,
         Format::Text => DiagnosticsFormat::Pretty,
-    }
-}
-
-/// Imperative producer for the CORE-009 namespace-ownership bridge only.
-///
-/// Every other migratable predicate runs through declarative
-/// `kind: authoring-predicate` hints on `CORE-*` rule files.
-/// Holds the loaded [`AuthoringContext`]; ignores the `WorkspaceModel`
-/// the runner threads in. [`check::run`] finalises the batch itself.
-struct AuthoringProducer<'a> {
-    ctx: &'a AuthoringContext,
-}
-
-impl DiagnosticProducer for AuthoringProducer<'_> {
-    fn produce(&self, _model: &WorkspaceModel, _project_dir: &Path) -> Vec<Diagnostic> {
-        check::run(self.ctx)
-    }
-}
-
-/// `ToolRunner` stub used by the framework run.
-///
-/// `specify lint framework` never has a `project.yaml` to populate a
-/// tool inventory from — framework runs live alongside the codex tree
-/// itself, not inside an initialised consumer project. Any `kind: tool`
-/// hint a framework-applicable rule declares is reported as undeclared.
-struct NoopToolRunner;
-
-impl ToolRunner for NoopToolRunner {
-    fn is_declared(&self, _tool_name: &str) -> bool {
-        false
-    }
-
-    fn run(
-        &self, tool_name: &str, _args: &[String], _project_dir: &Path,
-    ) -> std::result::Result<ToolOutput, ToolRunError> {
-        Err(ToolRunError::Runtime(format!(
-            "tool {tool_name} cannot run under specify lint framework; framework runs ship without \
-             a tool inventory"
-        )))
     }
 }

@@ -85,8 +85,8 @@ fn goldens_dir() -> PathBuf {
 ///   `plugins.marketplace-drift` schema (`minItems: 1`) is satisfied
 ///   without dragging real plugin content into the tree.
 /// - Writes the matching `plugins/test/.cursor-plugin/plugin.json`
-///   plus an empty `plugins/test/skills/` directory so
-///   `MarketplaceDriftCheck` finds the manifest the marketplace
+///   plus an empty `plugins/test/skills/` directory so the
+///   `marketplace` framework tool finds the manifest the marketplace
 ///   declares.
 /// - Writes `docs/standards/skill-authoring.md` containing the literal
 ///   `512` (description cap) and `200` (body cap) tokens so
@@ -196,6 +196,53 @@ Invalid manifests.
 ## Fix
 
 Fix manifest.
+",
+    );
+}
+
+/// Declarative `CORE-009` driving the `rules` WASI tool's namespace
+/// ownership check. The owner→prefix map, source-axis prefixes, and
+/// reserved-namespace owners travel in `config:`, mirroring the live rule
+/// in `augentic/specify`. A sentinel `path-pattern` runs the whole-tree
+/// tool exactly once.
+fn write_core_namespace_owner_rule(root: &Path) {
+    fs::create_dir_all(root.join("adapters/shared/rules/core")).expect("core rules dir");
+    write_codex_rule(
+        root,
+        "adapters/shared/rules/core/CORE-009-rule-namespace-owner.md",
+        r"---
+id: CORE-009
+title: Rule Namespace Owner
+severity: important
+trigger: A rule id namespace prefix is not owned by its rules directory.
+rule_hints:
+  - kind: path-pattern
+    value: adapters/shared/rules/core/CORE-009-rule-namespace-owner.md
+  - kind: tool
+    value: rules
+    config:
+      owner-prefixes:
+        universal: [UNI]
+        core: [CORE]
+        omnia: [OMNIA, RUST, SEC]
+        contracts: [IFACE]
+        vectis: [VECTIS]
+      source-axis-prefixes: [SRC]
+      reserved-namespaces:
+        FRAME: universal
+---
+
+## Rule
+
+Synthetic CORE-009 for golden tests; the owner policy lives in config.
+
+## Look For
+
+Misplaced namespace prefixes.
+
+## Fix
+
+Move the rule to the directory that owns its prefix.
 ",
     );
 }
@@ -423,6 +470,7 @@ fn violations_tree_emits_expected_envelope() {
         "adapters/shared/rules/universal/uni-999.md",
         &valid_rule_body("UNI-999"),
     );
+    write_core_namespace_owner_rule(temp.path());
     write_target_adapter_manifest(temp.path(), "omnia");
     let bad_manifest = temp.path().join("adapters/targets/omnia/adapter.yaml");
     fs::write(&bad_manifest, "name: omnia\nversion: 1\naxis: target\n").expect("bad manifest");

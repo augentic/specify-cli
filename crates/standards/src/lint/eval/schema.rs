@@ -32,7 +32,8 @@ use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 use specify_schema::{
     ADAPTER_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA,
     DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA,
-    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SKILL_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA,
+    compile_schema,
 };
 
 use super::{HintError, make_finding};
@@ -43,6 +44,7 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
     HashMap::from([
         ("adapter", ADAPTER_JSON_SCHEMA),
         ("rule", RULE_JSON_SCHEMA),
+        ("skill", SKILL_JSON_SCHEMA),
         ("resolved-rules", RESOLVED_RULES_JSON_SCHEMA),
         ("review-finding", DIAGNOSTIC_JSON_SCHEMA),
         ("review-result", DIAGNOSTIC_REPORT_JSON_SCHEMA),

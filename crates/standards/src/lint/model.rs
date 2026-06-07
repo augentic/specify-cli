@@ -37,7 +37,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 mod facts;
 
 pub use facts::{
-    AdapterManifest, AgentTeam, Brief, FencedBlock, File, Frontmatter, IgnoreDirective,
+    AdapterManifest, AgentTeam, Brief, BriefScope, FencedBlock, File, Frontmatter, IgnoreDirective,
     MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, Skill, Symlink, TextMatch,
 };
 
@@ -173,7 +173,7 @@ pub struct WorkspaceModel {
     /// shape.
     #[serde(default)]
     pub ignore_directives: Vec<IgnoreDirective>,
-    /// `fenced_block` facts from the fence-aware markdown pass (RFC-31 Phase 2).
+    /// `fenced_block` facts from the fence-aware markdown pass.
     #[serde(default)]
     pub fenced_blocks: Vec<FencedBlock>,
     /// `brief` facts from `adapters/**/briefs/*.md` under the

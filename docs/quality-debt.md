@@ -6,7 +6,7 @@ Living burn-down for the [quality improvement plan](https://github.com/augentic/
 
 | Location | Lint | Tier | Action |
 | -------- | ---- | ---- | ------ |
-| `crates/standards/src/framework.rs` | module `allow` (pedantic, missing_docs, …) | T2 | Remove with CORE-NNN predicate migration |
+| `crates/standards/src/framework.rs` | module `allow` (pedantic, missing_docs, …) | T2 | Vestigial — the CORE-NNN predicate migration is complete; the allow now governs only the surviving repo-local rust-quality predicates and the `Check`/`builder`/`context` substrate. Tighten or scope it down to those modules. |
 | `crates/standards/src/rules.rs` | `module_name_repetitions` | T0 | Keep — wire names `Rule`, `ResolvedRules` |
 | `crates/standards/src/lint/model.rs` | `module_name_repetitions` | T0 | Keep — schema `WorkspaceModel` |
 | `crates/tool/src/error.rs` | `needless_pass_by_value` | T0 | Keep — Diag helper ergonomics |

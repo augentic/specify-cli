@@ -1,0 +1,32 @@
+[package]
+name = "specify-agent-teams"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Framework-authoring validator for per-target agent-teams.md overlays — canonical presence and non-canonical drift checks (CORE-011, 012)"
+readme = "../../README.md"
+categories = ["development-tools", "command-line-utilities"]
+keywords = ["specify", "agent-teams", "validate", "lint", "framework"]
+
+# Framework/authoring checker run through `specify lint framework`'s
+# `kind: tool` evaluator. The published surface is the WASI component; this
+# native binary stays available for parity tests and direct local debugging.
+[[bin]]
+name = "specify-agent-teams"
+path = "src/main.rs"
+
+[lib]
+name = "specify_agent_teams"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

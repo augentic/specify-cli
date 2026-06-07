@@ -90,10 +90,21 @@ pub struct MarkdownLink {
     /// attempt to resolve.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolves: Option<bool>,
+    /// `true` when the link is an image embed (`![alt](src)`) rather
+    /// than a plain `[label](target)` link. Omitted from the wire when
+    /// `false` so plain-link facts keep their existing shape.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub image: bool,
+}
+
+/// `skip_serializing_if` predicate: omit a `bool` field when `false`.
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde skip predicates take `&T`")]
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// `fenced_block` fact — closed fence body extracted for fence-aware evaluators
-/// (RFC-31 Phase 2: CORE-037, CORE-017).
+/// (CORE-037, CORE-017).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct FencedBlock {
@@ -155,8 +166,24 @@ pub struct Skill {
     pub body_line_count: Option<u32>,
 }
 
+/// Closed brief-scope discriminant: parent brief vs phase sub-brief.
+///
+/// The two carry different size budgets (a rule supplies the caps via
+/// `config`), so the scope is the selector a `cardinality` brief
+/// metric narrows on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BriefScope {
+    /// Parent orchestrator brief at
+    /// `adapters/<axis>/<adapter>/briefs/<operation>.md`.
+    Parent,
+    /// Phase sub-brief under
+    /// `adapters/<axis>/<adapter>/briefs/{build,extract}/**/*.md`.
+    Phase,
+}
+
 /// `brief` fact per the `WorkspaceModel` entity families —
-/// extracted from `adapters/**/briefs/*.md` under the framework
+/// extracted from `adapters/**/briefs/**/*.md` under the framework
 /// profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -168,9 +195,13 @@ pub struct Brief {
     /// Owning adapter slug (the directory under
     /// `adapters/{sources,targets}/`).
     pub adapter: String,
-    /// Operation slug for the brief (e.g. `extract`, `survey`,
-    /// `shape`, `build`, `merge`).
+    /// Operation slug for the brief. For a parent brief this is the
+    /// brief stem (`extract`, `survey`, `shape`, `build`, `merge`);
+    /// for a phase sub-brief it is the phase directory (`build`,
+    /// `extract`).
     pub operation: String,
+    /// Parent vs phase classification — the size-budget selector.
+    pub scope: BriefScope,
     /// `##` heading titles found in the body, in document order
     /// after fence and HTML-comment stripping.
     pub sections: Vec<String>,
@@ -222,9 +253,9 @@ pub struct AdapterManifest {
     /// Operation slugs declared as the `briefs:` map keys in the
     /// manifest body. Empty when the manifest omits the field or
     /// declares an empty map. Consumed by the `kind: set-coverage`
-    /// interpreter via the `adapter-briefs-cover-operations`
+    /// and `kind: set-eq` interpreters via the `adapter-briefs`
     /// discriminator to detect manifests whose `briefs.keys()` do
-    /// not cover the closed axis-appropriate operation set.
+    /// not match the rule-supplied expected operation set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub brief_keys: Vec<String>,
 }

@@ -14,9 +14,9 @@
 use serde_json::{Map, Value, json};
 use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 use specify_standards::lint::{
-    AdapterAxis, AdapterManifest, AgentTeam, Brief, File, FileKind, Frontmatter, IgnoreDirective,
-    MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, ScanProfile, Skill, Symlink,
-    TextMatch, WorkspaceModel, WorkspaceModelVersion,
+    AdapterAxis, AdapterManifest, AgentTeam, Brief, BriefScope, File, FileKind, Frontmatter,
+    IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, ScanProfile,
+    Skill, Symlink, TextMatch, WorkspaceModel, WorkspaceModelVersion,
 };
 use specify_standards::rules::Origin;
 
@@ -129,6 +129,7 @@ fn populated_model_round_trips() {
             to_raw: "./docs/index.md".into(),
             line: 7,
             resolves: Some(true),
+            image: false,
         }],
         symlinks: vec![Symlink {
             path: "adapters/targets/omnia/references/agent-teams.md".into(),
@@ -179,6 +180,7 @@ fn populated_model_round_trips() {
             axis: AdapterAxis::Sources,
             adapter: "intent".into(),
             operation: "survey".into(),
+            scope: BriefScope::Parent,
             sections: vec!["Inputs".into(), "Output contract".into()],
             body_line_count: 24,
         }],

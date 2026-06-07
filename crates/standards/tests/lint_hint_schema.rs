@@ -53,6 +53,37 @@ fn flags_invalid_frontmatter() {
 }
 
 #[test]
+fn resolves_registered_skill_schema() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    // Present frontmatter missing the required `description` key — the
+    // `skill` registry entry must resolve and surface the violation.
+    let bad = "---\nname: widget\n---\n# Body\n";
+    fs::write(tmp.path().join("widget.md"), bad).expect("write widget.md");
+
+    let model = build(tmp.path(), ScanProfile::Product, &[], &[]).expect("build");
+    let rule = make_rule(
+        "UNI-906",
+        vec![hint(HintKind::PathPattern, "widget.md"), hint(HintKind::Schema, "skill")],
+    );
+    let runner: &dyn ToolRunner = &NoToolRunner;
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert!(
+        !outcome.findings.is_empty(),
+        "the registered `skill` schema id must resolve and flag the missing required field"
+    );
+}
+
+#[test]
 fn schema_hint_rejects_http_reference() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("x.json"), "{}").expect("write");

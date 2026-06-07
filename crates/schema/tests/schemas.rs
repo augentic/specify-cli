@@ -664,7 +664,6 @@ fn codex_rule_accepts_reserved_kinds() {
         "constant-eq",
         "set-eq",
         "content-digest-eq",
-        "namespace-owner",
     ];
     for kind in reserved {
         let instance = json!({

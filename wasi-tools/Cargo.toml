@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["contract", "vectis"]
+members = ["adapter", "agent-teams", "contract", "links-registry", "marketplace", "prose", "rules", "scenarios", "skill", "skill-body", "vectis"]
 
 # Sibling workspace housing the WASI carve-outs that ship as standalone
 # `wasm32-wasip2` components (`specify-contract`, `specify-vectis`). Keeping

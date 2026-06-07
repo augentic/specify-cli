@@ -6,9 +6,10 @@
 //! [`crate::lint::AgentTeam`] facts the framework-profile indexer
 //! already produced (see [`crate::lint::index::agent_teams::record`])
 //! and asserts that every `**/agent-teams.md` symlink resolves to
-//! content whose digest equals the canonical
-//! `docs/reference/review-team-protocol.md` review-team-protocol
-//! document. The interpreter emits one [`specify_diagnostics::Diagnostic`]
+//! content whose digest equals the canonical review-team-protocol
+//! document named by `config.canonical-path` — **policy supplied by
+//! the rule**, never a `const` in this arm (per the standards-layer
+//! policy-in-`specify` rule). The interpreter emits one [`specify_diagnostics::Diagnostic`]
 //! per symlink whose resolved-target digest diverges from the
 //! canonical digest, with the symlink path as the finding's location
 //! and the `(resolved-target, expected, actual)` shape surfaced via
@@ -45,6 +46,7 @@
 
 use std::path::PathBuf;
 
+use serde::Deserialize;
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
@@ -53,11 +55,29 @@ use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
 const SOURCE_AGENT_TEAMS_MATCH_CANONICAL: &str = "agent-teams-match-canonical";
 
-/// Canonical review-team-protocol document, kept in sync with the
-/// imperative `check::agent_teams` predicate's `CANONICAL_REL`. The
-/// expected content digest is the digest any `agent-teams.md` symlink
-/// carries when it resolves to this path.
-const CANONICAL_REL: &str = "docs/reference/review-team-protocol.md";
+/// Parsed `agent-teams-match-canonical` hint configuration. The
+/// canonical-document path is policy supplied by the rule, not the
+/// engine.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+struct ContentDigestEqConfig {
+    canonical_path: String,
+}
+
+impl ContentDigestEqConfig {
+    fn parse(rule: &ResolvedRule, hint: &RuleHint) -> Result<Self, HintError> {
+        let raw = hint.config.as_ref().ok_or_else(|| HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::ContentDigestEq,
+            reason: "`agent-teams-match-canonical` requires a `config: { canonical-path }`",
+        })?;
+        serde_json::from_value(raw.clone()).map_err(|_ignored| HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::ContentDigestEq,
+            reason: "invalid content-digest-eq hint config JSON",
+        })
+    }
+}
 
 /// Placeholder surfaced when a symlink's resolved target is
 /// unreadable or broken (no `target-sha256` recorded). Distinct from
@@ -76,6 +96,8 @@ pub(crate) fn evaluate(
             reason: "only `agent-teams-match-canonical` is supported in v1",
         });
     }
+    let cfg = ContentDigestEqConfig::parse(rule, hint)?;
+    let canonical = cfg.canonical_path.as_str();
 
     // Expected digest: the content digest carried by any symlink that
     // resolves to the canonical review-team-protocol document. Absent
@@ -83,7 +105,7 @@ pub(crate) fn evaluate(
     let Some(expected) = model
         .agent_teams
         .iter()
-        .find(|team| team.resolved_target.as_deref() == Some(CANONICAL_REL))
+        .find(|team| team.resolved_target.as_deref() == Some(canonical))
         .and_then(|team| team.target_sha256.as_deref())
     else {
         return Ok(Vec::new());
@@ -107,12 +129,12 @@ pub(crate) fn evaluate(
         let evidence = FindingEvidence::Structured {
             summary: format!(
                 "agent-teams overlay '{}' resolves to '{}' with digest '{}' (canonical '{}' digest '{}')",
-                team.path, resolved, actual_token, CANONICAL_REL, expected,
+                team.path, resolved, actual_token, canonical, expected,
             ),
             data: serde_json::json!({
                 "agent-team": team.path,
                 "resolved-target": team.resolved_target,
-                "canonical": CANONICAL_REL,
+                "canonical": canonical,
                 "expected-digest": expected,
                 "actual-digest": actual_token,
             }),

@@ -1,4 +1,4 @@
-//! Logical line joining for `kind: regex` hints (RFC-31 CORE-023).
+//! Logical line joining for `kind: regex` hints.
 
 use std::sync::LazyLock;
 

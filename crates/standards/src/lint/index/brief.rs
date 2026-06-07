@@ -1,8 +1,12 @@
-//! `adapters/**/briefs/*.md` extractor per the standards-layer
+//! `adapters/**/briefs/**/*.md` extractor per the standards-layer
 //! contract §"Module additions".
 //!
 //! Emits one [`Brief`] fact per markdown file whose project-relative
-//! path matches `adapters/{sources,targets}/<adapter>/briefs/<op>.md`.
+//! path is either a parent orchestrator brief
+//! (`adapters/{sources,targets}/<adapter>/briefs/<op>.md`) or a phase
+//! sub-brief (`adapters/{sources,targets}/<adapter>/briefs/{build,extract}/**/*.md`).
+//! The two carry a [`BriefScope`] discriminant so size-budget rules can
+//! narrow on parent vs phase without re-deriving the path shape.
 //! The `sections` array captures `##` heading titles in document
 //! order, sharing the fence and HTML-comment state machine from the
 //! [`super::markdown`] extractor so fenced "## hidden" headings are
@@ -12,19 +16,22 @@
 use super::files::DiscoveredFile;
 use super::frontmatter;
 use super::markdown::extract_sections;
-use crate::lint::{AdapterAxis, Brief};
+use crate::lint::{AdapterAxis, Brief, BriefScope};
+
+/// Phase directories whose sub-briefs carry the phase size budget.
+const PHASE_DIRS: &[&str] = &["build", "extract"];
 
 /// Extract a [`Brief`] fact from a discovered file.
 ///
-/// Returns `None` when the file does not live under
-/// `adapters/{sources,targets}/<adapter>/briefs/<op>.md` or when the
-/// file's inferred language is not markdown.
+/// Returns `None` when the file does not live under a recognised brief
+/// shape (`briefs/<op>.md` parent or `briefs/{build,extract}/**/*.md`
+/// phase) or when the file's inferred language is not markdown.
 #[must_use]
 pub fn extract(file: &DiscoveredFile) -> Option<Brief> {
     if file.language.as_deref() != Some("markdown") {
         return None;
     }
-    let (axis, adapter, operation) = parse_brief_path(&file.relative)?;
+    let (axis, adapter, operation, scope) = parse_brief_path(&file.relative)?;
     let sections: Vec<String> = extract_sections(file)
         .into_iter()
         .filter(|section| section.level == 2)
@@ -36,20 +43,35 @@ pub fn extract(file: &DiscoveredFile) -> Option<Brief> {
         axis,
         adapter: adapter.to_owned(),
         operation: operation.to_owned(),
+        scope,
         sections,
         body_line_count,
     })
 }
 
-/// Split `adapters/{sources,targets}/<adapter>/briefs/<op>.md` into
-/// the `(axis, adapter, operation)` tuple.
-fn parse_brief_path(relative: &str) -> Option<(AdapterAxis, &str, &str)> {
+/// Classify a brief path into `(axis, adapter, operation, scope)`.
+///
+/// A parent brief is `briefs/<op>.md` (a single segment, no nesting);
+/// a phase sub-brief is `briefs/{build,extract}/**/*.md` and its
+/// `operation` is the phase directory segment.
+fn parse_brief_path(relative: &str) -> Option<(AdapterAxis, &str, &str, BriefScope)> {
     let (axis, adapter, tail) = super::path_util::parse_adapter_prefix(relative)?;
-    let operation = tail.strip_prefix("briefs/")?.strip_suffix(".md")?;
-    if operation.is_empty() || operation.contains('/') {
-        return None;
+    let inner = tail.strip_prefix("briefs/")?;
+    let stem = inner.strip_suffix(".md")?;
+    match inner.split_once('/') {
+        None => {
+            if stem.is_empty() {
+                return None;
+            }
+            Some((axis, adapter, stem, BriefScope::Parent))
+        }
+        Some((phase, _rest)) => {
+            if !PHASE_DIRS.contains(&phase) {
+                return None;
+            }
+            Some((axis, adapter, phase, BriefScope::Phase))
+        }
     }
-    Some((axis, adapter, operation))
 }
 
 fn count_body_lines(file: &DiscoveredFile) -> u32 {

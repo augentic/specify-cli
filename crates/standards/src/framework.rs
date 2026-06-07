@@ -1,11 +1,13 @@
-//! Framework authoring checks — the imperative `Check` pass behind
-//! `specify lint framework`. Predicates enforce framework authoring standards
-//! (skill markdown shape, adapter manifests, brief discipline, prose
-//! vocabulary, rule namespace ownership, …) by scanning the framework
-//! repo through a [`context::Context`] and emitting canonical
+//! Framework authoring substrate.
+//! `specify lint framework` runs entirely through declarative hints and
+//! referenced WASI tools, so no imperative `Check` predicate is wired in
+//! as a producer. The surviving `Check` impls are the repo-local
+//! Rust-quality predicates ([`check::RustTestNaming`],
+//! [`check::RustSourceQuality`]), which scan the framework repo through a
+//! [`context::Context`] and emit canonical
 //! [`specify_diagnostics::Diagnostic`]s via [`builder::framework_finding`];
-//! [`check::run`] finalises each batch (project-relative locations,
-//! fingerprints, sequential `FIND-NNNN` ids).
+//! the `check` finalize pass finalises each batch (project-relative
+//! locations, fingerprints, sequential `FIND-NNNN` ids).
 #![allow(
     missing_docs,
     missing_debug_implementations,
