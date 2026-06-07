@@ -3,7 +3,7 @@ use serde_json::json;
 use super::*;
 use crate::slice::synthesis::authority::Agreement;
 
-/// The RFC-29c §"Synthesis response" worked example — the agent's
+/// The synthesis-response worked example — the agent's
 /// `kind: response` with kernel-owned and header model fields
 /// omitted.
 const RFC_RESPONSE: &str = "\

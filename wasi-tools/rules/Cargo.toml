@@ -1,0 +1,32 @@
+[package]
+name = "specify-rules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Framework-authoring validator for rule-tree invariants — namespace ownership (CORE-009) and duplicate rule ids (CORE-026)"
+readme = "../../README.md"
+categories = ["development-tools", "command-line-utilities"]
+keywords = ["specify", "rules", "validate", "lint", "framework"]
+
+# Framework/authoring checker run through `specify lint framework`'s
+# `kind: tool` evaluator. The published surface is the WASI component; this
+# native binary stays available for parity tests and direct local debugging.
+[[bin]]
+name = "specify-rules"
+path = "src/main.rs"
+
+[lib]
+name = "specify_rules"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde-saphyr.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

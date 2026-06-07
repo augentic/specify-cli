@@ -199,6 +199,21 @@ fn template_source_passes_validation() {
     assert!(results.is_empty(), "{results:?}");
 }
 
+// `targets_lifecycle_state` is the textual guard that keeps tools out
+// of `.specify` state. It must match `.specify` as a path *component* —
+// a sibling like `.specify-data` is legitimate and must pass — while
+// still catching nested and backslash-separated targets. A prefix-only
+// implementation would wrongly flag `.specify-data`.
+#[test]
+fn lifecycle_state_boundary() {
+    assert!(targets_lifecycle_state("$PROJECT_DIR/.specify"));
+    assert!(targets_lifecycle_state("$PROJECT_DIR/.specify/project.yaml"));
+    assert!(targets_lifecycle_state(r"$PROJECT_DIR\.specify\slices"));
+    assert!(!targets_lifecycle_state("$PROJECT_DIR/.specify-data"));
+    assert!(!targets_lifecycle_state("$PROJECT_DIR/generated"));
+    assert!(!targets_lifecycle_state("$PROJECT_DIR/.specification"));
+}
+
 #[test]
 fn template_capability_dir_rejected() {
     let tool = Tool {

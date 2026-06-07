@@ -262,4 +262,27 @@ mod tests {
             "{too_large}"
         );
     }
+
+    // `map_network_error` is the funnel that gives every ureq failure a
+    // stable kebab-case `code` the JSON envelope exposes. Each arm routes
+    // to a different diagnostic code; a `match` reorder or a copy-paste
+    // of the wrong constructor would silently relabel an operator-facing
+    // failure. Pin the code per variant.
+    #[test]
+    fn map_network_error_codes_per_variant() {
+        let url = "https://example.test/tool.wasm";
+        let cases: Vec<(ureq::Error, &str)> = vec![
+            (ureq::Error::StatusCode(503), "tool-network-status"),
+            (ureq::Error::BadUri("not a uri".to_string()), "tool-network-malformed"),
+            (ureq::Error::BodyExceedsLimit(7), "tool-network-too-large"),
+            (ureq::Error::RequireHttpsOnly("http downgrade".to_string()), "tool-resolver"),
+        ];
+        for (err, expected_code) in cases {
+            let mapped = map_network_error(url, err);
+            let ToolError::Diag { code, .. } = mapped else {
+                panic!("expected a Diag, got {mapped}");
+            };
+            assert_eq!(code, expected_code);
+        }
+    }
 }

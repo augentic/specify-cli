@@ -16,11 +16,6 @@
 //! key, the slice outcome `phase` field, the cache index `operation`
 //! field, and any `parse::<TargetOperation>()` call all agree on a
 //! single wire spelling.
-//!
-//! pre-2.0 outcome stamps used the legacy `define | build | merge`
-//! target set — readers of those archived files must migrate before
-//! upgrading; the closed enum here will reject `define` at parse time
-//! with a clear error.
 
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
@@ -84,10 +79,8 @@ impl SourceOperation {
 /// time) and the discriminant stamped into per-slice outcomes
 /// (`<slice_dir>/.metadata.yaml.outcome.phase`).
 ///
-/// Replaces the pre-2.0 `Phase { Define, Build, Merge }` — the
-/// 1.x define phase has no source/target adapter split counterpart (refine-time artifacts
-/// are synthesised by core, not produced by an operation), so the
-/// enum collapses to the three target operations.
+/// Refine-time artifacts are synthesised by core, not produced by an
+/// operation, so the set is exactly these three target operations.
 ///
 /// Variants declared in kebab-alphabetical order so `BTreeMap`
 /// iteration matches the wire envelope.

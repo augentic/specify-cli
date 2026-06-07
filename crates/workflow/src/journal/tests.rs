@@ -338,25 +338,25 @@ fn cli_plugins_migration_events_round_trip() {
         ),
         (
             EventKind::MigrationApplied {
-                kind: "v1-to-v2".to_string(),
+                kind: "v2-to-v3".to_string(),
                 files_rewritten: 7,
                 files_moved: 3,
             },
             &[
                 r#""event":"migration.applied""#,
-                r#""kind":"v1-to-v2""#,
+                r#""kind":"v2-to-v3""#,
                 r#""files-rewritten":7"#,
                 r#""files-moved":3"#,
             ],
         ),
         (
             EventKind::MigrationSkipped {
-                kind: "v1-to-v2".to_string(),
+                kind: "v2-to-v3".to_string(),
                 reason: "staged-validation-failed".to_string(),
             },
             &[
                 r#""event":"migration.skipped""#,
-                r#""kind":"v1-to-v2""#,
+                r#""kind":"v2-to-v3""#,
                 r#""reason":"staged-validation-failed""#,
             ],
         ),

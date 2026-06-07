@@ -27,7 +27,7 @@ pub enum SliceAction {
         name: String,
     },
     /// Project the audit-only provenance view from the slice's
-    /// `model.yaml` (RFC-29c §"Provenance projection"). Provenance is
+    /// `model.yaml`. Provenance is
     /// carried inline in `model.yaml`; this reshapes it on demand and
     /// never reads or writes a `provenance.yaml` file.
     Provenance {
@@ -40,8 +40,7 @@ pub enum SliceAction {
         action: SliceModelAction,
     },
     /// Synthesise a slice — assemble the agent INPUTS envelope, or
-    /// project an agent response into `model.yaml` + Markdown artifacts
-    /// (RFC-29c M2b).
+    /// project an agent response into `model.yaml` + Markdown artifacts.
     ///
     /// Exactly one mode is required — the parser rejects passing both:
     ///
@@ -73,7 +72,7 @@ pub enum SliceAction {
         from: Option<PathBuf>,
     },
     /// Build a slice through its bound target adapter's `build`
-    /// operation and gate the `built` transition (RFC-29d M3).
+    /// operation and gate the `built` transition.
     ///
     /// Resolves the target from the slice's `.metadata.yaml`, then
     /// owns the build envelopes: request assembly, report validation,

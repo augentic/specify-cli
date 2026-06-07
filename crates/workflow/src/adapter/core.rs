@@ -132,7 +132,7 @@ pub struct AdapterToolDeclaration {
     pub permissions: Vec<String>,
 }
 
-/// One adapter-declared build input inside a target manifest (RFC-29d).
+/// One adapter-declared build input inside a target manifest.
 ///
 /// Each entry names a path the target's `build` operation consumes,
 /// relative to the build request's `inputs.root` (the slice tree). The
@@ -182,13 +182,12 @@ pub enum CacheMode {
     OptOut,
 }
 
-/// Closed adapter execution mode (RFC-29 D9).
+/// Closed adapter execution mode.
 ///
 /// Declared by the required `execution:` field on `adapter.yaml`.
-/// Source and target adapters share the enum; RFC-29 M1 (D9) landed the
-/// source-side dispatch — the target-side `build` / `merge` dispatch
-/// follows in M3, so target manifests carry `agent` as a placeholder
-/// until then. See DECISIONS.md §"Adapter execution mode (D9)".
+/// Source and target adapters share the enum; the source-side dispatch
+/// is wired, while the target-side `build` / `merge` dispatch carries
+/// `agent` as a placeholder. See DECISIONS.md §"Adapter execution mode (D9)".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -248,7 +247,7 @@ impl AdapterLocation {
 /// — `adapter.yaml` plus the brief markdown files it references. The
 /// extraction cache fingerprint contract per-source extraction result cache lives in a separate
 /// sibling tree under `.specify/.cache/extractions/<adapter>/` (with
-/// `index.jsonl` at the adapter root) so the two caches no longer share
+/// `index.jsonl` at the adapter root) so the two caches do not share
 /// a root; see [DECISIONS.md §"Cache layout"].
 ///
 /// Path-only helper — the directory may or may not exist on disk.
@@ -284,7 +283,7 @@ pub struct SourceAdapter {
     /// successful [`SourceAdapter::resolve`]; the field is retained
     /// so YAML round-trips byte-for-byte through serde.
     pub axis: Axis,
-    /// Closed adapter execution mode (RFC-29 D9). Required by
+    /// Closed adapter execution mode. Required by
     /// `source.schema.json`; modelled as `Option` (mirroring
     /// `description`) so the typed `check_execution` gate rejects a
     /// manifest that omits it with `adapter-execution-mode-required`
@@ -328,12 +327,12 @@ pub struct TargetAdapter {
     /// a successful [`TargetAdapter::resolve`]; the field is retained
     /// so YAML round-trips byte-for-byte through serde.
     pub axis: Axis,
-    /// Closed adapter execution mode (RFC-29 D9). Required by
+    /// Closed adapter execution mode. Required by
     /// `target.schema.json`; modelled as `Option` (mirroring
     /// `description`) so the typed `check_execution` gate rejects a
     /// manifest that omits it with `adapter-execution-mode-required`
-    /// rather than defaulting silently. Target dispatch lands in M3;
-    /// first-party target manifests carry `agent` as a placeholder.
+    /// rather than defaulting silently. First-party target manifests
+    /// carry `agent` as a placeholder.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution: Option<Execution>,
     /// Typed target-operation → relative brief path map. Closed by
@@ -345,7 +344,7 @@ pub struct TargetAdapter {
     /// Optional declared WASI tools for declared WASI tools.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<AdapterToolDeclaration>,
-    /// Optional adapter-declared build inputs (RFC-29d). Each entry is
+    /// Optional adapter-declared build inputs. Each entry is
     /// a path relative to the build request's `inputs.root`, flagged
     /// `required`; the CLI assembles `inputs.artifacts.additional[]`
     /// from this list. Defaults to an empty list when omitted.
@@ -404,18 +403,18 @@ impl SourceAdapter {
     }
 
     /// Effective extraction-cache mode after applying the
-    /// `execution: agent` forced opt-out (RFC-29 D9). When
-    /// `execution: agent` the cache is always bypassed regardless of
-    /// the declared `cache:` field; otherwise the declared mode (or its
-    /// absence) applies. The source-operation runner (RFC-29 D1)
-    /// consumes this rather than the raw [`Self::cache`] field.
+    /// `execution: agent` forced opt-out. When `execution: agent` the
+    /// cache is always bypassed regardless of the declared `cache:`
+    /// field; otherwise the declared mode (or its absence) applies. The
+    /// source-operation runner consumes this rather than the raw
+    /// [`Self::cache`] field.
     #[must_use]
     pub const fn effective_cache_mode(&self) -> Option<CacheMode> {
         effective_cache_mode(self.execution, self.cache)
     }
 }
 
-/// Shared `execution: agent` forced-opt-out rule (RFC-29 D9) behind
+/// Shared `execution: agent` forced-opt-out rule behind
 /// [`SourceAdapter::effective_cache_mode`] (REVIEW.md A9): an
 /// `agent`-dispatched adapter always bypasses the cache regardless of
 /// the declared `cache:` field; otherwise the declared mode applies.
@@ -468,11 +467,11 @@ pub(super) fn check_axis_and_name(
     Ok(())
 }
 
-/// Typed `execution`-mode gate (RFC-29 D9), run after schema validation
+/// Typed `execution`-mode gate, run after schema validation
 /// and the axis/name coherence check.
 ///
 /// Two single-signal aborts, both `Error::Validation` (exit 2) with the
-/// kebab `error` discriminants from the RFC-29 wire contract:
+/// kebab `error` discriminants from the wire contract:
 ///
 /// - `adapter-execution-mode-required` — the manifest omits `execution`.
 ///   The per-axis JSON Schemas also mark `execution` `required`, so this

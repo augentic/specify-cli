@@ -7,16 +7,16 @@
 //! family adds [`HintKind::ReferenceResolves`], [`HintKind::Unique`],
 //! [`HintKind::SetCoverage`], [`HintKind::Cardinality`],
 //! [`HintKind::ConstantEq`], [`HintKind::SetEq`],
-//! [`HintKind::ContentDigestEq`], and [`HintKind::NamespaceOwner`] in
+//! and [`HintKind::ContentDigestEq`] in
 //! the same family. Each rule's
 //! hints are partitioned by kind and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → namespace-owner → regex → tool`
+//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → presence → field-grammar → cross-reference → regex → tool`
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
 //! When a rule carries multiple include `path-pattern` hints they UNION.
 //! Hints whose `value` starts with `!` are exclusions applied after the
-//! include union (RFC-31 Phase 2). When a rule carries only exclusions,
+//! include union. When a rule carries only exclusions,
 //! the starting set is every file in the model. When a rule carries zero
 //! `path-pattern` hints the
 //! candidate set defaults to every [`crate::lint::File`] in
@@ -42,15 +42,16 @@
 //! truncation loop bails on them rather than synthesising a bogus
 //! payload.
 
-pub mod authoring_predicate;
 pub mod cardinality;
 pub mod constant_eq;
 pub mod content_digest_eq;
+pub mod cross_reference;
 mod error;
 pub mod fenced_block;
+pub mod field_grammar;
 mod finding;
-pub mod namespace_owner;
 pub mod path_pattern;
+pub mod presence;
 pub mod reference_resolves;
 pub mod regex;
 pub mod schema;
@@ -84,7 +85,7 @@ pub struct HintEvalOutcome {
 /// Evaluate a single rule's hints against the workspace model.
 ///
 /// Hints are partitioned by kind and run in the order
-/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → namespace-owner → regex → tool`
+/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → presence → field-grammar → cross-reference → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
 /// consume.
@@ -118,10 +119,6 @@ pub fn evaluate(
 /// run-scoped cache; the standalone [`evaluate`] entry point passes a
 /// fresh per-call cache (behaviour is identical either way — the cache
 /// only elides recompilation).
-#[expect(
-    clippy::too_many_lines,
-    reason = "hint-kind dispatch arms grow with each RFC-31 eval extension; splitting would fragment the fixed evaluation order"
-)]
 fn evaluate_with_cache(
     rule: &ResolvedRule, hints: &[RuleHint], model: &WorkspaceModel, project_dir: &Path,
     tool_runner: &dyn ToolRunner, start_id_counter: u64, schema_cache: &mut schema::SchemaCache,
@@ -129,43 +126,10 @@ fn evaluate_with_cache(
     let mut findings: Vec<Diagnostic> = Vec::new();
     let mut next_id = start_id_counter;
 
-    let mut path_pattern_hints: Vec<&RuleHint> = Vec::new();
-    let mut schema_hints: Vec<&RuleHint> = Vec::new();
-    let mut reference_resolves_hints: Vec<&RuleHint> = Vec::new();
-    let mut unique_hints: Vec<&RuleHint> = Vec::new();
-    let mut set_coverage_hints: Vec<&RuleHint> = Vec::new();
-    let mut cardinality_hints: Vec<&RuleHint> = Vec::new();
-    let mut constant_eq_hints: Vec<&RuleHint> = Vec::new();
-    let mut set_eq_hints: Vec<&RuleHint> = Vec::new();
-    let mut content_digest_eq_hints: Vec<&RuleHint> = Vec::new();
-    let mut namespace_owner_hints: Vec<&RuleHint> = Vec::new();
-    let mut fenced_block_hints: Vec<&RuleHint> = Vec::new();
-    let mut regex_hints: Vec<&RuleHint> = Vec::new();
-    let mut tool_hints: Vec<&RuleHint> = Vec::new();
-    let mut authoring_predicate_hints: Vec<&RuleHint> = Vec::new();
+    let partition = PartitionedHints::from_hints(hints);
+    let candidates = build_candidate_set(rule, &partition.path_pattern, model)?;
 
-    for hint in hints {
-        match hint.kind {
-            HintKind::PathPattern => path_pattern_hints.push(hint),
-            HintKind::Schema => schema_hints.push(hint),
-            HintKind::ReferenceResolves => reference_resolves_hints.push(hint),
-            HintKind::Unique => unique_hints.push(hint),
-            HintKind::SetCoverage => set_coverage_hints.push(hint),
-            HintKind::Cardinality => cardinality_hints.push(hint),
-            HintKind::ConstantEq => constant_eq_hints.push(hint),
-            HintKind::SetEq => set_eq_hints.push(hint),
-            HintKind::ContentDigestEq => content_digest_eq_hints.push(hint),
-            HintKind::NamespaceOwner => namespace_owner_hints.push(hint),
-            HintKind::FencedBlock => fenced_block_hints.push(hint),
-            HintKind::Regex => regex_hints.push(hint),
-            HintKind::Tool => tool_hints.push(hint),
-            HintKind::AuthoringPredicate => authoring_predicate_hints.push(hint),
-        }
-    }
-
-    let candidates = build_candidate_set(rule, &path_pattern_hints, model)?;
-
-    for hint in schema_hints {
+    for hint in partition.schema {
         let mut new = schema::evaluate(
             rule,
             hint,
@@ -177,60 +141,57 @@ fn evaluate_with_cache(
         )?;
         findings.append(&mut new);
     }
-    for hint in reference_resolves_hints {
+    for hint in partition.reference_resolves {
         let mut new = reference_resolves::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in unique_hints {
+    for hint in partition.unique {
         let mut new = unique::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in set_coverage_hints {
+    for hint in partition.set_coverage {
         let mut new = set_coverage::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in cardinality_hints {
+    for hint in partition.cardinality {
         let mut new = cardinality::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in constant_eq_hints {
+    for hint in partition.constant_eq {
         let mut new = constant_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in set_eq_hints {
+    for hint in partition.set_eq {
         let mut new = set_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in content_digest_eq_hints {
+    for hint in partition.content_digest_eq {
         let mut new = content_digest_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in namespace_owner_hints {
-        let mut new = namespace_owner::evaluate(rule, hint, &candidates, model, &mut next_id)?;
-        findings.append(&mut new);
-    }
-    for hint in fenced_block_hints {
+    for hint in partition.fenced_block {
         let mut new = fenced_block::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in regex_hints {
+    for hint in partition.presence {
+        let mut new = presence::evaluate(rule, hint, &candidates, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in partition.field_grammar {
+        let mut new = field_grammar::evaluate(rule, hint, &candidates, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in partition.cross_reference {
+        let mut new = cross_reference::evaluate(rule, hint, &candidates, model, &mut next_id)?;
+        findings.append(&mut new);
+    }
+    for hint in partition.regex {
         let mut new = regex::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in tool_hints {
+    for hint in partition.tool {
         let mut new =
             tool::evaluate(rule, hint, &candidates, project_dir, tool_runner, &mut next_id)?;
-        findings.append(&mut new);
-    }
-    for hint in authoring_predicate_hints {
-        let mut new = authoring_predicate::evaluate(
-            rule,
-            hint,
-            &candidates,
-            model,
-            project_dir,
-            &mut next_id,
-        )?;
         findings.append(&mut new);
     }
 
@@ -240,10 +201,58 @@ fn evaluate_with_cache(
     })
 }
 
+/// A rule's hints bucketed by [`HintKind`], in the fixed evaluation
+/// order. Built once per rule by [`PartitionedHints::from_hints`] so the
+/// evaluation driver stays a flat sequence of per-kind loops.
+#[derive(Default)]
+struct PartitionedHints<'a> {
+    path_pattern: Vec<&'a RuleHint>,
+    schema: Vec<&'a RuleHint>,
+    reference_resolves: Vec<&'a RuleHint>,
+    unique: Vec<&'a RuleHint>,
+    set_coverage: Vec<&'a RuleHint>,
+    cardinality: Vec<&'a RuleHint>,
+    constant_eq: Vec<&'a RuleHint>,
+    set_eq: Vec<&'a RuleHint>,
+    content_digest_eq: Vec<&'a RuleHint>,
+    fenced_block: Vec<&'a RuleHint>,
+    presence: Vec<&'a RuleHint>,
+    field_grammar: Vec<&'a RuleHint>,
+    cross_reference: Vec<&'a RuleHint>,
+    regex: Vec<&'a RuleHint>,
+    tool: Vec<&'a RuleHint>,
+}
+
+impl<'a> PartitionedHints<'a> {
+    fn from_hints(hints: &'a [RuleHint]) -> Self {
+        let mut partition = Self::default();
+        for hint in hints {
+            match hint.kind {
+                HintKind::PathPattern => partition.path_pattern.push(hint),
+                HintKind::Schema => partition.schema.push(hint),
+                HintKind::ReferenceResolves => partition.reference_resolves.push(hint),
+                HintKind::Unique => partition.unique.push(hint),
+                HintKind::SetCoverage => partition.set_coverage.push(hint),
+                HintKind::Cardinality => partition.cardinality.push(hint),
+                HintKind::ConstantEq => partition.constant_eq.push(hint),
+                HintKind::SetEq => partition.set_eq.push(hint),
+                HintKind::ContentDigestEq => partition.content_digest_eq.push(hint),
+                HintKind::FencedBlock => partition.fenced_block.push(hint),
+                HintKind::Presence => partition.presence.push(hint),
+                HintKind::FieldGrammar => partition.field_grammar.push(hint),
+                HintKind::CrossReference => partition.cross_reference.push(hint),
+                HintKind::Regex => partition.regex.push(hint),
+                HintKind::Tool => partition.tool.push(hint),
+            }
+        }
+        partition
+    }
+}
+
 /// Fold [`evaluate`] over every rule, accumulating findings and the
 /// `FIND-NNNN` id counter.
 ///
-/// Shared by both lint surfaces (`specify lint run` and `specify lint framework`)
+/// Shared by both lint surfaces (`specify lint project` and `specify lint framework`)
 /// so the per-rule gating stays identical: rules in `lint-mode:
 /// model-assisted` and rules with no (or empty) `rule_hints`
 /// are skipped; `start_id` is threaded forward so ids stay monotonic.
@@ -341,7 +350,7 @@ fn build_candidate_set(
 /// set the fact-iterating sub-evaluators test membership against.
 ///
 /// Every fact-iterating kind (`set-coverage`, `set-eq`, `constant-eq`,
-/// `reference-resolves`, `unique`, `cardinality`, `namespace-owner`)
+/// `reference-resolves`, `unique`, `cardinality`)
 /// narrows its facts to the `path-pattern` candidate set by string
 /// path. Sharing the conversion keeps that lookup identical across
 /// kinds.

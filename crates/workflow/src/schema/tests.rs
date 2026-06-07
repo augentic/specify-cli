@@ -197,7 +197,7 @@ slices:
     validate_proposal_json(response).expect("RFC fan-out response example validates");
 }
 
-/// The RFC-29d build request example validates.
+/// The build request example validates.
 #[test]
 fn build_request_accepts_rfc_example() {
     let request = r#"{
@@ -228,7 +228,7 @@ fn build_request_rejects_malformed() {
     }
 }
 
-/// A failure report carrying a full RFC-28 finding validates,
+/// A failure report carrying a full finding validates,
 /// proving the relative diagnostic `$ref` resolves through the
 /// registry.
 #[test]

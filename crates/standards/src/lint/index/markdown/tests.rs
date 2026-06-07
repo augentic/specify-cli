@@ -64,11 +64,14 @@ fn links_skip_fences_and_comments() {
 }
 
 #[test]
-fn image_links_are_ignored() {
+fn image_links_are_flagged() {
     let f = markdown("doc.md", "logo: ![alt](./logo.png) and [real](./a.md)\n");
     let links = extract_links(&f);
-    assert_eq!(links.len(), 1);
-    assert_eq!(links[0].to_raw, "./a.md");
+    assert_eq!(links.len(), 2);
+    assert_eq!(links[0].to_raw, "./logo.png");
+    assert!(links[0].image, "image embeds carry the image flag");
+    assert_eq!(links[1].to_raw, "./a.md");
+    assert!(!links[1].image, "plain links are not flagged as images");
 }
 
 #[test]

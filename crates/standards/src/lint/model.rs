@@ -37,8 +37,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 mod facts;
 
 pub use facts::{
-    AdapterManifest, AgentTeam, Brief, FencedBlock, File, Frontmatter, IgnoreDirective,
-    MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, Skill, Symlink, TextMatch,
+    AdapterDir, AdapterManifest, AdapterTool, AgentTeam, Brief, BriefScope, FencedBlock, File,
+    Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry,
+    Scenario, Skill, Symlink, TextMatch,
 };
 
 /// Type-level pin of the `WorkspaceModel` envelope version.
@@ -97,19 +98,19 @@ pub enum AdapterAxis {
 /// Closed scan-profile discriminant per the standards-layer contract §"`WorkspaceModel`"
 /// extraction inputs.
 ///
-/// `consumer` is the only Phase 2 profile. `framework` is reserved
-/// for a future framework scan; the v1 indexer refuses it. The variant exists
-/// here so the v1 schema covers both names without execution.
+/// `project` scans a downstream consumer project's files; `framework`
+/// scans this framework repo's authoring artifacts. The two profiles
+/// select different extractor sets in the indexer.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum ScanProfile {
-    /// Consumer project scan; the only profile implemented in
-    /// Phase 2.
+    /// Project scan: the files produced with Specify in a downstream
+    /// consumer project.
     #[default]
-    Consumer,
-    /// Framework repo scan; reserved for a future framework scan.
+    Project,
+    /// Framework repo scan: this repo's authoring artifacts.
     Framework,
 }
 
@@ -173,12 +174,12 @@ pub struct WorkspaceModel {
     /// shape.
     #[serde(default)]
     pub ignore_directives: Vec<IgnoreDirective>,
-    /// `fenced_block` facts from the fence-aware markdown pass (RFC-31 Phase 2).
+    /// `fenced_block` facts from the fence-aware markdown pass.
     #[serde(default)]
     pub fenced_blocks: Vec<FencedBlock>,
     /// `brief` facts from `adapters/**/briefs/*.md` under the
     /// framework scan profile. Optional in v1 envelopes; producers
-    /// omit the field when empty so the consumer profile's wire
+    /// omit the field when empty so the project profile's wire
     /// shape is unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub briefs: Vec<Brief>,
@@ -188,6 +189,20 @@ pub struct WorkspaceModel {
     /// profile's wire shape is unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_teams: Vec<AgentTeam>,
+    /// `scenario` facts from the dedicated scenario discovery pass over
+    /// the opt-in scenario roots under the framework scan profile.
+    /// Optional in v1 envelopes; producers omit the field when empty so
+    /// the project profile's wire shape is unchanged. Kept out of
+    /// [`Self::files`] so no other rule's candidate set changes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenarios: Vec<Scenario>,
+    /// `adapter_dir` facts from the dedicated adapter-directory pass over
+    /// the immediate children of `adapters/{sources,targets}` under the
+    /// framework scan profile. Optional in v1 envelopes; producers omit
+    /// the field when empty so the project profile's wire shape is
+    /// unchanged. The source side of the `kind: cross-reference` join.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adapter_dirs: Vec<AdapterDir>,
 }
 
 #[cfg(test)]

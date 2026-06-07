@@ -90,10 +90,21 @@ pub struct MarkdownLink {
     /// attempt to resolve.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolves: Option<bool>,
+    /// `true` when the link is an image embed (`![alt](src)`) rather
+    /// than a plain `[label](target)` link. Omitted from the wire when
+    /// `false` so plain-link facts keep their existing shape.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub image: bool,
+}
+
+/// `skip_serializing_if` predicate: omit a `bool` field when `false`.
+#[expect(clippy::trivially_copy_pass_by_ref, reason = "serde skip predicates take `&T`")]
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// `fenced_block` fact — closed fence body extracted for fence-aware evaluators
-/// (RFC-31 Phase 2: CORE-037, CORE-017).
+/// (CORE-037, CORE-017).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct FencedBlock {
@@ -155,8 +166,24 @@ pub struct Skill {
     pub body_line_count: Option<u32>,
 }
 
+/// Closed brief-scope discriminant: parent brief vs phase sub-brief.
+///
+/// The two carry different size budgets (a rule supplies the caps via
+/// `config`), so the scope is the selector a `cardinality` brief
+/// metric narrows on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BriefScope {
+    /// Parent orchestrator brief at
+    /// `adapters/<axis>/<adapter>/briefs/<operation>.md`.
+    Parent,
+    /// Phase sub-brief under
+    /// `adapters/<axis>/<adapter>/briefs/{build,extract}/**/*.md`.
+    Phase,
+}
+
 /// `brief` fact per the `WorkspaceModel` entity families —
-/// extracted from `adapters/**/briefs/*.md` under the framework
+/// extracted from `adapters/**/briefs/**/*.md` under the framework
 /// profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -168,9 +195,13 @@ pub struct Brief {
     /// Owning adapter slug (the directory under
     /// `adapters/{sources,targets}/`).
     pub adapter: String,
-    /// Operation slug for the brief (e.g. `extract`, `survey`,
-    /// `shape`, `build`, `merge`).
+    /// Operation slug for the brief. For a parent brief this is the
+    /// brief stem (`extract`, `survey`, `shape`, `build`, `merge`);
+    /// for a phase sub-brief it is the phase directory (`build`,
+    /// `extract`).
     pub operation: String,
+    /// Parent vs phase classification — the size-budget selector.
+    pub scope: BriefScope,
     /// `##` heading titles found in the body, in document order
     /// after fence and HTML-comment stripping.
     pub sections: Vec<String>,
@@ -222,11 +253,104 @@ pub struct AdapterManifest {
     /// Operation slugs declared as the `briefs:` map keys in the
     /// manifest body. Empty when the manifest omits the field or
     /// declares an empty map. Consumed by the `kind: set-coverage`
-    /// interpreter via the `adapter-briefs-cover-operations`
+    /// and `kind: set-eq` interpreters via the `adapter-briefs`
     /// discriminator to detect manifests whose `briefs.keys()` do
-    /// not cover the closed axis-appropriate operation set.
+    /// not match the rule-supplied expected operation set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub brief_keys: Vec<String>,
+    /// Well-formed `tools[]` declarations from the manifest body, in
+    /// declared order. Only entries carrying both a string `name` and a
+    /// string `version` are recorded; malformed entries are dropped here
+    /// (their shape is enforced separately by the `adapter` registered
+    /// schema). Empty when the manifest omits the field. Consumed by the
+    /// `kind: cross-reference` `adapter-tool` target selector, which keys
+    /// each tool by its containing adapter directory name and tool name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<AdapterTool>,
+}
+
+/// One well-formed `tools[]` entry on an [`AdapterManifest`].
+///
+/// Mirrors the `toolDeclaration` shape `adapter.schema.json` pins
+/// (`{ name, version }`); the optional `permissions` grant the schema
+/// also admits is not modelled here because no fact-iterating rule
+/// joins on it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct AdapterTool {
+    /// Declared WASI tool name (kebab-case identifier).
+    pub name: String,
+    /// Declared semver-pinned tool version (e.g. `0.4.0`).
+    pub version: String,
+}
+
+/// `adapter_dir` fact per the `WorkspaceModel` entity families.
+///
+/// Produced by the framework profile's dedicated adapter-directory pass
+/// (see [`crate::lint::index::adapter_dir`]): one fact per immediate
+/// child directory under `adapters/sources/` and `adapters/targets/`,
+/// regardless of whether the directory carries an `adapter.yaml`
+/// manifest. Symlinked entries are skipped. Directories are not files,
+/// so this family is kept out of [`crate::lint::WorkspaceModel::files`]
+/// and carries zero blast radius to other rules' candidate sets.
+///
+/// The family is the *source* side of the `kind: cross-reference`
+/// relational join: a `cross-reference` hint flags any [`Self::path`]
+/// that has no corresponding [`AdapterManifest`] (joined on the
+/// manifest's containing directory). Listing every adapter directory —
+/// not just the orphans — keeps the join itself in the evaluator rather
+/// than baked into this extractor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct AdapterDir {
+    /// Project-relative path of the adapter directory itself (e.g.
+    /// `adapters/targets/vectis`), with forward slashes and no trailing
+    /// separator. The join key against the containing directory of each
+    /// [`AdapterManifest`] path.
+    pub path: String,
+    /// Closed `sources` / `targets` discriminant matching the parent
+    /// directory under `adapters/`.
+    pub axis: AdapterAxis,
+    /// Directory name (the final path segment, e.g. `vectis`).
+    pub name: String,
+}
+
+/// `scenario` fact per the `WorkspaceModel` entity families.
+///
+/// Produced by the framework profile's dedicated scenario pass (see
+/// [`crate::lint::index::scenario`]) over the opt-in scenario roots
+/// (`acceptance/scenarios/*.md`, `adapters/targets/*/tests/**`, plugin
+/// skill fixtures). Scenario files live partly under the un-indexed
+/// `acceptance/` tree, so the pass walks the roots itself and emits a
+/// dedicated fact family kept OUT of [`crate::lint::WorkspaceModel::files`]
+/// — no other rule's candidate set changes. The full [`Self::fields`]
+/// map carries the parsed frontmatter so a `kind: schema` hint can
+/// validate it whole-tree; the projected `id` / `stages` /
+/// `expected_artifacts` / `body_id` views serve the per-field hints
+/// (`kind: unique` over `id` today).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct Scenario {
+    /// Project-relative path of the scenario markdown file.
+    pub path: String,
+    /// Frontmatter `id` value when present and a string; absent when
+    /// the frontmatter omits it or it is not a scalar string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Frontmatter `stages` tokens, in declared order; empty when the
+    /// field is absent or not a string array.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stages: Vec<String>,
+    /// Frontmatter `expected-artifacts` paths; empty when absent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expected_artifacts: Vec<String>,
+    /// Body `Scenario ID:` line value when present; absent otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_id: Option<String>,
+    /// Parsed YAML frontmatter field map. Modelled as a
+    /// [`serde_json::Map`] so a `kind: schema` hint can validate it
+    /// directly; empty when the opted-in frontmatter failed to parse.
+    pub fields: JsonMap<String, JsonValue>,
 }
 
 /// `marketplace_entry` fact per the `WorkspaceModel` entity families

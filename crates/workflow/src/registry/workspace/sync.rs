@@ -89,7 +89,7 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
 }
 
 /// Regenerate `.specify/topology.lock` from the materialised workspace
-/// slots (RFC-36).
+/// slots.
 ///
 /// Projects every registry member's authored intent (target adapter,
 /// description) plus its deterministic baseline identity (`surface[]`
@@ -306,16 +306,16 @@ pub(super) fn materialise_git_remote(
     }
 }
 
-/// A greenfield scaffold needs an adapter; RFC-36 makes the registry
-/// `adapter` an optional seed, so error clearly when a brand-new slot
-/// must be bootstrapped but no seed was declared.
+/// A greenfield scaffold needs an adapter; the registry `adapter` is an
+/// optional seed, so error clearly when a brand-new slot must be
+/// bootstrapped but no seed was declared.
 fn require_seed<'a>(adapter: Option<&'a str>, dest: &Path) -> Result<&'a str, Error> {
     adapter.ok_or_else(|| Error::Diag {
         code: "workspace-greenfield-no-adapter-seed",
         detail: format!(
             "`{}` needs a greenfield scaffold but registry.yaml declares no `adapter` seed for \
-             this project; add `adapter: <name@vN>` to the registry entry (RFC-36 greenfield \
-             seed) or create the repo with its own `.specify/project.yaml` first",
+             this project; add `adapter: <name@vN>` to the registry entry as a greenfield \
+             seed, or create the repo with its own `.specify/project.yaml` first",
             dest.display()
         ),
     })

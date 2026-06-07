@@ -3,7 +3,7 @@ use specify_model::spec::provenance::{RequirementTag, parse_spec_md};
 use super::*;
 
 /// REQ-001 (agreed, two sources) and REQ-002 (authority-resolved
-/// divergence) — the RFC-29c §"Slice model (D4)" worked example,
+/// divergence) — the worked example,
 /// already projected (kernel-owned `id` / `status` / `sources`
 /// present).
 fn worked_model() -> SliceModel {

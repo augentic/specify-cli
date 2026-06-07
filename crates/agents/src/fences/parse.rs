@@ -311,4 +311,39 @@ mod tests {
 
         assert_eq!(err, FenceError::MultipleOpeningFences);
     }
+
+    // A single opening fence followed by *two* well-formed closing fences
+    // is ambiguous for in-place replacement — the planner cannot know
+    // which close ends the managed block — so it must be its own error,
+    // distinct from the multiple-opening case.
+    #[test]
+    fn parser_rejects_multiple_closing_fences() {
+        let input = b"<!-- specify:context begin\nfingerprint: sha256:a\n-->\nbody\n<!-- specify:context end -->\nmore\n<!-- specify:context end -->";
+        let err = parse_document(input).expect_err("two closing fences must fail");
+
+        assert_eq!(err, FenceError::MultipleClosingFences);
+    }
+
+    // A well-formed opening fence with no closing fence at all hits the
+    // empty-positions arm — a different code path than the malformed
+    // (trailing-space) close, even though both surface MissingClosingFence.
+    #[test]
+    fn parser_rejects_absent_closing_fence() {
+        let err =
+            parse_document(b"<!-- specify:context begin\nfingerprint: sha256:a\n-->\nbody only\n")
+                .expect_err("absent closing fence must fail");
+
+        assert_eq!(err, FenceError::MissingClosingFence);
+    }
+
+    // A document carrying only a closing fence (no opening) is malformed,
+    // not "unfenced": the lone close means the opening terminator is what
+    // went missing.
+    #[test]
+    fn parser_rejects_closing_without_opening() {
+        let err = parse_document(b"hand notes\n<!-- specify:context end -->\n")
+            .expect_err("closing-only document must fail");
+
+        assert_eq!(err, FenceError::MissingOpeningFenceTerminator);
+    }
 }

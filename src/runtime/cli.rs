@@ -146,6 +146,10 @@ pub enum Commands {
     /// Deterministic lint (`specify lint` v1). Resolves applicable codex
     /// rules, builds a `WorkspaceModel`, evaluates deterministic hints,
     /// and emits the `DiagnosticReport` envelope. Read-only.
+    ///
+    /// Requires an explicit subcommand: `project` (downstream consumer
+    /// scan) or `framework` (authoring scan over `augentic/specify`).
+    #[command(subcommand_required = true)]
     Lint {
         #[command(subcommand)]
         action: LintAction,

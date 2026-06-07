@@ -1,4 +1,4 @@
-//! Pure build-request assembly (RFC-29d M3 / D6).
+//! Pure build-request assembly.
 //!
 //! [`build_request`] is IO-free apart from existence checks against the
 //! slice tree — it never writes a journal, request file, or report. It

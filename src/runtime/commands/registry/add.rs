@@ -23,7 +23,7 @@ pub(super) fn run(
     let registry_path = Registry::path(&ctx.project_dir);
     let path = registry_path.display().to_string();
     let workspace_mode = ctx.config.workspace;
-    // RFC-36: `--adapter` is an optional greenfield scaffold seed only.
+    // `--adapter` is an optional greenfield scaffold seed only.
     let candidate = RegistryProject {
         name,
         url,

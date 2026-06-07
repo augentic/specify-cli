@@ -1,0 +1,16 @@
+//! Integration tests for the vectis validation engine, split by concern
+//! (paths, layout, tokens, assets, composition). Shared fixtures and
+//! assertion helpers live in [`engine_support`].
+
+mod engine_support;
+
+#[path = "engine/assets.rs"]
+mod assets;
+#[path = "engine/composition.rs"]
+mod composition;
+#[path = "engine/layout.rs"]
+mod layout;
+#[path = "engine/paths.rs"]
+mod paths;
+#[path = "engine/tokens.rs"]
+mod tokens;

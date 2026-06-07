@@ -1,5 +1,5 @@
 //! `specify plugins {doctor, refresh}` — Cursor plugin-cache inspection
-//! and invalidation (RFC-30 §D2, Wave D).
+//! and invalidation.
 //!
 //! Bootstrap verbs: they operate on the Cursor plugin cache and the
 //! marketplace manifest, never a `.specify/` project, so they use the

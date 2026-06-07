@@ -69,7 +69,7 @@ impl Plan {
         let bound = bind_projects(slices, topology)?;
         // Eagerly validate that every bound project's target parses as
         // `name@vN` so a corrupt topology fails at propose time, even
-        // though the resolved target is no longer written to disk.
+        // though the resolved target is not written to disk.
         for project in &bound {
             parse_project_target(project)?;
         }
@@ -279,9 +279,8 @@ fn slice_names(slices: &[ResponseSlice]) -> Result<Vec<String>> {
 }
 
 /// Reject clashing slice names (`plan-reconcile-slice-name-collision`).
-/// With names now agent-supplied on every slice, this is the sole
-/// uniqueness gate — it subsumes the former `(scope, project)`
-/// duplicate check.
+/// With names agent-supplied on every slice, this is the sole
+/// uniqueness gate over slice names.
 fn check_name_collisions(names: &[String]) -> Result<()> {
     let mut seen: HashSet<&str> = HashSet::new();
     for name in names {

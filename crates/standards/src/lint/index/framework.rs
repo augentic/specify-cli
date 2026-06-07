@@ -109,6 +109,19 @@ pub fn discover(
                         "symlink cycle detected during framework walk: {err}"
                     )));
                 }
+                // A broken symlink cannot be traversed under follow
+                // mode, so the walker yields it as a `WithPath` error
+                // rather than an `Ok` entry. Resurrect it as a symlink
+                // fact (with `broken == true`) so resolution hints can
+                // flag it; any non-symlink walker error stays a silent
+                // skip.
+                if let Some(path) = err_path(&err)
+                    && std::fs::symlink_metadata(path)
+                        .is_ok_and(|meta| meta.file_type().is_symlink())
+                    && let Some(fact) = symlinks::record(path, project_dir, FollowMode::Follow)
+                {
+                    symlinks_out.push(fact);
+                }
                 continue;
             }
         };
@@ -182,6 +195,20 @@ pub fn discover(
         symlinks: symlinks_out,
         agent_teams: agent_teams_out,
     })
+}
+
+/// Extract the on-disk path the walker attached to an error, walking
+/// the wrapped `ignore::Error` chain. Returns `None` for error kinds
+/// that carry no path (the broken-symlink recovery needs the path to
+/// re-stat the entry).
+fn err_path(err: &ignore::Error) -> Option<&Path> {
+    match err {
+        ignore::Error::WithPath { path, .. } => Some(path.as_path()),
+        ignore::Error::WithDepth { err, .. } | ignore::Error::WithLineNumber { err, .. } => {
+            err_path(err)
+        }
+        _ => None,
+    }
 }
 
 /// Walk the wrapped `ignore::Error` chain (`WithPath` / `WithDepth`

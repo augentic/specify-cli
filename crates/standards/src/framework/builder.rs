@@ -2,12 +2,10 @@
 //! to the canonical [`Diagnostic`] currency.
 //!
 //! Every predicate constructs its findings through
-//! [`framework_finding`], which is the former binary-boundary
-//! `map_one` mapper minus the `id` / `fingerprint` assignment (those
-//! are stamped by the finalize pass in [`crate::framework::check::run`]
-//! once the deduplicated order is known — the fingerprint preimage
-//! excludes `id`, so deferring both is safe). The unification deleted
-//! the lightweight `specify_authoring::Finding` / `Location` types: the
+//! [`framework_finding`], which stamps everything except the `id` /
+//! `fingerprint` assignment (those are stamped by the finalize pass in
+//! `crate::framework::check` once the deduplicated order is known — the
+//! fingerprint preimage excludes `id`, so deferring both is safe). The
 //! predicates speak [`Diagnostic`] end-to-end.
 //!
 //! ## Decision: imperative `rule_id` mapped onto the closed codex `rule-id`
@@ -20,7 +18,7 @@
 //! `CORE_ID_TABLE` assigns every still-active predicate a `CORE-NNN`
 //! id. A mapped finding sets `rule_id: Some("CORE-NNN")` and emits a
 //! clean `title`; an unmapped id falls back to `rule_id: None` with the
-//! legacy `[rule_id]` title prefix so a newly-added predicate is never
+//! `[rule_id]` title prefix so a newly-added predicate is never
 //! silently dropped from the wire.
 
 use std::path::{Path, PathBuf};
@@ -36,11 +34,13 @@ use crate::framework::error::ToolingError;
 /// Mapping from each still-active imperative authoring rule id to its
 /// closed codex `CORE-NNN` id.
 ///
-/// After RFC-31 Phase 4 only the CORE-009 namespace bridge remains
-/// imperative. `CORE-001..008` and `CORE-010..052` run through
-/// declarative `CORE-*` rule files (`kind: authoring-predicate` or
-/// native hints). See `adapters/shared/rules/core/` in augentic/specify.
-const CORE_ID_TABLE: &[(&str, &str)] = &[("rules.namespace-ownership-violation", "CORE-009")];
+/// Empty today: no imperative
+/// authoring predicate runs as a `specify lint framework` producer.
+/// Every `CORE-*` rule is a declarative rule file or a referenced WASI
+/// tool (CORE-009 / CORE-026 run through the `rules` tool). The table
+/// stays so a future predicate could opt back in without re-plumbing
+/// [`framework_finding`].
+const CORE_ID_TABLE: &[(&str, &str)] = &[];
 
 /// Resolve the closed codex `CORE-NNN` id for an imperative authoring
 /// rule id, or `None` when the id has not been assigned one yet (the
@@ -95,7 +95,7 @@ pub fn loc(path: impl AsRef<Path>, line: usize, column: Option<usize>) -> Findin
 
 /// Build an unfinalised [`Diagnostic`] for an imperative authoring
 /// finding. `id` and `fingerprint` are left empty for
-/// [`crate::framework::check::run`] to stamp once the deduplicated
+/// the `crate::framework::check` finalize pass to stamp once the deduplicated
 /// order is known.
 #[must_use]
 pub fn framework_finding(

@@ -1,9 +1,8 @@
 //! Codegen for Vectis scaffold template registries from `templates/vectis/manifest.yaml`.
 
 use std::collections::{BTreeSet, HashMap};
-use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 use jsonschema::Validator;
 use serde::Deserialize;
@@ -21,21 +20,21 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|err| err.to_string())?);
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").map_err(|err| err.to_string())?);
     let repo_root = manifest_dir.join("../..");
     let templates_root = repo_root.join("templates/vectis");
     let manifest_path = templates_root.join("manifest.yaml");
     let schema_path = repo_root.join("schemas/vectis/template-manifest.schema.json");
-    let registry_out =
-        manifest_dir.join("src/scaffold/templates/registry.rs");
+    let registry_out = manifest_dir.join("src/scaffold/templates/registry.rs");
 
     println!("cargo:rerun-if-changed={}", manifest_path.display());
     println!("cargo:rerun-if-changed={}", schema_path.display());
 
-    let manifest_text =
-        fs::read_to_string(&manifest_path).map_err(|err| format!("read {}: {err}", manifest_path.display()))?;
-    let schema_text =
-        fs::read_to_string(&schema_path).map_err(|err| format!("read {}: {err}", schema_path.display()))?;
+    let manifest_text = fs::read_to_string(&manifest_path)
+        .map_err(|err| format!("read {}: {err}", manifest_path.display()))?;
+    let schema_text = fs::read_to_string(&schema_path)
+        .map_err(|err| format!("read {}: {err}", schema_path.display()))?;
 
     let manifest_value: serde_json::Value = serde_saphyr::from_str(&manifest_text)
         .map_err(|err| format!("parse {}: {err}", manifest_path.display()))?;
@@ -102,7 +101,8 @@ fn detect_orphans(assembly: &str, assembly_dir: &Path, spec: &AssemblySpec) -> R
     for entry in fs::read_dir(assembly_dir)
         .map_err(|err| format!("read {}: {err}", assembly_dir.display()))?
     {
-        let entry = entry.map_err(|err| format!("read dir entry in {}: {err}", assembly_dir.display()))?;
+        let entry =
+            entry.map_err(|err| format!("read dir entry in {}: {err}", assembly_dir.display()))?;
         let file_name = entry.file_name();
         let name = file_name.to_string_lossy();
         if !entry.file_type().map_err(|err| format!("file type for {name}: {err}"))?.is_file() {

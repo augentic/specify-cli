@@ -16,21 +16,21 @@ use specify_diagnostics::Format as DiagnosticsFormat;
 
 #[derive(Subcommand)]
 pub enum LintAction {
-    /// Resolve applicable rules, build a `WorkspaceModel`,
-    /// evaluate deterministic hints, and emit the structured review
-    /// envelope.
-    Run(RunArgs),
+    /// Downstream consumer-project scan: resolve applicable codex
+    /// rules, build a `WorkspaceModel`, evaluate deterministic hints,
+    /// and emit the structured review envelope.
+    Project(ProjectArgs),
     /// Framework authoring lint over the `augentic/specify` repo.
     ///
     /// Composes the imperative `Check` predicates with the declarative
     /// deterministic-hint interpreter and emits one structured
     /// envelope per run. Defaults `--framework-root` to `.`, hard-codes
     /// the framework scan profile, and always evaluates `CORE-*` rules.
-    /// Contributor surface — operators reach for `lint run`.
+    /// Contributor surface — operators reach for `lint framework`.
     Framework(FrameworkArgs),
 }
 
-/// Flag surface for `specify lint framework`. Mirrors [`RunArgs`]
+/// Flag surface for `specify lint framework`. Mirrors [`ProjectArgs`]
 /// modulo these pinned defaults:
 ///
 /// - `--framework-root` defaults to `.` (the framework repo itself
@@ -52,7 +52,7 @@ pub struct FrameworkArgs {
     /// Target-adapter name (kebab, optionally `<name>@v<major>`).
     /// Defaults to the literal `none` because framework scans rarely
     /// scope to one target adapter; when supplied, narrows the
-    /// applicability filter the same way `lint run --target` does.
+    /// applicability filter the same way `lint project --target` does.
     #[arg(long, default_value = "none")]
     pub target: String,
 
@@ -86,7 +86,7 @@ pub struct FrameworkArgs {
     #[arg(long)]
     pub dump_model: bool,
 
-    /// Output format. Closed Phase 2 set per the diagnostics
+    /// Output format. Closed set per the diagnostics
     /// formatter set: `{ json, pretty, github, compact }`. When
     /// unset, derived from the global `--format` flag: `json` →
     /// `Json`, `text` → `Pretty`.
@@ -98,11 +98,11 @@ pub struct FrameworkArgs {
     pub output_format: Option<LintFormat>,
 }
 
-/// Flag surface for `specify lint run`. Grouped into one struct so the
+/// Flag surface for `specify lint project`. Grouped into one struct so the
 /// handler threads a single reference instead of a positional argument
 /// list.
 #[derive(Args)]
-pub struct RunArgs {
+pub struct ProjectArgs {
     /// Codex root supplying shared `UNI-*` rules. Resolution
     /// order (rules-root resolution): this flag / `$RULES_ROOT` env →
     /// monorepo `adapters/shared/rules/universal/` under the project →
@@ -150,7 +150,7 @@ pub struct RunArgs {
     #[arg(long)]
     pub include_core: bool,
 
-    /// Output format. Closed Phase 2 set per the diagnostics formatter set:
+    /// Output format. Closed set per the diagnostics formatter set:
     /// `{ json, pretty, github, compact }`; default `pretty`.
     ///
     /// Spelled `--output-format` rather than `--format` to

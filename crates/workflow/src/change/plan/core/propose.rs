@@ -1,5 +1,5 @@
 //! Lead-reconciliation envelope DTOs and the plan-time `propose`
-//! domain core (RFC-29 D2).
+//! domain core.
 //!
 //! `specify plan propose` wraps agent-led lead reconciliation in a
 //! CLI-owned projection kernel. The wire contract is a single

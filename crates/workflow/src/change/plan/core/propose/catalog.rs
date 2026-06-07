@@ -1,5 +1,5 @@
 //! Lead-catalog assembly: the `(source, lead)` identity oracle and the
-//! pure `kind: request` envelope builder (RFC-29 D2).
+//! pure `kind: request` envelope builder.
 //!
 //! [`build_request`] / [`build_catalog`] are filesystem-free so they
 //! unit-test without a temp project; the project topology they embed is

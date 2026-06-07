@@ -1,6 +1,4 @@
-//! `specify slice synthesize <slice>` handler — slice synthesis engine
-//! (RFC-29c M2b; §"Command", §"Synthesis dispatch (D10)", §"Persist
-//! pipeline").
+//! `specify slice synthesize <slice>` handler — slice synthesis engine.
 //!
 //! The CLI cannot run the agent reconciliation step, so synthesis
 //! splits into the same two mutually-exclusive modes the shipped
@@ -11,9 +9,8 @@
 //!   emits the `kind: inputs` envelope ([`SynthesisInputs`]) for the
 //!   agent synthesis step. `--format json` prints the envelope verbatim;
 //!   nothing is written. It emits the `slice.synthesize.agent` journal
-//!   event — synthesis is always agent-dispatched and `cache: opt-out`
-//!   (RFC-29c §"Synthesis dispatch (D10)"), so the journal records that
-//!   no cache short-circuit was attempted.
+//!   event — synthesis is always agent-dispatched and `cache: opt-out`,
+//!   so the journal records that no cache short-circuit was attempted.
 //! - `--from <response.json>` is the only writer. It schema-gates the
 //!   raw response bytes, deserialises the agent's
 //!   [`SynthesisResponse`], resolves authority from the on-disk
@@ -28,7 +25,7 @@
 //! Passing neither mode fails with `slice-synthesize-mode-required`
 //! (exit 2); the clap layer rejects passing both. Everything is computed
 //! and validated in memory before the first write, so prior artifacts
-//! stay intact on failure (RFC-29c §"Command").
+//! stay intact on failure.
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -84,9 +81,8 @@ fn dry_run_inputs(ctx: &Ctx, name: &str) -> Result<()> {
     let shape_brief = resolve_shape_brief(ctx, &slice_dir)?;
     let inputs = build_synthesis_inputs(name, &sources, &shape_brief);
 
-    // Synthesis is always agent-dispatched and `cache: opt-out`
-    // (RFC-29c §"Synthesis dispatch (D10)") — record that no cache
-    // short-circuit was attempted.
+    // Synthesis is always agent-dispatched and `cache: opt-out` —
+    // record that no cache short-circuit was attempted.
     emit(
         ctx,
         EventKind::SliceSynthesizeAgent {
@@ -136,8 +132,7 @@ fn from_response(ctx: &Ctx, name: &str, response_path: &Path) -> Result<()> {
 
 /// The schema-gate → project → render → persist pipeline, returning the
 /// relative paths written (in write order). Every step runs in memory
-/// before the first write, so a failure leaves prior artifacts intact
-/// (RFC-29c §"Persist pipeline").
+/// before the first write, so a failure leaves prior artifacts intact.
 fn synthesize_from(ctx: &Ctx, name: &str, response_path: &Path) -> Result<Vec<String>> {
     let slice_dir = ctx.slices_dir().join(name);
     let entry = load_entry(ctx, name)?;
@@ -177,7 +172,7 @@ fn synthesize_from(ctx: &Ctx, name: &str, response_path: &Path) -> Result<Vec<St
     let specs = render_spec_files(&projected);
 
     // Stage every artifact before the first write so a failure above
-    // leaves the prior artifacts intact (RFC-29c §"Command").
+    // leaves the prior artifacts intact.
     let mut staged: Vec<StagedFile> = Vec::new();
     staged.push(staged_file(&slice_dir, "proposal.md", response.artifacts.proposal.into_bytes()));
     for spec in &specs {
@@ -315,8 +310,7 @@ fn parse_enum<T: serde::de::DeserializeOwned>(value: &str) -> Option<T> {
 }
 
 /// Resolve the bound target's `shape` brief body — `TargetAdapter::resolve`
-/// keeps target resolution a CLI responsibility (RFC-29c §"Shape-brief
-/// scope (D8)").
+/// keeps target resolution a CLI responsibility.
 fn resolve_shape_brief(ctx: &Ctx, slice_dir: &Path) -> Result<String> {
     let metadata = SliceMetadata::load(slice_dir)?;
     let adapter_name = adapter_name_from_value(&metadata.target);

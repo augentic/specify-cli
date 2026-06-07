@@ -1,6 +1,4 @@
-//! Authority / status / winner derivation kernel (RFC-29c
-//! §"Authority resolution", §"Status derivation", §"Provenance
-//! projection").
+//! Authority / status / winner derivation kernel.
 //!
 //! Given a requirement's contributing claims, the per-source document
 //! authority classes, the per-slice `authority-override` map, and the
@@ -44,7 +42,7 @@ pub enum Agreement {
 }
 
 /// One contributing claim, identified by the stable `(source, id,
-/// kind)` triple the claim contract pins (RFC-29c §"Claim contract").
+/// kind)` triple the claim contract pins.
 ///
 /// Resolution consults `source` and `kind`; `id` carries the claim's
 /// identity so callers can pass real claim references and correlate the
@@ -177,8 +175,8 @@ enum Level {
     Override,
 }
 
-/// Resolve one claim's effective level per the RFC-29c order: per-slice
-/// override first, then document-level authority class.
+/// Resolve one claim's effective level: per-slice override first, then
+/// document-level authority class.
 fn effective_level(
     claim: &ClaimRef, authority: &BTreeMap<String, AuthorityClass>,
     overrides: &BTreeMap<ClaimKind, String>,

@@ -4,13 +4,10 @@
 //!
 //! workflow §"Refinement" pins the canonical artifact set to
 //! `proposal.md`, `spec.md`, `design.md`, `tasks.md`, plus the
-//! `contracts/` overlay; per-define-brief `generates` paths from the
-//! pre-2.0 `pipeline.define[]` are gone with the legacy adapter
-//! shape. Rules are still registered in
-//! [`crate::registry::rules_for`] under the historical
-//! per-brief namespaces (`proposal`, `specs`, `design`, `tasks`,
-//! `contracts`); the runner just feeds artifacts into that registry
-//! directly instead of routing via a `PipelineView`.
+//! `contracts/` overlay. Rules are registered in
+//! [`crate::registry::rules_for`] under per-brief namespaces
+//! (`proposal`, `specs`, `design`, `tasks`, `contracts`); the runner
+//! feeds artifacts into that registry directly.
 
 use std::path::{Path, PathBuf};
 

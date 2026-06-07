@@ -265,7 +265,7 @@ fn cross_ref_orphan_findings(model: &SliceModel) -> Vec<Diagnostic> {
     findings
 }
 
-/// `slice-model-claim-kind-mismatch` (D13) — a claim's `kind` in
+/// `slice-model-claim-kind-mismatch` — a claim's `kind` in
 /// `model.yaml` must equal the `kind` recorded on the matching Evidence
 /// claim. Claims with no matching Evidence `(source, id)` are left to
 /// [`source_orphan_findings`].

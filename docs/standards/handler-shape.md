@@ -4,7 +4,7 @@ The contract every CLI command handler obeys: how `Ctx` is constructed, how outp
 
 ## Ctx construction
 
-Handlers take `&Ctx` (renamed from `CommandContext` so the module path `crate::runtime::context::Ctx` carries the noun). `Ctx` exposes the resolved project dir, layout, output format, and a few thin facade methods for handler ergonomics; everything else flows through workspace crates. `Layout<'a>` lives on `Ctx` rather than at call sites so path helpers stay anchored in `specify-workflow` — see [architecture.md §"Layout boundary"](./architecture.md#layout-boundary).
+Handlers take `&Ctx`, whose module path `crate::runtime::context::Ctx` carries the noun. `Ctx` exposes the resolved project dir, layout, output format, and a few thin facade methods for handler ergonomics; everything else flows through workspace crates. `Layout<'a>` lives on `Ctx` rather than at call sites so path helpers stay anchored in `specify-workflow` — see [architecture.md §"Layout boundary"](./architecture.md#layout-boundary).
 
 ## Default handler signature
 
@@ -39,9 +39,9 @@ Check surfaces that gate on findings — `slice validate`, the lint sentinels �
 
 ### The two lint handlers share one tail
 
-`specify lint run` and `specify lint framework` are the same handler shape with different pipeline config. Both return `Result<()>` and call the one `run_lint` kernel in [`src/output.rs`](../../src/output.rs), passing the format plus a `build` closure that assembles surface-specific `ResolveInputs` + `PipelineConfig` and calls `emit_lint_report`. Inside the kernel: `emit_lint_report` runs the pipeline and renders the envelope on stdout; the internal `finish_lint` collapses the outcome into the terminal `Result<()>` — `deny_blocking_findings` on success, the empty-envelope stdout fallback on a pre-emit abort. The fallback owns only the **stdout** side (an all-zero `DiagnosticReport`, JSON only, so CI consumers keep a stable shape); the stderr `error: …` line is the dispatcher's `output::report`, so the two sinks compose without double-printing. Neither handler writes its own `println!`/`eprintln!`.
+`specify lint project` and `specify lint framework` are the same handler shape with different pipeline config. Both return `Result<()>` and call the one `run_lint` kernel in [`src/output.rs`](../../src/output.rs), passing the format plus a `build` closure that assembles surface-specific `ResolveInputs` + `PipelineConfig` and calls `emit_lint_report`. Inside the kernel: `emit_lint_report` runs the pipeline and renders the envelope on stdout; the internal `finish_lint` collapses the outcome into the terminal `Result<()>` — `deny_blocking_findings` on success, the empty-envelope stdout fallback on a pre-emit abort. The fallback owns only the **stdout** side (an all-zero `DiagnosticReport`, JSON only, so CI consumers keep a stable shape); the stderr `error: …` line is the dispatcher's `output::report`, so the two sinks compose without double-printing. Neither handler writes its own `println!`/`eprintln!`.
 
-`specify lint framework` (the framework authoring lint, formerly the separate `specdev` binary) is just another action on the one `specify` binary: it obeys this same `Result<()>` contract and maps its terminal error through the one `Exit::from(&Error)` table in [`src/runtime/output.rs`](../../src/runtime/output.rs) exactly as every other verb does. Only bootstrap verbs (`migrate`, `upgrade`) justify a bespoke exit subset; lint does not.
+`specify lint framework` (the framework authoring lint) is just another action on the one `specify` binary: it obeys this same `Result<()>` contract and maps its terminal error through the one `Exit::from(&Error)` table in [`src/runtime/output.rs`](../../src/runtime/output.rs) exactly as every other verb does. Only bootstrap verbs (`migrate`, `upgrade`) justify a bespoke exit subset; lint does not.
 
 ## Exit codes
 

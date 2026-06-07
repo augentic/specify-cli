@@ -136,21 +136,21 @@ _Codified in:
 > Pinned verbatim as the happy-path schema fixture; any future
 > drift surfaces in the layout-mode test suite first.
 
-_Codified in: `crates/vectis/tests/engine_layout.rs::APPENDIX_C_LAYOUT_YAML`._
+_Codified in: `wasi-tools/vectis/tests/engine/layout.rs::APPENDIX_C_LAYOUT_YAML`._
 
 ### Appendix D — example `tokens.yaml`
 
 > Pinned verbatim as the happy-path tokens schema fixture; any
 > future drift surfaces in the tokens-mode test suite first.
 
-_Codified in: `crates/vectis/tests/engine_tokens.rs::APPENDIX_D_TOKENS_YAML`._
+_Codified in: `wasi-tools/vectis/tests/engine/tokens.rs::APPENDIX_D_TOKENS_YAML`._
 
 ### Appendix E — example `assets.yaml`
 
 > Pinned verbatim as the happy-path assets schema fixture; any
 > future drift surfaces in the assets-mode test suite first.
 
-_Codified in: `crates/vectis/tests/engine_assets.rs::APPENDIX_E_ASSETS_YAML`._
+_Codified in: `wasi-tools/vectis/tests/engine/assets.rs::APPENDIX_E_ASSETS_YAML`._
 
 ### Appendix F — patched `composition.schema.json`
 

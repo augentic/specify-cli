@@ -1,7 +1,7 @@
-//! Consumer and framework indexer per the standards-layer contract
+//! Project and framework indexer per the standards-layer contract
 //! §"`WorkspaceModel`" and the file scan contract.
 //!
-//! Phase 2 ships the consumer scan: a `.gitignore`-aware file walk,
+//! Phase 2 ships the project scan: a `.gitignore`-aware file walk,
 //! per-file extractors that run in parallel via `rayon`, and a
 //! sequential second pass that records symlinks, discovers codex
 //! rules, and resolves cross-file edges. The framework profile adds
@@ -19,6 +19,7 @@
 //! `Exit::from(&Error)`.
 
 pub mod adapter;
+pub mod adapter_dir;
 pub mod agent_teams;
 pub mod brief;
 pub mod discover;
@@ -30,6 +31,7 @@ pub mod languages;
 pub mod markdown;
 pub mod marketplace;
 pub mod path_util;
+pub mod scenario;
 pub mod skill;
 pub mod symlinks;
 
@@ -54,7 +56,7 @@ use crate::lint::{
 #[non_exhaustive]
 pub enum IndexError {
     /// Reserved for an unsupported profile addition; v1 supports
-    /// `consumer` and `framework`. Carried as part of the public
+    /// `project` and `framework`. Carried as part of the public
     /// wire contract so existing exit-code mappings continue to
     /// compile.
     #[error("unsupported scan profile: {0:?}")]
@@ -76,9 +78,9 @@ pub enum IndexError {
 /// Build the [`WorkspaceModel`] for `project_dir` under the
 /// requested profile.
 ///
-/// Under [`ScanProfile::Consumer`] the walk roots at `project_dir`
+/// Under [`ScanProfile::Project`] the walk roots at `project_dir`
 /// (or each `artifact_paths` root when supplied) and the indexer
-/// runs the consumer-scope extractors. Under [`ScanProfile::Framework`]
+/// runs the project-scope extractors. Under [`ScanProfile::Framework`]
 /// the walk applies the §F1 include set, follows symlinks with
 /// cycle detection, and runs the framework extractors
 /// (`skill`, `adapter`, `marketplace`, `agent_teams`, `brief`) in
@@ -97,12 +99,12 @@ pub fn build(
     project_dir: &Path, scan_profile: ScanProfile, artifact_paths: &[PathBuf], languages: &[String],
 ) -> Result<WorkspaceModel, IndexError> {
     match scan_profile {
-        ScanProfile::Consumer => build_consumer(project_dir, artifact_paths, languages),
+        ScanProfile::Project => build_project(project_dir, artifact_paths, languages),
         ScanProfile::Framework => build_framework(project_dir, artifact_paths, languages),
     }
 }
 
-fn build_consumer(
+fn build_project(
     project_dir: &Path, artifact_paths: &[PathBuf], languages: &[String],
 ) -> Result<WorkspaceModel, IndexError> {
     let discovery = files::discover(project_dir, artifact_paths, languages)?;
@@ -168,7 +170,7 @@ fn build_consumer(
     Ok(WorkspaceModel {
         version: WorkspaceModelVersion,
         project_dir: project_dir.to_string_lossy().into_owned(),
-        scan_profile: ScanProfile::Consumer,
+        scan_profile: ScanProfile::Project,
         artifact_paths: artifact_paths.iter().map(|p| p.to_string_lossy().into_owned()).collect(),
         languages: languages.to_vec(),
         files: files_out,
@@ -185,6 +187,8 @@ fn build_consumer(
         fenced_blocks: fenced_blocks_out,
         briefs: Vec::new(),
         agent_teams: Vec::new(),
+        scenarios: Vec::new(),
+        adapter_dirs: Vec::new(),
     })
 }
 
@@ -315,6 +319,8 @@ fn build_framework(
         fenced_blocks: fenced_blocks_out,
         briefs: briefs_out,
         agent_teams: agent_teams_facts,
+        scenarios: scenario::extract(project_dir),
+        adapter_dirs: adapter_dir::extract(project_dir),
     })
 }
 

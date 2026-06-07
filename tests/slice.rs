@@ -52,3 +52,15 @@ mod validate_catalog;
 
 #[path = "slice/synthesize.rs"]
 mod synthesize;
+
+#[path = "slice/build.rs"]
+mod build;
+
+#[path = "slice/decisions.rs"]
+mod decisions;
+
+#[path = "slice/drift.rs"]
+mod drift;
+
+#[path = "slice/merge.rs"]
+mod merge;

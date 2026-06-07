@@ -208,4 +208,72 @@ mod tests {
         assert!(!yaml.contains("cli-version"), "{yaml}");
         assert!(!yaml.contains("body-sha256"), "{yaml}");
     }
+
+    fn sample_lock() -> ContextLock {
+        ContextLock {
+            version: CURRENT_LOCK_VERSION,
+            fingerprint: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
+            cli_version: "0.2.0".to_string(),
+            inputs: vec![input(
+                ".specify/project.yaml",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            )],
+            fences: Fences {
+                body_sha256:
+                    "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                        .to_string(),
+            },
+        }
+    }
+
+    // A missing lock file is the cold-start path and must read as
+    // `Ok(None)`, not an error.
+    #[test]
+    fn load_missing_is_none() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("context.lock");
+        assert_eq!(load(&path).expect("missing lock is ok"), None);
+    }
+
+    // `save` then `load` must round-trip a lock byte-for-byte through the
+    // YAML codec.
+    #[test]
+    fn save_load_round_trips() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("context.lock");
+        let lock = sample_lock();
+        save(&path, &lock).expect("save lock");
+        assert_eq!(load(&path).expect("load lock"), Some(lock));
+    }
+
+    // The version gate distinguishes three failure shapes: a future
+    // version (forward-incompatible), an unsupported older version, and
+    // syntactically broken YAML. Each maps to its own closed rule id so
+    // the operator gets an actionable message.
+    #[test]
+    fn load_version_gate() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let too_new = dir.path().join("new.lock");
+        fs::write(&too_new, "version: 2\n").expect("write");
+        assert!(
+            matches!(load(&too_new), Err(Error::Validation { code, .. }) if code == "context-lock-version-too-new"),
+            "future version must be rejected with its own code"
+        );
+
+        let zero = dir.path().join("zero.lock");
+        fs::write(&zero, "version: 0\n").expect("write");
+        assert!(
+            matches!(load(&zero), Err(Error::Validation { code, .. }) if code == "context-lock-malformed"),
+            "an unsupported lower version is malformed"
+        );
+
+        let garbage = dir.path().join("garbage.lock");
+        fs::write(&garbage, ": not yaml :\n").expect("write");
+        assert!(
+            matches!(load(&garbage), Err(Error::Validation { code, .. }) if code == "context-lock-malformed"),
+            "unparseable YAML is malformed"
+        );
+    }
 }

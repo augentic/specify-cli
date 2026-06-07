@@ -1,0 +1,32 @@
+[package]
+name = "specify-marketplace"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Framework-authoring validator for the Cursor plugin marketplace manifest — schema shape and plugin-directory drift (CORE-022)"
+readme = "../../README.md"
+categories = ["development-tools", "command-line-utilities"]
+keywords = ["specify", "marketplace", "validate", "lint", "framework"]
+
+# Framework/authoring checker run through `specify lint framework`'s
+# `kind: tool` evaluator. The published surface is the WASI component; this
+# native binary stays available for parity tests and direct local debugging.
+[[bin]]
+name = "specify-marketplace"
+path = "src/main.rs"
+
+[lib]
+name = "specify_marketplace"
+path = "src/lib.rs"
+
+[dependencies]
+jsonschema.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,5 +1,5 @@
 //! `.specify/topology.lock` — the committed projection of each member
-//! project's identity (RFC-36).
+//! project's identity.
 //!
 //! `registry.yaml` carries membership + location only. A project's
 //! authored intent (`adapter`, `description`) lives in its
@@ -29,7 +29,7 @@ use crate::config::ProjectConfig;
 use crate::init::adapter_name_from_value;
 use crate::registry::Registry;
 
-/// Current `topology.lock` schema version (RFC-36 shape).
+/// Current `topology.lock` schema version.
 pub const CURRENT_TOPOLOGY_LOCK_VERSION: u64 = 1;
 
 /// In-memory representation of `.specify/topology.lock`.
@@ -44,7 +44,7 @@ pub struct TopologyLock {
 }
 
 /// One resolved member project — its authored intent plus the
-/// deterministic projection of its baseline (RFC-36).
+/// deterministic projection of its baseline.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TopologyProject {
@@ -67,8 +67,8 @@ pub struct TopologyProject {
     /// slot's journal ledger, in append order. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent: Vec<String>,
-    /// Accepted Decision Records projected from `.specify/decisions/`
-    /// (RFC-36), the most recent `K` in `DEC-NNNN` ascending order.
+    /// Accepted Decision Records projected from `.specify/decisions/`,
+    /// the most recent `K` in `DEC-NNNN` ascending order.
     /// The third routing-identity axis — *why* the project is shaped the
     /// way it is. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -86,9 +86,9 @@ pub struct TopologyProject {
 
 /// One accepted Decision Record projected into routing identity.
 ///
-/// RFC-36 §"Decision Records as an identity source". Title only — no body,
-/// `Context`, or `Consequences` prose is projected. Shared by
-/// [`TopologyProject`] and the reconciliation envelope's `ProjectRef`.
+/// Title only — no body, `Context`, or `Consequences` prose is
+/// projected. Shared by [`TopologyProject`] and the reconciliation
+/// envelope's `ProjectRef`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Decision {
@@ -98,7 +98,7 @@ pub struct Decision {
     pub title: String,
 }
 
-/// One baseline unit's projected surface (RFC-36 §"Projection contract").
+/// One baseline unit's projected surface.
 ///
 /// The unit slug and a bounded sample of its requirement titles. Shared
 /// by [`TopologyProject`] and the reconciliation envelope's `ProjectRef`.
@@ -193,7 +193,7 @@ impl TopologyProject {
     /// Project one materialised slot into a resolved topology entry:
     /// the slot [`ProjectConfig`]'s authored intent (`description`) and
     /// resolved `target`, plus the deterministic baseline projection
-    /// (`surface[]` / `recent[]`) read from `slot_dir` (RFC-36).
+    /// (`surface[]` / `recent[]`) read from `slot_dir`.
     /// `registry_name` is the slot/registry name (the binding key);
     /// `slot_dir` is the slot's project directory, used both to resolve
     /// the adapter to its canonical `name@vN` ref and as the baseline
@@ -302,7 +302,7 @@ fn validate_topology_platforms(
     Ok(())
 }
 
-/// RFC-36: compare the committed `.specify/topology.lock` against each
+/// Compare the committed `.specify/topology.lock` against each
 /// materialised slot's projection, returning staleness diagnostics.
 ///
 /// Compares the lock against each slot's current `project.yaml` *and
@@ -310,14 +310,13 @@ fn validate_topology_platforms(
 /// (`surface[]` from `.specify/specs/`, `recent[]` from the journal
 /// ledger), returning a `topology-cache-stale` suggestion on divergence
 /// (the fix is `specify workspace sync`). Because the projection is
-/// deterministic (D36-6), this is a regenerate-and-compare check:
+/// deterministic, this is a regenerate-and-compare check:
 /// [`TopologyProject::resolve`] re-derives the fresh entry and any drift
 /// in `target` / `description` / `surface` / `recent` trips the warning.
 /// A slot whose topology cannot be re-derived yields a
 /// `workspace-slot-config-unreadable` important finding instead.
-/// Replaces the former registry-authored `adapter-mismatch-workspace`
-/// check — the project's `project.yaml` plus its baseline are now
-/// authoritative and the cache is the derived projection of them.
+/// The project's `project.yaml` plus its baseline are authoritative and
+/// the cache is the derived projection of them.
 ///
 /// `workspace_base` is `.specify/workspace`; `topology_lock_path` is
 /// `.specify/topology.lock`. The binary handler renders the returned

@@ -31,24 +31,28 @@ fn drop_traversed_strips_descendants() {
             to_raw: "../../../docs/x.md".into(),
             line: 1,
             resolves: None,
+            image: false,
         },
         MarkdownLink {
             from_path: "plugins/spec/skills/merge/references".into(),
             to_raw: "ignored".into(),
             line: 1,
             resolves: None,
+            image: false,
         },
         MarkdownLink {
             from_path: "plugins/spec/references/artifact-conventions.md".into(),
             to_raw: "../../../docs/x.md".into(),
             line: 1,
             resolves: None,
+            image: false,
         },
         MarkdownLink {
             from_path: "plugins/spec/skills/merge/references-extra/x.md".into(),
             to_raw: "../sibling.md".into(),
             line: 1,
             resolves: None,
+            image: false,
         },
     ];
     drop_symlink_traversed_links(&mut links, &symlinks);

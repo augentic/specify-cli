@@ -1,0 +1,32 @@
+[package]
+name = "specify-skill-body"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Framework-authoring validator for SKILL.md body discipline — critical-path shape, step-body duplication, and variable coverage checks (CORE-040, 041, 046, 048)"
+readme = "../../README.md"
+categories = ["development-tools", "command-line-utilities"]
+keywords = ["specify", "skill", "validate", "lint", "framework"]
+
+# Framework/authoring checker run through `specify lint framework`'s
+# `kind: tool` evaluator. The published surface is the WASI component; this
+# native binary stays available for parity tests and direct local debugging.
+[[bin]]
+name = "specify-skill-body"
+path = "src/main.rs"
+
+[lib]
+name = "specify_skill_body"
+path = "src/lib.rs"
+
+[dependencies]
+regex = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

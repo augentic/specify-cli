@@ -3,14 +3,15 @@
 //! Asserts that the set of values some candidate file declares
 //! EXACTLY EQUALS a closed expected set — the two-sided tightening of
 //! C12's one-sided [`crate::lint::eval::set_coverage`]. v1 supports
-//! one source discriminator — `adapter-briefs-equal-operations` —
+//! one source discriminator — `adapter-briefs` —
 //! which consumes the [`crate::lint::AdapterManifest`] facts the
 //! framework-profile indexer already produced
 //! (see [`crate::lint::index::adapter::extract`]) and flags each
 //! `adapters/{sources,targets}/<name>/adapter.yaml` whose
-//! `briefs.keys()` set is not exactly the axis-appropriate closed
-//! operation enum (`SourceOperation::{Extract, Survey}` xor
-//! `TargetOperation::{Shape, Build, Merge}`). The interpreter emits
+//! `briefs.keys()` set is not exactly the axis-appropriate operation
+//! set the rule supplies in `config: { expected-operations }` — **policy
+//! supplied by the rule file**, never a `const` in this arm (per the
+//! standards-layer policy-in-`specify` rule). The interpreter emits
 //! one [`specify_diagnostics::Diagnostic`] per `(adapter, divergence)`
 //! pair, where the divergence is either a `missing` operation (in the
 //! expected enum, absent from `briefs.keys()`) or an `unexpected` key
@@ -47,10 +48,10 @@ use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::lint::adapter_briefs::axis_token;
+use crate::lint::adapter_briefs::{ExpectedOperationsConfig, axis_token};
 use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
-const SOURCE_ADAPTER_BRIEFS_EQUAL_OPERATIONS: &str = "adapter-briefs-equal-operations";
+const SOURCE_ADAPTER_BRIEFS: &str = "adapter-briefs";
 
 /// Divergence direction for an operation that breaks set equality.
 const DIVERGENCE_MISSING: &str = "missing";
@@ -61,13 +62,20 @@ pub(crate) fn evaluate(
     next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
     let source = hint.value.trim();
-    if source != SOURCE_ADAPTER_BRIEFS_EQUAL_OPERATIONS {
+    if source != SOURCE_ADAPTER_BRIEFS {
         return Err(HintError::Unsupported {
             rule_id: rule.rule_id.clone(),
             kind: HintKind::SetEq,
-            reason: "only `adapter-briefs-equal-operations` is supported in v1",
+            reason: "only `adapter-briefs` is supported in v1",
         });
     }
+    let cfg = ExpectedOperationsConfig::parse(hint.config.as_ref()).ok_or_else(|| {
+        HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::SetEq,
+            reason: "`adapter-briefs` requires a `config: { expected-operations }`",
+        }
+    })?;
 
     let candidate_set = super::candidate_set(candidates);
 
@@ -76,7 +84,7 @@ pub(crate) fn evaluate(
         if !candidate_set.contains(&manifest.path) {
             continue;
         }
-        let expected = crate::lint::adapter_briefs::expected_operations(manifest.axis);
+        let expected = cfg.expected_for(manifest.axis);
         let actual: BTreeSet<&str> = manifest.brief_keys.iter().map(String::as_str).collect();
 
         // Two-sided diff: expected\actual are `missing`, actual\expected

@@ -10,7 +10,7 @@
 //! forward-slash relative per `WorkspaceModel` stability.
 //!
 //! Include patterns match paths into the candidate set. Exclusion
-//! patterns use a leading `!` on `value` (RFC-31 Phase 2); the
+//! patterns use a leading `!` on `value`; the
 //! the eval umbrella unions includes then subtracts excludes.
 
 use std::path::PathBuf;
@@ -86,6 +86,8 @@ mod unit {
             briefs: vec![],
             agent_teams: vec![],
             fenced_blocks: vec![],
+            scenarios: vec![],
+            adapter_dirs: vec![],
         }
     }
 

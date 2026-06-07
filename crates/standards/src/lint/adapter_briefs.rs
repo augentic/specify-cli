@@ -1,13 +1,13 @@
-//! Shared closed adapter-operation sets for the `set-coverage` and
-//! `set-eq` hint interpreters (REVIEW.md A10).
+//! Shared `set-coverage` / `set-eq` adapter-briefs support.
 //!
 //! Both interpreters check an adapter manifest's `briefs.keys()`
-//! against the operations its axis must declare. The closed operation
-//! sets are held inline here — kept in sync with
-//! `specify_workflow::adapter::{SourceOperation, TargetOperation}`
-//! (kebab-case wire form) — so the standards-layer crate does not take
-//! a workflow-layer dependency, and so the two interpreters share one
-//! definition rather than duplicating it.
+//! against the operations its axis must declare. The expected
+//! operation sets are **policy supplied by the rule's
+//! `config: { expected-operations }`**, keyed by axis — never a `const`
+//! in the engine (per the standards-layer policy-in-`specify` rule).
+//! This module holds the shared config shape so the two interpreters
+//! parse it identically; the only inline knowledge that survives is the
+//! mechanism mapping a closed [`AdapterAxis`] to its kebab-case token.
 //!
 //! Lives one level above `lint/eval/` so the `every_interpreter_maps_to_kind`
 //! parity test (which treats every `lint/eval/<kind>.rs` module as a
@@ -16,21 +16,45 @@
 
 use std::collections::BTreeSet;
 
+use serde::Deserialize;
+use serde_json::Value as JsonValue;
+
 use crate::lint::AdapterAxis;
 
-/// Closed source-adapter operation set (kebab-case), mirroring
-/// `specify_workflow::adapter::SourceOperation`.
-pub(crate) const SOURCE_OPERATIONS: &[&str] = &["extract", "survey"];
+/// Parsed `expected-operations` hint configuration shared by
+/// `set-coverage` (`adapter-briefs`) and `set-eq` (`adapter-briefs`).
+/// The per-axis operation lists are policy supplied by the rule.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) struct ExpectedOperationsConfig {
+    expected_operations: AxisOperations,
+}
 
-/// Closed target-adapter operation set (kebab-case), mirroring
-/// `specify_workflow::adapter::TargetOperation`.
-pub(crate) const TARGET_OPERATIONS: &[&str] = &["build", "merge", "shape"];
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+struct AxisOperations {
+    #[serde(default)]
+    sources: Vec<String>,
+    #[serde(default)]
+    targets: Vec<String>,
+}
 
-/// The operation set a manifest on `axis` must declare in `briefs`.
-pub(crate) fn expected_operations(axis: AdapterAxis) -> BTreeSet<&'static str> {
-    match axis {
-        AdapterAxis::Sources => SOURCE_OPERATIONS.iter().copied().collect(),
-        AdapterAxis::Targets => TARGET_OPERATIONS.iter().copied().collect(),
+impl ExpectedOperationsConfig {
+    /// Parse the rule's `config: { expected-operations }`. `None` signals
+    /// a missing or malformed config so the caller can raise an
+    /// `Unsupported` hint error against its own kind.
+    pub(crate) fn parse(config: Option<&JsonValue>) -> Option<Self> {
+        serde_json::from_value(config?.clone()).ok()
+    }
+
+    /// The operation set a manifest on `axis` must declare in `briefs`,
+    /// taken from the rule-supplied config.
+    pub(crate) fn expected_for(&self, axis: AdapterAxis) -> BTreeSet<&str> {
+        let ops = match axis {
+            AdapterAxis::Sources => &self.expected_operations.sources,
+            AdapterAxis::Targets => &self.expected_operations.targets,
+        };
+        ops.iter().map(String::as_str).collect()
     }
 }
 

@@ -105,7 +105,7 @@ impl<'a> Parser<'a> {
                     }
                     "aliases" => {
                         return Err(parse_err(format!(
-                            "lead `{heading_label}`: `aliases:` was retired; remove the bullet \
+                            "lead `{heading_label}`: `aliases:` is not supported; remove the bullet \
                              and use the canonical `lead` id in plan bindings"
                         )));
                     }

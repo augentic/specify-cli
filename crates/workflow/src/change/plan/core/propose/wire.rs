@@ -1,4 +1,4 @@
-//! Lead-reconciliation envelope DTOs (RFC-29 D2).
+//! Lead-reconciliation envelope DTOs.
 //!
 //! The wire contract is a single envelope discriminated by a closed
 //! `kind: request | response`, validated against
@@ -50,7 +50,7 @@ pub struct ProposalRequest {
 /// One project the agent may bind a response slice to.
 ///
 /// For a workspace this is projected from the committed
-/// `.specify/topology.lock` (RFC-36); for a single regular project the
+/// `.specify/topology.lock`; for a single regular project the
 /// CLI synthesises one entry from `project.yaml` (name + resolved
 /// target adapter + description) plus the project's own baseline
 /// projection.
@@ -62,14 +62,14 @@ pub struct ProjectRef {
     pub name: String,
     /// The project's target adapter in `name@vN` form (e.g.
     /// `omnia@v1`). Resolved on demand by [`super::resolve_target`] for a
-    /// slice bound to this project; it is no longer written to
+    /// slice bound to this project; it is not written to
     /// `plan.yaml` (a slice stores only its `project`).
     pub target: String,
     /// Single-sentence domain characterisation used by the agent when
     /// more than one project shares a target. Absent stays off the wire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Deterministic baseline surface (RFC-36): the units this project
+    /// Deterministic baseline surface: the units this project
     /// owns and a sample of each unit's requirement titles, projected
     /// from `.specify/specs/` through `.specify/topology.lock`. The
     /// agent binds a slice on actual owned behaviour. Empty stays off
@@ -77,11 +77,11 @@ pub struct ProjectRef {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub surface: Vec<Surface>,
     /// Recent per-merge outcome summaries from the project's journal
-    /// ledger (RFC-36), newest activity last. Empty stays off the wire.
+    /// ledger, newest activity last. Empty stays off the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub recent: Vec<String>,
-    /// Accepted Decision Records projected from `.specify/decisions/`
-    /// (RFC-36): the third routing-identity axis — *why* the project is
+    /// Accepted Decision Records projected from `.specify/decisions/`:
+    /// the third routing-identity axis — *why* the project is
     /// shaped the way it is, surfaced so the agent can route a slice on
     /// architectural commitment and flag a lead that contradicts an
     /// accepted decision before Gate 1. Empty stays off the wire.
@@ -102,7 +102,7 @@ pub struct ProjectRef {
 /// Identity is the `(source, lead)` pair; `lead` repeats
 /// across rows when multiple sources surface the same slug. Mirrors a
 /// single `discovery.md` [`specify_model::discovery::Lead`]
-/// (RFC-29 D2; DECISIONS.md §"Lead reconciliation (D2)").
+/// (DECISIONS.md §"Lead reconciliation (D2)").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LeadCatalogEntry {
@@ -138,8 +138,8 @@ pub struct ProposalResponse {
 /// One `slices[]` row in a [`ProposalResponse`]: one slice of work
 /// carrying its matched `sources[]` inline and its explicit `name`.
 ///
-/// The `scope` noun was removed (RFC-29 review F3): there is no kernel
-/// fan-out grouping. A body of work that targets more than one project
+/// There is no `scope` noun and no kernel fan-out grouping. A body of
+/// work that targets more than one project
 /// is expressed as multiple ordinary slices (which may legally reference
 /// the same lead) joined by `depends-on`; the agent's explicit `name`
 /// disambiguates cross-source matches that carry differing slugs.

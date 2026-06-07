@@ -1,0 +1,133 @@
+//! Integration tests for the `kind: tool` evaluator contract `tool` evaluator and the
+//! §"Acceptance" evidence cap.
+//!
+//! The `kind: tool` evaluator contract `tool` evaluator is exercised through a fake
+//! [`specify_standards::lint::eval::ToolRunner`] that simulates the
+//! contract WASI tool's stdout. The standards crate does not depend on
+//! `specify-tool` (Wasmtime stays at the `specify lint` CLI boundary);
+//! the CLI integration is S9's responsibility.
+
+use std::fs;
+
+use specify_diagnostics::{FindingEvidence, Severity, validate_evidence_size};
+use specify_standards::lint::ScanProfile;
+use specify_standards::lint::eval::{ToolRunner, evaluate};
+use specify_standards::lint::index::build;
+use specify_standards::rules::HintKind;
+
+use crate::eval_support::{FakeToolRunner, NoToolRunner, hint, make_rule};
+
+fn synthetic_envelope_stdout() -> Vec<u8> {
+    let body = serde_json::json!({
+        "version": 1,
+        "summary": { "critical": 0, "important": 1, "suggestion": 0, "optional": 0 },
+        "findings": [{
+            "id": "FIND-0042",
+            "rule-id": "CONTRACT-001",
+            "title": "Contract drift detected",
+            "severity": "important",
+            "source": "deterministic",
+            "artifact": "code",
+            "evidence": {
+                "kind": "snippet",
+                "value": "GET /v1/foo removed without deprecation"
+            },
+            "impact": "downstream consumers break",
+            "remediation": "Restore the endpoint or bump major.",
+            "fingerprint": format!("sha256:{}", "ab".repeat(32))
+        }]
+    });
+    serde_json::to_vec(&body).expect("serialise envelope")
+}
+
+#[test]
+fn tool_findings_thread_through() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    fs::write(tmp.path().join("openapi.json"), "{}").expect("write openapi");
+    let model = build(tmp.path(), ScanProfile::Project, &[], &[]).expect("build");
+    let rule = make_rule("CONTRACT-001", vec![hint(HintKind::Tool, "contract")]);
+    let runner: &dyn ToolRunner = &FakeToolRunner {
+        declared: true,
+        stdout: synthetic_envelope_stdout(),
+        stderr: Vec::new(),
+        exit_code: 0,
+    };
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert_eq!(outcome.findings.len(), 1, "exactly one finding from the synthetic envelope");
+    let finding = &outcome.findings[0];
+    assert_eq!(finding.rule_id.as_deref(), Some("CONTRACT-001"));
+    assert_eq!(finding.title, "Contract drift detected");
+    assert_eq!(finding.id, "FIND-0001", "umbrella restamps the id");
+    assert!(finding.fingerprint.starts_with("sha256:"));
+    assert!(matches!(finding.evidence, FindingEvidence::Snippet { .. }));
+}
+
+#[test]
+fn tool_undeclared_emits_synthetic_finding() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    fs::write(tmp.path().join("openapi.json"), "{}").expect("write openapi");
+    let model = build(tmp.path(), ScanProfile::Project, &[], &[]).expect("build");
+    let rule = make_rule("CONTRACT-002", vec![hint(HintKind::Tool, "contract")]);
+    let runner: &dyn ToolRunner = &NoToolRunner;
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert_eq!(outcome.findings.len(), 1);
+    let finding = &outcome.findings[0];
+    assert_eq!(finding.rule_id.as_deref(), Some("tool.undeclared"));
+    assert_eq!(finding.severity, Severity::Important);
+}
+
+#[test]
+fn tool_failure_truncates_stderr() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    fs::write(tmp.path().join("openapi.json"), "{}").expect("write openapi");
+    let model = build(tmp.path(), ScanProfile::Project, &[], &[]).expect("build");
+    let rule = make_rule("CONTRACT-003", vec![hint(HintKind::Tool, "contract")]);
+    let huge_stderr = vec![b'x'; 4 * 1024 * 1024];
+    let runner: &dyn ToolRunner = &FakeToolRunner {
+        declared: true,
+        stdout: Vec::new(),
+        stderr: huge_stderr,
+        exit_code: 7,
+    };
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert_eq!(outcome.findings.len(), 1);
+    let finding = &outcome.findings[0];
+    assert_eq!(finding.rule_id.as_deref(), Some("tool.invocation-failed"));
+    validate_evidence_size(finding).expect("evidence cap honoured after truncation");
+    if let FindingEvidence::Snippet { value } = &finding.evidence {
+        assert!(value.ends_with("…[truncated]"), "snippet must carry the truncation marker");
+    } else {
+        panic!("expected snippet evidence on tool.invocation-failed");
+    }
+    assert!(finding.fingerprint.starts_with("sha256:"));
+}

@@ -1,52 +1,103 @@
 //! `kind: unique` evaluator.
 //!
-//! Asserts that some field across a set of candidate files is unique.
-//! v1 supports one source discriminator — `skill-name` — which
-//! consumes the [`crate::lint::Skill`] facts the framework-profile
-//! indexer already produced (see [`crate::lint::index::skill`]) and
-//! flags each `name:` frontmatter value that appears on two or more
-//! `plugins/**/SKILL.md` files. The interpreter emits one
-//! [`specify_diagnostics::Diagnostic`] per duplicated name, with the lowest
+//! Asserts that some fact field is unique across a fact family. v1
+//! supports two fact-family selectors:
+//!
+//! - `skill` — over the [`crate::lint::Skill`] facts the
+//!   framework-profile indexer produced (see
+//!   [`crate::lint::index::skill`]); the only supported field is
+//!   `skill-name`, narrowed by the `path-pattern` candidate set.
+//! - `scenario` — over the [`crate::lint::Scenario`] facts the
+//!   scenario pass produced (see [`crate::lint::index::scenario`]); the
+//!   only supported field is `id`, evaluated whole-tree (scenario files
+//!   are kept out of `model.files`, so the candidate set can never
+//!   select them — like `content-digest-eq`).
+//!
+//! The field to enforce uniqueness on is **the field selector the rule
+//! supplies in `config: { field }`**, not a `const` discriminator in
+//! this arm. The interpreter emits one
+//! [`specify_diagnostics::Diagnostic`] per duplicated value, with the lowest
 //! offending path used as the finding's location and the full sorted
 //! path list surfaced via [`specify_diagnostics::FindingEvidence::Structured`].
 //!
-//! Skills whose `path` is not in the caller-supplied candidate set
-//! are ignored, so the closed `path-pattern` filter the umbrella
-//! evaluator builds still drives candidate selection. Skills missing
-//! a frontmatter `name:` value are dropped upstream by
-//! [`crate::lint::index::skill::extract`] and never reach this layer.
+//! Facts missing the selected field are dropped upstream and never
+//! reach this layer.
 //!
-//! Future hint values may extend the closed source set (e.g.
-//! `adapter-name`, `rule-id`); unknown discriminators are rejected as
+//! Future hint values may extend the closed selector / field sets;
+//! unknown selectors and fields are rejected as
 //! [`super::HintError::Unsupported`] so authoring drift surfaces at
 //! hint-evaluation time rather than silently passing.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
+use serde::Deserialize;
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
 use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
-const SOURCE_SKILL_NAME: &str = "skill-name";
+const SOURCE_SKILL: &str = "skill";
+const SOURCE_SCENARIO: &str = "scenario";
+/// The fields each fact family can enforce uniqueness on today; naming
+/// a fact field is mechanism.
+const FIELD_SKILL_NAME: &str = "skill-name";
+const FIELD_SCENARIO_ID: &str = "id";
+
+/// Parsed `unique` hint configuration. The field selector is supplied
+/// by the rule.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+struct UniqueConfig {
+    field: String,
+}
+
+impl UniqueConfig {
+    fn parse(rule: &ResolvedRule, hint: &RuleHint) -> Result<Self, HintError> {
+        let raw = hint.config.as_ref().ok_or_else(|| HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::Unique,
+            reason: "`unique` requires a `config: { field }`",
+        })?;
+        serde_json::from_value(raw.clone()).map_err(|_ignored| HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::Unique,
+            reason: "invalid unique hint config JSON",
+        })
+    }
+}
 
 pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], model: &WorkspaceModel,
     next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
-    let source = hint.value.trim();
-    if source != SOURCE_SKILL_NAME {
+    let cfg = UniqueConfig::parse(rule, hint)?;
+    match hint.value.trim() {
+        SOURCE_SKILL => evaluate_skill(rule, &cfg, candidates, model, next_id),
+        SOURCE_SCENARIO => evaluate_scenario(rule, &cfg, model, next_id),
+        _ => Err(HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::Unique,
+            reason: "only `skill` or `scenario` is supported in v1",
+        }),
+    }
+}
+
+/// `skill` selector: each `name:` value across the candidate-narrowed
+/// `plugins/**/SKILL.md` set must be unique.
+fn evaluate_skill(
+    rule: &ResolvedRule, cfg: &UniqueConfig, candidates: &[PathBuf], model: &WorkspaceModel,
+    next_id: &mut u64,
+) -> Result<Vec<Diagnostic>, HintError> {
+    if cfg.field != FIELD_SKILL_NAME {
         return Err(HintError::Unsupported {
             rule_id: rule.rule_id.clone(),
             kind: HintKind::Unique,
-            reason: "only `skill-name` is supported in v1",
+            reason: "only the `skill-name` field is supported for `skill` in v1",
         });
     }
-
     let candidate_set = super::candidate_set(candidates);
-
     let mut groups: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for skill in &model.skills {
         if !candidate_set.contains(&skill.path) {
@@ -54,14 +105,44 @@ pub(crate) fn evaluate(
         }
         groups.entry(skill.name.clone()).or_default().insert(skill.path.clone());
     }
+    Ok(emit_duplicates(rule, &groups, "name", "skill name", next_id))
+}
 
+/// `scenario` selector: each frontmatter `id` across the whole scenario
+/// fact family must be unique. Whole-tree (no candidate narrowing).
+fn evaluate_scenario(
+    rule: &ResolvedRule, cfg: &UniqueConfig, model: &WorkspaceModel, next_id: &mut u64,
+) -> Result<Vec<Diagnostic>, HintError> {
+    if cfg.field != FIELD_SCENARIO_ID {
+        return Err(HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::Unique,
+            reason: "only the `id` field is supported for `scenario` in v1",
+        });
+    }
+    let mut groups: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for scenario in &model.scenarios {
+        let Some(id) = scenario.id.as_ref() else {
+            continue;
+        };
+        groups.entry(id.clone()).or_default().insert(scenario.path.clone());
+    }
+    Ok(emit_duplicates(rule, &groups, "id", "scenario id", next_id))
+}
+
+/// Emit one finding per duplicated value (group of two or more paths),
+/// keyed under `value_key` in the structured evidence with `noun` in
+/// the prose. The lowest offending path is the finding location.
+fn emit_duplicates(
+    rule: &ResolvedRule, groups: &BTreeMap<String, BTreeSet<String>>, value_key: &str, noun: &str,
+    next_id: &mut u64,
+) -> Vec<Diagnostic> {
     let mut out: Vec<Diagnostic> = Vec::new();
-    for (name, paths) in groups {
+    for (value, paths) in groups {
         if paths.len() < 2 {
             continue;
         }
-        let sorted: Vec<String> = paths.into_iter().collect();
-        debug_assert!(sorted.len() >= 2, "duplicate group filtered to < 2 paths");
+        let sorted: Vec<String> = paths.iter().cloned().collect();
         let Some(first) = sorted.first().cloned() else {
             continue;
         };
@@ -82,15 +163,18 @@ pub(crate) fn evaluate(
                 end_column: None,
             })
             .collect();
+        let mut data = serde_json::Map::new();
+        data.insert(value_key.to_owned(), serde_json::Value::String(value.clone()));
+        data.insert("paths".to_owned(), serde_json::json!(sorted));
         let evidence = FindingEvidence::Structured {
-            summary: format!("duplicate skill name '{name}'"),
-            data: serde_json::json!({ "name": name, "paths": sorted }),
+            summary: format!("duplicate {noun} '{value}'"),
+            data: serde_json::Value::Object(data),
             locations: Some(locations),
         };
-        let title = format!("{}: duplicate skill name '{}'", rule.title, name);
+        let title = format!("{}: duplicate {noun} '{value}'", rule.title);
         let finding = make_finding(rule, *next_id, title, Some(location), evidence);
         *next_id += 1;
         out.push(finding);
     }
-    Ok(out)
+    out
 }

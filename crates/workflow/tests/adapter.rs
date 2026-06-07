@@ -322,7 +322,7 @@ description: >-
 
 #[test]
 fn resolves_target_adapter_with_inputs() {
-    // RFC-29d C2: a target manifest declares the extra `build` inputs
+    // A target manifest declares the extra `build` inputs
     // its operation consumes (paths relative to `inputs.root`, each
     // flagged `required`). The flat list must round-trip through
     // `TargetAdapter::resolve` with fields populated.

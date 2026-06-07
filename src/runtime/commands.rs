@@ -77,12 +77,7 @@ pub fn run(cli: Cli) -> Exit {
                 run_tool_with(format, &name, vec!["schema".to_string(), schema])
             }
         },
-        Commands::Lint { action } => match action {
-            LintAction::Run(args) => {
-                scoped_at(format, &args.project_dir, |ctx| lint::run::run(ctx, &args))
-            }
-            LintAction::Framework(args) => dispatch(format, || lint::framework::run(format, &args)),
-        },
+        Commands::Lint { action } => dispatch_lint(format, action),
         Commands::Journal { action } => match action {
             JournalAction::Emit { event, payload } => {
                 scoped(format, |ctx| journal::emit::emit(ctx, &event, payload.as_deref()))
@@ -167,6 +162,16 @@ fn dispatch_source(format: Format, action: SourceAction) -> Exit {
             slice,
             phase,
         } => scoped(format, |ctx| source::extract::run(ctx, &source, &lead, &slice, phase)),
+    }
+}
+
+/// Dispatch the `specify lint {project, framework}` family.
+fn dispatch_lint(format: Format, action: LintAction) -> Exit {
+    match action {
+        LintAction::Project(args) => {
+            scoped_at(format, &args.project_dir, |ctx| lint::project::run(ctx, &args))
+        }
+        LintAction::Framework(args) => dispatch(format, || lint::framework::run(format, &args)),
     }
 }
 

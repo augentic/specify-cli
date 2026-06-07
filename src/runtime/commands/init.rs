@@ -284,7 +284,7 @@ struct ProbeBody {
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ProbeKind {
-    /// Stable migrator id (e.g. `v1-to-v2`).
+    /// Stable migrator id (e.g. `v2-to-v3`).
     kind: String,
     /// Planned actions; empty when the project is already at target.
     actions: Vec<MigrationAction>,

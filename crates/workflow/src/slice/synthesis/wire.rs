@@ -1,8 +1,8 @@
-//! Synthesis response wire DTO + input-envelope assembly (RFC-29c M2b).
+//! Synthesis response wire DTO + input-envelope assembly.
 //!
-//! Synthesis is always agent-dispatched (RFC-29c §"Synthesis dispatch
-//! (D10)"): there is no tool consumer, so there is no closed *request*
-//! wire shape. The single schema-validated wire is the **response**
+//! Synthesis is always agent-dispatched: there is no tool consumer, so
+//! there is no closed *request* wire shape. The single schema-validated
+//! wire is the **response**
 //! ([`SynthesisResponse`], `kind: response`), validated against
 //! `schemas/slice/synthesis.schema.json` by
 //! [`crate::schema::validate_synthesis_json`] before C8 deserialises it
@@ -11,13 +11,13 @@
 //! [`SynthesisArtifacts`].
 //!
 //! The synthesis **inputs** the CLI hands the agent step are not
-//! schema-validated (RFC-29c §"Synthesis response": no closed request
-//! shape). [`build_synthesis_inputs`] assembles them — each bound
+//! schema-validated (no closed request shape).
+//! [`build_synthesis_inputs`] assembles them — each bound
 //! source's inline `lead` and `claims` plus the resolved target shape
 //! brief body — into the plain serialisable [`SynthesisInputs`] that
 //! `specify slice synthesize --dry-run --format json` prints. Authority
 //! is **not** included: the kernel resolves it from the on-disk Evidence
-//! after the response returns (RFC-29c §"Authority resolution").
+//! after the response returns.
 //!
 //! The assembly is pure over already-read inputs so it unit-tests
 //! without a temp project; [`SynthesisSourceInput::from_evidence_file`]
@@ -42,7 +42,7 @@ const SYNTHESIS_VERSION: u32 = 1;
 /// Serialises to the literal `"response"` the schema's `const`
 /// constraint requires. Mirrors `change::plan::core::propose`'s
 /// `ProposalKind`, but synthesis has only the response kind — there is
-/// no request wire (RFC-29c §"Synthesis dispatch (D10)").
+/// no request wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SynthesisKind {
@@ -56,8 +56,7 @@ pub enum SynthesisKind {
 /// Round-trips `schemas/slice/synthesis.schema.json`. The DTO is
 /// shape-only; C8 schema-gates the raw bytes via
 /// [`crate::schema::validate_synthesis_json`] before deserialising here,
-/// and the projection kernel re-derives every kernel-owned field
-/// (RFC-29c §"Synthesis response").
+/// and the projection kernel re-derives every kernel-owned field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SynthesisResponse {
@@ -79,7 +78,7 @@ pub struct SynthesisResponse {
 /// The prose-only Markdown artifacts under a [`SynthesisResponse`].
 ///
 /// Each is authored by the agent; the render step later injects
-/// provenance lines into the spec bodies (RFC-29c §"Rendering").
+/// provenance lines into the spec bodies.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SynthesisArtifacts {
@@ -105,8 +104,8 @@ pub struct SynthesisSpec {
 
 /// Closed `kind` discriminator for the synthesis input envelope.
 ///
-/// The inputs are not schema-validated (RFC-29c §"Synthesis response":
-/// there is no closed request shape), but the envelope still carries a
+/// The inputs are not schema-validated (there is no closed request
+/// shape), but the envelope still carries a
 /// closed discriminator for symmetry with the response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -115,15 +114,13 @@ pub enum SynthesisInputsKind {
     Inputs,
 }
 
-/// The agent synthesis step's input envelope (RFC-29c §"Synthesis
-/// response", §"Evidence input").
+/// The agent synthesis step's input envelope.
 ///
 /// Assembled by [`build_synthesis_inputs`] and printed by `specify
 /// slice synthesize --dry-run --format json`. Not schema-validated —
 /// synthesis is always agent-dispatched, so there is no tool consumer
 /// and no closed request schema. Authority is deliberately absent: the
-/// kernel resolves it post-response from on-disk Evidence (RFC-29c
-/// §"Authority resolution").
+/// kernel resolves it post-response from on-disk Evidence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct SynthesisInputs {
@@ -136,8 +133,8 @@ pub struct SynthesisInputs {
     /// One entry per bound source, carrying its inline `lead` and
     /// `claims`.
     pub sources: Vec<SynthesisSourceInput>,
-    /// The resolved target `shape` brief body (RFC-29c §"Shape-brief
-    /// scope (D8)"). Resolved and read by C8 — never by this module.
+    /// The resolved target `shape` brief body. Resolved and read by C8 —
+    /// never by this module.
     pub shape_brief: String,
 }
 
@@ -146,8 +143,7 @@ pub struct SynthesisInputs {
 /// Carries the source's inline `lead` and its `claims` passed through
 /// verbatim from the parsed `evidence/<source>.yaml` so no body field
 /// is lost — the agent reconciles over the full claim bodies. The
-/// document-level `authority` is intentionally not carried (RFC-29c
-/// §"Synthesis response").
+/// document-level `authority` is intentionally not carried.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct SynthesisSourceInput {
@@ -198,7 +194,7 @@ impl SynthesisSourceInput {
 }
 
 /// Assemble the agent synthesis step's input envelope from
-/// already-read inputs (RFC-29c §"Synthesis response").
+/// already-read inputs.
 ///
 /// `sources` is one [`SynthesisSourceInput`] per bound source — the
 /// caller builds the vec by reading each `evidence/<source>.yaml`

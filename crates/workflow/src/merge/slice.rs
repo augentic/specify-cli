@@ -62,7 +62,7 @@ fn ser_baseline_path<S: serde::Serializer>(v: &PathBuf, s: S) -> Result<S::Ok, S
 /// Outcome of a [`commit`].
 ///
 /// Carries the merged spec entries plus the `DEC-NNNN` ids promoted into
-/// the Decision Record catalogue (RFC-36, empty when the slice authored
+/// the Decision Record catalogue (empty when the slice authored
 /// none). Derefs to the spec slice so the common `merged.iter()` /
 /// `merged.len()` / `merged[i]` callers keep working unchanged.
 #[derive(Debug, Clone)]
@@ -213,7 +213,7 @@ pub fn commit(
 
     let merged = plan_three_way(slice_dir, classes)?;
 
-    // RFC-36 decisions pass — core (runs for every target), part of the
+    // Decisions pass — core (runs for every target), part of the
     // same merge. Promotion is keyed on the slice name and writes into
     // `.specify/decisions/`, derived from `archive_dir` (a sibling under
     // `.specify/`). The supersede-orphan re-check aborts here before any

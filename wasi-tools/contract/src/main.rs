@@ -167,9 +167,7 @@ fn run(baseline_dir: &std::path::Path, format: OutputFormat) -> ExitCode {
 /// deterministic. Findings paths are emitted relative to
 /// `baseline_dir.parent()` when that prefix matches; otherwise the raw
 /// path is rendered.
-fn serialize_findings(
-    baseline_dir: &Path, findings: &[ContractFinding], exit_code: u8,
-) -> String {
+fn serialize_findings(baseline_dir: &Path, findings: &[ContractFinding], exit_code: u8) -> String {
     let strip_root = baseline_dir.parent();
     let payload: Vec<FindingPayload> = findings
         .iter()

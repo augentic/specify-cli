@@ -71,13 +71,11 @@ impl Registry {
             validate_project_contracts(project, &mut producers)?;
         }
 
-        // RFC-36: the registry no longer authors a project's adapter or
-        // description for plan-time topology. The former
-        // `registry-project-adapter-empty` and
-        // `registry-description-missing-multi-repo` invariants are
-        // retired — those facets live in each project's `project.yaml`
-        // and are checked against `.specify/topology.lock` by
-        // `specify plan validate` (`topology-cache-stale`).
+        // The registry does not author a project's adapter or
+        // description for plan-time topology. Those facets live in each
+        // project's `project.yaml` and are checked against
+        // `.specify/topology.lock` by `specify plan validate`
+        // (`topology-cache-stale`).
 
         Ok(())
     }

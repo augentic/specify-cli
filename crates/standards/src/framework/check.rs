@@ -1,61 +1,20 @@
-//! Framework authoring predicates. RFC-31 Phase 4: only [`RulesCheck`] is
-//! wired through [`run`]; sibling modules are library predicates invoked
-//! via [`crate::lint::eval::authoring_predicate`] (and direct unit tests).
+//! Framework authoring predicates.
+//! No imperative `Check` predicate runs as a `specify lint framework`
+//! producer — every framework rule resolves through declarative hints
+//! or referenced WASI tools. The Rust-quality predicates
+//! ([`RustTestNaming`], [`RustSourceQuality`]) run through
+//! [`run_rust_quality`] for this repo's own `cargo test --test
+//! rust_quality` gate.
 
-pub mod adapter;
-pub mod agent_teams;
 pub mod brief;
-mod deployable_links;
-mod docs_quality;
-pub mod links;
-mod plugins;
-mod prose;
-pub mod rules;
 pub mod rust_source;
 pub mod rust_test_naming;
-pub mod scenarios;
-pub mod schema_links;
-pub mod skill_body;
-pub mod skill_frontmatter;
-pub mod tools;
 
 use std::path::Path;
 
-pub use adapter::{AdapterCheck, RULE_MISSING_MANIFEST, run_adapter_check};
-pub use agent_teams::AgentTeamsCheck;
-pub use brief::BriefCheck;
-pub use deployable_links::DeployableLinksCheck;
-pub use docs_quality::{MissingDiagramAsset, TextPipelineDiagram};
-pub use links::LinksCheck;
-pub use plugins::{BrokenSymlinkCheck, MarketplaceDriftCheck};
-pub use prose::NumericCaps;
-pub use rules::{
-    RULE_DUPLICATE_RULE_ID, RULE_NAMESPACE_OWNERSHIP_VIOLATION, RulesCheck, run_rules_check,
-    run_rules_namespace_check, run_rules_schema_check,
-};
 pub use rust_source::RustSourceQuality;
 pub use rust_test_naming::RustTestNaming;
-pub use scenarios::{
-    RULE_ARTIFACT_PATH_UNSAFE as SCENARIO_RULE_ARTIFACT_PATH_UNSAFE,
-    RULE_BODY_ID_MISMATCH as SCENARIO_RULE_BODY_ID_MISMATCH,
-    RULE_DUPLICATE_ID as SCENARIO_RULE_DUPLICATE_ID, RULE_RECORDED_TRACE_VIOLATION,
-    RULE_SCHEMA_VIOLATION as SCENARIO_RULE_SCHEMA_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS,
-    RULE_STALE_RECORDED_TRACE, ScenariosCheck, check_recorded_trace_freshness,
-    validate_scenario_frontmatter,
-};
-pub use schema_links::SchemaLinksCheck;
-pub use skill_body::{
-    InlineJsonTooLong, InvalidCriticalPath, MissingCriticalPath, SectionLineCount,
-    StepBodyDuplicatesCriticalPath, VariableCoverage,
-};
-pub use skill_frontmatter::{
-    ArgumentHintGrammar, DescriptionGrammar, FrontmatterSchema, NameDirMismatch,
-    RULE_ARGUMENT_HINT_GRAMMAR, RULE_DESCRIPTION_GRAMMAR, RULE_MISSING_FRONTMATTER,
-    RULE_NAME_DIRECTORY_MISMATCH, RULE_SCHEMA_VIOLATION as SKILL_RULE_SCHEMA_VIOLATION,
-    RULE_UNKNOWN_TOOL, UnknownTool,
-};
 use specify_diagnostics::{Diagnostic, fingerprint};
-pub use tools::FirstPartyTools;
 
 use crate::framework::context::Context;
 
@@ -68,7 +27,7 @@ use crate::framework::context::Context;
 pub trait Check {
     /// Scan `ctx` and return this predicate's findings. Locations are
     /// absolute (anchored at the canonicalised framework root) and
-    /// `id` / `fingerprint` are left unset for [`run`] to finalise.
+    /// `id` / `fingerprint` are left unset for the `finalize` pass.
     fn run(&self, ctx: &Context) -> Vec<Diagnostic>;
 }
 
@@ -80,16 +39,6 @@ pub fn run_rust_quality(ctx: &Context) -> Vec<Diagnostic> {
     for check in checks {
         findings.extend(check.run(ctx));
     }
-    finalize(&mut findings, ctx.framework_root());
-    findings
-}
-
-/// Run the CORE-009 namespace-ownership imperative bridge, then finalise.
-///
-/// Every other migratable predicate is invoked via declarative
-/// `kind: authoring-predicate` hints on `CORE-*` rule files.
-pub fn run(ctx: &Context) -> Vec<Diagnostic> {
-    let mut findings = RulesCheck.run(ctx);
     finalize(&mut findings, ctx.framework_root());
     findings
 }

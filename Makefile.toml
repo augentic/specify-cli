@@ -116,7 +116,7 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 # -------------------------------------
 
 # Build the first-party `contract` WASI tool into the sibling
-# workspace's target dir. `tests/contract_tool.rs` reads the
+# workspace's target dir. `tests/tool/contract.rs` reads the
 # artifact directly from `wasi-tools/target/wasm32-wasip2/release/`,
 # so this task is a precondition for that integration test.
 [tasks.contract-wasm]
@@ -124,6 +124,26 @@ script = '''
 set -euo pipefail
 cd wasi-tools
 cargo build -p specify-contract --target wasm32-wasip2 --release
+'''
+
+# Build the first-party framework-authoring WASI tools and refresh the
+# checked-in prebuilt components embedded by
+# `src/runtime/commands/lint/framework_tools.rs` (and read directly by
+# the Road B parity tests). With no argument, rebuilds all seven; pass one
+# or more tool names to rebuild a subset, e.g. `cargo make framework-wasm
+# prose`. Rerun after editing a `wasi-tools/<tool>/` crate so the embedded
+# artifact (and its sha256 sidecar) reflects the new checks. Mirrors the
+# `contract-wasm` pattern; the target is `wasm32-wasip2`.
+[tasks.framework-wasm]
+script = '''
+set -euo pipefail
+cd wasi-tools
+for tool in ${@:-scenarios skill-body agent-teams links-registry marketplace prose rules}; do
+  cargo build -p "specify-${tool}" --target wasm32-wasip2 --release
+  cp "target/wasm32-wasip2/release/specify-${tool}.wasm" "${tool}/dist/${tool}-0.1.0.wasm"
+  ( cd "${tool}/dist" && shasum -a 256 "${tool}-0.1.0.wasm" > "${tool}-0.1.0.wasm.sha256" )
+  echo "${tool} WASI component written to wasi-tools/${tool}/dist/${tool}-0.1.0.wasm"
+done
 '''
 
 # Build the `vectis` WASI tool locally with sha256 sidecars for

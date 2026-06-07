@@ -1,11 +1,8 @@
 //! Unified terminal-error type shared by every `vectis` subcommand.
 //!
-//! `validate` and `scaffold` previously carried two near-identical
-//! enums (`VectisError` and `ScaffoldError`) that differed only in
-//! whether they reported a separate `Io` variant and in the integer
-//! exit code they returned. The wire payload — `{"error": "...",
-//! "message": "..."}` plus an injected `"exit-code"` — was already
-//! byte-identical, so the two types are collapsed here.
+//! Every subcommand reports failures through this one type. The wire
+//! payload is `{"error": "...", "message": "..."}` plus an injected
+//! `"exit-code"`.
 
 use std::io;
 
@@ -16,9 +13,9 @@ use thiserror::Error;
 ///
 /// `vectis` standardises on the host CLI's typed-error slot: `0` for
 /// clean success, `1` for a successful run that surfaced findings, and
-/// `2` for invocation / I/O / runtime failures. Scaffolding previously
-/// returned `1` for failures; collapsing both subcommands onto `2`
-/// matches the host contract and the `validate` exit shape.
+/// `2` for invocation / I/O / runtime failures. Every subcommand
+/// reports failures with `2`, matching the host contract and the
+/// `validate` exit shape.
 pub const EXIT_FAILURE: u8 = 2;
 
 /// Terminal failure modes for any `vectis` subcommand.

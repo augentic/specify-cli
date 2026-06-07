@@ -1,4 +1,4 @@
-//! `kind: regex` optional [`RuleHint::config`] payload (RFC-31 Phase 1).
+//! `kind: regex` optional [`RuleHint::config`] payload.
 
 use serde::Deserialize;
 

@@ -4,7 +4,7 @@
 
 /// Extension (without the leading dot) → language token.
 ///
-/// The superset of both scan profiles' needs: the consumer profile only
+/// The superset of both scan profiles' needs: the project profile only
 /// reaches this table for extensions that already passed its include
 /// filter, so the extra framework-only entries (`sh` → `shell`) are
 /// inert there.

@@ -1,24 +1,22 @@
-//! Shared source-operation prep seam (RFC-29 D1; DECISIONS.md
-//! §"Source operations (D1)").
+//! Shared source-operation prep seam.
 //!
 //! [`prepare`] factors the environment prep that `source preview`
 //! (workflow-free) and the `source survey` / `source extract` runners
-//! (workflow-integrated; RFC-29 D1) all build on:
+//! (workflow-integrated) all build on:
 //!
 //! 1. adapter resolution via [`SourceAdapter::resolve`];
-//! 2. brief-directory resolution (the C1 `briefs-dir` = adapter root
+//! 2. brief-directory resolution (the `briefs-dir` = adapter root
 //!    joined `briefs/`);
 //! 3. the four-root sandbox preopen [`SandboxLayout`] — `$SOURCE_DIR`,
 //!    `$CAPABILITY_DIR`, `$SCRATCH_DIR`, `$PROJECT_DIR` — as data,
-//!    with the per-operation scratch path keyed per the preflight §1
-//!    shape; and
+//!    with the per-operation scratch path keyed by operation; and
 //! 4. `evidence/` scaffolding for the output target.
 //!
 //! It produces *prep*, not behaviour: the actual WASI preopen wiring,
 //! the `tool` / `agent` dispatch branch, the extraction cache, the
 //! journal events, validate-before-visible, and the `discovery.md`
-//! merge / Evidence persist are the workflow-integrated layer C6/C7
-//! add on top — none of it lives here.
+//! merge / Evidence persist are what the workflow-integrated layer
+//! adds on top — none of it lives here.
 
 use std::path::{Path, PathBuf};
 
@@ -30,11 +28,11 @@ use crate::runtime::commands::BRIEFS_DIR;
 /// `evidence/` subdirectory scaffolded under the output target.
 const EVIDENCE_DIR: &str = "evidence";
 
-/// Leaf segment of every `$SCRATCH_DIR` path (preflight §1).
+/// Leaf segment of every `$SCRATCH_DIR` path.
 const SCRATCH_LEAF: &str = "scratch";
 
-/// Scratch-tree segment for the slice-less `survey` operation
-/// (preflight §1). Kept in sync with the `survey` operation's wire
+/// Scratch-tree segment for the slice-less `survey` operation.
+/// Kept in sync with the `survey` operation's wire
 /// spelling by `survey_segment_matches_operation_wire_name`.
 const SURVEY_SCRATCH_SEGMENT: &str = "survey";
 
@@ -47,7 +45,7 @@ const SCRATCH_DIR_VAR: &str = "SCRATCH_DIR";
 const PROJECT_DIR_VAR: &str = "PROJECT_DIR";
 
 /// Which source operation a prep targets, carrying the data needed to
-/// key its `$SCRATCH_DIR` (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
+/// key its `$SCRATCH_DIR`.
 ///
 /// `survey` runs at plan time with no slice and keys scratch under the
 /// literal `survey/` segment; `extract` runs at slice time and keys
@@ -57,7 +55,7 @@ pub enum SourceOp {
     /// Plan-time lead discovery — scratch under `…/survey/scratch/`.
     Survey,
     /// Slice-time evidence extraction — scratch under
-    /// `…/<slice>/scratch/`. Constructed by the RFC-29 D1 `extract`
+    /// `…/<slice>/scratch/`. Constructed by the `extract`
     /// runner ([`crate::runtime::commands::source::extract`]).
     Extract {
         /// Slice name keying the scratch directory.
@@ -77,8 +75,7 @@ impl SourceOp {
     }
 }
 
-/// Access mode for a source-adapter sandbox preopen root
-/// (RFC-29 D1; DECISIONS.md §"Source operations (D1)"). The data side
+/// Access mode for a source-adapter sandbox preopen root. The data side
 /// of the WASI `DirPerms` / `FilePerms` the runner will mount each
 /// root with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,12 +103,11 @@ pub struct Preopen {
     pub path: Option<PathBuf>,
 }
 
-/// The four-root source-adapter sandbox preopen layout
-/// (RFC-29 D1; DECISIONS.md §"Source operations (D1)").
+/// The four-root source-adapter sandbox preopen layout.
 ///
-/// Data only: C5 computes the roots and their modes. The actual WASI
+/// Data only: this computes the roots and their modes. The actual WASI
 /// preopen wiring, the `tool` / `agent` dispatch, the cache, and the
-/// journal events are C6/C7's job.
+/// journal events are the workflow-integrated layer's job.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxLayout {
     /// `$SOURCE_DIR` — read-only bound source path; absent
@@ -121,7 +117,7 @@ pub struct SandboxLayout {
     /// (the adapter root the manifest loaded from).
     pub capability: Preopen,
     /// `$SCRATCH_DIR` — write-only per-operation scratch under the
-    /// extraction tree (preflight §1).
+    /// extraction tree.
     pub scratch: Preopen,
     /// `$PROJECT_DIR` — not visible to the adapter operation.
     pub project: Preopen,
@@ -174,7 +170,7 @@ pub struct PrepRequest<'a> {
     pub leads: &'a [String],
     /// Output target whose `evidence/` subtree is scaffolded — the
     /// `--out` dir for preview, `.specify/slices/<slice>/` for
-    /// extract. `None` for survey (no Evidence output; preflight §6).
+    /// extract. `None` for survey (no Evidence output).
     pub evidence_root: Option<&'a Path>,
 }
 
@@ -186,12 +182,12 @@ pub struct SourcePrep {
     pub manifest: SourceAdapter,
     /// Resolved adapter root (= `$CAPABILITY_DIR`).
     pub adapter_dir: PathBuf,
-    /// `<adapter-root>/briefs/` — the C1 resolve-envelope `briefs-dir`.
+    /// `<adapter-root>/briefs/` — the resolve-envelope `briefs-dir`.
     /// Surfaced in the `survey` handoff envelope; preview surfaces brief
     /// paths directly from [`Self::adapter_dir`].
     pub briefs_dir: PathBuf,
     /// Four-root sandbox preopen layout (data only). The `survey` runner
-    /// reads its `scratch` / `source` roots; the C7 `extract` runner
+    /// reads its `scratch` / `source` roots; the `extract` runner
     /// wires the full WASI preopen set.
     pub layout: SandboxLayout,
     /// Scaffolded `evidence/` directory, or `None` when the operation
@@ -248,7 +244,7 @@ pub fn resolve_source_path(project_dir: &Path, raw: &str) -> PathBuf {
 
 /// `.specify/.cache/extractions/<adapter>/<segment>/scratch/`, where
 /// `<segment>` is `survey` for the slice-less survey op or the slice
-/// name for extract (preflight §1). Disjoint from the fingerprint
+/// name for extract. Disjoint from the fingerprint
 /// result cache: a 64-hex digest dir can never equal `survey` or a
 /// kebab slice name.
 fn scratch_dir(project_dir: &Path, adapter: &str, op: &SourceOp) -> PathBuf {

@@ -380,7 +380,7 @@ pub enum EventKind {
     },
     /// A slice merged into the baseline and its working directory was
     /// archived. This is the durable **outcome-ledger** entry
-    /// (decision-log §"History via git plus an outcome ledger"): the
+    /// (DECISIONS.md §"History via git plus an outcome ledger"): the
     /// append-only journal records what merged, when, which baseline
     /// specs it touched, a one-line outcome summary, and the git SHA
     /// the baseline sat at. The archived slice folder under
@@ -435,11 +435,11 @@ pub enum EventKind {
         marketplace: String,
     },
     /// `specify migrate` applied a registered migrator. `kind` is the
-    /// stable migrator id (e.g. `v1-to-v2`); the counts (wire:
+    /// stable migrator id (e.g. `v2-to-v3`); the counts (wire:
     /// `files-rewritten`, `files-moved`) summarise the applied plan.
     #[serde(rename = "migration.applied", rename_all = "kebab-case")]
     MigrationApplied {
-        /// Stable migrator id (e.g. `v1-to-v2`).
+        /// Stable migrator id (e.g. `v2-to-v3`).
         kind: String,
         /// Count of files rewritten in place (wire: `files-rewritten`).
         files_rewritten: usize,
@@ -451,7 +451,7 @@ pub enum EventKind {
     /// is a short diagnostic (e.g. `staged-validation-failed`).
     #[serde(rename = "migration.skipped", rename_all = "kebab-case")]
     MigrationSkipped {
-        /// Stable migrator id (e.g. `v1-to-v2`).
+        /// Stable migrator id (e.g. `v2-to-v3`).
         kind: String,
         /// Short diagnostic (e.g. `staged-validation-failed`).
         reason: String,
@@ -505,7 +505,7 @@ pub struct LintScope {
     /// to a single target; `None` for project-wide scans.
     pub target: Option<String>,
     /// Slice id from `plan.yaml.slices[].name` when the scan was
-    /// narrowed to one slice (e.g. `specify lint run --slice <name>`).
+    /// narrowed to one slice (e.g. `specify lint project --slice <name>`).
     pub slice: Option<String>,
     /// Artifact path (relative to project root) when the scan was
     /// narrowed to a single artifact; `None` otherwise.

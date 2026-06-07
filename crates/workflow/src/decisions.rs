@@ -1,4 +1,4 @@
-//! Decision Record catalogue (RFC-36).
+//! Decision Record catalogue.
 //!
 //! The append-only baseline catalogue at `.specify/decisions/` is the
 //! durable home for design *decisions* — the immutable "why" plus the
@@ -12,7 +12,7 @@
 //!
 //! This module owns the shared baseline reader ([`read_baseline`]) — used
 //! by the merge promotion kernel ([`promote`]), the refine-gate
-//! supersede-orphan check, and the RFC-36 identity projection — plus the
+//! supersede-orphan check, and the identity projection — plus the
 //! pure id-assignment / supersede-flip kernel that `merge` drives.
 
 use std::collections::HashMap;
@@ -42,7 +42,7 @@ pub struct BaselineDecision {
     /// `date` and current `status`).
     pub record: DecisionRecord,
     /// The record's H1 heading text, projected into routing identity
-    /// (RFC-36) as the decision title.
+    /// as the decision title.
     pub title: Option<String>,
     /// The Markdown body below the front-matter, preserved verbatim so
     /// a supersede flip leaves the historical rationale untouched.

@@ -10,7 +10,7 @@
 //! slice-model artifact"][model-artifact] and
 //! [`crate::slice::model::SliceModel::to_provenance_index`].
 //!
-//! [model-artifact]: ../../../../DECISIONS.md#single-slice-model-artifact-rfc-29-m2b-simplification
+//! [model-artifact]: ../../../../DECISIONS.md#single-slice-model-artifact
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -101,7 +101,7 @@ pub struct ContributingClaim {
     pub winner: Option<bool>,
 }
 
-/// Closed resolution enum per RFC-29c §Provenance projection.
+/// Closed resolution enum for provenance projection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]

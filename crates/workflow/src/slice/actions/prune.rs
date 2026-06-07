@@ -2,7 +2,7 @@
 //!
 //! The archived slice folders under `.specify/archive/YYYY-MM-DD-<slice>/`
 //! are a prunable convenience cache, not the system of record
-//! (decision-log §"History via git plus an outcome ledger"). The durable
+//! (DECISIONS.md §"History via git plus an outcome ledger"). The durable
 //! record is git history of `.specify/specs/` plus the
 //! `slice.archive.created` outcome-ledger journal entries; this verb
 //! reclaims disk by dropping archived folders that fall outside the

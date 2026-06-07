@@ -1,4 +1,4 @@
-//! Cursor plugin cache inspection and invalidation (RFC-30 §D2, Wave D).
+//! Cursor plugin cache inspection and invalidation.
 //!
 //! Owns the deterministic primitives the `specify plugins {doctor,
 //! refresh}` commands drive: marketplace discovery, `$CURSOR_HOME`

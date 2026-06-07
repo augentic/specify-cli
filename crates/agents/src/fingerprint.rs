@@ -199,4 +199,99 @@ mod tests {
 
         assert_ne!(original, edited);
     }
+
+    // The collector keys inputs by repo-relative path and dedups, then
+    // `finalize` hashes content in sorted path order. A regression that
+    // dropped the dedup or the sort would shuffle the canonical aggregate
+    // and break lock stability across runs.
+    #[test]
+    fn collector_dedups_and_sorts() {
+        let project = tempfile::tempdir().expect("tempdir");
+        let root = project.path();
+        fs::write(root.join("z.txt"), b"zed").expect("write z");
+        fs::create_dir_all(root.join("sub")).expect("sub");
+        fs::write(root.join("sub/a.txt"), b"aaa").expect("write a");
+
+        let mut collector = InputCollector::new(root);
+        collector.add_file(&root.join("z.txt")).expect("add z");
+        collector.add_file(&root.join("sub/a.txt")).expect("add a");
+        // Adding the same file again must not produce a second entry.
+        collector.add_file(&root.join("z.txt")).expect("re-add z");
+
+        let inputs = collector.finalize().expect("finalize");
+        assert_eq!(
+            inputs.iter().map(|i| i.path.as_str()).collect::<Vec<_>>(),
+            vec!["sub/a.txt", "z.txt"]
+        );
+        assert_eq!(inputs[1].sha256, specify_digest::sha256_hex(b"zed"));
+    }
+
+    // `add_file_if_present` is the soft variant: a missing path and a
+    // directory are both silently skipped; only a real file is recorded.
+    #[test]
+    fn add_if_present_skips_non_files() {
+        let project = tempfile::tempdir().expect("tempdir");
+        let root = project.path();
+        fs::create_dir_all(root.join("a-dir")).expect("dir");
+        fs::write(root.join("real.txt"), b"x").expect("file");
+
+        let mut collector = InputCollector::new(root);
+        collector.add_file_if_present(&root.join("missing.txt")).expect("missing skipped");
+        collector.add_file_if_present(&root.join("a-dir")).expect("dir skipped");
+        collector.add_file_if_present(&root.join("real.txt")).expect("real recorded");
+
+        let inputs = collector.finalize().expect("finalize");
+        assert_eq!(inputs.iter().map(|i| i.path.as_str()).collect::<Vec<_>>(), vec!["real.txt"]);
+    }
+
+    // An input path outside the project root is a programmer error and
+    // must surface as the typed `context-fingerprint-input-outside-project`
+    // diagnostic rather than producing a bogus relative path.
+    #[test]
+    fn input_outside_project_errors() {
+        let project = tempfile::tempdir().expect("project");
+        let other = tempfile::tempdir().expect("other");
+        fs::write(other.path().join("stray.txt"), b"x").expect("write stray");
+
+        let mut collector = InputCollector::new(project.path());
+        let err = collector.add_file(&other.path().join("stray.txt")).expect_err("outside project");
+        assert!(
+            matches!(
+                err,
+                Error::Diag {
+                    code: "context-fingerprint-input-outside-project",
+                    ..
+                }
+            ),
+            "{err}"
+        );
+    }
+
+    // The CLI version is the first line of the canonical aggregate, so a
+    // version bump alone must change the fingerprint even when every input
+    // digest is identical — otherwise an upgrade would not re-trigger
+    // regeneration.
+    #[test]
+    fn aggregate_depends_on_cli_version() {
+        let inputs = vec![input(
+            ".specify/project.yaml",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )];
+        assert_ne!(aggregate("0.2.0", inputs.clone()), aggregate("0.3.0", inputs));
+    }
+
+    #[test]
+    fn for_context_wires_fields() {
+        let inputs = vec![input(
+            "registry.yaml",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        )];
+        let body = b"\n## Runtime\n- detected: Rust.\n\n";
+        let fp = for_context("0.2.0", inputs.clone(), body);
+
+        assert_eq!(fp.cli_version, "0.2.0");
+        assert_eq!(fp.inputs, inputs.clone());
+        assert_eq!(fp.fingerprint, aggregate("0.2.0", inputs));
+        assert_eq!(fp.body_sha256, body_sha256(body));
+    }
 }

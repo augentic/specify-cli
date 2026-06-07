@@ -15,7 +15,7 @@ use specify_error::Error;
 /// durable system of record) and `.specify/archive/` (the prunable
 /// outcome cache). Both stay committable so git history of the baseline
 /// — together with the `slice.archive.created` outcome ledger in
-/// `journal.jsonl` — is the record of merged work (decision-log
+/// `journal.jsonl` — is the record of merged work (DECISIONS.md
 /// §"History via git plus an outcome ledger").
 const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/workspace/"];
 

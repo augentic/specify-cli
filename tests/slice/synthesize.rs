@@ -873,7 +873,7 @@ fn stage_intent_slice() -> Project {
 
 #[test]
 fn intent_only_slice_validates_clean() {
-    // Regression for the Wave 0 `pure-intent` release blocker
+    // Regression for the `pure-intent` release blocker
     // (augentic/specify#149 + #150). A degenerate intent slice whose
     // Evidence anchors an id-bearing intent claim and whose response
     // authors a scenario must pass `slice validate` without the two

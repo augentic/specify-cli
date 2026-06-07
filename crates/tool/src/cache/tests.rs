@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::manifest::{Axis, ToolPermissions, ToolScope};
@@ -236,4 +236,76 @@ fn scan_for_gc_isolates_scope() {
 
     let adapter_gc = scan_for_gc(&plugin_target_scope(), &HashSet::new()).expect("adapter gc");
     assert_eq!(adapter_gc, vec![stale_adapter]);
+}
+
+// `tool_dir` segments become literal cache path components, so a name
+// or version carrying a separator or `..` is a path-traversal vector.
+// `validate_segment` must reject each before the path is ever joined.
+#[test]
+fn tool_dir_rejects_traversal_segments() {
+    let scope = project_scope();
+    let traversal_cases = ["..", ".", "a/b", "a\\b", ""];
+    for bad in traversal_cases {
+        assert!(
+            matches!(
+                tool_dir(&scope, bad, "1.0.0"),
+                Err(ToolError::Diag {
+                    code: "tool-resolver",
+                    ..
+                })
+            ),
+            "name `{bad}` must be rejected"
+        );
+        assert!(
+            matches!(
+                tool_dir(&scope, "contract", bad),
+                Err(ToolError::Diag {
+                    code: "tool-resolver",
+                    ..
+                })
+            ),
+            "version `{bad}` must be rejected"
+        );
+    }
+}
+
+// The cache-root precedence resolves from env vars; the *error* arms
+// (empty / relative override, no fallback at all) are easy to break
+// when reordering the precedence ladder. Pin each rejection.
+#[test]
+fn cache_root_rejects_unusable_env() {
+    fn rejected(context: &str) {
+        assert!(
+            matches!(
+                root(),
+                Err(ToolError::Diag {
+                    code: "tool-cache-root",
+                    ..
+                })
+            ),
+            "{context}"
+        );
+    }
+
+    let _g = env_lock();
+
+    let relative = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", Some(Path::new("relative/dir")));
+    rejected("a relative override must be rejected");
+    drop(relative);
+
+    let empty = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", Some(Path::new("")));
+    rejected("an empty override must be rejected");
+    drop(empty);
+
+    // The remaining cases clear the explicit override so the XDG / HOME
+    // fallbacks are the ones under test.
+    let _cache = EnvGuard::scoped("SPECIFY_TOOLS_CACHE", None);
+    let _xdg = EnvGuard::scoped("XDG_CACHE_HOME", None);
+
+    let relative_home = EnvGuard::scoped("HOME", Some(Path::new("relative-home")));
+    rejected("a relative HOME fallback must be rejected");
+    drop(relative_home);
+
+    let _home = EnvGuard::scoped("HOME", None);
+    rejected("no env source at all must be rejected");
 }

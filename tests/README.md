@@ -16,7 +16,7 @@ REGENERATE_GOLDENS=1 cargo nextest run [-p <crate>] --test <binary>
 ```
 
 - Root-crate (`specify`) binaries: omit `-p` — e.g. `REGENERATE_GOLDENS=1 cargo nextest run --test e2e`.
-- Sub-crate binaries: pass `-p <crate>` because the binary name may collide across crates (e.g. both `specify` and `specify-workflow` ship a `migrate` test) — e.g. `REGENERATE_GOLDENS=1 cargo nextest run -p specify-workflow --test goldens`.
+- Sub-crate binaries: pass `-p <crate>` because the binary name may collide across crates (e.g. both `specify` and `specify-workflow` ship `registry` and `workspace` tests) — e.g. `REGENERATE_GOLDENS=1 cargo nextest run -p specify-workflow --test goldens`.
 
 After regenerating, `git diff` the goldens and review every change: a diff that
 flips a kebab-case error `code` is a public-contract change, not a refresh.
@@ -26,15 +26,13 @@ flips a kebab-case error `code` is a public-contract change, not a refresh.
 | Crate | Test binary | Fixture / golden dir(s) |
 | --- | --- | --- |
 | `specify` | `e2e` | `tests/fixtures/e2e/goldens/` |
-| `specify` | `plan_orchestrate` | `tests/fixtures/plan/` |
+| `specify` | `plan` | `tests/fixtures/plan/` |
 | `specify` | `journal` | `tests/fixtures/journal/` |
-| `specify` | `rules_export` | `tests/fixtures/rules-export/` |
-| `specify` | `lint_framework_json` | `tests/fixtures/lint-framework/` |
+| `specify` | `rules` | `tests/fixtures/rules-export/` |
+| `specify` | `lint` | `tests/fixtures/lint-framework/` |
 | `specify-workflow` | `goldens` | `crates/workflow/tests/fixtures/*.golden.json` |
-| `specify-workflow` | `migrate` | `crates/workflow/tests/migrate/v1-to-v2/{before,after}/` |
-| `specify-standards` | `lint_indexer_consumer` | `crates/standards/tests/fixtures/lint/` |
-| `specify-standards` | `lint_framework_indexer` | `crates/standards/tests/fixtures/lint/` |
-| `specify-standards` | `lint_ignore_directive_pass` | JSON: `crates/standards/tests/fixtures/lint/`; pretty: `crates/standards/tests/goldens/` |
+| `specify-standards` | `lint_index` | `crates/standards/tests/fixtures/lint/` |
+| `specify-standards` | `lint_hint` | JSON: `crates/standards/tests/fixtures/lint/`; pretty: `crates/standards/tests/goldens/` |
 
 Binaries not listed here assert structurally (status fields, exit codes, JSON
 shape via `assert_cmd`) and carry no regenerable goldens.

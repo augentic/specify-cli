@@ -59,8 +59,8 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 /// return it. The only writer of per-entry `in-progress` per
 /// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
-    // The slice's target adapter is no longer stored in `plan.yaml`; it
-    // is resolved on demand from the bound project's topology, so the
+    // The slice's target adapter is resolved on demand from the bound
+    // project's topology, so the
     // topology inputs (`config` / `project_dir`) ride into the state
     // closure for `plan_next_body` to resolve the advanced entry's
     // `$TARGET` lazily. All projection logic lives in `specify-workflow`;

@@ -86,9 +86,8 @@ fn write_mark_text(w: &mut dyn Write, body: &MarkBody) -> std::io::Result<()> {
 
 /// Resolve the `tasks.md` path for a slice.
 ///
-/// the workflow contract pins the per-slice tasks artifact to `<slice_dir>/tasks.md`;
-/// the pre-2.0 `pipeline.build` brief's `tracks` indirection is
-/// gone. Verbs that need the tasks path during slice-state mutation
+/// the workflow contract pins the per-slice tasks artifact to `<slice_dir>/tasks.md`.
+/// Verbs that need the tasks path during slice-state mutation
 /// can stat the file themselves before mutating.
 fn resolve_tasks_path(slice_dir: &Path) -> Result<PathBuf> {
     let _metadata = SliceMetadata::load(slice_dir)?; // surface the standard "not a slice" error

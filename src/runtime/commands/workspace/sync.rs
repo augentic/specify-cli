@@ -13,7 +13,7 @@ pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
     let synced = if let Some(reg) = registry.as_ref() {
         let selected = reg.select(projects)?;
         sync_projects(&ctx.project_dir, &selected)?;
-        // RFC-36: project the materialised slots' `project.yaml` topology
+        // Project the materialised slots' `project.yaml` topology
         // facets into the committed `.specify/topology.lock`.
         regenerate_topology_lock(&ctx.project_dir, reg)?;
         true

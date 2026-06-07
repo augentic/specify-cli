@@ -19,9 +19,8 @@ use std::path::{Path, PathBuf};
 use clap::{Args as ClapArgs, ValueEnum};
 use serde_json::Value;
 
-use crate::VectisError;
-use crate::render_json as render_value;
 use crate::validate::find_project_root;
+use crate::{VectisError, render_json as render_value};
 
 /// Arguments accepted by `vectis verify`.
 #[derive(ClapArgs, Debug, Clone, PartialEq, Eq)]
@@ -104,10 +103,9 @@ fn verify_exit_code(value: &Value) -> u8 {
     if value.get("mode").and_then(Value::as_str) == Some("detect") {
         return 0;
     }
-    let has_findings = value
-        .get("findings")
-        .and_then(Value::as_array)
-        .is_some_and(|arr| arr.iter().any(|f| f.get("severity").and_then(Value::as_str) == Some("error")));
+    let has_findings = value.get("findings").and_then(Value::as_array).is_some_and(|arr| {
+        arr.iter().any(|f| f.get("severity").and_then(Value::as_str) == Some("error"))
+    });
     u8::from(has_findings)
 }
 
@@ -128,30 +126,25 @@ fn resolve_project_root(path: Option<&Path>) -> Result<PathBuf, VectisError> {
 
 fn load_platforms(project_root: &Path) -> Result<Vec<String>, VectisError> {
     let config_path = project_root.join("project.yaml");
-    let source = std::fs::read_to_string(&config_path).map_err(|_| VectisError::InvalidProject {
-        message: format!(
-            "project.yaml not readable at {}",
-            config_path.display()
-        ),
-    })?;
+    let source =
+        std::fs::read_to_string(&config_path).map_err(|_| VectisError::InvalidProject {
+            message: format!("project.yaml not readable at {}", config_path.display()),
+        })?;
     let doc: Value =
         serde_saphyr::from_str(&source).map_err(|err| VectisError::InvalidProject {
             message: format!("project.yaml is not valid YAML: {err}"),
         })?;
-    let platforms = doc
-        .get("platforms")
-        .and_then(Value::as_array)
-        .ok_or_else(|| VectisError::InvalidProject {
+    let platforms = doc.get("platforms").and_then(Value::as_array).ok_or_else(|| {
+        VectisError::InvalidProject {
             message: "project.yaml does not declare a `platforms` array".into(),
-        })?;
+        }
+    })?;
     platforms
         .iter()
         .map(|v| {
-            v.as_str()
-                .map(String::from)
-                .ok_or_else(|| VectisError::InvalidProject {
-                    message: "project.yaml `platforms` array contains a non-string entry".into(),
-                })
+            v.as_str().map(String::from).ok_or_else(|| VectisError::InvalidProject {
+                message: "project.yaml `platforms` array contains a non-string entry".into(),
+            })
         })
         .collect()
 }

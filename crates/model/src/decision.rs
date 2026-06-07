@@ -1,4 +1,4 @@
-//! Decision Record parser (RFC-36) — front-matter + Nygard body.
+//! Decision Record parser — front-matter + Nygard body.
 //!
 //! A Decision Record is a YAML front-matter header (schema-shaped via
 //! [`DecisionRecord`]) plus a Markdown body carrying `## Context` /
@@ -22,8 +22,7 @@ use specify_diagnostics::{Artifact, Diagnostic, FindingLocation};
 #[cfg(test)]
 mod tests;
 
-/// Maximum length of a Decision Record `slug` (RFC-36 §"Validation
-/// findings", `decision-slug-grammar`).
+/// Maximum length of a Decision Record `slug` (`decision-slug-grammar`).
 pub const SLUG_MAX_LEN: usize = 64;
 
 /// The three required Nygard body headings, in canonical order.
@@ -142,7 +141,7 @@ pub struct ParsedDecision {
     /// finding is recorded in that case).
     pub record: Option<DecisionRecord>,
     /// The first `# ` (H1) heading text in the body, or `None` when
-    /// absent. Projected into routing identity (RFC-36) as the
+    /// absent. Projected into routing identity as the
     /// decision title.
     pub title: Option<String>,
     /// Per-file findings accumulated during parsing.
@@ -196,7 +195,7 @@ pub fn parse_decision(text: &str) -> ParsedDecision {
 }
 
 /// `true` when `slug` matches `^[a-z][a-z0-9-]*$` and is at most
-/// [`SLUG_MAX_LEN`] characters (RFC-36 `decision-slug-grammar`).
+/// [`SLUG_MAX_LEN`] characters (`decision-slug-grammar`).
 #[must_use]
 pub fn is_valid_slug(slug: &str) -> bool {
     if slug.is_empty() || slug.len() > SLUG_MAX_LEN {
@@ -267,6 +266,10 @@ fn h1_title(body: &str) -> Option<String> {
 ///
 /// Exposed so the merge promotion kernel can re-serialise a record's
 /// front-matter while preserving its Markdown body verbatim.
+///
+/// A sibling `Result`-returning copy lives at `specify-standards`'
+/// `rules::parse::split_frontmatter`; the `specify-standards` ⊥
+/// `specify-model` dependency-direction invariant blocks one shared impl.
 #[must_use]
 pub fn split_frontmatter(content: &str) -> Option<(&str, &str)> {
     let rest = content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n"))?;

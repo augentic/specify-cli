@@ -30,12 +30,12 @@
     "project_dir": {
       "type": "string",
       "minLength": 1,
-      "description": "`WorkspaceModel` extraction inputs: scan root (consumer project or framework repo). Typically the project root absolute path; relative `.` is accepted for tests and ephemeral scans."
+      "description": "`WorkspaceModel` extraction inputs: scan root (product project or framework repo). Typically the project root absolute path; relative `.` is accepted for tests and ephemeral scans."
     },
     "scan_profile": {
       "type": "string",
-      "enum": ["consumer", "framework"],
-      "description": "`WorkspaceModel` extraction inputs: controls which extractors run. `consumer` is the only Phase 2 profile; `framework` is reserved for a future framework scan."
+      "enum": ["project", "framework"],
+      "description": "`WorkspaceModel` extraction inputs: controls which extractors run. `product` scans a downstream product project; `framework` scans this framework repo's authoring artifacts."
     },
     "artifact_paths": {
       "type": "array",
@@ -108,17 +108,27 @@
     "fenced_blocks": {
       "type": "array",
       "items": { "$ref": "#/$defs/fencedBlock" },
-      "description": "`WorkspaceModel` entity: `fenced_block` facts from the fence-aware markdown pass (RFC-31 Phase 2). Optional in v1 envelopes; producers omit when empty."
+      "description": "`WorkspaceModel` entity: `fenced_block` facts from the fence-aware markdown pass. Optional in v1 envelopes; producers omit when empty."
     },
     "briefs": {
       "type": "array",
       "items": { "$ref": "#/$defs/brief" },
-      "description": "`WorkspaceModel` entity: `brief` facts from `adapters/**/briefs/*.md` under the framework scan profile (§F1). Optional in v1 envelopes; absent under the consumer profile so the consumer wire shape is unchanged."
+      "description": "`WorkspaceModel` entity: `brief` facts from `adapters/**/briefs/**/*.md` (parent briefs and phase sub-briefs) under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
     },
     "agent_teams": {
       "type": "array",
       "items": { "$ref": "#/$defs/agentTeam" },
-      "description": "`WorkspaceModel` entity: `agent_team` facts from followed `agent-teams.md` symlinks under the framework scan profile (§F1). Optional in v1 envelopes; absent under the consumer profile so the consumer wire shape is unchanged."
+      "description": "`WorkspaceModel` entity: `agent_team` facts from followed `agent-teams.md` symlinks under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
+    },
+    "scenarios": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scenario" },
+      "description": "`WorkspaceModel` entity: `scenario` facts from the dedicated scenario discovery pass over the opt-in scenario roots (`acceptance/scenarios/*.md`, `adapters/targets/*/tests/**`, plugin skill fixtures) under the framework scan profile. Kept out of `files` so no other rule's candidate set changes. Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
+    },
+    "adapter_dirs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/adapterDir" },
+      "description": "`WorkspaceModel` entity: `adapter_dir` facts from the dedicated adapter-directory pass over the immediate children of `adapters/{sources,targets}` under the framework scan profile (one fact per child directory, with or without an `adapter.yaml`). The source side of the `kind: cross-reference` join. Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
     }
   },
   "$defs": {
@@ -228,6 +238,10 @@
         "resolves": {
           "type": "boolean",
           "description": "`WorkspaceModel` entity: optional; `true` when the target resolves on disk, `false` for broken/dangling references. Absent for off-tree URLs the indexer did not attempt to resolve."
+        },
+        "image": {
+          "type": "boolean",
+          "description": "`WorkspaceModel` entity: optional; `true` when the link is an image embed (`![alt](src)`) rather than a plain `[label](target)` link. Omitted when `false`."
         }
       }
     },
@@ -248,7 +262,7 @@
         },
         "resolved-target": {
           "$ref": "#/$defs/relativePath",
-          "description": "`WorkspaceModel` entity: project-relative path of the resolved canonical endpoint after symlink traversal. Populated only by the framework scan profile (§F1 follow mode); absent under the consumer profile and absent when the target resolves outside the project tree or could not be canonicalised."
+          "description": "`WorkspaceModel` entity: project-relative path of the resolved canonical endpoint after symlink traversal. Populated only by the framework scan profile (§F1 follow mode); absent under the project profile and absent when the target resolves outside the project tree or could not be canonicalised."
         }
       }
     },
@@ -275,14 +289,14 @@
         "body-line-count": {
           "type": "integer",
           "minimum": 0,
-          "description": "`WorkspaceModel` entity: number of non-frontmatter body lines under the skill body. Populated by the framework scan profile; absent under the consumer profile."
+          "description": "`WorkspaceModel` entity: number of non-frontmatter body lines under the skill body. Populated by the framework scan profile; absent under the project profile."
         }
       }
     },
     "brief": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "axis", "adapter", "operation", "sections", "body-line-count"],
+      "required": ["path", "axis", "adapter", "operation", "scope", "sections", "body-line-count"],
       "properties": {
         "path": { "$ref": "#/$defs/relativePath" },
         "axis": {
@@ -298,7 +312,12 @@
         "operation": {
           "type": "string",
           "minLength": 1,
-          "description": "`WorkspaceModel` entity: operation slug for the brief (e.g. `extract`, `survey`, `shape`, `build`, `merge`)."
+          "description": "`WorkspaceModel` entity: operation slug for the brief. For a parent brief the brief stem (`extract`, `survey`, `shape`, `build`, `merge`); for a phase sub-brief the phase directory (`build`, `extract`)."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["parent", "phase"],
+          "description": "`WorkspaceModel` entity: parent orchestrator brief (`briefs/<op>.md`) vs phase sub-brief (`briefs/{build,extract}/**/*.md`). The size-budget selector a `cardinality` brief metric narrows on."
         },
         "sections": {
           "type": "array",
@@ -361,7 +380,83 @@
           "type": "array",
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 },
-          "description": "`WorkspaceModel` entity: operation slugs declared as the `briefs:` map keys in the manifest body. Empty / absent when the manifest omits the field. Consumed by the `kind: set-coverage` interpreter (`adapter-briefs-cover-operations` source discriminator)."
+          "description": "`WorkspaceModel` entity: operation slugs declared as the `briefs:` map keys in the manifest body. Empty / absent when the manifest omits the field. Consumed by the `kind: set-coverage` and `kind: set-eq` interpreters (`adapter-briefs` source discriminator)."
+        },
+        "tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/adapterTool" },
+          "description": "`WorkspaceModel` entity: well-formed `tools[]` declarations from the manifest body. Only `{ name, version }` entries are recorded; malformed entries are dropped (their shape is the `adapter` registered schema's concern). Empty / absent when the manifest omits the field. Consumed by the `kind: cross-reference` `adapter-tool` target selector."
+        }
+      }
+    },
+    "adapterTool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: declared WASI tool name (kebab-case identifier)."
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: declared semver-pinned tool version (e.g. `0.4.0`)."
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "fields"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativePath" },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: scenario frontmatter `id` value when present and a scalar string."
+        },
+        "stages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "`WorkspaceModel` entity: scenario frontmatter `stages` tokens, in declared order."
+        },
+        "expected-artifacts": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "`WorkspaceModel` entity: scenario frontmatter `expected-artifacts` paths."
+        },
+        "body-id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: scenario body `Scenario ID:` line value (backticks stripped)."
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "`WorkspaceModel` entity: parsed YAML frontmatter field map. Per-key shape is rule-specific; empty when the opted-in frontmatter failed to parse."
+        }
+      }
+    },
+    "adapterDir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "axis", "name"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativePath",
+          "description": "`WorkspaceModel` entity: project-relative path of the adapter directory itself (e.g. `adapters/targets/vectis`); the join key against the containing directory of each `adapter_manifest` path."
+        },
+        "axis": {
+          "type": "string",
+          "enum": ["sources", "targets"],
+          "description": "`WorkspaceModel` entity: `sources` xor `targets` (the parent directory under `adapters/`)."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`WorkspaceModel` entity: directory name (the final path segment, e.g. `vectis`)."
         }
       }
     },
