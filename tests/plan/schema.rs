@@ -4,7 +4,7 @@
 //! The schema tests are pure-library: they compile the bundled JSON
 //! Schema and feed it YAML fixtures converted to `serde_json::Value`.
 //! CLI integration tests for the `specify plan *` group live in
-//! `tests/plan_orchestrate.rs`.
+//! `tests/workflow/`.
 
 use std::fs;
 use std::path::PathBuf;

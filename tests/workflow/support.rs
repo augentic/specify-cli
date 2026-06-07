@@ -1,4 +1,4 @@
-//! Shared fixtures, seeds, and re-exports for the `plan_orchestrate`
+//! Shared fixtures, seeds, and re-exports for the `workflow`
 //! integration suite (REVIEW.md A13).
 //!
 //! The suite is split across themed submodules grouped by `plan`

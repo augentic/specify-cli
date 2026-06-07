@@ -1,44 +1,44 @@
 //! Integration tests for the `specify plan *` surface: the executable
 //! plan schema, the CLI orchestration verbs, and the fan-in/fan-out
-//! reconciliation. CLI submodules live under `plan_orchestrate/`; the
+//! reconciliation. CLI submodules live under `workflow/`; the
 //! pure-schema and fan-in/out suites live under `plan/`. Shared helpers
 //! live in [`common`]; the orchestration submodules pull their shared
 //! surface in via [`support`].
 
 mod common;
 
-#[path = "plan_orchestrate/support.rs"]
+#[path = "workflow/support.rs"]
 mod support;
 
 #[path = "plan/schema.rs"]
 mod schema;
 
-#[path = "plan/fan_in_fan_out.rs"]
-mod fan_in_fan_out;
+#[path = "plan/end_to_end.rs"]
+mod end_to_end;
 
-#[path = "plan_orchestrate/validate.rs"]
+#[path = "workflow/validate.rs"]
 mod validate;
 
-#[path = "plan_orchestrate/next.rs"]
+#[path = "workflow/next.rs"]
 mod next;
 
-#[path = "plan_orchestrate/mutate.rs"]
+#[path = "workflow/mutate.rs"]
 mod mutate;
 
-#[path = "plan_orchestrate/source_binding.rs"]
+#[path = "workflow/source_binding.rs"]
 mod source_binding;
 
-#[path = "plan_orchestrate/transition.rs"]
+#[path = "workflow/transition.rs"]
 mod transition;
 
-#[path = "plan_orchestrate/create.rs"]
+#[path = "workflow/create.rs"]
 mod create;
 
-#[path = "plan_orchestrate/archive.rs"]
+#[path = "workflow/archive.rs"]
 mod archive;
 
-#[path = "plan_orchestrate/authority.rs"]
+#[path = "workflow/authority.rs"]
 mod authority;
 
-#[path = "plan_orchestrate/propose.rs"]
+#[path = "workflow/propose.rs"]
 mod propose;

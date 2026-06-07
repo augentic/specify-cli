@@ -23,7 +23,7 @@
 //! URLs materialised as symlinks. Per the C10 pragmatism guidance, this
 //! test uses the **workspace + committed `topology.lock`** projection that the
 //! shipped `plan propose` tests already exercise (see
-//! `tests/plan_orchestrate.rs::propose_*`) — it exposes the same two
+//! `tests/workflow/propose.rs::propose_*`) — it exposes the same two
 //! projects to `propose` without the symlink-materialisation machinery,
 //! which the deterministic proof does not need. Both slices live in one
 //! `.specify/slices/` tree and merge into one baseline (`.specify/specs/`),
@@ -40,7 +40,7 @@
 //! `-slice-source-collision`, `-slice-name-collision`,
 //! `-depends-on-cycle`, `-project-binding-required`, `-project-orphan`,
 //! `-plan-not-replaceable`) are covered over this exact identity fan-out
-//! shape in `tests/plan_orchestrate.rs`. The synthesis-kernel
+//! shape in `tests/workflow/`. The synthesis-kernel
 //! normalize-not-reject and per-source orphan/kind-mismatch aborts are
 //! covered in `tests/slice.rs::synthesize_normalizes_pre_assigned_fields`.
 //! This test asserts the *composed* path and the fan-out-specific guards
@@ -306,7 +306,7 @@ fn prove_plan_time_fan_out(root: &Path) {
     // that covers its leads cleanly but omits `project` aborts
     // project-binding-required. (The full partition is satisfied so this
     // is not a partition/collision abort.) The remaining reconcile codes
-    // are covered exhaustively over this shape in tests/plan_orchestrate.rs.
+    // are covered exhaustively over this shape in tests/workflow/.
     fs::write(
         root.join("bad-response.json"),
         r#"{"version":1,"kind":"response","slices":[{"name":"unbound","sources":[{"source":"docs","lead":"identity-api"},{"source":"legacy","lead":"identity-api"}]},{"name":"reset","project":"identity-service","sources":[{"source":"docs","lead":"password-reset"},{"source":"legacy","lead":"reset-password"}]}]}"#,
