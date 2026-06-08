@@ -31,10 +31,9 @@ use serde_json::Value;
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 use specify_schema::{
     ADAPTER_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA,
-    DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA,
-    FRAMEWORK_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA,
-    SKILL_JSON_SCHEMA,
-    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
+    DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FRAMEWORK_JSON_SCHEMA, PLAN_JSON_SCHEMA,
+    PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA,
+    SKILL_JSON_SCHEMA, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema,
 };
 
 use super::{HintError, make_finding};
@@ -286,11 +285,8 @@ fn load_candidate_instance(
             let Some(body) = read_text(project_dir, candidate)? else {
                 return Ok(None);
             };
-            let parsed = match toml::from_str::<toml::Value>(&body) {
-                Ok(value) => value,
-                Err(_) => {
-                    return Ok(Some(Value::Object(serde_json::Map::new())));
-                }
+            let Ok(parsed) = toml::from_str::<toml::Value>(&body) else {
+                return Ok(Some(Value::Object(serde_json::Map::new())));
             };
             Ok(serde_json::to_value(parsed).ok())
         }

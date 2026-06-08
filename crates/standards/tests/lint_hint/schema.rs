@@ -158,10 +158,7 @@ fn flags_framework_toml_schema_violation() {
     let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
     let rule = make_rule(
         "CORE-055",
-        vec![
-            hint(HintKind::PathPattern, "Specify.toml"),
-            hint(HintKind::Schema, "framework"),
-        ],
+        vec![hint(HintKind::PathPattern, "Specify.toml"), hint(HintKind::Schema, "framework")],
     );
     let runner: &dyn ToolRunner = &NoToolRunner;
 
@@ -190,10 +187,7 @@ fn valid_framework_toml_passes_schema() {
     let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
     let rule = make_rule(
         "CORE-055",
-        vec![
-            hint(HintKind::PathPattern, "Specify.toml"),
-            hint(HintKind::Schema, "framework"),
-        ],
+        vec![hint(HintKind::PathPattern, "Specify.toml"), hint(HintKind::Schema, "framework")],
     );
     let runner: &dyn ToolRunner = &NoToolRunner;
 
