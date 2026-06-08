@@ -20,6 +20,11 @@ fn include_set_accepts_top_level_markers() {
 }
 
 #[test]
+fn include_set_accepts_specify_toml() {
+    assert!(is_included("Specify.toml"));
+}
+
+#[test]
 fn include_set_rejects_unrelated_paths() {
     assert!(!is_included("README.md"));
     assert!(!is_included("Cargo.toml"));

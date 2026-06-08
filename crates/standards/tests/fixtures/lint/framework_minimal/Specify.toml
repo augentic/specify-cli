@@ -1,0 +1,4 @@
+# Framework-minimal fixture authoring config (valid shape for CORE-055).
+[cli]
+version = "0.1.0"
+binary = ".bin/specify"

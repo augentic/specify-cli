@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/augentic/specify-cli/schemas/authoring/framework.schema.json",
+  "title": "Specify.toml framework authoring config",
+  "description": "Validates the framework repo authoring blueprint at Specify.toml — how to build and check adapters, skills, and rules. Distinct from runtime .specify/project.yaml.",
+  "type": "object",
+  "required": ["cli"],
+  "additionalProperties": false,
+  "properties": {
+    "cli": {
+      "type": "object",
+      "required": ["version", "binary"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "description": "Which specify binary channel to bind: next (sibling checkout), latest (newest published release), or an exact semver pin.",
+          "oneOf": [
+            { "const": "next" },
+            { "const": "latest" },
+            { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+          ]
+        },
+        "binary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repo-local executable path materialized by scripts/specify.sh (parent directory is gitignored)."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional directory on PATH; make install-specify symlinks path/specify to binary."
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,8 @@ use serde_json::{Value, json};
 use specify_schema::{
     ADAPTER_JSON_SCHEMA, BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA,
     COMPONENTS_JSON_SCHEMA, DECISION_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA,
-    DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA,
+    DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FRAMEWORK_JSON_SCHEMA, LEAD_JSON_SCHEMA,
+    MARKETPLACE_JSON_SCHEMA,
     PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
     RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA,
     SOURCE_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TARGET_JSON_SCHEMA, TOOL_JSON_SCHEMA,
@@ -139,6 +140,11 @@ fn embedded_schemas_match_on_disk_sources() {
             "MARKETPLACE_JSON_SCHEMA",
             MARKETPLACE_JSON_SCHEMA,
             "schemas/authoring/marketplace.schema.json",
+        ),
+        (
+            "FRAMEWORK_JSON_SCHEMA",
+            FRAMEWORK_JSON_SCHEMA,
+            "schemas/authoring/framework.schema.json",
         ),
         (
             "BUILD_REQUEST_JSON_SCHEMA",
@@ -355,6 +361,11 @@ fn scenario_schema_compiles() {
 #[test]
 fn marketplace_schema_compiles() {
     compile_schema(MARKETPLACE_JSON_SCHEMA).expect("marketplace schema compiles");
+}
+
+#[test]
+fn framework_schema_compiles() {
+    compile_schema(FRAMEWORK_JSON_SCHEMA).expect("framework schema compiles");
 }
 
 #[test]
