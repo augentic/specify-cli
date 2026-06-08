@@ -152,7 +152,7 @@ fn valid_scenario_passes_schema_selector() {
 #[test]
 fn flags_framework_toml_schema_violation() {
     let tmp = tempfile::tempdir().expect("tmp");
-    let bad = "[cli]\nversion = \"not-a-version\"\nbinary = \".bin/specify\"\n";
+    let bad = "cli = { version = \"not-a-version\" }\n";
     fs::write(tmp.path().join("Specify.toml"), bad).expect("write Specify.toml");
 
     let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
@@ -184,7 +184,7 @@ fn flags_framework_toml_schema_violation() {
 #[test]
 fn valid_framework_toml_passes_schema() {
     let tmp = tempfile::tempdir().expect("tmp");
-    let ok = "[cli]\nversion = \"0.1.0\"\nbinary = \".bin/specify\"\npath = \"~/.local/bin\"\n";
+    let ok = "cli = { version = \"0.1.0\" }\n";
     fs::write(tmp.path().join("Specify.toml"), ok).expect("write Specify.toml");
 
     let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
