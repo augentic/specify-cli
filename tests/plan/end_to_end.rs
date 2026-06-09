@@ -60,11 +60,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
 use tempfile::{TempDir, tempdir};
 
 use crate::common::{
     Project, copy_dir, init_workspace, omnia_schema_dir, parse_json, parse_stderr, parse_stdout,
-    repo_root, specify_cmd,
+    repo_root, sha256_hex, specify_cmd,
 };
 
 // ---------------------------------------------------------------------------
@@ -836,4 +837,340 @@ fn composition_overwrite_gate_blocks() {
         !replaced.contains_key("home"),
         "whole-document replacement drops the prior screen, got {replaced:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// RFC-40 Phase 3 — acceptance capstone (Step 13)
+// ---------------------------------------------------------------------------
+//
+// The integration capstone exercises the full RFC-40 loop end-to-end and
+// locks the headline behaviours:
+//
+//   1. Composition accumulates monotonically across screen-introducing
+//      slices (Part A): a whole-document first slice establishes the
+//      baseline, then `delta.added` slices grow it without loss.
+//   2. `specify catalog infer` clusters the repeated `group` structure
+//      across the accumulated baseline (Part B): after the second screen
+//      lands, the report surfaces exactly one cluster at `occurrences: 2`,
+//      and `bind` records the *skill-supplied* slug at `status: confirmed`.
+//      Because naming is a skill judgement the CLI cannot perform, the
+//      test stands in for the agent: it takes the reported fingerprint and
+//      writes a fixed `{ <fingerprint>: shared-nav }` bindings map.
+//   3. Retroactive cross-slice factoring (B7): the build that discovers
+//      the component emits directive-only `delta.modified` entries that
+//      attach the `component:` directive to prior-slice screens, and the
+//      simulated writer brief drops the shared component module into the
+//      shell tree.
+//   4. A documentation-only slice surfaces the A4
+//      `composition-unexpected-for-non-ui-slice` warning at finalize and
+//      is stopped by the A3 `composition-baseline-overwrite-blocked` gate
+//      at merge — the motivating data-loss scenario, now closed twice
+//      over.
+//
+// Per the plan, code-generation assertions stay focused on the
+// composition / catalog artifacts and the *presence* of the shared
+// component module path, not full compilable shells (those live in the
+// manual `acceptance/` packs). Crucially, the test asserts the
+// *mechanism* — clustering, the report shape, and the binding guards —
+// and never that a specific English name like `tab-bar` emerges; the slug
+// is the test's own stand-in for the skill's choice.
+//
+// The whole scenario dispatches the real `vectis infer` tool, so it is
+// skipped when the WASM artifact is absent (build it with
+// `cargo make vectis-wasm`).
+
+/// Prebuilt `vectis` WASI artifact the `catalog infer` report phase
+/// dispatches. Built by `cargo make vectis-wasm`; absent on a bare
+/// `cargo nextest` without that dependency.
+fn vectis_wasm() -> PathBuf {
+    repo_root().join("target/vectis-wasi-tools/release/vectis.wasm")
+}
+
+/// The shared bottom-navigation `footer` group repeated across every UI
+/// screen in the capstone. Structurally identical instances cluster to
+/// one component under the default `--min-occurrences 2`.
+const SHARED_FOOTER: &str = "    footer:
+      - group:
+          items:
+            - icon-button: { bind: home, event: Navigate(Home) }
+            - icon-button: { bind: search, event: Navigate(Search) }
+";
+
+/// The same `footer` group with the factored `component: shared-nav`
+/// directive attached (B7 directive-only modification). The skeleton is
+/// byte-identical to [`SHARED_FOOTER`]; only the directive differs.
+const FACTORED_FOOTER: &str = "    footer:
+      - group:
+          component: shared-nav
+          items:
+            - icon-button: { bind: home, event: Navigate(Home) }
+            - icon-button: { bind: search, event: Navigate(Search) }
+";
+
+/// Declare the `vectis` WASI tool as a project-scoped tool in
+/// `.specify/project.yaml` (read access to `.specify`), so
+/// `specify catalog infer --phase report` resolves and dispatches it
+/// regardless of where the bound target adapter resolves from. Tools are
+/// a top-level `project.yaml` key, so the block is appended verbatim.
+fn declare_vectis_tool(root: &Path, wasm: &Path) {
+    let source = format!("file://{}", wasm.display());
+    let sha256 = sha256_hex(wasm);
+    let project_yaml = root.join(".specify/project.yaml");
+    let mut config = fs::read_to_string(&project_yaml).expect("read project.yaml");
+    let block = [
+        "tools:",
+        "  - name: vectis",
+        "    version: 0.4.0",
+        &format!("    source: \"{source}\""),
+        &format!("    sha256: \"{sha256}\""),
+        "    permissions:",
+        "      read:",
+        "        - \"$PROJECT_DIR/.specify\"",
+        "      write: []",
+        "",
+    ]
+    .join("\n");
+    config.push_str(&block);
+    fs::write(&project_yaml, config).expect("write project.yaml with vectis tool");
+}
+
+/// A minimal, schema-valid build report carrying the A4 `ui-surface`
+/// signal. `target` is the bound omnia adapter; `screens` is the
+/// brief-authored count of screen-bearing requirements this slice
+/// introduces or modifies.
+fn build_report(name: &str, ui_screens: u32) -> String {
+    format!(
+        "version: 1\nslice: {name}\ntarget: omnia\nstatus: success\nfindings: []\nui-surface:\n  \
+         screens: {ui_screens}\n"
+    )
+}
+
+/// Create a slice bound to omnia, stage its top-level `composition.yaml`
+/// and a build report carrying `ui-surface.screens`, drive it to
+/// `refined`, then run `slice build --phase finalize` (which gates the
+/// `Refined → Built` transition and runs the A4 coherence checks).
+/// Returns the parsed `BuildResult` so callers can assert its warnings.
+fn build_ui_slice(root: &Path, name: &str, composition: &str, ui_screens: u32) -> Value {
+    specify_cmd()
+        .current_dir(root)
+        .args(["slice", "create", name, "--target", "omnia"])
+        .assert()
+        .success();
+    let slice_dir = root.join(".specify/slices").join(name);
+    fs::write(slice_dir.join("composition.yaml"), composition).expect("write slice composition");
+    let build_dir = slice_dir.join("build");
+    fs::create_dir_all(&build_dir).expect("mkdir slice build dir");
+    fs::write(build_dir.join("report.yaml"), build_report(name, ui_screens))
+        .expect("write build report");
+
+    specify_cmd()
+        .current_dir(root)
+        .args(["slice", "transition", name, "refined"])
+        .assert()
+        .success();
+
+    let finalize = specify_cmd()
+        .current_dir(root)
+        .args(["--format", "json", "slice", "build", name, "--phase", "finalize"])
+        .assert()
+        .success();
+    parse_json(&finalize.get_output().stdout)
+}
+
+/// Whether a finalize `BuildResult` carries a warning with `rule-id`.
+fn has_warning(result: &Value, rule_id: &str) -> bool {
+    result["warnings"].as_array().is_some_and(|w| w.iter().any(|d| d["rule-id"] == rule_id))
+}
+
+/// The `component:` directive on `<screen>`'s first `footer` group in the
+/// merged baseline, if any.
+fn screen_footer_component(root: &Path, screen: &str) -> Option<String> {
+    composition_screens(root)
+        .get(screen)?
+        .get("footer")?
+        .get(0)?
+        .get("group")?
+        .get("component")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// Run `specify catalog infer --phase report` with the vectis tool cache
+/// pointed at `cache`, returning the parsed name-free cluster report.
+fn infer_report(root: &Path, cache: &Path) -> Value {
+    let out = specify_cmd()
+        .current_dir(root)
+        .env("SPECIFY_TOOLS_CACHE", cache)
+        .args(["--format", "json", "catalog", "infer", "--phase", "report"])
+        .assert()
+        .success();
+    parse_json(&out.get_output().stdout)
+}
+
+/// The end-to-end RFC-40 acceptance proof: composition accumulation,
+/// agent-simulated component inference + binding, retroactive cross-slice
+/// factoring, and the A4/A3 non-UI-slice safety nets, all in one loop.
+#[test]
+fn rfc40_composition_inference_capstone() {
+    let wasm = vectis_wasm();
+    if !wasm.is_file() {
+        eprintln!(
+            "skipping rfc40_composition_inference_capstone: vectis WASM not found at {}; run \
+             `cargo make vectis-wasm`",
+            wasm.display()
+        );
+        return;
+    }
+
+    let project = Project::init().with_schemas();
+    let root = project.root();
+    declare_vectis_tool(root, &wasm);
+    let cache = root.join(".tools-cache");
+    fs::create_dir_all(&cache).expect("mkdir tools cache");
+
+    accumulate_two_screens(root);
+    infer_and_bind_shared_nav(root, &cache);
+    factor_third_slice(root);
+    assert_doc_only_safety_nets(root);
+}
+
+/// Slices 1 + 2 (`home`, `search`), each carrying the same footer group:
+/// the first is a whole-document baseline, the second a `delta.added`
+/// that accumulates. Asserts the baseline grows 1 → 2 with no loss, and
+/// that a faithful UI slice raises no A4 warning at finalize.
+fn accumulate_two_screens(root: &Path) {
+    let home_doc = format!("version: 1\nscreens:\n  home:\n    name: Home\n{SHARED_FOOTER}");
+    let result = build_ui_slice(root, "intro-home", &home_doc, 1);
+    assert!(
+        !has_warning(&result, "composition-unexpected-for-non-ui-slice")
+            && !has_warning(&result, "composition-empty-for-ui-slice"),
+        "a faithful UI slice is self-consistent at finalize: {result}"
+    );
+    merge_slice(root, "intro-home");
+    assert_eq!(composition_screens(root).len(), 1, "baseline holds home after the first merge");
+
+    let search_doc = format!(
+        "version: 1\ndelta:\n  added:\n    search:\n      name: Search\n{}\n  modified: {{}}\n  \
+         removed: {{}}\n",
+        indent_block(SHARED_FOOTER)
+    );
+    build_ui_slice(root, "intro-search", &search_doc, 1);
+    merge_slice(root, "intro-search");
+    let screens = composition_screens(root);
+    assert_eq!(screens.len(), 2, "baseline accumulates to home + search");
+    assert!(screens.contains_key("home") && screens.contains_key("search"));
+}
+
+/// Inference (B2/B3): the report clusters the two identical footer groups
+/// into one name-free cluster at `occurrences: 2`; the test stands in for
+/// the skill, binding the reported fingerprint to a fixed slug. Asserts
+/// the catalog records it `confirmed` and a re-run echoes the bound slug
+/// (run-to-run stability).
+fn infer_and_bind_shared_nav(root: &Path, cache: &Path) {
+    let report = infer_report(root, cache);
+    let clusters = report["clusters"].as_array().expect("clusters array");
+    assert_eq!(clusters.len(), 1, "exactly one above-threshold cluster: {report}");
+    assert_eq!(clusters[0]["occurrences"], 2);
+    assert_eq!(clusters[0]["bound_slug"], Value::Null, "the CLI proposes no name");
+    let fingerprint = clusters[0]["fingerprint"].as_str().expect("cluster fingerprint").to_string();
+
+    let bindings_path = root.join(".specify/bindings.yaml");
+    fs::write(&bindings_path, format!("bindings:\n  {fingerprint}: shared-nav\n"))
+        .expect("write bindings");
+    specify_cmd()
+        .current_dir(root)
+        .env("SPECIFY_TOOLS_CACHE", cache)
+        .args(["catalog", "infer", "--phase", "bind"])
+        .arg("--bindings")
+        .arg(&bindings_path)
+        .assert()
+        .success();
+    let catalog = ComponentsCatalog::load(root).expect("catalog loads").expect("catalog written");
+    assert_eq!(
+        catalog.status_of("shared-nav"),
+        Some(ComponentStatus::Confirmed),
+        "bind records the skill-supplied slug as confirmed"
+    );
+
+    let echoed = infer_report(root, cache);
+    assert_eq!(echoed["clusters"][0]["bound_slug"], "shared-nav", "report echoes the bound slug");
+}
+
+/// Slice 3 (`profile`): the discovering build introduces a new screen
+/// carrying the factored component AND retroactively attaches the
+/// `component:` directive to the two prior-slice screens it did not
+/// author (directive-only `delta.modified`, B7). Asserts monotonic
+/// accumulation to three screens, the directive on all three, and the
+/// presence of the simulated shared component module path.
+fn factor_third_slice(root: &Path) {
+    let profile_doc = format!(
+        "version: 1\ndelta:\n  added:\n    profile:\n      name: Profile\n{factored}\n  \
+         modified:\n    home:\n      name: Home\n{factored}\n    search:\n      name: Search\n\
+         {factored}\n  removed: {{}}\n",
+        factored = indent_block(FACTORED_FOOTER)
+    );
+    build_ui_slice(root, "intro-profile", &profile_doc, 3);
+
+    // Simulate the writer sub-brief dropping the shared component module
+    // into the live shell tree (B7 code side); merge leaves it as residue.
+    let module_path = root.join("shared/src/components/shared-nav.rs");
+    fs::create_dir_all(module_path.parent().unwrap()).expect("mkdir shared components");
+    fs::write(&module_path, "// shared-nav component (factored by RFC-40 B7)\n")
+        .expect("write shared component module");
+    merge_slice(root, "intro-profile");
+
+    let screens = composition_screens(root);
+    assert_eq!(screens.len(), 3, "baseline accumulates to home + search + profile: {screens:?}");
+    for screen in ["home", "search", "profile"] {
+        assert_eq!(
+            screen_footer_component(root, screen).as_deref(),
+            Some("shared-nav"),
+            "screen `{screen}` carries the factored component directive"
+        );
+    }
+    assert!(module_path.is_file(), "the shared component module path is present (B7 code side)");
+}
+
+/// The documentation-only slice: it reports no UI surface
+/// (`ui-surface.screens: 0`) yet emits a non-empty whole-document
+/// composition — the motivating self-contradiction. Asserts A4 warns at
+/// finalize and A3 stops the merge from wiping the accumulated baseline.
+fn assert_doc_only_safety_nets(root: &Path) {
+    let doc_only_doc = "version: 1\nscreens:\n  platform-notes:\n    name: Platform Notes\n";
+    let result = build_ui_slice(root, "platform-requirements", doc_only_doc, 0);
+    assert!(
+        has_warning(&result, "composition-unexpected-for-non-ui-slice"),
+        "A4 surfaces the non-UI-slice composition mismatch at finalize: {result}"
+    );
+
+    let blocked = specify_cmd()
+        .current_dir(root)
+        .args(["--format", "json", "slice", "merge", "run", "platform-requirements"])
+        .assert()
+        .failure();
+    assert_eq!(
+        parse_stderr(&blocked.get_output().stderr, root)["error"],
+        "composition-baseline-overwrite-blocked",
+        "A3 stops the whole-document doc-only slice from wiping the baseline"
+    );
+
+    let final_screens = composition_screens(root);
+    assert_eq!(final_screens.len(), 3, "the baseline survives the blocked doc-only merge");
+    assert!(!final_screens.contains_key("platform-notes"), "the doc-only screen never landed");
+}
+
+/// Run `specify slice merge run <name>`, asserting success.
+fn merge_slice(root: &Path, name: &str) {
+    specify_cmd().current_dir(root).args(["slice", "merge", "run", name]).assert().success();
+}
+
+/// Re-indent a top-level (4-space) `footer:` block by two more spaces so
+/// it nests correctly under a `delta.added.<screen>` / `delta.modified.<screen>`
+/// entry (which sits two levels deeper than a top-level `screens.<screen>`).
+fn indent_block(block: &str) -> String {
+    block
+        .lines()
+        .map(|line| if line.is_empty() { String::new() } else { format!("  {line}") })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
