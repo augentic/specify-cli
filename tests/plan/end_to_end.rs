@@ -63,8 +63,8 @@ use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 use crate::common::{
-    copy_dir, init_workspace, omnia_schema_dir, parse_json, parse_stderr, parse_stdout, repo_root,
-    specify_cmd,
+    Project, copy_dir, init_workspace, omnia_schema_dir, parse_json, parse_stderr, parse_stdout,
+    repo_root, specify_cmd,
 };
 
 // ---------------------------------------------------------------------------
@@ -597,7 +597,7 @@ fn assert_no_staleness(output: &std::process::Output) {
 /// target/adapter field.
 #[test]
 fn kernel_projection_deterministic() {
-    let project = crate::common::Project::init().with_schemas();
+    let project = Project::init().with_schemas();
     let root = project.root();
 
     // Two slices bound to different targets; `slice build` resolves the
@@ -677,4 +677,163 @@ slices:
         .success();
     let second = fs::read_to_string(&model_path).expect("second model.yaml");
     assert_eq!(first, second, "re-running projection must be byte-identical");
+}
+
+// ---------------------------------------------------------------------------
+// RFC-40 Phase 1 — composition accumulation + the A3 overwrite gate
+// ---------------------------------------------------------------------------
+//
+// The merge-kernel accumulation + gate assertions live in
+// `crates/workflow/tests/merge_slice.rs` (Step 1). These two tests are
+// the integration layer: they drive whole `specify slice merge run`
+// invocations across several slices and assert (1) the merged baseline
+// at `.specify/specs/composition.yaml` grows monotonically as
+// screen-introducing slices accumulate via `delta.added`, and (2) the
+// `composition-baseline-overwrite-blocked` gate fires (and is overridable
+// with `--allow-composition-replace`) in a realistic multi-slice run.
+
+/// Read the merged composition baseline's `screens` map. An absent
+/// baseline or a baseline without a `screens` mapping yields an empty
+/// map. Parsed with `serde_saphyr` into a `serde_json::Value`, the same
+/// path the merge engine itself uses.
+fn composition_screens(root: &Path) -> serde_json::Map<String, Value> {
+    let path = root.join(".specify/specs/composition.yaml");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return serde_json::Map::new();
+    };
+    let doc: Value = serde_saphyr::from_str(&text)
+        .unwrap_or_else(|err| panic!("parse {}: {err}", path.display()));
+    doc.get("screens").and_then(Value::as_object).cloned().unwrap_or_default()
+}
+
+/// A one-screen `delta: { added }` composition — the accumulating shape a
+/// non-bootstrap screen-introducing slice emits (RFC-40 §A2).
+fn delta_added(screen: &str, name: &str) -> String {
+    format!(
+        "version: 1\ndelta:\n  added:\n    {screen}:\n      name: {name}\n  modified: {{}}\n  \
+         removed: {{}}\n"
+    )
+}
+
+/// A whole-document `screens:` composition — the replacement shape the A3
+/// gate guards against once a non-empty baseline exists (RFC-40 §A3).
+fn whole_document(screen: &str, name: &str) -> String {
+    format!("version: 1\nscreens:\n  {screen}:\n    name: {name}\n")
+}
+
+/// Create `name`, stage its top-level `composition.yaml`, and drive it to
+/// `built` through the real lifecycle verbs (`slice create` →
+/// `slice transition refined` → `slice transition built`) so
+/// `slice merge run` accepts it. Composition-only by design: the
+/// spec-delta accumulation path is covered elsewhere, so these tests
+/// isolate the composition baseline behaviour.
+fn stage_built_composition_slice(project: &Project, name: &str, composition: &str) {
+    specify_cmd().current_dir(project.root()).args(["slice", "create", name]).assert().success();
+    fs::write(project.slices_dir().join(name).join("composition.yaml"), composition)
+        .expect("write slice composition");
+    for target in ["refined", "built"] {
+        specify_cmd()
+            .current_dir(project.root())
+            .args(["slice", "transition", name, target])
+            .assert()
+            .success();
+    }
+}
+
+/// Three screen-introducing slices, each contributing one `delta.added`
+/// screen, merged in sequence: the baseline `screens` map must grow
+/// 1 → 2 → 3 with no prior screen lost — the data-loss regression Phase 1
+/// closes (RFC-40 §A1/A2).
+#[test]
+fn composition_accumulates_across_slices() {
+    let project = Project::init().with_schemas();
+    let root = project.root();
+
+    let slices = [
+        ("intro-home", "home", "Home"),
+        ("intro-settings", "settings", "Settings"),
+        ("intro-profile", "profile", "Profile"),
+    ];
+
+    let mut accumulated: Vec<&str> = Vec::new();
+    for (index, (slice, screen, name)) in slices.iter().enumerate() {
+        stage_built_composition_slice(&project, slice, &delta_added(screen, name));
+        specify_cmd().current_dir(root).args(["slice", "merge", "run", slice]).assert().success();
+
+        accumulated.push(screen);
+        let screens = composition_screens(root);
+        assert_eq!(
+            screens.len(),
+            index + 1,
+            "baseline must hold {} screen(s) after merging {slice}, got {screens:?}",
+            index + 1
+        );
+        for slug in &accumulated {
+            assert!(
+                screens.contains_key(*slug),
+                "screen `{slug}` must survive in the accumulated baseline, got {screens:?}"
+            );
+        }
+    }
+}
+
+/// A whole-document (`screens:`) slice composition over a non-empty
+/// baseline aborts `slice merge run` with
+/// `composition-baseline-overwrite-blocked`; the gate is a precondition
+/// (the baseline is untouched and the slice stays `built`), and
+/// `--allow-composition-replace` authorises the full replacement
+/// (RFC-40 §A3).
+#[test]
+fn composition_overwrite_gate_blocks() {
+    let project = Project::init().with_schemas();
+    let root = project.root();
+
+    // Establish a non-empty baseline via an accumulating first slice.
+    stage_built_composition_slice(&project, "intro-home", &delta_added("home", "Home"));
+    specify_cmd()
+        .current_dir(root)
+        .args(["slice", "merge", "run", "intro-home"])
+        .assert()
+        .success();
+    assert_eq!(composition_screens(root).len(), 1);
+
+    // A whole-document slice composition is blocked over the non-empty
+    // baseline.
+    stage_built_composition_slice(
+        &project,
+        "rewrite-all",
+        &whole_document("dashboard", "Dashboard"),
+    );
+    let blocked = specify_cmd()
+        .current_dir(root)
+        .args(["--format", "json", "slice", "merge", "run", "rewrite-all"])
+        .assert()
+        .failure();
+    assert_eq!(
+        parse_stderr(&blocked.get_output().stderr, root)["error"],
+        "composition-baseline-overwrite-blocked"
+    );
+
+    // Precondition semantics: nothing moved — the baseline is intact and
+    // `rewrite-all` is still `built`, so the override can re-run it.
+    let preserved = composition_screens(root);
+    assert_eq!(preserved.len(), 1, "blocked merge must not touch the baseline");
+    assert!(preserved.contains_key("home"), "the prior screen must survive a blocked merge");
+
+    // The narrow override authorises the whole-document replacement.
+    specify_cmd()
+        .current_dir(root)
+        .args(["slice", "merge", "run", "rewrite-all", "--allow-composition-replace"])
+        .assert()
+        .success();
+    let replaced = composition_screens(root);
+    assert_eq!(replaced.len(), 1);
+    assert!(
+        replaced.contains_key("dashboard"),
+        "the override replaces the baseline with the slice document, got {replaced:?}"
+    );
+    assert!(
+        !replaced.contains_key("home"),
+        "whole-document replacement drops the prior screen, got {replaced:?}"
+    );
 }
