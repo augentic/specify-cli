@@ -179,6 +179,36 @@ fn flags_framework_toml_schema_violation() {
 }
 
 #[test]
+fn valid_framework_toml_git_only_passes_schema() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let ok = "cli = { git = \"https://github.com/augentic/specify-cli\" }\n";
+    fs::write(tmp.path().join("Specify.toml"), ok).expect("write Specify.toml");
+
+    let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
+    let rule = make_rule(
+        "CORE-055",
+        vec![hint(HintKind::PathPattern, "Specify.toml"), hint(HintKind::Schema, "framework")],
+    );
+    let runner: &dyn ToolRunner = &NoToolRunner;
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert!(
+        outcome.findings.is_empty(),
+        "git-only Specify.toml flags nothing: {:?}",
+        outcome.findings
+    );
+}
+
+#[test]
 fn valid_framework_toml_passes_schema() {
     let tmp = tempfile::tempdir().expect("tmp");
     let ok = "cli = { version = \"0.1.0\" }\n";
