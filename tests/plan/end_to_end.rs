@@ -1071,7 +1071,7 @@ fn infer_and_bind_shared_nav(root: &Path, cache: &Path) {
     let clusters = report["clusters"].as_array().expect("clusters array");
     assert_eq!(clusters.len(), 1, "exactly one above-threshold cluster: {report}");
     assert_eq!(clusters[0]["occurrences"], 2);
-    assert_eq!(clusters[0]["bound_slug"], Value::Null, "the CLI proposes no name");
+    assert_eq!(clusters[0]["bound-slug"], Value::Null, "the CLI proposes no name");
     let fingerprint = clusters[0]["fingerprint"].as_str().expect("cluster fingerprint").to_string();
 
     let bindings_path = root.join(".specify/bindings.yaml");
@@ -1093,7 +1093,7 @@ fn infer_and_bind_shared_nav(root: &Path, cache: &Path) {
     );
 
     let echoed = infer_report(root, cache);
-    assert_eq!(echoed["clusters"][0]["bound_slug"], "shared-nav", "report echoes the bound slug");
+    assert_eq!(echoed["clusters"][0]["bound-slug"], "shared-nav", "report echoes the bound slug");
 }
 
 /// Slice 3 (`profile`): the discovering build introduces a new screen

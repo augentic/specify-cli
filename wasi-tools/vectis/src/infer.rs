@@ -28,11 +28,11 @@
 //! the same read-time-fingerprint pass: each part's `group` fragment is
 //! normalised and registered as a **pinned binding** `{ fingerprint →
 //! slug }`. A pinned fingerprint carries two authorities — **naming**
-//! (the cluster's `bound_slug` echoes the operator slug, so the build
+//! (the cluster's `bound-slug` echoes the operator slug, so the build
 //! skill leaves it untouched) and **promotion** (a matched pin clusters
 //! as soon as it hits ≥1 baseline/cache group, bypassing
 //! `--min-occurrences`). A pin matching zero groups is surfaced under
-//! `unmatched_parts`. The tool still invents no name of its own — it
+//! `unmatched-parts`. The tool still invents no name of its own — it
 //! only echoes the operator's.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -90,7 +90,7 @@ struct GroupOccurrence {
     event_targets: BTreeSet<String>,
     /// Non-authoritative name hint from a candidate-cache entry's
     /// `candidate_component` label (RFC-40 §B4). `None` for baseline
-    /// groups. Surfaced as evidence; never sets `bound_slug`.
+    /// groups. Surfaced as evidence; never sets `bound-slug`.
     candidate_name: Option<String>,
 }
 
@@ -174,7 +174,7 @@ pub fn run(args: &InferArgs) -> Result<Value, VectisError> {
     Ok(json!({
         "version": 1,
         "clusters": clusters,
-        "unmatched_parts": unmatched_parts.into_iter().collect::<Vec<_>>(),
+        "unmatched-parts": unmatched_parts.into_iter().collect::<Vec<_>>(),
     }))
 }
 
@@ -393,7 +393,7 @@ fn collect_part_pins(path: &Path) -> Vec<PartPin> {
 ///
 /// `pin_slug_by_fp` carries operator-part pins (RFC-40 §C2): a cluster
 /// whose fingerprint matches a pin bypasses `min_occurrences` (promotion
-/// authority) and carries `bound_slug: <operator-slug>` + `pinned: true`
+/// authority) and carries `bound-slug: <operator-slug>` + `pinned: true`
 /// (naming authority); the tool still invents no name of its own.
 fn cluster(
     occurrences: Vec<GroupOccurrence>, min_occurrences: u32,
@@ -435,18 +435,18 @@ fn cluster(
             skeleton_item_kinds(&c.skeleton, &mut item_kinds);
             let mut evidence = json!({
                 "region": c.region,
-                "item_kinds": item_kinds.into_iter().collect::<Vec<_>>(),
-                "event_targets": c.event_targets.into_iter().collect::<Vec<_>>(),
+                "item-kinds": item_kinds.into_iter().collect::<Vec<_>>(),
+                "event-targets": c.event_targets.into_iter().collect::<Vec<_>>(),
             });
             // Candidate-cache name hints are non-authoritative evidence
             // (RFC-40 §B4): emit them only when present so a baseline-only
-            // report keeps its `region` / `item_kinds` / `event_targets`
+            // report keeps its `region` / `item-kinds` / `event-targets`
             // evidence shape unchanged.
             if !c.candidate_names.is_empty()
                 && let Value::Object(ref mut map) = evidence
             {
                 map.insert(
-                    "candidate_names".to_string(),
+                    "candidate-names".to_string(),
                     json!(c.candidate_names.into_iter().collect::<Vec<_>>()),
                 );
             }
@@ -456,7 +456,7 @@ fn cluster(
                 "screens": c.screens.into_iter().collect::<Vec<_>>(),
                 "skeleton": skeleton_to_json(&c.skeleton),
                 "evidence": evidence,
-                "bound_slug": Value::Null,
+                "bound-slug": Value::Null,
             });
             // §C2 step 5: a matched pin echoes the operator slug and
             // flags the cluster `pinned` (emitted only when true, so a
@@ -464,7 +464,7 @@ fn cluster(
             if let Some(slug) = pin_slug_by_fp.get(&fp)
                 && let Value::Object(ref mut map) = entry
             {
-                map.insert("bound_slug".to_string(), Value::String(slug.clone()));
+                map.insert("bound-slug".to_string(), Value::String(slug.clone()));
                 map.insert("pinned".to_string(), Value::Bool(true));
             }
             entry

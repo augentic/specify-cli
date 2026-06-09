@@ -290,7 +290,7 @@ fn infer_emits_name_free_cluster_report() {
     let clusters = value["clusters"].as_array().expect("clusters array");
     assert_eq!(clusters.len(), 1, "expected one cluster: {value}");
     assert_eq!(clusters[0]["occurrences"], 2);
-    assert_eq!(clusters[0]["bound_slug"], Value::Null);
+    assert_eq!(clusters[0]["bound-slug"], Value::Null);
     assert!(clusters[0]["fingerprint"].as_str().is_some(), "cluster carries a fingerprint");
 }
 

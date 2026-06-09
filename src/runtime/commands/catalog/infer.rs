@@ -23,7 +23,7 @@
 //! exists, both phases forward it to the tool with `--parts`. A part's
 //! `group` fragment is fingerprinted (tool-side, at read time) and
 //! registered as a pinned binding carrying two authorities: **naming**
-//! (a matched-pin cluster echoes the operator slug in `bound_slug`, so
+//! (a matched-pin cluster echoes the operator slug in `bound-slug`, so
 //! `report`'s catalog echo and the build skill both leave it untouched)
 //! and **promotion** (a matched pin clusters below `--min-occurrences`).
 //! `bind` projects each **matched** pin into `components.yaml` as a
@@ -35,10 +35,10 @@
 //! **Run-to-run binding stability (RFC §B2).** `bind` persists each
 //! `fingerprint → slug` binding on the catalog entry (the `fingerprint`
 //! field), and `report` reverse-maps the catalog by fingerprint to fill
-//! each already-named cluster's `bound_slug`. So once the skill names a
+//! each already-named cluster's `bound-slug`. So once the skill names a
 //! fingerprint, every later `report` echoes that slug and the skill
 //! leaves the cluster untouched — naming never thrashes the catalog.
-//! `report` only fills a `bound_slug` the tool left `null`; it never
+//! `report` only fills a `bound-slug` the tool left `null`; it never
 //! clobbers a tool-emitted binding (e.g. an operator-pin echo, Step 11).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -158,9 +158,9 @@ fn all_part_slugs(ctx: &Ctx) -> Result<Vec<String>> {
         .unwrap_or_default())
 }
 
-/// Fill each cluster's `bound_slug` from the existing catalog's
+/// Fill each cluster's `bound-slug` from the existing catalog's
 /// `fingerprint → slug` index (RFC §B2 run-to-run stability). Only a
-/// `null`/absent `bound_slug` is filled — a slug the tool already bound
+/// `null`/absent `bound-slug` is filled — a slug the tool already bound
 /// (e.g. an operator-pin echo, Step 11) is never overwritten.
 fn populate_bound_slugs(ctx: &Ctx, report: &mut Value) -> Result<()> {
     let Some(catalog) = ComponentsCatalog::load(&ctx.project_dir)? else {
@@ -171,14 +171,14 @@ fn populate_bound_slugs(ctx: &Ctx, report: &mut Value) -> Result<()> {
         return Ok(());
     };
     for cluster in clusters {
-        if cluster.get("bound_slug").is_some_and(|v| !v.is_null()) {
+        if cluster.get("bound-slug").is_some_and(|v| !v.is_null()) {
             continue;
         }
         let Some(fingerprint) = cluster.get("fingerprint").and_then(Value::as_str) else {
             continue;
         };
         if let Some(slug) = index.get(fingerprint) {
-            cluster["bound_slug"] = Value::String((*slug).to_string());
+            cluster["bound-slug"] = Value::String((*slug).to_string());
         }
     }
     Ok(())
@@ -246,8 +246,8 @@ struct PartsOutcome {
 
 /// Resolve operator parts against the current baseline by dispatching
 /// the tool with `--parts` and reading back the matched-pin clusters
-/// (those carrying `pinned: true` + a `bound_slug`) and the
-/// `unmatched_parts` list. Returns an empty outcome when no `parts.yaml`
+/// (those carrying `pinned: true` + a `bound-slug`) and the
+/// `unmatched-parts` list. Returns an empty outcome when no `parts.yaml`
 /// exists; when a parts file exists but no baseline does yet, every part
 /// is unmatched (§C5).
 fn part_projections(ctx: &Ctx) -> Result<PartsOutcome> {
@@ -269,7 +269,7 @@ fn part_projections(ctx: &Ctx) -> Result<PartsOutcome> {
             }
             let (Some(fingerprint), Some(slug)) = (
                 cluster.get("fingerprint").and_then(Value::as_str),
-                cluster.get("bound_slug").and_then(Value::as_str),
+                cluster.get("bound-slug").and_then(Value::as_str),
             ) else {
                 continue;
             };
@@ -283,7 +283,7 @@ fn part_projections(ctx: &Ctx) -> Result<PartsOutcome> {
     }
 
     let unmatched: Vec<String> = report
-        .get("unmatched_parts")
+        .get("unmatched-parts")
         .and_then(Value::as_array)
         .map(|arr| arr.iter().filter_map(Value::as_str).map(str::to_string).collect())
         .unwrap_or_default();
@@ -357,13 +357,62 @@ fn load_bindings(path: &Path) -> Result<BindingsFile> {
         path: path.to_path_buf(),
         source,
     })?;
-    serde_saphyr::from_str(&content).map_err(|err| {
+    let file: BindingsFile = serde_saphyr::from_str(&content).map_err(|err| {
         Error::validation_failed(
             "catalog-bindings-malformed",
             "bindings file is a `{ version?, bindings: { <fingerprint>: <slug> } }` map",
             format!("{}: parse failed: {err}", path.display()),
         )
-    })
+    })?;
+    validate_bindings(&file, path)?;
+    Ok(file)
+}
+
+/// Reject a bindings file whose keys are not 64-char lowercase-hex
+/// fingerprints or whose slugs are not kebab-case, *before* `bind`
+/// writes anything. `ComponentsCatalog::load` schema-validates the
+/// catalog on read (kebab slug keys, `^[0-9a-f]{64}$` fingerprints), so
+/// without this guard `bind` could persist a `components.yaml` that
+/// every subsequent run fails to load.
+fn validate_bindings(file: &BindingsFile, path: &Path) -> Result<()> {
+    for (fingerprint, value) in &file.bindings {
+        if !is_hex_fingerprint(fingerprint) {
+            return Err(Error::validation_failed(
+                "catalog-bindings-malformed",
+                "each binding key must be a 64-character lowercase-hex fingerprint",
+                format!("{}: invalid fingerprint key `{fingerprint}`", path.display()),
+            ));
+        }
+        let slug = value.slug();
+        if !is_kebab_slug(slug) {
+            return Err(Error::validation_failed(
+                "catalog-bindings-malformed",
+                "each binding slug must be kebab-case (`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)",
+                format!(
+                    "{}: invalid slug `{slug}` for fingerprint `{fingerprint}`",
+                    path.display()
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Whether `s` is a 64-character lowercase SHA-256 hex digest, matching
+/// the components-catalog schema's `^[0-9a-f]{64}$` fingerprint pattern.
+fn is_hex_fingerprint(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Whether `s` is a kebab-case identifier, matching the
+/// components-catalog schema's `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` slug
+/// pattern: lowercase-alpha first character, `[a-z0-9]`/`-` body, and no
+/// leading, trailing, or doubled `-`.
+fn is_kebab_slug(s: &str) -> bool {
+    s.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+        && s.split('-').all(|seg| {
+            !seg.is_empty() && seg.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        })
 }
 
 /// A desired binding before de-collision: the requested bare slug, the
@@ -425,7 +474,7 @@ fn resolve_slugs(desired: Vec<DesiredBinding>) -> Vec<ResolvedBinding> {
 }
 
 fn empty_report(unmatched_parts: &[String]) -> Value {
-    json!({ "version": 1, "clusters": [], "unmatched_parts": unmatched_parts })
+    json!({ "version": 1, "clusters": [], "unmatched-parts": unmatched_parts })
 }
 
 fn emit_report(ctx: &Ctx, report: &Value) -> Result<()> {
@@ -440,11 +489,11 @@ fn write_report_text(w: &mut dyn Write, report: &Value) -> std::io::Result<()> {
         for cluster in clusters {
             let fp = cluster.get("fingerprint").and_then(Value::as_str).unwrap_or("<none>");
             let occ = cluster.get("occurrences").and_then(Value::as_u64).unwrap_or(0);
-            let bound = cluster.get("bound_slug").and_then(Value::as_str).unwrap_or("<unbound>");
+            let bound = cluster.get("bound-slug").and_then(Value::as_str).unwrap_or("<unbound>");
             writeln!(w, "  - {fp} (occurrences: {occ}, bound: {bound})")?;
         }
     }
-    if let Some(unmatched) = report.get("unmatched_parts").and_then(Value::as_array)
+    if let Some(unmatched) = report.get("unmatched-parts").and_then(Value::as_array)
         && !unmatched.is_empty()
     {
         writeln!(w, "unmatched parts: {}", unmatched.len())?;
@@ -460,7 +509,7 @@ fn write_report_text(w: &mut dyn Write, report: &Value) -> std::io::Result<()> {
 fn emit_bind_diff(
     ctx: &Ctx, added: &[String], unmatched_parts: &[String], dry_run: bool,
 ) -> Result<()> {
-    let body = json!({ "added": added, "unmatched_parts": unmatched_parts, "dry_run": dry_run });
+    let body = json!({ "added": added, "unmatched-parts": unmatched_parts, "dry-run": dry_run });
     ctx.write(&body, |w, _| write_bind_text(w, added, unmatched_parts, dry_run))
 }
 

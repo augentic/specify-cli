@@ -108,7 +108,7 @@ screens:
     let report = infer_default(&path);
 
     assert_eq!(report["version"], 1);
-    assert_eq!(report["unmatched_parts"], Value::Array(vec![]));
+    assert_eq!(report["unmatched-parts"], Value::Array(vec![]));
 
     let found = clusters(&report);
     assert_eq!(found.len(), 1, "expected exactly one cluster: {report}");
@@ -120,11 +120,11 @@ screens:
         cluster["fingerprint"].as_str().is_some_and(|f| f.len() == 64),
         "fingerprint should be a 64-char sha256 hex string: {cluster}"
     );
-    assert_eq!(cluster["bound_slug"], Value::Null);
+    assert_eq!(cluster["bound-slug"], Value::Null);
     assert_eq!(cluster["evidence"]["region"], "footer");
-    assert_eq!(cluster["evidence"]["item_kinds"], serde_json::json!(["icon-button"]));
+    assert_eq!(cluster["evidence"]["item-kinds"], serde_json::json!(["icon-button"]));
     assert_eq!(
-        cluster["evidence"]["event_targets"],
+        cluster["evidence"]["event-targets"],
         serde_json::json!(["Navigate(Home)", "Navigate(Search)"])
     );
     assert!(cluster.get("skeleton").is_some(), "cluster carries a normalized skeleton: {cluster}");
@@ -333,11 +333,11 @@ group:
         "the cache provenance screen and the baseline screen are distinct screens"
     );
     assert_eq!(
-        cluster["evidence"]["candidate_names"],
+        cluster["evidence"]["candidate-names"],
         serde_json::json!(["nav-footer"]),
         "the cache label hint surfaces as non-authoritative evidence"
     );
-    assert_eq!(cluster["bound_slug"], Value::Null, "the tool still invents no name");
+    assert_eq!(cluster["bound-slug"], Value::Null, "the tool still invents no name");
 }
 
 /// Two cached candidates on distinct provenance screens cluster on their
@@ -434,7 +434,7 @@ screens:
 
 /// A pinned operator part matching a single baseline group is promoted
 /// to a cluster below the default threshold (promotion authority) and
-/// carries the operator slug in `bound_slug` plus `pinned: true` (naming
+/// carries the operator slug in `bound-slug` plus `pinned: true` (naming
 /// authority) — RFC-40 §C2. The tool still derives no name of its own.
 #[test]
 fn pinned_part_promotes_below_threshold() {
@@ -467,13 +467,13 @@ parts:
     assert_eq!(found.len(), 1, "the single matched group is promoted by the pin: {report}");
     let cluster = &found[0];
     assert_eq!(cluster["occurrences"], 1);
-    assert_eq!(cluster["bound_slug"], "primary-nav", "the operator slug is echoed");
+    assert_eq!(cluster["bound-slug"], "primary-nav", "the operator slug is echoed");
     assert_eq!(cluster["pinned"], Value::Bool(true));
-    assert_eq!(report["unmatched_parts"], serde_json::json!([]));
+    assert_eq!(report["unmatched-parts"], serde_json::json!([]));
 }
 
 /// A pinned part whose skeleton matches no baseline group is not a
-/// cluster — it is surfaced under `unmatched_parts` (RFC-40 §C2 step 4 /
+/// cluster — it is surfaced under `unmatched-parts` (RFC-40 §C2 step 4 /
 /// §C5), and inference proceeds regardless.
 #[test]
 fn pinned_part_matching_nothing_is_unmatched() {
@@ -500,11 +500,11 @@ parts:
 
     let report = infer_with_parts(&composition, &parts);
     assert!(clusters(&report).is_empty(), "no baseline group matches the pin: {report}");
-    assert_eq!(report["unmatched_parts"], serde_json::json!(["primary-nav"]));
+    assert_eq!(report["unmatched-parts"], serde_json::json!(["primary-nav"]));
 }
 
 /// When a baseline group matches no pin, the pin still surfaces under
-/// `unmatched_parts` while the group clusters only on its own merits
+/// `unmatched-parts` while the group clusters only on its own merits
 /// (here below threshold, so absent) — pins never suppress ordinary
 /// clustering.
 #[test]
@@ -535,7 +535,7 @@ parts:
 
     let report = infer_with_parts(&composition, &parts);
     assert!(clusters(&report).is_empty(), "the lone footer group is below threshold: {report}");
-    assert_eq!(report["unmatched_parts"], serde_json::json!(["hero"]));
+    assert_eq!(report["unmatched-parts"], serde_json::json!(["hero"]));
 }
 
 /// `--min-occurrences 3` excludes a group spanning only two screens.

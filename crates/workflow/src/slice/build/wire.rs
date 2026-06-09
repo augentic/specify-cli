@@ -267,7 +267,7 @@ pub fn evaluate_ui_surface_coherence(
     if ui_surface.screens == 0 && has_surface {
         warnings.push(ui_surface_warning(
             "composition-unexpected-for-non-ui-slice",
-            "A slice reporting no UI surface (`ui-surface.screens: 0`) produces an empty \
+            "A slice reporting no UI surface (`ui-surface.screens: 0`) produced a non-empty \
              composition.",
             format!(
                 "slice `{}` reported `ui-surface.screens: 0` but produced a non-empty \
@@ -280,8 +280,8 @@ pub fn evaluate_ui_surface_coherence(
     if ui_surface.screens > 0 && !has_surface {
         warnings.push(ui_surface_warning(
             "composition-empty-for-ui-slice",
-            "A slice reporting a UI surface (`ui-surface.screens > 0`) produces composition \
-             screens.",
+            "A slice reporting a UI surface (`ui-surface.screens > 0`) produced an absent or \
+             empty composition.",
             format!(
                 "slice `{}` reported `ui-surface.screens: {}` but produced an absent or empty \
                  composition.yaml; the UI-surface judgement contradicts the composition output",

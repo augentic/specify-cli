@@ -17,7 +17,7 @@ mod common;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use common::{parse_json, repo_root, sha256_hex, specify_cmd};
+use common::{parse_json, parse_stderr, repo_root, sha256_hex, specify_cmd};
 use serde_json::Value;
 use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
 use tempfile::{TempDir, tempdir};
@@ -187,7 +187,7 @@ fn report_clusters_repeated_group() {
         cluster["fingerprint"].as_str().is_some_and(|f| f.len() == 64),
         "fingerprint is a 64-char sha256 hex string: {cluster}"
     );
-    assert_eq!(cluster["bound_slug"], Value::Null);
+    assert_eq!(cluster["bound-slug"], Value::Null);
     assert_eq!(cluster["evidence"]["region"], "footer");
 }
 
@@ -254,9 +254,9 @@ group:
     let cluster = &clusters[0];
     assert_eq!(cluster["occurrences"], 2);
     assert_eq!(cluster["screens"], serde_json::json!(["checkout", "home"]));
-    assert_eq!(cluster["bound_slug"], Value::Null);
+    assert_eq!(cluster["bound-slug"], Value::Null);
     assert_eq!(
-        cluster["evidence"]["candidate_names"],
+        cluster["evidence"]["candidate-names"],
         serde_json::json!(["nav-footer"]),
         "the stage-6 label hint surfaces as non-authoritative evidence"
     );
@@ -274,7 +274,7 @@ fn report_absent_baseline_is_empty() {
     let report = parse_json(&assert.get_output().stdout);
     assert_eq!(report["version"], 1);
     assert_eq!(report["clusters"], serde_json::json!([]));
-    assert_eq!(report["unmatched_parts"], serde_json::json!([]));
+    assert_eq!(report["unmatched-parts"], serde_json::json!([]));
     assert!(!ComponentsCatalog::path_in(tmp.path()).exists(), "no catalog written");
 }
 
@@ -295,7 +295,7 @@ fn bind_dry_run_prints_diff_without_writing() {
         .success();
 
     let body = parse_json(&assert.get_output().stdout);
-    assert_eq!(body["dry_run"], true);
+    assert_eq!(body["dry-run"], true);
     assert_eq!(body["added"], serde_json::json!(["tab-bar"]));
     assert!(!ComponentsCatalog::path_in(tmp.path()).exists(), "dry-run writes nothing");
 }
@@ -322,6 +322,49 @@ fn bind_writes_supplied_slug() {
         Some("a1".repeat(32)),
         "bind persists the fingerprint so a later report can echo the slug"
     );
+}
+
+#[test]
+fn bind_rejects_non_hex_fingerprint() {
+    let tmp = bind_project();
+    // Key is not 64-char lowercase hex; binding would otherwise persist a
+    // catalog the schema-validated `ComponentsCatalog::load` later rejects.
+    let bindings = write_bindings(tmp.path(), "bindings:\n  not-a-fingerprint: tab-bar\n");
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "catalog", "infer", "--phase", "bind"])
+        .arg("--bindings")
+        .arg(&bindings)
+        .assert()
+        .failure();
+
+    assert_eq!(
+        parse_stderr(&assert.get_output().stderr, tmp.path())["error"],
+        "catalog-bindings-malformed",
+    );
+    assert!(!ComponentsCatalog::path_in(tmp.path()).exists(), "a rejected bind writes nothing");
+}
+
+#[test]
+fn bind_rejects_non_kebab_slug() {
+    let tmp = bind_project();
+    // Valid fingerprint, but `TabBar` violates the catalog's kebab-case
+    // slug pattern — caught before any write.
+    let bindings =
+        write_bindings(tmp.path(), &format!("bindings:\n  {}: TabBar\n", "a1".repeat(32)));
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "catalog", "infer", "--phase", "bind"])
+        .arg("--bindings")
+        .arg(&bindings)
+        .assert()
+        .failure();
+
+    assert_eq!(
+        parse_stderr(&assert.get_output().stderr, tmp.path())["error"],
+        "catalog-bindings-malformed",
+    );
+    assert!(!ComponentsCatalog::path_in(tmp.path()).exists(), "a rejected bind writes nothing");
 }
 
 /// End-to-end run-to-run stability (RFC §B2): bind a fingerprint, then
@@ -370,7 +413,7 @@ fn report_echoes_bound_slug_after_bind() {
         .success();
     let report = parse_json(&second.get_output().stdout);
     assert_eq!(
-        report["clusters"][0]["bound_slug"], "shared-footer",
+        report["clusters"][0]["bound-slug"], "shared-footer",
         "report echoes the slug bound to this fingerprint: {report}"
     );
 }
@@ -534,7 +577,7 @@ parts:
         .success();
 
     let body = parse_json(&assert.get_output().stdout);
-    assert_eq!(body["unmatched_parts"], serde_json::json!(["primary-nav"]));
+    assert_eq!(body["unmatched-parts"], serde_json::json!(["primary-nav"]));
     assert_eq!(body["added"], serde_json::json!([]));
     assert!(
         !ComponentsCatalog::path_in(tmp.path()).exists(),
@@ -641,7 +684,7 @@ parts:
     let clusters = report["clusters"].as_array().expect("clusters");
     let body_fp = clusters
         .iter()
-        .find(|c| c["bound_slug"].is_null())
+        .find(|c| c["bound-slug"].is_null())
         .and_then(|c| c["fingerprint"].as_str())
         .expect("an unpinned body cluster")
         .to_string();
