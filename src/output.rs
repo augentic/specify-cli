@@ -77,6 +77,12 @@ pub struct LintEmit<'a> {
     pub now: Timestamp,
     /// Scope facets recorded on the `lint-completed` event.
     pub scope: LintScope,
+    /// Whether to append a `lint-completed` journal event. `specify lint
+    /// project` journals (runtime observability); `specify lint framework`
+    /// does not — framework self-lint is a development surface and the
+    /// `lint-completed` contract is scoped to `lint project` (DECISIONS.md
+    /// §"Journal event names").
+    pub journal: bool,
     /// Command label prefixed onto best-effort journal failures.
     pub command_label: &'static str,
     /// Wall-clock duration of the scan in milliseconds.
@@ -88,9 +94,10 @@ pub struct LintEmit<'a> {
     pub trailing_newline: bool,
 }
 
-/// Render the lint envelope to stdout, append exactly one
-/// `lint-completed` journal event, and report whether any blocking
-/// (`critical | important`) finding is present.
+/// Render the lint envelope to stdout, append at most one
+/// `lint-completed` journal event (only when `emit.journal` is set),
+/// and report whether any blocking (`critical | important`) finding is
+/// present.
 ///
 /// Shared by both lint handlers so the render → print → journal →
 /// blocking-decision sequence lives in one place. Callers map the
@@ -110,15 +117,17 @@ pub fn emit_diagnostic_report(emit: LintEmit<'_>) -> Result<bool, RenderError> {
     }
     let blocking = blocking_findings_present(&emit.report.findings);
     let exit_code: i32 = if blocking { 2 } else { 0 };
-    journal::emit_lint_completed(
-        emit.layout,
-        emit.now,
-        emit.scope,
-        &emit.report.findings,
-        emit.elapsed_ms,
-        exit_code,
-        emit.command_label,
-    );
+    if emit.journal {
+        journal::emit_lint_completed(
+            emit.layout,
+            emit.now,
+            emit.scope,
+            &emit.report.findings,
+            emit.elapsed_ms,
+            exit_code,
+            emit.command_label,
+        );
+    }
     Ok(blocking)
 }
 
@@ -140,6 +149,9 @@ pub struct LintRun<'a> {
     pub now: Timestamp,
     /// Scope facets recorded on the `lint-completed` event.
     pub scope: LintScope,
+    /// Whether to append a `lint-completed` journal event. See
+    /// [`LintEmit::journal`].
+    pub journal: bool,
     /// Command label prefixed onto best-effort journal failures.
     pub command_label: &'static str,
     /// Scan clock started at handler entry; the elapsed span lands on
@@ -173,6 +185,7 @@ pub fn emit_lint_report(run: LintRun<'_>) -> Result<Option<DiagnosticReport>> {
                 layout: run.layout,
                 now: run.now,
                 scope: run.scope,
+                journal: run.journal,
                 command_label: run.command_label,
                 elapsed_ms: run.started_at.elapsed().as_millis(),
                 trailing_newline: run.trailing_newline,
