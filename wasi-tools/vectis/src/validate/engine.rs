@@ -20,7 +20,7 @@
 
 mod all;
 mod assets;
-mod composition;
+pub(crate) mod composition;
 mod layout;
 mod paths;
 mod shared;
