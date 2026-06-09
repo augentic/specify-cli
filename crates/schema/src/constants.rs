@@ -140,6 +140,10 @@ pub const SCENARIO_JSON_SCHEMA: &str =
 pub const MARKETPLACE_JSON_SCHEMA: &str =
     include_str!("../../../schemas/authoring/marketplace.schema.json");
 
+/// Schema for `Specify.toml` framework authoring config.
+pub const FRAMEWORK_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/authoring/framework.schema.json");
+
 /// Schema for the per-slice target build request.
 ///
 /// The closed-shape request `specify slice build` hands to a target

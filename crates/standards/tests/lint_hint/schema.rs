@@ -150,6 +150,65 @@ fn valid_scenario_passes_schema_selector() {
 }
 
 #[test]
+fn flags_framework_toml_schema_violation() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let bad = "cli = { version = \"not-a-version\" }\n";
+    fs::write(tmp.path().join("Specify.toml"), bad).expect("write Specify.toml");
+
+    let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
+    let rule = make_rule(
+        "CORE-055",
+        vec![hint(HintKind::PathPattern, "Specify.toml"), hint(HintKind::Schema, "framework")],
+    );
+    let runner: &dyn ToolRunner = &NoToolRunner;
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert!(
+        !outcome.findings.is_empty(),
+        "invalid Specify.toml version must flag the framework schema"
+    );
+}
+
+#[test]
+fn valid_framework_toml_passes_schema() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let ok = "cli = { version = \"0.1.0\" }\n";
+    fs::write(tmp.path().join("Specify.toml"), ok).expect("write Specify.toml");
+
+    let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
+    let rule = make_rule(
+        "CORE-055",
+        vec![hint(HintKind::PathPattern, "Specify.toml"), hint(HintKind::Schema, "framework")],
+    );
+    let runner: &dyn ToolRunner = &NoToolRunner;
+
+    let outcome = evaluate(
+        &rule,
+        rule.rule_hints.as_deref().unwrap_or_default(),
+        &model,
+        tmp.path(),
+        runner,
+        1,
+    )
+    .expect("evaluate ok");
+
+    assert!(
+        outcome.findings.is_empty(),
+        "schema-valid Specify.toml flags nothing: {:?}",
+        outcome.findings
+    );
+}
+
+#[test]
 fn schema_hint_rejects_http_reference() {
     let tmp = tempfile::tempdir().expect("tmp");
     fs::write(tmp.path().join("x.json"), "{}").expect("write");

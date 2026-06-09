@@ -394,10 +394,13 @@ fn init_workspace_refuses_when_present() {
 
 // ---- `specify init --upgrade` (RFC-30 §D5 re-entry version bump) ----
 
+/// This binary's version — the target every `--upgrade` bumps toward.
+const BINARY_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Populate a brownfield regular project: an older-but-same-major pin
-/// (`0.1.0`; the binary is `0.2.0`, same major `0`, so no migration),
-/// a bare `adapter:`, a spread of operator artifacts, and a sentinel
-/// `AGENTS.md`.
+/// (`0.1.0`; the binary is a later `0.x`, same major `0`, so no
+/// migration), a bare `adapter:`, a spread of operator artifacts, and a
+/// sentinel `AGENTS.md`.
 fn seed_brownfield_regular(root: &Path) {
     let specify = root.join(".specify");
     fs::create_dir_all(specify.join("slices/my-slice")).unwrap();
@@ -438,7 +441,7 @@ fn upgrade_bumps_version_keeps_artifacts() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["specify-version"], "0.2.0");
+    assert_eq!(value["specify-version"], BINARY_VERSION);
     assert_eq!(value["specify-version-changed"], true);
     assert_eq!(value["adapter-name"], "omnia");
 
@@ -458,7 +461,7 @@ fn upgrade_bumps_version_keeps_artifacts() {
     let after_cfg: ProjectConfig =
         serde_saphyr::from_str(std::str::from_utf8(&after[&project_yaml]).unwrap())
             .expect("parse after");
-    assert_eq!(after_cfg.specify_version.as_deref(), Some("0.2.0"));
+    assert_eq!(after_cfg.specify_version.as_deref(), Some(BINARY_VERSION));
     let normalised = ProjectConfig {
         specify_version: before_cfg.specify_version.clone(),
         ..after_cfg
@@ -504,7 +507,7 @@ fn upgrade_preserves_workspace_registry() {
         .success();
     let value: serde_json::Value =
         serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(value["specify-version"], "0.2.0");
+    assert_eq!(value["specify-version"], BINARY_VERSION);
     assert_eq!(value["specify-version-changed"], true);
     assert_eq!(value["adapter-name"], "workspace");
 
@@ -513,7 +516,7 @@ fn upgrade_preserves_workspace_registry() {
             .expect("parse workspace project.yaml");
     assert!(cfg.workspace, "workspace discriminator must survive");
     assert!(cfg.adapter.is_none(), "workspace upgrade must not synthesise an adapter");
-    assert_eq!(cfg.specify_version.as_deref(), Some("0.2.0"));
+    assert_eq!(cfg.specify_version.as_deref(), Some(BINARY_VERSION));
     let project_yaml = fs::read_to_string(specify.join("project.yaml")).unwrap();
     assert!(project_yaml.contains("workspace: true"), "upgrade must preserve workspace: key");
     assert_eq!(

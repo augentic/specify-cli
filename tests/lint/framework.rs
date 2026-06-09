@@ -6,10 +6,10 @@
 //!   framework-shaped scaffold emits a `DiagnosticReport` envelope on
 //!   stdout that validates against
 //!   `schemas/diagnostics/diagnostic-report.schema.json`.
-//! - The same run lands exactly one `lint-completed` journal event
-//!   in `<framework-root>/.specify/journal.jsonl`,
-//!   with the mandated `scope.target = null`,
-//!   `scope.slice = null`, `baseline_present = false` shape.
+//! - The same run writes **no** journal: framework self-lint is a
+//!   development surface and the `lint-completed` contract is scoped to
+//!   `specify lint project` (DECISIONS.md §"Journal event names"), so
+//!   `<framework-root>/.specify/journal.jsonl` must not be created.
 //! - The pretty formatter (`--output-format pretty`) produces a
 //!   non-empty human summary, confirming the four-formatter set
 //!   from [`specify_diagnostics`] round-trips through
@@ -161,13 +161,12 @@ fn json_envelope_validates_against_schema() {
     );
 }
 
-/// One `lint-completed` event lands in
-/// `<framework_root>/.specify/journal.jsonl` per run.
-/// The payload shape (`scope.target: None`, `scope.slice: None`,
-/// `baseline_present: false`) is pinned alongside the existence
-/// check.
+/// Framework self-lint writes no journal. The `lint-completed` contract
+/// is scoped to `specify lint project` (DECISIONS.md §"Journal event
+/// names"), so a `specify lint framework` run must not create
+/// `<framework_root>/.specify/journal.jsonl`.
 #[test]
-fn lint_completed_event_lands_in_journal() {
+fn framework_lint_writes_no_journal() {
     let temp = TempDir::new().expect("tempdir");
     scaffold_framework(temp.path());
 
@@ -177,36 +176,10 @@ fn lint_completed_event_lands_in_journal() {
     let (_code, _stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "json"]);
 
     assert!(
-        journal_path.is_file(),
-        "expected journal at {}; stderr:\n{}",
+        !journal_path.exists(),
+        "framework self-lint must not journal, but found {}; stderr:\n{}",
         journal_path.display(),
         String::from_utf8_lossy(&stderr),
-    );
-
-    let raw = fs::read_to_string(&journal_path).expect("read journal");
-    let lines: Vec<&str> = raw.lines().collect();
-    assert_eq!(
-        lines.len(),
-        1,
-        "expected exactly one event per run; got {} lines:\n{raw}",
-        lines.len(),
-    );
-
-    let event: Value = serde_json::from_str(lines[0]).expect("event parses as JSON");
-    assert_eq!(
-        event.get("event").and_then(Value::as_str),
-        Some("lint-completed"),
-        "first event must be lint-completed; got {event}",
-    );
-    let payload = event.get("payload").expect("event has payload");
-    let scope = payload.get("scope").expect("payload has scope");
-    assert!(scope.get("target").is_some_and(Value::is_null), "scope.target must be null");
-    assert!(scope.get("slice").is_some_and(Value::is_null), "scope.slice must be null");
-    assert!(scope.get("artifact").is_some_and(Value::is_null), "scope.artifact must be null");
-    assert_eq!(
-        payload.get("baseline_present").and_then(Value::as_bool),
-        Some(false),
-        "baseline_present must be false",
     );
 }
 

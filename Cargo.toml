@@ -187,6 +187,7 @@ specify-digest = { path = "crates/digest" }
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"
+toml = "0.8"
 tokio = { version = "1", features = ["fs", "io-util", "rt"] }
 ureq = { version = "3", features = ["json"] }
 wasm-pkg-client = "0.15"
