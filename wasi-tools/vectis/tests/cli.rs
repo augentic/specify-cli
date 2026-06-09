@@ -270,3 +270,40 @@ fn schema_unknown_exits_two_with_error_envelope() {
         "error message should mention the requested name"
     );
 }
+
+// ── infer subcommand ───────────────────────────────────────────────
+
+#[test]
+fn infer_emits_name_free_cluster_report() {
+    let tmp = tempdir().unwrap();
+    let comp = tmp.path().join("composition.yaml");
+    std::fs::write(
+        &comp,
+        "version: 1\nscreens:\n  home:\n    name: Home\n    footer:\n      - group:\n          items:\n            - icon-button: {}\n            - icon-button: {}\n  search:\n    name: Search\n    footer:\n      - group:\n          items:\n            - icon-button: {}\n            - icon-button: {}\n",
+    )
+    .expect("write composition.yaml");
+
+    let assert = vectis().args(["infer", "--composition"]).arg(&comp).assert().success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["version"], 1);
+    let clusters = value["clusters"].as_array().expect("clusters array");
+    assert_eq!(clusters.len(), 1, "expected one cluster: {value}");
+    assert_eq!(clusters[0]["occurrences"], 2);
+    assert_eq!(clusters[0]["bound-slug"], Value::Null);
+    assert!(clusters[0]["fingerprint"].as_str().is_some(), "cluster carries a fingerprint");
+}
+
+#[test]
+fn infer_missing_composition_exits_two() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("composition.yaml");
+
+    let assert = vectis().args(["infer", "--composition"]).arg(&missing).assert().failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 2);
+}

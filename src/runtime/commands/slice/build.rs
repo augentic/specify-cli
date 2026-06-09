@@ -41,6 +41,7 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use serde::Serialize;
+use specify_diagnostics::Diagnostic;
 use specify_error::{Error, Result};
 use specify_workflow::adapter::{
     BuildInputDeclaration, Execution, ResolvedTargetAdapter, TargetAdapter, TargetOperation,
@@ -51,7 +52,7 @@ use specify_workflow::schema::{validate_build_report_json, validate_build_reques
 use specify_workflow::slice::{
     BuildReport, BuildRequest, BuildStatus, LifecycleStatus, SliceMetadata,
     actions as slice_actions, build_request, enforce_report_no_blocking_on_success,
-    enforce_report_outputs_exist,
+    enforce_report_outputs_exist, evaluate_ui_surface_coherence,
 };
 
 use crate::runtime::commands::source::cli::Phase;
@@ -78,7 +79,7 @@ struct BuildHandoff {
 
 /// Result of a completed `finalize` (or a future single-phase tool
 /// run): the validated report's slice / target / status plus the
-/// finding count.
+/// finding count and any non-blocking A4 coherence warnings.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct BuildResult {
@@ -86,6 +87,10 @@ struct BuildResult {
     target: String,
     status: BuildStatus,
     findings: usize,
+    /// Non-blocking UI-surface coherence warnings (A4). Never alters the
+    /// verb's exit code; surfaced in both the text and JSON output.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    warnings: Vec<Diagnostic>,
 }
 
 /// Run `specify slice build <slice> [--phase prepare|finalize]`.
@@ -221,11 +226,19 @@ fn finalize_report(name: &str, slice_dir: &Path, project_dir: &Path) -> Result<B
 
     slice_actions::transition(slice_dir, LifecycleStatus::Built, Timestamp::now())?;
 
+    // A4 self-consistency: compare the brief-authored `ui_surface`
+    // against the produced composition. These warnings are advisory —
+    // they surface agent non-compliance one phase before the A3 merge
+    // gate, and never gate the transition (already done) or the exit
+    // code.
+    let warnings = evaluate_ui_surface_coherence(&report, &slice_dir.join("composition.yaml"));
+
     Ok(BuildResult {
         slice: name.to_string(),
         target: report.target,
         status: report.status,
         findings: report.findings.len(),
+        warnings,
     })
 }
 
@@ -350,5 +363,11 @@ fn write_result_text(w: &mut dyn Write, body: &BuildResult) -> std::io::Result<(
     writeln!(w, "slice: {}", body.slice)?;
     writeln!(w, "target: {}", body.target)?;
     writeln!(w, "status: {status}")?;
-    writeln!(w, "findings: {}", body.findings)
+    writeln!(w, "findings: {}", body.findings)?;
+    writeln!(w, "warnings: {}", body.warnings.len())?;
+    for warning in &body.warnings {
+        let code = warning.rule_id.as_deref().unwrap_or(&warning.id);
+        writeln!(w, "  - {code}: {}", warning.impact)?;
+    }
+    Ok(())
 }

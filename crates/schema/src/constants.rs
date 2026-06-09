@@ -85,10 +85,17 @@ pub const DECISION_JSON_SCHEMA: &str = include_str!("../../../schemas/decision.s
 pub const TOPOLOGY_LOCK_JSON_SCHEMA: &str =
     include_str!("../../../schemas/topology-lock.schema.json");
 
-/// Schema for `components.yaml`, the operator-curated design-system
-/// component catalog.
+/// Schema for `components.yaml`, the agent-inferred, operator-reviewable
+/// design-system component catalog.
 pub const COMPONENTS_JSON_SCHEMA: &str =
     include_str!("../../../schemas/design-system/components.schema.json");
+
+/// Schema for `parts.yaml`, the operator-authored component parts input.
+///
+/// RFC-40 Part C: each part declares an authoritative composition `group`
+/// fragment that seeds inference with naming and promotion authority.
+pub const PARTS_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/design-system/parts.schema.json");
 
 /// Schema for the `specify rules export` payload — the resolved rules
 /// tree consumed by lint tooling. See `ResolvedRules` export contract.

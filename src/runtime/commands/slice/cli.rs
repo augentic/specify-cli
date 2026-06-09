@@ -165,6 +165,12 @@ pub enum SliceMergeAction {
     Run {
         /// Slice name
         name: String,
+        /// Authorise a whole-document (`screens:`) slice composition to
+        /// overwrite a non-empty baseline. Reserved for intentional
+        /// full-baseline rewrites (e.g. a dedicated refactoring slice);
+        /// routine per-screen edits flow through `delta:` and never need it.
+        #[arg(long)]
+        allow_composition_replace: bool,
     },
     /// Show the merge operations that would be applied, without writing
     Preview {

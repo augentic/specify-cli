@@ -63,7 +63,7 @@ pub mod error {
 
 pub use crate::VectisError;
 
-mod engine;
+pub(crate) mod engine;
 
 pub use engine::{find_project_root, run};
 

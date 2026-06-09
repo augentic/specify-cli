@@ -8,6 +8,8 @@ mod engine_support;
 mod assets;
 #[path = "engine/composition.rs"]
 mod composition;
+#[path = "engine/infer.rs"]
+mod infer;
 #[path = "engine/layout.rs"]
 mod layout;
 #[path = "engine/paths.rs"]

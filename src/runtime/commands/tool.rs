@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 
 pub(super) use fetch::run as fetch;
 pub(super) use gc::run as gc;
-pub(super) use run::run;
+pub(super) use run::{run, run_captured};
 use specify_error::{Error, Result};
 use specify_tool::load::{self};
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolManifest, ToolScope};

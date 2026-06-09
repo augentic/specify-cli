@@ -10,6 +10,7 @@ use specify_model::evidence::ClaimKind;
 
 pub use crate::output::Format;
 use crate::runtime::commands::archive::cli::ArchiveAction;
+use crate::runtime::commands::catalog::cli::CatalogAction;
 use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
@@ -158,6 +159,16 @@ pub enum Commands {
     Slice {
         #[command(subcommand)]
         action: SliceAction,
+    },
+
+    /// Component-catalog inference (RFC-40). `infer --phase report`
+    /// clusters repeated structures in the composition baseline and
+    /// prints a name-free report; `infer --phase bind` records
+    /// skill/operator names against fingerprints and writes
+    /// `components.yaml` under the no-overwrite / uniqueness guards.
+    Catalog {
+        #[command(subcommand)]
+        action: CatalogAction,
     },
 
     /// Slice-archive cache maintenance. The archived slice folders

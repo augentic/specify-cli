@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 use super::assets::collect_asset_references;
 use super::paths::{discover_artifact, discover_catalog, resolve_default_path};
@@ -331,7 +332,7 @@ struct ComponentInstance {
 /// (`*-when` keys' *condition values* are wiring; their *presence*
 /// participates in skeleton identity.)
 #[derive(Debug, Eq, PartialEq, Clone)]
-enum Skeleton {
+pub(crate) enum Skeleton {
     /// A leaf item identified by its single property key (e.g.
     /// `text`, `icon-button`, `checkbox`, `image`). Item leaf
     /// properties are deliberately ignored.
@@ -422,7 +423,7 @@ fn walk_for_components(
 /// the same `*-when`-keyed props (in any author order) compare equal.
 /// Children are derived from the `items:` array; missing `items`
 /// (schema-invalid) becomes an empty children list.
-fn build_group_skeleton(group_props: &Value) -> Skeleton {
+pub(crate) fn build_group_skeleton(group_props: &Value) -> Skeleton {
     let mut when_keys: Vec<String> = group_props
         .as_object()
         .map(|m| m.keys().filter(|k| k.ends_with("-when") && k.len() > 5).cloned().collect())
@@ -452,7 +453,7 @@ fn build_group_skeleton(group_props: &Value) -> Skeleton {
 /// Schema-invalid shapes (zero or multi-key objects) collapse to a
 /// stable `<unknown>` placeholder so the schema validator's own
 /// findings remain the authoritative diagnostic.
-fn build_node_skeleton(node: &Value) -> Skeleton {
+pub(crate) fn build_node_skeleton(node: &Value) -> Skeleton {
     let Some(map) = node.as_object() else {
         return Skeleton::Item(String::from("<unknown>"));
     };
@@ -461,6 +462,83 @@ fn build_node_skeleton(node: &Value) -> Skeleton {
     }
     let (key, val) = map.iter().next().expect("len 1");
     if key == "group" { build_group_skeleton(val) } else { Skeleton::Item(key.clone()) }
+}
+
+// ── Structural fingerprint (component inference) ─────────────────────────────────
+
+/// Compute a canonical, content-addressed fingerprint over a normalised
+/// [`Skeleton`] tree: a deterministic byte serialisation followed by
+/// SHA-256, rendered as a lowercase hex string.
+///
+/// Identity is **exact** by mandate — two groups share a fingerprint
+/// iff their normalised skeletons are byte-equal. All tolerance (value-,
+/// state-, and asset-level variation) is already discarded by
+/// [`build_group_skeleton`] before the hash is taken, so the fingerprint
+/// adds no strictness over the existing [`check_structural_identity`]
+/// rule (which the inference verb must never contradict).
+///
+/// The fingerprint *string* is required only where a stable cross-process
+/// key is needed (the candidate-cache entry and the bind-time collision
+/// suffix); in-process clustering can key on the `Skeleton` directly.
+pub(crate) fn fingerprint(skeleton: &Skeleton) -> String {
+    let mut canonical = String::new();
+    encode_skeleton(skeleton, &mut canonical);
+    let digest = Sha256::digest(canonical.as_bytes());
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        // Infallible: writing to a String never errors.
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex
+}
+
+/// Append a canonical, deterministic byte encoding of `skeleton` to `buf`.
+///
+/// The grammar is unambiguous over the constrained skeleton alphabet
+/// (item kinds and `*-when` keys are kebab-case, never containing the
+/// `;:[](),` delimiters):
+///
+/// - `Item(kind)`  → `I:<kind>;`
+/// - `Group`       → `G[<when_keys joined by ,>](<child encodings…>);`
+///
+/// `when_keys` are already sorted + deduped by [`build_group_skeleton`],
+/// so two groups carrying the same `*-when` props in any author order
+/// encode identically. Child order is preserved (item order is
+/// structural).
+fn encode_skeleton(skeleton: &Skeleton, buf: &mut String) {
+    match skeleton {
+        Skeleton::Item(kind) => {
+            buf.push_str("I:");
+            buf.push_str(kind);
+            buf.push(';');
+        }
+        Skeleton::Group { when_keys, items } => {
+            buf.push_str("G[");
+            buf.push_str(&when_keys.join(","));
+            buf.push_str("](");
+            for item in items {
+                encode_skeleton(item, buf);
+            }
+            buf.push_str(");");
+        }
+    }
+}
+
+/// Project a normalised [`Skeleton`] into the name-free JSON fragment
+/// the `infer` report carries as the cluster's representative skeleton.
+/// Mirrors the [`encode_skeleton`] grammar in structured form so the
+/// build skill can read the shape it must name.
+pub(crate) fn skeleton_to_json(skeleton: &Skeleton) -> Value {
+    match skeleton {
+        Skeleton::Item(kind) => json!({ "item": kind }),
+        Skeleton::Group { when_keys, items } => json!({
+            "group": {
+                "when_keys": when_keys,
+                "items": items.iter().map(skeleton_to_json).collect::<Vec<_>>(),
+            }
+        }),
+    }
 }
 
 // ── Catalog parsing (component catalog contract) ────────────────────────────────
@@ -481,7 +559,7 @@ fn parse_catalog_file(path: &Path) -> std::result::Result<Value, String> {
 // ── Catalog cross-reference (component catalog contract) ────────────────────────
 
 /// Cross-reference every `component: <slug>` in the composition
-/// against the operator-curated component catalog.
+/// against the agent-inferred, operator-reviewable component catalog.
 ///
 /// - A slug absent from the catalog → error.
 /// - A slug with `status: rejected` → error.
@@ -559,5 +637,85 @@ fn collect_component_slugs(node: &Value, json_path: &str, out: &mut Vec<(String,
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use super::{build_group_skeleton, fingerprint, skeleton_to_json};
+
+    fn group(items: Value) -> Value {
+        let mut map = serde_json::Map::new();
+        map.insert("items".to_string(), items);
+        Value::Object(map)
+    }
+
+    #[test]
+    fn fingerprint_is_stable_across_calls() {
+        let skeleton = build_group_skeleton(&group(json!([
+            { "icon-button": { "bind": "home", "event": "Navigate(Home)" } },
+            { "icon-button": { "bind": "search", "event": "Navigate(Search)" } },
+        ])));
+        assert_eq!(fingerprint(&skeleton), fingerprint(&skeleton));
+    }
+
+    #[test]
+    fn fingerprint_ignores_wiring_values() {
+        // Same skeleton (two icon-buttons) with different bind / event
+        // wiring must collapse to one fingerprint — tolerance lives in
+        // normalisation, never in the hash.
+        let a = build_group_skeleton(&group(json!([
+            { "icon-button": { "bind": "home", "event": "Navigate(Home)" } },
+            { "icon-button": { "bind": "search", "event": "Navigate(Search)" } },
+        ])));
+        let b = build_group_skeleton(&group(json!([
+            { "icon-button": { "bind": "profile", "event": "Navigate(Profile)" } },
+            { "icon-button": { "bind": "inbox", "event": "Navigate(Inbox)" } },
+        ])));
+        assert_eq!(fingerprint(&a), fingerprint(&b));
+    }
+
+    #[test]
+    fn fingerprint_distinguishes_structural_divergence() {
+        // An extra item is genuine structural divergence: distinct
+        // skeleton, distinct fingerprint.
+        let two = build_group_skeleton(&group(json!([
+            { "icon-button": {} },
+            { "icon-button": {} },
+        ])));
+        let three = build_group_skeleton(&group(json!([
+            { "icon-button": {} },
+            { "icon-button": {} },
+            { "icon-button": {} },
+        ])));
+        assert_ne!(fingerprint(&two), fingerprint(&three));
+    }
+
+    #[test]
+    fn fingerprint_distinguishes_when_key_presence() {
+        let bare = build_group_skeleton(&json!({ "items": [ { "text": {} } ] }));
+        let conditional =
+            build_group_skeleton(&json!({ "active-when": "$x", "items": [ { "text": {} } ] }));
+        assert_ne!(fingerprint(&bare), fingerprint(&conditional));
+    }
+
+    #[test]
+    fn skeleton_json_mirrors_tree_shape() {
+        let skeleton = build_group_skeleton(&json!({
+            "active-when": "$route",
+            "items": [
+                { "icon-button": {} },
+                { "group": { "items": [ { "text": {} } ] } },
+            ],
+        }));
+        let projected = skeleton_to_json(&skeleton);
+        assert_eq!(projected["group"]["when_keys"], json!(["active-when"]));
+        assert_eq!(projected["group"]["items"][0], json!({ "item": "icon-button" }));
+        assert_eq!(
+            projected["group"]["items"][1],
+            json!({ "group": { "when_keys": [], "items": [ { "item": "text" } ] } })
+        );
     }
 }

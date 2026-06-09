@@ -111,3 +111,37 @@ fn delta_on_empty_baseline() {
         }]
     );
 }
+
+#[test]
+fn whole_document_detection() {
+    // `screens:` with no `delta:` is whole-document replacement.
+    let screens = "version: 1\nscreens:\n  home:\n    title: Home\n";
+    assert!(is_whole_document_replacement(screens).unwrap());
+
+    // `delta:` is incremental, never whole-document.
+    let delta = "delta:\n  added:\n    home:\n      title: Home\n";
+    assert!(!is_whole_document_replacement(delta).unwrap());
+
+    // A document carrying both keys is not a pure whole-document
+    // replacement (the `delta:` branch wins in `merge`).
+    let both = "screens:\n  home:\n    title: Home\ndelta:\n  added: {}\n";
+    assert!(!is_whole_document_replacement(both).unwrap());
+}
+
+#[test]
+fn whole_document_detection_malformed() {
+    let err = is_whole_document_replacement("\tnot: [valid").unwrap_err();
+    match err {
+        Error::Diag { code, .. } => assert_eq!(code, "composition-delta-malformed"),
+        other => panic!("expected composition-delta-malformed diag, got {other:?}"),
+    }
+}
+
+#[test]
+fn baseline_non_empty_detection() {
+    assert!(baseline_is_non_empty("version: 1\nscreens:\n  home:\n    title: Home\n"));
+    assert!(!baseline_is_non_empty("version: 1\nscreens: {}\n"));
+    assert!(!baseline_is_non_empty("version: 1\n"));
+    // A malformed baseline carries nothing to protect.
+    assert!(!baseline_is_non_empty("\tnot: [valid"));
+}

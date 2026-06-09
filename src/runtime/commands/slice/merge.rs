@@ -19,7 +19,7 @@ use specify_workflow::merge::{
 use super::artifact_classes;
 use crate::runtime::context::Ctx;
 
-pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
+pub(super) fn run(ctx: &Ctx, name: &str, allow_composition_replace: bool) -> Result<()> {
     // The `slice.merge.*` pair fires on the validator outcome.
     // `started` brackets entry; the fallible body runs the validator +
     // apply and (on success) the durable `slice.archive.created` ledger
@@ -39,7 +39,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
             slice_name: name.into(),
             reason,
         },
-        || commit_run(ctx, name),
+        || commit_run(ctx, name, allow_composition_replace),
     )
 }
 
@@ -47,7 +47,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
 /// auto-commit the workspace clone, append the outcome-ledger entry,
 /// stamp the plan entry `done`, and write the run output. Wrapped by
 /// [`run`] so the `slice.merge.*` lifecycle pair can bracket it.
-fn commit_run(ctx: &Ctx, name: &str) -> Result<()> {
+fn commit_run(ctx: &Ctx, name: &str, allow_composition_replace: bool) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
     let archive_dir = ctx.archive_dir();
     let classes = artifact_classes(&ctx.project_dir, &slice_dir);
@@ -56,7 +56,7 @@ fn commit_run(ctx: &Ctx, name: &str) -> Result<()> {
     // outcome-ledger event, and the archive path date all derive from the
     // same `now` so they cannot disagree across a midnight boundary.
     let now = ctx.now();
-    let merged = slice::commit(&slice_dir, &classes, &archive_dir, now)?;
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir, now, allow_composition_replace)?;
 
     // The merge-owned workspace commit is limited to the baseline spec
     // tree and archived slice (opaque/generated outputs remain as residue
