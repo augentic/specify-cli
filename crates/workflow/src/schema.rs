@@ -24,10 +24,11 @@ use specify_error::{Error, Result};
 use specify_model::discovery::Lead;
 pub use specify_schema::{
     BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA,
-    DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, PLAN_JSON_SCHEMA,
-    PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA,
-    SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, compile_schema,
-    read_yaml_as_json, validate_serialisable, validate_value, validate_value_cached,
+    DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, PARTS_JSON_SCHEMA,
+    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
+    RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA,
+    compile_schema, read_yaml_as_json, validate_serialisable, validate_value,
+    validate_value_cached,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -389,6 +390,36 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
             COMPONENTS_JSON_SCHEMA,
             "catalog-schema",
             "components.yaml conforms to schemas/design-system/components.schema.json",
+        ),
+    )
+}
+
+/// Validate raw `parts.yaml` content against the embedded
+/// `schemas/design-system/parts.schema.json`.
+///
+/// `source_path` labels error messages with the originating file.
+/// Backs [`crate::design_system::Parts::load`] — the schema is the only
+/// gate on the operator-authored parts input (RFC-40 §C1: "beyond
+/// schema conformance there are no coherence gates").
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
+pub fn validate_parts_yaml(content: &str, source_path: &Path) -> Result<()> {
+    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed(
+            "parts-schema",
+            "parts.yaml conforms to schemas/design-system/parts.schema.json",
+            format!("{}: YAML parse failed: {err}", source_path.display()),
+        )
+    })?;
+    err_from_failures(
+        "parts-schema",
+        &validation_failures(
+            &instance,
+            PARTS_JSON_SCHEMA,
+            "parts-schema",
+            "parts.yaml conforms to schemas/design-system/parts.schema.json",
         ),
     )
 }

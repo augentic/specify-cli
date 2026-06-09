@@ -178,3 +178,51 @@ fn save_round_trips_through_load() {
     assert_eq!(reloaded, catalog);
     assert_eq!(reloaded.status_of("tab-bar"), Some(ComponentStatus::Confirmed));
 }
+
+const TAB_BAR_PART: &str = "version: 1
+parts:
+  tab-bar:
+    description: Bottom navigation across primary sections.
+    group:
+      active-when: \"$route\"
+      items:
+        - icon-button: { bind: home, event: Navigate(Home) }
+        - icon-button: { bind: search, event: Navigate(Search) }
+";
+
+#[test]
+fn parts_load_returns_none_when_absent() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    assert!(Parts::load(dir.path()).expect("no error").is_none());
+}
+
+#[test]
+fn parts_from_yaml_parses_part() {
+    let parts = Parts::from_yaml(TAB_BAR_PART, Path::new("parts.yaml")).expect("valid");
+    assert_eq!(parts.version, 1);
+    assert_eq!(parts.parts.len(), 1);
+    assert_eq!(parts.description_of("tab-bar"), Some("Bottom navigation across primary sections."));
+    assert!(parts.parts.get("tab-bar").expect("part").group.get("items").is_some());
+}
+
+#[test]
+fn parts_from_yaml_rejects_missing_group() {
+    let yaml = "version: 1\nparts:\n  tab-bar:\n    description: no group\n";
+    Parts::from_yaml(yaml, Path::new("parts.yaml")).unwrap_err();
+}
+
+#[test]
+fn parts_from_yaml_rejects_non_kebab_slug() {
+    let yaml = "version: 1\nparts:\n  TabBar:\n    group:\n      items:\n        - text: {}\n";
+    Parts::from_yaml(yaml, Path::new("parts.yaml")).unwrap_err();
+}
+
+#[test]
+fn parts_load_round_trips_from_disk() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = Parts::path_in(dir.path());
+    std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+    std::fs::write(&path, TAB_BAR_PART).expect("write parts.yaml");
+    let parts = Parts::load(dir.path()).expect("load").expect("present");
+    assert!(parts.parts.contains_key("tab-bar"));
+}

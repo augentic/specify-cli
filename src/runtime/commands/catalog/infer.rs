@@ -19,6 +19,19 @@
 //! logic crosses back into the host — the single normalizer stays
 //! tool-side.
 //!
+//! **Operator parts (RFC-40 Part C).** When `.specify/design-system/parts.yaml`
+//! exists, both phases forward it to the tool with `--parts`. A part's
+//! `group` fragment is fingerprinted (tool-side, at read time) and
+//! registered as a pinned binding carrying two authorities: **naming**
+//! (a matched-pin cluster echoes the operator slug in `bound_slug`, so
+//! `report`'s catalog echo and the build skill both leave it untouched)
+//! and **promotion** (a matched pin clusters below `--min-occurrences`).
+//! `bind` projects each **matched** pin into `components.yaml` as a
+//! `status: confirmed` entry, re-derived from `parts.yaml` every run
+//! (so re-runs are no-ops), and surfaces the non-blocking `part-unmatched`
+//! report for pins that matched nothing — informational only, never an
+//! abort or a merge precondition (§C5).
+//!
 //! **Run-to-run binding stability (RFC §B2).** `bind` persists each
 //! `fingerprint → slug` binding on the catalog entry (the `fingerprint`
 //! field), and `report` reverse-maps the catalog by fingerprint to fill
@@ -28,14 +41,14 @@
 //! `report` only fills a `bound_slug` the tool left `null`; it never
 //! clobbers a tool-emitted binding (e.g. an operator-pin echo, Step 11).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::Path;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
 use specify_error::{Error, Result};
-use specify_workflow::design_system::ComponentsCatalog;
+use specify_workflow::design_system::{ComponentsCatalog, Parts};
 
 use super::cli::InferPhase;
 use crate::runtime::commands::tool;
@@ -70,11 +83,29 @@ pub fn run(
 
 /// `--phase report`: dispatch `vectis infer` and print the name-free
 /// cluster report. An absent baseline emits an empty report and runs no
-/// tool (§B6 "absent catalog = no factoring").
+/// tool (§B6 "absent catalog = no factoring") — but still lists every
+/// operator part as `part-unmatched`, since nothing can match without a
+/// baseline yet (§C5).
 fn report(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<()> {
+    match dispatch_infer(ctx, min_occurrences)? {
+        None => emit_report(ctx, &empty_report(&all_part_slugs(ctx)?)),
+        Some(mut report) => {
+            populate_bound_slugs(ctx, &mut report)?;
+            emit_report(ctx, &report)
+        }
+    }
+}
+
+/// Dispatch the deterministic `vectis infer` tool against the
+/// composition baseline, folding in the candidate cache and operator
+/// `parts.yaml` when each is present. Returns `Ok(None)` when no
+/// baseline exists (the tool requires one, and an absent baseline means
+/// nothing to cluster). `parts.yaml` is schema-validated before being
+/// forwarded (RFC-40 §C1 "schema-validated on read").
+fn dispatch_infer(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<Option<Value>> {
     let composition = ctx.project_dir.join(COMPOSITION_REL);
     if !composition.is_file() {
-        return emit_report(ctx, &empty_report());
+        return Ok(None);
     }
 
     let mut args =
@@ -83,6 +114,14 @@ fn report(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<()> {
     if candidate_cache.is_dir() {
         args.push("--candidate-cache".to_string());
         args.push(candidate_cache.display().to_string());
+    }
+    let parts_path = Parts::path_in(&ctx.project_dir);
+    if parts_path.is_file() {
+        // Validate on read; a malformed parts file fails here rather
+        // than being silently dropped by the best-effort tool reader.
+        Parts::load(&ctx.project_dir)?;
+        args.push("--parts".to_string());
+        args.push(parts_path.display().to_string());
     }
     if let Some(n) = min_occurrences {
         args.push("--min-occurrences".to_string());
@@ -103,13 +142,20 @@ fn report(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<()> {
         });
     }
 
-    let mut report: Value =
-        serde_json::from_slice(&captured.stdout).map_err(|err| Error::Diag {
-            code: "catalog-infer-report-malformed",
-            detail: format!("vectis infer report is not valid JSON: {err}"),
-        })?;
-    populate_bound_slugs(ctx, &mut report)?;
-    emit_report(ctx, &report)
+    let report: Value = serde_json::from_slice(&captured.stdout).map_err(|err| Error::Diag {
+        code: "catalog-infer-report-malformed",
+        detail: format!("vectis infer report is not valid JSON: {err}"),
+    })?;
+    Ok(Some(report))
+}
+
+/// Every operator part slug, in sorted order — the `part-unmatched` set
+/// for the no-baseline case (nothing can match yet). Returns an empty
+/// vector when no `parts.yaml` exists. Loading validates the file.
+fn all_part_slugs(ctx: &Ctx) -> Result<Vec<String>> {
+    Ok(Parts::load(&ctx.project_dir)?
+        .map(|parts| parts.parts.into_keys().collect())
+        .unwrap_or_default())
 }
 
 /// Fill each cluster's `bound_slug` from the existing catalog's
@@ -138,21 +184,37 @@ fn populate_bound_slugs(ctx: &Ctx, report: &mut Value) -> Result<()> {
     Ok(())
 }
 
-/// `--phase bind`: reconcile a skill-authored bindings file into the
-/// catalog under the §B6 guards, then write it (or print the diff under
-/// `--dry-run`).
+/// `--phase bind`: reconcile skill-authored bindings **and** matched
+/// operator-part projections into the catalog under the §B6 guards,
+/// then write it (or print the diff under `--dry-run`).
+///
+/// Operator parts win naming: a matched pin is a first-writer for its
+/// fingerprint (so a skill binding handed the same name under a
+/// *different* fingerprint is suffixed by the §B2 uniqueness guard), and
+/// a skill binding for a *pinned* fingerprint is dropped (the operator
+/// already named it). Matched pins are re-derived from `parts.yaml`
+/// every run, so re-binding is a no-op (§C3); unmatched pins surface in
+/// the diff as `part-unmatched` (§C5).
 fn bind(ctx: &Ctx, bindings: Option<&Path>, dry_run: bool) -> Result<()> {
-    let bindings_path = bindings.ok_or_else(|| Error::Argument {
-        flag: "--bindings",
-        detail: "`specify catalog infer --phase bind` requires --bindings <path>".to_string(),
-    })?;
-    let bindings = load_bindings(bindings_path)?;
+    let parts = part_projections(ctx)?;
+    let skill = bindings.map(load_bindings).transpose()?;
+
+    if skill.is_none() && !Parts::path_in(&ctx.project_dir).is_file() {
+        return Err(Error::Argument {
+            flag: "--bindings",
+            detail: "`specify catalog infer --phase bind` requires --bindings <path> or a \
+                     parts.yaml input"
+                .to_string(),
+        });
+    }
+
+    let desired = combine_desired(parts.projections, skill);
 
     let mut catalog =
         ComponentsCatalog::load(&ctx.project_dir)?.unwrap_or_else(ComponentsCatalog::empty);
     let before: Vec<String> = catalog.components.keys().cloned().collect();
 
-    for binding in resolve_slugs(&bindings) {
+    for binding in resolve_slugs(desired) {
         catalog.upsert_bound(&binding.slug, &binding.fingerprint, binding.description);
     }
 
@@ -160,7 +222,7 @@ fn bind(ctx: &Ctx, bindings: Option<&Path>, dry_run: bool) -> Result<()> {
         catalog.components.keys().filter(|slug| !before.contains(slug)).cloned().collect();
 
     if dry_run {
-        return emit_bind_diff(ctx, &added, true);
+        return emit_bind_diff(ctx, &added, &parts.unmatched, true);
     }
 
     // Create the file only when there is something to record (§B6
@@ -169,7 +231,92 @@ fn bind(ctx: &Ctx, bindings: Option<&Path>, dry_run: bool) -> Result<()> {
     if !catalog.components.is_empty() {
         catalog.save(&ctx.project_dir)?;
     }
-    emit_bind_diff(ctx, &added, false)
+    emit_bind_diff(ctx, &added, &parts.unmatched, false)
+}
+
+/// The matched + unmatched outcome of folding `parts.yaml` through the
+/// tool (RFC-40 §C2/§C5).
+#[derive(Default)]
+struct PartsOutcome {
+    /// Matched pins to project as `confirmed` catalog entries.
+    projections: Vec<DesiredBinding>,
+    /// Sorted slugs of pins that matched no baseline/cache group.
+    unmatched: Vec<String>,
+}
+
+/// Resolve operator parts against the current baseline by dispatching
+/// the tool with `--parts` and reading back the matched-pin clusters
+/// (those carrying `pinned: true` + a `bound_slug`) and the
+/// `unmatched_parts` list. Returns an empty outcome when no `parts.yaml`
+/// exists; when a parts file exists but no baseline does yet, every part
+/// is unmatched (§C5).
+fn part_projections(ctx: &Ctx) -> Result<PartsOutcome> {
+    let Some(parts) = Parts::load(&ctx.project_dir)? else {
+        return Ok(PartsOutcome::default());
+    };
+    let Some(report) = dispatch_infer(ctx, None)? else {
+        return Ok(PartsOutcome {
+            projections: Vec::new(),
+            unmatched: parts.parts.into_keys().collect(),
+        });
+    };
+
+    let mut projections: Vec<DesiredBinding> = Vec::new();
+    if let Some(clusters) = report.get("clusters").and_then(Value::as_array) {
+        for cluster in clusters {
+            if cluster.get("pinned").and_then(Value::as_bool) != Some(true) {
+                continue;
+            }
+            let (Some(fingerprint), Some(slug)) = (
+                cluster.get("fingerprint").and_then(Value::as_str),
+                cluster.get("bound_slug").and_then(Value::as_str),
+            ) else {
+                continue;
+            };
+            projections.push(DesiredBinding {
+                slug: slug.to_string(),
+                fingerprint: fingerprint.to_string(),
+                description: parts.description_of(slug).map(str::to_string),
+                pinned: true,
+            });
+        }
+    }
+
+    let unmatched: Vec<String> = report
+        .get("unmatched_parts")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default();
+
+    Ok(PartsOutcome {
+        projections,
+        unmatched,
+    })
+}
+
+/// Merge matched part projections (first-writers) with the skill
+/// bindings into one desired-binding list. A skill binding for a
+/// fingerprint already pinned by an operator part is dropped — the
+/// operator owns that fingerprint's name (§C2 step 5).
+fn combine_desired(
+    projections: Vec<DesiredBinding>, skill: Option<BindingsFile>,
+) -> Vec<DesiredBinding> {
+    let pinned_fps: BTreeSet<String> = projections.iter().map(|p| p.fingerprint.clone()).collect();
+    let mut desired = projections;
+    if let Some(skill) = skill {
+        for (fingerprint, value) in skill.bindings {
+            if pinned_fps.contains(&fingerprint) {
+                continue;
+            }
+            desired.push(DesiredBinding {
+                slug: value.slug().to_string(),
+                fingerprint,
+                description: value.description(),
+                pinned: false,
+            });
+        }
+    }
+    desired
 }
 
 /// A single skill-authored binding value: either a bare slug string or
@@ -219,6 +366,16 @@ fn load_bindings(path: &Path) -> Result<BindingsFile> {
     })
 }
 
+/// A desired binding before de-collision: the requested bare slug, the
+/// fingerprint it anchors to, an optional description, and whether it
+/// comes from an operator part (`pinned` = first-writer priority).
+struct DesiredBinding {
+    slug: String,
+    fingerprint: String,
+    description: Option<String>,
+    pinned: bool,
+}
+
 /// A fully resolved binding ready to record: the final (de-collided)
 /// slug, the fingerprint it anchors to, and its optional description.
 struct ResolvedBinding {
@@ -227,44 +384,48 @@ struct ResolvedBinding {
     description: Option<String>,
 }
 
-/// Resolve the bindings map into final bindings, applying the §B2
-/// one-skeleton-per-slug uniqueness guard: when two distinct
-/// fingerprints want the same bare slug, the lexicographically-first
-/// fingerprint keeps it (first-writer-wins) and every later fingerprint
-/// is suffixed `slug-<fp-prefix>` — deterministic and fingerprint-derived,
-/// never ordinal, so the resolution is stable across runs for a fixed
-/// bindings map. The fingerprint travels through to the catalog so a
-/// later `report` run can echo the bound slug (run-to-run stability).
-fn resolve_slugs(bindings: &BindingsFile) -> Vec<ResolvedBinding> {
-    // Group fingerprints by desired bare slug. `BTreeMap` over both the
-    // outer slug and the inner fingerprint keeps the whole resolution
-    // deterministic (lexicographic on slug, then fingerprint).
-    let mut by_slug: BTreeMap<&str, BTreeMap<&str, Option<String>>> = BTreeMap::new();
-    for (fingerprint, value) in &bindings.bindings {
-        by_slug.entry(value.slug()).or_default().insert(fingerprint.as_str(), value.description());
+/// Resolve desired bindings into final bindings, applying the §B2
+/// one-skeleton-per-slug uniqueness guard: when distinct fingerprints
+/// want the same bare slug, one keeps it (first-writer-wins) and every
+/// later fingerprint is suffixed `slug-<fp-prefix>` — deterministic and
+/// fingerprint-derived, never ordinal, so resolution is stable across
+/// runs. **Operator parts win the bare slug** (§C2): within a slug group
+/// a `pinned` binding sorts ahead of skill bindings regardless of
+/// fingerprint order; ties break lexicographically by fingerprint. The
+/// fingerprint travels through to the catalog so a later `report` run can
+/// echo the bound slug (run-to-run stability).
+fn resolve_slugs(desired: Vec<DesiredBinding>) -> Vec<ResolvedBinding> {
+    // Group by desired bare slug, deterministically.
+    let mut by_slug: BTreeMap<String, Vec<DesiredBinding>> = BTreeMap::new();
+    for binding in desired {
+        by_slug.entry(binding.slug.clone()).or_default().push(binding);
     }
 
     let mut resolved: Vec<ResolvedBinding> = Vec::new();
-    for (slug, fingerprints) in by_slug {
-        for (index, (fingerprint, description)) in fingerprints.into_iter().enumerate() {
+    for (slug, mut group) in by_slug {
+        // Pinned (operator) first, then lexicographic fingerprint.
+        group.sort_by(|a, b| {
+            b.pinned.cmp(&a.pinned).then_with(|| a.fingerprint.cmp(&b.fingerprint))
+        });
+        for (index, binding) in group.into_iter().enumerate() {
             let final_slug = if index == 0 {
-                slug.to_string()
+                slug.clone()
             } else {
-                let prefix: String = fingerprint.chars().take(FP_PREFIX_LEN).collect();
+                let prefix: String = binding.fingerprint.chars().take(FP_PREFIX_LEN).collect();
                 format!("{slug}-{prefix}")
             };
             resolved.push(ResolvedBinding {
                 slug: final_slug,
-                fingerprint: fingerprint.to_string(),
-                description,
+                fingerprint: binding.fingerprint,
+                description: binding.description,
             });
         }
     }
     resolved
 }
 
-fn empty_report() -> Value {
-    json!({ "version": 1, "clusters": [], "unmatched_parts": [] })
+fn empty_report(unmatched_parts: &[String]) -> Value {
+    json!({ "version": 1, "clusters": [], "unmatched_parts": unmatched_parts })
 }
 
 fn emit_report(ctx: &Ctx, report: &Value) -> Result<()> {
@@ -287,16 +448,25 @@ fn write_report_text(w: &mut dyn Write, report: &Value) -> std::io::Result<()> {
         && !unmatched.is_empty()
     {
         writeln!(w, "unmatched parts: {}", unmatched.len())?;
+        for part in unmatched {
+            if let Some(slug) = part.as_str() {
+                writeln!(w, "  - part-unmatched: {slug}")?;
+            }
+        }
     }
     Ok(())
 }
 
-fn emit_bind_diff(ctx: &Ctx, added: &[String], dry_run: bool) -> Result<()> {
-    let body = json!({ "added": added, "dry_run": dry_run });
-    ctx.write(&body, |w, _| write_bind_text(w, added, dry_run))
+fn emit_bind_diff(
+    ctx: &Ctx, added: &[String], unmatched_parts: &[String], dry_run: bool,
+) -> Result<()> {
+    let body = json!({ "added": added, "unmatched_parts": unmatched_parts, "dry_run": dry_run });
+    ctx.write(&body, |w, _| write_bind_text(w, added, unmatched_parts, dry_run))
 }
 
-fn write_bind_text(w: &mut dyn Write, added: &[String], dry_run: bool) -> std::io::Result<()> {
+fn write_bind_text(
+    w: &mut dyn Write, added: &[String], unmatched_parts: &[String], dry_run: bool,
+) -> std::io::Result<()> {
     let verb = if dry_run { "would add" } else { "added" };
     if added.is_empty() {
         writeln!(w, "catalog unchanged (0 components {verb})")?;
@@ -304,6 +474,12 @@ fn write_bind_text(w: &mut dyn Write, added: &[String], dry_run: bool) -> std::i
         writeln!(w, "{} component(s) {verb}:", added.len())?;
         for slug in added {
             writeln!(w, "  + {slug}: confirmed")?;
+        }
+    }
+    if !unmatched_parts.is_empty() {
+        writeln!(w, "unmatched parts: {}", unmatched_parts.len())?;
+        for slug in unmatched_parts {
+            writeln!(w, "  - part-unmatched: {slug}")?;
         }
     }
     Ok(())

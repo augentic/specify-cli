@@ -22,8 +22,18 @@
 //! `build_group_skeleton` normaliser — no agent-written fingerprint is
 //! ever trusted. A cached skeleton and a baseline group with the same
 //! fingerprint cluster as one candidate, giving inference cross-slice
-//! memory before the baseline accumulates. The `--parts` (RFC-40 §C2)
-//! input is accepted but inert until Step 11.
+//! memory before the baseline accumulates.
+//!
+//! `--parts` (RFC-40 §C2) folds the operator-authored parts input into
+//! the same read-time-fingerprint pass: each part's `group` fragment is
+//! normalised and registered as a **pinned binding** `{ fingerprint →
+//! slug }`. A pinned fingerprint carries two authorities — **naming**
+//! (the cluster's `bound_slug` echoes the operator slug, so the build
+//! skill leaves it untouched) and **promotion** (a matched pin clusters
+//! as soon as it hits ≥1 baseline/cache group, bypassing
+//! `--min-occurrences`). A pin matching zero groups is surfaced under
+//! `unmatched_parts`. The tool still invents no name of its own — it
+//! only echoes the operator's.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -53,7 +63,9 @@ pub struct InferArgs {
     #[arg(long)]
     pub candidate_cache: Option<PathBuf>,
 
-    /// Operator parts file (RFC-40 §C2). Inert until Step 11.
+    /// Operator parts file (RFC-40 §C2): authoritative parts that seed
+    /// inference with naming + promotion authority, fingerprinted at
+    /// read time through the single normaliser.
     #[arg(long)]
     pub parts: Option<PathBuf>,
 
@@ -129,12 +141,40 @@ pub fn run(args: &InferArgs) -> Result<Value, VectisError> {
         collect_cached_groups(cache_dir, &mut occurrences);
     }
 
-    let clusters = cluster(occurrences, args.min_occurrences);
+    // Step 0 (RFC-40 §C2): register a pinned binding per operator part,
+    // fingerprinted at read time through the single normaliser — so the
+    // pin is byte-comparable with discovered fingerprints by construction.
+    let pins = if let Some(ref parts_path) = args.parts {
+        collect_part_pins(parts_path)
+    } else {
+        Vec::new()
+    };
+
+    // Fingerprints actually present in the baseline/cache, used to split
+    // matched pins (promoted + named) from unmatched pins (reported).
+    let observed: BTreeSet<String> =
+        occurrences.iter().map(|occ| fingerprint(&occ.skeleton)).collect();
+
+    // §C6 dedup: when two parts normalise to one skeleton, the
+    // lexicographically-first slug binds the fingerprint.
+    let mut pin_slug_by_fp: BTreeMap<String, String> = BTreeMap::new();
+    let mut unmatched_parts: BTreeSet<String> = BTreeSet::new();
+    for pin in pins {
+        if observed.contains(&pin.fingerprint) {
+            pin_slug_by_fp.entry(pin.fingerprint).or_insert(pin.slug);
+        } else {
+            // §C2 step 4: a pin matching zero groups is not projected —
+            // it is surfaced as an unused part (§C5), never a cluster.
+            unmatched_parts.insert(pin.slug);
+        }
+    }
+
+    let clusters = cluster(occurrences, args.min_occurrences, &pin_slug_by_fp);
 
     Ok(json!({
         "version": 1,
         "clusters": clusters,
-        "unmatched_parts": [],
+        "unmatched_parts": unmatched_parts.into_iter().collect::<Vec<_>>(),
     }))
 }
 
@@ -310,10 +350,55 @@ fn cache_screen_id(root: &Path, file: &Path) -> String {
     })
 }
 
+/// One operator part registered as a pinned `{ fingerprint → slug }`
+/// binding (RFC-40 §C2 step 0). The fingerprint is recomputed at read
+/// time, so it is byte-comparable with discovered fingerprints.
+struct PartPin {
+    /// Operator-authored part slug.
+    slug: String,
+    /// Read-time fingerprint of the part's normalised `group` skeleton.
+    fingerprint: String,
+}
+
+/// Read every part in `parts.yaml`, normalise each `group` fragment
+/// through the **single** [`build_group_skeleton`] path, and fingerprint
+/// it at read time (RFC-40 §C2 step 0). A malformed parts file, or a
+/// part without a `group`, yields no pin — the host already schema-gates
+/// the file, so this read is best-effort and never aborts inference.
+fn collect_part_pins(path: &Path) -> Vec<PartPin> {
+    let Ok(source) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(doc) = serde_saphyr::from_str::<Value>(&source) else {
+        return Vec::new();
+    };
+    let Some(parts) = doc.get("parts").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    parts
+        .iter()
+        .filter_map(|(slug, entry)| {
+            let group = entry.get("group")?;
+            Some(PartPin {
+                slug: slug.clone(),
+                fingerprint: fingerprint(&build_group_skeleton(group)),
+            })
+        })
+        .collect()
+}
+
 /// Cluster occurrences by structural fingerprint and project each
 /// above-threshold cluster into a name-free report entry. Counting is by
 /// **distinct screen** — a group repeated within one screen counts once.
-fn cluster(occurrences: Vec<GroupOccurrence>, min_occurrences: u32) -> Vec<Value> {
+///
+/// `pin_slug_by_fp` carries operator-part pins (RFC-40 §C2): a cluster
+/// whose fingerprint matches a pin bypasses `min_occurrences` (promotion
+/// authority) and carries `bound_slug: <operator-slug>` + `pinned: true`
+/// (naming authority); the tool still invents no name of its own.
+fn cluster(
+    occurrences: Vec<GroupOccurrence>, min_occurrences: u32,
+    pin_slug_by_fp: &BTreeMap<String, String>,
+) -> Vec<Value> {
     let mut by_fp: BTreeMap<String, Cluster> = BTreeMap::new();
     for occ in occurrences {
         let fp = fingerprint(&occ.skeleton);
@@ -339,7 +424,12 @@ fn cluster(occurrences: Vec<GroupOccurrence>, min_occurrences: u32) -> Vec<Value
 
     by_fp
         .into_iter()
-        .filter(|(_, c)| u32::try_from(c.screens.len()).is_ok_and(|n| n >= min_occurrences))
+        // A pinned fingerprint bypasses the threshold (§C2 promotion);
+        // every other cluster must span ≥ min_occurrences distinct screens.
+        .filter(|(fp, c)| {
+            pin_slug_by_fp.contains_key(fp)
+                || u32::try_from(c.screens.len()).is_ok_and(|n| n >= min_occurrences)
+        })
         .map(|(fp, c)| {
             let mut item_kinds = BTreeSet::new();
             skeleton_item_kinds(&c.skeleton, &mut item_kinds);
@@ -360,14 +450,24 @@ fn cluster(occurrences: Vec<GroupOccurrence>, min_occurrences: u32) -> Vec<Value
                     json!(c.candidate_names.into_iter().collect::<Vec<_>>()),
                 );
             }
-            json!({
-                "fingerprint": fp,
+            let mut entry = json!({
+                "fingerprint": fp.clone(),
                 "occurrences": c.screens.len(),
                 "screens": c.screens.into_iter().collect::<Vec<_>>(),
                 "skeleton": skeleton_to_json(&c.skeleton),
                 "evidence": evidence,
                 "bound_slug": Value::Null,
-            })
+            });
+            // §C2 step 5: a matched pin echoes the operator slug and
+            // flags the cluster `pinned` (emitted only when true, so a
+            // pin-free report keeps its existing cluster shape).
+            if let Some(slug) = pin_slug_by_fp.get(&fp)
+                && let Value::Object(ref mut map) = entry
+            {
+                map.insert("bound_slug".to_string(), Value::String(slug.clone()));
+                map.insert("pinned".to_string(), Value::Bool(true));
+            }
+            entry
         })
         .collect()
 }

@@ -43,6 +43,25 @@ fn infer_with_cache(composition: &Path, cache: &Path) -> Value {
     run(&args).expect("infer succeeds")
 }
 
+/// Run `infer` against a baseline plus an operator parts file at the
+/// default threshold (2).
+fn infer_with_parts(composition: &Path, parts: &Path) -> Value {
+    let args = InferArgs {
+        composition: composition.to_path_buf(),
+        candidate_cache: None,
+        parts: Some(parts.to_path_buf()),
+        min_occurrences: 2,
+    };
+    run(&args).expect("infer succeeds")
+}
+
+/// Write an operator parts file under a fresh tempdir and return its path.
+fn write_parts(tmp: &Path, yaml: &str) -> PathBuf {
+    let path = tmp.join("parts.yaml");
+    std::fs::write(&path, yaml).expect("write parts.yaml");
+    path
+}
+
 /// Write a candidate-cache entry at the §B4 provenance path
 /// `<slice>/<screen>/<group-path>.yaml` under `cache_root`.
 fn write_cache_entry(cache_root: &Path, slice: &str, screen: &str, group_path: &str, body: &str) {
@@ -411,6 +430,112 @@ screens:
     let found = clusters(&report);
     assert_eq!(found.len(), 1, "baseline cluster survives, cache noise ignored: {report}");
     assert_eq!(found[0]["occurrences"], 2);
+}
+
+/// A pinned operator part matching a single baseline group is promoted
+/// to a cluster below the default threshold (promotion authority) and
+/// carries the operator slug in `bound_slug` plus `pinned: true` (naming
+/// authority) — RFC-40 §C2. The tool still derives no name of its own.
+#[test]
+fn pinned_part_promotes_below_threshold() {
+    let baseline = r"version: 1
+screens:
+  home:
+    name: Home
+    footer:
+      - group:
+          items:
+            - icon-button: { bind: home, event: Navigate(Home) }
+            - icon-button: { bind: search, event: Navigate(Search) }
+";
+    let (tmp, composition) = write_baseline(baseline);
+    let parts = write_parts(
+        tmp.path(),
+        r"version: 1
+parts:
+  primary-nav:
+    description: Operator-defined nav bar.
+    group:
+      items:
+        - icon-button: { bind: a, event: Navigate(A) }
+        - icon-button: { bind: b, event: Navigate(B) }
+",
+    );
+
+    let report = infer_with_parts(&composition, &parts);
+    let found = clusters(&report);
+    assert_eq!(found.len(), 1, "the single matched group is promoted by the pin: {report}");
+    let cluster = &found[0];
+    assert_eq!(cluster["occurrences"], 1);
+    assert_eq!(cluster["bound_slug"], "primary-nav", "the operator slug is echoed");
+    assert_eq!(cluster["pinned"], Value::Bool(true));
+    assert_eq!(report["unmatched_parts"], serde_json::json!([]));
+}
+
+/// A pinned part whose skeleton matches no baseline group is not a
+/// cluster — it is surfaced under `unmatched_parts` (RFC-40 §C2 step 4 /
+/// §C5), and inference proceeds regardless.
+#[test]
+fn pinned_part_matching_nothing_is_unmatched() {
+    let baseline = r"version: 1
+screens:
+  home:
+    name: Home
+    body:
+      - text: { content: hi }
+";
+    let (tmp, composition) = write_baseline(baseline);
+    let parts = write_parts(
+        tmp.path(),
+        r"version: 1
+parts:
+  primary-nav:
+    group:
+      items:
+        - icon-button: {}
+        - icon-button: {}
+        - icon-button: {}
+",
+    );
+
+    let report = infer_with_parts(&composition, &parts);
+    assert!(clusters(&report).is_empty(), "no baseline group matches the pin: {report}");
+    assert_eq!(report["unmatched_parts"], serde_json::json!(["primary-nav"]));
+}
+
+/// When a baseline group matches no pin, the pin still surfaces under
+/// `unmatched_parts` while the group clusters only on its own merits
+/// (here below threshold, so absent) — pins never suppress ordinary
+/// clustering.
+#[test]
+fn unpinned_group_and_unmatched_pin_coexist() {
+    let baseline = r"version: 1
+screens:
+  home:
+    name: Home
+    footer:
+      - group:
+          items:
+            - icon-button: {}
+            - icon-button: {}
+";
+    let (tmp, composition) = write_baseline(baseline);
+    let parts = write_parts(
+        tmp.path(),
+        r"version: 1
+parts:
+  hero:
+    group:
+      items:
+        - image: {}
+        - text: {}
+        - text: {}
+",
+    );
+
+    let report = infer_with_parts(&composition, &parts);
+    assert!(clusters(&report).is_empty(), "the lone footer group is below threshold: {report}");
+    assert_eq!(report["unmatched_parts"], serde_json::json!(["hero"]));
 }
 
 /// `--min-occurrences 3` excludes a group spanning only two screens.

@@ -9,10 +9,10 @@ use specify_schema::{
     ADAPTER_JSON_SCHEMA, BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA,
     COMPONENTS_JSON_SCHEMA, DECISION_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA,
     DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA,
-    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA,
-    SOURCE_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TARGET_JSON_SCHEMA, TOOL_JSON_SCHEMA,
-    TOOL_SIDECAR_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, ValidationStatus,
+    PARTS_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
+    SLICE_MODEL_JSON_SCHEMA, SOURCE_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TARGET_JSON_SCHEMA,
+    TOOL_JSON_SCHEMA, TOOL_SIDECAR_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, ValidationStatus,
     WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
 };
 
@@ -112,6 +112,7 @@ fn embedded_schemas_match_on_disk_sources() {
             COMPONENTS_JSON_SCHEMA,
             "schemas/design-system/components.schema.json",
         ),
+        ("PARTS_JSON_SCHEMA", PARTS_JSON_SCHEMA, "schemas/design-system/parts.schema.json"),
         (
             "RESOLVED_RULES_JSON_SCHEMA",
             RESOLVED_RULES_JSON_SCHEMA,
@@ -276,6 +277,71 @@ fn synthesis_accepts_example() {
 #[test]
 fn components_schema_compiles() {
     compile_schema(COMPONENTS_JSON_SCHEMA).expect("components schema compiles");
+}
+
+#[test]
+fn parts_schema_compiles() {
+    compile_schema(PARTS_JSON_SCHEMA).expect("parts schema compiles");
+}
+
+/// The RFC-40 §C1 `parts.yaml` worked example validates: a kebab-case
+/// part slug carrying a composition `group` fragment (with a `*-when`
+/// key and `items`) plus an optional description.
+#[test]
+fn parts_schema_accepts_rfc_example() {
+    let instance = json!({
+        "version": 1,
+        "parts": {
+            "tab-bar": {
+                "description": "Bottom navigation across primary sections.",
+                "group": {
+                    "active-when": "$route",
+                    "items": [
+                        { "icon-button": { "bind": "home", "event": "Navigate(Home)" } },
+                        { "icon-button": { "bind": "search", "event": "Navigate(Search)" } },
+                        { "icon-button": { "bind": "settings", "event": "Navigate(Settings)" } }
+                    ]
+                }
+            }
+        }
+    });
+    let summaries =
+        validate_value(&instance, PARTS_JSON_SCHEMA, "parts", "parts.yaml RFC-40 §C1 example");
+    assert!(
+        summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
+        "RFC parts example must validate; got {summaries:?}"
+    );
+}
+
+/// A part missing its required `group`, and a non-kebab slug, are both
+/// rejected.
+#[test]
+fn parts_schema_rejects_malformed() {
+    let missing_group = json!({
+        "version": 1,
+        "parts": { "tab-bar": { "description": "no group" } }
+    });
+    let summaries = validate_value(
+        &missing_group,
+        PARTS_JSON_SCHEMA,
+        "parts",
+        "part requires a group fragment",
+    );
+    assert!(
+        summaries.iter().any(|s| matches!(s.status, ValidationStatus::Fail)),
+        "a part without `group` must be rejected"
+    );
+
+    let bad_slug = json!({
+        "version": 1,
+        "parts": { "TabBar": { "group": { "items": [{ "text": {} }] } } }
+    });
+    let summaries =
+        validate_value(&bad_slug, PARTS_JSON_SCHEMA, "parts", "part slug is kebab-case");
+    assert!(
+        summaries.iter().any(|s| matches!(s.status, ValidationStatus::Fail)),
+        "a non-kebab part slug must be rejected"
+    );
 }
 
 #[test]

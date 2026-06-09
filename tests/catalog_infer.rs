@@ -121,6 +121,38 @@ fn write_bindings(project: &Path, body: &str) -> PathBuf {
     path
 }
 
+/// Write an operator `parts.yaml` under `project/.specify/design-system/`.
+fn write_parts(project: &Path, body: &str) {
+    let dir = project.join(".specify/design-system");
+    fs::create_dir_all(&dir).expect("create design-system dir");
+    fs::write(dir.join("parts.yaml"), body).expect("write parts.yaml");
+}
+
+/// A baseline with a single `footer` group on one screen (below the
+/// default threshold of 2 on its own).
+const SINGLE_FOOTER_BASELINE: &str = "version: 1
+screens:
+  home:
+    name: Home
+    footer:
+      - group:
+          items:
+            - icon-button: { bind: home, event: Navigate(Home) }
+            - icon-button: { bind: search, event: Navigate(Search) }
+";
+
+/// An operator part whose `group` skeleton (two icon-buttons) matches
+/// the `SINGLE_FOOTER_BASELINE` footer group.
+const PRIMARY_NAV_PART: &str = "version: 1
+parts:
+  primary-nav:
+    description: Operator-defined nav bar.
+    group:
+      items:
+        - icon-button: { bind: a, event: Navigate(A) }
+        - icon-button: { bind: b, event: Navigate(B) }
+";
+
 fn load_catalog(project: &Path) -> Option<ComponentsCatalog> {
     ComponentsCatalog::load(project).expect("catalog loads")
 }
@@ -430,6 +462,213 @@ fn bind_suffixes_slug_collision() {
     assert_eq!(catalog.status_of("card-row"), Some(ComponentStatus::Confirmed));
     assert_eq!(catalog.status_of("card-row-b2b2b2b2"), Some(ComponentStatus::Confirmed));
     assert_eq!(catalog.components.len(), 2, "both fingerprints bound under distinct slugs");
+}
+
+/// A pinned operator part matching one baseline group is projected into
+/// the catalog as `confirmed` below the default threshold (promotion
+/// authority, RFC-40 §C2/§C3) with the operator slug and the part's
+/// read-time fingerprint recorded. Uses the real tool (bind runs `infer`
+/// with `--parts`), so it is skipped when the WASM artifact is absent.
+#[test]
+fn bind_projects_matched_pin() {
+    let wasm = vectis_wasm();
+    if !wasm.is_file() {
+        eprintln!("skipping: vectis WASM not found at {}", wasm.display());
+        return;
+    }
+    let (tmp, cache) = report_project(SINGLE_FOOTER_BASELINE);
+    write_parts(tmp.path(), PRIMARY_NAV_PART);
+
+    specify_cmd()
+        .current_dir(tmp.path())
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["catalog", "infer", "--phase", "bind"])
+        .assert()
+        .success();
+
+    let catalog = load_catalog(tmp.path()).expect("catalog written");
+    assert_eq!(catalog.status_of("primary-nav"), Some(ComponentStatus::Confirmed));
+    assert!(
+        catalog.components.get("primary-nav").and_then(|e| e.fingerprint.as_ref()).is_some(),
+        "a part-bound entry records the fingerprint so a later report echoes it: {:?}",
+        catalog.components.get("primary-nav")
+    );
+}
+
+/// A pinned part matching zero baseline groups is reported `part-unmatched`
+/// and never projected into the catalog (RFC-40 §C2 step 4 / §C5). The
+/// report is informational and `bind` still succeeds.
+#[test]
+fn bind_reports_unmatched_pin() {
+    let wasm = vectis_wasm();
+    if !wasm.is_file() {
+        eprintln!("skipping: vectis WASM not found at {}", wasm.display());
+        return;
+    }
+    let baseline = "version: 1
+screens:
+  home:
+    name: Home
+    body:
+      - text: { content: hi }
+";
+    let (tmp, cache) = report_project(baseline);
+    write_parts(
+        tmp.path(),
+        "version: 1
+parts:
+  primary-nav:
+    group:
+      items:
+        - icon-button: {}
+        - icon-button: {}
+        - icon-button: {}
+",
+    );
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["--format", "json", "catalog", "infer", "--phase", "bind"])
+        .assert()
+        .success();
+
+    let body = parse_json(&assert.get_output().stdout);
+    assert_eq!(body["unmatched_parts"], serde_json::json!(["primary-nav"]));
+    assert_eq!(body["added"], serde_json::json!([]));
+    assert!(
+        !ComponentsCatalog::path_in(tmp.path()).exists(),
+        "an unmatched pin scaffolds no catalog entry"
+    );
+}
+
+/// A part slug equal to an existing `rejected` catalog entry stays
+/// suppressed: the projection's `upsert_bound` is a no-op against a
+/// rejected slug, so the part is not factored (RFC-40 §C6).
+#[test]
+fn bind_part_does_not_override_rejected() {
+    let wasm = vectis_wasm();
+    if !wasm.is_file() {
+        eprintln!("skipping: vectis WASM not found at {}", wasm.display());
+        return;
+    }
+    let (tmp, cache) = report_project(SINGLE_FOOTER_BASELINE);
+    write_parts(tmp.path(), PRIMARY_NAV_PART);
+
+    let mut seed = ComponentsCatalog::empty();
+    seed.components.insert(
+        "primary-nav".to_string(),
+        specify_workflow::design_system::ComponentEntry {
+            status: ComponentStatus::Rejected,
+            description: Some("operator says no".to_string()),
+            fingerprint: None,
+        },
+    );
+    seed.save(tmp.path()).expect("seed catalog");
+
+    specify_cmd()
+        .current_dir(tmp.path())
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["catalog", "infer", "--phase", "bind"])
+        .assert()
+        .success();
+
+    let catalog = load_catalog(tmp.path()).expect("catalog present");
+    assert_eq!(catalog.status_of("primary-nav"), Some(ComponentStatus::Rejected));
+    assert_eq!(catalog.components.len(), 1, "rejected pin is not factored as a second entry");
+}
+
+/// The operator slug is the first-writer for its fingerprint: a skill
+/// binding handed the same bare name under a *different* fingerprint is
+/// suffixed `slug-<fp-prefix>` by the §B2 uniqueness guard, while the
+/// operator part keeps the bare slug (RFC-40 §C2 step 5 / §C6).
+#[test]
+fn bind_operator_part_wins_slug_over_skill() {
+    let wasm = vectis_wasm();
+    if !wasm.is_file() {
+        eprintln!("skipping: vectis WASM not found at {}", wasm.display());
+        return;
+    }
+    // `home` carries the part-matched footer group (one occurrence,
+    // promoted by the pin) and a 3-text body group repeated on `search`
+    // (clusters on its own at threshold 2).
+    let baseline = "version: 1
+screens:
+  home:
+    name: Home
+    footer:
+      - group:
+          items:
+            - icon-button: { bind: home, event: Navigate(Home) }
+            - icon-button: { bind: search, event: Navigate(Search) }
+    body:
+      - group:
+          items:
+            - text: {}
+            - text: {}
+            - text: {}
+  search:
+    name: Search
+    body:
+      - group:
+          items:
+            - text: {}
+            - text: {}
+            - text: {}
+";
+    let (tmp, cache) = report_project(baseline);
+    write_parts(
+        tmp.path(),
+        "version: 1
+parts:
+  card-row:
+    group:
+      items:
+        - icon-button: {}
+        - icon-button: {}
+",
+    );
+
+    // Report to discover the unpinned body cluster's fingerprint, which
+    // the skill will (deliberately) try to also name `card-row`.
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["--format", "json", "catalog", "infer", "--phase", "report"])
+        .assert()
+        .success();
+    let report = parse_json(&assert.get_output().stdout);
+    let clusters = report["clusters"].as_array().expect("clusters");
+    let body_fp = clusters
+        .iter()
+        .find(|c| c["bound_slug"].is_null())
+        .and_then(|c| c["fingerprint"].as_str())
+        .expect("an unpinned body cluster")
+        .to_string();
+
+    let bindings = write_bindings(tmp.path(), &format!("bindings:\n  {body_fp}: card-row\n"));
+    specify_cmd()
+        .current_dir(tmp.path())
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["catalog", "infer", "--phase", "bind"])
+        .arg("--bindings")
+        .arg(&bindings)
+        .assert()
+        .success();
+
+    let catalog = load_catalog(tmp.path()).expect("catalog present");
+    assert_eq!(
+        catalog.status_of("card-row"),
+        Some(ComponentStatus::Confirmed),
+        "the operator part keeps the bare slug"
+    );
+    let suffixed = format!("card-row-{}", &body_fp[..8]);
+    assert_eq!(
+        catalog.status_of(&suffixed),
+        Some(ComponentStatus::Confirmed),
+        "the skill binding under a different fingerprint is suffixed: {:?}",
+        catalog.components.keys().collect::<Vec<_>>()
+    );
 }
 
 #[test]

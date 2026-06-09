@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use specify_error::{Error, Result};
 use specify_model::atomic;
 
@@ -21,6 +22,10 @@ use crate::schema;
 
 /// On-disk path relative to project root.
 const CATALOG_REL: &str = ".specify/design-system/components.yaml";
+
+/// On-disk path of the operator-authored parts input, relative to the
+/// project root (RFC-40 §C1).
+const PARTS_REL: &str = ".specify/design-system/parts.yaml";
 
 /// Closed status enum for catalog entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -193,6 +198,96 @@ impl ComponentsCatalog {
     /// - [`Error::Io`] if the temp-file write or atomic rename fails.
     pub fn save(&self, project_dir: &Path) -> Result<()> {
         atomic::yaml_write(&Self::path_in(project_dir), self)
+    }
+}
+
+/// A single operator-authored part: an authoritative composition
+/// `group` fragment plus optional metadata (RFC-40 §C1).
+///
+/// The `group` value is carried as an opaque [`Value`] — the host never
+/// fingerprints it (that is the vectis tool's single normaliser, §B2);
+/// it only forwards the part file to the tool and reads back each
+/// part's slug + `description` to project matched pins into the catalog.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Part {
+    /// Schema-compliant composition `group` fragment whose normalised
+    /// skeleton is the part's identity.
+    pub group: Value,
+    /// Optional operator note carried into the resolved catalog entry.
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// The operator-authored parts input (`.specify/design-system/parts.yaml`).
+///
+/// `parts.yaml` is an **input**, hand-authored and owned by the
+/// operator beside `tokens.yaml` / `assets.yaml`; the agent-written
+/// [`ComponentsCatalog`] is the **resolved** catalog (RFC-40 §C1). It is
+/// schema-validated on load with no further coherence gate. Absent
+/// parts are represented as `None` at the call site.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Parts {
+    /// Schema version (currently pinned to `1`).
+    pub version: u32,
+    /// Map of kebab-case part slugs to their structural payload.
+    pub parts: BTreeMap<String, Part>,
+}
+
+impl Parts {
+    /// Load and validate `parts.yaml` from a project root.
+    ///
+    /// Returns `Ok(None)` when the file does not exist (an absent parts
+    /// input preserves the Part B behaviour exactly — inference with no
+    /// pins). Returns `Err` when the file exists but fails YAML parse or
+    /// schema validation.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Filesystem`] if the file exists but cannot be read.
+    /// - [`Error::Validation`] if the file fails schema validation.
+    pub fn load(project_dir: &Path) -> Result<Option<Self>> {
+        let path = project_dir.join(PARTS_REL);
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let content = std::fs::read_to_string(&path).map_err(|source| Error::Filesystem {
+            op: "read",
+            path: path.clone(),
+            source,
+        })?;
+        Self::from_yaml(&content, &path).map(Some)
+    }
+
+    /// Parse and validate parts YAML content.
+    ///
+    /// `source_path` is used only for error messages.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Validation`] if YAML parsing or schema validation fails.
+    pub fn from_yaml(content: &str, source_path: &Path) -> Result<Self> {
+        schema::validate_parts_yaml(content, source_path)?;
+        serde_saphyr::from_str(content).map_err(|err| {
+            Error::validation_failed(
+                "parts-schema",
+                "parts.yaml conforms to schemas/design-system/parts.schema.json",
+                format!("{}: deserialise failed: {err}", source_path.display()),
+            )
+        })
+    }
+
+    /// Return the path where the parts input lives relative to a project
+    /// root. Used to decide whether to forward `--parts` to the tool.
+    #[must_use]
+    pub fn path_in(project_dir: &Path) -> PathBuf {
+        project_dir.join(PARTS_REL)
+    }
+
+    /// The operator description for `slug`, if any — carried into the
+    /// projected `confirmed` catalog entry (RFC-40 §C3).
+    #[must_use]
+    pub fn description_of(&self, slug: &str) -> Option<&str> {
+        self.parts.get(slug).and_then(|part| part.description.as_deref())
     }
 }
 

@@ -559,7 +559,7 @@ fn parse_catalog_file(path: &Path) -> std::result::Result<Value, String> {
 // ── Catalog cross-reference (component catalog contract) ────────────────────────
 
 /// Cross-reference every `component: <slug>` in the composition
-/// against the operator-curated component catalog.
+/// against the agent-inferred, operator-reviewable component catalog.
 ///
 /// - A slug absent from the catalog → error.
 /// - A slug with `status: rejected` → error.
