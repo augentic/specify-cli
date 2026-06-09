@@ -610,6 +610,55 @@ fn build_report_no_outputs() {
     assert!(errors.is_empty(), "report without outputs must validate; errors: {errors:?}");
 }
 
+/// A success report carrying the optional `ui-surface` field validates,
+/// proving the additive A4 signal resolves against the `uiSurface`
+/// `$def`.
+#[test]
+fn build_report_accepts_ui_surface() {
+    let validator = build_report_validator();
+    let instance = json!({
+        "version": 1,
+        "slice": "identity-service",
+        "target": "vectis@v1",
+        "status": "success",
+        "findings": [],
+        "ui-surface": { "screens": 3 }
+    });
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|err| err.to_string()).collect();
+    assert!(errors.is_empty(), "report with ui-surface must validate; errors: {errors:?}");
+}
+
+/// `ui-surface.screens` is required and must be a non-negative integer;
+/// a stray sibling key is rejected by `additionalProperties: false`.
+#[test]
+fn build_report_rejects_bad_ui_surface() {
+    let validator = build_report_validator();
+    let missing_screens = json!({
+        "version": 1,
+        "slice": "identity-service",
+        "target": "vectis@v1",
+        "status": "success",
+        "findings": [],
+        "ui-surface": {}
+    });
+    assert!(
+        validator.iter_errors(&missing_screens).next().is_some(),
+        "ui-surface without screens must be rejected"
+    );
+    let stray_key = json!({
+        "version": 1,
+        "slice": "identity-service",
+        "target": "vectis@v1",
+        "status": "success",
+        "findings": [],
+        "ui-surface": { "screens": 1, "stray": true }
+    });
+    assert!(
+        validator.iter_errors(&stray_key).next().is_some(),
+        "ui-surface with a stray key must be rejected"
+    );
+}
+
 /// The build-report failure-with-findings example validates, proving
 /// the relative diagnostic `$ref` accepts a full finding.
 #[test]

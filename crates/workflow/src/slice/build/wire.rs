@@ -8,7 +8,10 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use specify_diagnostics::{Diagnostic, blocking};
+use serde_json::Value;
+use specify_diagnostics::{
+    Artifact, Diagnostic, DiagnosticKind, DiagnosticSource, Severity, blocking,
+};
 use specify_error::{Error, Result};
 
 use crate::platform::Platform;
@@ -93,6 +96,22 @@ pub struct BuildOutput {
     pub path: String,
 }
 
+/// The per-slice "has UI surface" signal authored by the build brief.
+///
+/// Carries the count of screen-bearing requirements the slice
+/// introduces or modifies, derived from the brief's own `spec.md`
+/// judgement (never from `## Platforms`). `screens == 0` means "no UI
+/// surface". The finalize phase compares this declared intent against
+/// the produced `composition.yaml` via
+/// [`evaluate_ui_surface_coherence`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct UiSurface {
+    /// Count of screen-bearing requirements this slice introduces or
+    /// modifies. `0` means no UI surface.
+    pub screens: u32,
+}
+
 /// The per-slice build report a target adapter returns.
 ///
 /// Round-trips `schemas/target/build-report.schema.json`. `findings`
@@ -116,6 +135,11 @@ pub struct BuildReport {
     /// path exists on disk.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outputs: Vec<BuildOutput>,
+    /// Optional per-slice UI-surface signal (A4). Absent on reports that
+    /// predate the field, in which case [`evaluate_ui_surface_coherence`]
+    /// returns no warnings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_surface: Option<UiSurface>,
 }
 
 /// Reject a [`BuildStatus::Success`] report carrying any blocking
@@ -208,6 +232,106 @@ pub fn enforce_report_outputs_exist(report: &BuildReport, project_dir: &Path) ->
         }
     }
     Ok(())
+}
+
+/// Compare the report's authored `ui_surface` against the produced
+/// `composition.yaml` and return any non-blocking coherence warnings
+/// (A4).
+///
+/// This is a pure *self-consistency* check: both the UI-surface
+/// judgement and the composition output come from the agent, so the
+/// host never re-derives screen identification — it only catches the
+/// agent contradicting itself. The returned [`Diagnostic`]s are
+/// `deterministic` / `violation` / `suggestion` (non-blocking per
+/// [`blocking`]); they are surfaced at finalize and never alter the
+/// verb's exit code.
+///
+/// - `ui_surface.screens == 0` but `composition_path` declares a UI
+///   surface ⇒ `composition-unexpected-for-non-ui-slice`.
+/// - `ui_surface.screens > 0` but `composition_path` is empty/absent ⇒
+///   `composition-empty-for-ui-slice`.
+///
+/// When `report.ui_surface` is `None` (a report predating the field),
+/// no warnings are emitted (back-compat).
+#[must_use]
+pub fn evaluate_ui_surface_coherence(
+    report: &BuildReport, composition_path: &Path,
+) -> Vec<Diagnostic> {
+    let Some(ui_surface) = report.ui_surface else {
+        return Vec::new();
+    };
+
+    let has_surface = composition_declares_surface(composition_path);
+    let mut warnings = Vec::new();
+
+    if ui_surface.screens == 0 && has_surface {
+        warnings.push(ui_surface_warning(
+            "composition-unexpected-for-non-ui-slice",
+            "A slice reporting no UI surface (`ui-surface.screens: 0`) produces an empty \
+             composition.",
+            format!(
+                "slice `{}` reported `ui-surface.screens: 0` but produced a non-empty \
+                 composition.yaml; the UI-surface judgement contradicts the composition output",
+                report.slice
+            ),
+        ));
+    }
+
+    if ui_surface.screens > 0 && !has_surface {
+        warnings.push(ui_surface_warning(
+            "composition-empty-for-ui-slice",
+            "A slice reporting a UI surface (`ui-surface.screens > 0`) produces composition \
+             screens.",
+            format!(
+                "slice `{}` reported `ui-surface.screens: {}` but produced an absent or empty \
+                 composition.yaml; the UI-surface judgement contradicts the composition output",
+                report.slice, ui_surface.screens
+            ),
+        ));
+    }
+
+    warnings
+}
+
+/// Build a single non-blocking A4 coherence warning.
+fn ui_surface_warning(rule_id: &'static str, title: &'static str, detail: String) -> Diagnostic {
+    Diagnostic::finding(
+        rule_id,
+        title,
+        detail,
+        Severity::Suggestion,
+        DiagnosticKind::Violation,
+        DiagnosticSource::Deterministic,
+        Artifact::Composition,
+        None,
+    )
+}
+
+/// Whether the composition at `path` declares any UI surface (A4's
+/// "non-empty" definition).
+///
+/// Non-empty: a `screens:` map with ≥1 entry, or a `delta:` envelope
+/// with any `added` / `modified` / `removed` entry. Empty: an absent
+/// file, a `screens: {}` map, or an all-empty `delta:`. A malformed or
+/// unreadable file is treated as empty — the coherence check is
+/// advisory and never aborts.
+fn composition_declares_surface(path: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(doc) = serde_saphyr::from_str::<Value>(&text) else {
+        return false;
+    };
+
+    if doc.get("screens").and_then(Value::as_object).is_some_and(|s| !s.is_empty()) {
+        return true;
+    }
+
+    doc.get("delta").and_then(Value::as_object).is_some_and(|delta| {
+        ["added", "modified", "removed"]
+            .iter()
+            .any(|key| delta.get(*key).and_then(Value::as_object).is_some_and(|m| !m.is_empty()))
+    })
 }
 
 #[cfg(test)]

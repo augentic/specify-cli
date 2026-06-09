@@ -42,6 +42,127 @@ fn report_with_outputs(status: &str, outputs: &[Value]) -> BuildReport {
     .expect("report with outputs deserialises")
 }
 
+/// A success report carrying an optional `ui-surface.screens` value.
+fn report_with_ui_surface(screens: u32) -> BuildReport {
+    serde_json::from_value(json!({
+        "version": 1,
+        "slice": "identity-service",
+        "target": "vectis@v1",
+        "status": "success",
+        "findings": [],
+        "ui-surface": { "screens": screens },
+    }))
+    .expect("report with ui-surface deserialises")
+}
+
+/// Write `body` to a `composition.yaml` under a fresh tempdir and return
+/// the dir handle (kept alive by the caller) plus the file path.
+fn staged_composition(body: &str) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("composition.yaml");
+    std::fs::write(&path, body).expect("write composition.yaml");
+    (dir, path)
+}
+
+#[test]
+fn ui_surface_round_trips() {
+    let report = report_with_ui_surface(3);
+    assert_eq!(report.ui_surface, Some(UiSurface { screens: 3 }));
+    let serialised = serde_json::to_string(&report).expect("serialise");
+    assert!(serialised.contains("ui-surface"), "ui-surface renders kebab-case: {serialised}");
+    let reparsed: BuildReport = serde_json::from_str(&serialised).expect("re-deserialise");
+    assert_eq!(report, reparsed);
+}
+
+#[test]
+fn ui_surface_absent_skips_serialisation() {
+    let report = report("success", &[]);
+    assert!(report.ui_surface.is_none(), "missing ui-surface defaults to None");
+    let serialised = serde_json::to_string(&report).expect("serialise");
+    assert!(!serialised.contains("ui-surface"), "absent ui-surface is skipped: {serialised}");
+}
+
+/// `ui-surface.screens: 0` against a non-empty `screens:` composition →
+/// a single non-blocking `composition-unexpected-for-non-ui-slice`.
+#[test]
+fn coherence_flags_unexpected_composition() {
+    let (_dir, path) = staged_composition("version: 1\nscreens:\n  home:\n    name: Home\n");
+    let warnings = evaluate_ui_surface_coherence(&report_with_ui_surface(0), &path);
+    assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+    assert_eq!(warnings[0].rule_id.as_deref(), Some("composition-unexpected-for-non-ui-slice"));
+    assert!(!blocking(&warnings[0]), "A4 warnings must never block");
+}
+
+/// `ui-surface.screens > 0` against an empty `screens: {}` composition →
+/// a single non-blocking `composition-empty-for-ui-slice`.
+#[test]
+fn coherence_flags_empty_composition() {
+    let (_dir, path) = staged_composition("version: 1\nscreens: {}\n");
+    let warnings = evaluate_ui_surface_coherence(&report_with_ui_surface(2), &path);
+    assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+    assert_eq!(warnings[0].rule_id.as_deref(), Some("composition-empty-for-ui-slice"));
+    assert!(!blocking(&warnings[0]), "A4 warnings must never block");
+}
+
+/// An absent composition file with a UI-surface claim also flags
+/// `composition-empty-for-ui-slice`.
+#[test]
+fn coherence_absent_composition_ui_slice() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("composition.yaml");
+    let warnings = evaluate_ui_surface_coherence(&report_with_ui_surface(1), &path);
+    assert_eq!(warnings.len(), 1, "absent composition for a UI slice warns: {warnings:?}");
+    assert_eq!(warnings[0].rule_id.as_deref(), Some("composition-empty-for-ui-slice"));
+}
+
+/// Matched cases (UI surface ↔ non-empty composition, no surface ↔
+/// empty composition) produce no warnings.
+#[test]
+fn coherence_matched_cases_silent() {
+    let (_screens_dir, screens) =
+        staged_composition("version: 1\nscreens:\n  home:\n    name: Home\n");
+    assert!(
+        evaluate_ui_surface_coherence(&report_with_ui_surface(1), &screens).is_empty(),
+        "ui slice + non-empty composition is coherent"
+    );
+
+    let (_empty_dir, empty) = staged_composition("version: 1\nscreens: {}\n");
+    assert!(
+        evaluate_ui_surface_coherence(&report_with_ui_surface(0), &empty).is_empty(),
+        "non-ui slice + empty composition is coherent"
+    );
+}
+
+/// A non-empty `delta:` envelope counts as a UI surface, so a non-UI
+/// slice that emits one is flagged; an all-empty `delta:` does not.
+#[test]
+fn coherence_reads_delta_envelope() {
+    let (_added_dir, added) = staged_composition(
+        "version: 1\ndelta:\n  added:\n    home:\n      name: Home\n  modified: {}\n  removed: {}\n",
+    );
+    let warnings = evaluate_ui_surface_coherence(&report_with_ui_surface(0), &added);
+    assert_eq!(warnings.len(), 1, "non-empty delta is a UI surface: {warnings:?}");
+    assert_eq!(warnings[0].rule_id.as_deref(), Some("composition-unexpected-for-non-ui-slice"));
+
+    let (_empty_dir, empty) =
+        staged_composition("version: 1\ndelta:\n  added: {}\n  modified: {}\n  removed: {}\n");
+    assert!(
+        evaluate_ui_surface_coherence(&report_with_ui_surface(0), &empty).is_empty(),
+        "an all-empty delta carries no UI surface"
+    );
+}
+
+/// A report without `ui_surface` produces no warnings even when the
+/// composition is non-empty (back-compat).
+#[test]
+fn coherence_absent_ui_surface_silent() {
+    let (_dir, path) = staged_composition("version: 1\nscreens:\n  home:\n    name: Home\n");
+    assert!(
+        evaluate_ui_surface_coherence(&report("success", &[]), &path).is_empty(),
+        "absent ui-surface emits no warnings"
+    );
+}
+
 #[test]
 fn request_round_trips() {
     let req = json!({

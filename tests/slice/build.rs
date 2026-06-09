@@ -42,6 +42,13 @@ fn write_report(project: &Project, report: &str) {
     fs::write(build_dir.join("report.yaml"), report).expect("write report.yaml");
 }
 
+/// Write `composition` to `.specify/slices/my-slice/composition.yaml`,
+/// the artifact the A4 coherence check inspects at finalize.
+fn write_composition(project: &Project, composition: &str) {
+    let slice_dir = project.slices_dir().join("my-slice");
+    fs::write(slice_dir.join("composition.yaml"), composition).expect("write composition.yaml");
+}
+
 /// Collect the `event` ids in the slice's journal, in append order.
 fn event_ids(events: &[Value]) -> Vec<&str> {
     events.iter().filter_map(|e| e["event"].as_str()).collect()
@@ -79,6 +86,36 @@ findings:
     impact: The generated crate does not compile, so the slice cannot merge.
     remediation: Fix the borrow error before reporting success.
     fingerprint: \"sha256:0000000000000000000000000000000000000000000000000000000000000000\"
+";
+
+/// A success report declaring no UI surface (`ui-surface.screens: 0`).
+const SUCCESS_REPORT_NO_UI: &str = "\
+version: 1
+slice: my-slice
+target: omnia@v1
+status: success
+findings: []
+ui-surface:
+  screens: 0
+";
+
+/// A success report declaring a UI surface (`ui-surface.screens: 2`).
+const SUCCESS_REPORT_UI: &str = "\
+version: 1
+slice: my-slice
+target: omnia@v1
+status: success
+findings: []
+ui-surface:
+  screens: 2
+";
+
+/// A non-empty whole-document composition (one screen).
+const COMPOSITION_ONE_SCREEN: &str = "\
+version: 1
+screens:
+  home:
+    name: Home
 ";
 
 // ---------------------------------------------------------------------------
@@ -239,6 +276,97 @@ fn finalize_missing_report_errors() {
     assert!(
         metadata(&project).contains("status: refined"),
         "a missing report must not transition the slice"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A4: ui-surface coherence warnings (non-blocking)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn finalize_warns_unexpected_composition() {
+    let project = Project::init();
+    stage_refined_slice(&project);
+    write_report(&project, SUCCESS_REPORT_NO_UI);
+    write_composition(&project, COMPOSITION_ONE_SCREEN);
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "build", "my-slice", "--phase", "finalize"])
+        .assert()
+        .success();
+    assert_eq!(assert.get_output().status.code(), Some(0), "A4 warnings never alter the exit code");
+
+    let body = parse_json(&assert.get_output().stdout);
+    let warnings = body["warnings"].as_array().expect("warnings array present");
+    assert_eq!(warnings.len(), 1, "one coherence warning expected: {body}");
+    assert_eq!(warnings[0]["rule-id"], "composition-unexpected-for-non-ui-slice");
+
+    // The warning never gates the build: the slice still reached `built`.
+    assert!(
+        metadata(&project).contains("status: built"),
+        "an A4 warning never blocks the built transition; got:\n{}",
+        metadata(&project)
+    );
+}
+
+#[test]
+fn finalize_warns_empty_composition() {
+    let project = Project::init();
+    stage_refined_slice(&project);
+    write_report(&project, SUCCESS_REPORT_UI);
+    // No composition.yaml staged: an absent composition is "empty".
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "build", "my-slice", "--phase", "finalize"])
+        .assert()
+        .success();
+    assert_eq!(assert.get_output().status.code(), Some(0), "A4 warnings never alter the exit code");
+
+    let body = parse_json(&assert.get_output().stdout);
+    let warnings = body["warnings"].as_array().expect("warnings array present");
+    assert_eq!(warnings.len(), 1, "one coherence warning expected: {body}");
+    assert_eq!(warnings[0]["rule-id"], "composition-empty-for-ui-slice");
+}
+
+#[test]
+fn finalize_matched_ui_surface_no_warnings() {
+    let project = Project::init();
+    stage_refined_slice(&project);
+    write_report(&project, SUCCESS_REPORT_UI);
+    write_composition(&project, COMPOSITION_ONE_SCREEN);
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "build", "my-slice", "--phase", "finalize"])
+        .assert()
+        .success();
+
+    let body = parse_json(&assert.get_output().stdout);
+    assert!(
+        body.get("warnings").is_none(),
+        "a coherent ui-surface emits no warnings (field skipped): {body}"
+    );
+}
+
+#[test]
+fn finalize_absent_ui_surface_no_warnings() {
+    let project = Project::init();
+    stage_refined_slice(&project);
+    write_report(&project, SUCCESS_REPORT);
+    write_composition(&project, COMPOSITION_ONE_SCREEN);
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "slice", "build", "my-slice", "--phase", "finalize"])
+        .assert()
+        .success();
+
+    let body = parse_json(&assert.get_output().stdout);
+    assert!(
+        body.get("warnings").is_none(),
+        "a report without ui-surface emits no warnings (back-compat): {body}"
     );
 }
 
