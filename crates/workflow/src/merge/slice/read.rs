@@ -204,6 +204,60 @@ fn merge_composition_delta(
     }
 }
 
+/// A3 precondition: refuse a whole-document (`screens:`) slice
+/// composition that would silently replace a non-empty baseline.
+///
+/// Reads the slice's top-level `composition.yaml` and the baseline at
+/// `class.baseline_dir/composition.yaml`. The gate fires — returning
+/// [`Error::Diag { code: "composition-baseline-overwrite-blocked" }`] —
+/// only when all three hold: the slice composition uses whole-document
+/// replacement format, the baseline is non-empty, and `allow_replace`
+/// is `false`. An absent slice file, an absent/empty baseline, a
+/// `delta:`-format slice composition, or `allow_replace == true` all
+/// pass.
+///
+/// This is a single-responsibility authorisation precondition — it
+/// carries no merge mechanism. The pure shape predicates it composes
+/// live in `crate::merge::composition`; this function adds only the
+/// file reads and the authorisation policy (RFC-40 §A3 "Placement").
+///
+/// # Errors
+///
+/// - [`Error::Diag { code: "composition-baseline-overwrite-blocked" }`]
+///   when an unauthorised whole-document replacement is detected.
+/// - [`Error::Diag { code: "composition-delta-malformed" }`] when the
+///   slice composition does not parse (propagated from
+///   [`crate::merge::composition::is_whole_document_replacement`]).
+/// - [`Error::Filesystem`] (`op = "read"`) when the slice composition or
+///   baseline file cannot be read.
+pub(super) fn composition_overwrite_gate(
+    slice_dir: &Path, class: &ArtifactClass, allow_replace: bool,
+) -> Result<(), Error> {
+    if allow_replace {
+        return Ok(());
+    }
+    let Some(slice_text) = read_optional_file(&slice_dir.join(COMPOSITION_FILENAME))? else {
+        return Ok(());
+    };
+    if !crate::merge::composition::is_whole_document_replacement(&slice_text)? {
+        return Ok(());
+    }
+    let Some(baseline_text) = read_optional_file(&class.baseline_dir.join(COMPOSITION_FILENAME))?
+    else {
+        return Ok(());
+    };
+    if !crate::merge::composition::baseline_is_non_empty(&baseline_text) {
+        return Ok(());
+    }
+    Err(Error::Diag {
+        code: "composition-baseline-overwrite-blocked",
+        detail: "Slice composition uses whole-document replacement format but a non-empty \
+                 baseline exists. Use `delta:` format, or pass `--allow-composition-replace` to \
+                 authorise full replacement."
+            .to_string(),
+    })
+}
+
 fn read_optional_file(path: &Path) -> Result<Option<String>, Error> {
     if path.is_file() {
         Ok(Some(fs::read_to_string(path).map_err(|err| Error::Filesystem {

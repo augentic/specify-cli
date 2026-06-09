@@ -95,7 +95,10 @@ pub fn run(ctx: &Ctx, action: SliceAction) -> Result<()> {
         }
         SliceAction::Build { name, phase } => build::run(ctx, &name, phase),
         SliceAction::Merge { action } => match action {
-            SliceMergeAction::Run { name } => merge::run(ctx, &name),
+            SliceMergeAction::Run {
+                name,
+                allow_composition_replace,
+            } => merge::run(ctx, &name, allow_composition_replace),
             SliceMergeAction::Preview { name } => merge::preview(ctx, &name),
             SliceMergeAction::ConflictCheck { name } => merge::conflicts(ctx, &name),
         },

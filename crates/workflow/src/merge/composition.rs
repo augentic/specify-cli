@@ -135,5 +135,46 @@ pub fn merge(baseline: Option<&str>, delta_text: &str) -> Result<MergeResult, Er
     Ok(MergeResult { output, operations })
 }
 
+/// Pure shape predicate: does `text` use the whole-document
+/// (`screens:`) replacement format rather than the incremental
+/// (`delta:`) format?
+///
+/// Returns `true` iff a `screens` key is present and a `delta` key is
+/// absent — mirroring the `has_screens && !has_delta` branch [`merge`]
+/// takes when it treats a delta document as a wholesale baseline
+/// replacement. No I/O and no policy: the authorisation decision (may a
+/// whole-document replacement overwrite a non-empty baseline?) lives in
+/// the merge-side `composition_overwrite_gate` precondition, not here.
+///
+/// # Errors
+///
+/// Returns [`Error::Diag { code: "composition-delta-malformed" }`] when
+/// `text` does not parse as YAML — the same code [`merge`] raises for an
+/// unparseable delta.
+pub fn is_whole_document_replacement(text: &str) -> Result<bool, Error> {
+    let doc: Value = serde_saphyr::from_str(text).map_err(|e| Error::Diag {
+        code: "composition-delta-malformed",
+        detail: format!("failed to parse composition delta: {e}"),
+    })?;
+    Ok(doc.get("screens").is_some() && doc.get("delta").is_none())
+}
+
+/// Pure shape predicate: is `text` a non-empty baseline composition?
+///
+/// Returns `true` iff `text` parses and its `screens` key is a mapping
+/// with at least one entry. A malformed document, an absent/empty
+/// `screens`, or a non-mapping `screens` all yield `false` — an empty or
+/// unparseable baseline carries nothing the overwrite gate needs to
+/// protect.
+#[must_use]
+pub fn baseline_is_non_empty(text: &str) -> bool {
+    serde_saphyr::from_str::<Value>(text)
+        .ok()
+        .as_ref()
+        .and_then(|doc| doc.get("screens"))
+        .and_then(Value::as_object)
+        .is_some_and(|screens| !screens.is_empty())
+}
+
 #[cfg(test)]
 mod tests;
