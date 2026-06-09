@@ -1,0 +1,300 @@
+//! `specify catalog infer` handler — the host orchestration around the
+//! deterministic `vectis infer` tool (RFC-40 §B2).
+//!
+//! Two phases, mirroring the `specify slice build --phase prepare|finalize`
+//! idiom:
+//!
+//! - `report` (read-only) dispatches `vectis infer` against the
+//!   composition baseline and prints its **name-free** cluster report.
+//!   It writes nothing.
+//! - `bind` consumes a skill-authored `{ fingerprint → slug }` bindings
+//!   file, reconciles it against the existing catalog under the §B6
+//!   no-overwrite + one-skeleton-per-slug guards, and writes
+//!   `components.yaml` (or prints the diff under `--dry-run`).
+//!
+//! The host **invents no names**: `bind` is deterministic bookkeeping
+//! over names the build skill (Step 8) or operator parts (Step 11)
+//! supply. The collision-suffix logic operates purely on the
+//! fingerprint strings already present in the bindings, so no skeleton
+//! logic crosses back into the host — the single normalizer stays
+//! tool-side.
+//!
+//! **Run-to-run binding stability (RFC §B2).** `bind` persists each
+//! `fingerprint → slug` binding on the catalog entry (the `fingerprint`
+//! field), and `report` reverse-maps the catalog by fingerprint to fill
+//! each already-named cluster's `bound_slug`. So once the skill names a
+//! fingerprint, every later `report` echoes that slug and the skill
+//! leaves the cluster untouched — naming never thrashes the catalog.
+//! `report` only fills a `bound_slug` the tool left `null`; it never
+//! clobbers a tool-emitted binding (e.g. an operator-pin echo, Step 11).
+
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::path::Path;
+
+use serde::Deserialize;
+use serde_json::{Value, json};
+use specify_error::{Error, Result};
+use specify_workflow::design_system::ComponentsCatalog;
+
+use super::cli::InferPhase;
+use crate::runtime::commands::tool;
+use crate::runtime::context::Ctx;
+
+/// Length of the fingerprint prefix appended when two distinct
+/// fingerprints are bound to the same bare slug (§B2 "first-writer-wins
+/// … suffixed `slug-<fp-prefix>`"). Eight hex characters keep the
+/// suffix readable while collisions stay astronomically unlikely.
+const FP_PREFIX_LEN: usize = 8;
+
+/// Tool name the composition inference subcommand lives under.
+const VECTIS_TOOL: &str = "vectis";
+
+/// Composition baseline path relative to the project root.
+const COMPOSITION_REL: &str = ".specify/specs/composition.yaml";
+
+pub fn run(
+    ctx: &Ctx, phase: InferPhase, min_occurrences: Option<u32>, bindings: Option<&Path>,
+    dry_run: bool,
+) -> Result<()> {
+    match phase {
+        InferPhase::Report => report(ctx, min_occurrences),
+        InferPhase::Bind => bind(ctx, bindings, dry_run),
+    }
+}
+
+/// `--phase report`: dispatch `vectis infer` and print the name-free
+/// cluster report. An absent baseline emits an empty report and runs no
+/// tool (§B6 "absent catalog = no factoring").
+fn report(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<()> {
+    let composition = ctx.project_dir.join(COMPOSITION_REL);
+    if !composition.is_file() {
+        return emit_report(ctx, &empty_report());
+    }
+
+    let mut args =
+        vec!["infer".to_string(), "--composition".to_string(), composition.display().to_string()];
+    if let Some(n) = min_occurrences {
+        args.push("--min-occurrences".to_string());
+        args.push(n.to_string());
+    }
+
+    let captured = tool::run_captured(ctx, VECTIS_TOOL, args)?;
+    if captured.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&captured.stderr);
+        let stdout = String::from_utf8_lossy(&captured.stdout);
+        return Err(Error::Diag {
+            code: "catalog-infer-tool-failed",
+            detail: format!(
+                "vectis infer exited with code {}: {}",
+                captured.exit_code,
+                if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() }
+            ),
+        });
+    }
+
+    let mut report: Value =
+        serde_json::from_slice(&captured.stdout).map_err(|err| Error::Diag {
+            code: "catalog-infer-report-malformed",
+            detail: format!("vectis infer report is not valid JSON: {err}"),
+        })?;
+    populate_bound_slugs(ctx, &mut report)?;
+    emit_report(ctx, &report)
+}
+
+/// Fill each cluster's `bound_slug` from the existing catalog's
+/// `fingerprint → slug` index (RFC §B2 run-to-run stability). Only a
+/// `null`/absent `bound_slug` is filled — a slug the tool already bound
+/// (e.g. an operator-pin echo, Step 11) is never overwritten.
+fn populate_bound_slugs(ctx: &Ctx, report: &mut Value) -> Result<()> {
+    let Some(catalog) = ComponentsCatalog::load(&ctx.project_dir)? else {
+        return Ok(());
+    };
+    let index = catalog.fingerprint_index();
+    let Some(clusters) = report.get_mut("clusters").and_then(Value::as_array_mut) else {
+        return Ok(());
+    };
+    for cluster in clusters {
+        if cluster.get("bound_slug").is_some_and(|v| !v.is_null()) {
+            continue;
+        }
+        let Some(fingerprint) = cluster.get("fingerprint").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some(slug) = index.get(fingerprint) {
+            cluster["bound_slug"] = Value::String((*slug).to_string());
+        }
+    }
+    Ok(())
+}
+
+/// `--phase bind`: reconcile a skill-authored bindings file into the
+/// catalog under the §B6 guards, then write it (or print the diff under
+/// `--dry-run`).
+fn bind(ctx: &Ctx, bindings: Option<&Path>, dry_run: bool) -> Result<()> {
+    let bindings_path = bindings.ok_or_else(|| Error::Argument {
+        flag: "--bindings",
+        detail: "`specify catalog infer --phase bind` requires --bindings <path>".to_string(),
+    })?;
+    let bindings = load_bindings(bindings_path)?;
+
+    let mut catalog =
+        ComponentsCatalog::load(&ctx.project_dir)?.unwrap_or_else(ComponentsCatalog::empty);
+    let before: Vec<String> = catalog.components.keys().cloned().collect();
+
+    for binding in resolve_slugs(&bindings) {
+        catalog.upsert_bound(&binding.slug, &binding.fingerprint, binding.description);
+    }
+
+    let added: Vec<String> =
+        catalog.components.keys().filter(|slug| !before.contains(slug)).cloned().collect();
+
+    if dry_run {
+        return emit_bind_diff(ctx, &added, true);
+    }
+
+    // Create the file only when there is something to record (§B6
+    // "absent catalog = no factoring"); an empty bindings file against
+    // an absent catalog writes nothing.
+    if !catalog.components.is_empty() {
+        catalog.save(&ctx.project_dir)?;
+    }
+    emit_bind_diff(ctx, &added, false)
+}
+
+/// A single skill-authored binding value: either a bare slug string or
+/// an object carrying an optional description.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum BindingValue {
+    Slug(String),
+    Detailed { slug: String, description: Option<String> },
+}
+
+impl BindingValue {
+    fn slug(&self) -> &str {
+        match self {
+            Self::Slug(slug) | Self::Detailed { slug, .. } => slug,
+        }
+    }
+
+    fn description(&self) -> Option<String> {
+        match self {
+            Self::Slug(_) => None,
+            Self::Detailed { description, .. } => description.clone(),
+        }
+    }
+}
+
+/// The `{ fingerprint → slug }` map the build skill (Step 8) or a
+/// future projection authors. An optional top-level `version` field is
+/// tolerated (and ignored) — serde drops unknown keys by default.
+#[derive(Deserialize)]
+struct BindingsFile {
+    bindings: BTreeMap<String, BindingValue>,
+}
+
+fn load_bindings(path: &Path) -> Result<BindingsFile> {
+    let content = std::fs::read_to_string(path).map_err(|source| Error::Filesystem {
+        op: "read",
+        path: path.to_path_buf(),
+        source,
+    })?;
+    serde_saphyr::from_str(&content).map_err(|err| {
+        Error::validation_failed(
+            "catalog-bindings-malformed",
+            "bindings file is a `{ version?, bindings: { <fingerprint>: <slug> } }` map",
+            format!("{}: parse failed: {err}", path.display()),
+        )
+    })
+}
+
+/// A fully resolved binding ready to record: the final (de-collided)
+/// slug, the fingerprint it anchors to, and its optional description.
+struct ResolvedBinding {
+    slug: String,
+    fingerprint: String,
+    description: Option<String>,
+}
+
+/// Resolve the bindings map into final bindings, applying the §B2
+/// one-skeleton-per-slug uniqueness guard: when two distinct
+/// fingerprints want the same bare slug, the lexicographically-first
+/// fingerprint keeps it (first-writer-wins) and every later fingerprint
+/// is suffixed `slug-<fp-prefix>` — deterministic and fingerprint-derived,
+/// never ordinal, so the resolution is stable across runs for a fixed
+/// bindings map. The fingerprint travels through to the catalog so a
+/// later `report` run can echo the bound slug (run-to-run stability).
+fn resolve_slugs(bindings: &BindingsFile) -> Vec<ResolvedBinding> {
+    // Group fingerprints by desired bare slug. `BTreeMap` over both the
+    // outer slug and the inner fingerprint keeps the whole resolution
+    // deterministic (lexicographic on slug, then fingerprint).
+    let mut by_slug: BTreeMap<&str, BTreeMap<&str, Option<String>>> = BTreeMap::new();
+    for (fingerprint, value) in &bindings.bindings {
+        by_slug.entry(value.slug()).or_default().insert(fingerprint.as_str(), value.description());
+    }
+
+    let mut resolved: Vec<ResolvedBinding> = Vec::new();
+    for (slug, fingerprints) in by_slug {
+        for (index, (fingerprint, description)) in fingerprints.into_iter().enumerate() {
+            let final_slug = if index == 0 {
+                slug.to_string()
+            } else {
+                let prefix: String = fingerprint.chars().take(FP_PREFIX_LEN).collect();
+                format!("{slug}-{prefix}")
+            };
+            resolved.push(ResolvedBinding {
+                slug: final_slug,
+                fingerprint: fingerprint.to_string(),
+                description,
+            });
+        }
+    }
+    resolved
+}
+
+fn empty_report() -> Value {
+    json!({ "version": 1, "clusters": [], "unmatched_parts": [] })
+}
+
+fn emit_report(ctx: &Ctx, report: &Value) -> Result<()> {
+    ctx.write(report, write_report_text)
+}
+
+fn write_report_text(w: &mut dyn Write, report: &Value) -> std::io::Result<()> {
+    let clusters = report.get("clusters").and_then(Value::as_array);
+    let count = clusters.map_or(0, Vec::len);
+    writeln!(w, "clusters: {count}")?;
+    if let Some(clusters) = clusters {
+        for cluster in clusters {
+            let fp = cluster.get("fingerprint").and_then(Value::as_str).unwrap_or("<none>");
+            let occ = cluster.get("occurrences").and_then(Value::as_u64).unwrap_or(0);
+            let bound = cluster.get("bound_slug").and_then(Value::as_str).unwrap_or("<unbound>");
+            writeln!(w, "  - {fp} (occurrences: {occ}, bound: {bound})")?;
+        }
+    }
+    if let Some(unmatched) = report.get("unmatched_parts").and_then(Value::as_array)
+        && !unmatched.is_empty()
+    {
+        writeln!(w, "unmatched parts: {}", unmatched.len())?;
+    }
+    Ok(())
+}
+
+fn emit_bind_diff(ctx: &Ctx, added: &[String], dry_run: bool) -> Result<()> {
+    let body = json!({ "added": added, "dry_run": dry_run });
+    ctx.write(&body, |w, _| write_bind_text(w, added, dry_run))
+}
+
+fn write_bind_text(w: &mut dyn Write, added: &[String], dry_run: bool) -> std::io::Result<()> {
+    let verb = if dry_run { "would add" } else { "added" };
+    if added.is_empty() {
+        writeln!(w, "catalog unchanged (0 components {verb})")?;
+    } else {
+        writeln!(w, "{} component(s) {verb}:", added.len())?;
+        for slug in added {
+            writeln!(w, "  + {slug}: confirmed")?;
+        }
+    }
+    Ok(())
+}

@@ -1,5 +1,21 @@
 use super::*;
 
+fn confirmed(description: Option<&str>) -> ComponentEntry {
+    ComponentEntry {
+        status: ComponentStatus::Confirmed,
+        description: description.map(str::to_string),
+        fingerprint: None,
+    }
+}
+
+fn rejected() -> ComponentEntry {
+    ComponentEntry {
+        status: ComponentStatus::Rejected,
+        description: None,
+        fingerprint: None,
+    }
+}
+
 #[test]
 fn load_returns_none_when_absent() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -12,27 +28,9 @@ fn confirmed_slugs_filters_correctly() {
     let catalog = ComponentsCatalog {
         version: 1,
         components: BTreeMap::from([
-            (
-                "tab-bar".to_string(),
-                ComponentEntry {
-                    status: ComponentStatus::Confirmed,
-                    description: None,
-                },
-            ),
-            (
-                "card-row".to_string(),
-                ComponentEntry {
-                    status: ComponentStatus::Confirmed,
-                    description: None,
-                },
-            ),
-            (
-                "hero-banner".to_string(),
-                ComponentEntry {
-                    status: ComponentStatus::Rejected,
-                    description: None,
-                },
-            ),
+            ("tab-bar".to_string(), confirmed(None)),
+            ("card-row".to_string(), confirmed(None)),
+            ("hero-banner".to_string(), rejected()),
         ]),
     };
     let mut slugs = catalog.confirmed_slugs();
@@ -45,20 +43,8 @@ fn rejected_slugs_filters_correctly() {
     let catalog = ComponentsCatalog {
         version: 1,
         components: BTreeMap::from([
-            (
-                "tab-bar".to_string(),
-                ComponentEntry {
-                    status: ComponentStatus::Confirmed,
-                    description: None,
-                },
-            ),
-            (
-                "hero-banner".to_string(),
-                ComponentEntry {
-                    status: ComponentStatus::Rejected,
-                    description: None,
-                },
-            ),
+            ("tab-bar".to_string(), confirmed(None)),
+            ("hero-banner".to_string(), rejected()),
         ]),
     };
     assert_eq!(catalog.rejected_slugs(), vec!["hero-banner"]);
@@ -68,13 +54,7 @@ fn rejected_slugs_filters_correctly() {
 fn status_of_returns_correct_variant() {
     let catalog = ComponentsCatalog {
         version: 1,
-        components: BTreeMap::from([(
-            "tab-bar".to_string(),
-            ComponentEntry {
-                status: ComponentStatus::Confirmed,
-                description: Some("Bottom nav".to_string()),
-            },
-        )]),
+        components: BTreeMap::from([("tab-bar".to_string(), confirmed(Some("Bottom nav")))]),
     };
     assert_eq!(catalog.status_of("tab-bar"), Some(ComponentStatus::Confirmed));
     assert_eq!(catalog.status_of("missing"), None);
@@ -119,4 +99,82 @@ fn empty_components_is_valid() {
     let catalog = ComponentsCatalog::from_yaml(yaml, path).expect("valid");
     assert!(catalog.components.is_empty());
     assert!(catalog.confirmed_slugs().is_empty());
+}
+
+#[test]
+fn accepts_fingerprint_field() {
+    let fp = "a".repeat(64);
+    let yaml = format!(
+        "version: 1\ncomponents:\n  tab-bar:\n    status: confirmed\n    fingerprint: \"{fp}\"\n"
+    );
+    let path = Path::new("test.yaml");
+    let catalog = ComponentsCatalog::from_yaml(&yaml, path).expect("valid");
+    assert_eq!(catalog.components.get("tab-bar").and_then(|e| e.fingerprint.clone()), Some(fp));
+}
+
+#[test]
+fn rejects_malformed_fingerprint() {
+    let yaml = "version: 1\ncomponents:\n  tab-bar:\n    status: confirmed\n    fingerprint: \"not-a-hash\"\n";
+    let path = Path::new("test.yaml");
+    ComponentsCatalog::from_yaml(yaml, path).unwrap_err();
+}
+
+#[test]
+fn upsert_bound_adds_slug_with_fp() {
+    let fp = "f".repeat(64);
+    let mut catalog = ComponentsCatalog::empty();
+    catalog.upsert_bound("tab-bar", &fp, Some("Bottom nav".to_string()));
+    assert_eq!(catalog.status_of("tab-bar"), Some(ComponentStatus::Confirmed));
+    let entry = catalog.components.get("tab-bar").expect("entry");
+    assert_eq!(entry.description.as_deref(), Some("Bottom nav"));
+    assert_eq!(entry.fingerprint.as_deref(), Some(fp.as_str()));
+}
+
+#[test]
+fn upsert_bound_never_reconfirms_rejected() {
+    let mut catalog = ComponentsCatalog {
+        version: 1,
+        components: BTreeMap::from([("tab-bar".to_string(), rejected())]),
+    };
+    catalog.upsert_bound("tab-bar", &"f".repeat(64), Some("ignored".to_string()));
+    assert_eq!(catalog.status_of("tab-bar"), Some(ComponentStatus::Rejected));
+    let entry = catalog.components.get("tab-bar").expect("entry");
+    assert!(entry.description.is_none());
+    assert!(entry.fingerprint.is_none());
+}
+
+#[test]
+fn upsert_bound_keeps_confirmed() {
+    let mut catalog = ComponentsCatalog {
+        version: 1,
+        components: BTreeMap::from([("tab-bar".to_string(), confirmed(Some("original")))]),
+    };
+    catalog.upsert_bound("tab-bar", &"f".repeat(64), Some("replacement".to_string()));
+    let entry = catalog.components.get("tab-bar").expect("entry");
+    assert_eq!(entry.description.as_deref(), Some("original"));
+    assert!(entry.fingerprint.is_none());
+}
+
+#[test]
+fn fingerprint_index_maps_stored() {
+    let fp = "c".repeat(64);
+    let mut catalog = ComponentsCatalog::empty();
+    catalog.upsert_bound("tab-bar", &fp, None);
+    // A hand-authored entry without a fingerprint contributes nothing.
+    catalog.components.insert("hero".to_string(), confirmed(None));
+    let index = catalog.fingerprint_index();
+    assert_eq!(index.get(fp.as_str()), Some(&"tab-bar"));
+    assert_eq!(index.len(), 1);
+}
+
+#[test]
+fn save_round_trips_through_load() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut catalog = ComponentsCatalog::empty();
+    catalog.upsert_bound("tab-bar", &"d".repeat(64), Some("Bottom nav".to_string()));
+    catalog.save(dir.path()).expect("save");
+
+    let reloaded = ComponentsCatalog::load(dir.path()).expect("load").expect("present");
+    assert_eq!(reloaded, catalog);
+    assert_eq!(reloaded.status_of("tab-bar"), Some(ComponentStatus::Confirmed));
 }

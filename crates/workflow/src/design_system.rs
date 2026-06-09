@@ -1,15 +1,21 @@
-//! Operator-curated component catalog (component catalog contract).
+//! Agent-inferred, operator-reviewable component catalog (component
+//! catalog contract).
 //!
 //! The catalog lives at `.specify/design-system/components.yaml` and
 //! declares shared UI components that the Vectis target factors into
-//! shared code at build time. The file is opt-in — projects without it
-//! work exactly as before.
+//! shared code at build time. Under RFC-40 the catalog is **written by
+//! `specify catalog infer --phase bind`** (binding the names the build
+//! skill or operator parts supply) and **reviewed by the operator**,
+//! who may reject or rename entries — the inverse of the earlier
+//! operator-curated, opt-in posture. An absent catalog still means "no
+//! factoring", so projects without one work exactly as before.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use specify_error::{Error, Result};
+use specify_model::atomic;
 
 use crate::schema;
 
@@ -36,6 +42,13 @@ pub struct ComponentEntry {
     /// Human-readable note for operators and agents.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Structural fingerprint (lowercase SHA-256 hex) of the normalised
+    /// group skeleton this slug was bound to. Recorded by `bind` so a
+    /// later `report` run can echo the bound slug for an already-named
+    /// cluster (run-to-run binding stability, RFC-40 §B2). `None` for
+    /// hand-authored or pre-RFC-40 entries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
 }
 
 /// The operator-curated component catalog.
@@ -125,6 +138,61 @@ impl ComponentsCatalog {
     #[must_use]
     pub fn status_of(&self, slug: &str) -> Option<ComponentStatus> {
         self.components.get(slug).map(|entry| entry.status)
+    }
+
+    /// An empty, version-pinned catalog — the starting point when
+    /// `specify catalog infer --phase bind` finds no existing file.
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self {
+            version: 1,
+            components: BTreeMap::new(),
+        }
+    }
+
+    /// Bind `slug` as a `confirmed` component anchored to `fingerprint`,
+    /// honouring the RFC-40 §B6 no-overwrite rule: an entry that already
+    /// exists (whether `confirmed` or `rejected`) is left untouched, so a
+    /// `rejected` slug is never silently re-confirmed and a hand-edited
+    /// `description` survives. Only a brand-new slug is added. The stored
+    /// `fingerprint` is what lets a later `report` run echo this slug as
+    /// the cluster's `bound_slug` (run-to-run binding stability).
+    pub fn upsert_bound(&mut self, slug: &str, fingerprint: &str, description: Option<String>) {
+        if self.components.contains_key(slug) {
+            return;
+        }
+        self.components.insert(
+            slug.to_string(),
+            ComponentEntry {
+                status: ComponentStatus::Confirmed,
+                description,
+                fingerprint: Some(fingerprint.to_string()),
+            },
+        );
+    }
+
+    /// Reverse `fingerprint → slug` index over the catalog, built from the
+    /// `fingerprint` recorded on each entry. Drives `report`'s `bound_slug`
+    /// echo so an already-named cluster surfaces its bound slug on a later
+    /// run (RFC-40 §B2 run-to-run stability). Entries without a stored
+    /// fingerprint (hand-authored or pre-RFC-40) contribute nothing.
+    #[must_use]
+    pub fn fingerprint_index(&self) -> BTreeMap<&str, &str> {
+        self.components
+            .iter()
+            .filter_map(|(slug, entry)| entry.fingerprint.as_deref().map(|fp| (fp, slug.as_str())))
+            .collect()
+    }
+
+    /// Atomically write the catalog to `.specify/design-system/components.yaml`
+    /// under `project_dir`, creating the parent directory when absent.
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::YamlSer`] if serialisation fails.
+    /// - [`Error::Io`] if the temp-file write or atomic rename fails.
+    pub fn save(&self, project_dir: &Path) -> Result<()> {
+        atomic::yaml_write(&Self::path_in(project_dir), self)
     }
 }
 
