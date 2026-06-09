@@ -53,6 +53,11 @@ const VECTIS_TOOL: &str = "vectis";
 /// Composition baseline path relative to the project root.
 const COMPOSITION_REL: &str = ".specify/specs/composition.yaml";
 
+/// Screenshot stage-6 candidate-cache directory relative to the project
+/// root (RFC-40 §B4). When present, `report` feeds it to the tool so
+/// cached skeletons cluster alongside baseline groups.
+const CANDIDATE_CACHE_REL: &str = ".specify/.cache/component-candidates";
+
 pub fn run(
     ctx: &Ctx, phase: InferPhase, min_occurrences: Option<u32>, bindings: Option<&Path>,
     dry_run: bool,
@@ -74,6 +79,11 @@ fn report(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<()> {
 
     let mut args =
         vec!["infer".to_string(), "--composition".to_string(), composition.display().to_string()];
+    let candidate_cache = ctx.project_dir.join(CANDIDATE_CACHE_REL);
+    if candidate_cache.is_dir() {
+        args.push("--candidate-cache".to_string());
+        args.push(candidate_cache.display().to_string());
+    }
     if let Some(n) = min_occurrences {
         args.push("--min-occurrences".to_string());
         args.push(n.to_string());

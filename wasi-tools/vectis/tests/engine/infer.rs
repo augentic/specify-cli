@@ -31,6 +31,26 @@ fn infer_default(path: &Path) -> Value {
     run(&args).expect("infer succeeds")
 }
 
+/// Run `infer` against a baseline plus a candidate cache at the default
+/// threshold (2).
+fn infer_with_cache(composition: &Path, cache: &Path) -> Value {
+    let args = InferArgs {
+        composition: composition.to_path_buf(),
+        candidate_cache: Some(cache.to_path_buf()),
+        parts: None,
+        min_occurrences: 2,
+    };
+    run(&args).expect("infer succeeds")
+}
+
+/// Write a candidate-cache entry at the §B4 provenance path
+/// `<slice>/<screen>/<group-path>.yaml` under `cache_root`.
+fn write_cache_entry(cache_root: &Path, slice: &str, screen: &str, group_path: &str, body: &str) {
+    let dir = cache_root.join(slice).join(screen);
+    std::fs::create_dir_all(&dir).expect("create cache dir");
+    std::fs::write(dir.join(format!("{group_path}.yaml")), body).expect("write cache entry");
+}
+
 fn clusters(report: &Value) -> &[Value] {
     report.get("clusters").and_then(Value::as_array).expect("clusters array").as_slice()
 }
@@ -248,6 +268,148 @@ delta:
     let report = infer_default(&path);
     let found = clusters(&report);
     assert_eq!(found.len(), 1, "delta-added screens must cluster: {report}");
+    assert_eq!(found[0]["occurrences"], 2);
+}
+
+/// A cached candidate skeleton plus one structurally identical baseline
+/// group on a different screen cluster to a single candidate at the
+/// default threshold (2): the cache supplies cross-slice memory before
+/// the baseline accumulates the second screen (RFC-40 §B4).
+#[test]
+fn cached_skeleton_clusters_with_baseline_group() {
+    let baseline = r"version: 1
+screens:
+  home:
+    name: Home
+    footer:
+      - group:
+          items:
+            - icon-button: { bind: home, event: Navigate(Home) }
+            - icon-button: { bind: search, event: Navigate(Search) }
+";
+    let (tmp, composition) = write_baseline(baseline);
+    let cache = tmp.path().join("cache");
+    write_cache_entry(
+        &cache,
+        "checkout-slice",
+        "checkout",
+        "footer.0",
+        "candidate_component: nav-footer
+region: footer
+group:
+  items:
+    - icon-button: { bind: home, event: Navigate(Home) }
+    - icon-button: { bind: orders, event: Navigate(Orders) }
+",
+    );
+
+    let report = infer_with_cache(&composition, &cache);
+    let found = clusters(&report);
+    assert_eq!(found.len(), 1, "cache + baseline group must cluster as one candidate: {report}");
+    let cluster = &found[0];
+    assert_eq!(cluster["occurrences"], 2);
+    assert_eq!(
+        cluster["screens"],
+        serde_json::json!(["checkout", "home"]),
+        "the cache provenance screen and the baseline screen are distinct screens"
+    );
+    assert_eq!(
+        cluster["evidence"]["candidate_names"],
+        serde_json::json!(["nav-footer"]),
+        "the cache label hint surfaces as non-authoritative evidence"
+    );
+    assert_eq!(cluster["bound_slug"], Value::Null, "the tool still invents no name");
+}
+
+/// Two cached candidates on distinct provenance screens cluster on their
+/// own at the default threshold even with no matching baseline group —
+/// the cross-slice-memory case where the baseline has not yet accumulated
+/// either screen.
+#[test]
+fn cache_only_candidates_cluster_across_screens() {
+    let baseline = r"version: 1
+screens:
+  home:
+    name: Home
+    body:
+      - text: { content: hi }
+";
+    let (tmp, composition) = write_baseline(baseline);
+    let cache = tmp.path().join("cache");
+    let entry = "group:
+  items:
+    - icon: {}
+    - text: {}
+";
+    write_cache_entry(&cache, "slice-a", "alpha", "body.0", entry);
+    write_cache_entry(&cache, "slice-b", "beta", "body.0", entry);
+
+    let report = infer_with_cache(&composition, &cache);
+    let found = clusters(&report);
+    assert_eq!(found.len(), 1, "two cached screens must cluster: {report}");
+    assert_eq!(found[0]["occurrences"], 2);
+    assert_eq!(found[0]["screens"], serde_json::json!(["alpha", "beta"]));
+}
+
+/// Two cache entries for the *same* provenance screen count once — the
+/// distinct-screen rule applies to cached candidates too, so they stay
+/// below the default threshold.
+#[test]
+fn cache_entries_same_screen_count_once() {
+    let baseline = r"version: 1
+screens:
+  home:
+    name: Home
+    body:
+      - text: { content: hi }
+";
+    let (tmp, composition) = write_baseline(baseline);
+    let cache = tmp.path().join("cache");
+    let entry = "group:
+  items:
+    - icon: {}
+    - text: {}
+";
+    write_cache_entry(&cache, "slice-a", "alpha", "body.0", entry);
+    write_cache_entry(&cache, "slice-a", "alpha", "body.1", entry);
+
+    let report = infer_with_cache(&composition, &cache);
+    assert!(
+        clusters(&report).is_empty(),
+        "two groups on one cached screen count once, below threshold 2: {report}"
+    );
+}
+
+/// A malformed cache entry (no `group` fragment) and a non-YAML file are
+/// skipped — inference is best-effort and never aborts on cache noise.
+#[test]
+fn malformed_cache_entries_are_skipped() {
+    let baseline = r"version: 1
+screens:
+  home:
+    name: Home
+    footer:
+      - group:
+          items:
+            - icon-button: {}
+            - icon-button: {}
+  search:
+    name: Search
+    footer:
+      - group:
+          items:
+            - icon-button: {}
+            - icon-button: {}
+";
+    let (tmp, composition) = write_baseline(baseline);
+    let cache = tmp.path().join("cache");
+    write_cache_entry(&cache, "slice-a", "alpha", "noise", "not: a group entry\n");
+    std::fs::write(cache.join("slice-a").join("alpha").join("readme.txt"), "ignore me")
+        .expect("write txt");
+
+    let report = infer_with_cache(&composition, &cache);
+    let found = clusters(&report);
+    assert_eq!(found.len(), 1, "baseline cluster survives, cache noise ignored: {report}");
     assert_eq!(found[0]["occurrences"], 2);
 }
 

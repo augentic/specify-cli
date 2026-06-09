@@ -159,6 +159,77 @@ fn report_clusters_repeated_group() {
     assert_eq!(cluster["evidence"]["region"], "footer");
 }
 
+/// A single baseline screen plus one candidate-cache entry carrying a
+/// structurally identical group on a different provenance screen cluster
+/// to one shared component at the default threshold (RFC-40 §B4): the
+/// cache supplies the second screen the baseline has not yet accumulated.
+#[test]
+fn report_clusters_with_candidate_cache() {
+    let wasm = vectis_wasm();
+    if !wasm.is_file() {
+        eprintln!("skipping: vectis WASM not found at {}", wasm.display());
+        return;
+    }
+
+    let single_screen = "version: 1
+screens:
+  home:
+    name: Home
+    footer:
+      - group:
+          items:
+            - icon-button: { bind: home, event: Navigate(Home) }
+            - icon-button: { bind: search, event: Navigate(Search) }
+";
+    let (tmp, cache) = report_project(single_screen);
+
+    // Without the cache, the lone baseline group is below threshold.
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["--format", "json", "catalog", "infer", "--phase", "report"])
+        .assert()
+        .success();
+    let report = parse_json(&assert.get_output().stdout);
+    assert_eq!(report["clusters"], serde_json::json!([]), "single screen is below threshold");
+
+    // Seed a candidate-cache entry for a different screen with the same
+    // structure; the verb now proposes the shared component.
+    let candidate_dir =
+        tmp.path().join(".specify/.cache/component-candidates/checkout-slice/checkout");
+    fs::create_dir_all(&candidate_dir).expect("create candidate cache dir");
+    fs::write(
+        candidate_dir.join("footer.0.yaml"),
+        "candidate_component: nav-footer
+region: footer
+group:
+  items:
+    - icon-button: { bind: home, event: Navigate(Home) }
+    - icon-button: { bind: orders, event: Navigate(Orders) }
+",
+    )
+    .expect("write candidate cache entry");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .env("SPECIFY_TOOLS_CACHE", &cache)
+        .args(["--format", "json", "catalog", "infer", "--phase", "report"])
+        .assert()
+        .success();
+    let report = parse_json(&assert.get_output().stdout);
+    let clusters = report["clusters"].as_array().expect("clusters array");
+    assert_eq!(clusters.len(), 1, "cache + baseline group cluster as one candidate: {report}");
+    let cluster = &clusters[0];
+    assert_eq!(cluster["occurrences"], 2);
+    assert_eq!(cluster["screens"], serde_json::json!(["checkout", "home"]));
+    assert_eq!(cluster["bound_slug"], Value::Null);
+    assert_eq!(
+        cluster["evidence"]["candidate_names"],
+        serde_json::json!(["nav-footer"]),
+        "the stage-6 label hint surfaces as non-authoritative evidence"
+    );
+}
+
 #[test]
 fn report_absent_baseline_is_empty() {
     let tmp = bind_project();
