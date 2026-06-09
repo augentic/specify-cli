@@ -257,7 +257,7 @@ fn is_included(relative: &str) -> bool {
     else {
         return false;
     };
-    matches!(file_name, "AGENTS.md" | "REVIEW.md")
+    matches!(file_name, "AGENTS.md" | "REVIEW.md" | "Specify.toml")
 }
 
 const INCLUDE_PREFIXES: &[&str] = &[

@@ -4,7 +4,8 @@ use std::path::Path;
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
 use specify_schema::{
-    MARKETPLACE_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA,
+    FRAMEWORK_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA,
+    SKILL_JSON_SCHEMA,
 };
 
 use crate::framework::error::ToolingError;
@@ -20,6 +21,7 @@ pub enum SchemaId {
     Rule,
     Scenario,
     Marketplace,
+    Framework,
 }
 
 impl SchemaId {
@@ -32,6 +34,7 @@ impl SchemaId {
             Self::Rule => RULE_JSON_SCHEMA,
             Self::Scenario => SCENARIO_JSON_SCHEMA,
             Self::Marketplace => MARKETPLACE_JSON_SCHEMA,
+            Self::Framework => FRAMEWORK_JSON_SCHEMA,
         }
     }
 }

@@ -106,6 +106,7 @@ fn build_report(
         layout: ctx.layout(),
         now: ctx.now(),
         scope,
+        journal: true,
         command_label: "specify lint project",
         started_at,
         trailing_newline: true,

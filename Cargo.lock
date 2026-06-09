@@ -4719,6 +4719,7 @@ dependencies = [
  "specify-schema",
  "tempfile",
  "thiserror 2.0.18",
+ "toml",
  "walkdir",
 ]
 

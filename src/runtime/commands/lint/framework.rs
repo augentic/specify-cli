@@ -17,8 +17,11 @@
 //!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
 //! 3. Hand the config to the shared [`crate::output::run_lint`] kernel
 //!    (via [`crate::output::emit_lint_report`]), which renders the
-//!    envelope, appends one `lint-completed` event, decides the
-//!    blocking exit, and owns the JSON fallback on abort.
+//!    envelope, decides the blocking exit, and owns the JSON fallback on
+//!    abort. This surface sets `journal: false`: framework self-lint is a
+//!    development surface and the `lint-completed` journal contract is
+//!    scoped to `specify lint project` (DECISIONS.md §"Journal event
+//!    names").
 
 use std::time::Instant;
 
@@ -110,6 +113,10 @@ fn build_report(
         layout: Layout::new(&project_dir),
         now: Timestamp::now(),
         scope,
+        // Framework self-lint is a development surface; the `lint-completed`
+        // journal contract is scoped to `specify lint project` (DECISIONS.md
+        // §"Journal event names"), so this surface never journals.
+        journal: false,
         command_label: "specify lint framework",
         started_at,
         trailing_newline: false,
