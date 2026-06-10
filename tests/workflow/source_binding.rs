@@ -146,6 +146,101 @@ fn plan_amend_remove_source_drops_binding() {
 }
 
 #[test]
+fn amend_add_source_duplicate_key_rejected() {
+    // A slice binds at most one lead per source key — a duplicate would
+    // silently overwrite `evidence/<source>.yaml` at refine time.
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    add_entry_with(&project, "foo", &["--sources", "identity-design-notes=user-registration"]);
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "amend",
+            "foo",
+            "--add-source",
+            "identity-design-notes=password-reset",
+        ])
+        .assert()
+        .failure();
+    let code = assert.get_output().status.code().expect("exit code");
+    assert_eq!(code, 2, "duplicate source key must exit 2 (validation), got {code}");
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "duplicate-source-key");
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        !saved.contains("password-reset"),
+        "rejected --add-source must leave the plan unwritten:\n{saved}"
+    );
+}
+
+#[test]
+fn amend_sources_duplicate_key_rejected() {
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    add_entry_with(&project, "foo", &["--sources", "intent"]);
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "amend",
+            "foo",
+            "--sources",
+            "identity-design-notes=lead-a",
+            "--sources",
+            "identity-design-notes=lead-b",
+        ])
+        .assert()
+        .failure();
+    // The wholesale replacement routes through `Plan::amend`'s
+    // validate-and-rollback gate, so the generic amend discriminant
+    // carries the duplicate-source-key impact text.
+    let stderr = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(stderr["error"], "plan-amend-validation-failed");
+    assert!(
+        stderr["message"].as_str().expect("message").contains("more than once"),
+        "message must name the duplicate-key violation, got: {stderr}"
+    );
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        !saved.contains("lead-a"),
+        "rejected --sources must leave the plan unwritten:\n{saved}"
+    );
+}
+
+#[test]
+fn amend_sources_resize_passes() {
+    // Same-source re-sizing — replacing the lead bound under an
+    // existing key — stays legal; only duplicate keys are rejected.
+    let project = Project::init();
+    project.seed_plan(W11_PLAN);
+
+    add_entry_with(&project, "foo", &["--sources", "identity-design-notes=user-registration"]);
+
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["plan", "amend", "foo", "--sources", "identity-design-notes=password-reset"])
+        .assert()
+        .success();
+
+    let saved = fs::read_to_string(project.plan_path()).expect("read plan");
+    assert!(
+        saved.contains("lead: password-reset") && !saved.contains("user-registration"),
+        "re-sizing must replace the bound lead:\n{saved}"
+    );
+}
+
+#[test]
 fn amend_remove_source_unknown_key_errors() {
     let project = Project::init();
     project.seed_plan(W11_PLAN);

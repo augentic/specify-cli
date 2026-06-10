@@ -30,7 +30,10 @@ pub use propose::{
 };
 #[cfg(test)]
 pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
-pub use validate::{orphan_authority_override_keys, plan_finding, plan_finding_structured};
+pub use validate::{
+    orphan_authority_override_keys, plan_finding, plan_finding_structured,
+    reject_duplicate_source_keys,
+};
 
 #[cfg(test)]
 mod test_fixtures {

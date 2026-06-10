@@ -90,6 +90,39 @@ fn unknown_source_error() {
 }
 
 #[test]
+fn duplicate_source_key_error() {
+    let mut entry = change("doubled", Status::Pending);
+    entry.sources = vec![
+        SliceSourceBinding::structured("docs", "lead-a"),
+        SliceSourceBinding::structured("docs", "lead-b"),
+    ];
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("docs".into(), SourceBinding::path("documentation", "/tmp/docs"));
+    let results = plan.validate(None, None);
+    let hits: Vec<_> = results.iter().filter(|r| has_code(r, "duplicate-source-key")).collect();
+    assert_eq!(hits.len(), 1, "expected one duplicate-source-key, got {results:#?}");
+    assert_eq!(hits[0].slice.as_deref(), Some("doubled"));
+    assert!(hits[0].impact.contains("docs"));
+    assert!(blocking(hits[0]), "duplicate-source-key must block");
+}
+
+#[test]
+fn distinct_source_keys_pass() {
+    let mut entry = change("multi", Status::Pending);
+    entry.sources = vec![
+        SliceSourceBinding::structured("docs", "lead-a"),
+        SliceSourceBinding::structured("legacy", "lead-a"),
+    ];
+    let mut plan = plan_with_changes(vec![entry]);
+    plan.sources.insert("docs".into(), SourceBinding::path("documentation", "/tmp/docs"));
+    plan.sources.insert("legacy".into(), SourceBinding::path("typescript", "/tmp/legacy"));
+    assert!(
+        !plan.validate(None, None).iter().any(|r| has_code(r, "duplicate-source-key")),
+        "distinct keys must not trip duplicate-source-key"
+    );
+}
+
+#[test]
 fn multiple_in_progress_error() {
     let plan = plan_with_changes(vec![
         change("first-in-progress", Status::InProgress),
