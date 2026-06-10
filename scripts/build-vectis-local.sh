@@ -5,7 +5,9 @@
 # adapter's `tools.yaml`.
 #
 # Output directory is controlled by `VECTIS_WASI_DIST_DIR` and
-# defaults to `target/vectis-wasi-tools/release/`.
+# defaults to `target/vectis-wasi-tools/release/`. The cargo build
+# honours `CARGO_TARGET_DIR` when set (e.g. sandbox shells); the copy
+# step follows the same resolved target root.
 #
 # Writes:
 #   ${DIST_DIR}/vectis.wasm
@@ -22,8 +24,9 @@ DIST_DIR_ABS="$(cd "${DIST_DIR}" && pwd)"
 
 (
     cd wasi-tools
+    CARGO_TARGET="${CARGO_TARGET_DIR:-target}"
     cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
-    cp target/wasm32-wasip2/release/vectis.wasm "${DIST_DIR_ABS}/vectis.wasm"
+    cp "${CARGO_TARGET}/wasm32-wasip2/release/vectis.wasm" "${DIST_DIR_ABS}/vectis.wasm"
 )
 
 (
