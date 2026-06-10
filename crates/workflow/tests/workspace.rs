@@ -205,6 +205,7 @@ projects:
     let gitignore = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
     assert!(gitignore.lines().any(|l| l.trim() == ".specify/workspace/"));
     assert!(gitignore.lines().any(|l| l.trim() == ".specify/cache/"));
+    assert!(gitignore.lines().any(|l| l.trim() == ".specify/scratch/"));
 }
 
 #[test]
@@ -523,6 +524,7 @@ fn c02_sync_preserves_gitignore_once() {
     let gitignore = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
     assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/workspace/").count(), 1);
     assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/cache/").count(), 1);
+    assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/scratch/").count(), 1);
 }
 
 // ---------- branch preparation (workspace orchestration contract C04) ----------------------------

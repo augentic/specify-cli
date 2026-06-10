@@ -254,7 +254,39 @@ fn propose_dry_run_n1_request_golden() {
     // The plan is untouched by --dry-run.
     assert_eq!(fs::read_to_string(project.plan_path()).expect("read plan"), PROPOSE_PLAN_N1);
 
+    // The plan scratch lane is recreated empty for the response envelope.
+    let lane = project.root().join(".specify/scratch/plan");
+    assert!(lane.is_dir(), "dry-run must create the plan scratch lane");
+    assert_eq!(
+        fs::read_dir(&lane).expect("read lane").count(),
+        0,
+        "dry-run must leave the plan scratch lane empty"
+    );
+
     assert_golden("propose-dry-run-n1-request.json", actual);
+}
+
+#[test]
+fn propose_dry_run_clears_stale_response() {
+    // A prior run's response envelope must never survive a fresh
+    // dry-run, so `--from` cannot consume a stale grouping.
+    let project = Project::init();
+    project.seed_plan(PROPOSE_PLAN_N1);
+    seed_discovery(project.root(), PROPOSE_DISCOVERY_N1);
+    let lane = project.root().join(".specify/scratch/plan");
+    fs::create_dir_all(&lane).expect("mkdir plan lane");
+    fs::write(lane.join("propose-response.json"), "{}").expect("seed stale response");
+
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "plan", "propose", "--dry-run"])
+        .assert()
+        .success();
+
+    assert!(
+        !lane.join("propose-response.json").exists(),
+        "dry-run must drop a stale response envelope"
+    );
 }
 
 #[test]

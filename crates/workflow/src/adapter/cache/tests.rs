@@ -55,13 +55,31 @@ fn cache_index_entry_round_trips() {
         source: "runtime".to_string(),
         adapter: "captures".to_string(),
         operation: SourceOperation::Extract,
+        inputs: Some(sample("captures@1", Some("user-registration"))),
     };
     let json = serde_json::to_string(&entry).expect("serialise");
     assert!(json.contains(r#""timestamp":"2026-05-22T13:15:00Z""#));
     assert!(json.contains(r#""source":"runtime""#));
     assert!(json.contains(r#""operation":"extract""#));
+    assert!(json.contains(r#""inputs":{"#));
     let reparsed: CacheIndexEntry = serde_json::from_str(&json).expect("reparse");
     assert_eq!(entry, reparsed);
+}
+
+#[test]
+fn index_entry_without_inputs_still_parses() {
+    let raw = r#"{
+            "timestamp": "2026-05-22T13:15:00Z",
+            "fingerprint": "sha256:a",
+            "slice": "s",
+            "source": "k",
+            "adapter": "a",
+            "operation": "extract"
+        }"#;
+    let entry: CacheIndexEntry = serde_json::from_str(raw).expect("inputless row parses");
+    assert_eq!(entry.inputs, None);
+    let json = serde_json::to_string(&entry).expect("serialise");
+    assert!(!json.contains("inputs"), "absent inputs must elide");
 }
 
 #[test]

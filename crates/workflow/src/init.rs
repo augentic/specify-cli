@@ -86,7 +86,7 @@ pub struct InitResult {
     /// this is the literal `"workspace"` so the JSON envelope stays stable
     /// for downstream consumers.
     pub adapter_name: String,
-    /// Whether `.specify/cache/cache-meta.yaml` exists.
+    /// Whether `.specify/cache/manifests/manifest-meta.yaml` exists.
     pub cache_present: bool,
     /// Whether the shared codex was distributed into
     /// `.specify/cache/codex/` during this run. `false` when the
@@ -130,7 +130,7 @@ pub struct InitResult {
 /// When [`InitOptions::workspace`] is `true`, dispatches to the private
 /// workspace runner for the workspace on-disk shape.
 ///
-/// `now` records the `cache-meta.yaml::fetched_at` stamp; the dispatcher
+/// `now` records the `manifest-meta.yaml::fetched_at` stamp; the dispatcher
 /// passes `Timestamp::now` and tests pin a deterministic value.
 ///
 /// # Errors

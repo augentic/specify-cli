@@ -94,7 +94,7 @@ pub enum SourceAction {
     /// Resolves `<source>` against `plan.yaml.sources.<key>` (not
     /// the adapter name), resolves the bound source adapter, and builds
     /// the four-root sandbox under
-    /// `.specify/cache/scratch/<adapter>/survey/`.
+    /// `.specify/scratch/<adapter>/survey/`.
     ///
     /// For `execution: tool` adapters the single call runs the whole
     /// operation. For `execution: agent` adapters the operation is
@@ -120,7 +120,7 @@ pub enum SourceAction {
     /// Resolves `<source>` against `plan.yaml.sources.<key>` (not
     /// the adapter name), resolves the bound source adapter, and builds
     /// the four-root sandbox with scratch under
-    /// `.specify/cache/scratch/<adapter>/<slice>/`.
+    /// `.specify/scratch/<adapter>/<slice>/`.
     ///
     /// For `execution: tool` adapters the single call runs the whole
     /// operation. For `execution: agent` adapters the operation is

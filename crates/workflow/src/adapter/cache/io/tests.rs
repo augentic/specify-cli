@@ -19,14 +19,15 @@ fn fp(adapter: &str) -> CacheFingerprint {
     )
 }
 
-fn index_entry(layout_adapter: &str, digest: &str) -> CacheIndexEntry {
+fn index_entry(layout_adapter: &str, fingerprint: &CacheFingerprint) -> CacheIndexEntry {
     CacheIndexEntry {
         timestamp: test_timestamp("2026-05-22T13:15:00Z"),
-        fingerprint: digest.to_string(),
+        fingerprint: fingerprint.digest(),
         slice: "identity-user-registration".to_string(),
         source: "legacy".to_string(),
         adapter: layout_adapter.to_string(),
         operation: SourceOperation::Extract,
+        inputs: Some(fingerprint.clone()),
     }
 }
 
@@ -36,7 +37,7 @@ fn write_then_lookup_is_a_hit() {
     let layout = CacheLayout::new(dir.path(), "typescript");
     let fingerprint = fp("typescript@1");
     let digest = fingerprint.digest();
-    let entry = index_entry("typescript", &digest);
+    let entry = index_entry("typescript", &fingerprint);
 
     // Cold-start: miss with no-prior-entry.
     let cold = lookup(layout, &fingerprint, None, &entry.slice, &entry.source, entry.operation)
@@ -48,8 +49,7 @@ fn write_then_lookup_is_a_hit() {
         }
     ));
 
-    write(layout, &fingerprint, b"---\nclaims: []\n", "evidence.yaml", None, &entry)
-        .expect("write");
+    write(layout, &fingerprint, b"---\nclaims: []\n", "evidence.yaml", &entry).expect("write");
 
     let warm = lookup(layout, &fingerprint, None, &entry.slice, &entry.source, entry.operation)
         .expect("warm lookup");
@@ -57,7 +57,6 @@ fn write_then_lookup_is_a_hit() {
         LookupOutcome::Hit { cache_dir } => {
             assert!(cache_dir.is_dir(), "hit cache_dir must exist: {}", cache_dir.display());
             assert!(cache_dir.join("evidence.yaml").is_file(), "artifact persisted");
-            assert!(cache_dir.join("fingerprint.json").is_file(), "record persisted");
         }
         LookupOutcome::Miss { reason } => panic!("expected Hit, got Miss({reason})"),
     }
@@ -71,9 +70,11 @@ fn adapter_opt_out_misses() {
     let dir = tempdir().expect("tempdir");
     let layout = CacheLayout::new(dir.path(), "doc");
     let fingerprint = fp("doc@1");
-    let digest = fingerprint.digest();
-    let entry = index_entry("doc", &digest);
+    let entry = index_entry("doc", &fingerprint);
 
+    // Opt-out short-circuits before any filesystem read; the caller
+    // also skips `write`, so the extraction tree never materialises
+    // for an opt-out adapter.
     let outcome = lookup(
         layout,
         &fingerprint,
@@ -89,15 +90,7 @@ fn adapter_opt_out_misses() {
             reason: CacheMissReason::AdapterOptOut
         }
     ));
-
-    write(layout, &fingerprint, b"unused", "evidence.yaml", Some(CacheMode::OptOut), &entry)
-        .expect("opt-out write still appends index");
-    assert!(
-        !layout.fingerprint_dir(&digest).exists(),
-        "opt-out must not create the cache directory"
-    );
-    let entries = read_index(layout).expect("read index");
-    assert_eq!(entries.len(), 1, "index still records the audit row under opt-out");
+    assert!(!layout.adapter_dir().exists(), "opt-out lookup must not touch the cache tree");
 }
 
 #[test]
@@ -106,9 +99,9 @@ fn version_bump_reports_changed_reason() {
     let layout = CacheLayout::new(dir.path(), "typescript");
     let v1 = fp("typescript@1");
     let v2 = fp("typescript@2");
-    let entry_v1 = index_entry("typescript", &v1.digest());
+    let entry_v1 = index_entry("typescript", &v1);
 
-    write(layout, &v1, b"e1", "evidence.yaml", None, &entry_v1).expect("write v1");
+    write(layout, &v1, b"e1", "evidence.yaml", &entry_v1).expect("write v1");
 
     let outcome = lookup(layout, &v2, None, &entry_v1.slice, &entry_v1.source, entry_v1.operation)
         .expect("v2 lookup");
@@ -123,20 +116,17 @@ fn version_bump_reports_changed_reason() {
 }
 
 #[test]
-fn corrupt_prior_record_ignored() {
+fn inputless_prior_row_is_no_prior_entry() {
     let dir = tempdir().expect("tempdir");
     let layout = CacheLayout::new(dir.path(), "typescript");
     let prior = fp("typescript@1");
-    let entry = index_entry("typescript", &prior.digest());
-    write(layout, &prior, b"e1", "evidence.yaml", None, &entry).expect("write");
-
-    // Corrupt the prior fingerprint.json.
-    let record_path = layout.fingerprint_record_path(&prior.digest());
-    std::fs::write(&record_path, "{not json").expect("clobber record");
+    let mut entry = index_entry("typescript", &prior);
+    entry.inputs = None;
+    write(layout, &prior, b"e1", "evidence.yaml", &entry).expect("write");
 
     let next = fp("typescript@2");
     let outcome = lookup(layout, &next, None, &entry.slice, &entry.source, entry.operation)
-        .expect("lookup on corrupt prior");
+        .expect("lookup on inputless prior");
     assert!(matches!(
         outcome.outcome,
         LookupOutcome::Miss {

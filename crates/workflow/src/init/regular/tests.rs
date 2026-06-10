@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 
 use crate::config::ProjectConfig;
-use crate::init::cache::CacheMeta;
+use crate::init::cache::ManifestMeta;
 use crate::init::{InitOptions, fixed_now, init};
 
 fn repo_root() -> PathBuf {
@@ -279,12 +279,14 @@ fn gitignore_missing_existing_duplicate() {
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
     let text = fs::read_to_string(&gitignore).expect("read gitignore");
     assert!(text.contains(".specify/cache/"));
+    assert!(text.contains(".specify/scratch/"));
     assert!(text.contains(".specify/workspace/"));
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("re-init ok");
     let text = fs::read_to_string(&gitignore).expect("reread gitignore");
     let occurrences = text.matches(".specify/cache/").count();
     assert_eq!(occurrences, 1);
+    assert_eq!(text.matches(".specify/scratch/").count(), 1);
     assert_eq!(text.matches(".specify/workspace/").count(), 1);
 }
 
@@ -299,6 +301,7 @@ fn gitignore_appends_to_existing() {
     let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read gitignore");
     assert!(text.contains("target/"));
     assert!(text.contains(".specify/cache/"));
+    assert!(text.contains(".specify/scratch/"));
     assert!(text.contains(".specify/workspace/"));
     assert_eq!(text.matches(".specify/cache/").count(), 1);
     assert_eq!(text.matches(".specify/workspace/").count(), 1);
@@ -332,18 +335,18 @@ fn gitignore_appends_workspace_only() {
 }
 
 #[test]
-fn cache_present_matches_cache_meta() {
+fn cache_present_matches_manifest_meta() {
     let tmp = tempdir().unwrap();
     let target_dir = omnia_target_dir();
     let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
     assert!(result.cache_present);
 
-    let cache_meta = CacheMeta::path(tmp.path());
-    assert!(cache_meta.is_file(), "expected cache-meta yaml at {}", cache_meta.display());
-    let yaml = fs::read_to_string(&cache_meta).expect("read cache meta");
+    let manifest_meta = ManifestMeta::path(tmp.path());
+    assert!(manifest_meta.is_file(), "expected manifest-meta yaml at {}", manifest_meta.display());
+    let yaml = fs::read_to_string(&manifest_meta).expect("read manifest meta");
     assert!(
-        yaml.contains("schema_url:") && yaml.contains("file://"),
-        "expected schema_url with file:// in cache-meta:\n{yaml}",
+        yaml.contains("source:") && yaml.contains("file://"),
+        "expected source with file:// in manifest-meta:\n{yaml}",
     );
 }
 

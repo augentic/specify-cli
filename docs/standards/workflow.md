@@ -118,7 +118,7 @@ Kebab-case discriminants on the JSON envelope; `snake_case` Rust variants bridge
 
 WASI tool runner pre-opens `$PROJECT_DIR` always, `$CAPABILITY_DIR` only for plugin-scope tools. No host environment leaks. See [`DECISIONS.md` §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`"](../../DECISIONS.md#capability_dir-replaces-adapter_dir).
 
-Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$SOURCE_DIR` read-only (absent for value-bound sources), `$CAPABILITY_DIR` read-only (manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR` **not visible**. Scratch owns a root disjoint from the result cache — `extract` under `.specify/cache/scratch/<adapter>/<slice>/`, `survey` under `.specify/cache/scratch/<adapter>/survey/`. See [`DECISIONS.md` §"Source operations (D1)"](../../DECISIONS.md#source-operations-d1).
+Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$SOURCE_DIR` read-only (absent for value-bound sources), `$CAPABILITY_DIR` read-only (manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR` **not visible**. Scratch lives under the transient working-state root, structurally outside the cache tree — `extract` under `.specify/scratch/<adapter>/<slice>/`, `survey` under `.specify/scratch/<adapter>/survey/`. See [`DECISIONS.md` §"Source operations (D1)"](../../DECISIONS.md#source-operations-d1) and [§"Cache layout"](../../DECISIONS.md#cache-layout).
 
 ## CLI surface
 
@@ -170,7 +170,7 @@ The CLI is the single writer of every `Divergence` variant, all through `specify
 
 ## D8 — Cache fingerprint inputs
 
-Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, lead id. Cache at `.specify/cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/workflow/src/adapter/cache.rs`](../../crates/workflow/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
+Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, lead id. Cache at `.specify/cache/extractions/<adapter>/<fingerprint>/` (artifact only; each `index.jsonl` row carries the full input record) with the append-only `index.jsonl` at the adapter root. The index is cache mechanism, not audit — an adapter with an effective `cache: opt-out` writes nothing under `extractions/`; the journal's cache events are the audit trail. Implementation at [`crates/workflow/src/adapter/cache.rs`](../../crates/workflow/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
 
 ## Provenance projection
 

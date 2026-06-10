@@ -6,16 +6,23 @@
 //! .specify/cache/extractions/<adapter>/
 //!     <fingerprint>/
 //!         evidence.yaml      # or leads.md for survey
-//!         fingerprint.json   # full input record for audit
 //!     index.jsonl            # one row per cache write; append-only
 //! ```
+//!
+//! Each `index.jsonl` row carries the full closed fingerprint input
+//! record ([`CacheIndexEntry::inputs`]), so the entry directory holds
+//! only the artifact and miss-reason classification reads the index
+//! alone. The index is pure cache mechanism, not an audit log: it
+//! exists to serve the miss-reason classifier, durable audit is the
+//! journal's job, and an opt-out adapter writes nothing here at all
+//! (the caller skips [`write`] entirely).
 //!
 //! The extraction cache is per-adapter only (not per-axis) — only
 //! source adapters extract — and lives in its own root, disjoint from
 //! the per-axis manifest cache at
-//! `.specify/cache/manifests/{sources,targets}/<name>/` and from the
-//! per-operation agent scratch lanes at the sibling
-//! `.specify/cache/scratch/<adapter>/{survey,<slice>}/` root
+//! `.specify/cache/manifests/{sources,targets}/<name>/`. Per-operation
+//! agent scratch lanes live outside the cache tree altogether, under
+//! `.specify/scratch/<adapter>/{survey,<slice>}/`
 //! ([`crate::adapter::scratch_dir`]), so everything under
 //! `extractions/` is fingerprint-keyed cache content. See
 //! [DECISIONS.md §"Cache layout"].
@@ -32,7 +39,6 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
 use specify_error::Error;
 use specify_model::atomic::bytes_write;
 
@@ -41,7 +47,6 @@ use crate::adapter::cache::{CacheFingerprint, CacheIndexEntry, CacheMissReason, 
 use crate::adapter::core::EXTRACTIONS_CACHE_DIR;
 
 const INDEX_FILE_NAME: &str = "index.jsonl";
-const FINGERPRINT_RECORD_NAME: &str = "fingerprint.json";
 
 /// Filesystem coordinates for the extraction cache fingerprint contract cache scoped to one
 /// source adapter.
@@ -77,12 +82,6 @@ impl<'a> CacheLayout<'a> {
         self.adapter_dir().join(digest_dir_name(digest))
     }
 
-    /// `.specify/cache/extractions/<adapter>/<fp>/fingerprint.json`.
-    #[must_use]
-    pub fn fingerprint_record_path(&self, digest: &str) -> PathBuf {
-        self.fingerprint_dir(digest).join(FINGERPRINT_RECORD_NAME)
-    }
-
     /// `.specify/cache/extractions/<adapter>/<fp>/<artifact-name>`.
     #[must_use]
     pub fn artifact_path(&self, digest: &str, artifact_name: &str) -> PathBuf {
@@ -96,42 +95,19 @@ impl<'a> CacheLayout<'a> {
     }
 }
 
-/// `fingerprint.json` payload — the closed five-input record persisted
-/// alongside the cached artifact for audit.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct FingerprintRecord {
-    /// sha256 hex digest computed over [`Self::inputs`] at write time.
-    pub digest: String,
-    /// Closed input record per the extraction cache fingerprint contract.
-    pub inputs: CacheFingerprint,
-}
-
-impl FingerprintRecord {
-    /// Pair the inputs with their digest. Callers usually build the
-    /// digest via [`CacheFingerprint::digest`] before constructing the
-    /// record.
-    #[must_use]
-    pub fn new(inputs: CacheFingerprint) -> Self {
-        let digest = inputs.digest();
-        Self { digest, inputs }
-    }
-}
-
 /// Outcome of [`lookup`] — either a hit on the cache directory or a
 /// miss carrying the closed [`CacheMissReason`] discriminator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LookupOutcome {
-    /// Cache directory exists with a valid `fingerprint.json` whose
-    /// digest matches the current inputs.
+    /// Cache directory holds the operation's artifact for the current
+    /// input digest.
     Hit {
         /// Path to the `<fp>/` directory containing the cached
         /// artifact.
         cache_dir: PathBuf,
     },
-    /// Cache directory does not exist, the adapter declared
-    /// `cache: opt-out`, or the prior `fingerprint.json` could not be
-    /// parsed.
+    /// No cached artifact for the digest, or the adapter declared
+    /// `cache: opt-out`.
     Miss {
         /// Which fingerprint input drifted (or `no-prior-entry` /
         /// `adapter-opt-out`).
@@ -160,20 +136,20 @@ pub struct CacheLookup {
 ///
 /// 1. `cache_mode == Some(CacheMode::OptOut)` → miss with
 ///    [`CacheMissReason::AdapterOptOut`] (skip every filesystem read).
-/// 2. `<adapter>/<digest>/fingerprint.json` exists → hit.
+/// 2. `<adapter>/<digest>/<artifact-name>` exists → hit.
 /// 3. Otherwise, scan `index.jsonl` for the most recent prior entry on
-///    the same `(slice, source, operation)` lane, load that
-///    entry's `fingerprint.json`, and diff field-by-field per
+///    the same `(slice, source, operation)` lane and diff that row's
+///    [`CacheIndexEntry::inputs`] field-by-field per
 ///    [`CacheFingerprint::diff_reason`].
-/// 4. No prior entry (or unreadable / corrupt prior record) →
+/// 4. No prior entry (or a prior row carrying no input record) →
 ///    [`CacheMissReason::NoPriorEntry`].
 ///
 /// # Errors
 ///
-/// Propagates I/O failures reading the index log. A corrupt
-/// `fingerprint.json` on a prior entry is **not** an error — the miss
-/// is reported as [`CacheMissReason::NoPriorEntry`] and the operator
-/// can rebuild the cache.
+/// Propagates I/O failures reading the index log. A prior row without
+/// an input record is **not** an error — the miss is reported as
+/// [`CacheMissReason::NoPriorEntry`] and the operator can rebuild the
+/// cache.
 pub fn lookup(
     layout: CacheLayout<'_>, fingerprint: &CacheFingerprint, cache_mode: Option<CacheMode>,
     slice: &str, source: &str, operation: SourceOperation,
@@ -191,8 +167,7 @@ pub fn lookup(
         });
     }
 
-    let record_path = layout.fingerprint_record_path(&digest);
-    if record_path.is_file() {
+    if layout.artifact_path(&digest, operation.artifact_name()).is_file() {
         return Ok(CacheLookup {
             digest,
             cache_dir: cache_dir.clone(),
@@ -221,50 +196,33 @@ fn miss_reason(
         return Ok(CacheMissReason::NoPriorEntry);
     };
 
-    let prior_record_path = layout.fingerprint_record_path(&prior.fingerprint);
-    let Ok(raw) = std::fs::read_to_string(&prior_record_path) else {
-        // Either the record is missing (operator cleared the cache
-        // directory but kept the index) or the file is unreadable;
-        // either way no diff is possible.
+    // A row without an input record allows no diff — the extraction
+    // cache leans on "warn and treat as miss" rather than failing the
+    // whole operation.
+    let Some(prior_inputs) = prior.inputs else {
         return Ok(CacheMissReason::NoPriorEntry);
     };
-    let Ok(record) = serde_json::from_str::<FingerprintRecord>(&raw) else {
-        // Cache-corruption — extraction cache fingerprint contract leans on "warn and treat as
-        // miss" rather than failing the whole operation.
-        return Ok(CacheMissReason::NoPriorEntry);
-    };
-    Ok(CacheFingerprint::diff_reason(&record.inputs, fingerprint)
+    Ok(CacheFingerprint::diff_reason(&prior_inputs, fingerprint)
         .unwrap_or(CacheMissReason::NoPriorEntry))
 }
 
-/// Write a cache entry: artifact bytes, `fingerprint.json` record, and
-/// an `index.jsonl` row.
+/// Write a cache entry: artifact bytes plus an `index.jsonl` row.
 ///
-/// When `cache_mode == Some(CacheMode::OptOut)` the function still
-/// appends the index row (so the audit log carries the opt-out trail)
-/// but **does not** create the `<digest>/` directory or its contents.
+/// Unconditional — opt-out is the caller's branch: an adapter with an
+/// effective `cache: opt-out` never reaches this function (the journal's
+/// cache-miss event with `reason: adapter-opt-out` is the only trace),
+/// so the extraction tree holds entries for caching adapters only.
 ///
 /// # Errors
 ///
 /// Propagates I/O failures from the directory create, atomic
-/// tempfile-rename of the artifact / record, and the index append.
+/// tempfile-rename of the artifact, and the index append.
 pub fn write(
     layout: CacheLayout<'_>, fingerprint: &CacheFingerprint, artifact_bytes: &[u8],
-    artifact_name: &str, cache_mode: Option<CacheMode>, entry: &CacheIndexEntry,
+    artifact_name: &str, entry: &CacheIndexEntry,
 ) -> Result<(), Error> {
-    if !matches!(cache_mode, Some(CacheMode::OptOut)) {
-        let digest = fingerprint.digest();
-        let artifact_path = layout.artifact_path(&digest, artifact_name);
-        bytes_write(&artifact_path, artifact_bytes)?;
-
-        let record = FingerprintRecord::new(fingerprint.clone());
-        let record_bytes = serde_json::to_vec_pretty(&record).map_err(|err| Error::Diag {
-            code: "cache-fingerprint-record-serialise-failed",
-            detail: format!("failed to serialise fingerprint.json: {err}"),
-        })?;
-        bytes_write(&layout.fingerprint_record_path(&digest), &record_bytes)?;
-    }
-
+    let artifact_path = layout.artifact_path(&fingerprint.digest(), artifact_name);
+    bytes_write(&artifact_path, artifact_bytes)?;
     append_index(layout, entry)?;
     Ok(())
 }

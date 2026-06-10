@@ -87,12 +87,14 @@ pub enum PlanAction {
     ///
     /// Exactly one mode is required — the parser rejects passing both:
     ///
-    /// - `--dry-run` is read-only. It reads the surveyed `discovery.md`
-    ///   lead inventory and the resolved project topology (`registry.yaml`
-    ///   for a workspace, or the sole project synthesised from `project.yaml`)
-    ///   and emits the `kind: request` envelope for the agent to group.
-    ///   Aborts with `plan-reconcile-empty-catalog` when `discovery.md`
-    ///   carries no leads.
+    /// - `--dry-run` reads the surveyed `discovery.md` lead inventory and
+    ///   the resolved project topology (`registry.yaml` for a workspace, or
+    ///   the sole project synthesised from `project.yaml`) and emits the
+    ///   `kind: request` envelope for the agent to group, recreating the
+    ///   plan scratch lane (`.specify/scratch/plan/`) empty for the
+    ///   response envelope. Writes no plan state. Aborts with
+    ///   `plan-reconcile-empty-catalog` when `discovery.md` carries no
+    ///   leads.
     /// - `--from <response.json>` is the only writer. On every invocation
     ///   it re-reads `discovery.md`, rebuilds the lead catalog (never
     ///   trusting a prior dry-run snapshot), validates the agent's
@@ -159,7 +161,7 @@ pub enum PlanAction {
 /// rejects passing neither with `plan-propose-mode-required`.
 #[derive(Args)]
 pub struct ProposeArgs {
-    /// Emit the reconciliation request envelope (flat lead catalog + project topology) for the agent. Writes nothing.
+    /// Emit the reconciliation request envelope (flat lead catalog + project topology) for the agent. Writes no plan state; resets .specify/scratch/plan/.
     #[arg(long = "dry-run", action = ArgAction::SetTrue)]
     pub dry_run: bool,
     /// Apply the agent's grouping response, validate it, and replace plan.yaml.slices[]. The only writer.

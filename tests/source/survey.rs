@@ -43,7 +43,7 @@ slices:
 }
 
 fn survey_scratch_dir(project: &Project) -> PathBuf {
-    project.root().join(".specify/cache/scratch/typescript/survey")
+    project.root().join(".specify/scratch/typescript/survey")
 }
 
 // A `survey` lead-set omits `source`: attribution is CLI-owned,
@@ -78,7 +78,7 @@ fn prepare_prints_envelope_emits_event() {
     );
     let scratch = body["scratch-dir"].as_str().expect("scratch-dir str");
     assert!(
-        scratch.ends_with(".specify/cache/scratch/typescript/survey"),
+        scratch.ends_with(".specify/scratch/typescript/survey"),
         "scratch-dir {scratch} must key under the survey segment"
     );
     let briefs = body["briefs-dir"].as_str().expect("briefs-dir str");
@@ -100,6 +100,30 @@ fn prepare_prints_envelope_emits_event() {
     assert_eq!(events[0]["payload"]["source"], "legacy");
     assert_eq!(events[0]["payload"]["adapter"], "typescript");
     assert_eq!(events[0]["payload"]["operation"], "survey");
+}
+
+#[test]
+fn prepare_clears_stale_scratch() {
+    let project = Project::init();
+    stage_typescript(&project);
+    seed_plan_with_legacy_source(&project);
+
+    // A prior run left a stale lead set in the scratch lane.
+    let scratch = survey_scratch_dir(&project);
+    fs::create_dir_all(&scratch).expect("create scratch dir");
+    fs::write(scratch.join("leads.md"), "### stale-lead\n").expect("write stale leads.md");
+
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "source", "survey", "legacy"])
+        .assert()
+        .success();
+
+    assert!(scratch.is_dir(), "prepare must recreate the scratch dir");
+    assert!(
+        !scratch.join("leads.md").exists(),
+        "prepare must drop stale artifacts so finalize only sees this run's output"
+    );
 }
 
 #[test]

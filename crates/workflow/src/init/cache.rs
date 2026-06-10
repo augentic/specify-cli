@@ -1,12 +1,13 @@
 //! Adapter cache management plus the on-disk
-//! `.specify/cache/cache-meta.yaml` representation.
+//! `.specify/cache/manifests/manifest-meta.yaml` representation.
 //!
 //! `cache_adapter` copies a resolved source into the manifest cache at
 //! `.specify/cache/manifests/targets/<name>/` and stamps
-//! `cache-meta.yaml` with the resolved URI. The agent owns writes to
-//! the manifest cache; the CLI reads `cache-meta.yaml` (via
-//! [`CacheMeta::load`]) only to decide whether the cache matches
-//! `.specify/project.yaml:adapter`. The extraction cache at
+//! `manifest-meta.yaml` inside the `manifests/` tree (mirroring
+//! `codex/codex-meta.yaml` — each cache tenant is self-describing).
+//! The agent owns writes to the manifest cache; the CLI reads
+//! [`ManifestMeta`]'s path only to decide whether the cache is
+//! populated. The extraction cache at
 //! `.specify/cache/extractions/<adapter>/` lives in a sibling tree and
 //! is managed by [`crate::adapter::cache`].
 //!
@@ -28,25 +29,29 @@ use specify_error::Error;
 use crate::adapter::{Axis, cache_dir as adapter_cache_dir, check_axis_unique_for_name};
 use crate::init::adapter_uri::AdapterUri;
 
-/// On-disk metadata describing the contents of `.specify/cache/`.
+/// Provenance for the adapter manifest mirror under
+/// `.specify/cache/manifests/`. The structural twin of [`CodexMeta`]:
+/// each cache tenant carries its own metadata inside its own tree.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct CacheMeta {
-    /// The schema URL or `local:<name>` identifier the cache was populated from.
-    pub schema_url: String,
-    /// ISO 8601 timestamp of when the cache was last fetched.
+pub struct ManifestMeta {
+    /// The adapter source value (a `file://` or `https://…@ref` URI)
+    /// the manifest mirror was populated from.
+    pub source: String,
+    /// ISO 8601 timestamp of when the mirror was last fetched.
     pub fetched_at: String,
 }
 
-impl CacheMeta {
-    /// Absolute path to `<project_dir>/.specify/cache/cache-meta.yaml`.
+impl ManifestMeta {
+    /// Absolute path to
+    /// `<project_dir>/.specify/cache/manifests/manifest-meta.yaml`.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir.join(".specify").join("cache").join("cache-meta.yaml")
+        project_dir.join(".specify").join("cache").join("manifests").join("manifest-meta.yaml")
     }
 }
 
 /// Copy the resolved adapter source into the project's source/target adapter split
-/// axis-aware cache and stamp `cache-meta.yaml`. Returns the resolved
+/// axis-aware cache and stamp `manifest-meta.yaml`. Returns the resolved
 /// [`AdapterUri`] so the caller can record `project.yaml.adapter`
 /// (`source.adapter_value`) and reuse the same resolved checkout for
 /// codex distribution ([`cache_codex`]) without re-cloning.
@@ -71,7 +76,7 @@ pub(super) fn cache_adapter(
     check_axis_unique_for_name(Axis::Target, &source.adapter_name, project_dir)?;
     let target = adapter_cache_dir(project_dir, Axis::Target, &source.adapter_name);
     refresh_cached_adapter(&source.source_dir, &target)?;
-    write_cache_meta(project_dir, &source.adapter_value, now)?;
+    write_manifest_meta(project_dir, &source.adapter_value, now)?;
 
     Ok(source)
 }
@@ -291,12 +296,14 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-fn write_cache_meta(project_dir: &Path, adapter_value: &str, now: Timestamp) -> Result<(), Error> {
-    let meta = CacheMeta {
-        schema_url: adapter_value.to_string(),
+fn write_manifest_meta(
+    project_dir: &Path, adapter_value: &str, now: Timestamp,
+) -> Result<(), Error> {
+    let meta = ManifestMeta {
+        source: adapter_value.to_string(),
         fetched_at: now.strftime("%Y-%m-%dT%H:%M:%SZ").to_string(),
     };
-    let meta_path = CacheMeta::path(project_dir);
+    let meta_path = ManifestMeta::path(project_dir);
     let serialised = serde_saphyr::to_string(&meta)?;
     fs::write(meta_path, serialised)?;
     Ok(())

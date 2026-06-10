@@ -11,10 +11,7 @@ mod io;
 
 use std::path::Path;
 
-pub use io::{
-    CacheLayout, CacheLookup, FingerprintRecord, LookupOutcome, append_index, lookup, read_index,
-    write,
-};
+pub use io::{CacheLayout, CacheLookup, LookupOutcome, append_index, lookup, read_index, write};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 /// Closed list of fingerprint inputs (extraction cache fingerprint contract).
@@ -196,11 +193,11 @@ pub struct FingerprintToolVersion {
 /// One row appended to `.specify/cache/extractions/<adapter>/index.jsonl`
 /// on every cache write (extraction cache fingerprint contract).
 ///
-/// The slot is `(timestamp, fingerprint-sha256, slice, source,
-/// adapter, operation)` — together they let `specify source resolve
-/// --explain` reconstruct the fingerprint chain without re-reading
-/// the underlying `fingerprint.json`. Append-only; writers stream
-/// NDJSON lines per `journal::append_batch` posture.
+/// The row carries the full closed input record alongside the digest,
+/// so `specify source resolve --explain` and the miss-reason
+/// classifier read the fingerprint chain from the index alone — the
+/// cache entry directory holds only the artifact. Append-only; writers
+/// stream NDJSON lines per `journal::append_batch` posture.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct CacheIndexEntry {
@@ -219,6 +216,11 @@ pub struct CacheIndexEntry {
     pub adapter: String,
     /// Closed source-adapter operation that triggered the cache write.
     pub operation: SourceOperation,
+    /// Closed five-input record behind [`Self::fingerprint`]. `None`
+    /// reads as no-prior-entry to the miss-reason classifier (the
+    /// cache posture is "warn and treat as miss", never fail).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inputs: Option<CacheFingerprint>,
 }
 
 /// Closed source-adapter operation set re-exported from the shared

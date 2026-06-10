@@ -173,7 +173,7 @@ fn stage_target_adapters(root: &Path) {
 /// Stand in for the survey agent: drop the golden lead-set into scratch
 /// and run `source survey <source> --phase finalize`.
 fn survey_finalize(root: &Path, source: &str, adapter: &str, lead_set: &str) {
-    let scratch = root.join(format!(".specify/cache/scratch/{adapter}/survey"));
+    let scratch = root.join(format!(".specify/scratch/{adapter}/survey"));
     fs::create_dir_all(&scratch).expect("mkdir survey scratch");
     fs::write(scratch.join("leads.md"), lead_set).expect("write leads.md");
     specify_cmd()
@@ -188,7 +188,7 @@ fn survey_finalize(root: &Path, source: &str, adapter: &str, lead_set: &str) {
 fn extract_finalize(
     root: &Path, source: &str, adapter: &str, lead: &str, slice: &str, evidence: &str,
 ) {
-    let scratch = root.join(format!(".specify/cache/scratch/{adapter}/{slice}"));
+    let scratch = root.join(format!(".specify/scratch/{adapter}/{slice}"));
     fs::create_dir_all(&scratch).expect("mkdir extract scratch");
     fs::write(scratch.join("evidence.yaml"), evidence).expect("write evidence.yaml");
     specify_cmd()

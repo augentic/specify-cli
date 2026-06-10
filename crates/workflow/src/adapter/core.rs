@@ -55,25 +55,12 @@ pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 /// `.specify/cache/extractions/<adapter>/<fingerprint>/` holds the
 /// extraction cache fingerprint contract per-source extraction result cache (with `index.jsonl`
 /// at the adapter root). Per-adapter only — extraction is a source-axis
-/// operation — and partitioned from [`MANIFESTS_CACHE_DIR`] and
-/// [`SCRATCH_CACHE_DIR`] so each cache owns its own tree (no co-tenancy
-/// heuristic; see [DECISIONS.md §"Cache layout"]).
-///
-/// [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
-pub const EXTRACTIONS_CACHE_DIR: &str = "extractions";
-
-/// Scratch-lane root segment under `.specify/cache/`.
-///
-/// `.specify/cache/scratch/<adapter>/{survey,<slice>}/` holds the
-/// per-operation agent scratch lanes (the write-only `$SCRATCH_DIR`
-/// preopen). A sibling of [`EXTRACTIONS_CACHE_DIR`] rather than a
-/// subtree of it, so the fingerprint-keyed result entries and the
-/// operation-keyed scratch segments never share a namespace and a
-/// scratch write can never pollute a cache artifact (see
+/// operation — and partitioned from [`MANIFESTS_CACHE_DIR`] so each
+/// cache owns its own tree (no co-tenancy heuristic; see
 /// [DECISIONS.md §"Cache layout"]).
 ///
 /// [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
-pub const SCRATCH_CACHE_DIR: &str = "scratch";
+pub const EXTRACTIONS_CACHE_DIR: &str = "extractions";
 
 /// Axis discriminator for an adapter manifest.
 ///
@@ -277,22 +264,22 @@ pub fn cache_dir(project_dir: &Path, axis: Axis, name: &str) -> PathBuf {
 }
 
 /// Per-operation agent scratch lane for `(adapter, segment)` —
-/// `.specify/cache/scratch/<adapter>/<segment>/`.
+/// `.specify/scratch/<adapter>/<segment>/`.
 ///
 /// `<segment>` is the literal `survey` for the slice-less survey op or
 /// the slice name for extract.
 /// The write-only `$SCRATCH_DIR` preopen of the source-operation
-/// sandbox. A sibling root of the extraction result cache
-/// (`.specify/cache/extractions/<adapter>/`) so scratch lanes and
-/// fingerprint dirs never share a namespace; see
-/// [DECISIONS.md §"Cache layout"].
+/// sandbox. Rooted under the transient working-state tree
+/// (`.specify/scratch/`), structurally disjoint from the memoization
+/// tree at `.specify/cache/`, so a scratch write can never pollute a
+/// cache artifact; see [DECISIONS.md §"Cache layout"].
 ///
 /// Path-only helper — the directory may or may not exist on disk.
 ///
 /// [DECISIONS.md §"Cache layout"]: ../../../../DECISIONS.md#cache-layout
 #[must_use]
 pub fn scratch_dir(project_dir: &Path, adapter: &str, segment: &str) -> PathBuf {
-    project_dir.join(".specify").join("cache").join(SCRATCH_CACHE_DIR).join(adapter).join(segment)
+    crate::config::Layout::new(project_dir).scratch_dir().join(adapter).join(segment)
 }
 
 /// In-memory representation of a source-adapter manifest

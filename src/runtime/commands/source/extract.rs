@@ -3,7 +3,7 @@
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Extract`]) for adapter
 //! resolution, brief directory, the four-root sandbox (scratch at
-//! `.specify/cache/scratch/<adapter>/<slice>/`), and the
+//! `.specify/scratch/<adapter>/<slice>/`), and the
 //! `evidence/` output target under `.specify/slices/<slice>/`, then
 //! branches on the adapter's `execution` mode:
 //!

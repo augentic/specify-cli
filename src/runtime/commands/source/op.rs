@@ -155,9 +155,11 @@ pub(super) struct CacheEntry<'a> {
     pub op: SourceOperation,
 }
 
-/// Write the cache artifact + `fingerprint.json` + index row for a
-/// source operation. Under the forced opt-out the cache layer skips the
-/// directory body and appends only the audit index row.
+/// Write the cache artifact + index row (carrying the full fingerprint
+/// input record) for a source operation. A no-op under the effective
+/// `cache: opt-out` — the extraction tree is pure cache mechanism, so
+/// an opt-out adapter leaves no trace there; the journal's cache-miss
+/// event (`reason: adapter-opt-out`) is the audit trail.
 ///
 /// # Errors
 ///
@@ -165,6 +167,9 @@ pub(super) struct CacheEntry<'a> {
 pub(super) fn write_cache_entry(
     entry: &CacheEntry<'_>, fingerprint: &CacheFingerprint, artifact_bytes: &[u8],
 ) -> Result<()> {
+    if matches!(entry.cache_mode, Some(CacheMode::OptOut)) {
+        return Ok(());
+    }
     let index = CacheIndexEntry {
         timestamp: Timestamp::now(),
         fingerprint: fingerprint.digest(),
@@ -172,15 +177,9 @@ pub(super) fn write_cache_entry(
         source: entry.source.to_string(),
         adapter: entry.adapter.to_string(),
         operation: entry.op,
+        inputs: Some(fingerprint.clone()),
     };
-    cache::write(
-        entry.layout,
-        fingerprint,
-        artifact_bytes,
-        entry.op.artifact_name(),
-        entry.cache_mode,
-        &index,
-    )
+    cache::write(entry.layout, fingerprint, artifact_bytes, entry.op.artifact_name(), &index)
 }
 
 /// Per-invocation inputs shared by every source-operation flow
@@ -262,12 +261,24 @@ pub(super) fn run<'a, F: Flow<'a>>(flow: &F, phase: Phase) -> Result<()> {
     }
 }
 
+/// Recreate the scratch lane empty, dropping any artifact a prior run
+/// left behind so `finalize` can only ever stage what this run
+/// produced.
+fn reset_scratch(scratch: &Path) -> Result<()> {
+    match std::fs::remove_dir_all(scratch) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(Error::Io(err)),
+    }
+    std::fs::create_dir_all(scratch).map_err(Error::Io)
+}
+
 /// Agent `prepare`: build scratch, emit `source.execution.agent`, and
 /// print the handoff envelope. Control returns to the agent.
 fn prepare<'a, F: Flow<'a>>(flow: &F) -> Result<()> {
     let c = flow.common();
     let scratch = scratch_path(c.prepared, c.operation)?;
-    std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
+    reset_scratch(&scratch)?;
     emit_execution_agent(c)?;
     let handoff = flow.handoff(scratch)?;
     c.ctx.write(&handoff, F::write_handoff)
@@ -296,7 +307,7 @@ fn finalize<'a, F: Flow<'a>>(flow: &F) -> Result<()> {
 fn run_tool<'a, F: Flow<'a>>(flow: &F) -> Result<()> {
     let c = flow.common();
     let scratch = scratch_path(c.prepared, c.operation)?;
-    std::fs::create_dir_all(&scratch).map_err(Error::Io)?;
+    reset_scratch(&scratch)?;
 
     let probe = probe(c)?;
     let artifact = c.operation.artifact_name();
@@ -350,8 +361,7 @@ fn probe<'a>(c: &Common<'a>) -> Result<Probe<'a>> {
     })
 }
 
-/// Write the cache artifact + `fingerprint.json` + index row for a
-/// completed probe.
+/// Write the cache artifact + index row for a completed probe.
 fn commit_cache_entry(c: &Common<'_>, probe: &Probe<'_>, artifact_bytes: &[u8]) -> Result<()> {
     write_cache_entry(
         &CacheEntry {

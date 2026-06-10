@@ -243,10 +243,35 @@ impl<'a> Layout<'a> {
         self.specify_dir().join("topology.lock")
     }
 
-    /// Absolute path to `<project_dir>/.specify/cache/`.
+    /// Absolute path to `<project_dir>/.specify/cache/` — the
+    /// memoization root (manifest mirror, codex, extraction results).
+    /// Deleting it costs recomputation only; transient working state
+    /// lives under the sibling [`Self::scratch_dir`].
     #[must_use]
     pub fn cache_dir(&self) -> PathBuf {
         self.specify_dir().join("cache")
+    }
+
+    /// Absolute path to `<project_dir>/.specify/scratch/` — the
+    /// transient working-state root. Per-run lanes only (source
+    /// operation `$SCRATCH_DIR` lanes, the plan handoff lane); every
+    /// lane is recreated empty by its owning verb, so the tree can be
+    /// wiped at any time at zero cost. Disjoint from
+    /// [`Self::cache_dir`] so a scratch write can never pollute a
+    /// cache artifact. See DECISIONS.md §"Cache layout".
+    #[must_use]
+    pub fn scratch_dir(&self) -> PathBuf {
+        self.specify_dir().join("scratch")
+    }
+
+    /// Absolute path to `<project_dir>/.specify/scratch/plan/` — the
+    /// plan-phase handoff lane. `specify plan propose --dry-run`
+    /// recreates it empty; the agent writes the reconciliation
+    /// response envelope (`propose-response.json`) into it for
+    /// `specify plan propose --from`.
+    #[must_use]
+    pub fn plan_scratch_dir(&self) -> PathBuf {
+        self.scratch_dir().join("plan")
     }
 
     /// Absolute path to `<project_dir>/.specify/decisions/` — the

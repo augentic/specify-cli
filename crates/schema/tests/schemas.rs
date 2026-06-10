@@ -61,18 +61,18 @@ fn tool_sidecar_schema_compiles() {
     compile_schema(TOOL_SIDECAR_JSON_SCHEMA).expect("tool-sidecar schema compiles");
 }
 
-/// `cache-meta.schema.json` ships on disk but is not embedded as a
+/// `manifest-meta.schema.json` ships on disk but is not embedded as a
 /// constant. Compile it straight from disk so a malformed edit fails
 /// in CI even without an `include_str!` binding.
 #[test]
-fn cache_meta_schema_compiles_from_disk() {
-    let source = include_str!("../../../schemas/cache-meta.schema.json");
-    compile_schema(source).expect("cache-meta schema compiles");
+fn manifest_meta_schema_compiles_from_disk() {
+    let source = include_str!("../../../schemas/manifest-meta.schema.json");
+    compile_schema(source).expect("manifest-meta schema compiles");
 }
 
 /// `context-lock.schema.json` ships on disk but is not embedded as a
 /// constant; compile it straight from disk (see
-/// [`cache_meta_schema_compiles_from_disk`]).
+/// [`manifest_meta_schema_compiles_from_disk`]).
 #[test]
 fn context_lock_schema_compiles_from_disk() {
     let source = include_str!("../../../schemas/context-lock.schema.json");

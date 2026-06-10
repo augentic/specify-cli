@@ -406,7 +406,7 @@ shared manifest *shape* is loaded by the axis-aware module
 `crates/workflow/src/adapter/` (`SourceAdapter` / `TargetAdapter` /
 `Axis` / `ResolvedAdapter` / `AdapterLocation`). Briefs are resolved by
 path through `briefs.<op>` on the adapter manifest; they carry no YAML
-frontmatter and the CLI never reads their bodies. `CacheMeta` lives in
+frontmatter and the CLI never reads their bodies. `ManifestMeta` lives in
 [`crates/workflow/src/init/cache.rs`](./crates/workflow/src/init/cache.rs);
 the slice-metadata wire uses `Operation { Shape, Build, Merge }`
 (`phase: shape | build | merge`).
@@ -749,27 +749,63 @@ Plan-time platform reconciliation is a CLI-owned deterministic pass, not agent j
 
 ## Cache layout
 
-`.specify/cache/` hosts three distinct, root-disjoint trees:
+`.specify/` separates two regenerable, gitignored roots by contract,
+not just by tenant. **`.specify/cache/` is memoization** — every tree
+under it is keyed by content or version, and deleting it costs
+recomputation only. **`.specify/scratch/` is transient working state**
+— per-run lanes recreated empty by their owning verb, deletable at any
+time at zero cost. Splitting the roots makes the "a scratch write can
+never pollute a cache artifact" invariant structural: the write-only
+`$SCRATCH_DIR` preopen is rooted outside the cache tree entirely, and
+each root carries its own lifecycle policy (scratch is wiped freely;
+cache is the future GC surface). Both roots are gitignored by
+`ensure_gitignore_entries` alongside `.specify/workspace/`.
+
+`.specify/cache/` hosts three distinct, root-disjoint memoization
+trees:
 
 - `manifests/{sources,targets}/<name>/` — adapter manifest cache. The
   agent-populated mirror of `adapters/{sources,targets}/<name>/`
   (`adapter.yaml` plus the brief markdown files it references). Per-axis
   because adapter names are unique per axis. Resolved by
-  `crates/workflow/src/adapter/core.rs::cache_dir`.
+  `crates/workflow/src/adapter/core.rs::cache_dir`. Provenance is
+  stamped inside the tree at `manifests/manifest-meta.yaml`
+  (`ManifestMeta` in `crates/workflow/src/init/cache.rs`,
+  `schemas/manifest-meta.schema.json`) — the structural twin of the
+  codex tree's `codex-meta.yaml`, so every cache tenant is
+  self-describing and the cache root holds only directories.
+- `codex/` — the distributed shared-rules codex, with provenance at
+  `codex/codex-meta.yaml` (`CodexMeta`). See §"Shared codex
+  distribution".
 - `extractions/<adapter>/<fingerprint>/` — per-source extraction result cache, with the append-only `index.jsonl` at the
   adapter root (`extractions/<adapter>/index.jsonl`). Per-adapter
   only — not per-axis — because extraction is a source-axis operation;
   the adapter name carries enough identity. Resolved by
   `crates/workflow/src/adapter/cache/io.rs::CacheLayout`. Everything
-  under `extractions/` is fingerprint-keyed cache content; on
-  `cache: opt-out` only the `index.jsonl` audit log appears.
-- `scratch/<adapter>/{survey,<slice>}/` — per-operation agent scratch
-  lanes (the write-only `$SCRATCH_DIR` preopen). Transient working
-  state, not cache: hoisted to its own root (rather than nesting under
-  `extractions/<adapter>/`) so the operation-keyed scratch segments and
-  the digest-keyed result entries never share a namespace and the
-  result cache needs no `entries/` disambiguation level. Resolved by
-  `crates/workflow/src/adapter/core.rs::scratch_dir`.
+  under `extractions/` is fingerprint-keyed cache content, and the
+  index is **pure cache mechanism, not an audit log**: it exists to
+  serve the miss-reason classifier, durable audit is the journal's job
+  (the `source.{survey,extract}.cache-{hit,miss}` events), and an
+  adapter with an effective `cache: opt-out` writes nothing under
+  `extractions/` at all. Each index row carries the full closed
+  fingerprint input record (`CacheIndexEntry.inputs`), so the entry
+  directory holds only the cached artifact and the miss-reason
+  classifier diffs against the index alone; a row without an input
+  record reads as `no-prior-entry` (warn-and-miss, never fail).
+
+`.specify/scratch/` hosts the per-run lanes:
+
+- `<adapter>/{survey,<slice>}/` — per-operation agent scratch lanes
+  (the write-only `$SCRATCH_DIR` preopen). Recreated empty at
+  `prepare` time by the source-operation runner. Resolved by
+  `crates/workflow/src/adapter/core.rs::scratch_dir` over
+  `Layout::scratch_dir`.
+- `plan/` — the plan-phase handoff lane (`Layout::plan_scratch_dir`).
+  `specify plan propose --dry-run` recreates it empty; the agent
+  writes the reconciliation response envelope to the canonical
+  `plan/propose-response.json` for `plan propose --from`. The reset
+  mirrors the source-operation scratch reset, so `--from` can never
+  consume a stale envelope from a prior run.
 
 Each cache owns its own root, so the loader does not probe for an
 `adapter.yaml` inside the cache directory to disambiguate manifest vs.
@@ -919,13 +955,17 @@ slice in `refining` (see [`crates/workflow/src/schema.rs`](./crates/workflow/src
 value-bound sources such as `intent`), `$CAPABILITY_DIR` read-only (the
 resolved manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR`
 **not visible** — lifecycle state stays off-limits to the adapter.
-`$SCRATCH_DIR` lives under the per-adapter scratch root, a sibling of
-the extraction result cache, so a scratch write never pollutes a cache
-artifact: `extract` uses
-`.specify/cache/scratch/<adapter>/<slice>/`; `survey` (plan-time, no
-slice) uses `.specify/cache/scratch/<adapter>/survey/`. The result
-cache lives under the disjoint `extractions/<adapter>/` root, so
-scratch lanes and fingerprint dirs never share a namespace. See
+`$SCRATCH_DIR` lives under the transient working-state root at
+`.specify/scratch/`, structurally outside the memoization tree at
+`.specify/cache/`, so a scratch write can never pollute a cache
+artifact: `extract` uses `.specify/scratch/<adapter>/<slice>/`;
+`survey` (plan-time, no slice) uses
+`.specify/scratch/<adapter>/survey/`. The result cache lives under
+the disjoint `.specify/cache/extractions/<adapter>/` root, so scratch
+lanes and fingerprint dirs never share a namespace. The runner
+recreates the scratch lane **empty** at `prepare` time (and before a
+`tool`-execution dispatch), so a stale artifact from a prior run can
+never be finalized as this run's output. See
 §"Cache layout" and §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`".
 
 **Shared prep seam.** The adapter resolution, brief-directory

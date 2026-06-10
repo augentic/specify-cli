@@ -113,8 +113,8 @@ pub struct SandboxLayout {
     /// `$CAPABILITY_DIR` — read-only resolved adapter manifest cache
     /// (the adapter root the manifest loaded from).
     pub capability: Preopen,
-    /// `$SCRATCH_DIR` — write-only per-operation scratch under the
-    /// extraction tree.
+    /// `$SCRATCH_DIR` — write-only per-operation scratch lane under
+    /// `.specify/scratch/`.
     pub scratch: Preopen,
     /// `$PROJECT_DIR` — not visible to the adapter operation.
     pub project: Preopen,
@@ -239,9 +239,10 @@ pub fn resolve_source_path(project_dir: &Path, raw: &str) -> PathBuf {
     if candidate.is_absolute() { candidate.to_path_buf() } else { project_dir.join(candidate) }
 }
 
-/// `.specify/cache/scratch/<adapter>/<segment>/`, where `<segment>` is
+/// `.specify/scratch/<adapter>/<segment>/`, where `<segment>` is
 /// `survey` for the slice-less survey op or the slice name for
-/// extract. A sibling root of the fingerprint result cache at
+/// extract. Rooted under the transient working-state tree, disjoint
+/// from the fingerprint result cache at
 /// `.specify/cache/extractions/<adapter>/`, so a scratch write never
 /// shares a namespace with a cache artifact.
 fn scratch_dir(project_dir: &Path, adapter: &str, op: &SourceOp) -> PathBuf {
@@ -262,7 +263,7 @@ mod tests {
     #[test]
     fn scratch_keys_under_survey_segment() {
         let scratch = scratch_dir(Path::new("/proj"), "documentation", &SourceOp::Survey);
-        assert_eq!(scratch, Path::new("/proj/.specify/cache/scratch/documentation/survey"));
+        assert_eq!(scratch, Path::new("/proj/.specify/scratch/documentation/survey"));
     }
 
     #[test]
@@ -271,17 +272,14 @@ mod tests {
             slice: "identity-password-reset".to_string(),
         };
         let scratch = scratch_dir(Path::new("/proj"), "typescript", &op);
-        assert_eq!(
-            scratch,
-            Path::new("/proj/.specify/cache/scratch/typescript/identity-password-reset")
-        );
+        assert_eq!(scratch, Path::new("/proj/.specify/scratch/typescript/identity-password-reset"));
     }
 
     #[test]
     fn path_bound_mounts_four_roots() {
         let source = PathBuf::from("/repo/legacy");
         let capability = PathBuf::from("/proj/adapters/sources/typescript");
-        let scratch = PathBuf::from("/proj/.specify/cache/scratch/typescript/s");
+        let scratch = PathBuf::from("/proj/.specify/scratch/typescript/s");
         let layout = SandboxLayout::new(Some(&source), &capability, scratch.clone());
 
         assert_eq!(layout.source.var, "SOURCE_DIR");
@@ -304,7 +302,7 @@ mod tests {
     #[test]
     fn value_bound_source_dir_absent() {
         let capability = PathBuf::from("/proj/adapters/sources/intent");
-        let scratch = PathBuf::from("/proj/.specify/cache/scratch/intent/survey");
+        let scratch = PathBuf::from("/proj/.specify/scratch/intent/survey");
         let layout = SandboxLayout::new(None, &capability, scratch);
 
         assert_eq!(layout.source.access, PreopenAccess::None);
