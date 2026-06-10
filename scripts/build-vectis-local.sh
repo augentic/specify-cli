@@ -24,9 +24,9 @@ DIST_DIR_ABS="$(cd "${DIST_DIR}" && pwd)"
 
 (
     cd wasi-tools
-    CARGO_TARGET="${CARGO_TARGET_DIR:-target}"
+    CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
     cargo build -p specify-vectis --target wasm32-wasip2 --release --locked
-    cp "${CARGO_TARGET}/wasm32-wasip2/release/vectis.wasm" "${DIST_DIR_ABS}/vectis.wasm"
+    cp "${CARGO_TARGET_DIR}/wasm32-wasip2/release/vectis.wasm" "${DIST_DIR_ABS}/vectis.wasm"
 )
 
 (
