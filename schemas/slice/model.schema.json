@@ -116,7 +116,7 @@
         "agreement": {
           "$ref": "#/$defs/agreementVerdict"
         },
-        "unit": {
+        "domain": {
           "$ref": "#/$defs/kebabName"
         },
         "claims": {

@@ -56,7 +56,7 @@ pub struct BuildArtifacts {
     pub design: String,
     /// Singular rendered `tasks.md`.
     pub tasks: String,
-    /// One or more per-unit `spec.md` files (`specs/<unit>/spec.md`).
+    /// One or more per-domain `spec.md` files (`specs/<domain>/spec.md`).
     pub specs: Vec<String>,
     /// Target-specific inputs declared by the bound adapter's manifest.
     /// Empty when the adapter declares none.

@@ -13,9 +13,9 @@ Manual.
 
 - Add a `login` crate that accepts a username and password.
 
-## Units
+## Domains
 
-### New Units
+### New Domains
 
 - `login`
 

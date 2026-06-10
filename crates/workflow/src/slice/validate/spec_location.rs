@@ -1,5 +1,5 @@
 //! Spec file-location gate. Flags a slice that carries a root-level
-//! `spec.md` but no canonical `specs/<unit>/spec.md` files.
+//! `spec.md` but no canonical `specs/<domain>/spec.md` files.
 
 use std::path::Path;
 
@@ -9,7 +9,7 @@ use super::collect_spec_files;
 
 /// Spec file-location gate. Emits a `specs.file-location`
 /// finding when the slice has no spec files under the canonical
-/// `specs/<unit>/spec.md` layout but does have a root-level
+/// `specs/<domain>/spec.md` layout but does have a root-level
 /// `spec.md`. This fires first among the pre-adapter gates so the
 /// operator sees the structural cause before downstream drift noise.
 pub(super) fn collect_spec_file_location_findings(slice_dir: &Path) -> Vec<Diagnostic> {
@@ -25,9 +25,9 @@ pub(super) fn collect_spec_file_location_findings(slice_dir: &Path) -> Vec<Diagn
     }
     vec![Diagnostic::violation(
         "specs.file-location",
-        "Spec files live under specs/<unit>/spec.md, not at the slice root",
+        "Spec files live under specs/<domain>/spec.md, not at the slice root",
         "No spec files found under `specs/`. Found `spec.md` at the slice root — \
-         move it to `specs/<unit>/spec.md` (one file per `proposal.md ## Units` entry). \
+         move it to `specs/<domain>/spec.md` (one file per `proposal.md ## Domains` entry). \
          The Specify workflow requires spec files under `specs/` for every target.",
         Artifact::Specs,
         None,

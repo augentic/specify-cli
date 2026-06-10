@@ -32,7 +32,7 @@ const SYNTH_RESPONSE_JSON: &str = r###"{
     "requirements": [
       {
         "title": "Request password reset",
-        "unit": "password-reset",
+        "domain": "password-reset",
         "claims": [
           { "source": "legacy-monolith", "id": "password-reset.request", "kind": "requirement" }
         ],
@@ -48,7 +48,7 @@ const SYNTH_RESPONSE_JSON: &str = r###"{
     "design": "# Design\nDomain model.\n",
     "tasks": "# Tasks\n- [ ] TASK-001\n",
     "specs": [
-      { "unit": "password-reset", "content": "## Request password reset\nAgent prose body.\n" }
+      { "domain": "password-reset", "content": "## Request password reset\nAgent prose body.\n" }
     ]
   }
 }
@@ -219,7 +219,7 @@ const SYNTH_RESPONSE_PRE_ASSIGNED: &str = r###"{
         "id": "REQ-999",
         "title": "Request password reset",
         "status": "conflict",
-        "unit": "password-reset",
+        "domain": "password-reset",
         "sources": ["wrong-source"],
         "claims": [
           { "source": "legacy-monolith", "id": "password-reset.request", "kind": "requirement", "winner": true }
@@ -236,7 +236,7 @@ const SYNTH_RESPONSE_PRE_ASSIGNED: &str = r###"{
     "design": "# Design\nDomain model.\n",
     "tasks": "# Tasks\n- [ ] TASK-001\n",
     "specs": [
-      { "unit": "password-reset", "content": "## Request password reset\nAgent prose body.\n" }
+      { "domain": "password-reset", "content": "## Request password reset\nAgent prose body.\n" }
     ]
   }
 }
@@ -253,7 +253,7 @@ const SYNTH_RESPONSE_ORPHAN: &str = r###"{
     "requirements": [
       {
         "title": "Request password reset",
-        "unit": "password-reset",
+        "domain": "password-reset",
         "claims": [
           { "source": "legacy-monolith", "id": "ghost-claim", "kind": "requirement" }
         ],
@@ -269,7 +269,7 @@ const SYNTH_RESPONSE_ORPHAN: &str = r###"{
     "design": "# Design\nDomain model.\n",
     "tasks": "# Tasks\n- [ ] TASK-001\n",
     "specs": [
-      { "unit": "password-reset", "content": "## Request password reset\nAgent prose body.\n" }
+      { "domain": "password-reset", "content": "## Request password reset\nAgent prose body.\n" }
     ]
   }
 }
@@ -286,7 +286,7 @@ const SYNTH_RESPONSE_KIND_MISMATCH: &str = r###"{
     "requirements": [
       {
         "title": "Request password reset",
-        "unit": "password-reset",
+        "domain": "password-reset",
         "claims": [
           { "source": "legacy-monolith", "id": "password-reset.request", "kind": "criterion" }
         ],
@@ -302,7 +302,7 @@ const SYNTH_RESPONSE_KIND_MISMATCH: &str = r###"{
     "design": "# Design\nDomain model.\n",
     "tasks": "# Tasks\n- [ ] TASK-001\n",
     "specs": [
-      { "unit": "password-reset", "content": "## Request password reset\nAgent prose body.\n" }
+      { "domain": "password-reset", "content": "## Request password reset\nAgent prose body.\n" }
     ]
   }
 }
@@ -364,7 +364,7 @@ const DIVERGENCE_RESPONSE_JSON: &str = r###"{
     "requirements": [
       {
         "title": "Reset link expiry",
-        "unit": "password-reset",
+        "domain": "password-reset",
         "agreement": "disagreed",
         "claims": [
           { "source": "docs", "id": "password-reset.expiry", "kind": "criterion" },
@@ -382,7 +382,7 @@ const DIVERGENCE_RESPONSE_JSON: &str = r###"{
     "design": "# Design\nExpiry handling.\n",
     "tasks": "# Tasks\n- [ ] TASK-001\n",
     "specs": [
-      { "unit": "password-reset", "content": "## Reset link expiry\nLinks expire after 30 minutes.\n" }
+      { "domain": "password-reset", "content": "## Reset link expiry\nLinks expire after 30 minutes.\n" }
     ]
   }
 }
@@ -703,7 +703,7 @@ const SAME_AUTHORITY_RESPONSE_JSON: &str = r###"{
     "requirements": [
       {
         "title": "Reset link expiry",
-        "unit": "password-reset",
+        "domain": "password-reset",
         "agreement": "disagreed",
         "claims": [
           { "source": "docs-a", "id": "password-reset.expiry", "kind": "criterion" },
@@ -721,7 +721,7 @@ const SAME_AUTHORITY_RESPONSE_JSON: &str = r###"{
     "design": "# Design\nExpiry handling.\n",
     "tasks": "# Tasks\n- [ ] TASK-001\n",
     "specs": [
-      { "unit": "password-reset", "content": "## Reset link expiry\nLinks expire after a fixed window.\n" }
+      { "domain": "password-reset", "content": "## Reset link expiry\nLinks expire after a fixed window.\n" }
     ]
   }
 }
@@ -823,7 +823,7 @@ claims:
 
 /// Agent response for the intent slice: one requirement citing the
 /// id-bearing intent claim, with an authored scenario and a proposal
-/// that carries the required `## Why` / `## Units` sections.
+/// that carries the required `## Why` / `## Domains` sections.
 const INTENT_RESPONSE_JSON: &str = r###"{
   "version": 1,
   "kind": "response",
@@ -832,7 +832,7 @@ const INTENT_RESPONSE_JSON: &str = r###"{
     "requirements": [
       {
         "title": "Greeting shows corrected spelling",
-        "unit": "greeting",
+        "domain": "greeting",
         "claims": [
           { "source": "intent", "id": "my-slice", "kind": "intent" }
         ],
@@ -845,11 +845,11 @@ const INTENT_RESPONSE_JSON: &str = r###"{
     ]
   },
   "artifacts": {
-    "proposal": "# Greeting\n\n## Why\n\nThe greeting has a typo to fix.\n\n## Units\n\n- greeting — the greeting surface\n\n## Non-goals\n\n- No new copy.\n",
+    "proposal": "# Greeting\n\n## Why\n\nThe greeting has a typo to fix.\n\n## Domains\n\n- greeting — the greeting surface\n\n## Non-goals\n\n- No new copy.\n",
     "design": "# Design\nGreeting fix.\n",
     "tasks": "# Tasks\n- [ ] TASK-001\n",
     "specs": [
-      { "unit": "greeting", "content": "## Greeting\nAgent prose body.\n" }
+      { "domain": "greeting", "content": "## Greeting\nAgent prose body.\n" }
     ]
   }
 }

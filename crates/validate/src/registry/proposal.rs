@@ -12,12 +12,12 @@ fn proposal_why_has_content(ctx: &BriefContext<'_>) -> RuleOutcome {
     }
 }
 
-fn proposal_units_listed(ctx: &BriefContext<'_>) -> RuleOutcome {
-    if primitives::has_content_after_heading(ctx.content, "## Units") {
+fn proposal_domains_listed(ctx: &BriefContext<'_>) -> RuleOutcome {
+    if primitives::has_content_after_heading(ctx.content, "## Domains") {
         RuleOutcome::Pass
     } else {
         RuleOutcome::Fail {
-            detail: "`## Units` section missing or has no content".to_string(),
+            detail: "`## Domains` section missing or has no content".to_string(),
         }
     }
 }
@@ -30,10 +30,10 @@ pub(super) const PROPOSAL_RULES: &[Rule] = &[
         check: Some(proposal_why_has_content),
     },
     Rule {
-        id: "proposal.units-listed",
-        description: "Has a Units section listing at least one entry",
+        id: "proposal.domains-listed",
+        description: "Has a Domains section listing at least one entry",
         classification: Classification::Structural,
-        check: Some(proposal_units_listed),
+        check: Some(proposal_domains_listed),
     },
     Rule {
         id: "proposal.uses-imperative-language",
@@ -47,7 +47,7 @@ pub(super) const PROPOSAL_RULES: &[Rule] = &[
 mod tests {
     use std::path::Path;
 
-    use super::{proposal_units_listed, proposal_why_has_content};
+    use super::{proposal_domains_listed, proposal_why_has_content};
     use crate::{BriefContext, RuleOutcome};
 
     fn ctx(content: &str) -> BriefContext<'_> {
@@ -68,16 +68,16 @@ mod tests {
             RuleOutcome::Pass
         );
         assert!(matches!(
-            proposal_why_has_content(&ctx("## Why\n\n## Units\n- a\n")),
+            proposal_why_has_content(&ctx("## Why\n\n## Domains\n- a\n")),
             RuleOutcome::Fail { .. }
         ));
     }
 
     #[test]
-    fn units_passes_entries_fails_absent() {
-        assert_eq!(proposal_units_listed(&ctx("## Units\n\n- login\n")), RuleOutcome::Pass);
+    fn domains_passes_entries_fails_absent() {
+        assert_eq!(proposal_domains_listed(&ctx("## Domains\n\n- login\n")), RuleOutcome::Pass);
         assert!(matches!(
-            proposal_units_listed(&ctx("## Why\n\nbecause\n")),
+            proposal_domains_listed(&ctx("## Why\n\nbecause\n")),
             RuleOutcome::Fail { .. }
         ));
     }

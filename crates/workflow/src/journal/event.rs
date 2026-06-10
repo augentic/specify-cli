@@ -158,7 +158,7 @@ pub enum EventKind {
     },
     /// Slice synthesis finished and the artifacts were persisted.
     /// `artifacts` lists the persisted
-    /// relative paths (`proposal.md`, `specs/<unit>/spec.md`,
+    /// relative paths (`proposal.md`, `specs/<domain>/spec.md`,
     /// `design.md`, `tasks.md`, `model.yaml`).
     #[serde(rename = "slice.synthesize.completed", rename_all = "kebab-case")]
     SliceSynthesizeCompleted {

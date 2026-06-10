@@ -16,7 +16,7 @@
 //!   [`SynthesisResponse`], resolves authority from the on-disk
 //!   Evidence and any per-slice override, projects the kernel-owned
 //!   fields into the single `model.yaml` ([`project`]), renders
-//!   provenance lines into `specs/<unit>/spec.md` ([`render_spec_files`]),
+//!   provenance lines into `specs/<domain>/spec.md` ([`render_spec_files`]),
 //!   and persists the staged artifacts atomically. It emits
 //!   `slice.synthesize.started` first, then `slice.synthesize.completed`
 //!   on success, or `slice.synthesize.failed` on any error before the
@@ -175,7 +175,7 @@ fn synthesize_from(ctx: &Ctx, name: &str, response_path: &Path) -> Result<Vec<St
     let mut staged: Vec<StagedFile> = Vec::new();
     staged.push(staged_file(&slice_dir, "proposal.md", response.artifacts.proposal.into_bytes()));
     for spec in &specs {
-        let rel = format!("specs/{}/spec.md", spec.unit);
+        let rel = format!("specs/{}/spec.md", spec.domain);
         staged.push(staged_file(&slice_dir, &rel, spec.content.clone().into_bytes()));
     }
     staged.push(staged_file(&slice_dir, "design.md", response.artifacts.design.into_bytes()));

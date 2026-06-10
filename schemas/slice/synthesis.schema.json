@@ -65,11 +65,11 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
-              "unit",
+              "domain",
               "content"
             ],
             "properties": {
-              "unit": {
+              "domain": {
                 "$ref": "#/$defs/kebabName"
               },
               "content": {

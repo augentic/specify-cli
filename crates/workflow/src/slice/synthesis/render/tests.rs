@@ -14,7 +14,7 @@ requirements:
   - id: REQ-001
     title: Request password reset
     status: agreed
-    unit: password-reset
+    domain: password-reset
     agreement: agreed
     sources: [docs, legacy]
     claims:
@@ -28,7 +28,7 @@ requirements:
   - id: REQ-002
     title: Reset link expiry
     status: divergence
-    unit: password-reset
+    domain: password-reset
     agreement: disagreed
     sources: [docs, legacy]
     claims:
@@ -70,7 +70,7 @@ fn agreed_block_round_trips_through_parser() {
     let model = worked_model();
     let specs = render_spec_files(&model);
     assert_eq!(specs.len(), 1);
-    assert_eq!(specs[0].unit, "password-reset");
+    assert_eq!(specs[0].domain, "password-reset");
 
     let parsed = parse_spec_md(&specs[0].content);
     assert!(parsed.findings.is_empty(), "rendered output parses cleanly");
@@ -114,7 +114,7 @@ requirements:
   - id: REQ-001
     title: Fix the typo
     status: agreed
-    unit: greeting
+    domain: greeting
     sources: [intent]
     claims:
       - source: intent
@@ -164,13 +164,13 @@ fn expected_provenance_lines_match_model() {
         expected,
         vec![
             ExpectedRequirement {
-                unit: "password-reset".to_string(),
+                domain: "password-reset".to_string(),
                 id: "REQ-001".to_string(),
                 sources: vec!["docs".to_string(), "legacy".to_string()],
                 status: Some(RequirementStatus::Agreed),
             },
             ExpectedRequirement {
-                unit: "password-reset".to_string(),
+                domain: "password-reset".to_string(),
                 id: "REQ-002".to_string(),
                 sources: vec!["docs".to_string(), "legacy".to_string()],
                 status: Some(RequirementStatus::Divergence),

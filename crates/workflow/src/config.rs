@@ -23,7 +23,7 @@ pub struct ProjectConfig {
     /// and testing approach. Falls back to the adapter's domain when empty.
     ///
     /// Authored intent only. A project's *derived* routing identity —
-    /// the `surface[]` of owned units and a `recent[]` merge tail — is
+    /// the `surface[]` of owned domains and a `recent[]` merge tail — is
     /// projected from its baseline (`.specify/specs/` + journal), never
     /// re-authored here. Unknown facets such as `capabilities` /
     /// `keywords` are silently ignored (this struct does not

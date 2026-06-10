@@ -44,26 +44,26 @@
         }
       }
     },
-    "surfaceUnit": {
+    "surfaceDomain": {
       "type": "object",
-      "required": ["unit", "requirements"],
+      "required": ["domain", "requirements"],
       "additionalProperties": false,
-      "description": "One baseline unit's projected surface: the unit slug and a bounded sample of its requirement titles.",
+      "description": "One baseline domain's projected surface: the domain slug and a bounded sample of its requirement titles.",
       "properties": {
-        "unit": {
+        "domain": {
           "type": "string",
           "minLength": 1,
-          "description": "Unit directory slug under `.specify/specs/`."
+          "description": "Domain directory slug under `.specify/specs/`."
         },
         "requirements": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
-          "description": "Requirement-block headings of this unit's `spec.md`, in `REQ-NNN` id order, capped at K (default 8). Titles only — bodies, `Sources:`, and `Status:` are never projected."
+          "description": "Requirement-block headings of this domain's `spec.md`, in `REQ-NNN` id order, capped at K (default 8). Titles only — bodies, `Sources:`, and `Status:` are never projected."
         },
         "more": {
           "type": "integer",
           "minimum": 1,
-          "description": "Count of requirement titles elided past the cap. Absent when the unit fits within K."
+          "description": "Count of requirement titles elided past the cap. Absent when the domain fits within K."
         }
       }
     },
@@ -92,8 +92,8 @@
         },
         "surface": {
           "type": "array",
-          "items": { "$ref": "#/$defs/surfaceUnit" },
-          "description": "Deterministic baseline surface: one entry per `.specify/specs/<unit>/spec.md`, sorted by unit slug. Empty stays off the wire (greenfield)."
+          "items": { "$ref": "#/$defs/surfaceDomain" },
+          "description": "Deterministic baseline surface: one entry per `.specify/specs/<domain>/spec.md`, sorted by domain slug. Empty stays off the wire (greenfield)."
         },
         "recent": {
           "type": "array",

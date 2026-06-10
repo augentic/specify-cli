@@ -53,7 +53,7 @@ pub enum SliceAction {
     ///   the agent response, resolves authority from the on-disk
     ///   Evidence and any per-slice override, projects the kernel-owned
     ///   fields into `model.yaml`, renders provenance into
-    ///   `specs/<unit>/spec.md`, and persists the staged artifacts
+    ///   `specs/<domain>/spec.md`, and persists the staged artifacts
     ///   atomically — emitting `slice.synthesize.started` then
     ///   `slice.synthesize.completed` (or `slice.synthesize.failed` on
     ///   error).

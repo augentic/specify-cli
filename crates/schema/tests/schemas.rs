@@ -243,7 +243,7 @@ fn synthesis_accepts_example() {
         "model": {
             "requirements": [{
                 "title": "Request password reset",
-                "unit": "password-reset",
+                "domain": "password-reset",
                 "agreement": "agreed",
                 "claims": [
                     { "source": "docs", "id": "password-reset.request", "kind": "requirement" },
@@ -265,7 +265,7 @@ fn synthesis_accepts_example() {
             "design": "# Design\n…",
             "tasks": "# Tasks\n- [ ] TASK-001 …",
             "specs": [{
-                "unit": "password-reset",
+                "domain": "password-reset",
                 "content": "## Request password reset\nThe system lets a registered user…"
             }]
         }

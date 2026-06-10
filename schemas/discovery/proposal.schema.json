@@ -42,19 +42,19 @@
         }
       }
     },
-    "surfaceUnit": {
+    "surfaceDomain": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "unit",
+        "domain",
         "requirements"
       ],
-      "description": "One baseline unit's projected surface: the unit slug and a bounded sample of its requirement titles.",
+      "description": "One baseline domain's projected surface: the domain slug and a bounded sample of its requirement titles.",
       "properties": {
-        "unit": {
+        "domain": {
           "type": "string",
           "minLength": 1,
-          "description": "Unit directory slug under `.specify/specs/`."
+          "description": "Domain directory slug under `.specify/specs/`."
         },
         "requirements": {
           "type": "array",
@@ -62,12 +62,12 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Requirement-block headings of this unit's `spec.md`, in `REQ-NNN` id order, capped at K (default 8). Titles only."
+          "description": "Requirement-block headings of this domain's `spec.md`, in `REQ-NNN` id order, capped at K (default 8). Titles only."
         },
         "more": {
           "type": "integer",
           "minimum": 1,
-          "description": "Count of requirement titles elided past the cap. Absent when the unit fits within K."
+          "description": "Count of requirement titles elided past the cap. Absent when the domain fits within K."
         }
       }
     },
@@ -101,9 +101,9 @@
         "surface": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/surfaceUnit"
+            "$ref": "#/$defs/surfaceDomain"
           },
-          "description": "Deterministic baseline surface projected from the project's `.specify/specs/` through `.specify/topology.lock`: the units this project owns and a sample of each unit's requirement titles. The agent binds a slice on owned behaviour. Empty stays off the wire (greenfield routes on `description` alone)."
+          "description": "Deterministic baseline surface projected from the project's `.specify/specs/` through `.specify/topology.lock`: the domains this project owns and a sample of each domain's requirement titles. The agent binds a slice on owned behaviour. Empty stays off the wire (greenfield routes on `description` alone)."
         },
         "recent": {
           "type": "array",

@@ -1126,7 +1126,7 @@ fn topology_lock_projects_baseline() {
     assert_eq!(alpha.target, "omnia@v1");
     assert_eq!(alpha.description.as_deref(), Some("Alpha core"));
     assert_eq!(alpha.surface.len(), 1);
-    assert_eq!(alpha.surface[0].unit, "session");
+    assert_eq!(alpha.surface[0].domain, "session");
     assert_eq!(
         alpha.surface[0].requirements,
         vec!["Issue session token".to_string(), "Revoke session".to_string()]

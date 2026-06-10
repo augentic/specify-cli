@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::common::{Project, parse_json, read_journal_normalized, specify_cmd};
 
-/// Create `my-slice`, seed a `specs/<unit>/spec.md` so the assembled
+/// Create `my-slice`, seed a `specs/<domain>/spec.md` so the assembled
 /// request carries a non-empty `specs[]`, and transition it to
 /// `refined` — the lifecycle state `slice build` gates out of.
 fn stage_refined_slice(project: &Project) {

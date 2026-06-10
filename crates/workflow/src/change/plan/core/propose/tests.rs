@@ -204,7 +204,7 @@ fn resolve_topology_hub_reads_topology_lock() {
                  target: contracts@v1\n    \
                  description: Contracts crate.\n    \
                  surface:\n      \
-                   - unit: identity-api\n        \
+                   - domain: identity-api\n        \
                      requirements:\n          \
                        - Authenticate user\n  \
                - name: identity-service\n    \
@@ -221,7 +221,7 @@ fn resolve_topology_hub_reads_topology_lock() {
                 target: "contracts@v1".to_string(),
                 description: Some("Contracts crate.".to_string()),
                 surface: vec![Surface {
-                    unit: "identity-api".to_string(),
+                    domain: "identity-api".to_string(),
                     requirements: vec!["Authenticate user".to_string()],
                     more: None,
                 }],

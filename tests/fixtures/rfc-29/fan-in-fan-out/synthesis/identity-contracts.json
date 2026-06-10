@@ -6,7 +6,7 @@
     "requirements": [
       {
         "title": "Identity API contract",
-        "unit": "identity",
+        "domain": "identity",
         "claims": [
           { "source": "docs", "id": "identity-api.contract", "kind": "requirement" }
         ],
@@ -22,7 +22,7 @@
     "design": "# Design\nContract surface for authentication and account access.\n",
     "tasks": "# Tasks\n- [ ] TASK-001 Author the identity API contract.\n",
     "specs": [
-      { "unit": "identity", "content": "## Identity API contract\nThe identity API exposes authentication and account-access endpoints.\n" }
+      { "domain": "identity", "content": "## Identity API contract\nThe identity API exposes authentication and account-access endpoints.\n" }
     ]
   }
 }

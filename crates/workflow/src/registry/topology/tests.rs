@@ -9,7 +9,7 @@ fn round_trips_yaml_empties_elided() {
             target: "contracts@v1".to_string(),
             description: Some("Contracts crate.".to_string()),
             surface: vec![Surface {
-                unit: "identity-api".to_string(),
+                domain: "identity-api".to_string(),
                 requirements: vec!["Authenticate user".to_string()],
                 more: None,
             }],
