@@ -141,7 +141,7 @@ description: Versioned API contracts target.
 // ---------------------------------------------------------------------------
 
 /// Author a minimal `execution: agent` source adapter with the two
-/// briefs the survey/extract fingerprints hash.
+/// briefs the survey/extract agents read.
 fn stage_source_adapter(root: &Path, name: &str, description: &str) {
     let dir = root.join(format!("adapters/sources/{name}"));
     fs::create_dir_all(dir.join("briefs")).expect("mkdir source adapter briefs");
@@ -231,8 +231,7 @@ fn scenario() -> TempDir {
     stage_source_adapter(root, "typescript", "Behavioural evidence from a TypeScript codebase.");
     stage_target_adapters(root);
 
-    // The survey/extract fingerprints canonicalise the bound source
-    // paths, so both must exist on disk.
+    // Both bound source paths exist on disk for the survey/extract runs.
     for src in ["docs", "legacy"] {
         fs::create_dir_all(root.join(src)).expect("mkdir bound source dir");
         fs::write(root.join(src).join(".keep"), "").expect("seed bound source dir");

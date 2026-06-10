@@ -4,31 +4,23 @@
 //! shared [`prep`] seam ([`prep::SourceOp::Extract`]) for adapter
 //! resolution, brief directory, the four-root sandbox (scratch at
 //! `.specify/scratch/<adapter>/<slice>/`), and the
-//! `evidence/` output target under `.specify/slices/<slice>/`, then
-//! branches on the adapter's `execution` mode:
+//! `evidence/` output target under `.specify/slices/<slice>/`. Source
+//! extraction is agent-only and two-phase; the CLI never blocks on
+//! agent work:
 //!
-//! - `tool`: single-phase. Probe the extraction cache; on a hit read
-//!   the cached `evidence.yaml`, on a miss dispatch the declared tool
-//!   (no first-party source declares an `extract` tool
-//!   yet). Either way validate the Evidence and persist it.
-//! - `agent`: two-phase. The CLI never blocks on agent work.
-//!   - `--phase prepare` (default): build scratch + the `evidence/`
-//!     target, emit `source.execution.agent`, and print the extract
-//!     handoff envelope (`{ adapter, version, briefs-dir, source-dir? |
-//!     value-inline?, scratch-dir, evidence-dir, leads:[<lead>],
-//!     execution }`). For value-bound sources (e.g. `intent`)
-//!     `source-dir` is absent and `value-inline` carries the literal
-//!     binding body. Control returns to the agent.
-//!   - `--phase finalize`: validate the agent-produced Evidence
-//!     against `schemas/evidence.schema.json` *before* it becomes
-//!     visible to synthesis, persist it to
-//!     `.specify/slices/<slice>/evidence/<source>.yaml`, run the
-//!     extraction-cache fingerprint (with the `lead` input),
-//!     and emit `slice.extract.cache-hit` / `cache-miss`. Under the
-//!     `execution: agent` forced opt-out this is always a `cache-miss`
-//!     with `reason: adapter-opt-out`. A validation failure returns
-//!     early — no Evidence is persisted and the slice stays
-//!     `refining`.
+//! - `--phase prepare` (default): build scratch + the `evidence/`
+//!   target, emit `source.execution.agent`, and print the extract
+//!   handoff envelope (`{ adapter, version, briefs-dir, source-dir? |
+//!   value-inline?, scratch-dir, evidence-dir, leads:[<lead>],
+//!   execution }`). For value-bound sources (e.g. `intent`)
+//!   `source-dir` is absent and `value-inline` carries the literal
+//!   binding body. Control returns to the agent.
+//! - `--phase finalize`: validate the agent-produced Evidence
+//!   against `schemas/evidence.schema.json` *before* it becomes
+//!   visible to synthesis, persist it to
+//!   `.specify/slices/<slice>/evidence/<source>.yaml`, and emit
+//!   `slice.extract.completed`. A validation failure returns early —
+//!   no Evidence is persisted and the slice stays `refining`.
 //!
 //! The agent writes its Evidence to `$SCRATCH_DIR/evidence.yaml` (the
 //! write-only sandbox root, mirroring how `survey` writes
@@ -43,9 +35,8 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::atomic::bytes_write;
 use specify_workflow::adapter::SourceOperation;
-use specify_workflow::adapter::cache::{self, LookupOutcome};
 use specify_workflow::change::Plan;
-use specify_workflow::journal::{CacheMissReason, EventKind};
+use specify_workflow::journal::EventKind;
 use specify_workflow::schema;
 
 use crate::runtime::commands::source::cli::Phase;
@@ -80,8 +71,8 @@ struct ExtractHandoff {
     execution: &'static str,
 }
 
-/// Result of a completed extract (tool single-phase, or agent
-/// `finalize`): the cache outcome plus the persisted Evidence path.
+/// Result of a completed extract (agent `finalize`): the persisted
+/// Evidence path.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct ExtractResult {
@@ -89,12 +80,6 @@ struct ExtractResult {
     source: String,
     slice: String,
     lead: String,
-    fingerprint: String,
-    /// `hit` | `miss`.
-    cache: &'static str,
-    /// Populated on a miss; the closed cache-miss reason.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<CacheMissReason>,
     /// Persisted `.specify/slices/<slice>/evidence/<source>.yaml`.
     evidence: PathBuf,
 }
@@ -106,8 +91,8 @@ struct ExtractResult {
 ///
 /// - `source-unknown` when `<source>` is not a
 ///   `plan.yaml.sources` key.
-/// - propagates adapter-resolution, schema-validation, fingerprint,
-///   and persist failures.
+/// - propagates adapter-resolution, schema-validation, and persist
+///   failures.
 pub fn run(ctx: &Ctx, source: &str, lead: &str, slice: &str, phase: Phase) -> Result<()> {
     let plan = Plan::load(&ctx.layout().plan_path())?;
     let binding = plan.sources.get(source).ok_or_else(|| Error::Diag {
@@ -142,8 +127,6 @@ pub fn run(ctx: &Ctx, source: &str, lead: &str, slice: &str, phase: Phase) -> Re
             source_path: source_path.as_deref(),
             binding,
             operation: SourceOperation::Extract,
-            slice_lane: slice,
-            lead: Some(lead),
         },
         lead,
         slice,
@@ -154,7 +137,7 @@ pub fn run(ctx: &Ctx, source: &str, lead: &str, slice: &str, phase: Phase) -> Re
 /// Extract's operation-specific seam onto the shared [`op::run`] flow:
 /// the handoff carries `evidence-dir` (and `source-dir` xor
 /// `value-inline`), the commit validates then persists the Evidence,
-/// and the cache event is `slice.extract.cache-*`.
+/// and the completion event is `slice.extract.completed`.
 struct ExtractFlow<'a> {
     common: op::Common<'a>,
     lead: &'a str,
@@ -192,72 +175,28 @@ impl<'a> op::Flow<'a> for ExtractFlow<'a> {
         write_handoff_text(w, body)
     }
 
-    fn commit(
-        &self, raw: &str, artifact_source: &Path, lookup: &cache::CacheLookup,
-    ) -> Result<ExtractResult> {
+    fn commit(&self, raw: &str, artifact_source: &Path) -> Result<ExtractResult> {
         let c = &self.common;
         schema::validate_evidence(raw, artifact_source)?;
         let path = evidence_dir(c.prepared)?.join(format!("{}.yaml", c.source));
         bytes_write(&path, raw.as_bytes())?;
-        Ok(self.extract_result(lookup, path))
+        Ok(ExtractResult {
+            adapter: c.prepared.manifest.name.clone(),
+            source: c.source.to_string(),
+            slice: self.slice.to_string(),
+            lead: self.lead.to_string(),
+            evidence: path,
+        })
     }
 
     fn write_outcome(w: &mut dyn Write, body: &ExtractResult) -> std::io::Result<()> {
         write_result_text(w, body)
     }
 
-    fn cache_event(&self, lookup: &cache::CacheLookup) -> EventKind {
-        let c = &self.common;
-        let adapter = c.prepared.manifest.name.clone();
-        match &lookup.outcome {
-            LookupOutcome::Hit { .. } => EventKind::SliceExtractCacheHit {
-                slice_name: self.slice.into(),
-                source: c.source.to_string(),
-                adapter,
-                fingerprint: lookup.digest.clone(),
-            },
-            LookupOutcome::Miss { reason } => EventKind::SliceExtractCacheMiss {
-                slice_name: self.slice.into(),
-                source: c.source.to_string(),
-                adapter,
-                fingerprint: lookup.digest.clone(),
-                reason: *reason,
-            },
-        }
-    }
-
-    /// No first-party source declares an extract tool; the WASI extract
-    /// dispatch protocol is not yet wired. The shared flow is wired
-    /// correctly (cache probe, Evidence read, validate-before-visible
-    /// persist) so the only seam left is the actual tool invocation.
-    fn dispatch_tool(&self) -> Result<()> {
-        Err(Error::Diag {
-            code: "source-extract-tool-unsupported",
-            detail: format!(
-                "source adapter `{}` declares `execution: tool`, but M1 ships no `extract` tool \
-                 dispatch; no first-party source declares an extract tool",
-                self.common.prepared.manifest.name
-            ),
-        })
-    }
-}
-
-impl ExtractFlow<'_> {
-    fn extract_result(&self, lookup: &cache::CacheLookup, evidence: PathBuf) -> ExtractResult {
-        let c = &self.common;
-        let (cache, reason) = match &lookup.outcome {
-            LookupOutcome::Hit { .. } => ("hit", None),
-            LookupOutcome::Miss { reason } => ("miss", Some(*reason)),
-        };
-        ExtractResult {
-            adapter: c.prepared.manifest.name.clone(),
-            source: c.source.to_string(),
-            slice: self.slice.to_string(),
-            lead: self.lead.to_string(),
-            fingerprint: lookup.digest.clone(),
-            cache,
-            reason,
-            evidence,
+    fn completed_event(&self) -> EventKind {
+        EventKind::SliceExtractCompleted {
+            slice_name: self.slice.into(),
+            source: self.common.source.to_string(),
         }
     }
 }
@@ -299,12 +238,6 @@ fn write_result_text(w: &mut dyn Write, body: &ExtractResult) -> std::io::Result
     writeln!(w, "source: {}", body.source)?;
     writeln!(w, "slice: {}", body.slice)?;
     writeln!(w, "lead: {}", body.lead)?;
-    write!(w, "cache: {}", body.cache)?;
-    if let Some(reason) = body.reason {
-        write!(w, " ({reason})")?;
-    }
-    writeln!(w)?;
-    writeln!(w, "fingerprint: {}", body.fingerprint)?;
     writeln!(w, "evidence: {}", body.evidence.display())?;
     Ok(())
 }

@@ -7,9 +7,7 @@
 //! `codex/codex-meta.yaml` — each cache tenant is self-describing).
 //! The agent owns writes to the manifest cache; the CLI reads
 //! [`ManifestMeta`]'s path only to decide whether the cache is
-//! populated. The extraction cache at
-//! `.specify/cache/extractions/<adapter>/` lives in a sibling tree and
-//! is managed by [`crate::adapter::cache`].
+//! populated.
 //!
 //! `cache_codex` distributes the shared codex packs that ship beside
 //! the target adapter in its source repo

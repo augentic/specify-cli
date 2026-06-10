@@ -144,20 +144,6 @@ fn event_wire_shapes_match_contract() {
 }
 
 #[test]
-fn cache_miss_reason_round_trips() {
-    for (variant, wire) in [
-        (CacheMissReason::NoPriorEntry, "no-prior-entry"),
-        (CacheMissReason::SourcePathChanged, "source-path-changed"),
-        (CacheMissReason::AdapterVersionChanged, "adapter-version-changed"),
-        (CacheMissReason::BriefShaChanged, "brief-sha-changed"),
-        (CacheMissReason::ToolVersionChanged, "tool-version-changed"),
-        (CacheMissReason::AdapterOptOut, "adapter-opt-out"),
-    ] {
-        assert_eq!(serde_json::to_string(&variant).expect("serialise"), format!("\"{wire}\""));
-    }
-}
-
-#[test]
 fn plan_reconcile_event_round_trips() {
     // `specify plan propose --from` emits one `plan.reconcile.completed` event; lock its wire shape.
     let completed = Event::new(

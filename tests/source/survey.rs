@@ -4,9 +4,8 @@
 //! Covers source resolution against `plan.yaml.sources`, the agent
 //! two-phase dispatch (prepare prints the handoff envelope + emits
 //! `source.execution.agent`; finalize validates-before-visible and
-//! emits `source.survey.cache-miss` under the forced opt-out), and the
-//! validate-before-visible guarantee that an invalid lead set leaves
-//! `discovery.md` untouched.
+//! emits `source.survey.completed`), and the validate-before-visible
+//! guarantee that an invalid lead set leaves `discovery.md` untouched.
 
 use std::fs;
 use std::path::PathBuf;
@@ -17,7 +16,7 @@ use crate::common::{
 
 fn stage_typescript(project: &Project) {
     // The in-repo fixture ships only `adapter.yaml` (execution: agent);
-    // stage it, then author the `survey` brief the fingerprint hashes.
+    // stage it, then author the `survey` brief the agent reads.
     let src = repo_root()
         .join("crates/workflow/tests/fixtures/plugins/adapters/sources/typescript/adapter.yaml");
     let adapter_dir = project.root().join("adapters/sources/typescript");
@@ -127,12 +126,10 @@ fn prepare_clears_stale_scratch() {
 }
 
 #[test]
-fn finalize_merges_and_cache_miss() {
+fn finalize_merges_and_completes() {
     let project = Project::init();
     stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    // The fingerprint canonicalises the bound source path, so it must exist.
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // Stand in for the agent: write the produced lead set into scratch.
     let scratch = survey_scratch_dir(&project);
@@ -148,10 +145,6 @@ fn finalize_merges_and_cache_miss() {
     let body = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(body["adapter"], "typescript");
     assert_eq!(body["source"], "legacy");
-    assert_eq!(body["cache"], "miss", "agent execution forces a cache miss");
-    assert_eq!(body["reason"], "adapter-opt-out");
-    let fingerprint = body["fingerprint"].as_str().expect("fingerprint str");
-    assert!(fingerprint.starts_with("sha256:"), "fingerprint: {fingerprint}");
     let leads: Vec<&str> =
         body["leads"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
     assert_eq!(leads, vec!["user-registration"]);
@@ -165,14 +158,12 @@ fn finalize_merges_and_cache_miss() {
     assert!(discovery.contains("- source: legacy"), "merged lead records its source");
 
     let events = read_journal_normalized(project.root());
-    let miss = events
+    let completed = events
         .iter()
-        .find(|e| e["event"] == "source.survey.cache-miss")
-        .expect("a cache-miss event");
-    assert_eq!(miss["payload"]["source"], "legacy");
-    assert_eq!(miss["payload"]["adapter"], "typescript");
-    assert_eq!(miss["payload"]["reason"], "adapter-opt-out");
-    assert_eq!(miss["payload"]["fingerprint"], fingerprint);
+        .find(|e| e["event"] == "source.survey.completed")
+        .expect("a survey-completed event");
+    assert_eq!(completed["payload"]["source"], "legacy");
+    assert_eq!(completed["payload"]["adapter"], "typescript");
 }
 
 #[test]
@@ -180,7 +171,6 @@ fn finalize_unparseable_lead_set_errors() {
     let project = Project::init();
     stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     let scratch = survey_scratch_dir(&project);
     fs::create_dir_all(&scratch).expect("create scratch dir");
@@ -202,10 +192,10 @@ fn finalize_unparseable_lead_set_errors() {
     );
     assert!(
         !project.root().join(".specify/journal.jsonl").exists()
-            || !read_journal_normalized(project.root()).iter().any(|e| {
-                e["event"] == "source.survey.cache-miss" || e["event"] == "source.survey.cache-hit"
-            }),
-        "unparseable lead set must not emit a cache event"
+            || !read_journal_normalized(project.root())
+                .iter()
+                .any(|e| e["event"] == "source.survey.completed"),
+        "unparseable lead set must not emit a completion event"
     );
 }
 
@@ -214,7 +204,6 @@ fn finalize_invalid_lead_set_untouched() {
     let project = Project::init();
     stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // `bad_id` parses as a lead block but fails the kebab-case schema.
     let scratch = survey_scratch_dir(&project);
@@ -240,13 +229,13 @@ fn finalize_invalid_lead_set_untouched() {
         !project.root().join("discovery.md").exists(),
         "an invalid lead set must leave discovery.md untouched"
     );
-    // No cache event fires for an invalid lead set.
+    // No completion event fires for an invalid lead set.
     assert!(
         !project.root().join(".specify/journal.jsonl").exists()
-            || !read_journal_normalized(project.root()).iter().any(|e| {
-                e["event"] == "source.survey.cache-miss" || e["event"] == "source.survey.cache-hit"
-            }),
-        "invalid lead set must not emit a cache event"
+            || !read_journal_normalized(project.root())
+                .iter()
+                .any(|e| e["event"] == "source.survey.completed"),
+        "invalid lead set must not emit a completion event"
     );
 }
 

@@ -97,8 +97,10 @@ pub enum EventKind {
         /// Slice id under `plan.yaml.slices[].name`.
         slice_name: SliceName,
     },
-    /// `/spec:refine` finished one source-bound `extract` call. One
-    /// event per `(source, slice)` pair. Agent-driven.
+    /// `specify source extract --phase finalize` validated and
+    /// persisted one source-bound Evidence document. One event per
+    /// `(source, slice)` pair. CLI-owned — the `/spec:refine` skill
+    /// never emits this via `specify journal emit`.
     #[serde(rename = "slice.extract.completed", rename_all = "kebab-case")]
     SliceExtractCompleted {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -147,8 +149,8 @@ pub enum EventKind {
         slice_name: SliceName,
     },
     /// Synthesis dispatched to the agent. Synthesis is always
-    /// agent-driven and `cache: opt-out`; this signal fires on the dry-run inputs phase so the
-    /// journal records that no cache short-circuit was attempted.
+    /// agent-driven; this signal fires on the dry-run inputs phase so
+    /// the journal records the handoff.
     #[serde(rename = "slice.synthesize.agent", rename_all = "kebab-case")]
     SliceSynthesizeAgent {
         /// Slice id under `plan.yaml.slices[].name`.
@@ -233,70 +235,16 @@ pub enum EventKind {
         /// Short human reason / finding code for the failure.
         reason: String,
     },
-    /// extraction cache fingerprint contract — cache lookup matched and `extract` was *not*
-    /// re-run. CI pinning the five fingerprint inputs at a known set
-    /// can re-run any prior `/spec:execute` and expect byte-stable
-    /// cache hits.
-    #[serde(rename = "slice.extract.cache-hit", rename_all = "kebab-case")]
-    SliceExtractCacheHit {
-        /// Slice id under `plan.yaml.slices[].name`.
-        slice_name: SliceName,
+    /// `specify source survey --phase finalize` validated and merged
+    /// one source's lead set into `discovery.md`. The plan-time peer
+    /// of [`Self::SliceExtractCompleted`]; one event per `(source,
+    /// survey)` run. CLI-owned.
+    #[serde(rename = "source.survey.completed", rename_all = "kebab-case")]
+    SourceSurveyCompleted {
         /// Source key from `plan.yaml.sources.<key>`.
         source: String,
         /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
         adapter: String,
-        /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
-        /// inputs the cache layer keyed against.
-        fingerprint: String,
-    },
-    /// extraction cache fingerprint contract — cache lookup missed and `extract` ran. `reason`
-    /// is one of the closed [`CacheMissReason`] values; CI observing
-    /// any of them knows exactly which input drifted.
-    #[serde(rename = "slice.extract.cache-miss", rename_all = "kebab-case")]
-    SliceExtractCacheMiss {
-        /// Slice id under `plan.yaml.slices[].name`.
-        slice_name: SliceName,
-        /// Source key from `plan.yaml.sources.<key>`.
-        source: String,
-        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
-        adapter: String,
-        /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
-        /// inputs the cache layer computed for this run.
-        fingerprint: String,
-        /// Which fingerprint input drifted (or `no-prior-entry` on
-        /// first sight; `adapter-opt-out` when the adapter declared
-        /// `cache: opt-out`).
-        reason: CacheMissReason,
-    },
-    /// `survey` cache lookup matched and the operation was *not*
-    /// re-run. The plan-time peer of [`Self::SliceExtractCacheHit`];
-    /// keyed by the same five-input [`crate::adapter::cache::CacheFingerprint`].
-    #[serde(rename = "source.survey.cache-hit", rename_all = "kebab-case")]
-    SourceSurveyCacheHit {
-        /// Source key from `plan.yaml.sources.<key>`.
-        source: String,
-        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
-        adapter: String,
-        /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
-        /// inputs the cache layer keyed against.
-        fingerprint: String,
-    },
-    /// `survey` cache lookup missed and the operation ran. The
-    /// plan-time peer of [`Self::SliceExtractCacheMiss`]; `reason` is
-    /// one of the closed [`CacheMissReason`] values (`adapter-opt-out`
-    /// when the adapter ran under forced opt-out).
-    #[serde(rename = "source.survey.cache-miss", rename_all = "kebab-case")]
-    SourceSurveyCacheMiss {
-        /// Source key from `plan.yaml.sources.<key>`.
-        source: String,
-        /// Adapter name (kebab-case; mirrors `adapter.yaml.name`).
-        adapter: String,
-        /// sha256 hex digest of the [`crate::adapter::cache::CacheFingerprint`]
-        /// inputs the cache layer computed for this run.
-        fingerprint: String,
-        /// Which fingerprint input drifted (or `no-prior-entry` on
-        /// first sight; `adapter-opt-out` under forced opt-out).
-        reason: CacheMissReason,
     },
     /// A source adapter ran one operation under agent execution
     /// (`execution: agent`). One event per `(source, operation)`
@@ -526,31 +474,6 @@ pub struct LintCounts {
     /// `specify-ignore` directive whose rationale begins with
     /// `false-positive:`.
     pub false_positive: u32,
-}
-
-/// Closed `reason` enum on [`EventKind::SliceExtractCacheMiss`].
-///
-/// Each value names one of the five fingerprint inputs from authority and reconciliation contract
-/// lint exit mapping (plus `no-prior-entry` for first runs and `adapter-opt-out`
-/// for `cache: opt-out` adapters). Operators reading `index.jsonl`
-/// see exactly which input drifted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-pub enum CacheMissReason {
-    /// No prior cache entry — first run for this fingerprint key.
-    NoPriorEntry,
-    /// `$SOURCE_DIR` canonical path (or value-binding sha256) changed.
-    SourcePathChanged,
-    /// `<name>@<version>` from `adapter.yaml` changed.
-    AdapterVersionChanged,
-    /// sha256 of the brief markdown driving the operation changed.
-    BriefShaChanged,
-    /// One of the declared-tool versions changed.
-    ToolVersionChanged,
-    /// The adapter declared `cache: opt-out`; the CLI bypasses the
-    /// cache and the matching journal event carries this reason.
-    AdapterOptOut,
 }
 
 /// Closed `action` enum on [`EventKind::PlanAmendAuthorityOverride`].

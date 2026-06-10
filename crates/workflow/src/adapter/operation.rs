@@ -3,19 +3,15 @@
 //! [`SourceOperation`] (`extract | survey`) and [`TargetOperation`]
 //! (`shape | build | merge`) are the typed `briefs.keys()` carried by
 //! the axis-specific manifest structs in `core.rs`. Living together in
-//! this module keeps the source/target operation pair symmetric and
-//! gives the cache layer a stable import path (`cache.rs` re-exports
-//! [`SourceOperation`] for its `CacheIndexEntry.operation` field so
-//! existing cache consumers reach for the type via the cache surface
-//! they already import from).
+//! this module keeps the source/target operation pair symmetric.
 //!
 //! Wire format is kebab-case on both sides (`extract | survey` /
 //! `shape | build | merge`) — the [`Serialize`] / [`Deserialize`]
 //! derives, the [`strum::Display`] impl, and the [`strum::EnumString`]
 //! impl all share the same `kebab-case` rule, so the YAML manifest
-//! key, the slice outcome `phase` field, the cache index `operation`
-//! field, and any `parse::<TargetOperation>()` call all agree on a
-//! single wire spelling.
+//! key, the slice outcome `phase` field, and any
+//! `parse::<TargetOperation>()` call all agree on a single wire
+//! spelling.
 
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
@@ -27,10 +23,7 @@ use strum::EnumString;
 /// workflow §Source adapter contract. The enum is the typed
 /// `briefs.keys()` carried by [`crate::adapter::SourceAdapter`]
 /// (parsed out of `adapters/sources/<name>/adapter.yaml` at load
-/// time) and the discriminant stamped onto every cache index row at
-/// `.specify/cache/extractions/<adapter>/index.jsonl` so
-/// `specify source resolve --explain` can attribute hits and misses
-/// (see [`crate::adapter::cache::CacheIndexEntry::operation`]).
+/// time).
 ///
 /// Variants declared in kebab-alphabetical order so `BTreeMap`
 /// iteration matches the wire envelope.
@@ -59,8 +52,8 @@ pub enum SourceOperation {
 }
 
 impl SourceOperation {
-    /// Default cached-artifact filename per operation:
-    /// `evidence.yaml` for `extract`, `leads.md` for `survey`.
+    /// Staged-artifact filename per operation: `evidence.yaml` for
+    /// `extract`, `leads.md` for `survey`.
     #[must_use]
     pub const fn artifact_name(self) -> &'static str {
         match self {

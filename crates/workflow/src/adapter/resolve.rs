@@ -43,7 +43,7 @@ impl SourceAdapter {
         let (manifest, location, manifest_path) =
             resolve_typed::<Self>(Axis::Source, name, project_dir)?;
         check_axis_and_name(Axis::Source, name, manifest.axis, &manifest.name, &manifest_path)?;
-        check_execution(manifest.execution, manifest.cache, &manifest_path)?;
+        check_execution(manifest.execution, &manifest_path)?;
         Ok(ResolvedSourceAdapter { manifest, location })
     }
 }
@@ -75,7 +75,7 @@ impl TargetAdapter {
         let (manifest, location, manifest_path) =
             resolve_typed::<Self>(Axis::Target, name, project_dir)?;
         check_axis_and_name(Axis::Target, name, manifest.axis, &manifest.name, &manifest_path)?;
-        check_execution(manifest.execution, manifest.cache, &manifest_path)?;
+        check_execution(manifest.execution, &manifest_path)?;
         Ok(ResolvedTargetAdapter { manifest, location })
     }
 }
@@ -140,10 +140,7 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
     let cached = cache_dir(project_dir, axis, name);
     let local = adapter_axis_dir(project_dir, axis).join(name);
     // The manifest cache owns its own root
-    // (`.specify/cache/manifests/{sources,targets}/<name>/`), disjoint
-    // from the extraction cache under
-    // `.specify/cache/extractions/<adapter>/`. A bare cache directory
-    // is therefore always a manifest mirror — see
+    // (`.specify/cache/manifests/{sources,targets}/<name>/`) — see
     // [DECISIONS.md §"Cache layout"].
     let location = if cached.is_dir() {
         AdapterLocation::Cached(cached)

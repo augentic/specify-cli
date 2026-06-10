@@ -17,7 +17,7 @@ pub enum JournalAction {
     /// `journal-emit-payload-schema`. On success the CLI stamps a
     /// second-precision UTC timestamp and appends exactly one line.
     Emit {
-        /// Dotted-kebab event id (e.g. `source.survey.cache-miss`).
+        /// Dotted-kebab event id (e.g. `slice.build.started`).
         event: String,
 
         /// JSON object carrying the event's payload fields (e.g.

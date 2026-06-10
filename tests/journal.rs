@@ -430,15 +430,16 @@ fn slice_validate_provenance_no_journal() {
     );
 }
 
-// -- agent-emit helper (slice.extract.completed, plan.amend.divergence)
+// -- append_batch helper (plan.amend.divergence, slice.extract.completed)
 
 #[test]
 fn agent_emit_one_event_per_line() {
-    // Exercises the public Rust helper skill bodies call for
-    // agent-driven events. The harness drives `append` directly
-    // because the CLI does not own a `journal append` verb
-    // (workflow §"What was cut and why"). `slice.synthesis.*` is
-    // CLI-owned via `specify slice validate` instead.
+    // Exercises the public Rust `append_batch` helper. The harness
+    // drives `append` directly because the CLI does not own a
+    // `journal append` verb (workflow §"What was cut and why").
+    // `slice.synthesis.*` is CLI-owned via `specify slice validate`;
+    // `slice.extract.completed` is CLI-owned via
+    // `specify source extract --phase finalize`.
     let project = Project::init();
     let layout = Layout::new(project.root());
     let fixed: jiff::Timestamp =
@@ -484,21 +485,16 @@ fn agent_emit_one_event_per_line() {
 
 #[test]
 fn emit_appends_one_line_per_event() {
-    // The three RFC-29 D1 source events round-trip through the
-    // `journal emit` front door: id + --payload deserialise into the
-    // closed taxonomy, the CLI stamps the timestamp, and exactly one
-    // line lands per call.
+    // The source events round-trip through the `journal emit` front
+    // door: id + --payload deserialise into the closed taxonomy, the
+    // CLI stamps the timestamp, and exactly one line lands per call.
     let project = Project::init();
     let cases: [(&str, &str, &str); 3] = [
+        ("source.survey.completed", r#"{"source":"runtime","adapter":"captures"}"#, "adapter"),
         (
-            "source.survey.cache-hit",
-            r#"{"source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}"#,
-            "fingerprint",
-        ),
-        (
-            "source.survey.cache-miss",
-            r#"{"source":"runtime","adapter":"captures","fingerprint":"sha256:beef","reason":"adapter-opt-out"}"#,
-            "reason",
+            "slice.extract.completed",
+            r#"{"slice-name":"checkout","source":"runtime"}"#,
+            "slice-name",
         ),
         (
             "source.execution.agent",
@@ -518,13 +514,12 @@ fn emit_appends_one_line_per_event() {
     let events = read_journal(project.root());
     assert_eq!(events.len(), 3, "expected one line per emit, got {}", events.len());
 
-    assert_eq!(events[0]["event"], "source.survey.cache-hit");
+    assert_eq!(events[0]["event"], "source.survey.completed");
     assert_eq!(events[0]["payload"]["source"], "runtime");
     assert_eq!(events[0]["payload"]["adapter"], "captures");
-    assert_eq!(events[0]["payload"]["fingerprint"], "sha256:cafef00d");
 
-    assert_eq!(events[1]["event"], "source.survey.cache-miss");
-    assert_eq!(events[1]["payload"]["reason"], "adapter-opt-out");
+    assert_eq!(events[1]["event"], "slice.extract.completed");
+    assert_eq!(events[1]["payload"]["slice-name"], "checkout");
 
     assert_eq!(events[2]["event"], "source.execution.agent");
     assert_eq!(events[2]["payload"]["operation"], "survey");
@@ -641,7 +636,7 @@ fn emit_incomplete_payload_rejected() {
             "json",
             "journal",
             "emit",
-            "source.survey.cache-hit",
+            "source.survey.completed",
             "--payload",
             r#"{"source":"runtime"}"#,
         ])

@@ -8,10 +8,7 @@
 //!   wins.
 //! - cache placement — a load of `(source, …)` populates
 //!   `.specify/cache/manifests/sources/<name>/`; `(target, …)`
-//!   mirrors under `manifests/targets/`. The extraction cache fingerprint contract extraction
-//!   cache lives in a sibling tree under
-//!   `.specify/cache/extractions/<adapter>/` and is exercised by the
-//!   `adapter::cache` unit tests.
+//!   mirrors under `manifests/targets/`.
 //! - schema validation — both the shared shape and the axis-specific
 //!   refinements (axis literal, closed `briefs.<operation>` keys) reject
 //!   hand-rolled inputs.

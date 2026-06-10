@@ -6,11 +6,11 @@
 //! with `evidence-dir`, a single lead, and either `source-dir` or
 //! `value-inline` — and emits `source.execution.agent`; finalize
 //! validates-before-visible, persists the Evidence, and emits
-//! `slice.extract.cache-miss` under the forced opt-out), the
-//! validate-before-visible guarantee that an invalid Evidence document
-//! persists no file, the value-bound `intent` path, and the sandbox
-//! path-denied acceptance scenario `5j` (`$PROJECT_DIR` invisible to
-//! the adapter; out-of-sandbox Evidence denied).
+//! `slice.extract.completed`), the validate-before-visible guarantee
+//! that an invalid Evidence document persists no file, the value-bound
+//! `intent` path, and the sandbox path-denied acceptance scenario `5j`
+//! (`$PROJECT_DIR` invisible to the adapter; out-of-sandbox Evidence
+//! denied).
 
 use std::fs;
 use std::path::PathBuf;
@@ -23,7 +23,7 @@ use crate::common::{
 
 /// Stage the path-bound `typescript` source adapter (the in-repo
 /// fixture ships only `adapter.yaml`; author the `extract` brief the
-/// fingerprint hashes).
+/// agent reads).
 fn stage_typescript(project: &Project) {
     let src = repo_root()
         .join("crates/workflow/tests/fixtures/plugins/adapters/sources/typescript/adapter.yaml");
@@ -195,12 +195,10 @@ fn prepare_value_bound_carries_inline() {
 }
 
 #[test]
-fn finalize_persists_and_cache_miss() {
+fn finalize_persists_and_completes() {
     let project = Project::init();
     stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    // The fingerprint canonicalises the bound source path, so it must exist.
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // Stand in for the agent: write the produced Evidence into scratch.
     let scratch = extract_scratch_dir(&project, "typescript", "identity");
@@ -219,10 +217,6 @@ fn finalize_persists_and_cache_miss() {
     assert_eq!(body["source"], "legacy");
     assert_eq!(body["slice"], "identity");
     assert_eq!(body["lead"], "user-registration");
-    assert_eq!(body["cache"], "miss", "agent execution forces a cache miss");
-    assert_eq!(body["reason"], "adapter-opt-out");
-    let fingerprint = body["fingerprint"].as_str().expect("fingerprint str");
-    assert!(fingerprint.starts_with("sha256:"), "fingerprint: {fingerprint}");
 
     // The validated Evidence is now persisted to the slice evidence path.
     let persisted = slice_evidence_path(&project, "identity", "legacy");
@@ -230,15 +224,12 @@ fn finalize_persists_and_cache_miss() {
     assert_eq!(fs::read_to_string(&persisted).expect("read persisted"), VALID_EVIDENCE);
 
     let events = journal_events(&project);
-    let miss = events
+    let completed = events
         .iter()
-        .find(|e| e["event"] == "slice.extract.cache-miss")
-        .expect("a slice.extract.cache-miss event");
-    assert_eq!(miss["payload"]["slice-name"], "identity");
-    assert_eq!(miss["payload"]["source"], "legacy");
-    assert_eq!(miss["payload"]["adapter"], "typescript");
-    assert_eq!(miss["payload"]["reason"], "adapter-opt-out");
-    assert_eq!(miss["payload"]["fingerprint"], fingerprint);
+        .find(|e| e["event"] == "slice.extract.completed")
+        .expect("a slice.extract.completed event");
+    assert_eq!(completed["payload"]["slice-name"], "identity");
+    assert_eq!(completed["payload"]["source"], "legacy");
 }
 
 #[test]
@@ -264,8 +255,6 @@ fn finalize_value_bound_persists() {
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(body["adapter"], "intent");
-    assert_eq!(body["cache"], "miss");
-    assert_eq!(body["reason"], "adapter-opt-out");
 
     assert!(
         slice_evidence_path(&project, "identity", "brief").is_file(),
@@ -278,7 +267,6 @@ fn finalize_invalid_persists_no_file() {
     let project = Project::init();
     stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // Missing the required `claims` field — parses as YAML but fails the schema.
     let scratch = extract_scratch_dir(&project, "typescript", "identity");
@@ -302,20 +290,18 @@ fn finalize_invalid_persists_no_file() {
         !slice_evidence_path(&project, "identity", "legacy").exists(),
         "an invalid Evidence document must persist no file"
     );
-    // No cache event fires for an invalid Evidence document.
+    // No completion event fires for an invalid Evidence document.
     assert!(
         !project.root().join(".specify/journal.jsonl").exists()
-            || !journal_events(&project).iter().any(|e| {
-                e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
-            }),
-        "invalid Evidence must not emit a cache event"
+            || !journal_events(&project).iter().any(|e| e["event"] == "slice.extract.completed"),
+        "invalid Evidence must not emit a completion event"
     );
 }
 
 /// Acceptance scenario `extract-failure` — the extract step fails to
 /// produce Evidence (the agent's extract brief ran but staged nothing in
 /// `$SCRATCH_DIR`). finalize fails closed with `extract-evidence-missing`,
-/// persists no Evidence, emits no cache event, and leaves the slice
+/// persists no Evidence, emits no completion event, and leaves the slice
 /// `refining` so no synthesis can run. Distinct from
 /// `finalize_invalid_persists_no_file` (schema failure on a *present*
 /// document) and `sandbox_denies_out_of_scope` (a document staged outside
@@ -325,7 +311,6 @@ fn finalize_missing_evidence_stays_refining() {
     let project = Project::init();
     stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // The agent produced nothing: scratch exists but holds no evidence.yaml.
     let scratch = extract_scratch_dir(&project, "typescript", "identity");
@@ -348,13 +333,11 @@ fn finalize_missing_evidence_stays_refining() {
         !slice_evidence_path(&project, "identity", "legacy").exists(),
         "a failed extract must persist no Evidence"
     );
-    // A failed extract fires no cache event.
+    // A failed extract fires no completion event.
     assert!(
         !project.root().join(".specify/journal.jsonl").exists()
-            || !journal_events(&project).iter().any(|e| {
-                e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
-            }),
-        "a failed extract must not emit a cache event"
+            || !journal_events(&project).iter().any(|e| e["event"] == "slice.extract.completed"),
+        "a failed extract must not emit a completion event"
     );
 }
 
@@ -379,18 +362,14 @@ fn finalize_missing_evidence_stays_refining() {
 ///     `extract-evidence-missing`, persists no Evidence, and leaves the
 ///     slice `refining`.
 ///
-/// M1 ships the first-party sources as `execution: agent`, so the
-/// denial is structural — the runner never mounts or hands over
-/// `$PROJECT_DIR` — rather than a live WASI preopen rejection; the
-/// `tool` WASI-dispatch seam that would surface a kernel-level denial
-/// is wired but unexercised (see `dispatch_extract_tool`).
+/// Source operations are agent-only, so the denial is structural —
+/// the runner never mounts or hands over `$PROJECT_DIR` — rather than
+/// a live WASI preopen rejection.
 #[test]
 fn sandbox_denies_out_of_scope() {
     let project = Project::init();
     stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    // The fingerprint canonicalises the bound source path, so it must exist.
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // (a) prepare: the handoff envelope must not expose $PROJECT_DIR.
     let assert = specify_cmd()
@@ -439,12 +418,10 @@ fn sandbox_denies_out_of_scope() {
         !slice_evidence_path(&project, "identity", "legacy").exists(),
         "out-of-sandbox Evidence must not be persisted"
     );
-    // A denied finalize fails before any cache event is emitted.
+    // A denied finalize fails before any completion event is emitted.
     assert!(
-        !journal_events(&project).iter().any(|e| {
-            e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
-        }),
-        "a denied out-of-sandbox extract must not emit a cache event"
+        !journal_events(&project).iter().any(|e| e["event"] == "slice.extract.completed"),
+        "a denied out-of-sandbox extract must not emit a completion event"
     );
 }
 

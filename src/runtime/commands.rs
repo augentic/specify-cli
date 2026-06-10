@@ -133,17 +133,9 @@ pub fn run(cli: Cli) -> Exit {
 /// ([`scoped`]).
 fn dispatch_source(format: Format, action: SourceAction) -> Exit {
     match action {
-        SourceAction::Resolve {
-            name,
-            project_dir,
-            explain,
-        } => dispatch(format, || {
-            if explain {
-                source::cache::explain(format, &name, &project_dir)
-            } else {
-                resolve_adapter(format, Axis::Source, &name, &project_dir)
-            }
-        }),
+        SourceAction::Resolve { name, project_dir } => {
+            dispatch(format, || resolve_adapter(format, Axis::Source, &name, &project_dir))
+        }
         SourceAction::Preview {
             adapter,
             source,

@@ -104,7 +104,7 @@ fn synthesize_dry_run_emits_inputs_envelope() {
         "dry-run must not write model.yaml"
     );
 
-    // The always-agent / cache: opt-out signal fires on the dry-run.
+    // The always-agent handoff signal fires on the dry-run.
     let journal =
         fs::read_to_string(project.root().join(".specify/journal.jsonl")).expect("read journal");
     assert!(

@@ -9,8 +9,8 @@
 //!   emits the `kind: inputs` envelope ([`SynthesisInputs`]) for the
 //!   agent synthesis step. `--format json` prints the envelope verbatim;
 //!   nothing is written. It emits the `slice.synthesize.agent` journal
-//!   event — synthesis is always agent-dispatched and `cache: opt-out`,
-//!   so the journal records that no cache short-circuit was attempted.
+//!   event — synthesis is always agent-dispatched, and the journal
+//!   records the handoff.
 //! - `--from <response.json>` is the only writer. It schema-gates the
 //!   raw response bytes, deserialises the agent's
 //!   [`SynthesisResponse`], resolves authority from the on-disk
@@ -81,8 +81,7 @@ fn dry_run_inputs(ctx: &Ctx, name: &str) -> Result<()> {
     let shape_brief = resolve_shape_brief(ctx, &slice_dir)?;
     let inputs = build_synthesis_inputs(name, &sources, &shape_brief);
 
-    // Synthesis is always agent-dispatched and `cache: opt-out` —
-    // record that no cache short-circuit was attempted.
+    // Synthesis is always agent-dispatched — record the handoff.
     emit(
         ctx,
         EventKind::SliceSynthesizeAgent {

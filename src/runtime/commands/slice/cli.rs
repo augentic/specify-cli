@@ -48,8 +48,7 @@ pub enum SliceAction {
     ///   `evidence/<source>.yaml` and the target `shape` brief and
     ///   emits the `kind: inputs` envelope for the agent synthesis
     ///   step. Writes nothing; emits the `slice.synthesize.agent`
-    ///   journal event (synthesis is always agent-dispatched and
-    ///   `cache: opt-out`).
+    ///   journal event (synthesis is always agent-dispatched).
     /// - `--from <response.json>` is the only writer. It schema-gates
     ///   the agent response, resolves authority from the on-disk
     ///   Evidence and any per-slice override, projects the kernel-owned

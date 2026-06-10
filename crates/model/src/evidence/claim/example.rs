@@ -32,8 +32,8 @@ pub struct ExampleClaim {
     /// Optional `<path>#L<n>` anchor (the capture's on-disk location).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
-    /// `sha256:<hex>` digest of the capture bytes. The cache layer
-    /// (extraction cache fingerprint contract) keys against this value.
+    /// `sha256:<hex>` digest of the capture bytes — the stable content
+    /// anchor replay verification joins against.
     pub replay_digest: String,
     /// Optional inline input payload — typically the captured request.
     /// Shape is open per the schema's per-kind body posture.

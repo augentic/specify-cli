@@ -19,28 +19,12 @@ pub fn assert_wire_rows(rows: &[(EventKind, &[&str])]) {
 pub fn check_contract_part1() {
     let rows: &[(EventKind, &[&str])] = &[
         (
-            EventKind::SliceExtractCacheHit {
+            EventKind::SliceExtractCompleted {
                 slice_name: "identity-user-registration".into(),
                 source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:cafef00d".to_string(),
             },
             &[
-                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
-            ],
-        ),
-        (
-            EventKind::SliceExtractCacheMiss {
-                slice_name: "identity-user-registration".into(),
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:beef".to_string(),
-                reason: CacheMissReason::AdapterVersionChanged,
-            },
-            &[
-                r#""event":"slice.extract.cache-miss""#,
-                r#""reason":"adapter-version-changed""#,
-                r#""source":"runtime""#,
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.completed","payload":{"slice-name":"identity-user-registration","source":"runtime"}}"#,
             ],
         ),
         (
@@ -81,27 +65,12 @@ pub fn check_contract_part2() {
             ],
         ),
         (
-            EventKind::SourceSurveyCacheHit {
+            EventKind::SourceSurveyCompleted {
                 source: "runtime".to_string(),
                 adapter: "captures".to_string(),
-                fingerprint: "sha256:cafef00d".to_string(),
             },
             &[
-                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.cache-hit","payload":{"source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
-            ],
-        ),
-        (
-            EventKind::SourceSurveyCacheMiss {
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:beef".to_string(),
-                reason: CacheMissReason::AdapterOptOut,
-            },
-            &[
-                r#""event":"source.survey.cache-miss""#,
-                r#""reason":"adapter-opt-out""#,
-                r#""source":"runtime""#,
-                r#""fingerprint":"sha256:beef""#,
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.completed","payload":{"source":"runtime","adapter":"captures"}}"#,
             ],
         ),
     ];
@@ -257,16 +226,9 @@ fn probe_kinds_part2() -> Vec<EventKind> {
             slice_name: "s".into(),
             source: "k".to_string(),
         },
-        EventKind::SourceSurveyCacheHit {
+        EventKind::SourceSurveyCompleted {
             source: "k".to_string(),
             adapter: "captures".to_string(),
-            fingerprint: "sha256:beef".to_string(),
-        },
-        EventKind::SourceSurveyCacheMiss {
-            source: "k".to_string(),
-            adapter: "captures".to_string(),
-            fingerprint: "sha256:beef".to_string(),
-            reason: CacheMissReason::AdapterOptOut,
         },
         EventKind::SourceExecutionAgent {
             source: "k".to_string(),

@@ -438,11 +438,9 @@ The axis segment (`sources` for `Axis::Source`, `targets` for
 `Axis::Target`) keeps source and target adapters with colliding names
 disambiguated by axis. Cache placement matches the probe layout —
 `cache_dir(axis, name)` returns
-`<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`.
-The sibling extraction cache lives in a disjoint tree under
-`<project_dir>/.specify/cache/extractions/<adapter>/`; see §"Cache
-layout". Refer to workflow §"Resolver and cache" before changing the
-probe order or manifest-cache layout.
+`<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`;
+see §"Cache layout". Refer to workflow §"Resolver and cache" before
+changing the probe order or manifest-cache layout.
 
 ### First-party `<adapter>` shorthand at init
 
@@ -553,22 +551,25 @@ keys are rejected by `specify slice validate` with the
 map is scoped to one slice — plan-wide and project-wide overrides
 are out of scope.
 
-## Extraction cache fingerprint inputs
+## Extraction is agent-only — no cache, no fingerprints
 
-The closed list of fingerprint
-inputs (`source path canonicalised | adapter name@version | brief
-sha256 | sorted declared-tool versions | lead id`) lives on
-[`crate::adapter::cache::CacheFingerprint`]. CI that pins the four inputs
-common across runs can re-run any prior `/spec:execute` and expect
-byte-stable cache hits; CI observing any of the five
-`slice.extract.cache-miss` reasons knows exactly which input
-drifted. Adapter authors opt out with `cache: opt-out` on
-`adapter.yaml`; the matching journal event carries `reason:
-adapter-opt-out`. `lead id` is the one input that distinguishes the
-two source operations: `specify source survey` keys the fingerprint
-**without** a lead id (it runs at plan time and carries no slice),
-while `specify source extract` keys it **with** the lead id. See
-§"Source operations (D1)".
+Source extraction supports exactly one execution mode: `agent`. The
+deterministic-extraction substrate that once sat behind it — the
+extraction cache at `.specify/cache/extractions/<adapter>/`, the
+closed five-input `CacheFingerprint`, the `cache: opt-out` manifest
+field, the `source.survey.cache-hit/-miss` and
+`slice.extract.cache-hit/-miss` journal events with their
+`CacheMissReason` enum, the `Flow::dispatch_tool` seam in the source
+op kernel, and `specify source resolve --explain` — was deleted per
+YAGNI. Agent outputs are non-deterministic, so no run was ever served
+from the cache; the machinery only constrained changes to the live
+agent path. `source.schema.json` now enumerates `execution: ["agent"]`
+for sources (targets keep `agent | tool` — the target-side WASI build
+dispatch is real). The finalize phases emit plain completion events
+(`source.survey.completed` / `slice.extract.completed`) instead of
+cache-probe outcomes. If a deterministic source ever lands, re-add
+caching behind a fresh decision — the journal taxonomy and manifest
+schema are the seams to widen.
 
 ## Journal event names
 
@@ -583,7 +584,7 @@ variants are `snake_case` and bridge to the wire via
 | `plan.transition.undone`                                | `specify plan transition <entry> --undo` (per-entry reverse rung; one event per rung).                                                                                                                                                                                                                 |
 | `plan.amend.divergence`                                 | `specify plan amend --divergence likely\|accepted\|rejected` on any change to a slice's `divergence` field (the `/spec:plan` agent stages `likely`; the operator flips `accepted`/`rejected`).                                                                                                         |
 | `slice.transition.refined`                              | `specify slice transition <slice> refined`.                                                                                                                                                                                                                                                            |
-| `slice.extract.completed`                               | The `/spec:refine` skill, after the serial `extract` loop closes.                                                                                                                                                                                                                                      |
+| `slice.extract.completed`                               | `specify source extract --phase finalize`, once per `(source, slice)` after the Evidence validates and persists. CLI-owned — the `/spec:refine` skill never emits it via `specify journal emit`.                                                                                                       |
 | `slice.synthesize.started`                              | `specify slice synthesize --from` at the start of the projecting/persisting pass. Payload carries `slice-name`.                                                                                                                                                                                        |
 | `slice.synthesize.agent`                                | `specify slice synthesize --dry-run` after assembling the agent inputs envelope. One event per invocation; payload carries `slice-name`.                                                                                                                                                               |
 | `slice.synthesize.completed`                            | `specify slice synthesize --from` once every artifact validated and persisted. Payload carries `slice-name` and the persisted `artifacts[]`.                                                                                                                                                           |
@@ -591,8 +592,7 @@ variants are `snake_case` and bridge to the wire via
 | `slice.synthesis.conflict` / `.divergence` / `.unknown` | `specify slice validate`, one per requirement-block tag emitted by the synthesis substep. (Distinct from the `slice.synthesize.*` lifecycle quartet above — see §"Slice synthesis engine (RFC-29 M2b)".)                                                                                               |
 | `slice.build.started` / `.succeeded` / `.failed`        | `/spec:build`'s target-adapter build flow (RFC-29d M3); one per slice. Payloads carry `slice-name`; the `.failed` variant adds a short `reason` / finding code.                                                                                                                                        |
 | `slice.merge.started` / `.succeeded` / `.failed`        | `specify slice merge`'s validator outcome (RFC-29d M3) — fires on the validator result, not on a merge report. Payloads carry `slice-name`; the `.failed` variant adds a short `reason` / finding code.                                                                                                |
-| `slice.extract.cache-hit` / `.cache-miss`               | The extract code path; payloads carry the fingerprint sha256 (and the closed `reason` enum on misses). the extraction cache fingerprint contract.                                                                                                                                                      |
-| `source.survey.cache-hit` / `.cache-miss`               | The `specify source survey` runner's cache probe; payloads carry `source`, `adapter`, the fingerprint sha256 (and the closed `CacheMissReason` enum on misses — a forced-opt-out survey reports `reason: adapter-opt-out`).                                                                            |
+| `source.survey.completed`                               | `specify source survey --phase finalize`, once the lead set validates and merges into `discovery.md`; payload carries `source` and `adapter`. CLI-owned.                                                                                                                                               |
 | `source.execution.agent`                                | The `survey` / `extract` runner on every `execution: agent` invocation; payload carries `source`, `adapter`, and the closed `SourceOperation` (`survey` \| `extract`).                                                                                                                                 |
 | `target.execution.agent`                                | `/spec:build`'s target-adapter build flow on every agent invocation (RFC-29d M3); payload carries `slice` and `target` derived from the bound project.                                                                                                                                                 |
 | `slice.archive.created`                                 | `specify slice merge`'s archive step (the append-only outcome ledger). Payload carries `slice-name`, `touched-specs`, `outcome-summary`, and the optional `merge-sha`. See §"History via git plus an outcome ledger".                                                                                  |
@@ -613,9 +613,8 @@ and the per-event row table.
 ### `specify journal emit` — guarded front door (D12)
 
 Deterministic commands emit their own events. Agent-orchestrated
-phases that have no deterministic emit command (e.g. the `execution:
-agent` source operations) write through `specify journal emit
-<event-id> [--payload <json>] [--format json]`
+phases that have no deterministic emit command write through
+`specify journal emit <event-id> [--payload <json>] [--format json]`
 ([`src/runtime/commands/journal/emit.rs`](./src/runtime/commands/journal/emit.rs)).
 The verb mints **no event kinds of its own** — it is a guarded front
 door onto the same closed `EventKind` taxonomy, preserving "one closed
@@ -710,12 +709,10 @@ tool. The accepted shape is semver only: `x.y.z` with an optional
 `-prerelease` suffix, locked by the schema pattern
 `^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$`. No `v` prefix, no `sha256:` digest,
 no free-form strings. Tools without a release must cut one before being
-declared. The reproducibility argument is the extraction cache
-fingerprint: it folds `sorted declared-tool versions` into the
-extraction cache key, so an absent or non-semver pin would silently
-drop tool-version from the fingerprint and let two adapter revisions
-share a cache slot. Enforced uniformly by `adapter.schema.json`,
-`source.schema.json`, and `target.schema.json`.
+declared, so every dispatched tool carries an auditable version and two
+adapter revisions can never share an ambiguous tool identity. Enforced
+uniformly by `adapter.schema.json`, `source.schema.json`, and
+`target.schema.json`.
 
 ## Adapter name uniqueness
 
@@ -761,7 +758,7 @@ each root carries its own lifecycle policy (scratch is wiped freely;
 cache is the future GC surface). Both roots are gitignored by
 `ensure_gitignore_entries` alongside `.specify/workspace/`.
 
-`.specify/cache/` hosts three distinct, root-disjoint memoization
+`.specify/cache/` hosts two distinct, root-disjoint memoization
 trees:
 
 - `manifests/{sources,targets}/<name>/` — adapter manifest cache. The
@@ -777,21 +774,10 @@ trees:
 - `codex/` — the distributed shared-rules codex, with provenance at
   `codex/codex-meta.yaml` (`CodexMeta`). See §"Shared codex
   distribution".
-- `extractions/<adapter>/<fingerprint>/` — per-source extraction result cache, with the append-only `index.jsonl` at the
-  adapter root (`extractions/<adapter>/index.jsonl`). Per-adapter
-  only — not per-axis — because extraction is a source-axis operation;
-  the adapter name carries enough identity. Resolved by
-  `crates/workflow/src/adapter/cache/io.rs::CacheLayout`. Everything
-  under `extractions/` is fingerprint-keyed cache content, and the
-  index is **pure cache mechanism, not an audit log**: it exists to
-  serve the miss-reason classifier, durable audit is the journal's job
-  (the `source.{survey,extract}.cache-{hit,miss}` events), and an
-  adapter with an effective `cache: opt-out` writes nothing under
-  `extractions/` at all. Each index row carries the full closed
-  fingerprint input record (`CacheIndexEntry.inputs`), so the entry
-  directory holds only the cached artifact and the miss-reason
-  classifier diffs against the index alone; a row without an input
-  record reads as `no-prior-entry` (warn-and-miss, never fail).
+
+(There is no extraction-result cache: source extraction is agent-only
+and never memoized — see §"Extraction is agent-only — no cache, no
+fingerprints".)
 
 `.specify/scratch/` hosts the per-run lanes:
 
@@ -808,10 +794,8 @@ trees:
   consume a stale envelope from a prior run.
 
 Each cache owns its own root, so the loader does not probe for an
-`adapter.yaml` inside the cache directory to disambiguate manifest vs.
-extraction co-tenancy — a manifest-cache directory is always a manifest
-mirror, and the extraction tree never carries `adapter.yaml` at any
-level. Refer to §"Extraction cache fingerprint inputs" for the extraction-cache fingerprint contract.
+`adapter.yaml` inside the cache directory to disambiguate co-tenancy —
+a manifest-cache directory is always a manifest mirror.
 
 ## Target adapter suffix policy
 
@@ -880,45 +864,34 @@ finishes; string operation names never survive past the manifest loader.
 
 ## Adapter execution mode (D9)
 
-Every adapter manifest declares a closed `execution` enum — `agent |
-tool` — `required` at the top level of both `source.schema.json` and
-`target.schema.json` (RFC-29 D9). The loader rejects a manifest that
-omits the field with `adapter-execution-mode-required` rather than
-defaulting silently, and rejects `execution: agent` declared alongside
-any cache mode other than `opt-out` with
-`adapter-execution-agent-cache-conflict`
-(`check_execution` in [`crates/workflow/src/adapter/core.rs`](./crates/workflow/src/adapter/core.rs)).
-Both are `Error::Validation`, exit 2. The conflict check is a
-**forward-guard**: `CacheMode` is a single-variant enum (`OptOut`) and
-`source.schema.json#/properties/cache` enumerates only `["opt-out"]`,
-so no legal manifest can trigger it today — it exists to catch a
-future-widened `CacheMode`. The `Execution` enum lives on
-`SourceAdapter` / `TargetAdapter`; `execution: agent` forces the
-effective cache mode to `opt-out` regardless of the declared `cache:`
-field, which `SourceAdapter::effective_cache_mode` (consumed by the
-source-operation runner, not the raw `cache` field) returns.
+Every adapter manifest declares a closed `execution` enum, `required`
+at the top level of both `source.schema.json` and `target.schema.json`
+(RFC-29 D9). The loader rejects a manifest that omits the field with
+`adapter-execution-mode-required` rather than defaulting silently
+(`check_execution` in
+[`crates/workflow/src/adapter/core.rs`](./crates/workflow/src/adapter/core.rs));
+`Error::Validation`, exit 2. The `Execution` enum lives on
+`SourceAdapter` / `TargetAdapter`.
 
-The two values branch dispatch:
+Source adapters are **agent-only**: `source.schema.json` enumerates
+`execution: ["agent"]`, and the source op kernel runs the two-phase
+agent flow unconditionally (see §"Extraction is agent-only — no cache,
+no fingerprints"). Target manifests may declare `agent` or `tool`:
 
 - **`agent`** — the brief is run by an agent against the sandbox
   preopens. The CLI orchestrates inputs, validates outputs against the
-  same schemas, never caches the result, and emits a `*.execution.agent`
-  journal event per invocation. Dispatch is **two-phase** (prepare /
-  finalize; see §"Source operations (D1)").
-- **`tool`** — `survey` / `extract` (sources) or `build` / `merge`
-  (targets) dispatch through a declared WASI tool or built-in
-  deterministic Rust path, **single-phase** within one process, with the
-  result cached under the extraction fingerprint.
+  same schemas, and emits a `*.execution.agent` journal event per
+  invocation. Dispatch is **two-phase** (prepare / finalize; see
+  §"Source operations (D1)").
+- **`tool`** — target-axis only: `build` / `merge` dispatch through a
+  declared WASI tool or built-in deterministic Rust path,
+  **single-phase** within one process.
 
 All eight first-party manifests (five sources, three targets) ship
-`execution: agent` — none owns a deterministic tool yet, so `agent` is
-the truthful value and the `tool` branch is wired and schema-valid but
-unexercised by first-party adapters until a source or target gains a
-real tool. M1 landed the source
-side; RFC-29d M3 landed the target side (`build` / `merge` dispatch —
-§"Target build envelope (D6, D9 target side, D7 proof)"), and target
-manifests still carry `agent` because no first-party target owns a build
-tool yet. Refer to workflow §"Adapter implementation shape".
+`execution: agent`. RFC-29d M3 landed the target-side `build` / `merge`
+dispatch (§"Target build envelope (D6, D9 target side, D7 proof)"), and
+target manifests still carry `agent` because no first-party target owns
+a build tool yet. Refer to workflow §"Adapter implementation shape".
 
 ## Source operations (D1)
 
@@ -960,12 +933,9 @@ resolved manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR`
 `.specify/cache/`, so a scratch write can never pollute a cache
 artifact: `extract` uses `.specify/scratch/<adapter>/<slice>/`;
 `survey` (plan-time, no slice) uses
-`.specify/scratch/<adapter>/survey/`. The result cache lives under
-the disjoint `.specify/cache/extractions/<adapter>/` root, so scratch
-lanes and fingerprint dirs never share a namespace. The runner
-recreates the scratch lane **empty** at `prepare` time (and before a
-`tool`-execution dispatch), so a stale artifact from a prior run can
-never be finalized as this run's output. See
+`.specify/scratch/<adapter>/survey/`. The runner recreates the scratch
+lane **empty** at `prepare` time, so a stale artifact from a prior run
+can never be finalized as this run's output. See
 §"Cache layout" and §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`".
 
 **Shared prep seam.** The adapter resolution, brief-directory
@@ -974,31 +944,28 @@ and `evidence/` scaffolding are a single internal helper
 ([`src/runtime/commands/source/prep.rs`](./src/runtime/commands/source/prep.rs))
 shared by the workflow-free `specify source preview` (§"`specify source
 preview`") and the workflow-integrated `survey` / `extract` runners.
-The runners add the `execution`-branched dispatch, the extraction-cache
-fingerprint, the journal events, validate-before-visible, and the
-`discovery.md` merge / Evidence persist on top of that seam — none of
-which is re-implemented in `preview`.
+The runners add the agent handoff, the journal events,
+validate-before-visible, and the `discovery.md` merge / Evidence
+persist on top of that seam — none of which is re-implemented in
+`preview`.
 
-**Agent dispatch is two-phase.** Under `execution: agent` the operation
-splits: `--phase prepare` (the default) resolves the adapter, builds the
-four-root sandbox, scaffolds the output target, emits
-`source.execution.agent`, and prints a handoff envelope on stdout, then
-returns control. `--phase finalize` runs after the agent has executed
-the brief against the prepared sandbox: it validates, persists, caches,
-and journals. The CLI never blocks waiting on agent work. The handoff
-envelope is kebab-case JSON: `survey` prints `{ adapter, version,
-briefs-dir, source-dir?, scratch-dir, leads[], execution: "agent" }`
-(no `evidence-dir`; survey produces a lead set, not Evidence);
-`extract` prints the same plus `evidence-dir` and a single-element
-`leads` array. `tool`-execution adapters ignore the phase flag — a
-single call runs the whole operation and never prints the envelope.
+**Dispatch is two-phase.** Every source operation splits: `--phase
+prepare` (the default) resolves the adapter, builds the four-root
+sandbox, scaffolds the output target, emits `source.execution.agent`,
+and prints a handoff envelope on stdout, then returns control.
+`--phase finalize` runs after the agent has executed the brief against
+the prepared sandbox: it validates, persists, and journals the
+completion event (`source.survey.completed` /
+`slice.extract.completed`). The CLI never blocks waiting on agent
+work. The handoff envelope is kebab-case JSON: `survey` prints
+`{ adapter, version, briefs-dir, source-dir?, scratch-dir, leads[],
+execution: "agent" }` (no `evidence-dir`; survey produces a lead set,
+not Evidence); `extract` prints the same plus `evidence-dir` and a
+single-element `leads` array.
 
 **Value-binding envelope.** For value-bound sources (`intent`),
 `$SOURCE_DIR` is absent and the source request carries `value-inline:
-<string>`; path bindings carry `source-path`. This reuses the existing
-`FingerprintSource::{Path, Value}` (the value variant keys on the
-sha256 of the literal body), so no new cache machinery — and no
-RFC-29d build-request schema — is introduced.
+<string>`; path bindings carry `source-path`.
 
 ## Lead reconciliation (D2)
 
@@ -1040,7 +1007,7 @@ RFC-29d build-request schema — is introduced.
 
 **No merge envelope (v1).** `specify slice merge` stays the merge writer; `slice.merge.started` / `.succeeded` / `.failed` fire on its validator outcome, not on a merge report, and the durable record stays `slice.archive.created` (§"History via git plus an outcome ledger"). v1 adds no merge schema — a future merge-findings need reuses the build-report shape as `build/merge-report.yaml` rather than authoring a second schema.
 
-**Build outputs are not cached** in either execution mode (D9 target side); generated code is reproduced by re-running the build, never served from a fingerprint cache.
+**Build outputs are not cached** in either execution mode (D9 target side); generated code is reproduced by re-running the build, never served from a cache.
 
 **Acceptance proof (D7).** RFC-29 is complete only when one end-to-end fixture proves fan-in twice (Lead sets, then per-source Evidence) and fan-out once (multiple slices from a shared source-claim set) together. The deterministic integration test lives at [`tests/plan/end_to_end.rs`](./tests/plan/end_to_end.rs) over `tests/fixtures/rfc-29/fan-in-fan-out/` — it asserts envelope/ordering/determinism (survey → propose → extract → synthesize → build → merge, `depends-on` ordering, byte-identical kernel re-projection). The separate *generated-output-correctness* release gate — each target build passing its replay/golden suite plus `cargo check` / `cargo test` for generated crates — is a manual/CI acceptance step, not part of the deterministic test.
 
@@ -1447,8 +1414,8 @@ the clap surface is [`src/runtime/commands/slice/cli.rs`](./src/runtime/commands
   synthesis step. Authority is **not** included — the kernel resolves it
   after the response returns. It writes nothing and emits one
   `slice.synthesize.agent` journal event (synthesis is always
-  agent-dispatched and `cache: opt-out`, D10 — there is no WASI tool
-  path and no closed *request* wire shape).
+  agent-dispatched, D10 — there is no WASI tool path and no closed
+  *request* wire shape).
 - **`--from <response.json> [--format json]`** is the **only** writer.
   It schema-gates the raw response bytes against `synthesis.schema.json`
   (`kind: response`, code `synthesis-schema`), resolves authority from

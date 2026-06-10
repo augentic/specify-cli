@@ -12,11 +12,10 @@
 //!    with the per-operation scratch path keyed by operation; and
 //! 4. `evidence/` scaffolding for the output target.
 //!
-//! It produces *prep*, not behaviour: the actual WASI preopen wiring,
-//! the `tool` / `agent` dispatch branch, the extraction cache, the
-//! journal events, validate-before-visible, and the `discovery.md`
-//! merge / Evidence persist are what the workflow-integrated layer
-//! adds on top — none of it lives here.
+//! It produces *prep*, not behaviour: the agent handoff, the journal
+//! events, validate-before-visible, and the `discovery.md` merge /
+//! Evidence persist are what the workflow-integrated layer adds on
+//! top — none of it lives here.
 
 use std::path::{Path, PathBuf};
 
@@ -102,9 +101,9 @@ pub struct Preopen {
 
 /// The four-root source-adapter sandbox preopen layout.
 ///
-/// Data only: this computes the roots and their modes. The actual WASI
-/// preopen wiring, the `tool` / `agent` dispatch, the cache, and the
-/// journal events are the workflow-integrated layer's job.
+/// Data only: this computes the roots and their modes. The agent
+/// handoff and the journal events are the workflow-integrated layer's
+/// job.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxLayout {
     /// `$SOURCE_DIR` — read-only bound source path; absent
@@ -241,10 +240,10 @@ pub fn resolve_source_path(project_dir: &Path, raw: &str) -> PathBuf {
 
 /// `.specify/scratch/<adapter>/<segment>/`, where `<segment>` is
 /// `survey` for the slice-less survey op or the slice name for
-/// extract. Rooted under the transient working-state tree, disjoint
-/// from the fingerprint result cache at
-/// `.specify/cache/extractions/<adapter>/`, so a scratch write never
-/// shares a namespace with a cache artifact.
+/// extract. Rooted under the transient working-state tree
+/// (`.specify/scratch/`), disjoint from the memoization tree at
+/// `.specify/cache/`, so a scratch write never shares a namespace
+/// with a cache artifact.
 fn scratch_dir(project_dir: &Path, adapter: &str, op: &SourceOp) -> PathBuf {
     specify_workflow::adapter::scratch_dir(project_dir, adapter, op.scratch_segment())
 }

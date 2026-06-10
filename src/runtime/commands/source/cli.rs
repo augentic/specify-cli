@@ -8,11 +8,9 @@ use clap::{Subcommand, ValueEnum};
 /// Which phase of a two-phase `specify source` operation
 /// (`survey` / `extract`) to run.
 ///
-/// `tool`-execution adapters ignore the flag — a single call runs the
-/// whole operation. `agent`-execution adapters are two-phase:
-/// `prepare` builds the sandbox and prints the handoff envelope, then
-/// the agent runs the
-/// brief and calls back with `finalize`.
+/// Source operations are agent-driven and two-phase: `prepare` builds
+/// the sandbox and prints the handoff envelope, then the agent runs
+/// the brief and calls back with `finalize`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
 #[clap(rename_all = "kebab-case")]
 pub enum Phase {
@@ -21,9 +19,8 @@ pub enum Phase {
     /// default.
     #[default]
     Prepare,
-    /// Validate the agent-produced output, run the cache fingerprint,
-    /// and merge it into `discovery.md` (`survey`) / persist the
-    /// Evidence (`extract`).
+    /// Validate the agent-produced output and merge it into
+    /// `discovery.md` (`survey`) / persist the Evidence (`extract`).
     Finalize,
 }
 
@@ -36,10 +33,6 @@ pub enum SourceAction {
     /// `<project-dir>/adapters/sources/<name>/adapter.yaml`
     /// (in-repo). Emits the resolved directory path plus the
     /// manifest's declared operations.
-    ///
-    /// `--explain` switches the output to the extraction cache fingerprint contract fingerprint
-    /// chain read from `.specify/cache/extractions/<name>/index.jsonl`
-    /// instead of the manifest summary.
     Resolve {
         /// Kebab-case source-adapter name (e.g. `intent`,
         /// `documentation`, `typescript`, `screenshots`).
@@ -48,11 +41,6 @@ pub enum SourceAction {
         /// current directory).
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
-        /// Print the fingerprint chain from
-        /// `.specify/cache/extractions/<name>/index.jsonl` instead of the
-        /// manifest summary.
-        #[arg(long)]
-        explain: bool,
     },
 
     /// Run a source adapter's survey + extract in isolation
@@ -96,19 +84,17 @@ pub enum SourceAction {
     /// the four-root sandbox under
     /// `.specify/scratch/<adapter>/survey/`.
     ///
-    /// For `execution: tool` adapters the single call runs the whole
-    /// operation. For `execution: agent` adapters the operation is
-    /// two-phase: `--phase prepare` (the default) prints the handoff
-    /// envelope and returns control to the agent; `--phase finalize`
-    /// validates the agent-produced `leads.md` and merges it.
+    /// The operation is two-phase: `--phase prepare` (the default)
+    /// prints the handoff envelope and returns control to the agent;
+    /// `--phase finalize` validates the agent-produced `leads.md` and
+    /// merges it.
     Survey {
         /// Source key from `plan.yaml.sources.<key>`.
         source: String,
         /// Plan name guard. When set, must match `plan.yaml.name`.
         #[arg(long)]
         plan: Option<String>,
-        /// Phase to run (`prepare` | `finalize`); `tool` adapters run
-        /// the whole operation regardless.
+        /// Phase to run (`prepare` | `finalize`).
         #[arg(long, value_enum, default_value_t = Phase::Prepare)]
         phase: Phase,
     },
@@ -122,12 +108,10 @@ pub enum SourceAction {
     /// the four-root sandbox with scratch under
     /// `.specify/scratch/<adapter>/<slice>/`.
     ///
-    /// For `execution: tool` adapters the single call runs the whole
-    /// operation. For `execution: agent` adapters the operation is
-    /// two-phase: `--phase prepare` (the default) prints the handoff
-    /// envelope and returns control to the agent; `--phase finalize`
-    /// validates the agent-produced Evidence against
-    /// `schemas/evidence.schema.json` before it is persisted.
+    /// The operation is two-phase: `--phase prepare` (the default)
+    /// prints the handoff envelope and returns control to the agent;
+    /// `--phase finalize` validates the agent-produced Evidence
+    /// against `schemas/evidence.schema.json` before it is persisted.
     Extract {
         /// Source key from `plan.yaml.sources.<key>`.
         source: String,
@@ -137,8 +121,7 @@ pub enum SourceAction {
         /// directory and the `.specify/slices/<slice>/evidence/` target.
         #[arg(long)]
         slice: String,
-        /// Phase to run (`prepare` | `finalize`); `tool` adapters run
-        /// the whole operation regardless.
+        /// Phase to run (`prepare` | `finalize`).
         #[arg(long, value_enum, default_value_t = Phase::Prepare)]
         phase: Phase,
     },

@@ -31,8 +31,7 @@ use specify_error::Error;
 pub use self::append::append_batch;
 pub use self::emit::{emit_best_effort, emit_lint_completed};
 pub use self::event::{
-    AuthorityOverrideAction, CacheMissReason, Event, EventKind, LintCompletedPayload, LintCounts,
-    LintScope,
+    AuthorityOverrideAction, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
 };
 use crate::config::Layout;
 
