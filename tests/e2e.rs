@@ -10,7 +10,7 @@
 //! replaced tempdir paths and today's date with deterministic placeholders.
 //! When a subcommand's output shape intentionally changes, rerun this file
 //! with `REGENERATE_GOLDENS=1` and commit the diff — see
-//! [DECISIONS.md](../DECISIONS.md) §"Change J — golden JSON generation".
+//! [testing.md §"Golden files"](../docs/standards/testing.md).
 
 use std::fs;
 use std::path::PathBuf;
