@@ -749,20 +749,27 @@ Plan-time platform reconciliation is a CLI-owned deterministic pass, not agent j
 
 ## Cache layout
 
-`.specify/cache/` hosts two distinct, root-disjoint caches:
+`.specify/cache/` hosts three distinct, root-disjoint trees:
 
 - `manifests/{sources,targets}/<name>/` — adapter manifest cache. The
   agent-populated mirror of `adapters/{sources,targets}/<name>/`
   (`adapter.yaml` plus the brief markdown files it references). Per-axis
   because adapter names are unique per axis. Resolved by
   `crates/workflow/src/adapter/core.rs::cache_dir`.
-- `extractions/<adapter>/entries/<fingerprint>/` — per-source extraction result cache, with the append-only `index.jsonl` at the
-  adapter root (`extractions/<adapter>/index.jsonl`) and the
-  per-operation agent scratch lanes under the sibling
-  `extractions/<adapter>/scratch/{survey,<slice>}/` tree. Per-adapter
+- `extractions/<adapter>/<fingerprint>/` — per-source extraction result cache, with the append-only `index.jsonl` at the
+  adapter root (`extractions/<adapter>/index.jsonl`). Per-adapter
   only — not per-axis — because extraction is a source-axis operation;
   the adapter name carries enough identity. Resolved by
-  `crates/workflow/src/adapter/cache/io.rs::CacheLayout`.
+  `crates/workflow/src/adapter/cache/io.rs::CacheLayout`. Everything
+  under `extractions/` is fingerprint-keyed cache content; on
+  `cache: opt-out` only the `index.jsonl` audit log appears.
+- `scratch/<adapter>/{survey,<slice>}/` — per-operation agent scratch
+  lanes (the write-only `$SCRATCH_DIR` preopen). Transient working
+  state, not cache: hoisted to its own root (rather than nesting under
+  `extractions/<adapter>/`) so the operation-keyed scratch segments and
+  the digest-keyed result entries never share a namespace and the
+  result cache needs no `entries/` disambiguation level. Resolved by
+  `crates/workflow/src/adapter/core.rs::scratch_dir`.
 
 Each cache owns its own root, so the loader does not probe for an
 `adapter.yaml` inside the cache directory to disambiguate manifest vs.
@@ -912,15 +919,14 @@ slice in `refining` (see [`crates/workflow/src/schema.rs`](./crates/workflow/src
 value-bound sources such as `intent`), `$CAPABILITY_DIR` read-only (the
 resolved manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR`
 **not visible** — lifecycle state stays off-limits to the adapter.
-`$SCRATCH_DIR` nests under the per-adapter extraction tree but disjoint
-from the fingerprint result cache so a scratch write never pollutes a
-cache artifact: `extract` uses
-`.specify/cache/extractions/<adapter>/scratch/<slice>/`; `survey`
-(plan-time, no slice) uses
-`.specify/cache/extractions/<adapter>/scratch/survey/`. The result
-cache lives under the sibling `entries/` tree, so scratch lanes and
-fingerprint dirs never share a namespace. See §"Cache layout" and
-§"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`".
+`$SCRATCH_DIR` lives under the per-adapter scratch root, a sibling of
+the extraction result cache, so a scratch write never pollutes a cache
+artifact: `extract` uses
+`.specify/cache/scratch/<adapter>/<slice>/`; `survey` (plan-time, no
+slice) uses `.specify/cache/scratch/<adapter>/survey/`. The result
+cache lives under the disjoint `extractions/<adapter>/` root, so
+scratch lanes and fingerprint dirs never share a namespace. See
+§"Cache layout" and §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`".
 
 **Shared prep seam.** The adapter resolution, brief-directory
 resolution (the `briefs-dir` resolve field), four-root sandbox layout,

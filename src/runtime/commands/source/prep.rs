@@ -21,17 +21,12 @@
 use std::path::{Path, PathBuf};
 
 use specify_error::{Error, Result};
-use specify_workflow::adapter::{CacheLayout, SourceAdapter};
+use specify_workflow::adapter::SourceAdapter;
 
 use crate::runtime::commands::BRIEFS_DIR;
 
 /// `evidence/` subdirectory scaffolded under the output target.
 const EVIDENCE_DIR: &str = "evidence";
-
-/// Parent segment of every `$SCRATCH_DIR` path — the per-adapter
-/// scratch tree under `extractions/<adapter>/scratch/`, disjoint from
-/// the `entries/` fingerprint result cache.
-const SCRATCH_DIR: &str = "scratch";
 
 /// Scratch-tree segment for the slice-less `survey` operation.
 /// Kept in sync with the `survey` operation's wire
@@ -66,9 +61,9 @@ pub enum SourceOp {
 }
 
 impl SourceOp {
-    /// Scratch-lane segment under `extractions/<adapter>/scratch/` for
-    /// this operation: the literal `survey` for the slice-less survey
-    /// op, the slice name for slice-time extract.
+    /// Scratch-lane segment under `scratch/<adapter>/` for this
+    /// operation: the literal `survey` for the slice-less survey op,
+    /// the slice name for slice-time extract.
     fn scratch_segment(&self) -> &str {
         match self {
             Self::Survey => SURVEY_SCRATCH_SEGMENT,
@@ -244,15 +239,13 @@ pub fn resolve_source_path(project_dir: &Path, raw: &str) -> PathBuf {
     if candidate.is_absolute() { candidate.to_path_buf() } else { project_dir.join(candidate) }
 }
 
-/// `.specify/cache/extractions/<adapter>/scratch/<segment>/`, where
-/// `<segment>` is `survey` for the slice-less survey op or the slice
-/// name for extract. Disjoint from the fingerprint result cache, which
-/// lives under the sibling `entries/` tree.
+/// `.specify/cache/scratch/<adapter>/<segment>/`, where `<segment>` is
+/// `survey` for the slice-less survey op or the slice name for
+/// extract. A sibling root of the fingerprint result cache at
+/// `.specify/cache/extractions/<adapter>/`, so a scratch write never
+/// shares a namespace with a cache artifact.
 fn scratch_dir(project_dir: &Path, adapter: &str, op: &SourceOp) -> PathBuf {
-    CacheLayout::new(project_dir, adapter)
-        .adapter_dir()
-        .join(SCRATCH_DIR)
-        .join(op.scratch_segment())
+    specify_workflow::adapter::scratch_dir(project_dir, adapter, op.scratch_segment())
 }
 
 #[cfg(test)]
@@ -269,10 +262,7 @@ mod tests {
     #[test]
     fn scratch_keys_under_survey_segment() {
         let scratch = scratch_dir(Path::new("/proj"), "documentation", &SourceOp::Survey);
-        assert_eq!(
-            scratch,
-            Path::new("/proj/.specify/cache/extractions/documentation/scratch/survey")
-        );
+        assert_eq!(scratch, Path::new("/proj/.specify/cache/scratch/documentation/survey"));
     }
 
     #[test]
@@ -283,9 +273,7 @@ mod tests {
         let scratch = scratch_dir(Path::new("/proj"), "typescript", &op);
         assert_eq!(
             scratch,
-            Path::new(
-                "/proj/.specify/cache/extractions/typescript/scratch/identity-password-reset"
-            )
+            Path::new("/proj/.specify/cache/scratch/typescript/identity-password-reset")
         );
     }
 
@@ -293,7 +281,7 @@ mod tests {
     fn path_bound_mounts_four_roots() {
         let source = PathBuf::from("/repo/legacy");
         let capability = PathBuf::from("/proj/adapters/sources/typescript");
-        let scratch = PathBuf::from("/proj/.specify/cache/extractions/typescript/scratch/s");
+        let scratch = PathBuf::from("/proj/.specify/cache/scratch/typescript/s");
         let layout = SandboxLayout::new(Some(&source), &capability, scratch.clone());
 
         assert_eq!(layout.source.var, "SOURCE_DIR");
@@ -316,7 +304,7 @@ mod tests {
     #[test]
     fn value_bound_source_dir_absent() {
         let capability = PathBuf::from("/proj/adapters/sources/intent");
-        let scratch = PathBuf::from("/proj/.specify/cache/extractions/intent/scratch/survey");
+        let scratch = PathBuf::from("/proj/.specify/cache/scratch/intent/survey");
         let layout = SandboxLayout::new(None, &capability, scratch);
 
         assert_eq!(layout.source.access, PreopenAccess::None);

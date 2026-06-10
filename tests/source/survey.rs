@@ -43,7 +43,7 @@ slices:
 }
 
 fn survey_scratch_dir(project: &Project) -> PathBuf {
-    project.root().join(".specify/cache/extractions/typescript/scratch/survey")
+    project.root().join(".specify/cache/scratch/typescript/survey")
 }
 
 // A `survey` lead-set omits `source`: attribution is CLI-owned,
@@ -78,7 +78,7 @@ fn prepare_prints_envelope_emits_event() {
     );
     let scratch = body["scratch-dir"].as_str().expect("scratch-dir str");
     assert!(
-        scratch.ends_with(".specify/cache/extractions/typescript/scratch/survey"),
+        scratch.ends_with(".specify/cache/scratch/typescript/survey"),
         "scratch-dir {scratch} must key under the survey segment"
     );
     let briefs = body["briefs-dir"].as_str().expect("briefs-dir str");

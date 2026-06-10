@@ -86,7 +86,7 @@ slices:
 }
 
 fn extract_scratch_dir(project: &Project, adapter: &str, slice: &str) -> PathBuf {
-    project.root().join(format!(".specify/cache/extractions/{adapter}/scratch/{slice}"))
+    project.root().join(format!(".specify/cache/scratch/{adapter}/{slice}"))
 }
 
 fn slice_evidence_path(project: &Project, slice: &str, source: &str) -> PathBuf {
@@ -134,7 +134,7 @@ fn prepare_prints_envelope_emits_event() {
     );
     let scratch = body["scratch-dir"].as_str().expect("scratch-dir str");
     assert!(
-        scratch.ends_with(".specify/cache/extractions/typescript/scratch/identity"),
+        scratch.ends_with(".specify/cache/scratch/typescript/identity"),
         "scratch-dir {scratch} must key under the slice segment"
     );
     let source_dir = body["source-dir"].as_str().expect("path binding carries source-dir");

@@ -3,7 +3,7 @@
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Survey`]) for adapter
 //! resolution, brief directory, and the four-root sandbox (scratch at
-//! `.specify/cache/extractions/<adapter>/scratch/survey/`), then
+//! `.specify/cache/scratch/<adapter>/survey/`), then
 //! branches on the adapter's `execution` mode:
 //!
 //! - `tool`: single-phase. Probe the extraction cache; on a hit read the

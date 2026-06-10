@@ -4,19 +4,20 @@
 //!
 //! ```text
 //! .specify/cache/extractions/<adapter>/
-//!     entries/
-//!         <fingerprint>/
-//!             evidence.yaml      # or leads.md for survey
-//!             fingerprint.json   # full input record for audit
-//!     scratch/                   # per-operation agent scratch lanes
-//!         {survey,<slice>}/
-//!     index.jsonl                # one row per cache write; append-only
+//!     <fingerprint>/
+//!         evidence.yaml      # or leads.md for survey
+//!         fingerprint.json   # full input record for audit
+//!     index.jsonl            # one row per cache write; append-only
 //! ```
 //!
 //! The extraction cache is per-adapter only (not per-axis) — only
 //! source adapters extract — and lives in its own root, disjoint from
 //! the per-axis manifest cache at
-//! `.specify/cache/manifests/{sources,targets}/<name>/`. See
+//! `.specify/cache/manifests/{sources,targets}/<name>/` and from the
+//! per-operation agent scratch lanes at the sibling
+//! `.specify/cache/scratch/<adapter>/{survey,<slice>}/` root
+//! ([`crate::adapter::scratch_dir`]), so everything under
+//! `extractions/` is fingerprint-keyed cache content. See
 //! [DECISIONS.md §"Cache layout"].
 //!
 //! Atomic writes mirror [DECISIONS.md §"Atomic writes"]: the cache
@@ -41,10 +42,6 @@ use crate::adapter::core::EXTRACTIONS_CACHE_DIR;
 
 const INDEX_FILE_NAME: &str = "index.jsonl";
 const FINGERPRINT_RECORD_NAME: &str = "fingerprint.json";
-/// Subdirectory holding the fingerprint-keyed result entries, disjoint
-/// from the sibling `scratch/` lanes so digest dirs and operation
-/// segments never share a namespace.
-const ENTRIES_DIR: &str = "entries";
 
 /// Filesystem coordinates for the extraction cache fingerprint contract cache scoped to one
 /// source adapter.
@@ -74,19 +71,19 @@ impl<'a> CacheLayout<'a> {
             .join(self.adapter)
     }
 
-    /// `.specify/cache/extractions/<adapter>/entries/<fingerprint-sha256>/`.
+    /// `.specify/cache/extractions/<adapter>/<fingerprint-sha256>/`.
     #[must_use]
     pub fn fingerprint_dir(&self, digest: &str) -> PathBuf {
-        self.adapter_dir().join(ENTRIES_DIR).join(digest_dir_name(digest))
+        self.adapter_dir().join(digest_dir_name(digest))
     }
 
-    /// `.specify/cache/extractions/<adapter>/entries/<fp>/fingerprint.json`.
+    /// `.specify/cache/extractions/<adapter>/<fp>/fingerprint.json`.
     #[must_use]
     pub fn fingerprint_record_path(&self, digest: &str) -> PathBuf {
         self.fingerprint_dir(digest).join(FINGERPRINT_RECORD_NAME)
     }
 
-    /// `.specify/cache/extractions/<adapter>/entries/<fp>/<artifact-name>`.
+    /// `.specify/cache/extractions/<adapter>/<fp>/<artifact-name>`.
     #[must_use]
     pub fn artifact_path(&self, digest: &str, artifact_name: &str) -> PathBuf {
         self.fingerprint_dir(digest).join(artifact_name)
@@ -148,7 +145,7 @@ pub enum LookupOutcome {
 pub struct CacheLookup {
     /// sha256 hex digest of the current inputs.
     pub digest: String,
-    /// `.specify/cache/extractions/<adapter>/entries/<fp>/` regardless of hit /
+    /// `.specify/cache/extractions/<adapter>/<fp>/` regardless of hit /
     /// miss. Operators see the path even on a miss so they know where
     /// the upcoming write will land.
     pub cache_dir: PathBuf,

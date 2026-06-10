@@ -38,6 +38,7 @@ mod validate_manifest;
 pub use core::{
     ADAPTER_FILENAME, ADAPTERS_DIR, AdapterLocation, Axis, BuildInputDeclaration, CacheMode,
     Execution, PlatformsCapability, ResolvedTargetAdapter, SourceAdapter, TargetAdapter, cache_dir,
+    scratch_dir,
 };
 
 pub use cache::{CacheLayout, SourceOperation, read_index as cache_read_index};
