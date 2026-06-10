@@ -1,5 +1,5 @@
 //! `scan_touched` and `write_touched`: classify `<slice_dir>/specs/*`
-//! against the baseline tree and persist the result on `.metadata.yaml`.
+//! against the baseline tree and persist the result on `metadata.yaml`.
 
 use std::path::Path;
 
@@ -11,7 +11,7 @@ use crate::slice::{SliceMetadata, SpecKind, TouchedSpec};
 /// `new` or `modified` against `<specs_dir>/<name>/spec.md`.
 ///
 /// Returns entries sorted by adapter name for stable output. The
-/// scan is non-destructive — it does not mutate `.metadata.yaml`. The
+/// scan is non-destructive — it does not mutate `metadata.yaml`. The
 /// caller typically follows up with [`write_touched`].
 ///
 /// # Errors
@@ -45,7 +45,7 @@ pub fn scan_touched(slice_dir: &Path, specs_dir: &Path) -> Result<Vec<TouchedSpe
     Ok(entries)
 }
 
-/// Overwrite `.metadata.yaml`'s `touched_specs` with `entries`.
+/// Overwrite `metadata.yaml`'s `touched_specs` with `entries`.
 ///
 /// Leaves every other field on the struct untouched, including `status`.
 ///

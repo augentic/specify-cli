@@ -49,7 +49,7 @@ pub(super) fn scratch_path(prepared: &prep::SourcePrep, op: SourceOperation) -> 
     })
 }
 
-/// Read the staged artifact (`lead-set.md` / `evidence.yaml`), mapping a
+/// Read the staged artifact (`leads.md` / `evidence.yaml`), mapping a
 /// missing file to the operation's wire-stable "must write into
 /// `$SCRATCH_DIR` before finalize" diagnostic.
 ///
@@ -62,7 +62,7 @@ pub(super) fn read_artifact(path: &Path, op: SourceOperation) -> Result<String> 
         if err.kind() == std::io::ErrorKind::NotFound {
             let (code, what, writer) = match op {
                 SourceOperation::Survey => {
-                    ("survey-lead-set-missing", "lead-set.md", "the survey must write the lead set")
+                    ("survey-leads-missing", "leads.md", "the survey must write the lead set")
                 }
                 SourceOperation::Extract => (
                     "extract-evidence-missing",

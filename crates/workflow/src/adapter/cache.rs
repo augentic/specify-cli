@@ -1,5 +1,5 @@
 //! extraction cache fingerprint contract cache fingerprint inputs and the per-write index entry
-//! persisted at `.specify/.cache/extractions/<adapter>/index.jsonl`.
+//! persisted at `.specify/cache/extractions/<adapter>/index.jsonl`.
 //!
 //! Lookup / write helpers the source-resolution code path uses.
 //!
@@ -193,7 +193,7 @@ pub struct FingerprintToolVersion {
     pub version: Option<String>,
 }
 
-/// One row appended to `.specify/.cache/extractions/<adapter>/index.jsonl`
+/// One row appended to `.specify/cache/extractions/<adapter>/index.jsonl`
 /// on every cache write (extraction cache fingerprint contract).
 ///
 /// The slot is `(timestamp, fingerprint-sha256, slice, source,

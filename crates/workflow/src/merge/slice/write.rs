@@ -1,6 +1,6 @@
 //! Commit side of the slice-merge engine: atomic baseline writes for
 //! 3-way classes, opaque-replace whole-file copy, and the
-//! summary-string builder stamped into `.metadata.yaml.outcome`.
+//! summary-string builder stamped into `metadata.yaml.outcome`.
 
 use std::collections::BTreeMap;
 use std::fs;

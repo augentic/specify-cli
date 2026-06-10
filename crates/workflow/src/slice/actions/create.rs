@@ -15,7 +15,7 @@ use crate::slice::{LifecycleStatus, SliceMetadata};
 pub enum CreateIfExists {
     /// Refuse when the directory exists (default).
     Fail,
-    /// Reuse the existing directory — requires a valid `.metadata.yaml`.
+    /// Reuse the existing directory — requires a valid `metadata.yaml`.
     /// Intended for the define skill's "continue in-flight slice" flow.
     Continue,
     /// Delete and recreate — destructive. Intended for the define
@@ -72,7 +72,7 @@ pub fn validate_name(name: &str) -> Result<(), Error> {
     }
 }
 
-/// Create `<parent_dir>/<name>/` and seed an initial `.metadata.yaml`.
+/// Create `<parent_dir>/<name>/` and seed an initial `metadata.yaml`.
 ///
 /// - `parent_dir` is expected to be `<project>/.specify/slices/`.
 /// - `now` is plumbed in so tests can pin `created_at` deterministically.
@@ -106,7 +106,7 @@ pub fn create(
                     return Err(Error::Diag {
                         code: "slice-dir-missing-metadata",
                         detail: format!(
-                            "slice dir {} exists but has no .metadata.yaml; refusing to reuse",
+                            "slice dir {} exists but has no metadata.yaml; refusing to reuse",
                             slice_dir.display()
                         ),
                     });

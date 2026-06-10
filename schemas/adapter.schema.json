@@ -34,7 +34,7 @@
       "type": "array",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/toolDeclaration" },
-      "description": "Optional WASI tool declarations for declared WASI tools. Tools resolve into `.specify/.cache/{sources,targets}/<name>/`."
+      "description": "Optional WASI tool declarations for declared WASI tools. Tools resolve into `.specify/cache/{sources,targets}/<name>/`."
     },
     "inputs": {
       "type": "array",
@@ -91,7 +91,7 @@
       "properties": {
         "name": {
           "$ref": "#/$defs/kebabName",
-          "description": "WASI tool identifier; resolves under `.specify/.cache/{sources,targets}/<adapter>/<name>/`."
+          "description": "WASI tool identifier; resolves under `.specify/cache/{sources,targets}/<adapter>/<name>/`."
         },
         "version": {
           "type": "string",

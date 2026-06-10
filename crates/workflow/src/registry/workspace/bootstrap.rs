@@ -54,7 +54,7 @@ fn scaffold_greenfield(dest: &Path, adapter: &str) -> Result<(), Error> {
         specify_dir.join("slices"),
         specify_dir.join("specs"),
         specify_dir.join("archive"),
-        specify_dir.join(".cache"),
+        specify_dir.join("cache"),
     ] {
         std::fs::create_dir_all(&dir).map_err(Error::Io)?;
     }
@@ -110,7 +110,7 @@ fn resolve_greenfield_adapter(
     if adapter.contains("://") {
         return Ok(adapter.to_string());
     }
-    let cache_base = initiating_project_dir.join(".specify").join(".cache");
+    let cache_base = initiating_project_dir.join(".specify").join("cache");
 
     let direct = cache_base.join(adapter);
     if direct.is_dir() {

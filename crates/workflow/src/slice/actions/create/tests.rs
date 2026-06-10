@@ -17,7 +17,7 @@ fn seeds_metadata_and_specs() {
     assert!(made.created, "fresh dir is created");
     assert!(!made.restarted);
     assert!(made.dir.join("specs").is_dir(), "specs/ scaffolded");
-    assert!(SliceMetadata::path(&made.dir).exists(), ".metadata.yaml written");
+    assert!(SliceMetadata::path(&made.dir).exists(), "metadata.yaml written");
     assert_eq!(made.metadata.status, LifecycleStatus::Refining);
     assert_eq!(made.metadata.target, "omnia@v1");
     assert_eq!(made.metadata.created_at, Some(ts()));

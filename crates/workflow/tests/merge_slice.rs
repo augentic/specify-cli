@@ -148,7 +148,7 @@ fn happy_path_writes_flips_and_archives() {
         "archive dir `{archived_name}` does not match YYYY-MM-DD-feature-x"
     );
 
-    // .metadata.yaml inside archive should be `Merged` with completed_at set.
+    // metadata.yaml inside archive should be `Merged` with completed_at set.
     let archived_slice_dir = archived[0].path();
     let new_meta = SliceMetadata::load(&archived_slice_dir).expect("load archived metadata");
     assert_eq!(new_meta.status, LifecycleStatus::Merged);
@@ -384,7 +384,7 @@ fn merge_without_contracts_dir() {
     );
 }
 
-/// Helper: find the archived `.metadata.yaml` and return its phase outcome.
+/// Helper: find the archived `metadata.yaml` and return its phase outcome.
 fn find_archived_metadata(project: &Project) -> Outcome {
     let archived: Vec<_> = fs::read_dir(project.archive_dir())
         .unwrap()

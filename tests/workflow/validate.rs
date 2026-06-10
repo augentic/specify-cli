@@ -302,7 +302,7 @@ fn validate_reports_topology_cache_stale() {
         "name: alpha\nadapter: omnia@v1\ndescription: Fresh description\n",
     )
     .unwrap();
-    copy_dir(&omnia_schema_dir(), &slot_specify.join(".cache/manifests/targets/omnia"));
+    copy_dir(&omnia_schema_dir(), &slot_specify.join("cache/manifests/targets/omnia"));
 
     fs::write(
         tmp.path().join(".specify/topology.lock"),

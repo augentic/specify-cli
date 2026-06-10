@@ -35,8 +35,8 @@ fn touched_specs_classifies_new_vs_modified() {
     assert_eq!(items[1]["name"], "beta");
     assert_eq!(items[1]["type"], "modified");
 
-    // Scanning must have persisted the list into `.metadata.yaml`.
-    let meta = fs::read_to_string(slice_dir.join(".metadata.yaml")).unwrap();
+    // Scanning must have persisted the list into `metadata.yaml`.
+    let meta = fs::read_to_string(slice_dir.join("metadata.yaml")).unwrap();
     assert!(meta.contains("touched-specs:"));
     assert!(meta.contains("name: alpha"));
     assert!(meta.contains("type: new"));

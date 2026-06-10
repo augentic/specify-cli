@@ -12,11 +12,11 @@ fn cache_dir_routes_by_axis() {
     let project = Path::new("/proj");
     assert_eq!(
         cache_dir(project, Axis::Source, "documentation"),
-        project.join(".specify/.cache/manifests/sources/documentation")
+        project.join(".specify/cache/manifests/sources/documentation")
     );
     assert_eq!(
         cache_dir(project, Axis::Target, "omnia"),
-        project.join(".specify/.cache/manifests/targets/omnia")
+        project.join(".specify/cache/manifests/targets/omnia")
     );
 }
 

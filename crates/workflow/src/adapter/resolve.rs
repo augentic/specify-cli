@@ -21,7 +21,7 @@ impl SourceAdapter {
     ///
     /// Probe order, per workflow §Resolver and cache:
     ///
-    /// 1. `<project_dir>/.specify/.cache/manifests/sources/<name>/adapter.yaml`
+    /// 1. `<project_dir>/.specify/cache/manifests/sources/<name>/adapter.yaml`
     ///    (agent-populated manifest cache).
     /// 2. `<project_dir>/adapters/sources/<name>/adapter.yaml` (in-repo).
     ///
@@ -53,7 +53,7 @@ impl TargetAdapter {
     ///
     /// Probe order, per workflow §Resolver and cache:
     ///
-    /// 1. `<project_dir>/.specify/.cache/manifests/targets/<name>/adapter.yaml`
+    /// 1. `<project_dir>/.specify/cache/manifests/targets/<name>/adapter.yaml`
     ///    (agent-populated manifest cache).
     /// 2. `<project_dir>/adapters/targets/<name>/adapter.yaml` (in-repo).
     ///
@@ -140,9 +140,9 @@ fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLoca
     let cached = cache_dir(project_dir, axis, name);
     let local = adapter_axis_dir(project_dir, axis).join(name);
     // The manifest cache owns its own root
-    // (`.specify/.cache/manifests/{sources,targets}/<name>/`), disjoint
+    // (`.specify/cache/manifests/{sources,targets}/<name>/`), disjoint
     // from the extraction cache under
-    // `.specify/.cache/extractions/<adapter>/`. A bare cache directory
+    // `.specify/cache/extractions/<adapter>/`. A bare cache directory
     // is therefore always a manifest mirror — see
     // [DECISIONS.md §"Cache layout"].
     let location = if cached.is_dir() {

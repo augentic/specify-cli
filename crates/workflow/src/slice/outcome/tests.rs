@@ -25,7 +25,7 @@ fn round_trips_through_json() {
 
 #[test]
 fn round_trips_through_yaml() {
-    // `.metadata.yaml` is the on-disk home; confirm the saphyr path
+    // `metadata.yaml` is the on-disk home; confirm the saphyr path
     // matches the JSON path so a serializer swap can't drift the wire.
     for kind in ALL {
         let yaml = serde_saphyr::to_string(&kind).expect("serialise yaml");

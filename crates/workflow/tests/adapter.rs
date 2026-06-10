@@ -7,10 +7,10 @@
 //! - cache-vs-local probe order — the agent-populated manifest cache
 //!   wins.
 //! - cache placement — a load of `(source, …)` populates
-//!   `.specify/.cache/manifests/sources/<name>/`; `(target, …)`
+//!   `.specify/cache/manifests/sources/<name>/`; `(target, …)`
 //!   mirrors under `manifests/targets/`. The extraction cache fingerprint contract extraction
 //!   cache lives in a sibling tree under
-//!   `.specify/.cache/extractions/<adapter>/` and is exercised by the
+//!   `.specify/cache/extractions/<adapter>/` and is exercised by the
 //!   `adapter::cache` unit tests.
 //! - schema validation — both the shared shape and the axis-specific
 //!   refinements (axis literal, closed `briefs.<operation>` keys) reject
@@ -34,7 +34,7 @@ fn fixtures_root() -> PathBuf {
 
 /// Build a temporary project layout by copying the in-tree fixture
 /// directory into a fresh tempdir. The resulting `project_dir` carries
-/// `sources/` and `targets/` (local axis) but no `.specify/.cache/`
+/// `sources/` and `targets/` (local axis) but no `.specify/cache/`
 /// entries — cache fixtures are populated by individual tests below.
 fn local_project() -> (tempfile::TempDir, PathBuf) {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -144,19 +144,19 @@ fn cache_dir_resolves_under_axis_segment() {
     let project = Path::new("/proj");
     assert_eq!(
         cache_dir(project, Axis::Source, "documentation"),
-        project.join(".specify/.cache/manifests/sources/documentation"),
-        "per-axis manifest cache root for source adapters lives under .specify/.cache/manifests/sources/",
+        project.join(".specify/cache/manifests/sources/documentation"),
+        "per-axis manifest cache root for source adapters lives under .specify/cache/manifests/sources/",
     );
     assert_eq!(
         cache_dir(project, Axis::Target, "omnia"),
-        project.join(".specify/.cache/manifests/targets/omnia"),
-        "per-axis manifest cache root for target adapters lives under .specify/.cache/manifests/targets/",
+        project.join(".specify/cache/manifests/targets/omnia"),
+        "per-axis manifest cache root for target adapters lives under .specify/cache/manifests/targets/",
     );
 }
 
 #[test]
 fn cache_wins_over_local() {
-    // Stage a manifest under `.specify/.cache/manifests/sources/typescript/`
+    // Stage a manifest under `.specify/cache/manifests/sources/typescript/`
     // alongside the in-tree `adapters/sources/typescript/`; assert the
     // cached copy wins per workflow §Resolver and cache.
     let (_tmp, project) = local_project();

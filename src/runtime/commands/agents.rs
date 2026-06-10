@@ -111,8 +111,8 @@ mod tests {
         let slices_dir = Layout::new(tmp.path()).slices_dir();
         fs::create_dir_all(slices_dir.join("zeta")).expect("create zeta");
         fs::create_dir_all(slices_dir.join("alpha")).expect("create alpha");
-        fs::write(slices_dir.join("zeta").join(".metadata.yaml"), "not parsed").expect("zeta meta");
-        fs::write(slices_dir.join("alpha").join(".metadata.yaml"), "also not parsed")
+        fs::write(slices_dir.join("zeta").join("metadata.yaml"), "not parsed").expect("zeta meta");
+        fs::write(slices_dir.join("alpha").join("metadata.yaml"), "also not parsed")
             .expect("alpha meta");
         fs::write(
             Registry::path(tmp.path()),
@@ -149,8 +149,8 @@ mod tests {
             assembly.inputs.iter().map(|input| input.path.as_str()).collect::<Vec<_>>(),
             vec![
                 ".specify/project.yaml",
-                ".specify/slices/alpha/.metadata.yaml",
-                ".specify/slices/zeta/.metadata.yaml",
+                ".specify/slices/alpha/metadata.yaml",
+                ".specify/slices/zeta/metadata.yaml",
                 "adapters/targets/mini/adapter.yaml",
                 "adapters/targets/mini/briefs/build.md",
                 "adapters/targets/mini/briefs/merge.md",

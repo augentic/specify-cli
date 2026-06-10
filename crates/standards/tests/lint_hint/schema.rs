@@ -179,7 +179,7 @@ fn flags_framework_toml_schema_violation() {
 }
 
 #[test]
-fn valid_framework_toml_git_only_passes_schema() {
+fn framework_toml_git_only_passes_schema() {
     let tmp = tempfile::tempdir().expect("tmp");
     let ok = "cli = { git = \"https://github.com/augentic/specify-cli\" }\n";
     fs::write(tmp.path().join("Specify.toml"), ok).expect("write Specify.toml");

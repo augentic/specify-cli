@@ -28,7 +28,7 @@ use strum::EnumString;
 /// `briefs.keys()` carried by [`crate::adapter::SourceAdapter`]
 /// (parsed out of `adapters/sources/<name>/adapter.yaml` at load
 /// time) and the discriminant stamped onto every cache index row at
-/// `.specify/.cache/extractions/<adapter>/index.jsonl` so
+/// `.specify/cache/extractions/<adapter>/index.jsonl` so
 /// `specify source resolve --explain` can attribute hits and misses
 /// (see [`crate::adapter::cache::CacheIndexEntry::operation`]).
 ///
@@ -60,12 +60,12 @@ pub enum SourceOperation {
 
 impl SourceOperation {
     /// Default cached-artifact filename per operation:
-    /// `evidence.yaml` for `extract`, `lead-set.md` for `survey`.
+    /// `evidence.yaml` for `extract`, `leads.md` for `survey`.
     #[must_use]
     pub const fn artifact_name(self) -> &'static str {
         match self {
             Self::Extract => "evidence.yaml",
-            Self::Survey => "lead-set.md",
+            Self::Survey => "leads.md",
         }
     }
 }
@@ -77,7 +77,7 @@ impl SourceOperation {
 /// `briefs.keys()` carried by [`crate::adapter::TargetAdapter`]
 /// (parsed out of `adapters/targets/<name>/adapter.yaml` at load
 /// time) and the discriminant stamped into per-slice outcomes
-/// (`<slice_dir>/.metadata.yaml.outcome.phase`).
+/// (`<slice_dir>/metadata.yaml.outcome.phase`).
 ///
 /// Refine-time artifacts are synthesised by core, not produced by an
 /// operation, so the set is exactly these three target operations.

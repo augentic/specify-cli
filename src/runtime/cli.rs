@@ -112,7 +112,7 @@ pub enum Commands {
     /// Source adapter operations (workflow contract). Source adapters provide
     /// `extract` + `survey` capabilities and are resolved against
     /// `adapters/sources/<name>/adapter.yaml` (in-repo) or
-    /// `.specify/.cache/manifests/sources/<name>/` (agent manifest cache).
+    /// `.specify/cache/manifests/sources/<name>/` (agent manifest cache).
     Source {
         #[command(subcommand)]
         action: SourceAction,
@@ -121,7 +121,7 @@ pub enum Commands {
     /// Target adapter operations (workflow contract). Target adapters provide
     /// `shape` + `build` + `merge` capabilities and are resolved
     /// against `adapters/targets/<name>/adapter.yaml` (in-repo) or
-    /// `.specify/.cache/manifests/targets/<name>/` (agent manifest cache).
+    /// `.specify/cache/manifests/targets/<name>/` (agent manifest cache).
     Target {
         #[command(subcommand)]
         action: TargetAction,

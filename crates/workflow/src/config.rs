@@ -243,10 +243,10 @@ impl<'a> Layout<'a> {
         self.specify_dir().join("topology.lock")
     }
 
-    /// Absolute path to `<project_dir>/.specify/.cache/`.
+    /// Absolute path to `<project_dir>/.specify/cache/`.
     #[must_use]
     pub fn cache_dir(&self) -> PathBuf {
-        self.specify_dir().join(".cache")
+        self.specify_dir().join("cache")
     }
 
     /// Absolute path to `<project_dir>/.specify/decisions/` — the

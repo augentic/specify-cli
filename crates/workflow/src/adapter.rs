@@ -10,13 +10,13 @@
 //! rationale.
 //!
 //! Resolution is path-agnostic: each axis-specific loader probes
-//! `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`
+//! `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`
 //! first (the agent-populated manifest cache) and then
 //! `<project_dir>/adapters/{sources,targets}/<name>/` (in-repo). The
 //! manifest cache mirrors the in-repo adapter tree so source and
 //! target adapters with colliding names disambiguate by axis. The
 //! extraction cache fingerprint contract per-source extraction result cache lives in a sibling
-//! tree under `<project_dir>/.specify/.cache/extractions/<adapter>/`
+//! tree under `<project_dir>/.specify/cache/extractions/<adapter>/`
 //! (with `index.jsonl` at the adapter root) — see
 //! [DECISIONS.md §"Cache layout"].
 //!

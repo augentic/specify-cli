@@ -23,9 +23,9 @@ fn stage_target_fixture(project: &Project, name: &str) {
 #[test]
 fn resolve_local_returns_manifest() {
     let project = Project::init();
-    // `Project::init()` seeds `.specify/.cache/manifests/targets/omnia/`; remove
+    // `Project::init()` seeds `.specify/cache/manifests/targets/omnia/`; remove
     // it so the local probe wins for this test.
-    let cached = project.root().join(".specify/.cache/manifests/targets/omnia");
+    let cached = project.root().join(".specify/cache/manifests/targets/omnia");
     if cached.exists() {
         fs::remove_dir_all(&cached).expect("clear cached omnia");
     }

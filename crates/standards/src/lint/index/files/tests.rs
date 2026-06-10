@@ -19,7 +19,7 @@ fn binary_sniff_passes_text() {
 #[test]
 fn include_filter_accepts_dot_specify_paths() {
     assert!(is_included(".specify/slices/foo/spec.md"));
-    assert!(is_included(".specify/.cache/codex/adapters/shared/rules/universal/UNI-099.md"));
+    assert!(is_included(".specify/cache/codex/adapters/shared/rules/universal/UNI-099.md"));
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Extract`]) for adapter
 //! resolution, brief directory, the four-root sandbox (scratch at
-//! `.specify/.cache/extractions/<adapter>/<slice>/scratch/`), and the
+//! `.specify/cache/extractions/<adapter>/scratch/<slice>/`), and the
 //! `evidence/` output target under `.specify/slices/<slice>/`, then
 //! branches on the adapter's `execution` mode:
 //!
@@ -32,7 +32,7 @@
 //!
 //! The agent writes its Evidence to `$SCRATCH_DIR/evidence.yaml` (the
 //! write-only sandbox root, mirroring how `survey` writes
-//! `lead-set.md`); the CLI is the only writer of the visible
+//! `leads.md`); the CLI is the only writer of the visible
 //! `.specify/slices/<slice>/evidence/<source>.yaml`, so an invalid
 //! document never lands on the persisted path.
 

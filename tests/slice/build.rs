@@ -48,7 +48,7 @@ fn event_ids(events: &[Value]) -> Vec<&str> {
 }
 
 fn metadata(project: &Project) -> String {
-    fs::read_to_string(project.slices_dir().join("my-slice/.metadata.yaml")).expect("read metadata")
+    fs::read_to_string(project.slices_dir().join("my-slice/metadata.yaml")).expect("read metadata")
 }
 
 const SUCCESS_REPORT: &str = "\
@@ -254,7 +254,7 @@ fn tool_execution_reports_unsupported_seam() {
     // `init` caches the resolved manifest; flip it to `execution: tool`
     // so the verb takes the tool branch. No build tool dispatch is
     // wired, so the dispatch is a clear unsupported seam.
-    let cached = project.root().join(".specify/.cache/manifests/targets/omnia/adapter.yaml");
+    let cached = project.root().join(".specify/cache/manifests/targets/omnia/adapter.yaml");
     let raw = fs::read_to_string(&cached).expect("read cached adapter.yaml");
     fs::write(&cached, raw.replace("execution: agent", "execution: tool"))
         .expect("rewrite adapter execution mode");

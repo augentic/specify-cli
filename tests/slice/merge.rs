@@ -34,9 +34,9 @@ fn stamp_mtime_after_defined_at(path: &Path) {
 /// Stage the two-spec fixture content into a fresh slice and drive it to
 /// `refined` through the real CLI verbs (`slice create` →
 /// `slice transition`), instead of staging the `built` fixture and
-/// rewriting `.metadata.yaml` by hand (testing.md:45). The merge surface
+/// rewriting `metadata.yaml` by hand (testing.md:45). The merge surface
 /// reads the slice's `specs/` tree, so only the fixture's spec content is
-/// copied in; its `built` `.metadata.yaml` is left behind.
+/// copied in; its `built` `metadata.yaml` is left behind.
 fn stage_refined_slice(project: &Project) {
     specify_cmd()
         .current_dir(project.root())
@@ -114,7 +114,7 @@ fn preview_doesnt_require_built_status() {
     let project = Project::init().with_schemas();
     // `slice merge run` refuses a non-`built` slice but `slice merge
     // preview` must accept one. Reach `refined` through the real verbs
-    // rather than rewriting `.metadata.yaml` by hand.
+    // rather than rewriting `metadata.yaml` by hand.
     stage_refined_slice(&project);
 
     specify_cmd()
@@ -175,7 +175,7 @@ fn conflict_check_flags_modified_newer() {
     fs::create_dir_all(baseline.parent().unwrap()).unwrap();
     fs::write(&baseline, "# Login baseline\n").unwrap();
 
-    let metadata_path = slice_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join("metadata.yaml");
     fs::write(
         &metadata_path,
         "target: omnia\nstatus: built\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: modified\n",
@@ -206,7 +206,7 @@ fn conflict_check_no_drift_when_older() {
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     // Set defined_at to the far future so nothing is "newer".
-    let metadata_path = slice_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join("metadata.yaml");
     fs::write(
         &metadata_path,
         "target: omnia\nstatus: built\ndefined-at: \"2099-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
@@ -242,7 +242,7 @@ fn conflict_check_detects_drift_when_newer() {
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
     // defined_at in the deep past — any real file mtime will be newer.
-    let metadata_path = slice_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join("metadata.yaml");
     fs::write(
         &metadata_path,
         "target: omnia\nstatus: built\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
@@ -278,7 +278,7 @@ fn conflict_check_no_drift_for_new_files() {
     let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
-    let metadata_path = slice_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join("metadata.yaml");
     fs::write(
         &metadata_path,
         "target: omnia\nstatus: built\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
@@ -308,7 +308,7 @@ fn conflict_check_no_drift_no_contracts() {
     let project = Project::init().with_schemas();
     let slice_dir = project.stage_slice("merge-two-spec-slice");
 
-    let metadata_path = slice_dir.join(".metadata.yaml");
+    let metadata_path = slice_dir.join("metadata.yaml");
     fs::write(
         &metadata_path,
         "target: omnia\nstatus: built\ndefined-at: \"2020-01-01T00:00:00Z\"\ntouched-specs:\n  - name: login\n    type: new\n",
@@ -440,7 +440,7 @@ fn emits_merge_started_then_failed() {
     // nor the `slice.archive.created` ledger entry. A slice in `refined`
     // makes `slice::commit` reject the non-`Built` status with the
     // `lifecycle` diagnostic; reach that state through the real verbs
-    // rather than rewriting `.metadata.yaml` by hand.
+    // rather than rewriting `metadata.yaml` by hand.
     let project = Project::init().with_schemas();
     stage_refined_slice(&project);
 

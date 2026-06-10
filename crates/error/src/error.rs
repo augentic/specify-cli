@@ -82,7 +82,7 @@ pub enum Error {
     /// A required artifact was not found at the expected path.
     #[error("{kind} not found at {}", path.display())]
     ArtifactNotFound {
-        /// Kind of artifact (e.g. `.metadata.yaml`).
+        /// Kind of artifact (e.g. `metadata.yaml`).
         kind: &'static str,
         /// Path where the artifact was expected.
         path: std::path::PathBuf,

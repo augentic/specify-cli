@@ -51,7 +51,7 @@ pub fn specify_cmd() -> Command {
     Command::cargo_bin("specify").expect("cargo_bin(specify)")
 }
 
-/// Stamp a phase outcome on `<project>/slices/<name>/.metadata.yaml`
+/// Stamp a phase outcome on `<project>/slices/<name>/metadata.yaml`
 /// through the domain writer merge uses (`stamp_outcome`).
 ///
 /// Integration tests call this directly because outcome inspection is no
@@ -436,7 +436,7 @@ impl Project {
     /// branch.
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
-        copy_dir(&omnia_schema_dir(), &self.root.join(".specify/.cache/manifests/targets/omnia"));
+        copy_dir(&omnia_schema_dir(), &self.root.join(".specify/cache/manifests/targets/omnia"));
         self
     }
 

@@ -14,7 +14,7 @@ pub enum RulesAction {
     /// no journal events. The handler probes for shared `UNI-*`
     /// rules (via `--rules-root`, a project-local monorepo
     /// `adapters/shared/rules/universal/` tree, or the distributed
-    /// codex cache `.specify/.cache/codex/`), discovers the
+    /// codex cache `.specify/cache/codex/`), discovers the
     /// `--target` and `--source` overlays per the rules contract §"Resolution
     /// roots", and streams the sorted `ResolvedRules` envelope to
     /// stdout.
@@ -26,14 +26,14 @@ pub enum RulesAction {
     Export(ExportArgs),
 
     /// Distribute (or refresh) the shared codex into the project codex
-    /// cache `.specify/.cache/codex/`, pinned to the project's adapter
+    /// cache `.specify/cache/codex/`, pinned to the project's adapter
     /// source/ref (codex root resolution, RM-07).
     ///
     /// Mirrors `adapters/shared/rules/universal/` (and, with
     /// `--include-framework`, `core/`) from the adapter source so the
     /// resolver's rules-root probe finds shared `UNI-*` rules without
     /// `--rules-root`. Requires an initialised `.specify/`; writes only
-    /// under `.specify/.cache/codex/`.
+    /// under `.specify/cache/codex/`.
     Sync(SyncArgs),
 }
 
@@ -63,7 +63,7 @@ pub struct ExportArgs {
     /// fallback overlays (codex root resolution (v1)). When omitted the
     /// resolver probes the project-local monorepo
     /// `adapters/shared/rules/universal/` tree, then the distributed
-    /// codex cache `.specify/.cache/codex/` (populated by `specify init`
+    /// codex cache `.specify/cache/codex/` (populated by `specify init`
     /// / `specify rules sync`); failing both, exits with
     /// `rules-root-required`.
     #[arg(long)]

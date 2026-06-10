@@ -28,8 +28,10 @@ use crate::runtime::commands::BRIEFS_DIR;
 /// `evidence/` subdirectory scaffolded under the output target.
 const EVIDENCE_DIR: &str = "evidence";
 
-/// Leaf segment of every `$SCRATCH_DIR` path.
-const SCRATCH_LEAF: &str = "scratch";
+/// Parent segment of every `$SCRATCH_DIR` path — the per-adapter
+/// scratch tree under `extractions/<adapter>/scratch/`, disjoint from
+/// the `entries/` fingerprint result cache.
+const SCRATCH_DIR: &str = "scratch";
 
 /// Scratch-tree segment for the slice-less `survey` operation.
 /// Kept in sync with the `survey` operation's wire
@@ -52,10 +54,10 @@ const PROJECT_DIR_VAR: &str = "PROJECT_DIR";
 /// scratch under `<slice>/`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceOp {
-    /// Plan-time lead discovery — scratch under `…/survey/scratch/`.
+    /// Plan-time lead discovery — scratch under `…/scratch/survey/`.
     Survey,
     /// Slice-time evidence extraction — scratch under
-    /// `…/<slice>/scratch/`. Constructed by the `extract`
+    /// `…/scratch/<slice>/`. Constructed by the `extract`
     /// runner ([`crate::runtime::commands::source::extract`]).
     Extract {
         /// Slice name keying the scratch directory.
@@ -64,9 +66,9 @@ pub enum SourceOp {
 }
 
 impl SourceOp {
-    /// Scratch-tree segment under `extractions/<adapter>/` for this
-    /// operation: the literal `survey` for the slice-less survey op,
-    /// the slice name for slice-time extract.
+    /// Scratch-lane segment under `extractions/<adapter>/scratch/` for
+    /// this operation: the literal `survey` for the slice-less survey
+    /// op, the slice name for slice-time extract.
     fn scratch_segment(&self) -> &str {
         match self {
             Self::Survey => SURVEY_SCRATCH_SEGMENT,
@@ -242,16 +244,15 @@ pub fn resolve_source_path(project_dir: &Path, raw: &str) -> PathBuf {
     if candidate.is_absolute() { candidate.to_path_buf() } else { project_dir.join(candidate) }
 }
 
-/// `.specify/.cache/extractions/<adapter>/<segment>/scratch/`, where
+/// `.specify/cache/extractions/<adapter>/scratch/<segment>/`, where
 /// `<segment>` is `survey` for the slice-less survey op or the slice
-/// name for extract. Disjoint from the fingerprint
-/// result cache: a 64-hex digest dir can never equal `survey` or a
-/// kebab slice name.
+/// name for extract. Disjoint from the fingerprint result cache, which
+/// lives under the sibling `entries/` tree.
 fn scratch_dir(project_dir: &Path, adapter: &str, op: &SourceOp) -> PathBuf {
     CacheLayout::new(project_dir, adapter)
         .adapter_dir()
+        .join(SCRATCH_DIR)
         .join(op.scratch_segment())
-        .join(SCRATCH_LEAF)
 }
 
 #[cfg(test)]
@@ -270,7 +271,7 @@ mod tests {
         let scratch = scratch_dir(Path::new("/proj"), "documentation", &SourceOp::Survey);
         assert_eq!(
             scratch,
-            Path::new("/proj/.specify/.cache/extractions/documentation/survey/scratch")
+            Path::new("/proj/.specify/cache/extractions/documentation/scratch/survey")
         );
     }
 
@@ -283,7 +284,7 @@ mod tests {
         assert_eq!(
             scratch,
             Path::new(
-                "/proj/.specify/.cache/extractions/typescript/identity-password-reset/scratch"
+                "/proj/.specify/cache/extractions/typescript/scratch/identity-password-reset"
             )
         );
     }
@@ -292,7 +293,7 @@ mod tests {
     fn path_bound_mounts_four_roots() {
         let source = PathBuf::from("/repo/legacy");
         let capability = PathBuf::from("/proj/adapters/sources/typescript");
-        let scratch = PathBuf::from("/proj/.specify/.cache/extractions/typescript/s/scratch");
+        let scratch = PathBuf::from("/proj/.specify/cache/extractions/typescript/scratch/s");
         let layout = SandboxLayout::new(Some(&source), &capability, scratch.clone());
 
         assert_eq!(layout.source.var, "SOURCE_DIR");
@@ -315,7 +316,7 @@ mod tests {
     #[test]
     fn value_bound_source_dir_absent() {
         let capability = PathBuf::from("/proj/adapters/sources/intent");
-        let scratch = PathBuf::from("/proj/.specify/.cache/extractions/intent/survey/scratch");
+        let scratch = PathBuf::from("/proj/.specify/cache/extractions/intent/scratch/survey");
         let layout = SandboxLayout::new(None, &capability, scratch);
 
         assert_eq!(layout.source.access, PreopenAccess::None);

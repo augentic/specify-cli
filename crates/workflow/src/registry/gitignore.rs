@@ -17,7 +17,7 @@ use specify_error::Error;
 /// — together with the `slice.archive.created` outcome ledger in
 /// `journal.jsonl` — is the record of merged work (DECISIONS.md
 /// §"History via git plus an outcome ledger").
-const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/.cache/", ".specify/workspace/"];
+const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/cache/", ".specify/workspace/"];
 
 /// Idempotent: ensure each line in `SPECIFY_GITIGNORE_ENTRIES` appears
 /// exactly once (matched with `trim()` per line) in the project

@@ -10,7 +10,7 @@ use crate::runtime::commands::source::cli::Phase;
 
 #[derive(Subcommand)]
 pub enum SliceAction {
-    /// Create a new slice directory with an initial `.metadata.yaml`
+    /// Create a new slice directory with an initial `metadata.yaml`
     Create {
         /// Kebab-case slice name
         name: String,
@@ -74,7 +74,7 @@ pub enum SliceAction {
     /// Build a slice through its bound target adapter's `build`
     /// operation and gate the `built` transition.
     ///
-    /// Resolves the target from the slice's `.metadata.yaml`, then
+    /// Resolves the target from the slice's `metadata.yaml`, then
     /// owns the build envelopes: request assembly, report validation,
     /// the `target-build-*` aborts, the `slice.build.*` events, and the
     /// `built` transition gate. The target brief owns only code
@@ -121,7 +121,7 @@ pub enum SliceAction {
         #[arg(value_enum)]
         target: LifecycleStatus,
     },
-    /// Scan or overwrite `touched_specs` on `.metadata.yaml`
+    /// Scan or overwrite `touched_specs` on `metadata.yaml`
     TouchedSpecs {
         /// Slice name
         name: String,
@@ -141,7 +141,7 @@ pub enum SliceAction {
     Drop {
         /// Slice name
         name: String,
-        /// Free-text reason; surfaced in `.metadata.yaml.drop_reason` and the archive path
+        /// Free-text reason; surfaced in `metadata.yaml.drop_reason` and the archive path
         #[arg(long)]
         reason: Option<String>,
     },

@@ -1,19 +1,19 @@
 //! Adapter cache management plus the on-disk
-//! `.specify/.cache/.cache-meta.yaml` representation.
+//! `.specify/cache/cache-meta.yaml` representation.
 //!
 //! `cache_adapter` copies a resolved source into the manifest cache at
-//! `.specify/.cache/manifests/targets/<name>/` and stamps
+//! `.specify/cache/manifests/targets/<name>/` and stamps
 //! `cache-meta.yaml` with the resolved URI. The agent owns writes to
-//! the manifest cache; the CLI reads `.cache-meta.yaml` (via
+//! the manifest cache; the CLI reads `cache-meta.yaml` (via
 //! [`CacheMeta::load`]) only to decide whether the cache matches
 //! `.specify/project.yaml:adapter`. The extraction cache at
-//! `.specify/.cache/extractions/<adapter>/` lives in a sibling tree and
+//! `.specify/cache/extractions/<adapter>/` lives in a sibling tree and
 //! is managed by [`crate::adapter::cache`].
 //!
 //! `cache_codex` distributes the shared codex packs that ship beside
 //! the target adapter in its source repo
 //! (`adapters/shared/rules/{universal,core}/`) into the project codex
-//! cache at `.specify/.cache/codex/`, pinned to the same source/ref as
+//! cache at `.specify/cache/codex/`, pinned to the same source/ref as
 //! the adapter. The codex resolver's rules-root probe finds that tree
 //! without a co-located framework checkout or a manual `--rules-root`
 //! (RM-07). Provenance is stamped in [`CodexMeta`].
@@ -28,7 +28,7 @@ use specify_error::Error;
 use crate::adapter::{Axis, cache_dir as adapter_cache_dir, check_axis_unique_for_name};
 use crate::init::adapter_uri::AdapterUri;
 
-/// On-disk metadata describing the contents of `.specify/.cache/`.
+/// On-disk metadata describing the contents of `.specify/cache/`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CacheMeta {
     /// The schema URL or `local:<name>` identifier the cache was populated from.
@@ -38,15 +38,15 @@ pub struct CacheMeta {
 }
 
 impl CacheMeta {
-    /// Absolute path to `<project_dir>/.specify/.cache/.cache-meta.yaml`.
+    /// Absolute path to `<project_dir>/.specify/cache/cache-meta.yaml`.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
-        project_dir.join(".specify").join(".cache").join(".cache-meta.yaml")
+        project_dir.join(".specify").join("cache").join("cache-meta.yaml")
     }
 }
 
 /// Copy the resolved adapter source into the project's source/target adapter split
-/// axis-aware cache and stamp `.cache-meta.yaml`. Returns the resolved
+/// axis-aware cache and stamp `cache-meta.yaml`. Returns the resolved
 /// [`AdapterUri`] so the caller can record `project.yaml.adapter`
 /// (`source.adapter_value`) and reuse the same resolved checkout for
 /// codex distribution ([`cache_codex`]) without re-cloning.
@@ -90,11 +90,11 @@ const SHARED_RUNTIME_REL: &str = "adapters/shared/references/runtime";
 const SPEC_RUNTIME_REL: &str = "references/spec-runtime";
 
 /// Absolute path to the project codex cache root,
-/// `<project_dir>/.specify/.cache/codex/`. Shared/core packs land
+/// `<project_dir>/.specify/cache/codex/`. Shared/core packs land
 /// beneath it mirroring `adapters/shared/rules/{universal,core}/`.
 #[must_use]
 pub fn codex_cache_root(project_dir: &Path) -> PathBuf {
-    project_dir.join(".specify").join(".cache").join("codex")
+    project_dir.join(".specify").join("cache").join("codex")
 }
 
 /// Provenance for the distributed shared codex tree.
@@ -116,10 +116,10 @@ pub struct CodexMeta {
 }
 
 impl CodexMeta {
-    /// Absolute path to `<project_dir>/.specify/.cache/codex/.codex-meta.yaml`.
+    /// Absolute path to `<project_dir>/.specify/cache/codex/codex-meta.yaml`.
     #[must_use]
     pub fn path(project_dir: &Path) -> PathBuf {
-        codex_cache_root(project_dir).join(".codex-meta.yaml")
+        codex_cache_root(project_dir).join("codex-meta.yaml")
     }
 }
 
@@ -129,7 +129,7 @@ impl CodexMeta {
 /// The shared codex lives at a sibling path in the same source tree the
 /// target adapter resolves from. This walks up from the adapter's
 /// `source_dir` to the nearest ancestor that carries the shared
-/// `universal/` pack, replaces `.specify/.cache/codex/` with a fresh
+/// `universal/` pack, replaces `.specify/cache/codex/` with a fresh
 /// copy of that pack (and, when `include_framework`, the framework
 /// `core/` pack), and records provenance pinned to `source.adapter_value`.
 ///

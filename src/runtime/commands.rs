@@ -279,7 +279,7 @@ fn write_resolve_text(w: &mut dyn Write, body: &ResolveBody) -> std::io::Result<
 /// Resolve a source- or target-adapter manifest by kebab name and emit
 /// the wire-stable [`ResolveBody`] envelope. Probe order matches the
 /// axis-specific resolver: agent-populated manifest cache at
-/// `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`
+/// `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`
 /// first, then the in-repo `<project_dir>/adapters/{sources,targets}/<name>/`.
 ///
 /// For [`Axis::Target`], `value` accepts either `<name>` or

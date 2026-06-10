@@ -24,7 +24,7 @@ fn specify_subpaths() {
     assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
     assert_eq!(layout.change_brief_path(), PathBuf::from("/a/b/change.md"));
     assert_eq!(layout.discovery_path(), PathBuf::from("/a/b/discovery.md"));
-    assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/.cache"));
+    assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/cache"));
     assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
 }
 

@@ -3,7 +3,7 @@
 //!
 //! Mirrors the shipped source two-phase agent contract
 //! (`specify source survey` / `extract`). The verb resolves the target
-//! from the slice's bound `.metadata.yaml`, then owns request assembly,
+//! from the slice's bound `metadata.yaml`, then owns request assembly,
 //! report validation, the four `target-build-*` aborts, the
 //! `slice.build.*` events, and the `built` transition gate; the target
 //! `build` brief owns only code generation.
@@ -92,7 +92,7 @@ struct BuildResult {
 ///
 /// # Errors
 ///
-/// - propagates `.metadata.yaml` load and `TargetAdapter::resolve`
+/// - propagates `metadata.yaml` load and `TargetAdapter::resolve`
 ///   failures.
 /// - `target-build-input-missing` / `target-build-request-schema` from
 ///   request assembly + validation (both phases of the tool path and

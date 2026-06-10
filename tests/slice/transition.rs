@@ -21,7 +21,7 @@ fn transition_walks_happy_path() {
         assert_eq!(value["status"], target);
     }
 
-    let meta = fs::read_to_string(project.slices_dir().join("my-slice").join(".metadata.yaml"))
+    let meta = fs::read_to_string(project.slices_dir().join("my-slice").join("metadata.yaml"))
         .expect("read metadata");
     assert!(meta.contains("status: built"));
     assert!(meta.contains("defined-at:"));

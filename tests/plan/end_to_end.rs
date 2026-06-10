@@ -30,7 +30,7 @@
 //! so "two single-target slices sharing one baseline tree, ordered by
 //! depends-on" is proven directly. Each slice's bound target is set via
 //! `slice create --target <t>` (the CLI surface that stores the bound
-//! adapter on `.metadata.yaml`); `slice build` resolves it from there,
+//! adapter on `metadata.yaml`); `slice build` resolves it from there,
 //! exactly as in production.
 //!
 //! ## Coverage delegated to existing tests (not re-implemented here)
@@ -173,9 +173,9 @@ fn stage_target_adapters(root: &Path) {
 /// Stand in for the survey agent: drop the golden lead-set into scratch
 /// and run `source survey <source> --phase finalize`.
 fn survey_finalize(root: &Path, source: &str, adapter: &str, lead_set: &str) {
-    let scratch = root.join(format!(".specify/.cache/extractions/{adapter}/survey/scratch"));
+    let scratch = root.join(format!(".specify/cache/extractions/{adapter}/scratch/survey"));
     fs::create_dir_all(&scratch).expect("mkdir survey scratch");
-    fs::write(scratch.join("lead-set.md"), lead_set).expect("write lead-set.md");
+    fs::write(scratch.join("leads.md"), lead_set).expect("write leads.md");
     specify_cmd()
         .current_dir(root)
         .args(["source", "survey", source, "--phase", "finalize"])
@@ -188,7 +188,7 @@ fn survey_finalize(root: &Path, source: &str, adapter: &str, lead_set: &str) {
 fn extract_finalize(
     root: &Path, source: &str, adapter: &str, lead: &str, slice: &str, evidence: &str,
 ) {
-    let scratch = root.join(format!(".specify/.cache/extractions/{adapter}/{slice}/scratch"));
+    let scratch = root.join(format!(".specify/cache/extractions/{adapter}/scratch/{slice}"));
     fs::create_dir_all(&scratch).expect("mkdir extract scratch");
     fs::write(scratch.join("evidence.yaml"), evidence).expect("write evidence.yaml");
     specify_cmd()
@@ -549,7 +549,7 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
     assert_eq!(result["status"], "success");
     assert!(journal_has(root, "slice.build.started"));
     assert!(journal_has(root, "slice.build.succeeded"));
-    let meta = fs::read_to_string(root.join(format!(".specify/slices/{slice}/.metadata.yaml")))
+    let meta = fs::read_to_string(root.join(format!(".specify/slices/{slice}/metadata.yaml")))
         .expect("read slice metadata");
     assert!(meta.contains("status: built"), "finalize gates `built`, got:\n{meta}");
 }
@@ -597,7 +597,7 @@ fn kernel_projection_deterministic() {
     let root = project.root();
 
     // Two slices bound to different targets; `slice build` resolves the
-    // target from `.metadata.yaml`, but the synthesis kernel never sees
+    // target from `metadata.yaml`, but the synthesis kernel never sees
     // it — that target-independence is what this test pins.
     project.seed_plan(
         "\

@@ -67,7 +67,7 @@ is captured in [§"Lint finding status, disposition, and exit"](#lint-finding-st
 ## Atomic writes
 
 Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a
-concurrent reader may observe mid-write: `plan.yaml`, `.metadata.yaml`,
+concurrent reader may observe mid-write: `plan.yaml`, `metadata.yaml`,
 `plan.lock`, and the registry. It serialises to
 `NamedTempFile::new_in(parent)` and `persist`-renames over the target so
 readers either see the prior bytes or the new bytes. Plain `fs::write`
@@ -345,7 +345,7 @@ crate project-scope and adapter-scope tool declarations.
   absolute, free of `..`, and canonicalise inside `PROJECT_DIR`
   (or `ADAPTER_DIR` for adapter-scope). `write:` entries that
   target Specify lifecycle state (`.specify/project.yaml`, slice /
-  archive `.metadata.yaml`, `.specify/plan.lock`, etc.) are rejected.
+  archive `metadata.yaml`, `.specify/plan.lock`, etc.) are rejected.
 - **Argument forwarding and environment.** `specify tool run <name>
   [-- <args>...]` forwards everything after `--` verbatim with
   `<name>` as `argv[0]`. The module receives exactly two environment
@@ -422,7 +422,7 @@ the single entry point for loading a source or target adapter manifest.
 Probe order is path-agnostic and matches workflow §"Resolver and cache"
 verbatim:
 
-1. `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/` —
+1. `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/` —
    agent-populated manifest cache, fetched by the plan/slice flow.
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo
    manifests checked into the project's source tree.
@@ -438,9 +438,9 @@ The axis segment (`sources` for `Axis::Source`, `targets` for
 `Axis::Target`) keeps source and target adapters with colliding names
 disambiguated by axis. Cache placement matches the probe layout —
 `cache_dir(axis, name)` returns
-`<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`.
+`<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`.
 The sibling extraction cache lives in a disjoint tree under
-`<project_dir>/.specify/.cache/extractions/<adapter>/`; see §"Cache
+`<project_dir>/.specify/cache/extractions/<adapter>/`; see §"Cache
 layout". Refer to workflow §"Resolver and cache" before changing the
 probe order or manifest-cache layout.
 
@@ -633,7 +633,7 @@ second-precision UTC `timestamp` and appends exactly one line via
 
 The WASI tool runner's plugin-scope substitution variable is
 `$CAPABILITY_DIR`. It expands to the resolved plugin's root directory
-(`<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`
+(`<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`
 or the in-repo equivalent) and is only valid in
 `permissions.{read,write}` entries (and the `source:` URI of a
 plugin-scope tool); project-scope
@@ -722,7 +722,7 @@ share a cache slot. Enforced uniformly by `adapter.schema.json`,
 Adapter names are unique across axes — a name is declared under
 `adapters/sources/<name>/` xor `adapters/targets/<name>/`, never both
 (and the same applies to their
-`.specify/.cache/manifests/{sources,targets}/<name>/` manifest-cache
+`.specify/cache/manifests/{sources,targets}/<name>/` manifest-cache
 mirrors). Eagerly enforced at `specify init` time (inside
 `crates/workflow/src/init/cache.rs::cache_adapter`, before the target
 cache directory is rewritten) and at `*Adapter::resolve` time. The
@@ -749,17 +749,19 @@ Plan-time platform reconciliation is a CLI-owned deterministic pass, not agent j
 
 ## Cache layout
 
-`.specify/.cache/` hosts two distinct, root-disjoint caches:
+`.specify/cache/` hosts two distinct, root-disjoint caches:
 
 - `manifests/{sources,targets}/<name>/` — adapter manifest cache. The
   agent-populated mirror of `adapters/{sources,targets}/<name>/`
   (`adapter.yaml` plus the brief markdown files it references). Per-axis
   because adapter names are unique per axis. Resolved by
   `crates/workflow/src/adapter/core.rs::cache_dir`.
-- `extractions/<adapter>/<fingerprint>/` — per-source extraction result cache, with the append-only `index.jsonl` at the
-  adapter root (`extractions/<adapter>/index.jsonl`). Per-adapter only —
-  not per-axis — because extraction is a source-axis operation; the
-  adapter name carries enough identity. Resolved by
+- `extractions/<adapter>/entries/<fingerprint>/` — per-source extraction result cache, with the append-only `index.jsonl` at the
+  adapter root (`extractions/<adapter>/index.jsonl`) and the
+  per-operation agent scratch lanes under the sibling
+  `extractions/<adapter>/scratch/{survey,<slice>}/` tree. Per-adapter
+  only — not per-axis — because extraction is a source-axis operation;
+  the adapter name carries enough identity. Resolved by
   `crates/workflow/src/adapter/cache/io.rs::CacheLayout`.
 
 Each cache owns its own root, so the loader does not probe for an
@@ -776,7 +778,7 @@ carries only a `project`; the target adapter (`name@vN`, e.g.
 **resolved on demand** from the bound project's topology rather than
 persisted. The integer `N` remains a load-bearing wire field wherever a
 resolved target *does* appear (`specify plan next`, the slice
-`.metadata.yaml`, the build request):
+`metadata.yaml`, the build request):
 
 - The slice's `project` is optional on disk. An omitted `project`
   resolves to the sole project in the topology (a single regular
@@ -913,11 +915,11 @@ resolved manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR`
 `$SCRATCH_DIR` nests under the per-adapter extraction tree but disjoint
 from the fingerprint result cache so a scratch write never pollutes a
 cache artifact: `extract` uses
-`.specify/.cache/extractions/<adapter>/<slice>/scratch/`; `survey`
+`.specify/cache/extractions/<adapter>/scratch/<slice>/`; `survey`
 (plan-time, no slice) uses
-`.specify/.cache/extractions/<adapter>/survey/scratch/`. A 64-char-hex
-digest dir can never equal a `<slice>`/`survey` segment, so the two
-trees provably never collide. See §"Cache layout" and
+`.specify/cache/extractions/<adapter>/scratch/survey/`. The result
+cache lives under the sibling `entries/` tree, so scratch lanes and
+fingerprint dirs never share a namespace. See §"Cache layout" and
 §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`".
 
 **Shared prep seam.** The adapter resolution, brief-directory
@@ -1284,7 +1286,7 @@ yet picked up the shared codex tree — the directive pass silently
 skips synthetic emission. Status stamping on matched directives
 continues to run; only the policing of malformed and orphan
 directives degrades. The fix is to pass `--rules-root` or to
-distribute the shared codex into `.specify/.cache/codex/` via
+distribute the shared codex into `.specify/cache/codex/` via
 `specify init` / `specify rules sync` (codex distribution, RM-07);
 once the `universal/` pack resolves, `UNI-022` / `UNI-023` policing
 stops degrading and fires on the consumer project. The
@@ -1309,17 +1311,17 @@ ships beside the target adapter in its source repo
 standalone `specify rules sync` verb mirror it into the project codex
 cache, **pinned to the same adapter source/ref**.
 
-- **Cache location.** `<project_dir>/.specify/.cache/codex/`, mirroring
+- **Cache location.** `<project_dir>/.specify/cache/codex/`, mirroring
   `adapters/shared/rules/{universal,core}/` underneath. The codex
   resolver joins the same relative path onto its rules root, so the new
   rung needs no special-casing. This replaces the earlier lint-only
   `.specify/cache/rules/` fallback (now removed) and standardises on the
-  dotted `.specify/.cache/` tree the manifest cache already uses.
+  `.specify/cache/` tree the manifest cache already uses.
 - **Probe order.** `probe_rules_root` in
   [`crates/standards/src/rules/resolve.rs`](./crates/standards/src/rules/resolve.rs)
   is the closed precedence: (1) explicit `--rules-root`; (2) monorepo
   `{project_dir}/adapters/shared/rules/universal/`; (3) **new** codex
-  cache `{project_dir}/.specify/.cache/codex/...`; (4)
+  cache `{project_dir}/.specify/cache/codex/...`; (4)
   `rules-root-required`. Step 3 is a derived (non-explicit) root, so the
   rules-root fallback overlay step stays skipped, exactly like the
   monorepo case. The rung lives in the resolver so both `specify lint`
@@ -1332,7 +1334,7 @@ cache, **pinned to the same adapter source/ref**.
   `adapters/shared/rules/` in the same sparse checkout as the adapter —
   no second clone. **Fail-soft:** a source tree without the shared pack
   leaves the cache empty and the consumer falls back to `--rules-root`.
-- **Provenance.** `CodexMeta` (`.specify/.cache/codex/.codex-meta.yaml`)
+- **Provenance.** `CodexMeta` (`.specify/cache/codex/codex-meta.yaml`)
   records the pinned adapter `source` value, `include_framework`, and
   `fetched_at`. Audit-only; the resolver never reads it.
 - **Distribution vs evaluation.** `--include-framework` (init / `rules
@@ -1495,7 +1497,7 @@ becomes a prunable convenience cache governed by a new `specify archive
 prune` verb (retention policy mirroring the tool-cache GC in
 [`crates/tool/src/cache/gc.rs`](./crates/tool/src/cache/gc.rs)), not the
 system of record. `.specify/specs/` stays committable (init gitignores
-only `.specify/.cache/` and `.specify/workspace/`).
+only `.specify/cache/` and `.specify/workspace/`).
 
 ## Bootstrap, upgrade, and migration lifecycle
 

@@ -7,7 +7,7 @@
 //! events, no lifecycle transitions, no on-disk writes — the handler
 //! streams a `ResolvedRules` JSON envelope to stdout and exits.
 //!
-//! `sync` distributes the shared codex into `.specify/.cache/codex/`
+//! `sync` distributes the shared codex into `.specify/cache/codex/`
 //! pinned to the project's adapter source/ref (RM-07), so consumer
 //! projects resolve shared `UNI-*` rules without a co-located framework
 //! checkout or a manual `--rules-root`.

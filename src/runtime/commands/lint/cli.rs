@@ -106,7 +106,7 @@ pub struct ProjectArgs {
     /// Codex root supplying shared `UNI-*` rules. Resolution
     /// order (rules-root resolution): this flag / `$RULES_ROOT` env →
     /// monorepo `adapters/shared/rules/universal/` under the project →
-    /// distributed codex cache `.specify/.cache/codex/` (populated by
+    /// distributed codex cache `.specify/cache/codex/` (populated by
     /// `specify init` / `specify rules sync`). Missing every rung exits
     /// 2 with `rules-root-required`.
     #[arg(long, env = "RULES_ROOT")]

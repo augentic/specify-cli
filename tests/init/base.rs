@@ -330,7 +330,7 @@ fn workspace_writes_canonical_shape() {
     // Phase-pipeline directories MUST NOT be present.
     assert!(!tmp.path().join(".specify/slices").exists());
     assert!(!tmp.path().join(".specify/specs").exists());
-    assert!(!tmp.path().join(".specify/.cache").exists());
+    assert!(!tmp.path().join(".specify/cache").exists());
 
     // project.yaml shape: `workspace: true` only, no `adapter:` field, and
     // no stale `schema:` sentinel.

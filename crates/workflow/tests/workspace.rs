@@ -204,7 +204,7 @@ projects:
 
     let gitignore = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
     assert!(gitignore.lines().any(|l| l.trim() == ".specify/workspace/"));
-    assert!(gitignore.lines().any(|l| l.trim() == ".specify/.cache/"));
+    assert!(gitignore.lines().any(|l| l.trim() == ".specify/cache/"));
 }
 
 #[test]
@@ -522,7 +522,7 @@ fn c02_sync_preserves_gitignore_once() {
 
     let gitignore = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
     assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/workspace/").count(), 1);
-    assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/.cache/").count(), 1);
+    assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/cache/").count(), 1);
 }
 
 // ---------- branch preparation (workspace orchestration contract C04) ----------------------------
@@ -1055,7 +1055,7 @@ fn stage_topology_slot(project_dir: &Path, name: &str, project_yaml: &str) {
     let slot_specify = project_dir.join(".specify/workspace").join(name).join(".specify");
     fs::create_dir_all(&slot_specify).unwrap();
     fs::write(slot_specify.join("project.yaml"), project_yaml).unwrap();
-    let omnia_manifest = slot_specify.join(".cache/manifests/targets/omnia");
+    let omnia_manifest = slot_specify.join("cache/manifests/targets/omnia");
     fs::create_dir_all(&omnia_manifest).unwrap();
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/plugins/adapters/targets/omnia/adapter.yaml");

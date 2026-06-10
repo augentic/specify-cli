@@ -30,7 +30,7 @@ Both build envelopes are closed-shape YAML, keyed on `(slice, target)`, schema-v
 
 `SourceAdapter::resolve(name, project_dir)` and `TargetAdapter::resolve(name, project_dir)` are the per-axis entry points. Probe order:
 
-1. `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/` — agent-populated mirror.
+1. `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/` — agent-populated mirror.
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo manifest.
 
 Resolution is project-local only; there is no environment-variable fallback to an out-of-tree framework checkout. When neither location matches, resolution fails with `adapter-not-found`.
@@ -104,7 +104,7 @@ Closed enum `intent > documentation > behaviour`. v1 resolution order per `(sour
 
 ## Extraction
 
-Per-source `extract` is keyed on a closed five-input fingerprint; results cached at `.specify/.cache/extractions/<adapter>/<fingerprint>/`. See lint exit mapping below.
+Per-source `extract` is keyed on a closed five-input fingerprint; results cached at `.specify/cache/extractions/<adapter>/entries/<fingerprint>/`. See lint exit mapping below.
 
 ## Requirement block contract
 
@@ -118,7 +118,7 @@ Kebab-case discriminants on the JSON envelope; `snake_case` Rust variants bridge
 
 WASI tool runner pre-opens `$PROJECT_DIR` always, `$CAPABILITY_DIR` only for plugin-scope tools. No host environment leaks. See [`DECISIONS.md` §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`"](../../DECISIONS.md#capability_dir-replaces-adapter_dir).
 
-Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$SOURCE_DIR` read-only (absent for value-bound sources), `$CAPABILITY_DIR` read-only (manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR` **not visible**. Scratch nests disjoint from the result cache — `extract` under `.specify/.cache/extractions/<adapter>/<slice>/scratch/`, `survey` under `.specify/.cache/extractions/<adapter>/survey/scratch/`. See [`DECISIONS.md` §"Source operations (D1)"](../../DECISIONS.md#source-operations-d1).
+Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$SOURCE_DIR` read-only (absent for value-bound sources), `$CAPABILITY_DIR` read-only (manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR` **not visible**. Scratch nests disjoint from the result cache — `extract` under `.specify/cache/extractions/<adapter>/scratch/<slice>/`, `survey` under `.specify/cache/extractions/<adapter>/scratch/survey/`. See [`DECISIONS.md` §"Source operations (D1)"](../../DECISIONS.md#source-operations-d1).
 
 ## CLI surface
 
@@ -170,7 +170,7 @@ The CLI is the single writer of every `Divergence` variant, all through `specify
 
 ## D8 — Cache fingerprint inputs
 
-Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, lead id. Cache at `.specify/.cache/extractions/<adapter>/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/workflow/src/adapter/cache.rs`](../../crates/workflow/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
+Closed five-input list: source path canonicalised, adapter `name@version`, brief sha256, sorted declared-tool versions, lead id. Cache at `.specify/cache/extractions/<adapter>/entries/<fingerprint>/` with append-only `index.jsonl` at the adapter root. Implementation at [`crates/workflow/src/adapter/cache.rs`](../../crates/workflow/src/adapter/cache.rs); see [`DECISIONS.md` §"Extraction cache fingerprint inputs"](../../DECISIONS.md#extraction-cache-fingerprint-inputs).
 
 ## Provenance projection
 

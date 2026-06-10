@@ -11,7 +11,7 @@ use super::io::move_atomic;
 ///
 /// This is the sole implementation of the archive move semantics; both
 /// `specify slice archive` and the `specify slice merge run` success path
-/// route through it. Does **not** touch `.metadata.yaml` — the caller is
+/// route through it. Does **not** touch `metadata.yaml` — the caller is
 /// responsible for any status transition before or after.
 ///
 /// # Errors

@@ -328,7 +328,7 @@ pub enum EventKind {
     },
     /// runtime capture claim — target's `build` finished replay.
     /// Payload mirrors the `replay:` block written into the
-    /// slice's `.metadata.yaml`. Optional in v1 (targets that have
+    /// slice's `metadata.yaml`. Optional in v1 (targets that have
     /// not implemented the hook do not emit this event).
     #[serde(rename = "slice.replay.completed", rename_all = "kebab-case")]
     SliceReplayCompleted {
@@ -395,7 +395,7 @@ pub enum EventKind {
         /// the merge engine's `(class, name)` order.
         touched_specs: Vec<String>,
         /// One-line human summary of the merge operations (the same
-        /// text stamped into the archived slice's `.metadata.yaml`
+        /// text stamped into the archived slice's `metadata.yaml`
         /// merge outcome).
         outcome_summary: String,
         /// Git HEAD SHA after the merge, when the project is a git

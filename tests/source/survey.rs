@@ -43,7 +43,7 @@ slices:
 }
 
 fn survey_scratch_dir(project: &Project) -> PathBuf {
-    project.root().join(".specify/.cache/extractions/typescript/survey/scratch")
+    project.root().join(".specify/cache/extractions/typescript/scratch/survey")
 }
 
 // A `survey` lead-set omits `source`: attribution is CLI-owned,
@@ -78,7 +78,7 @@ fn prepare_prints_envelope_emits_event() {
     );
     let scratch = body["scratch-dir"].as_str().expect("scratch-dir str");
     assert!(
-        scratch.ends_with(".specify/.cache/extractions/typescript/survey/scratch"),
+        scratch.ends_with(".specify/cache/extractions/typescript/scratch/survey"),
         "scratch-dir {scratch} must key under the survey segment"
     );
     let briefs = body["briefs-dir"].as_str().expect("briefs-dir str");
@@ -113,7 +113,7 @@ fn finalize_merges_and_cache_miss() {
     // Stand in for the agent: write the produced lead set into scratch.
     let scratch = survey_scratch_dir(&project);
     fs::create_dir_all(&scratch).expect("create scratch dir");
-    fs::write(scratch.join("lead-set.md"), VALID_LEAD_SET).expect("write lead-set.md");
+    fs::write(scratch.join("leads.md"), VALID_LEAD_SET).expect("write leads.md");
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -160,8 +160,8 @@ fn finalize_unparseable_lead_set_errors() {
 
     let scratch = survey_scratch_dir(&project);
     fs::create_dir_all(&scratch).expect("create scratch dir");
-    fs::write(scratch.join("lead-set.md"), "The survey found registration behavior.\n")
-        .expect("write unparseable lead-set.md");
+    fs::write(scratch.join("leads.md"), "The survey found registration behavior.\n")
+        .expect("write unparseable leads.md");
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -170,7 +170,7 @@ fn finalize_unparseable_lead_set_errors() {
         .failure();
 
     let stderr = parse_stderr(&assert.get_output().stderr, project.root());
-    assert_eq!(stderr["error"], "survey-lead-set-empty");
+    assert_eq!(stderr["error"], "survey-leads-empty");
     assert_eq!(stderr["exit-code"], 1);
     assert!(
         !project.root().join("discovery.md").exists(),
@@ -196,10 +196,10 @@ fn finalize_invalid_lead_set_untouched() {
     let scratch = survey_scratch_dir(&project);
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(
-        scratch.join("lead-set.md"),
+        scratch.join("leads.md"),
         "## Lead inventory\n\n### bad_id\n\n- lead: bad_id\n- synopsis: Bad id.\n",
     )
-    .expect("write invalid lead-set.md");
+    .expect("write invalid leads.md");
 
     let assert = specify_cmd()
         .current_dir(project.root())

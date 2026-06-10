@@ -31,14 +31,14 @@ pub enum Phase {
 pub enum SourceAction {
     /// Resolve a source-adapter manifest by kebab name.
     ///
-    /// Probe order: `.specify/.cache/manifests/sources/<name>/adapter.yaml`
+    /// Probe order: `.specify/cache/manifests/sources/<name>/adapter.yaml`
     /// (agent-populated manifest cache), then
     /// `<project-dir>/adapters/sources/<name>/adapter.yaml`
     /// (in-repo). Emits the resolved directory path plus the
     /// manifest's declared operations.
     ///
     /// `--explain` switches the output to the extraction cache fingerprint contract fingerprint
-    /// chain read from `.specify/.cache/extractions/<name>/index.jsonl`
+    /// chain read from `.specify/cache/extractions/<name>/index.jsonl`
     /// instead of the manifest summary.
     Resolve {
         /// Kebab-case source-adapter name (e.g. `intent`,
@@ -49,7 +49,7 @@ pub enum SourceAction {
         #[arg(long, default_value = ".")]
         project_dir: PathBuf,
         /// Print the fingerprint chain from
-        /// `.specify/.cache/extractions/<name>/index.jsonl` instead of the
+        /// `.specify/cache/extractions/<name>/index.jsonl` instead of the
         /// manifest summary.
         #[arg(long)]
         explain: bool,
@@ -94,13 +94,13 @@ pub enum SourceAction {
     /// Resolves `<source>` against `plan.yaml.sources.<key>` (not
     /// the adapter name), resolves the bound source adapter, and builds
     /// the four-root sandbox under
-    /// `.specify/.cache/extractions/<adapter>/survey/scratch/`.
+    /// `.specify/cache/extractions/<adapter>/scratch/survey/`.
     ///
     /// For `execution: tool` adapters the single call runs the whole
     /// operation. For `execution: agent` adapters the operation is
     /// two-phase: `--phase prepare` (the default) prints the handoff
     /// envelope and returns control to the agent; `--phase finalize`
-    /// validates the agent-produced `lead-set.md` and merges it.
+    /// validates the agent-produced `leads.md` and merges it.
     Survey {
         /// Source key from `plan.yaml.sources.<key>`.
         source: String,
@@ -120,7 +120,7 @@ pub enum SourceAction {
     /// Resolves `<source>` against `plan.yaml.sources.<key>` (not
     /// the adapter name), resolves the bound source adapter, and builds
     /// the four-root sandbox with scratch under
-    /// `.specify/.cache/extractions/<adapter>/<slice>/scratch/`.
+    /// `.specify/cache/extractions/<adapter>/scratch/<slice>/`.
     ///
     /// For `execution: tool` adapters the single call runs the whole
     /// operation. For `execution: agent` adapters the operation is

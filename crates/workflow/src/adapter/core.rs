@@ -40,9 +40,9 @@ pub const ADAPTER_FILENAME: &str = "adapter.yaml";
 /// Parent directory for in-repo adapter trees.
 pub const ADAPTERS_DIR: &str = "adapters";
 
-/// Manifest-cache root segment under `.specify/.cache/`.
+/// Manifest-cache root segment under `.specify/cache/`.
 ///
-/// `.specify/.cache/manifests/{sources,targets}/<name>/` mirrors the
+/// `.specify/cache/manifests/{sources,targets}/<name>/` mirrors the
 /// in-repo `adapters/{sources,targets}/<name>/` tree. Paired with
 /// [`EXTRACTIONS_CACHE_DIR`] so the manifest and extraction cache fingerprint contract extraction
 /// caches own disjoint roots (see [DECISIONS.md §"Cache layout"]).
@@ -50,9 +50,9 @@ pub const ADAPTERS_DIR: &str = "adapters";
 /// [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
 pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 
-/// Extraction-cache root segment under `.specify/.cache/`.
+/// Extraction-cache root segment under `.specify/cache/`.
 ///
-/// `.specify/.cache/extractions/<adapter>/<fingerprint>/` holds the
+/// `.specify/cache/extractions/<adapter>/entries/<fingerprint>/` holds the
 /// extraction cache fingerprint contract per-source extraction result cache (with `index.jsonl`
 /// at the adapter root). Per-adapter only — extraction is a source-axis
 /// operation — and partitioned from [`MANIFESTS_CACHE_DIR`] so each
@@ -210,11 +210,11 @@ pub enum AdapterLocation {
     /// Resolved from `<project_dir>/adapters/{sources,targets}/<name>/`.
     Local(PathBuf),
     /// Resolved from the manifest cache at
-    /// `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`.
+    /// `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`.
     /// The manifest cache mirrors the in-repo adapter tree
     /// (`adapter.yaml` plus brief markdown); the extraction cache fingerprint contract extraction
     /// result cache lives in a sibling tree under
-    /// `.specify/.cache/extractions/<adapter>/` — see
+    /// `.specify/cache/extractions/<adapter>/` — see
     /// [DECISIONS.md §"Cache layout"].
     ///
     /// [DECISIONS.md §"Cache layout"]: ../../../../DECISIONS.md#cache-layout
@@ -241,12 +241,12 @@ impl AdapterLocation {
 }
 
 /// Manifest cache root for `(axis, name)` —
-/// `.specify/.cache/manifests/{sources,targets}/<name>/`.
+/// `.specify/cache/manifests/{sources,targets}/<name>/`.
 ///
 /// This is the agent-populated mirror of `adapters/{sources,targets}/<name>/`
 /// — `adapter.yaml` plus the brief markdown files it references. The
 /// extraction cache fingerprint contract per-source extraction result cache lives in a separate
-/// sibling tree under `.specify/.cache/extractions/<adapter>/` (with
+/// sibling tree under `.specify/cache/extractions/<adapter>/` (with
 /// `index.jsonl` at the adapter root) so the two caches do not share
 /// a root; see [DECISIONS.md §"Cache layout"].
 ///
@@ -257,7 +257,7 @@ impl AdapterLocation {
 pub fn cache_dir(project_dir: &Path, axis: Axis, name: &str) -> PathBuf {
     project_dir
         .join(".specify")
-        .join(".cache")
+        .join("cache")
         .join(MANIFESTS_CACHE_DIR)
         .join(axis.dir_segment())
         .join(name)
@@ -372,7 +372,7 @@ pub struct ResolvedSourceAdapter {
     /// Parsed manifest.
     pub manifest: SourceAdapter,
     /// Whether the manifest came from
-    /// `.specify/.cache/manifests/sources/<name>/` or from
+    /// `.specify/cache/manifests/sources/<name>/` or from
     /// `<project_dir>/adapters/sources/<name>/`, and the directory
     /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,
@@ -386,7 +386,7 @@ pub struct ResolvedTargetAdapter {
     /// Parsed manifest.
     pub manifest: TargetAdapter,
     /// Whether the manifest came from
-    /// `.specify/.cache/manifests/targets/<name>/` or from
+    /// `.specify/cache/manifests/targets/<name>/` or from
     /// `<project_dir>/adapters/targets/<name>/`, and the directory
     /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,

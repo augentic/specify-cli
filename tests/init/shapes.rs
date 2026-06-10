@@ -50,7 +50,7 @@ fn greenfield() {
 
     // Fresh init scaffolds the canonical `.specify/` skeleton.
     for dir in
-        [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/.cache"]
+        [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/cache"]
     {
         assert!(tmp.path().join(dir).is_dir(), "greenfield must scaffold {dir}");
     }

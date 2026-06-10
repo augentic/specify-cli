@@ -54,7 +54,7 @@ Four module trees carry the workflow contract — three in `specify-workflow`, p
 
 ## Per-axis cache layout
 
-`Adapter::resolve` probes — in order — the agent-populated cache at `<project_dir>/.specify/.cache/{sources,targets}/<name>/` and then the in-repo manifest at `<project_dir>/{sources,targets}/<name>/`. The `{sources,targets}` segment is keyed by `Axis`, so source and target adapters with colliding names disambiguate by axis. `cache_dir(axis, name)` returns the cache-side path. Do not collapse the two roots or special-case one axis — workflow §"Resolver and cache" pins the shape.
+`Adapter::resolve` probes — in order — the agent-populated cache at `<project_dir>/.specify/cache/{sources,targets}/<name>/` and then the in-repo manifest at `<project_dir>/{sources,targets}/<name>/`. The `{sources,targets}` segment is keyed by `Axis`, so source and target adapters with colliding names disambiguate by axis. `cache_dir(axis, name)` returns the cache-side path. Do not collapse the two roots or special-case one axis — workflow §"Resolver and cache" pins the shape.
 
 ## WASI tool sidecar scope
 
@@ -91,7 +91,7 @@ The WASI tool fetch in `crates/tool/src/resolver.rs` runs every HTTP request wit
 
 ## Atomic writes
 
-Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a concurrent reader may observe mid-write: `plan.yaml`, `.metadata.yaml`, `plan.lock`, and the registry. It serialises to `NamedTempFile::new_in(parent)` and `persist`-renames over the target so readers either see the prior bytes or the new bytes. Plain `fs::write` is reserved for files no other process reads concurrently with the writer (one-shot scratch output, fixtures inside a tempdir test).
+Use `yaml_write` (in `crates/slice/src/atomic.rs`) for any file a concurrent reader may observe mid-write: `plan.yaml`, `metadata.yaml`, `plan.lock`, and the registry. It serialises to `NamedTempFile::new_in(parent)` and `persist`-renames over the target so readers either see the prior bytes or the new bytes. Plain `fs::write` is reserved for files no other process reads concurrently with the writer (one-shot scratch output, fixtures inside a tempdir test).
 
 The standards-side phrasing of the rule lives in [coding-standards.md §"YAML, JSON, and atomic writes"](./coding-standards.md#yaml-json-and-atomic-writes); the long-form rationale lives in [DECISIONS.md §"Atomic writes"](../../DECISIONS.md#atomic-writes).
 
@@ -119,7 +119,7 @@ cargo +nightly fmt --all
 
 ## Skill / CLI responsibility split
 
-Every deterministic operation lives in this CLI: kebab-case validation, `.metadata.yaml` reads/writes, lifecycle transitions, plugin resolution (`specify source resolve` / `specify target resolve`), artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation, schema validation of `plan.yaml` and per-source `Evidence`, journal event append. The plugin repo's `/spec:` skills (`/spec:plan`, `/spec:refine`, `/spec:build`, `/spec:merge`, `/spec:execute`, `/spec:finalize`, `/spec:init`, `/spec:drop`) shell out for all of those.
+Every deterministic operation lives in this CLI: kebab-case validation, `metadata.yaml` reads/writes, lifecycle transitions, plugin resolution (`specify source resolve` / `specify target resolve`), artifact-completion checks, spec-merge preview, baseline conflict detection, delta merge, coherence validation, archive moves, plan/registry validation, schema validation of `plan.yaml` and per-source `Evidence`, journal event append. The plugin repo's `/spec:` skills (`/spec:plan`, `/spec:refine`, `/spec:build`, `/spec:merge`, `/spec:execute`, `/spec:finalize`, `/spec:init`, `/spec:drop`) shell out for all of those.
 
 The corollary: when a skill currently does something deterministic in prose (parsing YAML, validating shape, computing topology, transitioning state), the right fix is to add a CLI verb here and have the skill call it. The wrong fix is to make the skill smarter.
 

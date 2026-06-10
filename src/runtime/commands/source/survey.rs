@@ -3,11 +3,11 @@
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Survey`]) for adapter
 //! resolution, brief directory, and the four-root sandbox (scratch at
-//! `.specify/.cache/extractions/<adapter>/survey/scratch/`), then
+//! `.specify/cache/extractions/<adapter>/scratch/survey/`), then
 //! branches on the adapter's `execution` mode:
 //!
 //! - `tool`: single-phase. Probe the extraction cache; on a hit read the
-//!   cached `lead-set.md`, on a miss dispatch the declared tool (no
+//!   cached `leads.md`, on a miss dispatch the declared tool (no
 //!   first-party source declares a survey tool yet). Either
 //!   way validate the lead set and merge it into `discovery.md`.
 //! - `agent`: two-phase. The CLI never blocks on agent work.
@@ -16,7 +16,7 @@
 //!     (`{ adapter, version, briefs-dir, source-dir?, scratch-dir,
 //!     leads[], execution }` — no `evidence-dir`; survey produces a lead
 //!     set, not Evidence). Control returns to the agent.
-//!   - `--phase finalize`: validate the agent-produced `lead-set.md`
+//!   - `--phase finalize`: validate the agent-produced `leads.md`
 //!     against `schemas/discovery/lead.schema.json` *before* it becomes
 //!     visible, run the extraction-cache fingerprint, emit
 //!     `source.survey.cache-hit` / `cache-miss`, and merge the lead set
@@ -218,8 +218,8 @@ fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>>
     let mut leads = Discovery::parse_lead_set(raw)?.into_leads();
     if leads.is_empty() && !raw.trim().is_empty() {
         return Err(Error::Diag {
-            code: "survey-lead-set-empty",
-            detail: "lead-set.md contains text but no leads were parsed; each lead must be a \
+            code: "survey-leads-empty",
+            detail: "leads.md contains text but no leads were parsed; each lead must be a \
                      `### <lead>` heading followed by `lead:` and `synopsis:` bullets using \
                      `-` or `*` markers"
                 .to_string(),
