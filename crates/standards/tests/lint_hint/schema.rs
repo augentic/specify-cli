@@ -89,7 +89,7 @@ fn flags_scenario_schema_violation() {
     // `scenario` selector must validate the fact family whole-tree and
     // flag it, even though scenario files never enter `model.files`.
     let thin = "---\nid: thin\nstages: [refine, build]\n---\n\nBody.\n";
-    let path = tmp.path().join("acceptance/scenarios/thin.md");
+    let path = tmp.path().join("evals/scenarios/thin.md");
     fs::create_dir_all(path.parent().expect("parent")).expect("scenario dir");
     fs::write(&path, thin).expect("write scenario");
 
@@ -115,7 +115,7 @@ fn flags_scenario_schema_violation() {
         outcome
             .findings
             .iter()
-            .all(|f| f.location.as_ref().is_some_and(|l| l.path == "acceptance/scenarios/thin.md")),
+            .all(|f| f.location.as_ref().is_some_and(|l| l.path == "evals/scenarios/thin.md")),
         "findings must locate the offending scenario file"
     );
 }
@@ -123,8 +123,8 @@ fn flags_scenario_schema_violation() {
 #[test]
 fn valid_scenario_passes_schema_selector() {
     let tmp = tempfile::tempdir().expect("tmp");
-    let ok = "---\nid: ok\nowner: spec\nkind: skill\nbackend: manual\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n";
-    let path = tmp.path().join("acceptance/scenarios/ok.md");
+    let ok = "---\nid: ok\nowner: spec\nkind: skill\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n";
+    let path = tmp.path().join("evals/scenarios/ok.md");
     fs::create_dir_all(path.parent().expect("parent")).expect("scenario dir");
     fs::write(&path, ok).expect("write scenario");
 

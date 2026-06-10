@@ -200,7 +200,7 @@ fn check_artifact_paths(opted: &[ScenarioFile]) -> Vec<ScenarioFinding> {
 /// filesystem half of the host's `check_recorded_trace_freshness`; the
 /// git-only staleness advisory (CORE-034) is deliberately not lifted.
 fn check_recorded_trace_freshness(project_dir: &Path) -> Vec<ScenarioFinding> {
-    let recorded_root = project_dir.join("acceptance").join("recorded");
+    let recorded_root = project_dir.join("evals").join("recorded");
     if !recorded_root.is_dir() {
         return Vec::new();
     }
@@ -345,14 +345,14 @@ fn relative_display(root: &Path, path: &Path) -> String {
     path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
 }
 
-/// Discover scenario candidate files across the acceptance scenario pack,
+/// Discover scenario candidate files across the eval scenario pack,
 /// target adapter tests, and plugin skill fixtures — mirroring the host's
 /// `discover_scenario_candidates`. Symlinks are never traversed or
 /// collected (the host walks with `follow_links(false)` and skips
 /// symlinked plugin fixtures).
 fn discover_scenario_candidates(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    collect_acceptance_scenarios(&root.join("acceptance").join("scenarios"), &mut out);
+    collect_eval_scenarios(&root.join("evals").join("scenarios"), &mut out);
     collect_target_scenarios(&root.join("adapters").join("targets"), &mut out);
     collect_plugin_fixture_scenarios(&root.join("plugins"), &mut out);
     out.sort();
@@ -360,9 +360,9 @@ fn discover_scenario_candidates(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Flat `acceptance/scenarios/<id>.md` files (depth 1), skipping the pack
+/// Flat `evals/scenarios/<id>.md` files (depth 1), skipping the pack
 /// `README.md` catalog.
-fn collect_acceptance_scenarios(dir: &Path, out: &mut Vec<PathBuf>) {
+fn collect_eval_scenarios(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -472,7 +472,7 @@ mod tests {
     }
 
     fn write_scenario(dir: &Path, name: &str, body: &str) {
-        let scenarios = dir.join("acceptance/scenarios");
+        let scenarios = dir.join("evals/scenarios");
         std::fs::create_dir_all(&scenarios).expect("mkdir");
         std::fs::write(scenarios.join(name), body).expect("write scenario");
     }
@@ -480,7 +480,7 @@ mod tests {
     /// A fully schema-valid scenario frontmatter block keyed by `id`.
     fn valid_frontmatter(id: &str) -> String {
         format!(
-            "---\nid: {id}\nowner: spec\nkind: skill\nbackend: manual\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n"
+            "---\nid: {id}\nowner: spec\nkind: skill\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n"
         )
     }
 
@@ -489,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn flags_non_contiguous_acceptance_scenario() {
+    fn flags_non_contiguous_eval_scenario() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_scenario(dir.path(), "good.md", &valid_frontmatter("good"));
         let mut bad = valid_frontmatter("bad");
@@ -497,7 +497,7 @@ mod tests {
         write_scenario(dir.path(), "bad.md", &bad);
 
         let stages = flagged(&run(dir.path()), RULE_STAGES_NOT_CONTIGUOUS);
-        assert_eq!(stages, vec![Some("acceptance/scenarios/bad.md".to_string())]);
+        assert_eq!(stages, vec![Some("evals/scenarios/bad.md".to_string())]);
     }
 
     #[test]
@@ -510,7 +510,7 @@ mod tests {
         );
         write_scenario(dir.path(), "arts.md", &body);
         let unsafe_paths = flagged(&run(dir.path()), RULE_ARTIFACT_PATH_UNSAFE);
-        assert_eq!(unsafe_paths, vec![Some("acceptance/scenarios/arts.md".to_string())]);
+        assert_eq!(unsafe_paths, vec![Some("evals/scenarios/arts.md".to_string())]);
     }
 
     #[test]
@@ -519,17 +519,17 @@ mod tests {
         let body = format!("{}\nScenario ID: `other`\n", valid_frontmatter("real"));
         write_scenario(dir.path(), "mismatch.md", &body);
         let mismatch = flagged(&run(dir.path()), RULE_BODY_ID_MISMATCH);
-        assert_eq!(mismatch, vec![Some("acceptance/scenarios/mismatch.md".to_string())]);
+        assert_eq!(mismatch, vec![Some("evals/scenarios/mismatch.md".to_string())]);
     }
 
     #[test]
     fn flags_recorded_trace_violation() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let recorded = dir.path().join("acceptance/recorded/run-1");
+        let recorded = dir.path().join("evals/recorded/run-1");
         std::fs::create_dir_all(&recorded).expect("mkdir");
         std::fs::write(recorded.join("trace.jsonl"), "not json\n").expect("write trace");
         let trace = flagged(&run(dir.path()), RULE_RECORDED_TRACE_VIOLATION);
-        assert_eq!(trace, vec![Some("acceptance/recorded/run-1/trace.jsonl".to_string())]);
+        assert_eq!(trace, vec![Some("evals/recorded/run-1/trace.jsonl".to_string())]);
     }
 
     #[test]

@@ -8,7 +8,7 @@
 //! validates-before-visible, persists the Evidence, and emits
 //! `slice.extract.completed`), the validate-before-visible guarantee
 //! that an invalid Evidence document persists no file, the value-bound
-//! `intent` path, and the sandbox path-denied acceptance scenario `5j`
+//! `intent` path, and the sandbox path-denied eval scenario `5j`
 //! (`$PROJECT_DIR` invisible to the adapter; out-of-sandbox Evidence
 //! denied).
 
@@ -342,7 +342,7 @@ fn finalize_missing_evidence_stays_refining() {
 }
 
 /// Scenario `5j` — source-adapter sandbox path-denied (the parent
-/// `augentic/specify` repo's `docs/contributing/acceptance.md`
+/// `augentic/specify` repo's `docs/contributing/evals.md`
 /// §Scenario IDs, stub `05j-source-sandbox-denied.md`).
 ///
 /// Proves the two halves of the four-root sandbox the C5 prep seam

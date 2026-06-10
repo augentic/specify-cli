@@ -319,9 +319,9 @@ pub struct AdapterDir {
 ///
 /// Produced by the framework profile's dedicated scenario pass (see
 /// [`crate::lint::index::scenario`]) over the opt-in scenario roots
-/// (`acceptance/scenarios/*.md`, `adapters/targets/*/tests/**`, plugin
+/// (`evals/scenarios/*.md`, `adapters/targets/*/tests/**`, plugin
 /// skill fixtures). Scenario files live partly under the un-indexed
-/// `acceptance/` tree, so the pass walks the roots itself and emits a
+/// `evals/` tree, so the pass walks the roots itself and emits a
 /// dedicated fact family kept OUT of [`crate::lint::WorkspaceModel::files`]
 /// — no other rule's candidate set changes. The full [`Self::fields`]
 /// map carries the parsed frontmatter so a `kind: schema` hint can

@@ -1,6 +1,6 @@
 //! Integration test for the dedicated `scenario` discovery pass.
 //!
-//! Proves the scoped fact family: a staged `acceptance/scenarios/*.md`
+//! Proves the scoped fact family: a staged `evals/scenarios/*.md`
 //! file is discovered into `model.scenarios` (with `id` / `fields`
 //! projected), and is kept OUT of `model.files` so no other rule's
 //! candidate set changes.
@@ -13,9 +13,9 @@ use specify_standards::lint::index::build;
 
 fn write_scenario(project: &Path, name: &str, id: &str) {
     let content = format!(
-        "---\nid: {id}\nowner: spec\nkind: skill\nbackend: manual\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\nexpected-artifacts: [spec.md]\n---\n\nScenario ID: `{id}`\n"
+        "---\nid: {id}\nowner: spec\nkind: skill\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\nexpected-artifacts: [spec.md]\n---\n\nScenario ID: `{id}`\n"
     );
-    let path = project.join(format!("acceptance/scenarios/{name}"));
+    let path = project.join(format!("evals/scenarios/{name}"));
     fs::create_dir_all(path.parent().expect("parent")).expect("scenario dir");
     fs::write(&path, content).expect("write scenario");
 }
@@ -30,7 +30,7 @@ fn discovers_scenario_into_dedicated_family() {
     let scenario = model
         .scenarios
         .iter()
-        .find(|s| s.path == "acceptance/scenarios/refine.md")
+        .find(|s| s.path == "evals/scenarios/refine.md")
         .expect("staged scenario appears in model.scenarios");
     assert_eq!(scenario.id.as_deref(), Some("refine-happy-path"));
     assert_eq!(scenario.stages, vec!["refine".to_string(), "build".to_string()]);
@@ -47,7 +47,7 @@ fn scenario_file_is_kept_out_of_files() {
     let model = build(tmp.path(), ScanProfile::Framework, &[], &[]).expect("framework build");
 
     assert!(
-        !model.files.iter().any(|f| f.path == "acceptance/scenarios/refine.md"),
-        "acceptance scenario files must not enter model.files (zero blast radius)"
+        !model.files.iter().any(|f| f.path == "evals/scenarios/refine.md"),
+        "eval scenario files must not enter model.files (zero blast radius)"
     );
 }

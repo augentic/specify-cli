@@ -34,7 +34,7 @@ Test function names are identifiers, not sentences — the same brevity rules as
 - Prefer structural assertions (status fields, exit codes, JSON shape) over byte-for-byte prose comparisons.
 - Tests that need git operations set the four `GIT_*` env vars from `tests/common::GIT_ENV` so authorship is deterministic.
 
-`tests/plan/end_to_end.rs` is the RM-05 (multi-repo acceptance) deterministic CLI proof — the end-to-end fan-in-twice / fan-out-once path (`source survey` → `plan propose --dry-run | --from` → per-slice `source extract` → `slice synthesize` → `slice build` → `slice merge`, plus `depends-on` ordering and byte-identical kernel re-projection). Read it first when extending multi-repo coverage; the exhaustive reconcile-code coverage over the same fan-out shape lives in `tests/workflow/`.
+`tests/plan/end_to_end.rs` is the RM-05 (multi-repo evals) deterministic CLI proof — the end-to-end fan-in-twice / fan-out-once path (`source survey` → `plan propose --dry-run | --from` → per-slice `source extract` → `slice synthesize` → `slice build` → `slice merge`, plus `depends-on` ordering and byte-identical kernel re-projection). Read it first when extending multi-repo coverage; the exhaustive reconcile-code coverage over the same fan-out shape lives in `tests/workflow/`.
 
 ## Golden file discipline
 
