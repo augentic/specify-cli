@@ -281,14 +281,14 @@ applicability:
 }
 
 /// Helper: snake-to-kebab lift only rewrites keys, never
-/// values. Adapter names like `code-typescript` must survive
+/// values. Adapter names like `typescript` must survive
 /// untouched.
 #[test]
 fn snake_to_kebab_only_touches_keys() {
     let input = serde_json::json!({
         "lint_mode": "hybrid",
         "applicability": {
-            "adapters": ["code-typescript", "documentation"],
+            "adapters": ["typescript", "documentation"],
         },
         "rule_hints": [
             {"kind": "regex", "value": "snake_in_value_stays"},
@@ -296,6 +296,6 @@ fn snake_to_kebab_only_touches_keys() {
     });
     let lifted = snake_to_kebab_keys(input);
     assert_eq!(lifted["lint-mode"], "hybrid");
-    assert_eq!(lifted["applicability"]["adapters"][0], "code-typescript");
+    assert_eq!(lifted["applicability"]["adapters"][0], "typescript");
     assert_eq!(lifted["rule-hints"][0]["value"], "snake_in_value_stays");
 }

@@ -244,7 +244,7 @@ fn slice_authority_override_is_empty(o: &SliceAuthorityOverride) -> bool {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SourceBinding {
     /// Kebab-case source-adapter name (e.g. `intent`, `documentation`,
-    /// `code-typescript`, `screenshots`).
+    /// `typescript`, `screenshots`).
     pub adapter: String,
     /// Filesystem path or repo location the adapter binds against.
     /// Mutually exclusive with `value`.

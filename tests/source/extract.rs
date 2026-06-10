@@ -21,14 +21,13 @@ use crate::common::{
     Project, TEMPDIR_PLACEHOLDER, parse_stderr, parse_stdout, repo_root, specify_cmd,
 };
 
-/// Stage the path-bound `code-typescript` source adapter (the in-repo
+/// Stage the path-bound `typescript` source adapter (the in-repo
 /// fixture ships only `adapter.yaml`; author the `extract` brief the
 /// fingerprint hashes).
-fn stage_code_typescript(project: &Project) {
-    let src = repo_root().join(
-        "crates/workflow/tests/fixtures/plugins/adapters/sources/code-typescript/adapter.yaml",
-    );
-    let adapter_dir = project.root().join("adapters/sources/code-typescript");
+fn stage_typescript(project: &Project) {
+    let src = repo_root()
+        .join("crates/workflow/tests/fixtures/plugins/adapters/sources/typescript/adapter.yaml");
+    let adapter_dir = project.root().join("adapters/sources/typescript");
     fs::create_dir_all(adapter_dir.join("briefs")).expect("create adapter briefs dir");
     fs::copy(&src, adapter_dir.join("adapter.yaml")).expect("copy adapter.yaml");
     fs::write(adapter_dir.join("briefs/extract.md"), "# extract brief\n")
@@ -61,7 +60,7 @@ fn seed_plan_with_legacy_source(project: &Project) {
         "name: platform-v2
 sources:
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: vendor/legacy
 slices:
   - name: identity
@@ -112,7 +111,7 @@ claims: []
 #[test]
 fn prepare_prints_envelope_emits_event() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
     let assert = specify_cmd()
@@ -123,7 +122,7 @@ fn prepare_prints_envelope_emits_event() {
         .success();
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(body["adapter"], "code-typescript");
+    assert_eq!(body["adapter"], "typescript");
     assert_eq!(body["version"], 1);
     assert_eq!(body["execution"], "agent");
 
@@ -135,7 +134,7 @@ fn prepare_prints_envelope_emits_event() {
     );
     let scratch = body["scratch-dir"].as_str().expect("scratch-dir str");
     assert!(
-        scratch.ends_with(".specify/.cache/extractions/code-typescript/identity/scratch"),
+        scratch.ends_with(".specify/.cache/extractions/typescript/identity/scratch"),
         "scratch-dir {scratch} must key under the slice segment"
     );
     let source_dir = body["source-dir"].as_str().expect("path binding carries source-dir");
@@ -150,7 +149,7 @@ fn prepare_prints_envelope_emits_event() {
 
     // prepare builds scratch up front and scaffolds the evidence target.
     assert!(
-        extract_scratch_dir(&project, "code-typescript", "identity").is_dir(),
+        extract_scratch_dir(&project, "typescript", "identity").is_dir(),
         "prepare must create the scratch dir"
     );
     assert!(
@@ -162,7 +161,7 @@ fn prepare_prints_envelope_emits_event() {
     assert_eq!(events.len(), 1, "prepare emits exactly one event");
     assert_eq!(events[0]["event"], "source.execution.agent");
     assert_eq!(events[0]["payload"]["source"], "legacy");
-    assert_eq!(events[0]["payload"]["adapter"], "code-typescript");
+    assert_eq!(events[0]["payload"]["adapter"], "typescript");
     assert_eq!(events[0]["payload"]["operation"], "extract");
 }
 
@@ -198,13 +197,13 @@ fn prepare_value_bound_carries_inline() {
 #[test]
 fn finalize_persists_and_cache_miss() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
     // The fingerprint canonicalises the bound source path, so it must exist.
     fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // Stand in for the agent: write the produced Evidence into scratch.
-    let scratch = extract_scratch_dir(&project, "code-typescript", "identity");
+    let scratch = extract_scratch_dir(&project, "typescript", "identity");
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(scratch.join("evidence.yaml"), VALID_EVIDENCE).expect("write evidence.yaml");
 
@@ -216,7 +215,7 @@ fn finalize_persists_and_cache_miss() {
         .success();
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(body["adapter"], "code-typescript");
+    assert_eq!(body["adapter"], "typescript");
     assert_eq!(body["source"], "legacy");
     assert_eq!(body["slice"], "identity");
     assert_eq!(body["lead"], "user-registration");
@@ -237,7 +236,7 @@ fn finalize_persists_and_cache_miss() {
         .expect("a slice.extract.cache-miss event");
     assert_eq!(miss["payload"]["slice-name"], "identity");
     assert_eq!(miss["payload"]["source"], "legacy");
-    assert_eq!(miss["payload"]["adapter"], "code-typescript");
+    assert_eq!(miss["payload"]["adapter"], "typescript");
     assert_eq!(miss["payload"]["reason"], "adapter-opt-out");
     assert_eq!(miss["payload"]["fingerprint"], fingerprint);
 }
@@ -277,12 +276,12 @@ fn finalize_value_bound_persists() {
 #[test]
 fn finalize_invalid_persists_no_file() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
     fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // Missing the required `claims` field — parses as YAML but fails the schema.
-    let scratch = extract_scratch_dir(&project, "code-typescript", "identity");
+    let scratch = extract_scratch_dir(&project, "typescript", "identity");
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(scratch.join("evidence.yaml"), "authority: behaviour\nlead: user-registration\n")
         .expect("write invalid evidence.yaml");
@@ -324,12 +323,12 @@ fn finalize_invalid_persists_no_file() {
 #[test]
 fn finalize_missing_evidence_stays_refining() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
     fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // The agent produced nothing: scratch exists but holds no evidence.yaml.
-    let scratch = extract_scratch_dir(&project, "code-typescript", "identity");
+    let scratch = extract_scratch_dir(&project, "typescript", "identity");
     fs::create_dir_all(&scratch).expect("create empty scratch dir");
 
     let assert = specify_cmd()
@@ -388,7 +387,7 @@ fn finalize_missing_evidence_stays_refining() {
 #[test]
 fn sandbox_denies_out_of_scope() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
     // The fingerprint canonicalises the bound source path, so it must exist.
     fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
@@ -452,7 +451,7 @@ fn sandbox_denies_out_of_scope() {
 #[test]
 fn unknown_source_errors() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
     let assert = specify_cmd()

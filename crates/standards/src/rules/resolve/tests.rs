@@ -278,19 +278,19 @@ fn source_overlay_from_project_local() {
         "Shared universal",
     );
     write_rule(
-        &project.path().join("adapters/sources/code-typescript/rules/src-001.md"),
+        &project.path().join("adapters/sources/typescript/rules/src-001.md"),
         "SRC-001",
         "TS source overlay",
     );
 
-    let sources = vec!["code-typescript".to_string()];
+    let sources = vec!["typescript".to_string()];
     let result = resolve(&inputs(project.path(), Some(rules_root.path()), "omnia", &sources))
         .expect("resolve succeeds");
 
     let src = result.iter().find(|e| e.rule.id == "SRC-001").expect("source present");
     assert_eq!(src.origin, Origin::Source);
     assert_eq!(src.path_root, PathRoot::ProjectDir);
-    assert_eq!(src.path, "adapters/sources/code-typescript/rules/src-001.md");
+    assert_eq!(src.path, "adapters/sources/typescript/rules/src-001.md");
 }
 
 /// Test 7: multiple bound source adapters each contribute their
@@ -305,7 +305,7 @@ fn multiple_source_overlays() {
         "Shared universal",
     );
     write_rule(
-        &project.path().join("adapters/sources/code-typescript/rules/src-001.md"),
+        &project.path().join("adapters/sources/typescript/rules/src-001.md"),
         "SRC-001",
         "TS overlay",
     );
@@ -315,7 +315,7 @@ fn multiple_source_overlays() {
         "Docs overlay",
     );
 
-    let sources = vec!["code-typescript".to_string(), "documentation".to_string()];
+    let sources = vec!["typescript".to_string(), "documentation".to_string()];
     let result = resolve(&inputs(project.path(), Some(rules_root.path()), "omnia", &sources))
         .expect("resolve succeeds");
 
@@ -338,19 +338,19 @@ fn cache_overlay_when_local_missing() {
         "Shared universal",
     );
     write_rule(
-        &project.path().join(".specify/.cache/manifests/sources/code-typescript/rules/src-001.md"),
+        &project.path().join(".specify/.cache/manifests/sources/typescript/rules/src-001.md"),
         "SRC-001",
         "TS cache overlay",
     );
 
-    let sources = vec!["code-typescript".to_string()];
+    let sources = vec!["typescript".to_string()];
     let result = resolve(&inputs(project.path(), Some(rules_root.path()), "omnia", &sources))
         .expect("resolve succeeds");
 
     let src = result.iter().find(|e| e.rule.id == "SRC-001").expect("source present");
     assert_eq!(src.origin, Origin::Source);
     assert_eq!(src.path_root, PathRoot::ProjectDir);
-    assert_eq!(src.path, ".specify/.cache/manifests/sources/code-typescript/rules/src-001.md");
+    assert_eq!(src.path, ".specify/.cache/manifests/sources/typescript/rules/src-001.md");
 }
 
 /// Test 9: duplicate id across overlays — same `UNI-001` declared
@@ -432,12 +432,12 @@ fn monorepo_split_anchors() {
         "Target",
     );
     write_rule(
-        &project.path().join("adapters/sources/code-typescript/rules/src-001.md"),
+        &project.path().join("adapters/sources/typescript/rules/src-001.md"),
         "SRC-001",
         "Source",
     );
 
-    let sources = vec!["code-typescript".to_string()];
+    let sources = vec!["typescript".to_string()];
     let result = resolve(&inputs(project.path(), None, "omnia", &sources))
         .expect("resolve succeeds in monorepo layout");
 

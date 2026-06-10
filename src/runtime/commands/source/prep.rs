@@ -279,11 +279,11 @@ mod tests {
         let op = SourceOp::Extract {
             slice: "identity-password-reset".to_string(),
         };
-        let scratch = scratch_dir(Path::new("/proj"), "code-typescript", &op);
+        let scratch = scratch_dir(Path::new("/proj"), "typescript", &op);
         assert_eq!(
             scratch,
             Path::new(
-                "/proj/.specify/.cache/extractions/code-typescript/identity-password-reset/scratch"
+                "/proj/.specify/.cache/extractions/typescript/identity-password-reset/scratch"
             )
         );
     }
@@ -291,8 +291,8 @@ mod tests {
     #[test]
     fn path_bound_mounts_four_roots() {
         let source = PathBuf::from("/repo/legacy");
-        let capability = PathBuf::from("/proj/adapters/sources/code-typescript");
-        let scratch = PathBuf::from("/proj/.specify/.cache/extractions/code-typescript/s/scratch");
+        let capability = PathBuf::from("/proj/adapters/sources/typescript");
+        let scratch = PathBuf::from("/proj/.specify/.cache/extractions/typescript/s/scratch");
         let layout = SandboxLayout::new(Some(&source), &capability, scratch.clone());
 
         assert_eq!(layout.source.var, "SOURCE_DIR");

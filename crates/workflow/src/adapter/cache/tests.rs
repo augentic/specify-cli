@@ -18,7 +18,7 @@ fn sample(adapter: &str, lead: Option<&str>) -> CacheFingerprint {
 
 #[test]
 fn fingerprint_path_form_round_trips() {
-    let fp = sample("code-typescript@1", Some("user-registration"));
+    let fp = sample("typescript@1", Some("user-registration"));
     let json = serde_json::to_string(&fp).expect("serialise");
     assert!(json.contains(r#""source":{"kind":"path","path":"/repo/vendor/monolith"}"#));
     assert!(json.contains(r#""brief-sha256":"sha256:abc""#));
@@ -84,8 +84,8 @@ fn deny_unknown_fields_on_index_entry() {
 
 #[test]
 fn digest_is_byte_stable_across_runs() {
-    let a = sample("code-typescript@1", Some("user-registration"));
-    let b = sample("code-typescript@1", Some("user-registration"));
+    let a = sample("typescript@1", Some("user-registration"));
+    let b = sample("typescript@1", Some("user-registration"));
     assert_eq!(a.digest(), b.digest());
     assert!(a.digest().starts_with("sha256:"));
     // Pin the digest so any accidental change to canonical
@@ -137,7 +137,7 @@ fn tool_versions_sort_stable() {
 
 #[test]
 fn each_input_flip_changes_the_digest() {
-    let base = sample("code-typescript@1", Some("c1"));
+    let base = sample("typescript@1", Some("c1"));
     let baseline = base.digest();
 
     let mut source_changed = base.clone();
@@ -147,7 +147,7 @@ fn each_input_flip_changes_the_digest() {
     assert_ne!(source_changed.digest(), baseline, "source flip must change digest");
 
     let mut adapter_changed = base.clone();
-    adapter_changed.adapter = "code-typescript@2".to_string();
+    adapter_changed.adapter = "typescript@2".to_string();
     assert_ne!(adapter_changed.digest(), baseline, "adapter flip must change digest");
 
     let mut brief_changed = base.clone();

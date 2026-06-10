@@ -42,7 +42,7 @@ pub enum SourceAction {
     /// instead of the manifest summary.
     Resolve {
         /// Kebab-case source-adapter name (e.g. `intent`,
-        /// `documentation`, `code-typescript`, `screenshots`).
+        /// `documentation`, `typescript`, `screenshots`).
         name: String,
         /// Project directory containing `.specify/` (defaults to the
         /// current directory).
@@ -68,7 +68,7 @@ pub enum SourceAction {
     /// `--out`.
     Preview {
         /// Kebab-case source-adapter name (e.g. `screenshots`,
-        /// `code-typescript`, `documentation`).
+        /// `typescript`, `documentation`).
         adapter: String,
         /// Bound source path (`$SOURCE_DIR` for the adapter's briefs).
         #[arg(long)]

@@ -67,7 +67,7 @@ name: drift
 lifecycle: pending
 sources:
   legacy-monolith:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices:
   - name: my-slice
@@ -189,7 +189,7 @@ name: drift
 lifecycle: pending
 sources:
   legacy-monolith:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices:
   - name: my-slice

@@ -344,7 +344,7 @@ fn override_orphan_key_rejected() {
         ]),
     };
     let mut plan = plan_with_changes(vec![entry]);
-    plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp"));
+    plan.sources.insert("legacy".into(), SourceBinding::path("typescript", "/tmp"));
     let hits: Vec<_> = plan
         .validate(None, None)
         .into_iter()
@@ -364,7 +364,7 @@ fn authority_override_empty_passes() {
     let mut entry = change("any", Status::Pending);
     entry.sources = vec![SliceSourceBinding::bare("legacy")];
     let mut plan = plan_with_changes(vec![entry]);
-    plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp"));
+    plan.sources.insert("legacy".into(), SourceBinding::path("typescript", "/tmp"));
     assert!(
         !plan
             .validate(None, None)
@@ -385,7 +385,7 @@ fn authority_override_valid_keys_pass() {
         ]),
     };
     let mut plan = plan_with_changes(vec![entry]);
-    plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp/legacy"));
+    plan.sources.insert("legacy".into(), SourceBinding::path("typescript", "/tmp/legacy"));
     plan.sources.insert("runtime".into(), SourceBinding::path("captures", "/tmp/runtime"));
     assert!(
         !plan
@@ -409,7 +409,7 @@ fn authority_overrides_sort() {
         ]),
     };
     let mut plan = plan_with_changes(vec![entry]);
-    plan.sources.insert("legacy".into(), SourceBinding::path("code-typescript", "/tmp"));
+    plan.sources.insert("legacy".into(), SourceBinding::path("typescript", "/tmp"));
     let codes: Vec<&str> = plan
         .validate(None, None)
         .iter()

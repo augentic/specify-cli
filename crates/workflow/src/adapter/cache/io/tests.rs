@@ -33,10 +33,10 @@ fn index_entry(layout_adapter: &str, digest: &str) -> CacheIndexEntry {
 #[test]
 fn write_then_lookup_is_a_hit() {
     let dir = tempdir().expect("tempdir");
-    let layout = CacheLayout::new(dir.path(), "code-typescript");
-    let fingerprint = fp("code-typescript@1");
+    let layout = CacheLayout::new(dir.path(), "typescript");
+    let fingerprint = fp("typescript@1");
     let digest = fingerprint.digest();
-    let entry = index_entry("code-typescript", &digest);
+    let entry = index_entry("typescript", &digest);
 
     // Cold-start: miss with no-prior-entry.
     let cold = lookup(layout, &fingerprint, None, &entry.slice, &entry.source, entry.operation)
@@ -103,10 +103,10 @@ fn adapter_opt_out_misses() {
 #[test]
 fn version_bump_reports_changed_reason() {
     let dir = tempdir().expect("tempdir");
-    let layout = CacheLayout::new(dir.path(), "code-typescript");
-    let v1 = fp("code-typescript@1");
-    let v2 = fp("code-typescript@2");
-    let entry_v1 = index_entry("code-typescript", &v1.digest());
+    let layout = CacheLayout::new(dir.path(), "typescript");
+    let v1 = fp("typescript@1");
+    let v2 = fp("typescript@2");
+    let entry_v1 = index_entry("typescript", &v1.digest());
 
     write(layout, &v1, b"e1", "evidence.yaml", None, &entry_v1).expect("write v1");
 
@@ -125,16 +125,16 @@ fn version_bump_reports_changed_reason() {
 #[test]
 fn corrupt_prior_record_ignored() {
     let dir = tempdir().expect("tempdir");
-    let layout = CacheLayout::new(dir.path(), "code-typescript");
-    let prior = fp("code-typescript@1");
-    let entry = index_entry("code-typescript", &prior.digest());
+    let layout = CacheLayout::new(dir.path(), "typescript");
+    let prior = fp("typescript@1");
+    let entry = index_entry("typescript", &prior.digest());
     write(layout, &prior, b"e1", "evidence.yaml", None, &entry).expect("write");
 
     // Corrupt the prior fingerprint.json.
     let record_path = layout.fingerprint_record_path(&prior.digest());
     std::fs::write(&record_path, "{not json").expect("clobber record");
 
-    let next = fp("code-typescript@2");
+    let next = fp("typescript@2");
     let outcome = lookup(layout, &next, None, &entry.slice, &entry.source, entry.operation)
         .expect("lookup on corrupt prior");
     assert!(matches!(
@@ -148,7 +148,7 @@ fn corrupt_prior_record_ignored() {
 #[test]
 fn index_read_skips_blanks_rejects_garbage() {
     let dir = tempdir().expect("tempdir");
-    let layout = CacheLayout::new(dir.path(), "code-typescript");
+    let layout = CacheLayout::new(dir.path(), "typescript");
     std::fs::create_dir_all(layout.adapter_dir()).expect("mkdir");
     std::fs::write(
         layout.index_path(),

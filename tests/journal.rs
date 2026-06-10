@@ -356,7 +356,7 @@ name: workflow-prov
 lifecycle: pending
 sources:
   legacy-monolith:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices:
   - name: my-slice

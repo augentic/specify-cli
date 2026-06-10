@@ -105,7 +105,7 @@ sources:
     adapter: documentation
     path: ./docs
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices: []
 ";

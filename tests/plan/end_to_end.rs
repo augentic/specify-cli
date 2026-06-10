@@ -8,7 +8,7 @@
 //! property.
 //!
 //! ```text
-//! documentation + code-typescript (sources: docs, legacy)
+//! documentation + typescript (sources: docs, legacy)
 //!   -> source survey            # fan-in #1: Lead sets (incl. docs:password-reset / legacy:reset-password mismatch)
 //!   -> plan propose --dry-run   # flat lead catalog + identity-contracts->contracts@v1 / identity-service->omnia@v1
 //!   -> plan propose --from      # agent groups leads; kernel writes single-target slices + project bindings + depends-on
@@ -116,7 +116,7 @@ sources:
     adapter: documentation
     path: ./docs
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices: []
 ";
@@ -228,11 +228,7 @@ fn scenario() -> TempDir {
     fs::write(root.join("plan.yaml"), PLAN_HUB).expect("write plan.yaml");
 
     stage_source_adapter(root, "documentation", "Operator-provided written intent.");
-    stage_source_adapter(
-        root,
-        "code-typescript",
-        "Behavioural evidence from a TypeScript codebase.",
-    );
+    stage_source_adapter(root, "typescript", "Behavioural evidence from a TypeScript codebase.");
     stage_target_adapters(root);
 
     // The survey/extract fingerprints canonicalise the bound source
@@ -244,7 +240,7 @@ fn scenario() -> TempDir {
 
     // Fan-in #1: survey both sources into one discovery.md.
     survey_finalize(root, "docs", "documentation", &fixture("leads/docs.md"));
-    survey_finalize(root, "legacy", "code-typescript", &fixture("leads/legacy.md"));
+    survey_finalize(root, "legacy", "typescript", &fixture("leads/legacy.md"));
     tmp
 }
 
@@ -467,7 +463,7 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
         extract_finalize(
             root,
             "legacy",
-            "code-typescript",
+            "typescript",
             "identity-api",
             slice,
             &fixture(&format!("evidence/{slice}/legacy.yaml")),
@@ -611,7 +607,7 @@ sources:
     adapter: documentation
     path: ./docs
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices:
   - name: bound-contracts

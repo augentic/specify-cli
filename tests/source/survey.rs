@@ -15,13 +15,12 @@ use crate::common::{
     Project, parse_stderr, parse_stdout, read_journal_normalized, repo_root, specify_cmd,
 };
 
-fn stage_code_typescript(project: &Project) {
+fn stage_typescript(project: &Project) {
     // The in-repo fixture ships only `adapter.yaml` (execution: agent);
     // stage it, then author the `survey` brief the fingerprint hashes.
-    let src = repo_root().join(
-        "crates/workflow/tests/fixtures/plugins/adapters/sources/code-typescript/adapter.yaml",
-    );
-    let adapter_dir = project.root().join("adapters/sources/code-typescript");
+    let src = repo_root()
+        .join("crates/workflow/tests/fixtures/plugins/adapters/sources/typescript/adapter.yaml");
+    let adapter_dir = project.root().join("adapters/sources/typescript");
     fs::create_dir_all(adapter_dir.join("briefs")).expect("create adapter briefs dir");
     fs::copy(&src, adapter_dir.join("adapter.yaml")).expect("copy adapter.yaml");
     fs::write(adapter_dir.join("briefs/survey.md"), "# survey brief\n")
@@ -33,7 +32,7 @@ fn seed_plan_with_legacy_source(project: &Project) {
         "name: platform-v2
 sources:
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: vendor/legacy
 slices:
   - name: a
@@ -44,7 +43,7 @@ slices:
 }
 
 fn survey_scratch_dir(project: &Project) -> PathBuf {
-    project.root().join(".specify/.cache/extractions/code-typescript/survey/scratch")
+    project.root().join(".specify/.cache/extractions/typescript/survey/scratch")
 }
 
 // A `survey` lead-set omits `source`: attribution is CLI-owned,
@@ -60,7 +59,7 @@ const VALID_LEAD_SET: &str = "\
 #[test]
 fn prepare_prints_envelope_emits_event() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
     let assert = specify_cmd()
@@ -70,7 +69,7 @@ fn prepare_prints_envelope_emits_event() {
         .success();
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(body["adapter"], "code-typescript");
+    assert_eq!(body["adapter"], "typescript");
     assert_eq!(body["version"], 1);
     assert_eq!(body["execution"], "agent");
     assert!(
@@ -79,11 +78,11 @@ fn prepare_prints_envelope_emits_event() {
     );
     let scratch = body["scratch-dir"].as_str().expect("scratch-dir str");
     assert!(
-        scratch.ends_with(".specify/.cache/extractions/code-typescript/survey/scratch"),
+        scratch.ends_with(".specify/.cache/extractions/typescript/survey/scratch"),
         "scratch-dir {scratch} must key under the survey segment"
     );
     let briefs = body["briefs-dir"].as_str().expect("briefs-dir str");
-    assert!(briefs.ends_with("adapters/sources/code-typescript/briefs"), "briefs-dir: {briefs}");
+    assert!(briefs.ends_with("adapters/sources/typescript/briefs"), "briefs-dir: {briefs}");
     let source_dir = body["source-dir"].as_str().expect("source-dir str");
     assert!(source_dir.ends_with("vendor/legacy"), "source-dir: {source_dir}");
     assert_eq!(
@@ -99,14 +98,14 @@ fn prepare_prints_envelope_emits_event() {
     assert_eq!(events.len(), 1, "prepare emits exactly one event");
     assert_eq!(events[0]["event"], "source.execution.agent");
     assert_eq!(events[0]["payload"]["source"], "legacy");
-    assert_eq!(events[0]["payload"]["adapter"], "code-typescript");
+    assert_eq!(events[0]["payload"]["adapter"], "typescript");
     assert_eq!(events[0]["payload"]["operation"], "survey");
 }
 
 #[test]
 fn finalize_merges_and_cache_miss() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
     // The fingerprint canonicalises the bound source path, so it must exist.
     fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
@@ -123,7 +122,7 @@ fn finalize_merges_and_cache_miss() {
         .success();
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(body["adapter"], "code-typescript");
+    assert_eq!(body["adapter"], "typescript");
     assert_eq!(body["source"], "legacy");
     assert_eq!(body["cache"], "miss", "agent execution forces a cache miss");
     assert_eq!(body["reason"], "adapter-opt-out");
@@ -147,7 +146,7 @@ fn finalize_merges_and_cache_miss() {
         .find(|e| e["event"] == "source.survey.cache-miss")
         .expect("a cache-miss event");
     assert_eq!(miss["payload"]["source"], "legacy");
-    assert_eq!(miss["payload"]["adapter"], "code-typescript");
+    assert_eq!(miss["payload"]["adapter"], "typescript");
     assert_eq!(miss["payload"]["reason"], "adapter-opt-out");
     assert_eq!(miss["payload"]["fingerprint"], fingerprint);
 }
@@ -155,7 +154,7 @@ fn finalize_merges_and_cache_miss() {
 #[test]
 fn finalize_unparseable_lead_set_errors() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
     fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
@@ -189,7 +188,7 @@ fn finalize_unparseable_lead_set_errors() {
 #[test]
 fn finalize_invalid_lead_set_untouched() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
     fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
@@ -230,7 +229,7 @@ fn finalize_invalid_lead_set_untouched() {
 #[test]
 fn unknown_source_errors() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
     let assert = specify_cmd()
@@ -247,7 +246,7 @@ fn unknown_source_errors() {
 #[test]
 fn plan_name_mismatch_errors() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
     let assert = specify_cmd()

@@ -46,9 +46,9 @@ fn local_project() -> (tempfile::TempDir, PathBuf) {
 #[test]
 fn resolves_source_from_local_dir() {
     let (_tmp, project) = local_project();
-    let resolved = SourceAdapter::resolve("code-typescript", &project)
+    let resolved = SourceAdapter::resolve("typescript", &project)
         .expect("resolve source adapter from adapters/sources/<name>/adapter.yaml");
-    assert_eq!(resolved.manifest.name, "code-typescript");
+    assert_eq!(resolved.manifest.name, "typescript");
     assert_eq!(resolved.manifest.axis, Axis::Source);
     assert_eq!(
         resolved.manifest.operations().copied().collect::<Vec<_>>(),
@@ -59,7 +59,7 @@ fn resolves_source_from_local_dir() {
         Some("briefs/extract.md")
     );
     assert!(matches!(resolved.location, AdapterLocation::Local(_)));
-    assert!(resolved.location.path().ends_with("adapters/sources/code-typescript"));
+    assert!(resolved.location.path().ends_with("adapters/sources/typescript"));
 }
 
 #[test]
@@ -104,12 +104,12 @@ fn axis_collision_rejected_at_resolve_time() {
 
 #[test]
 fn axis_unique_passes_distinct() {
-    // The fixture declares `code-typescript` only on the source axis
+    // The fixture declares `typescript` only on the source axis
     // and `omnia` only on the target axis. Installing each on its
     // declared axis (or any brand-new name on either axis) must not
     // collide.
     let (_tmp, project) = local_project();
-    check_axis_unique_for_name(Axis::Source, "code-typescript", &project)
+    check_axis_unique_for_name(Axis::Source, "typescript", &project)
         .expect("source-only adapter name is unique on the source axis");
     check_axis_unique_for_name(Axis::Target, "omnia", &project)
         .expect("target-only adapter name is unique on the target axis");
@@ -156,15 +156,15 @@ fn cache_dir_resolves_under_axis_segment() {
 
 #[test]
 fn cache_wins_over_local() {
-    // Stage a manifest under `.specify/.cache/manifests/sources/code-typescript/`
-    // alongside the in-tree `adapters/sources/code-typescript/`; assert the
+    // Stage a manifest under `.specify/.cache/manifests/sources/typescript/`
+    // alongside the in-tree `adapters/sources/typescript/`; assert the
     // cached copy wins per workflow §Resolver and cache.
     let (_tmp, project) = local_project();
-    let cached_root = cache_dir(&project, Axis::Source, "code-typescript");
+    let cached_root = cache_dir(&project, Axis::Source, "typescript");
     fs::create_dir_all(&cached_root).expect("create cache dir");
     fs::write(
         cached_root.join("adapter.yaml"),
-        r"name: code-typescript
+        r"name: typescript
 version: 7
 axis: source
 execution: agent
@@ -176,7 +176,7 @@ description: Cached source adapter fixture.
     )
     .expect("stage cache manifest");
 
-    let resolved = SourceAdapter::resolve("code-typescript", &project).expect("resolve from cache");
+    let resolved = SourceAdapter::resolve("typescript", &project).expect("resolve from cache");
     assert_eq!(resolved.manifest.version, 7, "cache wins over local");
     assert!(matches!(resolved.location, AdapterLocation::Cached(_)));
 }
