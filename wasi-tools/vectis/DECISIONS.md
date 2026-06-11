@@ -206,9 +206,9 @@ _Codified in: `crates/vectis/src/validate.rs` (the public
 `Args`, `ValidateMode`, `render_json`, and `validate_exit_code`
 surface) and `src/main.rs` (the binary entry point)._
 
-## RFC-45 — asset materialization (draft, not implemented)
+## RFC-46 — asset materialization (draft, not implemented)
 
-> Canonical draft: [`augentic/specify` `rfcs/rfc-45-asset-materialization.md`](https://github.com/augentic/specify/blob/rfc-45/rfcs/rfc-45-asset-materialization.md). Refinement branch: `rfc-45` in both repos. Not codified until implementation lands.
+> Canonical draft: [`augentic/specify` `rfcs/rfc-46-asset-materialization.md`](https://github.com/augentic/specify/blob/rfc-46/rfcs/rfc-46-asset-materialization.md). Refinement branch: `rfc-46` in both repos. Not codified until implementation lands.
 >
 > Headline decisions when implemented:
 >
