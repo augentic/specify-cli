@@ -125,6 +125,36 @@ fn write_plan_refuses_existing_core_file_before_creating_dirs() {
 }
 
 #[test]
+fn write_plan_merges_existing_gitignore() {
+    // `specify init` writes a root `.gitignore` in every project, so
+    // the bootstrap path scaffolds into an initialised repo: the
+    // template's missing lines append; operator content survives.
+    let dir = tempdir().unwrap();
+    fs::write(dir.path().join(".gitignore"), ".specify/cache/\n/target\n").unwrap();
+    let plan = plan_core("Counter", "com.vectis.counter", &[], &versions()).unwrap();
+    write_plan(dir.path(), &plan).expect("gitignore collision merges");
+
+    let merged = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+    assert!(merged.starts_with(".specify/cache/\n/target\n"), "operator content survives");
+    assert!(merged.contains("# Vectis scaffold"));
+    assert!(merged.contains(".DS_Store"), "template lines appended");
+    assert_eq!(merged.matches("/target").count(), 1, "duplicate lines are not re-appended");
+    assert!(dir.path().join("shared/src/app.rs").exists(), "rest of the plan writes normally");
+
+    // Idempotent: a second merge pass appends nothing.
+    let plan_again = plan_core("Counter", "com.vectis.counter", &[], &versions()).unwrap();
+    let gitignore_template = plan_again
+        .files
+        .iter()
+        .find(|file| file.relative_path == ".gitignore")
+        .expect("core plan carries .gitignore");
+    super::runtime::merge_gitignore(&dir.path().join(".gitignore"), &gitignore_template.contents)
+        .expect("re-merge succeeds");
+    let remerged = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+    assert_eq!(merged, remerged, "second merge is a no-op");
+}
+
+#[test]
 fn write_plan_refuses_existing_ios_root() {
     let dir = tempdir().unwrap();
     fs::create_dir_all(dir.path().join("iOS")).unwrap();
