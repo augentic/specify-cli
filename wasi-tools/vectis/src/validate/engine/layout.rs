@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use super::composition::check_structural_identity;
+use super::composition::{Finding, check_structural_identity};
 use super::paths::resolve_default_path;
 use super::shared::{composition_validator, escape_pointer_token};
 use crate::validate::ValidateMode;
@@ -80,7 +80,9 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
             // after we've already rejected the shape itself).
             if let Some(screens) = instance.get("screens") {
                 walk_unwired(screens, "/screens", &mut errors);
-                check_structural_identity(screens, "/screens", &mut errors);
+                let mut identity: Vec<Finding> = Vec::new();
+                check_structural_identity(screens, "/screens", &mut identity);
+                errors.extend(identity.into_iter().map(Value::from));
             }
         }
         Err(err) => {
