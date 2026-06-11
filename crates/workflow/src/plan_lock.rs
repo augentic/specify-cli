@@ -102,7 +102,7 @@ mod imp {
             l_start: 0,
             l_len: 0,
             l_pid: 0,
-            l_type: libc::F_WRLCK,
+            l_type: wrlck_l_type(),
             // SEEK_SET; spelled as the literal to keep the i32 const
             // out of the platform-varying c_short field.
             l_whence: 0,
@@ -116,7 +116,19 @@ mod imp {
         if rc == -1 {
             return Err(Error::Io(io::Error::last_os_error()));
         }
-        Ok(probe.l_type != libc::F_UNLCK)
+        Ok(i64::from(probe.l_type) != i64::from(libc::F_UNLCK))
+    }
+
+    /// `F_WRLCK` with the `c_short` type of `flock.l_type`: libc
+    /// declares the constant `c_int` on Linux but `c_short` on macOS,
+    /// so a direct field initialiser cannot type-check on both. The
+    /// widen-then-narrow keeps the cast deterministic per platform.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "F_WRLCK is a small ABI constant (single-digit) on every supported platform"
+    )]
+    fn wrlck_l_type() -> libc::c_short {
+        i64::from(libc::F_WRLCK) as libc::c_short
     }
 
     /// `flock`-family try-acquire (std's `File::try_lock`) on the
