@@ -58,9 +58,7 @@ pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 /// ([`SourceAdapter`] / [`TargetAdapter`]) so internal call sites no
 /// longer carry the `axis` argument forward past the resolver
 /// boundary.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display, clap::ValueEnum,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum Axis {
@@ -104,7 +102,7 @@ pub fn adapter_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
 
 /// One declared WASI tool inside an adapter manifest.
 ///
-/// Decoupled from [`specify_tool::manifest::Tool`] so adapter loading
+/// Decoupled from [`specify_tool_manifest::Tool`] so adapter loading
 /// does not pull in the WASI runtime surface; sidecar `tools.yaml`
 /// continues to be the authoritative source for tool resolution.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

@@ -66,21 +66,11 @@ pub fn validate_plan(plan: &Plan) -> Result<()> {
 ///
 /// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
 pub fn validate_plan_yaml(content: &str) -> Result<()> {
-    let instance = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed(
-            "plan-schema",
-            "plan.yaml conforms to schemas/plan/plan.schema.json",
-            format!("YAML parse failed: {err}"),
-        )
-    })?;
-    err_from_failures(
+    validate_parsed_json(
+        content,
+        PLAN_JSON_SCHEMA,
         "plan-schema",
-        &validation_failures(
-            &instance,
-            PLAN_JSON_SCHEMA,
-            "plan-schema",
-            "plan.yaml conforms to schemas/plan/plan.schema.json",
-        ),
+        "plan.yaml conforms to schemas/plan/plan.schema.json",
     )
 }
 
@@ -376,21 +366,12 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<Vec<EvidenceDoc>> {
 ///
 /// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
 pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()> {
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed(
-            "catalog-schema",
-            "components.yaml conforms to schemas/design-system/components.schema.json",
-            format!("{}: YAML parse failed: {err}", source_path.display()),
-        )
-    })?;
-    err_from_failures(
+    validate_labelled_yaml(
+        content,
+        source_path,
+        COMPONENTS_JSON_SCHEMA,
         "catalog-schema",
-        &validation_failures(
-            &instance,
-            COMPONENTS_JSON_SCHEMA,
-            "catalog-schema",
-            "components.yaml conforms to schemas/design-system/components.schema.json",
-        ),
+        "components.yaml conforms to schemas/design-system/components.schema.json",
     )
 }
 
@@ -406,21 +387,12 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
 ///
 /// Returns [`Error::Validation`] when YAML parsing or schema validation fails.
 pub fn validate_parts_yaml(content: &str, source_path: &Path) -> Result<()> {
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed(
-            "parts-schema",
-            "parts.yaml conforms to schemas/design-system/parts.schema.json",
-            format!("{}: YAML parse failed: {err}", source_path.display()),
-        )
-    })?;
-    err_from_failures(
+    validate_labelled_yaml(
+        content,
+        source_path,
+        PARTS_JSON_SCHEMA,
         "parts-schema",
-        &validation_failures(
-            &instance,
-            PARTS_JSON_SCHEMA,
-            "parts-schema",
-            "parts.yaml conforms to schemas/design-system/parts.schema.json",
-        ),
+        "parts.yaml conforms to schemas/design-system/parts.schema.json",
     )
 }
 
@@ -444,20 +416,13 @@ pub fn validate_parts_yaml(content: &str, source_path: &Path) -> Result<()> {
 /// Returns [`Error::Validation`] (`evidence-schema`, exit code 2) when
 /// YAML parsing or schema validation fails.
 pub fn validate_evidence(content: &str, source_path: &Path) -> Result<()> {
-    let rule = "evidence file conforms to schemas/evidence.schema.json";
-    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
-        Error::validation_failed(
-            "evidence-schema",
-            rule,
-            format!("{}: YAML parse failed: {err}", source_path.display()),
-        )
-    })?;
-    let failures: Vec<ValidationSummary> =
-        validation_failures(&instance, EVIDENCE_JSON_SCHEMA, "evidence-schema", rule)
-            .into_iter()
-            .map(|summary| relabel_with_path(summary, source_path))
-            .collect();
-    err_from_failures("evidence-schema", &failures)
+    validate_labelled_yaml(
+        content,
+        source_path,
+        EVIDENCE_JSON_SCHEMA,
+        "evidence-schema",
+        "evidence file conforms to schemas/evidence.schema.json",
+    )
 }
 
 /// Validate every lead in `leads` against the embedded
@@ -547,6 +512,35 @@ fn validate_parsed_json(
     let instance: JsonValue = serde_saphyr::from_str(content)
         .map_err(|err| Error::validation_failed(code, rule, format!("parse failed: {err}")))?;
     err_from_failures(code, &validation_failures(&instance, schema, code, rule))
+}
+
+/// Parse YAML `content` and validate it against a `$ref`-free embedded
+/// `schema`, labelling the parse error and every schema failure with
+/// `source_path` so an operator can find the offending file, then
+/// folding the failures into one [`Error::Validation`] keyed on `code`.
+///
+/// This is the shared kernel behind the file-anchored `validate_*_yaml`
+/// / `validate_evidence` entry points.
+///
+/// # Errors
+///
+/// Returns [`Error::Validation`] (keyed on `code`) when parsing or
+/// schema validation fails.
+fn validate_labelled_yaml(
+    content: &str, source_path: &Path, schema: &'static str, code: &'static str, rule: &str,
+) -> Result<()> {
+    let instance: JsonValue = serde_saphyr::from_str(content).map_err(|err| {
+        Error::validation_failed(
+            code,
+            rule,
+            format!("{}: YAML parse failed: {err}", source_path.display()),
+        )
+    })?;
+    let failures: Vec<ValidationSummary> = validation_failures(&instance, schema, code, rule)
+        .into_iter()
+        .map(|summary| relabel_with_path(summary, source_path))
+        .collect();
+    err_from_failures(code, &failures)
 }
 
 /// Parse `content` and validate it against a pre-compiled, registry-backed

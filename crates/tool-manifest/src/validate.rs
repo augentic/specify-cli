@@ -8,7 +8,7 @@ use specify_diagnostics::{Artifact, Diagnostic};
 /// re-exported from the central [`specify_schema`] embed.
 pub use specify_schema::TOOL_JSON_SCHEMA;
 
-use crate::manifest::{
+use crate::{
     Tool, ToolManifest, ToolScope, ToolSource, first_party_permissions, looks_like_sha256_hex,
     looks_like_windows_absolute,
 };

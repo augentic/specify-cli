@@ -1,9 +1,40 @@
-//! Manifest data types for declared Specify WASI tools.
+//! Manifest data types and structural validation for declared Specify
+//! WASI tools.
+//!
+//! A wasmtime-free leaf: `specify-workflow` consumes the DTOs (the
+//! `tools:` field on `project.yaml` and the init-time wasm-pkg config
+//! constants) without linking the Wasmtime execution host, which stays
+//! in `specify-tool` alongside the cache, resolver, and runner.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+pub mod validate;
+
+/// Filename of the project-local wasm-pkg config inside `.specify/`.
+///
+/// Paired with `Layout::specify_dir` (specify-workflow) at the init
+/// site so the helper does not have to re-derive the relative path.
+pub const WASM_PKG_CONFIG_FILENAME: &str = "wasm-pkg.toml";
+
+/// Project-rooted relative path to the project-local wasm-pkg config.
+///
+/// Merged in between the global wasm-pkg defaults and the `WKG_CONFIG`
+/// override. Operators edit this file to add namespace mappings
+/// (private mirrors, internal registries) without setting an env var.
+pub const WASM_PKG_CONFIG_PATH: &str = ".specify/wasm-pkg.toml";
+
+/// Canonical contents `specify init` writes for a fresh project.
+///
+/// Mirrors the wasm-pkg distribution model so
+/// `wkg --config .specify/wasm-pkg.toml` and `specify tool fetch`
+/// agree on namespace routing.
+pub const DEFAULT_WASM_PKG_CONFIG: &str = "default_registry = \"augentic.io\"\n\
+                                           \n\
+                                           [namespace_registries]\n\
+                                           specify = \"augentic.io\"\n";
 
 /// One declared WASI tool.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -317,7 +348,11 @@ pub enum ToolScope {
     },
 }
 
-pub(crate) fn looks_like_windows_absolute(value: &str) -> bool {
+/// True when `value` has the `<drive>:<separator>` shape of a Windows
+/// absolute path (e.g. `C:\tools` or `C:/tools`), which
+/// `Path::is_absolute` misses on non-Windows hosts.
+#[must_use]
+pub fn looks_like_windows_absolute(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() >= 3
         && bytes[0].is_ascii_alphabetic()
@@ -326,7 +361,8 @@ pub(crate) fn looks_like_windows_absolute(value: &str) -> bool {
 }
 
 /// True when `value` is a 64-character lowercase hexadecimal SHA-256 digest.
-pub(crate) fn looks_like_sha256_hex(value: &str) -> bool {
+#[must_use]
+pub fn looks_like_sha256_hex(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 

@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::*;
-use crate::manifest::{PackageRequest, ToolPermissions, ToolSource};
+use crate::{PackageRequest, ToolPermissions, ToolSource};
 
 fn project_scope() -> ToolScope {
     ToolScope::Project {

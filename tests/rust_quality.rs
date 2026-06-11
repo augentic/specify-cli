@@ -8,6 +8,7 @@
 //! the canonical contract vocabulary the codebase and AGENTS.md use, so
 //! it is not gated.
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use specify_standards::framework::check::run_rust_quality;
@@ -48,7 +49,8 @@ fn no_gated_rust_quality_findings() {
         let offenders: Vec<&str> =
             findings.iter().filter(|f| f.title.contains(rule)).map(|f| f.title.as_str()).collect();
         if !offenders.is_empty() {
-            failures.push_str(&format!("[{rule}] {guidance}; offenders: {offenders:#?}\n"));
+            writeln!(failures, "[{rule}] {guidance}; offenders: {offenders:#?}")
+                .expect("write to String");
         }
     }
     assert!(failures.is_empty(), "rust-quality gates failed:\n{failures}");

@@ -11,7 +11,10 @@ use crate::slice::{LifecycleStatus, SliceMetadata};
 
 /// What to do when [`create`] finds an existing directory at the
 /// target path.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, clap::ValueEnum)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, strum::Display, strum::EnumString, strum::VariantNames,
+)]
+#[strum(serialize_all = "kebab-case")]
 pub enum CreateIfExists {
     /// Refuse when the directory exists (default).
     Fail,

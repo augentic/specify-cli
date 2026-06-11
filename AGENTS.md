@@ -13,10 +13,11 @@ specify-schema                   # depends on specify-error (embedded JSON Schem
 specify-diagnostics              # depends on specify-{error,schema,digest} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
 specify-model                    # depends on specify-{error,diagnostics} (artifact types + parsers: spec, task, evidence, discovery; shared atomic writer)
 specify-agents                   # depends on specify-{error,digest,model} (init-time AGENTS.md context-fence generation: detect, render, fences, fingerprint, lock); Ctx-free, consumed only by the root binary
-specify-tool                     # depends on specify-{error,diagnostics,digest,schema} (WASI tool runner; wasmtime, gated)
+specify-tool-manifest            # depends on specify-{diagnostics,schema} (tool manifest DTOs + structural validation; wasmtime-free)
+specify-tool                     # depends on specify-{error,diagnostics,digest,schema,tool-manifest} (WASI tool runner; wasmtime, gated)
 specify-validate                 # depends on specify-{model,error,diagnostics} — artifact rule registry; NOT on specify-workflow or anything named lint
 specify-standards                # standards layer — depends on specify-{error,schema,digest,diagnostics}; NOT on specify-workflow or specify-tool
-specify-workflow                 # workflow layer — depends on specify-{error,schema,digest,tool,model,diagnostics}; NOT on specify-standards / specify-validate
+specify-workflow                 # workflow layer — depends on specify-{error,schema,digest,tool-manifest,model,diagnostics}; NOT on specify-standards / specify-validate / specify-tool (no wasmtime in its graph)
 specify (root crate)             # wires every workspace crate above into the CLI binary
 ```
 
