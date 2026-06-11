@@ -42,7 +42,7 @@ const FORBIDDEN_SUBSTRINGS: &[(&str, &str)] = &[
     ("adapter-manifest-version", "constant-eq version discriminator (CORE-006) — use config"),
     (
         "docs/reference/review-team-protocol",
-        "content-digest-eq canonical path (CORE-008) — use config",
+        "content-digest-eq canonical path (retired CORE-008's policy shape) — use config",
     ),
     ("BUILTIN_NAMESPACES", "namespace owner->prefix policy map (CORE-009) — use config"),
     ("TARGET_OWNERS", "namespace owner->prefix policy map (CORE-009) — use config"),
