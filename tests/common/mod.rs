@@ -46,9 +46,14 @@ pub fn omnia_schema_dir() -> PathBuf {
 }
 
 /// Build a fresh `assert_cmd::Command` for the locally-built `specify`
-/// binary.
+/// binary. Scrubs the ambient `SPECIFY_*` env overrides so an
+/// operator shell mid-workspace-run (exported `SPECIFY_PLAN_DIR`)
+/// cannot skew test plan resolution.
 pub fn specify_cmd() -> Command {
-    Command::cargo_bin("specify").expect("cargo_bin(specify)")
+    let mut cmd = Command::cargo_bin("specify").expect("cargo_bin(specify)");
+    cmd.env_remove("SPECIFY_PLAN_DIR");
+    cmd.env_remove("SPECIFY_FORMAT");
+    cmd
 }
 
 /// Stamp a phase outcome on `<project>/slices/<name>/metadata.yaml`

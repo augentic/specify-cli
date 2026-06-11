@@ -142,7 +142,9 @@ pub fn enforce_report_no_blocking_on_success(report: &BuildReport) -> Result<()>
 }
 
 /// Reject a [`BuildStatus::Success`] report whose `outputs[]` paths do
-/// not all resolve to existing, non-empty files under `project_dir`.
+/// not all resolve to existing, non-empty files **or directories**
+/// under `project_dir` (targets like vectis declare per-platform tree
+/// paths such as `shared/`).
 ///
 /// Empty `outputs` is accepted (backward compatibility — the field is
 /// optional). On [`BuildStatus::Failure`] the gate is a no-op (a failed
@@ -152,8 +154,8 @@ pub fn enforce_report_no_blocking_on_success(report: &BuildReport) -> Result<()>
 ///
 /// Returns [`Error::Validation`] keyed on
 /// `target-build-output-missing` (exit code 2) when a success report
-/// declares an output path that is absent, empty, not a regular file,
-/// or escapes the project directory.
+/// declares an output path that is absent, empty (zero-length file or
+/// entry-less directory), or escapes the project directory.
 pub fn enforce_report_outputs_exist(report: &BuildReport, project_dir: &Path) -> Result<()> {
     if report.status != BuildStatus::Success || report.outputs.is_empty() {
         return Ok(());
@@ -173,12 +175,16 @@ pub fn enforce_report_outputs_exist(report: &BuildReport, project_dir: &Path) ->
         let full = project_dir.join(path);
         match std::fs::metadata(&full) {
             Ok(meta) if meta.is_file() && meta.len() > 0 => {}
-            Ok(meta) if !meta.is_file() => {
+            // Tree outputs (e.g. vectis `shared/`, `iOS/`, `Android/`)
+            // are declared as directory paths; non-empty means at least
+            // one directory entry.
+            Ok(meta) if meta.is_dir() && dir_has_entries(&full) => {}
+            Ok(meta) if !meta.is_file() && !meta.is_dir() => {
                 return Err(Error::validation_failed(
                     "target-build-output-missing",
-                    "every build output path is a regular file",
+                    "every build output path is a regular file or directory",
                     format!(
-                        "output for platform `{}` at `{}` exists but is not a regular file",
+                        "output for platform `{}` at `{}` exists but is neither a regular file nor a directory",
                         output.platform, output.path
                     ),
                 ));
@@ -208,6 +214,11 @@ pub fn enforce_report_outputs_exist(report: &BuildReport, project_dir: &Path) ->
         }
     }
     Ok(())
+}
+
+/// `true` when the directory contains at least one entry.
+fn dir_has_entries(dir: &Path) -> bool {
+    std::fs::read_dir(dir).map(|mut entries| entries.next().is_some()).unwrap_or(false)
 }
 
 #[cfg(test)]

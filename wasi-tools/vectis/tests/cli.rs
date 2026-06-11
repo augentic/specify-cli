@@ -127,7 +127,9 @@ fn write_project_yaml(root: &std::path::Path, platforms: &[&str]) {
         "name: test-app\nadapter: vectis\nspecify_version: '2.0'\nplatforms:\n{}",
         yaml_platforms.join("\n"),
     );
-    std::fs::write(root.join("project.yaml"), content).expect("write project.yaml");
+    let specify_dir = root.join(".specify");
+    std::fs::create_dir_all(&specify_dir).expect("mkdir .specify");
+    std::fs::write(specify_dir.join("project.yaml"), content).expect("write project.yaml");
 }
 
 fn scaffold_core(root: &std::path::Path) {

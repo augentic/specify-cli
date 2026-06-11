@@ -11,7 +11,9 @@ fn write_project_yaml(root: &Path, platforms: &[&str]) {
         "name: test-app\nadapter: vectis\nspecify_version: '2.0'\nplatforms:\n{}",
         yaml_platforms.join("\n"),
     );
-    std::fs::write(root.join("project.yaml"), content).expect("write project.yaml");
+    let specify_dir = root.join(".specify");
+    std::fs::create_dir_all(&specify_dir).expect("mkdir .specify");
+    std::fs::write(specify_dir.join("project.yaml"), content).expect("write project.yaml");
 }
 
 fn scaffold_core(root: &Path) {
@@ -203,7 +205,9 @@ fn missing_project_yaml_returns_error() {
 #[test]
 fn project_yaml_without_platforms_returns_error() {
     let tmp = tempdir().unwrap();
-    std::fs::write(tmp.path().join("project.yaml"), "name: test-app\nadapter: vectis\n")
+    let specify_dir = tmp.path().join(".specify");
+    std::fs::create_dir_all(&specify_dir).expect("mkdir .specify");
+    std::fs::write(specify_dir.join("project.yaml"), "name: test-app\nadapter: vectis\n")
         .expect("write project.yaml");
 
     let args = VerifyArgs {
