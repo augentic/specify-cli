@@ -42,7 +42,7 @@ Test function names are identifiers, not sentences — the same brevity rules as
 - Compress outcome tails to the assertion's shape: `_is_an_error` / `_returns_…_error` → `_errors`; `_validates_cleanly` → `_validates`; `_surfaces_as_a_single_error_entry` → `_one_error`.
 - Push the full narrative into the test body or a `//` comment above the `fn`, not the identifier.
 
-`module_name_repetitions` does not fire on `#[test]` fns, so the dedicated `RustTestNaming` predicate enforces a 40-char cap instead. It scans an upward attribute window, so `#[tokio::test]` / `async fn` and tests behind intervening attributes (`#[ignore]`, `#[case(..)]`) are covered. `tests/rust_quality.rs::no_long_test_fn_names` fails CI on any `rust.test-fn-name-too-long` finding.
+`module_name_repetitions` does not fire on `#[test]` fns, so the dev-only predicate in `tests/rust_quality/checks.rs` enforces a 40-char cap instead. It scans an upward attribute window, so `#[tokio::test]` / `async fn` and tests behind intervening attributes (`#[ignore]`, `#[case(..)]`) are covered. `tests/rust_quality/main.rs::no_gated_rust_quality_findings` fails CI on any `rust.test-fn-name-too-long` finding.
 
 ## Patterns to follow
 

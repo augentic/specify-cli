@@ -2,9 +2,9 @@
 //! (See DECISIONS.md §"Framework lint engine: generic dispatcher (Road A / Road B)".)
 //!
 //! Proves no rule policy lives baked into the lint engine. It scans the
-//! deterministic hint eval arms (`lint/eval/`), the shared adapter-briefs
-//! helper (`lint/adapter_briefs.rs`), and the surviving `framework/check`
-//! modules, and FAILS if any rule-specific policy literal reappears:
+//! deterministic hint eval arms (`lint/eval/`) and the shared
+//! adapter-briefs helper (`lint/adapter_briefs.rs`), and FAILS if any
+//! rule-specific policy literal reappears:
 //!
 //! - a value-bearing discriminator (`*-cover-operations`,
 //!   `*-equal-operations`, `*-equals-v1`, `adapter-manifest-version-*`),
@@ -16,9 +16,9 @@
 //!
 //! Every rule-specific value must instead ride the rule's `config:` (in
 //! the `specify` repo). The only engine-side constants this guard
-//! tolerates are mechanism — evidence/snippet/iteration bounds and the
-//! repo-local rust-quality threshold — enumerated by name in
-//! [`MECHANISM_CAP_CONSTS`] with the reason each is mechanism, not policy.
+//! tolerates are mechanism — evidence/snippet/iteration bounds —
+//! enumerated by name in [`MECHANISM_CAP_CONSTS`] with the reason each
+//! is mechanism, not policy.
 
 use std::path::{Path, PathBuf};
 
@@ -31,11 +31,6 @@ const MECHANISM_CAP_CONSTS: &[(&str, &str)] = &[
     ("STDERR_MAX_BYTES", "tool stderr truncation budget (wire mechanism)"),
     ("SNIPPET_MAX_CHARS", "evidence snippet truncation budget (finding mechanism)"),
     ("CLAMP_ITERATION_LIMIT", "evidence-size clamp loop bound (finding mechanism)"),
-    (
-        "MAX_TEST_FN_LEN",
-        "repo-local rust-quality predicate threshold; governs specify-cli's own tests, \
-         not a specify-owned CORE rule",
-    ),
 ];
 
 /// Literal substrings that only ever appear as relocated rule policy.
@@ -57,15 +52,11 @@ fn crate_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// The engine source roots policy could hide in: the hint eval arms, the
-/// shared adapter-briefs helper, and the surviving framework checks.
+/// The engine source roots policy could hide in: the hint eval arms and
+/// the shared adapter-briefs helper.
 fn scan_roots() -> Vec<PathBuf> {
     let root = crate_root();
-    vec![
-        root.join("src/lint/eval"),
-        root.join("src/lint/adapter_briefs.rs"),
-        root.join("src/framework/check"),
-    ]
+    vec![root.join("src/lint/eval"), root.join("src/lint/adapter_briefs.rs")]
 }
 
 fn collect_rs_files(path: &Path, out: &mut Vec<PathBuf>) {

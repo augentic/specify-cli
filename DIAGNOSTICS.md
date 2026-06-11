@@ -52,7 +52,7 @@ There is no Wave-0 duplicate evaluation. `specify lint framework` resolves all `
 
 ### Policy lives in `specify`, not the engine
 
-Every rule-specific value (a line cap, an owner→prefix map, an expected operation set, a canonical-doc path) rides the rule's `config:` in the `specify` repo — CORE-009's owner→prefix map, source-axis prefixes, and reserved-namespace owners included. The Layer-3 guard test [`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) fails if any eval arm or `framework/check` module reintroduces such a literal; the duplicated owner maps (`BUILTIN_NAMESPACES` / `TARGET_OWNERS`) are deleted.
+Every rule-specific value (a line cap, an owner→prefix map, an expected operation set, a canonical-doc path) rides the rule's `config:` in the `specify` repo — CORE-009's owner→prefix map, source-axis prefixes, and reserved-namespace owners included. The Layer-3 guard test [`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) fails if any eval arm reintroduces such a literal; the duplicated owner maps (`BUILTIN_NAMESPACES` / `TARGET_OWNERS`) are deleted.
 
 ### Framework tools
 
@@ -76,7 +76,7 @@ Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-re
 ### A16 — done (steady state; engine is a generic dispatcher)
 
 - [x] CORE-001..008 are owned by declarative rules.
-- [x] CORE-009 + CORE-026 migrated to the `rules` WASI tool; `CORE_ID_TABLE` is empty; the CORE-009 `AuthoringProducer` and `framework::check::run` are deleted.
+- [x] CORE-009 + CORE-026 migrated to the `rules` WASI tool; the CORE-009 `AuthoringProducer`, `framework::check::run`, and later the whole `specify_standards::framework` substrate are deleted (Rust-quality predicates live dev-only at `tests/rust_quality/checks.rs`).
 - [x] CORE-034 removed; the `kind: authoring-predicate` bridge (`HintKind::AuthoringPredicate`, `lint/eval/authoring_predicate.rs`, `ScenariosCheck`) deleted. No imperative-predicate bridge remains.
 - [x] No rule policy in the engine; `lint_no_embedded_policy` Layer-3 guard is green. `BUILTIN_NAMESPACES` / `TARGET_OWNERS` deleted.
 - [x] Framework lint runs no imperative `Check` producer on `make lint`.

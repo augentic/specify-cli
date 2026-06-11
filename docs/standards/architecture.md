@@ -21,7 +21,7 @@ specify-workflow                 # workflow layer — depends on specify-{error,
 specify (root crate)             # wires runtime + framework crates into the specify binary
 ```
 
-The framework authoring checks behind `specify lint framework` live in the `specify_standards::framework` module (see [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout)).
+The framework authoring checks behind `specify lint framework` run entirely through the declarative hint interpreter and WASI tools in `specify_standards::lint`; there is no imperative `Check` substrate (see [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout)).
 
 `specify-standards` (standards) and `specify-workflow` (workflow) are siblings: they never import each other. `specify-validate` is the validation analog: it depends on `specify-model` only and never on `specify-workflow`, so an artifact rule cannot reach workflow lifecycle types — the same no-lifecycle-authority invariant `specify-standards` enforces. `specify-model` is the lifecycle-free leaf carrying the artifact types and parsers both `specify-validate` and `specify-workflow` read, alongside `specify-schema` and `specify-error` at the bottom. The Phase 1B collapse from 13 crates, the standards-layer split that re-introduced `specify-standards` and `specify-schema`, and the model/validate split that extracted `specify-model` and `specify-validate` are logged in [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout) and [DECISIONS.md §"Standards layer split into `specify-standards` and `specify-schema`"](../../DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema).
 
