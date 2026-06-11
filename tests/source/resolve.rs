@@ -22,11 +22,11 @@ fn stage_source_fixture(project: &Project, name: &str) {
 #[test]
 fn resolve_local_returns_manifest() {
     let project = Project::init();
-    stage_source_fixture(&project, "code-typescript");
+    stage_source_fixture(&project, "typescript");
 
     let assert = specify_cmd()
         .current_dir(project.root())
-        .args(["--format", "json", "source", "resolve", "code-typescript"])
+        .args(["--format", "json", "source", "resolve", "typescript"])
         .arg("--project-dir")
         .arg(project.root())
         .assert()
@@ -34,15 +34,15 @@ fn resolve_local_returns_manifest() {
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(actual["axis"], "sources");
-    assert_eq!(actual["name"], "code-typescript");
+    assert_eq!(actual["name"], "typescript");
     assert_eq!(actual["location"], "local");
     let operations = actual["operations"].as_array().expect("operations array");
     let ops: Vec<&str> = operations.iter().map(|v| v.as_str().unwrap()).collect();
     assert_eq!(ops, vec!["extract", "survey"]);
     let resolved = actual["resolved-path"].as_str().expect("resolved-path str");
     assert!(
-        resolved.ends_with("adapters/sources/code-typescript"),
-        "resolved-path {resolved} must end with sources/code-typescript"
+        resolved.ends_with("adapters/sources/typescript"),
+        "resolved-path {resolved} must end with sources/typescript"
     );
     let briefs_dir = actual["briefs-dir"].as_str().expect("briefs-dir str");
     assert_eq!(

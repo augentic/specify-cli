@@ -144,7 +144,7 @@ fn planning_stage_ab_brief_and_validate() {
     let project = Project::init();
     specify_cmd()
         .current_dir(project.root())
-        .args(["plan", "create", "planning-path", "--source", "app=code-typescript:."])
+        .args(["plan", "create", "planning-path", "--source", "app=typescript:."])
         .assert()
         .success();
 
@@ -190,10 +190,10 @@ fn validate_reports_all_health_diagnostics() {
         "name: demo\n\
              sources:\n\
              \x20\x20monolith:\n\
-             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20adapter: typescript\n\
              \x20\x20\x20\x20path: /tmp/legacy\n\
              \x20\x20orphaned:\n\
-             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20adapter: typescript\n\
              \x20\x20\x20\x20path: /tmp/elsewhere\n\
              slices:\n\
              \x20\x20- name: cyclic-a\n\
@@ -302,7 +302,7 @@ fn validate_reports_topology_cache_stale() {
         "name: alpha\nadapter: omnia@v1\ndescription: Fresh description\n",
     )
     .unwrap();
-    copy_dir(&omnia_schema_dir(), &slot_specify.join(".cache/manifests/targets/omnia"));
+    copy_dir(&omnia_schema_dir(), &slot_specify.join("cache/manifests/targets/omnia"));
 
     fs::write(
         tmp.path().join(".specify/topology.lock"),
@@ -349,7 +349,7 @@ fn plan_validate_payloads_round_trip_typed() {
         "name: demo\n\
              sources:\n\
              \x20\x20orphan-key:\n\
-             \x20\x20\x20\x20adapter: code-typescript\n\
+             \x20\x20\x20\x20adapter: typescript\n\
              \x20\x20\x20\x20path: /tmp/somewhere\n\
              slices:\n\
              \x20\x20- name: cyc-a\n\

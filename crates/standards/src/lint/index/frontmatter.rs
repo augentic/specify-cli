@@ -28,7 +28,7 @@ pub fn extract(file: &DiscoveredFile) -> Option<Frontmatter> {
     // Rule frontmatter is surfaced via the `rule_index` family
     // per the doc-comment on `super::discover`; the two surfaces would
     // double-count if the generic extractor also fired here.
-    if file.relative.starts_with(".specify/.cache/codex/") {
+    if file.relative.starts_with(".specify/cache/codex/") {
         return None;
     }
     let text = file.text();

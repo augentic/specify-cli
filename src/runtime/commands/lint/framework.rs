@@ -91,6 +91,7 @@ fn build_report(
     let producers: [&dyn DiagnosticProducer; 0] = [];
     let rule_filter_slice: Vec<&str> = action.rules.iter().map(String::as_str).collect();
     let tool_runner = FrameworkToolRunner::new()?;
+    let cli_contract = crate::runtime::commands::contract::dump::build_contract();
     let config = PipelineConfig {
         profile: ScanProfile::Framework,
         dump_model: action.dump_model,
@@ -98,6 +99,7 @@ fn build_report(
         rule_filter: &rule_filter_slice,
         resolver_degradation: ResolverDegradation::SkipDeclarative,
         tool_runner: &tool_runner,
+        cli_contract: Some(&cli_contract),
         producers: &producers,
     };
 

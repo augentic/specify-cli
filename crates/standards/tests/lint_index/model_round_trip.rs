@@ -203,7 +203,7 @@ fn populated_model_round_trips() {
         }],
         fenced_blocks: vec![],
         scenarios: vec![Scenario {
-            path: "acceptance/scenarios/refine-happy-path.md".into(),
+            path: "evals/scenarios/refine-happy-path.md".into(),
             id: Some("refine-happy-path".into()),
             stages: vec!["refine".into(), "build".into()],
             expected_artifacts: vec!["spec.md".into()],

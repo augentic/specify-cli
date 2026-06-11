@@ -7,13 +7,14 @@ use jsonschema::{Registry, Resource};
 use serde_json::{Value, json};
 use specify_schema::{
     ADAPTER_JSON_SCHEMA, BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA,
-    COMPONENTS_JSON_SCHEMA, DECISION_JSON_SCHEMA, DIAGNOSTIC_JSON_SCHEMA,
-    DIAGNOSTIC_REPORT_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, FRAMEWORK_JSON_SCHEMA, LEAD_JSON_SCHEMA,
-    MARKETPLACE_JSON_SCHEMA, PARTS_JSON_SCHEMA, PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA,
-    PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA,
-    SKILL_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SOURCE_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA,
-    TARGET_JSON_SCHEMA, TOOL_JSON_SCHEMA, TOOL_SIDECAR_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA,
-    ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
+    COMPONENTS_JSON_SCHEMA, CONTRACT_DUMP_JSON_SCHEMA, DECISION_JSON_SCHEMA,
+    DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA, EMBEDDED_SCHEMAS, EVIDENCE_JSON_SCHEMA,
+    FRAMEWORK_JSON_SCHEMA, LEAD_JSON_SCHEMA, MARKETPLACE_JSON_SCHEMA, PARTS_JSON_SCHEMA,
+    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
+    RULE_JSON_SCHEMA, SCENARIO_JSON_SCHEMA, SKILL_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA,
+    SOURCE_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TARGET_JSON_SCHEMA, TOOL_JSON_SCHEMA,
+    TOOL_SIDECAR_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, ValidationStatus,
+    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
 };
 
 #[test]
@@ -61,18 +62,18 @@ fn tool_sidecar_schema_compiles() {
     compile_schema(TOOL_SIDECAR_JSON_SCHEMA).expect("tool-sidecar schema compiles");
 }
 
-/// `cache-meta.schema.json` ships on disk but is not embedded as a
+/// `manifest-meta.schema.json` ships on disk but is not embedded as a
 /// constant. Compile it straight from disk so a malformed edit fails
 /// in CI even without an `include_str!` binding.
 #[test]
-fn cache_meta_schema_compiles_from_disk() {
-    let source = include_str!("../../../schemas/cache-meta.schema.json");
-    compile_schema(source).expect("cache-meta schema compiles");
+fn manifest_meta_schema_compiles_from_disk() {
+    let source = include_str!("../../../schemas/manifest-meta.schema.json");
+    compile_schema(source).expect("manifest-meta schema compiles");
 }
 
 /// `context-lock.schema.json` ships on disk but is not embedded as a
 /// constant; compile it straight from disk (see
-/// [`cache_meta_schema_compiles_from_disk`]).
+/// [`manifest_meta_schema_compiles_from_disk`]).
 #[test]
 fn context_lock_schema_compiles_from_disk() {
     let source = include_str!("../../../schemas/context-lock.schema.json");
@@ -81,79 +82,18 @@ fn context_lock_schema_compiles_from_disk() {
 
 /// Every embedded schema constant must byte-match its on-disk source
 /// (REVIEW.md A11). `include_str!` binds at compile time, so this guards
-/// against a constant pointing at a stale or duplicated copy: each entry
-/// re-reads the canonical workspace file at runtime and asserts equality.
+/// against a constant pointing at a stale or duplicated copy: each
+/// [`EMBEDDED_SCHEMAS`] entry re-reads the canonical workspace file at
+/// runtime and asserts equality. The inventory itself lives in the
+/// crate so `specify contract dump` publishes the same list.
 #[test]
 fn embedded_schemas_match_on_disk_sources() {
     let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(std::path::Path::parent)
         .expect("crates/schema has a repo root two levels up");
-    let pairs: &[(&str, &str, &str)] = &[
-        ("ADAPTER_JSON_SCHEMA", ADAPTER_JSON_SCHEMA, "schemas/adapter.schema.json"),
-        ("SOURCE_JSON_SCHEMA", SOURCE_JSON_SCHEMA, "schemas/source.schema.json"),
-        ("TARGET_JSON_SCHEMA", TARGET_JSON_SCHEMA, "schemas/target.schema.json"),
-        ("TOOL_JSON_SCHEMA", TOOL_JSON_SCHEMA, "schemas/tool.schema.json"),
-        ("TOOL_SIDECAR_JSON_SCHEMA", TOOL_SIDECAR_JSON_SCHEMA, "schemas/tool-sidecar.schema.json"),
-        ("PLAN_JSON_SCHEMA", PLAN_JSON_SCHEMA, "schemas/plan/plan.schema.json"),
-        ("EVIDENCE_JSON_SCHEMA", EVIDENCE_JSON_SCHEMA, "schemas/evidence.schema.json"),
-        ("LEAD_JSON_SCHEMA", LEAD_JSON_SCHEMA, "schemas/discovery/lead.schema.json"),
-        ("PROPOSAL_JSON_SCHEMA", PROPOSAL_JSON_SCHEMA, "schemas/discovery/proposal.schema.json"),
-        ("SLICE_MODEL_JSON_SCHEMA", SLICE_MODEL_JSON_SCHEMA, "schemas/slice/model.schema.json"),
-        ("SYNTHESIS_JSON_SCHEMA", SYNTHESIS_JSON_SCHEMA, "schemas/slice/synthesis.schema.json"),
-        ("PROVENANCE_JSON_SCHEMA", PROVENANCE_JSON_SCHEMA, "schemas/slice/provenance.schema.json"),
-        (
-            "TOPOLOGY_LOCK_JSON_SCHEMA",
-            TOPOLOGY_LOCK_JSON_SCHEMA,
-            "schemas/topology-lock.schema.json",
-        ),
-        (
-            "COMPONENTS_JSON_SCHEMA",
-            COMPONENTS_JSON_SCHEMA,
-            "schemas/design-system/components.schema.json",
-        ),
-        ("PARTS_JSON_SCHEMA", PARTS_JSON_SCHEMA, "schemas/design-system/parts.schema.json"),
-        (
-            "RESOLVED_RULES_JSON_SCHEMA",
-            RESOLVED_RULES_JSON_SCHEMA,
-            "schemas/rules/resolved.schema.json",
-        ),
-        ("RULE_JSON_SCHEMA", RULE_JSON_SCHEMA, "schemas/rules/rule.schema.json"),
-        (
-            "DIAGNOSTIC_JSON_SCHEMA",
-            DIAGNOSTIC_JSON_SCHEMA,
-            "schemas/diagnostics/diagnostic.schema.json",
-        ),
-        (
-            "DIAGNOSTIC_REPORT_JSON_SCHEMA",
-            DIAGNOSTIC_REPORT_JSON_SCHEMA,
-            "schemas/diagnostics/diagnostic-report.schema.json",
-        ),
-        (
-            "WORKSPACE_MODEL_JSON_SCHEMA",
-            WORKSPACE_MODEL_JSON_SCHEMA,
-            "schemas/lint/workspace-model.schema.json",
-        ),
-        ("SKILL_JSON_SCHEMA", SKILL_JSON_SCHEMA, "schemas/authoring/skill.schema.json"),
-        ("SCENARIO_JSON_SCHEMA", SCENARIO_JSON_SCHEMA, "schemas/authoring/scenario.schema.json"),
-        (
-            "MARKETPLACE_JSON_SCHEMA",
-            MARKETPLACE_JSON_SCHEMA,
-            "schemas/authoring/marketplace.schema.json",
-        ),
-        ("FRAMEWORK_JSON_SCHEMA", FRAMEWORK_JSON_SCHEMA, "schemas/authoring/framework.schema.json"),
-        (
-            "BUILD_REQUEST_JSON_SCHEMA",
-            BUILD_REQUEST_JSON_SCHEMA,
-            "schemas/target/build-request.schema.json",
-        ),
-        (
-            "BUILD_REPORT_JSON_SCHEMA",
-            BUILD_REPORT_JSON_SCHEMA,
-            "schemas/target/build-report.schema.json",
-        ),
-    ];
-    for (name, embedded, relative) in pairs {
+    assert!(!EMBEDDED_SCHEMAS.is_empty(), "EMBEDDED_SCHEMAS must list every embedded constant");
+    for (name, relative, embedded) in EMBEDDED_SCHEMAS {
         let on_disk = std::fs::read_to_string(repo_root.join(relative))
             .unwrap_or_else(|err| panic!("read {relative} for {name}: {err}"));
         assert_eq!(
@@ -244,7 +184,7 @@ fn synthesis_accepts_example() {
         "model": {
             "requirements": [{
                 "title": "Request password reset",
-                "unit": "password-reset",
+                "domain": "password-reset",
                 "agreement": "agreed",
                 "claims": [
                     { "source": "docs", "id": "password-reset.request", "kind": "requirement" },
@@ -266,7 +206,7 @@ fn synthesis_accepts_example() {
             "design": "# Design\n…",
             "tasks": "# Tasks\n- [ ] TASK-001 …",
             "specs": [{
-                "unit": "password-reset",
+                "domain": "password-reset",
                 "content": "## Request password reset\nThe system lets a registered user…"
             }]
         }
@@ -552,6 +492,11 @@ fn diagnostic_report_relative_ref() {
         .and_then(Value::as_str)
         .expect("findings.items.$ref is a string");
     assert_eq!(items_ref, "diagnostic.schema.json");
+}
+
+#[test]
+fn contract_dump_schema_compiles() {
+    compile_schema(CONTRACT_DUMP_JSON_SCHEMA).expect("contract-dump schema compiles");
 }
 
 #[test]

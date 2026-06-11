@@ -3,26 +3,18 @@
 //! Resolves `<source>` against `plan.yaml.sources.<key>`, runs the
 //! shared [`prep`] seam ([`prep::SourceOp::Survey`]) for adapter
 //! resolution, brief directory, and the four-root sandbox (scratch at
-//! `.specify/.cache/extractions/<adapter>/survey/scratch/`), then
-//! branches on the adapter's `execution` mode:
+//! `.specify/scratch/<adapter>/survey/`). Source extraction is
+//! agent-only and two-phase; the CLI never blocks on agent work:
 //!
-//! - `tool`: single-phase. Probe the extraction cache; on a hit read the
-//!   cached `lead-set.md`, on a miss dispatch the declared tool (no
-//!   first-party source declares a survey tool yet). Either
-//!   way validate the lead set and merge it into `discovery.md`.
-//! - `agent`: two-phase. The CLI never blocks on agent work.
-//!   - `--phase prepare` (default): build scratch, emit
-//!     `source.execution.agent`, and print the survey handoff envelope
-//!     (`{ adapter, version, briefs-dir, source-dir?, scratch-dir,
-//!     leads[], execution }` — no `evidence-dir`; survey produces a lead
-//!     set, not Evidence). Control returns to the agent.
-//!   - `--phase finalize`: validate the agent-produced `lead-set.md`
-//!     against `schemas/discovery/lead.schema.json` *before* it becomes
-//!     visible, run the extraction-cache fingerprint, emit
-//!     `source.survey.cache-hit` / `cache-miss`, and merge the lead set
-//!     via `Discovery::merge_survey`. Under the `execution: agent`
-//!     forced opt-out this is always a `cache-miss` with
-//!     `reason: adapter-opt-out`.
+//! - `--phase prepare` (default): build scratch, emit
+//!   `source.execution.agent`, and print the survey handoff envelope
+//!   (`{ adapter, version, briefs-dir, source-dir?, scratch-dir,
+//!   leads[], execution }` — no `evidence-dir`; survey produces a lead
+//!   set, not Evidence). Control returns to the agent.
+//! - `--phase finalize`: validate the agent-produced `leads.md`
+//!   against `schemas/discovery/lead.schema.json` *before* it becomes
+//!   visible, merge the lead set via `Discovery::merge_survey`, and
+//!   emit `source.survey.completed`.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -31,19 +23,13 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
 use specify_workflow::adapter::SourceOperation;
-use specify_workflow::adapter::cache::{self, LookupOutcome};
 use specify_workflow::change::Plan;
-use specify_workflow::journal::{CacheMissReason, EventKind};
+use specify_workflow::journal::EventKind;
 use specify_workflow::schema;
 
 use crate::runtime::commands::source::cli::Phase;
 use crate::runtime::commands::source::{op, prep};
 use crate::runtime::context::Ctx;
-
-/// Cache-index `slice` lane for the slice-less `survey` operation —
-/// mirrors the `survey/` scratch segment so survey
-/// results occupy their own discoverable lane in `index.jsonl`.
-const SURVEY_LANE: &str = "survey";
 
 /// Survey handoff envelope printed by the agent `prepare` phase.
 /// No `evidence-dir`: survey merges a lead set via
@@ -64,19 +50,13 @@ struct SurveyHandoff {
     execution: &'static str,
 }
 
-/// Result of a completed survey (tool single-phase, or agent
-/// `finalize`): the cache outcome plus the merged lead ids.
+/// Result of a completed survey (agent `finalize`): the merged lead
+/// ids and the `discovery.md` they landed in.
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]
 struct SurveyResult {
     adapter: String,
     source: String,
-    fingerprint: String,
-    /// `hit` | `miss`.
-    cache: &'static str,
-    /// Populated on a miss; the closed cache-miss reason.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<CacheMissReason>,
     /// Lead ids merged into `discovery.md`.
     leads: Vec<String>,
     discovery: PathBuf,
@@ -89,8 +69,8 @@ struct SurveyResult {
 ///
 /// - `source-unknown` when `<source>` is not a
 ///   `plan.yaml.sources` key.
-/// - propagates adapter-resolution, schema-validation, fingerprint,
-///   and merge failures.
+/// - propagates adapter-resolution, schema-validation, and merge
+///   failures.
 pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Result<()> {
     let plan = load_plan(ctx, plan_name)?;
     let binding = plan.sources.get(source).ok_or_else(|| Error::Diag {
@@ -102,7 +82,7 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
     })?;
 
     let source_path =
-        binding.path.as_deref().map(|raw| prep::resolve_source_path(&ctx.project_dir, raw));
+        binding.path.as_deref().map(|raw| prep::resolve_source_path(ctx.layout().plan_dir(), raw));
 
     let prepared = prep::prepare(&prep::PrepRequest {
         adapter: &binding.adapter,
@@ -121,8 +101,6 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
             source_path: source_path.as_deref(),
             binding,
             operation: SourceOperation::Survey,
-            slice_lane: SURVEY_LANE,
-            lead: None,
         },
     };
     op::run(&flow, phase)
@@ -130,7 +108,8 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
 
 /// Survey's operation-specific seam onto the shared [`op::run`] flow:
 /// the handoff omits `evidence-dir`, the commit merges the lead set
-/// into `discovery.md`, and the cache event is `source.survey.cache-*`.
+/// into `discovery.md`, and the completion event is
+/// `source.survey.completed`.
 struct SurveyFlow<'a> {
     common: op::Common<'a>,
 }
@@ -160,54 +139,27 @@ impl<'a> op::Flow<'a> for SurveyFlow<'a> {
         write_handoff_text(w, body)
     }
 
-    fn commit(
-        &self, raw: &str, _artifact_source: &Path, lookup: &cache::CacheLookup,
-    ) -> Result<SurveyResult> {
+    fn commit(&self, raw: &str, _artifact_source: &Path) -> Result<SurveyResult> {
         let c = &self.common;
         let lead_ids = validate_and_merge(c.ctx, c.source, raw)?;
-        Ok(survey_result(
-            c.source,
-            &c.prepared.manifest.name,
-            lookup,
-            lead_ids,
-            c.ctx.layout().discovery_path(),
-        ))
+        Ok(SurveyResult {
+            adapter: c.prepared.manifest.name.clone(),
+            source: c.source.to_string(),
+            leads: lead_ids,
+            discovery: c.ctx.layout().discovery_path(),
+        })
     }
 
     fn write_outcome(w: &mut dyn Write, body: &SurveyResult) -> std::io::Result<()> {
         write_result_text(w, body)
     }
 
-    fn cache_event(&self, lookup: &cache::CacheLookup) -> EventKind {
+    fn completed_event(&self) -> EventKind {
         let c = &self.common;
-        match &lookup.outcome {
-            LookupOutcome::Hit { .. } => EventKind::SourceSurveyCacheHit {
-                source: c.source.to_string(),
-                adapter: c.prepared.manifest.name.clone(),
-                fingerprint: lookup.digest.clone(),
-            },
-            LookupOutcome::Miss { reason } => EventKind::SourceSurveyCacheMiss {
-                source: c.source.to_string(),
-                adapter: c.prepared.manifest.name.clone(),
-                fingerprint: lookup.digest.clone(),
-                reason: *reason,
-            },
+        EventKind::SourceSurveyCompleted {
+            source: c.source.to_string(),
+            adapter: c.prepared.manifest.name.clone(),
         }
-    }
-
-    /// No first-party source declares a survey tool; the WASI survey
-    /// dispatch protocol is not yet wired. The shared flow is wired
-    /// correctly (cache probe, lead-set read, validate-before-visible
-    /// merge) so the only seam left is the actual tool invocation.
-    fn dispatch_tool(&self) -> Result<()> {
-        Err(Error::Diag {
-            code: "source-survey-tool-unsupported",
-            detail: format!(
-                "source adapter `{}` declares `execution: tool`, but M1 ships no `survey` tool \
-                 dispatch; no first-party source declares a survey tool",
-                self.common.prepared.manifest.name
-            ),
-        })
     }
 }
 
@@ -218,8 +170,8 @@ fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>>
     let mut leads = Discovery::parse_lead_set(raw)?.into_leads();
     if leads.is_empty() && !raw.trim().is_empty() {
         return Err(Error::Diag {
-            code: "survey-lead-set-empty",
-            detail: "lead-set.md contains text but no leads were parsed; each lead must be a \
+            code: "survey-leads-empty",
+            detail: "leads.md contains text but no leads were parsed; each lead must be a \
                      `### <lead>` heading followed by `lead:` and `synopsis:` bullets using \
                      `-` or `*` markers"
                 .to_string(),
@@ -238,25 +190,6 @@ fn validate_and_merge(ctx: &Ctx, source: &str, raw: &str) -> Result<Vec<String>>
     let mut discovery = load_or_empty_discovery(&discovery_path)?;
     discovery.merge_survey(source, leads, &discovery_path)?;
     Ok(lead_ids)
-}
-
-fn survey_result(
-    source: &str, adapter: &str, lookup: &cache::CacheLookup, leads: Vec<String>,
-    discovery: PathBuf,
-) -> SurveyResult {
-    let (cache, reason) = match &lookup.outcome {
-        LookupOutcome::Hit { .. } => ("hit", None),
-        LookupOutcome::Miss { reason } => ("miss", Some(*reason)),
-    };
-    SurveyResult {
-        adapter: adapter.to_string(),
-        source: source.to_string(),
-        fingerprint: lookup.digest.clone(),
-        cache,
-        reason,
-        leads,
-        discovery,
-    }
 }
 
 /// Existing lead ids for `source`, read from `discovery.md` when
@@ -316,12 +249,6 @@ fn write_handoff_text(w: &mut dyn Write, body: &SurveyHandoff) -> std::io::Resul
 fn write_result_text(w: &mut dyn Write, body: &SurveyResult) -> std::io::Result<()> {
     writeln!(w, "adapter: {}", body.adapter)?;
     writeln!(w, "source: {}", body.source)?;
-    write!(w, "cache: {}", body.cache)?;
-    if let Some(reason) = body.reason {
-        write!(w, " ({reason})")?;
-    }
-    writeln!(w)?;
-    writeln!(w, "fingerprint: {}", body.fingerprint)?;
     writeln!(w, "discovery: {}", body.discovery.display())?;
     if body.leads.is_empty() {
         writeln!(w, "leads: (none)")?;

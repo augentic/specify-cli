@@ -19,28 +19,12 @@ pub fn assert_wire_rows(rows: &[(EventKind, &[&str])]) {
 pub fn check_contract_part1() {
     let rows: &[(EventKind, &[&str])] = &[
         (
-            EventKind::SliceExtractCacheHit {
+            EventKind::SliceExtractCompleted {
                 slice_name: "identity-user-registration".into(),
                 source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:cafef00d".to_string(),
             },
             &[
-                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.cache-hit","payload":{"slice-name":"identity-user-registration","source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
-            ],
-        ),
-        (
-            EventKind::SliceExtractCacheMiss {
-                slice_name: "identity-user-registration".into(),
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:beef".to_string(),
-                reason: CacheMissReason::AdapterVersionChanged,
-            },
-            &[
-                r#""event":"slice.extract.cache-miss""#,
-                r#""reason":"adapter-version-changed""#,
-                r#""source":"runtime""#,
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"slice.extract.completed","payload":{"slice-name":"identity-user-registration","source":"runtime"}}"#,
             ],
         ),
         (
@@ -81,27 +65,12 @@ pub fn check_contract_part2() {
             ],
         ),
         (
-            EventKind::SourceSurveyCacheHit {
+            EventKind::SourceSurveyCompleted {
                 source: "runtime".to_string(),
                 adapter: "captures".to_string(),
-                fingerprint: "sha256:cafef00d".to_string(),
             },
             &[
-                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.cache-hit","payload":{"source":"runtime","adapter":"captures","fingerprint":"sha256:cafef00d"}}"#,
-            ],
-        ),
-        (
-            EventKind::SourceSurveyCacheMiss {
-                source: "runtime".to_string(),
-                adapter: "captures".to_string(),
-                fingerprint: "sha256:beef".to_string(),
-                reason: CacheMissReason::AdapterOptOut,
-            },
-            &[
-                r#""event":"source.survey.cache-miss""#,
-                r#""reason":"adapter-opt-out""#,
-                r#""source":"runtime""#,
-                r#""fingerprint":"sha256:beef""#,
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"source.survey.completed","payload":{"source":"runtime","adapter":"captures"}}"#,
             ],
         ),
     ];
@@ -161,7 +130,54 @@ pub fn check_contract_part3() {
 }
 
 pub fn check_contract_part4() {
-    let rows: &[(EventKind, &[&str])] = &[];
+    let rows: &[(EventKind, &[&str])] = &[
+        (
+            EventKind::PlanTransitionApproved {
+                plan_name: "identity-revamp".into(),
+                actor: Actor::Operator,
+            },
+            &[
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"plan.transition.approved","payload":{"plan-name":"identity-revamp","actor":"operator"}}"#,
+            ],
+        ),
+        (
+            EventKind::PlanTransitionApproved {
+                plan_name: "identity-revamp".into(),
+                actor: Actor::Agent,
+            },
+            &[r#""event":"plan.transition.approved""#, r#""actor":"agent""#],
+        ),
+        (
+            EventKind::PlanEntryAdvanced {
+                plan_name: "identity-revamp".into(),
+                slice_name: "identity-contracts".into(),
+            },
+            &[
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"plan.entry.advanced","payload":{"plan-name":"identity-revamp","slice-name":"identity-contracts"}}"#,
+            ],
+        ),
+        (
+            EventKind::WorkspaceSyncCompleted {
+                projects: vec!["alpha".to_string(), "beta".to_string()],
+            },
+            &[
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"workspace.sync.completed","payload":{"projects":["alpha","beta"]}}"#,
+            ],
+        ),
+        (
+            EventKind::WorkspacePushCompleted {
+                plan_name: "identity-revamp".into(),
+                branch: "specify/identity-revamp".to_string(),
+                projects: vec!["alpha".to_string(), "beta".to_string()],
+            },
+            &[
+                r#""event":"workspace.push.completed""#,
+                r#""plan-name":"identity-revamp""#,
+                r#""branch":"specify/identity-revamp""#,
+                r#""projects":["alpha","beta"]"#,
+            ],
+        ),
+    ];
     assert_wire_rows(rows);
 }
 
@@ -200,6 +216,11 @@ fn probe_kinds_part1() -> Vec<EventKind> {
     vec![
         EventKind::PlanTransitionApproved {
             plan_name: "p".into(),
+            actor: Actor::Operator,
+        },
+        EventKind::PlanEntryAdvanced {
+            plan_name: "p".into(),
+            slice_name: "s".into(),
         },
         EventKind::PlanAmendDivergence {
             plan_name: "p".into(),
@@ -257,16 +278,9 @@ fn probe_kinds_part2() -> Vec<EventKind> {
             slice_name: "s".into(),
             source: "k".to_string(),
         },
-        EventKind::SourceSurveyCacheHit {
+        EventKind::SourceSurveyCompleted {
             source: "k".to_string(),
             adapter: "captures".to_string(),
-            fingerprint: "sha256:beef".to_string(),
-        },
-        EventKind::SourceSurveyCacheMiss {
-            source: "k".to_string(),
-            adapter: "captures".to_string(),
-            fingerprint: "sha256:beef".to_string(),
-            reason: CacheMissReason::AdapterOptOut,
         },
         EventKind::SourceExecutionAgent {
             source: "k".to_string(),
@@ -284,6 +298,14 @@ fn probe_kinds_part2() -> Vec<EventKind> {
             outcome_summary: "identity: 1 modified".to_string(),
             merge_sha: Some("abc1234".to_string()),
             decisions: Vec::new(),
+        },
+        EventKind::WorkspaceSyncCompleted {
+            projects: vec!["alpha".to_string()],
+        },
+        EventKind::WorkspacePushCompleted {
+            plan_name: "p".into(),
+            branch: "specify/p".to_string(),
+            projects: vec!["alpha".to_string()],
         },
     ]
 }

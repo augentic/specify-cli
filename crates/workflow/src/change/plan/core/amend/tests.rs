@@ -78,7 +78,7 @@ fn amend_leaves_unchanged() {
         lifecycle: Lifecycle::Pending,
         sources: {
             let mut m = BTreeMap::new();
-            m.insert("a".to_string(), SourceBinding::path("code-typescript", "/path/a"));
+            m.insert("a".to_string(), SourceBinding::path("typescript", "/path/a"));
             m
         },
         entries: vec![

@@ -9,9 +9,9 @@ Manual.
 - Add a `login` crate.
 - Add a `missing-crate` crate without a matching spec file.
 
-## Units
+## Domains
 
-### New Units
+### New Domains
 
 - `login`
 - `missing-crate`

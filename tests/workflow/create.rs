@@ -17,6 +17,7 @@ slices:
     status: done
 ",
     );
+    let _lock = project.hold_plan_lock();
 
     specify_cmd()
         .current_dir(project.root())
@@ -175,6 +176,11 @@ fn create_auto_approve_stamps() {
     assert!(
         lines[0].contains(r#""plan-name":"fresh""#),
         "plan-name must serialise kebab-case, got:\n{}",
+        lines[0]
+    );
+    assert!(
+        lines[0].contains(r#""actor":"operator""#),
+        "--auto-approve is operator consent, so the stamp records actor: operator, got:\n{}",
         lines[0]
     );
 }

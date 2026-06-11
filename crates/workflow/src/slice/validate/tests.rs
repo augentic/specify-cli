@@ -49,18 +49,18 @@ fn path_hint_keeps_filename_outside() {
 #[test]
 fn spec_files_walked_recursively_and_sorted() {
     let root = TempDir::new().unwrap();
-    let unit_b = root.path().join("b");
-    let unit_a = root.path().join("a");
-    fs::create_dir_all(&unit_b).unwrap();
-    fs::create_dir_all(&unit_a).unwrap();
-    fs::write(unit_b.join("spec.md"), "b").unwrap();
-    fs::write(unit_a.join("spec.md"), "a").unwrap();
+    let domain_b = root.path().join("b");
+    let domain_a = root.path().join("a");
+    fs::create_dir_all(&domain_b).unwrap();
+    fs::create_dir_all(&domain_a).unwrap();
+    fs::write(domain_b.join("spec.md"), "b").unwrap();
+    fs::write(domain_a.join("spec.md"), "a").unwrap();
     fs::write(root.path().join("notes.txt"), "ignored").unwrap();
 
     let found = collect_spec_files(root.path()).unwrap();
     assert_eq!(found.len(), 2);
-    assert_eq!(found[0], unit_a.join("spec.md"));
-    assert_eq!(found[1], unit_b.join("spec.md"));
+    assert_eq!(found[0], domain_a.join("spec.md"));
+    assert_eq!(found[1], domain_b.join("spec.md"));
 }
 
 #[test]
@@ -75,9 +75,9 @@ fn file_location_flags_root_no_canonical() {
 #[test]
 fn file_location_silent_with_canonical() {
     let slice = TempDir::new().unwrap();
-    let unit = slice.path().join("specs").join("auth");
-    fs::create_dir_all(&unit).unwrap();
-    fs::write(unit.join("spec.md"), "# canonical").unwrap();
+    let domain = slice.path().join("specs").join("auth");
+    fs::create_dir_all(&domain).unwrap();
+    fs::write(domain.join("spec.md"), "# canonical").unwrap();
     // Even a stray root spec.md does not fire once canonical specs exist.
     fs::write(slice.path().join("spec.md"), "# stray").unwrap();
     assert!(collect_spec_file_location_findings(slice.path()).is_empty());

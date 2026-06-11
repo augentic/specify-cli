@@ -1,7 +1,7 @@
 //! `kind: presence` evaluator.
 //!
 //! Flags the absence of a required artifact. `hint.value` selects one
-//! of three mechanism selectors:
+//! of four mechanism selectors:
 //!
 //! - `frontmatter` — flag each candidate file (the rule's
 //!   `path-pattern` set) that is absent from [`WorkspaceModel::frontmatter`]
@@ -16,16 +16,25 @@
 //!   `min`, flag those lacking a [`crate::lint::MarkdownSection`] with
 //!   the configured `title` and `level`. Whole-tree (the `path-pattern`
 //!   candidate set is a sentinel and unused). For CORE-041.
+//! - `directory-index` — `config: { roots, index, min-files? }`; over
+//!   the directory prefixes of [`WorkspaceModel::files`], flag each
+//!   directory matching a `roots` glob (`*` does not cross `/`) that
+//!   holds at least `min-files` files beneath it but no `index` file
+//!   directly inside it. Whole-tree. For CORE-059 (reference-corpus
+//!   context-budget indexes).
 //!
 //! All policy (the required path, the section title / level, the metric
-//! threshold) rides the rule's `config:`; this arm names only mechanism
-//! — the selector tokens and the single supported metric. Unknown
-//! selectors, an unsupported metric, or a missing required config field
-//! are rejected as [`super::HintError::Unsupported`] so authoring drift
-//! surfaces at hint-evaluation time rather than silently passing.
+//! threshold, the corpus roots and index name) rides the rule's
+//! `config:`; this arm names only mechanism — the selector tokens and
+//! the single supported metric. Unknown selectors, an unsupported
+//! metric, or a missing required config field are rejected as
+//! [`super::HintError::Unsupported`] so authoring drift surfaces at
+//! hint-evaluation time rather than silently passing.
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use glob::{MatchOptions, Pattern};
 use serde::Deserialize;
 use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
@@ -36,6 +45,7 @@ use crate::rules::{HintKind, ResolvedRule, RuleHint};
 const VALUE_FRONTMATTER: &str = "frontmatter";
 const VALUE_FILE: &str = "file";
 const VALUE_MARKDOWN_SECTION: &str = "markdown-section";
+const VALUE_DIRECTORY_INDEX: &str = "directory-index";
 /// The single fact metric the `markdown-section` selector gates on
 /// today; naming a fact metric is mechanism, the threshold is policy.
 const METRIC_SKILL_BODY_LINE_COUNT: &str = "skill-body-line-count";
@@ -54,6 +64,12 @@ struct PresenceConfig {
     level: Option<u8>,
     #[serde(default)]
     when: Option<PresenceWhen>,
+    #[serde(default)]
+    roots: Option<Vec<String>>,
+    #[serde(default)]
+    index: Option<String>,
+    #[serde(default)]
+    min_files: Option<usize>,
 }
 
 /// The `when: { metric, min }` threshold gate for the
@@ -88,10 +104,11 @@ pub(crate) fn evaluate(
         VALUE_FRONTMATTER => Ok(evaluate_frontmatter(rule, candidates, model, next_id)),
         VALUE_FILE => evaluate_file(rule, hint, model, next_id),
         VALUE_MARKDOWN_SECTION => evaluate_markdown_section(rule, hint, model, next_id),
+        VALUE_DIRECTORY_INDEX => evaluate_directory_index(rule, hint, model, next_id),
         _ => Err(HintError::Unsupported {
             rule_id: rule.rule_id.clone(),
             kind: HintKind::Presence,
-            reason: "only `frontmatter`, `file`, or `markdown-section` is supported in v1",
+            reason: "only `frontmatter`, `file`, `markdown-section`, or `directory-index` is supported in v1",
         }),
     }
 }
@@ -102,7 +119,7 @@ pub(crate) fn evaluate(
 fn evaluate_frontmatter(
     rule: &ResolvedRule, candidates: &[PathBuf], model: &WorkspaceModel, next_id: &mut u64,
 ) -> Vec<Diagnostic> {
-    let present: std::collections::BTreeSet<&str> = model
+    let present: BTreeSet<&str> = model
         .frontmatter
         .iter()
         .filter(|fm| !fm.fields.is_empty())
@@ -172,6 +189,65 @@ fn evaluate_markdown_section(
         }
         let summary = format!("missing required '{title}' section (level {level})");
         out.push(mint(rule, &skill.path, &summary, next_id));
+    }
+    Ok(out)
+}
+
+/// `directory-index` selector: each directory prefix of a file fact
+/// that matches a `roots` glob and holds at least `min-files` files
+/// beneath it (recursive) must contain the `index` file directly. Glob
+/// matching keeps `/` literal so a root pattern names one directory
+/// depth. Whole-tree.
+fn evaluate_directory_index(
+    rule: &ResolvedRule, hint: &RuleHint, model: &WorkspaceModel, next_id: &mut u64,
+) -> Result<Vec<Diagnostic>, HintError> {
+    let cfg = PresenceConfig::parse(rule, hint)?;
+    let (Some(roots), Some(index)) = (cfg.roots, cfg.index) else {
+        return Err(HintError::Unsupported {
+            rule_id: rule.rule_id.clone(),
+            kind: HintKind::Presence,
+            reason: "`directory-index` requires `config: { roots, index }`",
+        });
+    };
+    let min_files = cfg.min_files.unwrap_or(1);
+    let patterns: Vec<Pattern> =
+        roots.iter().map(|root| Pattern::new(root)).collect::<Result<_, _>>().map_err(
+            |_silenced| HintError::Unsupported {
+                rule_id: rule.rule_id.clone(),
+                kind: HintKind::Presence,
+                reason: "invalid glob pattern in `roots`",
+            },
+        )?;
+    let options = MatchOptions {
+        require_literal_separator: true,
+        ..MatchOptions::default()
+    };
+
+    let mut dirs: BTreeSet<&str> = BTreeSet::new();
+    for file in &model.files {
+        let mut prefix = file.path.as_str();
+        while let Some(pos) = prefix.rfind('/') {
+            prefix = &prefix[..pos];
+            if patterns.iter().any(|pattern| pattern.matches_with(prefix, options)) {
+                dirs.insert(prefix);
+            }
+        }
+    }
+
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for dir in dirs {
+        let beneath = format!("{dir}/");
+        let count = model.files.iter().filter(|file| file.path.starts_with(&beneath)).count();
+        if count < min_files {
+            continue;
+        }
+        let required = format!("{dir}/{index}");
+        if model.files.iter().any(|file| file.path == required) {
+            continue;
+        }
+        let summary =
+            format!("reference directory '{dir}' ({count} files) is missing its '{index}' index");
+        out.push(mint(rule, dir, &summary, next_id));
     }
     Ok(out)
 }

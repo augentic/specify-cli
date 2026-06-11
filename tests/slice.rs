@@ -53,6 +53,9 @@ mod validate_catalog;
 #[path = "slice/synthesize.rs"]
 mod synthesize;
 
+#[path = "slice/plan_dir.rs"]
+mod plan_dir;
+
 #[path = "slice/build.rs"]
 mod build;
 

@@ -3,7 +3,7 @@
 //! Projects a materialised project/slot directory into the
 //! `surface[]` / `recent[]` pair carried by `.specify/topology.lock`
 //! and the reconciliation envelope. The projection is purely
-//! structural — unit slugs, requirement-block headings, and the
+//! structural — domain slugs, requirement-block headings, and the
 //! journal's `slice.archive.created` outcome summaries — never an LLM
 //! summary, so the committed lock is verifiable by
 //! regenerate-and-compare.
@@ -18,7 +18,7 @@ use super::topology::{Decision, Surface};
 use crate::config::Layout;
 use crate::journal::{self, EventKind};
 
-/// Maximum requirement titles projected per unit (`K`). A unit with
+/// Maximum requirement titles projected per domain (`K`). A domain with
 /// more emits a `more:` count of the elided tail rather than the
 /// titles themselves.
 pub const SURFACE_TITLE_CAP: usize = 8;
@@ -38,7 +38,7 @@ pub const DECISIONS_CAP: usize = 8;
 /// `decisions[]` axis with its overflow count.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IdentityProjection {
-    /// Owned units + bounded requirement titles.
+    /// Owned domains + bounded requirement titles.
     pub surface: Vec<Surface>,
     /// Recent per-merge outcome summaries.
     pub recent: Vec<String>,
@@ -50,7 +50,7 @@ pub struct IdentityProjection {
 
 /// Project `project_dir`'s baseline into the `(surface, recent)` pair.
 ///
-/// `surface` enumerates every `.specify/specs/<unit>/spec.md`, sorted
+/// `surface` enumerates every `.specify/specs/<domain>/spec.md`, sorted
 /// by slug, each carrying up to [`SURFACE_TITLE_CAP`] requirement
 /// titles in `REQ-NNN` id order plus a `more` count when capped.
 /// `recent` is the last [`RECENT_TAIL`] `slice.archive.created`
@@ -109,34 +109,34 @@ fn project_surface(project_dir: &Path) -> Result<Vec<Surface>, Error> {
         return Ok(Vec::new());
     }
 
-    let mut units: Vec<String> = Vec::new();
+    let mut domains: Vec<String> = Vec::new();
     for entry in std::fs::read_dir(&specs_dir)? {
         let entry = entry?;
         if !entry.file_type()?.is_dir() {
             continue;
         }
-        let Some(unit) = entry.file_name().to_str().map(str::to_string) else {
+        let Some(domain) = entry.file_name().to_str().map(str::to_string) else {
             continue;
         };
-        // Only project units that actually carry a baseline spec; an
-        // empty unit directory is in-progress noise, not owned surface.
+        // Only project domains that actually carry a baseline spec; an
+        // empty domain directory is in-progress noise, not owned surface.
         if !entry.path().join("spec.md").is_file() {
             continue;
         }
-        units.push(unit);
+        domains.push(domain);
     }
-    units.sort();
+    domains.sort();
 
-    let mut surfaces: Vec<Surface> = Vec::with_capacity(units.len());
-    for unit in units {
-        let text = std::fs::read_to_string(specs_dir.join(&unit).join("spec.md"))?;
-        surfaces.push(project_unit(unit, &text));
+    let mut surfaces: Vec<Surface> = Vec::with_capacity(domains.len());
+    for domain in domains {
+        let text = std::fs::read_to_string(specs_dir.join(&domain).join("spec.md"))?;
+        surfaces.push(project_domain(domain, &text));
     }
     Ok(surfaces)
 }
 
-/// Project one unit's `spec.md` into its bounded [`Surface`].
-fn project_unit(unit: String, spec: &str) -> Surface {
+/// Project one domain's `spec.md` into its bounded [`Surface`].
+fn project_domain(domain: String, spec: &str) -> Surface {
     let parsed = parse_spec_md(spec);
     let mut ordered: Vec<(u64, String)> =
         parsed.requirements.into_iter().map(|req| (requirement_order(&req.id), req.name)).collect();
@@ -151,7 +151,7 @@ fn project_unit(unit: String, spec: &str) -> Surface {
         u64::try_from(total - SURFACE_TITLE_CAP).unwrap_or(u64::MAX)
     });
     Surface {
-        unit,
+        domain,
         requirements,
         more,
     }
@@ -180,9 +180,9 @@ mod tests {
 
     use super::*;
 
-    fn write_spec(project_dir: &Path, unit: &str, body: &str) {
-        let dir = project_dir.join(".specify").join("specs").join(unit);
-        fs::create_dir_all(&dir).expect("mkdir unit");
+    fn write_spec(project_dir: &Path, domain: &str, body: &str) {
+        let dir = project_dir.join(".specify").join("specs").join(domain);
+        fs::create_dir_all(&dir).expect("mkdir domain");
         fs::write(dir.join("spec.md"), body).expect("write spec.md");
     }
 
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn units_by_slug_reqs_by_req_id() {
+    fn domains_by_slug_reqs_by_req_id() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_spec(
             dir.path(),
@@ -216,8 +216,8 @@ mod tests {
 
         let surface = project_baseline(dir.path()).expect("project").surface;
         assert_eq!(surface.len(), 2);
-        assert_eq!(surface[0].unit, "password-reset");
-        assert_eq!(surface[1].unit, "session");
+        assert_eq!(surface[0].domain, "password-reset");
+        assert_eq!(surface[1].domain, "session");
         // `session` requirements are emitted in REQ id order, not the
         // (reversed) document order they were authored in.
         assert_eq!(surface[1].requirements, vec!["Issue token", "Revoke session"]);
@@ -261,6 +261,7 @@ mod tests {
             ts,
             EventKind::PlanTransitionApproved {
                 plan_name: "p".into(),
+                actor: journal::Actor::Operator,
             },
         ));
         journal::append_batch(layout, &events).expect("append journal");

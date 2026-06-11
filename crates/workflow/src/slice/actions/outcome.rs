@@ -1,4 +1,4 @@
-//! `stamp_outcome` verb: stamp a phase outcome onto `.metadata.yaml`.
+//! `stamp_outcome` verb: stamp a phase outcome onto `metadata.yaml`.
 
 use std::path::Path;
 
@@ -7,7 +7,7 @@ use specify_error::Error;
 
 use crate::slice::{Outcome, OutcomeKind, SliceMetadata, TargetOperation};
 
-/// Stamp the outcome of a phase run on `<slice_dir>/.metadata.yaml`.
+/// Stamp the outcome of a phase run on `<slice_dir>/metadata.yaml`.
 ///
 /// Primary writer of [`SliceMetadata::outcome`] for the define and
 /// build phases, and for merge failure/deferred outcomes. The merge

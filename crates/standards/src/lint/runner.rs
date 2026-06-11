@@ -22,9 +22,10 @@ use specify_diagnostics::{
 use specify_error::Result;
 
 use crate::lint::ScanProfile;
+use crate::lint::contract::CliContract;
 use crate::lint::diagnostics::{emit_dump_model, map_index_error};
-use crate::lint::eval::evaluate_rules;
 use crate::lint::eval::tool::ToolRunner;
+use crate::lint::eval::{EvalEnv, evaluate_rules};
 use crate::lint::ignore::apply as apply_directives;
 use crate::lint::index::build as build_model;
 use crate::lint::producer::DiagnosticProducer;
@@ -60,6 +61,11 @@ pub struct PipelineConfig<'a> {
     pub resolver_degradation: ResolverDegradation,
     /// Tool runner backing `kind: tool` hints.
     pub tool_runner: &'a dyn ToolRunner,
+    /// Binary-injected CLI contract backing `kind: cli-contract`
+    /// hints. The root binary builds it (clap introspection + const
+    /// tables); embedders without a contract pass `None` and any
+    /// `cli-contract` hint fails as unsupported.
+    pub cli_contract: Option<&'a CliContract>,
     /// Imperative producers composed ahead of the declarative pass.
     pub producers: &'a [&'a dyn DiagnosticProducer],
 }
@@ -74,6 +80,7 @@ impl fmt::Debug for PipelineConfig<'_> {
             .field("apply_ignore_directives", &self.apply_ignore_directives)
             .field("rule_filter", &self.rule_filter)
             .field("resolver_degradation", &self.resolver_degradation)
+            .field("cli_contract", &self.cli_contract.is_some())
             .field("producer_count", &self.producers.len())
             .finish_non_exhaustive()
     }
@@ -130,14 +137,14 @@ pub fn run(inputs: &ResolveInputs<'_>, config: &PipelineConfig<'_>) -> Result<Ru
     // The declarative pass continues the `FIND-NNNN` id sequence past
     // the imperative producers so the two passes never collide on id.
     let start_id = u64::try_from(combined.len()).unwrap_or(u64::MAX).saturating_add(1);
-    let (declarative, mut next_id) = evaluate_rules(
-        &resolved.rules,
-        &model,
-        inputs.project_dir,
-        config.tool_runner,
-        start_id,
-        config.rule_filter,
-    )?;
+    let env = EvalEnv {
+        model: &model,
+        project_dir: inputs.project_dir,
+        tool_runner: config.tool_runner,
+        cli_contract: config.cli_contract,
+    };
+    let (declarative, mut next_id) =
+        evaluate_rules(&resolved.rules, env, start_id, config.rule_filter)?;
     combined.extend(declarative);
 
     deduplicate_by_fingerprint(&mut combined);

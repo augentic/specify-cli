@@ -13,7 +13,7 @@ slice: identity-service
 model:
   requirements:
     - title: Request password reset
-      unit: password-reset
+      domain: password-reset
       agreement: agreed
       claims:
         - { source: docs,   id: password-reset.request,       kind: requirement }
@@ -30,7 +30,7 @@ artifacts:
   design: \"# Design\\n…\"
   tasks: \"# Tasks\\n- [ ] TASK-001 …\"
   specs:
-    - unit: password-reset
+    - domain: password-reset
       content: \"## Request password reset\\nThe system lets a registered user…\"
 ";
 
@@ -50,7 +50,7 @@ fn response_round_trips_rfc_example() {
     assert_eq!(response.model.requirements.len(), 1);
     let req = &response.model.requirements[0];
     assert_eq!(req.title, "Request password reset");
-    assert_eq!(req.unit.as_deref(), Some("password-reset"));
+    assert_eq!(req.domain.as_deref(), Some("password-reset"));
     assert_eq!(req.agreement, Some(Agreement::Agreed));
     assert!(req.id.is_none());
     assert!(req.status.is_none());
@@ -61,7 +61,7 @@ fn response_round_trips_rfc_example() {
     assert_eq!(response.model.tasks[0].id, "TASK-001");
 
     assert_eq!(response.artifacts.specs.len(), 1);
-    assert_eq!(response.artifacts.specs[0].unit, "password-reset");
+    assert_eq!(response.artifacts.specs[0].domain, "password-reset");
     assert!(response.artifacts.proposal.starts_with("# Password reset"));
 
     // Re-serialise into JSON and back; the shape is stable.

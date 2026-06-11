@@ -97,7 +97,7 @@ fn resolved_codex_round_trips() {
     let resolved = ResolvedRules {
             version: 1,
             target_adapter: "omnia".into(),
-            source_adapters: vec!["code-typescript".into()],
+            source_adapters: vec!["typescript".into()],
             rules: vec![ResolvedRule {
                 rule_id: "UNI-014".into(),
                 title: "Hardcoded Configuration".into(),

@@ -84,7 +84,7 @@ pub(super) fn scan_slice_specs(
 /// Bundle the pre-adapter gates that fire on a single slice:
 ///
 /// 1. Spec file-location check — root `spec.md` exists
-///    but no canonical `specs/<unit>/spec.md` files found. Fires
+///    but no canonical `specs/<domain>/spec.md` files found. Fires
 ///    first so the operator sees the structural cause before
 ///    downstream drift noise.
 /// 2. per-slice authority override — orphan source keys on the slice's

@@ -63,7 +63,7 @@ pub struct SliceModel {
 /// One `requirements[]` entry.
 ///
 /// The agent authors the behavioral prose (`title`, `statement`,
-/// `scenarios`, `notes`, `unit`), the `agreement` verdict, and the
+/// `scenarios`, `notes`, `domain`), the `agreement` verdict, and the
 /// contributing `claims`; the kernel-owned fields (`id`, `status`,
 /// `sources`, claim `winner`) are optional because the agent omits them
 /// and the kernel re-derives them on projection. The `resolution` label
@@ -83,9 +83,9 @@ pub struct ModelRequirement {
     /// Present only when more than one claim contributes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agreement: Option<Agreement>,
-    /// Agent-authored owning unit (kebab-case spec group).
+    /// Agent-authored owning domain (kebab-case spec group).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>,
+    pub domain: Option<String>,
     /// Kernel-projected rendered source list (highest authority first).
     #[serde(default)]
     pub sources: Vec<String>,

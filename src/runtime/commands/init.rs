@@ -102,7 +102,7 @@ struct Body {
     adapter_name: String,
     cache_present: bool,
     /// `true` when the shared codex was distributed into
-    /// `.specify/.cache/codex/` (RM-07). `false` when the adapter source
+    /// `.specify/cache/codex/` (RM-07). `false` when the adapter source
     /// carries no shared pack, and always `false` for workspace init.
     codex_present: bool,
     directories_created: Vec<String>,
@@ -215,6 +215,7 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option
         format,
         project_dir: project_dir.to_path_buf(),
         config,
+        plan_dir: None,
     };
     let outcome = agents::generate_for_init(&ctx)?;
     debug_assert!(

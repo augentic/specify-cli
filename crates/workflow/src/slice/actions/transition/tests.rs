@@ -12,7 +12,7 @@ fn ts(raw: &str) -> Timestamp {
     raw.parse().expect("valid timestamp")
 }
 
-/// Seed `<root>/.specify/slices/<name>/.metadata.yaml` at `status` and
+/// Seed `<root>/.specify/slices/<name>/metadata.yaml` at `status` and
 /// return the slice dir. `defined_at` lets a test pre-stamp the field
 /// the `Refined` edge would otherwise fill in.
 fn seed(

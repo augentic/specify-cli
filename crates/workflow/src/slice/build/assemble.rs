@@ -2,7 +2,7 @@
 //!
 //! [`build_request`] is IO-free apart from existence checks against the
 //! slice tree — it never writes a journal, request file, or report. It
-//! resolves the singular rendered artifacts, enumerates the per-unit
+//! resolves the singular rendered artifacts, enumerates the per-domain
 //! `spec.md` files, and resolves the bound target adapter's declared
 //! [`BuildInputDeclaration`]s into [`BuildArtifacts::additional`],
 //! raising `target-build-input-missing` when a `required` declaration
@@ -31,8 +31,8 @@ const TASKS_ARTIFACT: &str = "tasks.md";
 /// (C6) resolves the target and supplies these so this stays pure.
 ///
 /// The singular artifacts are fixed relative names; the `specs[]` are
-/// the per-unit `specs/<unit>/spec.md` files found under the slice tree
-/// (sorted); `additional[]` is the manifest declarations that resolve
+/// the per-domain `specs/<domain>/spec.md` files found under the slice
+/// tree (sorted); `additional[]` is the manifest declarations that resolve
 /// against the slice tree, in declaration order.
 ///
 /// # Errors
@@ -64,8 +64,8 @@ pub fn build_request(
     })
 }
 
-/// Sorted `specs/<unit>/spec.md` paths (slice-tree relative) for each
-/// unit directory under `<slice_tree>/specs/` carrying a `spec.md`.
+/// Sorted `specs/<domain>/spec.md` paths (slice-tree relative) for each
+/// domain directory under `<slice_tree>/specs/` carrying a `spec.md`.
 ///
 /// Returns an empty vector when `specs/` is missing — the request schema
 /// (`specs` `minItems: 1`) catches an empty list downstream.
@@ -86,12 +86,12 @@ fn spec_paths(slice_tree: &Path) -> Result<Vec<String>> {
             path: specs_dir.clone(),
             source,
         })?;
-        let unit_dir = entry.path();
-        if !unit_dir.is_dir() || !unit_dir.join("spec.md").is_file() {
+        let domain_dir = entry.path();
+        if !domain_dir.is_dir() || !domain_dir.join("spec.md").is_file() {
             continue;
         }
-        if let Some(unit) = unit_dir.file_name().and_then(OsStr::to_str) {
-            paths.push(format!("specs/{unit}/spec.md"));
+        if let Some(domain) = domain_dir.file_name().and_then(OsStr::to_str) {
+            paths.push(format!("specs/{domain}/spec.md"));
         }
     }
     paths.sort();

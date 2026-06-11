@@ -13,7 +13,7 @@ extractor that ships in `specify lint` v1 (S6):
 - `.specify/nonutf8.json` — invalid-UTF-8 bytes under `.specify/`;
   the walker decodes lossily with U+FFFD replacement and records
   the file as `kind: text`.
-- `.specify/.cache/codex/adapters/shared/rules/universal/UNI-099.md`
+- `.specify/cache/codex/adapters/shared/rules/universal/UNI-099.md`
   — a rule in the distributed codex cache that exercises the codex
   extractor's `Origin::Shared` inference.
 

@@ -93,3 +93,90 @@ fn all_aligned_overlays_pass() {
     let flagged = divergent_overlays(tmp.path());
     assert!(flagged.is_empty(), "overlays all matching canonical produce no findings: {flagged:?}");
 }
+
+mod markdown_section {
+    //! The `markdown-section` source: a restated section pinned
+    //! byte-identical (modulo surrounding blank lines) to its
+    //! canonical home, both `(path, section)` pairs supplied by the
+    //! rule's `config`.
+
+    use specify_diagnostics::Diagnostic;
+
+    use super::*;
+
+    const NOUNS_BODY: &str = "- **slice** — the unit in the loop.\n- **change** — the umbrella.\n\nUse the nouns verbatim.\n";
+
+    fn write_canonical(project: &Path) {
+        let agents = format!(
+            "# Agent Instructions\n\n## Vocabulary\n\n### Workflow nouns\n\n{NOUNS_BODY}\n### Workspace topology\n\nOther content.\n"
+        );
+        fs::write(project.join("AGENTS.md"), agents).expect("AGENTS.md");
+    }
+
+    fn write_readme(project: &Path, nouns_body: &str) {
+        let readme = format!(
+            "# Project\n\nIntro prose.\n\n## Vocabulary cheat sheet\n\nPinned to AGENTS.md.\n\n### Workflow nouns\n\n{nouns_body}\n## Installing\n\nSteps.\n"
+        );
+        fs::write(project.join("README.md"), readme).expect("README.md");
+    }
+
+    fn run(project: &Path) -> Vec<Diagnostic> {
+        let model = build(project, ScanProfile::Framework, &[], &[]).expect("framework build");
+        let rule = make_rule(
+            "UNI-971",
+            vec![hint_with_config(
+                HintKind::ContentDigestEq,
+                "markdown-section",
+                Some(json!({
+                    "path": "README.md",
+                    "section": "Workflow nouns",
+                    "canonical-path": "AGENTS.md",
+                    "canonical-section": "Workflow nouns",
+                })),
+            )],
+        );
+        let runner: &dyn ToolRunner = &NoToolRunner;
+        evaluate(&rule, rule.rule_hints.as_deref().unwrap_or_default(), &model, project, runner, 1)
+            .expect("evaluate")
+            .findings
+    }
+
+    #[test]
+    fn identical_bodies_pass() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        write_canonical(tmp.path());
+        write_readme(tmp.path(), NOUNS_BODY);
+        let findings = run(tmp.path());
+        assert!(findings.is_empty(), "byte-identical section bodies pass: {findings:#?}");
+    }
+
+    #[test]
+    fn divergent_body_flagged() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        write_canonical(tmp.path());
+        write_readme(tmp.path(), "- **slice** — a drifted restatement.\n");
+        let findings = run(tmp.path());
+        assert_eq!(findings.len(), 1, "one finding per divergent pin: {findings:#?}");
+        let FindingEvidence::Structured { data, .. } = &findings[0].evidence else {
+            panic!("structured evidence expected");
+        };
+        assert_eq!(data["path"], "README.md");
+        assert_eq!(data["canonical-path"], "AGENTS.md");
+        assert_ne!(data["expected-digest"], data["actual-digest"]);
+    }
+
+    #[test]
+    fn missing_pinned_section_flagged() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        write_canonical(tmp.path());
+        fs::write(tmp.path().join("README.md"), "# Project\n\nNo cheat sheet here.\n")
+            .expect("README.md");
+        let findings = run(tmp.path());
+        assert_eq!(findings.len(), 1, "missing pinned section is a finding: {findings:#?}");
+        let FindingEvidence::Structured { data, .. } = &findings[0].evidence else {
+            panic!("structured evidence expected");
+        };
+        assert_eq!(data["missing-path"], "README.md");
+        assert_eq!(data["missing-section"], "Workflow nouns");
+    }
+}

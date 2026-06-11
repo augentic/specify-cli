@@ -334,16 +334,16 @@ fn findings_for<'a>(envelope: &'a Value, rule_id: &str) -> Vec<&'a Value> {
         .unwrap_or_default()
 }
 
-/// Write a minimal opt-in scenario file under `acceptance/scenarios/`
+/// Write a minimal opt-in scenario file under `evals/scenarios/`
 /// carrying the supplied frontmatter `id`. Mirrors the crate-level
 /// `unique` test's scenario shape.
 fn write_scenario(root: &Path, name: &str, id: &str) {
-    let path = root.join("acceptance/scenarios").join(name);
+    let path = root.join("evals/scenarios").join(name);
     fs::create_dir_all(path.parent().expect("scenario parent")).expect("mkdir scenarios");
     fs::write(
         &path,
         format!(
-            "---\nid: {id}\nowner: spec\nkind: skill\nbackend: manual\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n",
+            "---\nid: {id}\nowner: spec\nkind: skill\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n",
         ),
     )
     .expect("write scenario");

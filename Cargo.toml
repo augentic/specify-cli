@@ -9,10 +9,6 @@ categories = ["command-line-utilities", "development-tools"]
 keywords = ["specify", "cli", "spec", "workflow", "automation"]
 readme = "README.md"
 
-[[bin]]
-name = "specify"
-path = "src/bin/specify.rs"
-
 [dependencies]
 clap.workspace = true
 clap_complete.workspace = true

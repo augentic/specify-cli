@@ -23,6 +23,7 @@ path = "src/lib.rs"
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+specify-framework-wire.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]

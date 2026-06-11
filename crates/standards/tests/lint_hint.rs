@@ -8,6 +8,8 @@ mod eval_support;
 
 #[path = "lint_hint/cardinality.rs"]
 mod cardinality;
+#[path = "lint_hint/cli_contract.rs"]
+mod cli_contract;
 #[path = "lint_hint/constant_eq.rs"]
 mod constant_eq;
 #[path = "lint_hint/content_digest_eq.rs"]

@@ -112,7 +112,7 @@ fn repo_root() -> PathBuf {
 
 fn seed_adapter_cache(project_dir: &Path, name: &str) {
     let fixture = repo_root().join("tests/fixtures/adapters/targets").join(name);
-    let cache = project_dir.join(".specify/.cache/manifests/targets").join(name);
+    let cache = project_dir.join(".specify/cache/manifests/targets").join(name);
     fs::create_dir_all(cache.join("briefs")).expect("mkdir cache dir");
     for entry in fs::read_dir(&fixture).expect("read fixture dir") {
         let entry = entry.unwrap();

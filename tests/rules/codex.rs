@@ -49,7 +49,7 @@ fn codex_cache_export_no_rules_root() {
         .success();
 
     let cached =
-        project.path().join(".specify/.cache/codex/adapters/shared/rules/universal/UNI-901.md");
+        project.path().join(".specify/cache/codex/adapters/shared/rules/universal/UNI-901.md");
     assert!(cached.is_file(), "init must distribute the shared codex into the cache");
 
     // `rules export` resolves the distributed shared rule with NO
@@ -83,7 +83,7 @@ fn rules_sync_refreshes_codex_cache() {
 
     // Drop the distributed cache, then refresh it via `rules sync`
     // (which re-resolves the recorded adapter source).
-    fs::remove_dir_all(project.path().join(".specify/.cache/codex")).expect("rm codex cache");
+    fs::remove_dir_all(project.path().join(".specify/cache/codex")).expect("rm codex cache");
 
     let assert = specify_cmd()
         .current_dir(project.path())
@@ -94,7 +94,7 @@ fn rules_sync_refreshes_codex_cache() {
     assert_eq!(value["distributed"], true, "sync must redistribute, got:\n{value:#}");
 
     let cached =
-        project.path().join(".specify/.cache/codex/adapters/shared/rules/universal/UNI-901.md");
+        project.path().join(".specify/cache/codex/adapters/shared/rules/universal/UNI-901.md");
     assert!(cached.is_file(), "rules sync must repopulate the codex cache");
 }
 

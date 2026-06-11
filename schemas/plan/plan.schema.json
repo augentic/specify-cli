@@ -75,7 +75,7 @@
       "properties": {
         "adapter": {
           "$ref": "#/$defs/kebabName",
-          "description": "Kebab-case source-adapter name (e.g. `intent`, `documentation`, `code-typescript`, `screenshots`)."
+          "description": "Kebab-case source-adapter name (e.g. `intent`, `documentation`, `typescript`, `screenshots`)."
         },
         "path": {
           "type": "string",

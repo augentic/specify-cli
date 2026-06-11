@@ -24,8 +24,38 @@ fn specify_subpaths() {
     assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
     assert_eq!(layout.change_brief_path(), PathBuf::from("/a/b/change.md"));
     assert_eq!(layout.discovery_path(), PathBuf::from("/a/b/discovery.md"));
-    assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/.cache"));
+    assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/cache"));
     assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
+}
+
+#[test]
+fn plan_dir_moves_plan_artifacts_only() {
+    // Workspace routing: phase verbs run inside a slot while the plan
+    // artifacts live at the initiating workspace. The override moves
+    // exactly the three plan-root artifacts; every `.specify/` path
+    // stays anchored to the project (slot) root.
+    let slot = Path::new("/ws/.specify/workspace/orders");
+    let workspace = Path::new("/ws");
+    let layout = Layout::new(slot).with_plan_dir(Some(workspace));
+    assert_eq!(layout.project_dir(), slot);
+    assert_eq!(layout.plan_dir(), workspace);
+    assert_eq!(layout.plan_path(), PathBuf::from("/ws/plan.yaml"));
+    assert_eq!(layout.change_brief_path(), PathBuf::from("/ws/change.md"));
+    assert_eq!(layout.discovery_path(), PathBuf::from("/ws/discovery.md"));
+    assert_eq!(layout.specify_dir(), PathBuf::from("/ws/.specify/workspace/orders/.specify"));
+    assert_eq!(layout.slices_dir(), PathBuf::from("/ws/.specify/workspace/orders/.specify/slices"));
+    assert_eq!(
+        layout.registry_path(),
+        PathBuf::from("/ws/.specify/workspace/orders/registry.yaml")
+    );
+}
+
+#[test]
+fn plan_dir_none_keeps_project_root() {
+    let base = Path::new("/a/b");
+    let layout = Layout::new(base).with_plan_dir(None);
+    assert_eq!(layout.plan_dir(), base);
+    assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
 }
 
 fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {
@@ -139,6 +169,33 @@ fn load_no_migration_same_major() {
     write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
     let cfg = ProjectConfig::load(tmp.path()).expect("same-major pin loads");
     assert_eq!(cfg.specify_version.as_deref(), Some("0.0.1"));
+}
+
+#[test]
+fn load_refuses_migration_owed_pin() {
+    // The exit-4 wiring: a pinned major strictly older than the
+    // binary's raises ProjectNeedsMigration from `load`. Unreachable at
+    // runtime while the binary is 0.x, so the injected `current` keeps
+    // the refusal covered until the 1.0 cut.
+    let tmp = tempdir().unwrap();
+    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"1.5.0\"\n");
+    let err = ProjectConfig::load_with_current(tmp.path(), "2.0.0")
+        .expect_err("older pinned major refused");
+    match err {
+        Error::ProjectNeedsMigration { from, to } => {
+            assert_eq!(from, "1.5.0");
+            assert_eq!(to, "2.0.0");
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
+fn load_same_major_injected_current() {
+    let tmp = tempdir().unwrap();
+    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"2.0.0\"\n");
+    let cfg = ProjectConfig::load_with_current(tmp.path(), "2.4.1").expect("same major loads");
+    assert_eq!(cfg.specify_version.as_deref(), Some("2.0.0"));
 }
 
 #[test]

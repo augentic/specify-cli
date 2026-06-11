@@ -244,7 +244,7 @@ fn slice_authority_override_is_empty(o: &SliceAuthorityOverride) -> bool {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SourceBinding {
     /// Kebab-case source-adapter name (e.g. `intent`, `documentation`,
-    /// `code-typescript`, `screenshots`).
+    /// `typescript`, `screenshots`).
     pub adapter: String,
     /// Filesystem path or repo location the adapter binds against.
     /// Mutually exclusive with `value`.
@@ -285,7 +285,7 @@ impl SourceBinding {
 /// This is the *resolved* target form, produced by
 /// [`crate::change::plan::core::resolve_target`] from a slice's bound
 /// project topology and surfaced by `specify plan next`, the slice
-/// `.metadata.yaml`, and the build request. It is not a stored
+/// `metadata.yaml`, and the build request. It is not a stored
 /// `plan.yaml` field — a slice binds only a `project`, and the target
 /// adapter is resolved on demand.
 ///

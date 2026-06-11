@@ -9,14 +9,14 @@
 //!   emits the `kind: inputs` envelope ([`SynthesisInputs`]) for the
 //!   agent synthesis step. `--format json` prints the envelope verbatim;
 //!   nothing is written. It emits the `slice.synthesize.agent` journal
-//!   event — synthesis is always agent-dispatched and `cache: opt-out`,
-//!   so the journal records that no cache short-circuit was attempted.
+//!   event — synthesis is always agent-dispatched, and the journal
+//!   records the handoff.
 //! - `--from <response.json>` is the only writer. It schema-gates the
 //!   raw response bytes, deserialises the agent's
 //!   [`SynthesisResponse`], resolves authority from the on-disk
 //!   Evidence and any per-slice override, projects the kernel-owned
 //!   fields into the single `model.yaml` ([`project`]), renders
-//!   provenance lines into `specs/<unit>/spec.md` ([`render_spec_files`]),
+//!   provenance lines into `specs/<domain>/spec.md` ([`render_spec_files`]),
 //!   and persists the staged artifacts atomically. It emits
 //!   `slice.synthesize.started` first, then `slice.synthesize.completed`
 //!   on success, or `slice.synthesize.failed` on any error before the
@@ -81,8 +81,7 @@ fn dry_run_inputs(ctx: &Ctx, name: &str) -> Result<()> {
     let shape_brief = resolve_shape_brief(ctx, &slice_dir)?;
     let inputs = build_synthesis_inputs(name, &sources, &shape_brief);
 
-    // Synthesis is always agent-dispatched and `cache: opt-out` —
-    // record that no cache short-circuit was attempted.
+    // Synthesis is always agent-dispatched — record the handoff.
     emit(
         ctx,
         EventKind::SliceSynthesizeAgent {
@@ -176,7 +175,7 @@ fn synthesize_from(ctx: &Ctx, name: &str, response_path: &Path) -> Result<Vec<St
     let mut staged: Vec<StagedFile> = Vec::new();
     staged.push(staged_file(&slice_dir, "proposal.md", response.artifacts.proposal.into_bytes()));
     for spec in &specs {
-        let rel = format!("specs/{}/spec.md", spec.unit);
+        let rel = format!("specs/{}/spec.md", spec.domain);
         staged.push(staged_file(&slice_dir, &rel, spec.content.clone().into_bytes()));
     }
     staged.push(staged_file(&slice_dir, "design.md", response.artifacts.design.into_bytes()));

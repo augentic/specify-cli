@@ -7,7 +7,7 @@ use specify_error::{Error, Result};
 use specify_model::evidence::ClaimKind;
 use specify_workflow::change::{
     Divergence, EntryPatch, Patch, Plan, SliceSourceBinding, entry_mut, mutate_authority_overrides,
-    reject_orphan_overrides,
+    reject_duplicate_source_keys, reject_orphan_overrides,
 };
 use specify_workflow::config::with_state;
 use specify_workflow::journal;
@@ -76,6 +76,11 @@ pub(super) fn amend(ctx: &Ctx, args: AmendArgs) -> Result<()> {
             plan.amend(&name, patch)?;
 
             apply_source_edits(plan, &plan_name, &name, add_bindings, &remove_source)?;
+            // `--add-source` mutates after `Plan::amend`'s own
+            // validate-and-rollback gate, so re-gate duplicate source
+            // keys here (a duplicate would silently overwrite
+            // `evidence/<source>.yaml` at refine time).
+            reject_duplicate_source_keys(plan)?;
 
             let now = jiff::Timestamp::now();
             let override_journal = mutate_authority_overrides(

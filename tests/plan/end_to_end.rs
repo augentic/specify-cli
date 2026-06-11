@@ -8,7 +8,7 @@
 //! property.
 //!
 //! ```text
-//! documentation + code-typescript (sources: docs, legacy)
+//! documentation + typescript (sources: docs, legacy)
 //!   -> source survey            # fan-in #1: Lead sets (incl. docs:password-reset / legacy:reset-password mismatch)
 //!   -> plan propose --dry-run   # flat lead catalog + identity-contracts->contracts@v1 / identity-service->omnia@v1
 //!   -> plan propose --from      # agent groups leads; kernel writes single-target slices + project bindings + depends-on
@@ -30,7 +30,7 @@
 //! so "two single-target slices sharing one baseline tree, ordered by
 //! depends-on" is proven directly. Each slice's bound target is set via
 //! `slice create --target <t>` (the CLI surface that stores the bound
-//! adapter on `.metadata.yaml`); `slice build` resolves it from there,
+//! adapter on `metadata.yaml`); `slice build` resolves it from there,
 //! exactly as in production.
 //!
 //! ## Coverage delegated to existing tests (not re-implemented here)
@@ -64,8 +64,8 @@ use specify_workflow::design_system::{ComponentStatus, ComponentsCatalog};
 use tempfile::{TempDir, tempdir};
 
 use crate::common::{
-    Project, copy_dir, init_workspace, omnia_schema_dir, parse_json, parse_stderr, parse_stdout,
-    repo_root, sha256_hex, specify_cmd,
+    Project, copy_dir, hold_plan_lock, init_workspace, omnia_schema_dir, parse_json, parse_stderr,
+    parse_stdout, repo_root, sha256_hex, specify_cmd,
 };
 
 // ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ sources:
     adapter: documentation
     path: ./docs
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices: []
 ";
@@ -142,7 +142,7 @@ description: Versioned API contracts target.
 // ---------------------------------------------------------------------------
 
 /// Author a minimal `execution: agent` source adapter with the two
-/// briefs the survey/extract fingerprints hash.
+/// briefs the survey/extract agents read.
 fn stage_source_adapter(root: &Path, name: &str, description: &str) {
     let dir = root.join(format!("adapters/sources/{name}"));
     fs::create_dir_all(dir.join("briefs")).expect("mkdir source adapter briefs");
@@ -174,9 +174,9 @@ fn stage_target_adapters(root: &Path) {
 /// Stand in for the survey agent: drop the golden lead-set into scratch
 /// and run `source survey <source> --phase finalize`.
 fn survey_finalize(root: &Path, source: &str, adapter: &str, lead_set: &str) {
-    let scratch = root.join(format!(".specify/.cache/extractions/{adapter}/survey/scratch"));
+    let scratch = root.join(format!(".specify/scratch/{adapter}/survey"));
     fs::create_dir_all(&scratch).expect("mkdir survey scratch");
-    fs::write(scratch.join("lead-set.md"), lead_set).expect("write lead-set.md");
+    fs::write(scratch.join("leads.md"), lead_set).expect("write leads.md");
     specify_cmd()
         .current_dir(root)
         .args(["source", "survey", source, "--phase", "finalize"])
@@ -189,7 +189,7 @@ fn survey_finalize(root: &Path, source: &str, adapter: &str, lead_set: &str) {
 fn extract_finalize(
     root: &Path, source: &str, adapter: &str, lead: &str, slice: &str, evidence: &str,
 ) {
-    let scratch = root.join(format!(".specify/.cache/extractions/{adapter}/{slice}/scratch"));
+    let scratch = root.join(format!(".specify/scratch/{adapter}/{slice}"));
     fs::create_dir_all(&scratch).expect("mkdir extract scratch");
     fs::write(scratch.join("evidence.yaml"), evidence).expect("write evidence.yaml");
     specify_cmd()
@@ -229,15 +229,10 @@ fn scenario() -> TempDir {
     fs::write(root.join("plan.yaml"), PLAN_HUB).expect("write plan.yaml");
 
     stage_source_adapter(root, "documentation", "Operator-provided written intent.");
-    stage_source_adapter(
-        root,
-        "code-typescript",
-        "Behavioural evidence from a TypeScript codebase.",
-    );
+    stage_source_adapter(root, "typescript", "Behavioural evidence from a TypeScript codebase.");
     stage_target_adapters(root);
 
-    // The survey/extract fingerprints canonicalise the bound source
-    // paths, so both must exist on disk.
+    // Both bound source paths exist on disk for the survey/extract runs.
     for src in ["docs", "legacy"] {
         fs::create_dir_all(root.join(src)).expect("mkdir bound source dir");
         fs::write(root.join(src).join(".keep"), "").expect("seed bound source dir");
@@ -245,7 +240,7 @@ fn scenario() -> TempDir {
 
     // Fan-in #1: survey both sources into one discovery.md.
     survey_finalize(root, "docs", "documentation", &fixture("leads/docs.md"));
-    survey_finalize(root, "legacy", "code-typescript", &fixture("leads/legacy.md"));
+    survey_finalize(root, "legacy", "typescript", &fixture("leads/legacy.md"));
     tmp
 }
 
@@ -355,6 +350,11 @@ fn fan_in_twice_fan_out_once() {
     let root = tmp.path();
 
     prove_plan_time_fan_out(root);
+
+    // From here on this test *is* the driver session: hold the plan
+    // lock the way the /spec:execute snippet does, so the gated verbs
+    // (`plan next`, `slice merge run`) accept the writes.
+    let _lock = hold_plan_lock(root);
 
     // --- depends-on ordering, gate 1: the driver must pick
     // identity-contracts first — never identity-service while its upstream
@@ -468,7 +468,7 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
         extract_finalize(
             root,
             "legacy",
-            "code-typescript",
+            "typescript",
             "identity-api",
             slice,
             &fixture(&format!("evidence/{slice}/legacy.yaml")),
@@ -554,7 +554,7 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
     assert_eq!(result["status"], "success");
     assert!(journal_has(root, "slice.build.started"));
     assert!(journal_has(root, "slice.build.succeeded"));
-    let meta = fs::read_to_string(root.join(format!(".specify/slices/{slice}/.metadata.yaml")))
+    let meta = fs::read_to_string(root.join(format!(".specify/slices/{slice}/metadata.yaml")))
         .expect("read slice metadata");
     assert!(meta.contains("status: built"), "finalize gates `built`, got:\n{meta}");
 }
@@ -602,7 +602,7 @@ fn kernel_projection_deterministic() {
     let root = project.root();
 
     // Two slices bound to different targets; `slice build` resolves the
-    // target from `.metadata.yaml`, but the synthesis kernel never sees
+    // target from `metadata.yaml`, but the synthesis kernel never sees
     // it — that target-independence is what this test pins.
     project.seed_plan(
         "\
@@ -612,7 +612,7 @@ sources:
     adapter: documentation
     path: ./docs
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices:
   - name: bound-contracts

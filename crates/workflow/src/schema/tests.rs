@@ -7,7 +7,7 @@ fn resolved_codex_accepts_example() {
     let instance = serde_json::json!({
         "version": 1,
         "target-adapter": "omnia",
-        "source-adapters": ["code-typescript"],
+        "source-adapters": ["typescript"],
         "rules": [
             {
                 "rule-id": "UNI-014",

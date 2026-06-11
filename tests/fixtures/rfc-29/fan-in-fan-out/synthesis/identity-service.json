@@ -6,7 +6,7 @@
     "requirements": [
       {
         "title": "Identity API contract",
-        "unit": "identity",
+        "domain": "identity",
         "claims": [
           { "source": "docs", "id": "identity-api.contract", "kind": "requirement" }
         ],
@@ -14,7 +14,7 @@
       },
       {
         "title": "Login issues session token",
-        "unit": "identity",
+        "domain": "identity",
         "claims": [
           { "source": "legacy", "id": "identity-api.login", "kind": "requirement" }
         ],
@@ -31,7 +31,7 @@
     "design": "# Design\nAuthentication and account-access service.\n",
     "tasks": "# Tasks\n- [ ] TASK-001 Implement the identity API surface.\n- [ ] TASK-002 Implement login session issuance.\n",
     "specs": [
-      { "unit": "identity", "content": "## Identity service\nImplements authentication and account access.\n" }
+      { "domain": "identity", "content": "## Identity service\nImplements authentication and account access.\n" }
     ]
   }
 }

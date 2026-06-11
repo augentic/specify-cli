@@ -8,7 +8,8 @@ use specify_diagnostics::{
 };
 use specify_error::{Error, Result};
 use specify_workflow::change::{
-    Lifecycle, NextBody, NextReason, Plan, Status, plan_doctor, plan_finding, plan_next_body,
+    Lifecycle, NextActionKind, NextBody, NextReason, Plan, Status, StatusBody, drained_line,
+    plan_doctor, plan_finding, plan_next_body, plan_status_body,
 };
 use specify_workflow::config::with_state;
 use specify_workflow::registry::Registry;
@@ -17,7 +18,7 @@ use super::{Ref, plan_ref, require_file};
 use crate::runtime::context::Ctx;
 
 pub(super) fn validate(ctx: &Ctx) -> Result<()> {
-    let plan_path = require_file(&ctx.project_dir)?;
+    let plan_path = require_file(ctx)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.layout().slices_dir();
 
@@ -59,20 +60,55 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 /// return it. The only writer of per-entry `in-progress` per
 /// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
+    // RFC-44 R2: refuse an unlocked driver before touching plan state.
+    // A missing plan.yaml falls through to the artifact-not-found error
+    // below — the lock refusal only makes sense once a plan exists.
+    if ctx.layout().plan_path().exists() {
+        specify_workflow::plan_lock::require_held(ctx.layout())?;
+    }
     // The slice's target adapter is resolved on demand from the bound
     // project's topology, so the
     // topology inputs (`config` / `project_dir`) ride into the state
     // closure for `plan_next_body` to resolve the advanced entry's
     // `$TARGET` lazily. All projection logic lives in `specify-workflow`;
-    // the handler only renders the returned body.
+    // the handler only renders the returned body and owns the
+    // journal/emit bracket.
     let slices_dir = ctx.layout().slices_dir();
     let config = ctx.config.clone();
     let project_dir = ctx.project_dir.clone();
 
-    let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        plan_next_body(plan, &slices_dir, &config, &project_dir)
+    let (body, plan_name) = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        let body = plan_next_body(plan, &slices_dir, &config, &project_dir)?;
+        Ok((body, plan.name.clone()))
     })?;
+    // workflow §Observability: `plan.entry.advanced` fires only when an
+    // entry actually moved `pending → in-progress` (`body.next`
+    // populated). Returning the active entry or reporting
+    // drained/stuck emits nothing, so a parked execute loop leaves no
+    // advance event behind.
+    if let Some(advanced) = &body.next {
+        let event = specify_workflow::journal::Event::new(
+            Timestamp::now(),
+            specify_workflow::journal::EventKind::PlanEntryAdvanced {
+                plan_name,
+                slice_name: advanced.clone().into(),
+            },
+        );
+        specify_workflow::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+    }
     ctx.write(&body, write_next_text)?;
+    Ok(())
+}
+
+/// `specify plan status` — read-only projection of the plan's
+/// execution state into a deterministic `next-action`. All projection
+/// logic lives in `specify-workflow` (`plan_status_body`); the handler
+/// loads the plan and renders the body. No journal emit, no writes.
+pub(super) fn status(ctx: &Ctx) -> Result<()> {
+    let plan_path = require_file(ctx)?;
+    let plan = Plan::load(&plan_path)?;
+    let body = plan_status_body(&plan, ctx.layout())?;
+    ctx.write(&body, write_status_text)?;
     Ok(())
 }
 
@@ -88,13 +124,23 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 /// running the explicit transition after `specify plan create
 /// --auto-approve` must not double-stamp the lifecycle nor double-
 /// fire `plan.transition.approved`.
+///
+/// `--actor <operator|agent>` (default `operator`) is recorded on the
+/// `plan.transition.approved` event only — self-reported grading
+/// evidence for eval probes, ignored on per-entry and `--undo` paths.
 pub(super) fn transition(
-    ctx: &Ctx, name: String, target: Option<String>, undo: bool,
+    ctx: &Ctx, name: String, target: Option<String>, undo: bool, actor: &str,
 ) -> Result<()> {
+    let actor: specify_workflow::journal::Actor =
+        actor.parse().map_err(|detail| Error::Argument {
+            flag: "--actor",
+            detail,
+        })?;
     let plan_path = ctx.layout().plan_path();
+    let layout = ctx.layout();
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
         if undo {
-            dispatch_undo(plan, &plan_path, &name)
+            dispatch_undo(plan, layout, &plan_path, &name)
         } else {
             // Clap's `required_unless_present = "undo"` guarantees a
             // target here; the unwrap_or surfaces the same usage
@@ -103,7 +149,7 @@ pub(super) fn transition(
                 flag: "<target>",
                 detail: "transition target is required unless --undo is set".to_string(),
             })?;
-            dispatch_transition(plan, &plan_path, &name, &target)
+            dispatch_transition(plan, layout, &plan_path, &name, &target)
         }
     })?;
     // workflow §Observability: every status / lifecycle move emits
@@ -116,6 +162,7 @@ pub(super) fn transition(
                 Timestamp::now(),
                 specify_workflow::journal::EventKind::PlanTransitionApproved {
                     plan_name: body.name.clone().into(),
+                    actor,
                 },
             );
             specify_workflow::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
@@ -143,7 +190,8 @@ pub(super) fn transition(
 }
 
 fn dispatch_undo(
-    plan: &mut Plan, plan_path: &std::path::Path, name: &str,
+    plan: &mut Plan, layout: specify_workflow::config::Layout<'_>, plan_path: &std::path::Path,
+    name: &str,
 ) -> Result<TransitionBody> {
     if name == plan.name.as_str() {
         return Err(Error::Argument {
@@ -154,6 +202,9 @@ fn dispatch_undo(
                 .to_string(),
         });
     }
+    // RFC-44 R2: per-entry status walks are loop-phase plan-state
+    // writes — refuse an unlocked driver.
+    specify_workflow::plan_lock::require_held(layout)?;
     let (from, to) = plan.transition_undo(name)?;
     let entry = plan.entries.iter().find(|e| e.name == name).ok_or_else(|| Error::Diag {
         code: "plan-entry-not-found",
@@ -171,7 +222,8 @@ fn dispatch_undo(
 }
 
 fn dispatch_transition(
-    plan: &mut Plan, plan_path: &std::path::Path, name: &str, target: &str,
+    plan: &mut Plan, layout: specify_workflow::config::Layout<'_>, plan_path: &std::path::Path,
+    name: &str, target: &str,
 ) -> Result<TransitionBody> {
     if name == plan.name.as_str() {
         // Plan-level transition: only `approved` is legal.
@@ -214,6 +266,11 @@ fn dispatch_transition(
     // `blocked`/`failed`/`skipped` are not v1 states.
     match target {
         "done" => {
+            // RFC-44 R2: the per-entry close is a loop-phase plan-state
+            // write — refuse an unlocked driver. The plan-level Gate 1
+            // stamp above is exempt (it precedes any driver session);
+            // invalid targets fail on the argument before the probe.
+            specify_workflow::plan_lock::require_held(layout)?;
             let idx =
                 plan.entries.iter().position(|e| e.name == name).ok_or_else(|| Error::Diag {
                     code: "plan-entry-not-found",
@@ -329,6 +386,40 @@ fn write_validate_row_text(w: &mut dyn Write, finding: &Diagnostic) -> std::io::
     let code = finding.rule_id.as_deref().unwrap_or("<unknown>");
     let entry_col = finding.slice.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
     writeln!(w, "{label} {:<32} {:<24} {}", code, entry_col, finding.impact)
+}
+
+/// Text rendering for `plan status`: a plan/entries header, then the
+/// next-action line. Stops render the stop-conditions block shape
+/// (`stop: <reason>` + indented context + `hint:`); drained renders
+/// the literal stop-conditions drained string.
+fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()> {
+    writeln!(w, "plan: {} ({})", body.plan, body.lifecycle)?;
+    writeln!(
+        w,
+        "entries: {} done / {} in-progress / {} pending",
+        body.counts.done, body.counts.in_progress, body.counts.pending
+    )?;
+    match (body.action, &body.stop) {
+        (NextActionKind::Drained, _) => writeln!(w, "{}", drained_line(&body.plan))?,
+        (NextActionKind::Stop, Some(stop)) => {
+            writeln!(w, "stop: {}", stop.reason)?;
+            if let Some(slice) = &body.slice {
+                writeln!(w, "  slice: {slice}")?;
+                writeln!(w, "  project: {}", body.project.as_deref().unwrap_or("-"))?;
+            }
+            if let Some(detail) = &stop.detail {
+                writeln!(w, "  detail: {detail}")?;
+            }
+            writeln!(w, "hint: {}", stop.hint)?;
+        }
+        _ => writeln!(w, "next-action: {}", body.next_action)?,
+    }
+    if body.action != NextActionKind::Drained
+        && let Some(resume) = &body.resume
+    {
+        writeln!(w, "resume: {resume}")?;
+    }
+    Ok(())
 }
 
 fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {

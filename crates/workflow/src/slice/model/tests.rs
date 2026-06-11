@@ -17,7 +17,7 @@ requirements:
   - id: REQ-001
     title: Request password reset
     status: agreed
-    unit: password-reset
+    domain: password-reset
     agreement: agreed
     sources: [docs, legacy]
     claims:
@@ -31,7 +31,7 @@ requirements:
   - id: REQ-002
     title: Reset link expiry
     status: divergence
-    unit: password-reset
+    domain: password-reset
     agreement: disagreed
     sources: [docs, legacy]
     claims:

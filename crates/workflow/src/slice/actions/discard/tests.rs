@@ -3,7 +3,7 @@ use tempfile::tempdir;
 use super::*;
 use crate::journal::test_timestamp;
 
-/// Seed a `<slice_dir>/.metadata.yaml` in the given lifecycle `status`.
+/// Seed a `<slice_dir>/metadata.yaml` in the given lifecycle `status`.
 fn seed(slice_dir: &Path, status: LifecycleStatus) {
     let meta = SliceMetadata {
         target: "omnia".to_string(),

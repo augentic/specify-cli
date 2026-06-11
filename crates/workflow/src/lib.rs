@@ -15,6 +15,7 @@ pub mod journal;
 pub mod merge;
 pub mod migrate;
 pub mod name;
+pub mod plan_lock;
 pub mod platform;
 pub mod plugins;
 pub mod registry;

@@ -28,9 +28,9 @@ fn write_skill(project: &Path, plugin: &str, skill: &str, name: &str) {
 
 fn write_scenario(project: &Path, name: &str, id: &str) {
     let content = format!(
-        "---\nid: {id}\nowner: spec\nkind: skill\nbackend: manual\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n"
+        "---\nid: {id}\nowner: spec\nkind: skill\nentrypoint: /spec:refine\nstages: [refine, build]\nisolation: fresh-project\n---\n\nBody.\n"
     );
-    let path = project.join(format!("acceptance/scenarios/{name}"));
+    let path = project.join(format!("evals/scenarios/{name}"));
     fs::create_dir_all(path.parent().expect("parent")).expect("scenario dir");
     fs::write(&path, content).expect("write scenario");
 }

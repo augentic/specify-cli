@@ -2,7 +2,7 @@
 
 use crate::{Classification, CrossContext, CrossRule, RuleOutcome, primitives};
 
-fn cross_proposal_units_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
+fn cross_proposal_domains_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
     let proposal_path = ctx.slice_dir.join("proposal.md");
     if !proposal_path.is_file() {
         return RuleOutcome::Pass;
@@ -19,7 +19,7 @@ fn cross_proposal_units_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
         RuleOutcome::Pass
     } else {
         RuleOutcome::Fail {
-            detail: "one or more units listed in the proposal have no matching spec file"
+            detail: "one or more domains listed in the proposal have no matching spec file"
                 .to_string(),
         }
     }
@@ -113,10 +113,10 @@ fn cross_composition_maps_to_consistent(ctx: &CrossContext<'_>) -> RuleOutcome {
 
 const CROSS_RULES: &[CrossRule] = &[
     CrossRule {
-        id: "cross.proposal-units-have-specs",
-        description: "Every unit listed in the proposal has a matching spec file",
+        id: "cross.proposal-domains-have-specs",
+        description: "Every domain listed in the proposal has a matching spec file",
         classification: Classification::Structural,
-        check: cross_proposal_units_have_specs,
+        check: cross_proposal_domains_have_specs,
     },
     CrossRule {
         id: "cross.design-references-valid",
@@ -159,41 +159,41 @@ mod tests {
         CrossContext { slice_dir, specs_dir }
     }
 
-    mod proposal_units_have_specs {
+    mod proposal_domains_have_specs {
         use super::{ctx, fixture};
         use crate::RuleOutcome;
-        use crate::registry::cross::cross_proposal_units_have_specs;
+        use crate::registry::cross::cross_proposal_domains_have_specs;
 
         /// Absent proposal is not this rule's concern — it passes.
         #[test]
         fn passes_when_no_proposal() {
             let (dir, specs) = fixture();
             assert_eq!(
-                cross_proposal_units_have_specs(&ctx(dir.path(), &specs)),
+                cross_proposal_domains_have_specs(&ctx(dir.path(), &specs)),
                 RuleOutcome::Pass
             );
         }
 
         #[test]
-        fn passes_when_unit_has_spec() {
+        fn passes_when_domain_has_spec() {
             let (dir, specs) = fixture();
             std::fs::create_dir_all(specs.join("login")).expect("mkdir");
             std::fs::write(specs.join("login").join("spec.md"), "# Login\n").expect("write spec");
-            std::fs::write(dir.path().join("proposal.md"), "## Units\n\n- login\n")
+            std::fs::write(dir.path().join("proposal.md"), "## Domains\n\n- login\n")
                 .expect("write proposal");
             assert_eq!(
-                cross_proposal_units_have_specs(&ctx(dir.path(), &specs)),
+                cross_proposal_domains_have_specs(&ctx(dir.path(), &specs)),
                 RuleOutcome::Pass
             );
         }
 
         #[test]
-        fn fails_when_unit_missing_spec() {
+        fn fails_when_domain_missing_spec() {
             let (dir, specs) = fixture();
-            std::fs::write(dir.path().join("proposal.md"), "## Units\n\n- ghost\n")
+            std::fs::write(dir.path().join("proposal.md"), "## Domains\n\n- ghost\n")
                 .expect("write proposal");
             assert!(matches!(
-                cross_proposal_units_have_specs(&ctx(dir.path(), &specs)),
+                cross_proposal_domains_have_specs(&ctx(dir.path(), &specs)),
                 RuleOutcome::Fail { detail } if detail.contains("no matching spec")
             ));
         }

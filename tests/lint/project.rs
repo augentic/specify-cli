@@ -383,7 +383,7 @@ fn emits_lint_completed_event() {
 
 /// rules-root resolution / lint exit mapping negative: with no `--rules-root`, no project-local
 /// `adapters/shared/rules/universal/` rung, and no distributed
-/// `.specify/.cache/codex/` cache, the resolver returns
+/// `.specify/cache/codex/` cache, the resolver returns
 /// `rules-root-required`. The CLI surfaces it on stderr and exits 2.
 #[test]
 fn review_missing_rules_root_exits_2() {
