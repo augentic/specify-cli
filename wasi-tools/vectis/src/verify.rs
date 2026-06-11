@@ -125,9 +125,7 @@ fn resolve_project_root(path: Option<&Path>) -> Result<PathBuf, VectisError> {
 }
 
 fn load_platforms(project_root: &Path) -> Result<Vec<String>, VectisError> {
-    // The host CLI owns the project config at `.specify/project.yaml`;
-    // there is no root-level `project.yaml` in a Specify project.
-    let config_path = project_root.join(".specify").join("project.yaml");
+    let config_path = project_root.join("project.yaml");
     let source =
         std::fs::read_to_string(&config_path).map_err(|_| VectisError::InvalidProject {
             message: format!("project.yaml not readable at {}", config_path.display()),

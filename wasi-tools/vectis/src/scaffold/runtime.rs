@@ -56,14 +56,9 @@ pub fn plan_android(
 
 /// Write a complete plan under `project_dir` after checking every collision.
 ///
-/// An existing `.gitignore` is the one tolerated collision: `specify
-/// init` writes a root `.gitignore` in every project, so the bootstrap
-/// path (`scaffold core` against an initialised repo) merges the
-/// template's missing lines into it instead of refusing.
-///
 /// # Errors
 ///
-/// Returns [`ScaffoldError`] if any other target already exists or a write fails.
+/// Returns [`ScaffoldError`] if any target already exists or a write fails.
 pub fn write_plan(project_dir: &Path, plan: &ScaffoldPlan) -> Result<(), ScaffoldError> {
     match plan.target {
         "ios" => refuse_existing_root(project_dir, "iOS", "iOS")?,
@@ -73,7 +68,7 @@ pub fn write_plan(project_dir: &Path, plan: &ScaffoldPlan) -> Result<(), Scaffol
 
     for file in &plan.files {
         let target = project_dir.join(&file.relative_path);
-        if target.exists() && !is_gitignore(&file.relative_path) {
+        if target.exists() {
             return Err(ScaffoldError::InvalidProject {
                 message: format!(
                     "refusing to overwrite existing file at {} (run `vectis scaffold` against an empty target)",
@@ -91,46 +86,8 @@ pub fn write_plan(project_dir: &Path, plan: &ScaffoldPlan) -> Result<(), Scaffol
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
-        if target.exists() && is_gitignore(&file.relative_path) {
-            merge_gitignore(&target, &file.contents)?;
-        } else {
-            fs::write(target, &file.contents)?;
-        }
+        fs::write(target, &file.contents)?;
     }
-    Ok(())
-}
-
-fn is_gitignore(relative_path: &str) -> bool {
-    Path::new(relative_path).file_name().is_some_and(|name| name == ".gitignore")
-}
-
-/// Append the template's missing lines to an existing `.gitignore`.
-/// Line-set comparison keeps the merge idempotent across scaffold
-/// re-runs; existing operator content is never rewritten.
-pub(super) fn merge_gitignore(target: &Path, template: &str) -> Result<(), ScaffoldError> {
-    let existing = fs::read_to_string(target)?;
-    let present: std::collections::BTreeSet<&str> =
-        existing.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
-    let missing: Vec<&str> = template
-        .lines()
-        .filter(|line| {
-            let trimmed = line.trim();
-            !trimmed.is_empty() && !trimmed.starts_with('#') && !present.contains(trimmed)
-        })
-        .collect();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    let mut merged = existing;
-    if !merged.ends_with('\n') {
-        merged.push('\n');
-    }
-    merged.push_str("\n# Vectis scaffold\n");
-    for line in missing {
-        merged.push_str(line);
-        merged.push('\n');
-    }
-    fs::write(target, merged)?;
     Ok(())
 }
 
