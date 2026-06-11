@@ -141,14 +141,15 @@ pub fn enforce_report_no_blocking_on_success(report: &BuildReport) -> Result<()>
     Ok(())
 }
 
-/// Reject a [`BuildStatus::Success`] report whose `outputs[]` paths do
-/// not all resolve to existing, non-empty files **or directories**
-/// under `project_dir` (targets like vectis declare per-platform tree
-/// paths such as `shared/`).
+/// Reject a [`BuildStatus::Success`] report whose `outputs[]` paths
+/// do not all exist under `project_dir`.
 ///
-/// Empty `outputs` is accepted (backward compatibility — the field is
-/// optional). On [`BuildStatus::Failure`] the gate is a no-op (a failed
-/// build need not have produced outputs).
+/// Each declared path must resolve to a non-empty file **or
+/// directory** (targets like vectis declare per-platform tree paths
+/// such as `shared/`). Empty `outputs` is accepted (backward
+/// compatibility — the field is optional). On [`BuildStatus::Failure`]
+/// the gate is a no-op (a failed build need not have produced
+/// outputs).
 ///
 /// # Errors
 ///
@@ -218,7 +219,7 @@ pub fn enforce_report_outputs_exist(report: &BuildReport, project_dir: &Path) ->
 
 /// `true` when the directory contains at least one entry.
 fn dir_has_entries(dir: &Path) -> bool {
-    std::fs::read_dir(dir).map(|mut entries| entries.next().is_some()).unwrap_or(false)
+    std::fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_some())
 }
 
 #[cfg(test)]
