@@ -20,7 +20,8 @@ mod write;
 
 use parse::system_time_to_utc;
 use read::{
-    COMPOSITION_FILENAME, check_opaque_drift, first_three_way, plan_three_way, preview_opaque,
+    COMPOSITION_FILENAME, check_opaque_drift, composition_overwrite_gate, first_three_way,
+    plan_three_way, preview_opaque,
 };
 use write::{build_merge_summary, commit_opaque, write_three_way_baselines};
 
@@ -183,12 +184,21 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// `now` records the `merged_at`, `completed_at`, and outcome stamp;
 /// dispatchers pass `Timestamp::now` and tests pin a deterministic value.
 ///
+/// `allow_composition_replace` authorises a whole-document (`screens:`)
+/// slice composition to overwrite a non-empty baseline. It threads no
+/// further than this function: the A3 `composition_overwrite_gate`
+/// precondition reads it directly, and it never reaches the pure merge
+/// kernel (RFC-40 §A3 "Placement").
+///
 /// # Errors
 ///
 /// - [`Error::Diag`] with `code = "lifecycle"` when the slice's status
 ///   is not [`LifecycleStatus::Built`] on entry, or when the
 ///   `Built → Merged` transition is rejected (e.g. terminal-state
 ///   re-entry).
+/// - [`Error::Diag { code: "composition-baseline-overwrite-blocked" }`]
+///   when the slice composition would overwrite a non-empty baseline
+///   without `allow_composition_replace`.
 /// - Every error documented on [`preview`] (the in-memory plan
 ///   is computed before any writes).
 /// - [`Error::Filesystem`] (`op = "mkdir" | "copy"`) when the commit
@@ -202,6 +212,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 ///   (`Error::Io`, `Error::YamlSer`).
 pub fn commit(
     slice_dir: &Path, classes: &[ArtifactClass], archive_dir: &Path, now: Timestamp,
+    allow_composition_replace: bool,
 ) -> Result<MergeCommit, Error> {
     let mut metadata = SliceMetadata::load(slice_dir)?;
     if metadata.status != LifecycleStatus::Built {
@@ -209,6 +220,13 @@ pub fn commit(
             code: "lifecycle",
             detail: format!("expected Built, found {:?}", metadata.status),
         });
+    }
+
+    // A3 precondition: enforced before any merge work, beside the
+    // `Built` gate. Threads the override exactly this far — it never
+    // reaches `plan_three_way` or the pure composition kernel.
+    if let Some(class) = first_three_way(classes) {
+        composition_overwrite_gate(slice_dir, class, allow_composition_replace)?;
     }
 
     let merged = plan_three_way(slice_dir, classes)?;

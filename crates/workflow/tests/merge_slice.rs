@@ -117,7 +117,7 @@ fn happy_path_writes_flips_and_archives() {
     let archive_dir = project.archive_dir();
     let classes = omnia_classes(&slice_dir, &project.root);
 
-    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Timestamp::now())
+    let merged = slice::commit(&slice_dir, &classes, &archive_dir, Timestamp::now(), false)
         .expect("slice::commit should succeed");
 
     // Results sorted by (class_name, name).
@@ -178,7 +178,7 @@ fn wrong_precondition_aborts_cleanly() {
     meta.save(&slice_dir).unwrap();
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
+    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
         .expect_err("should refuse on Refined status");
     match err {
         Error::Diag { code, detail } => {
@@ -217,7 +217,7 @@ fn coherence_failure_rolls_back_all_writes() {
     .unwrap();
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
+    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
         .expect_err("expected coherence failure");
     match err {
         Error::Diag { detail: msg, .. } => {
@@ -250,7 +250,7 @@ fn coherence_failure_rolls_back_all_writes() {
 fn archive_subdirectory_is_date_prefixed() {
     let project = build_project();
     let classes = omnia_classes(&project.slice_dir(), &project.root);
-    slice::commit(&project.slice_dir(), &classes, &project.archive_dir(), Timestamp::now())
+    slice::commit(&project.slice_dir(), &classes, &project.archive_dir(), Timestamp::now(), false)
         .expect("merge ok");
 
     let re = Regex::new(r"^\d{4}-\d{2}-\d{2}-feature-x$").unwrap();
@@ -281,8 +281,9 @@ fn merge_copies_contract_files_to_baseline() {
     fs::write(slice_dir.join("contracts/http/api.yaml"), "openapi: 3.1\n").expect("write api");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
-        .expect("merge ok");
+    let merged =
+        slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
+            .expect("merge ok");
 
     let baseline_contracts = project.contracts_dir();
     assert!(
@@ -318,7 +319,7 @@ fn merge_replaces_baseline_contracts() {
         .expect("write new slice");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
         .expect("merge ok");
 
     let content = fs::read_to_string(baseline_contracts.join("schemas/test.yaml")).unwrap();
@@ -339,7 +340,7 @@ fn merge_leaves_untouched_contracts() {
     fs::write(slice_dir.join("contracts/schemas/new.yaml"), "new content\n").expect("write new");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
         .expect("merge ok");
 
     assert!(
@@ -362,8 +363,9 @@ fn merge_without_contracts_dir() {
     assert!(!slice_dir.join("contracts").exists(), "precondition: no contracts dir");
 
     let classes = omnia_classes(&slice_dir, &project.root);
-    let merged = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now())
-        .expect("merge ok");
+    let merged =
+        slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
+            .expect("merge ok");
     assert!(!merged.is_empty(), "should still merge specs");
 
     let baseline_contracts = project.contracts_dir();
@@ -394,6 +396,106 @@ fn find_archived_metadata(project: &Project) -> Outcome {
     assert_eq!(archived.len(), 1, "expected exactly one archived slice");
     let meta = SliceMetadata::load(&archived[0].path()).expect("load archived metadata");
     meta.outcome.expect("expected outcome to be stamped")
+}
+
+// ---------------------------------------------------------------------------
+// A3 — composition-overwrite merge gate
+// ---------------------------------------------------------------------------
+
+/// Path to the composition baseline (under the first `ThreeWayMerge`
+/// class — `specs`).
+fn composition_baseline(project: &Project) -> PathBuf {
+    project.specs_dir().join("composition.yaml")
+}
+
+/// Seed a non-empty composition baseline.
+fn seed_composition_baseline(project: &Project) {
+    fs::write(composition_baseline(project), "version: 1\nscreens:\n  home:\n    name: Home\n")
+        .expect("write composition baseline");
+}
+
+/// Write the slice's top-level `composition.yaml`.
+fn write_slice_composition(project: &Project, body: &str) {
+    fs::write(project.slice_dir().join("composition.yaml"), body).expect("write slice composition");
+}
+
+#[test]
+fn comp_gate_blocks_overwrite() {
+    let project = build_project();
+    let slice_dir = project.slice_dir();
+    let classes = omnia_classes(&slice_dir, &project.root);
+
+    seed_composition_baseline(&project);
+    write_slice_composition(&project, "version: 1\nscreens:\n  settings:\n    name: Settings\n");
+
+    let err = slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
+        .expect_err("whole-document replacement over a non-empty baseline must be blocked");
+    match err {
+        Error::Diag { code, .. } => assert_eq!(code, "composition-baseline-overwrite-blocked"),
+        other => panic!("expected composition-baseline-overwrite-blocked diag, got {other:?}"),
+    }
+
+    // Gate is a precondition: nothing on disk has moved, and the
+    // baseline is untouched.
+    assert!(slice_dir.exists(), "slice dir must still exist after a blocked merge");
+    let baseline = fs::read_to_string(composition_baseline(&project)).unwrap();
+    assert!(baseline.contains("home"), "baseline must be preserved");
+    assert!(!baseline.contains("settings"), "baseline must not be overwritten");
+}
+
+#[test]
+fn comp_gate_allows_with_flag() {
+    let project = build_project();
+    let slice_dir = project.slice_dir();
+    let classes = omnia_classes(&slice_dir, &project.root);
+
+    seed_composition_baseline(&project);
+    write_slice_composition(&project, "version: 1\nscreens:\n  settings:\n    name: Settings\n");
+
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), true)
+        .expect("override flag authorises the whole-document replacement");
+
+    let baseline = fs::read_to_string(composition_baseline(&project)).unwrap();
+    assert!(baseline.contains("settings"), "baseline should be replaced with the slice document");
+    assert!(!baseline.contains("home"), "whole-document replacement drops the prior screen");
+    assert!(!slice_dir.exists(), "slice should be archived after a successful merge");
+}
+
+#[test]
+fn comp_delta_accumulates() {
+    let project = build_project();
+    let slice_dir = project.slice_dir();
+    let classes = omnia_classes(&slice_dir, &project.root);
+
+    seed_composition_baseline(&project);
+    write_slice_composition(
+        &project,
+        "version: 1\ndelta:\n  added:\n    settings:\n      name: Settings\n  modified: {}\n  removed: {}\n",
+    );
+
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
+        .expect("delta-format composition is never gated and accumulates");
+
+    let baseline = fs::read_to_string(composition_baseline(&project)).unwrap();
+    assert!(baseline.contains("home"), "prior screen must be retained");
+    assert!(baseline.contains("settings"), "new screen must be added");
+}
+
+#[test]
+fn comp_gate_skips_without_baseline() {
+    let project = build_project();
+    let slice_dir = project.slice_dir();
+    let classes = omnia_classes(&slice_dir, &project.root);
+
+    // No baseline composition exists yet — the gate must not fire.
+    assert!(!composition_baseline(&project).exists());
+    write_slice_composition(&project, "version: 1\nscreens:\n  home:\n    name: Home\n");
+
+    slice::commit(&slice_dir, &classes, &project.archive_dir(), Timestamp::now(), false)
+        .expect("whole-document format establishes the initial baseline when none exists");
+
+    let baseline = fs::read_to_string(composition_baseline(&project)).unwrap();
+    assert!(baseline.contains("home"), "initial baseline should be established");
 }
 
 // ---------------------------------------------------------------------------

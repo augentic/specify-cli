@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod archive;
+pub mod catalog;
 pub mod contract;
 mod init;
 pub mod journal;
@@ -92,6 +93,7 @@ pub fn run(cli: Cli) -> Exit {
             }
         },
         Commands::Slice { action } => scoped(format, plan_dir, |ctx| slice::run(ctx, action)),
+        Commands::Catalog { action } => scoped(format, plan_dir, |ctx| catalog::run(ctx, action)),
         Commands::Archive { action } => scoped(format, plan_dir, |ctx| archive::run(ctx, &action)),
         Commands::Plan { action } => scoped(format, plan_dir, |ctx| plan::run(ctx, action)),
         Commands::Registry { action } => scoped(format, plan_dir, |ctx| registry::run(ctx, action)),
