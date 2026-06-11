@@ -65,6 +65,7 @@ pub fn preview(
     let prepared = prep::prepare(&prep::PrepRequest {
         adapter: adapter_name,
         project_dir,
+        plan_dir: None,
         op: prep::SourceOp::Survey,
         source: Some(source),
         leads,

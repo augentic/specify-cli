@@ -211,6 +211,54 @@ slices:
 }
 
 #[test]
+fn adapter_falls_back_to_plan_root() {
+    // The workspace owns the plan's source bindings *and* their
+    // adapters: a slot project with no `documentation`-style source
+    // adapter of its own resolves it from the plan root.
+    let project = Project::init();
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let adapter_src = repo_root()
+        .join("crates/workflow/tests/fixtures/plugins/adapters/sources/typescript/adapter.yaml");
+    let adapter_dir = workspace.path().join("adapters/sources/typescript");
+    fs::create_dir_all(adapter_dir.join("briefs")).expect("create workspace adapter dir");
+    fs::copy(&adapter_src, adapter_dir.join("adapter.yaml")).expect("copy adapter.yaml");
+    fs::write(adapter_dir.join("briefs/extract.md"), "# extract brief\n")
+        .expect("write extract brief");
+    fs::write(
+        workspace.path().join("plan.yaml"),
+        "name: platform-v2
+sources:
+  legacy:
+    adapter: typescript
+    path: vendor/legacy
+slices:
+  - name: identity
+    project: default
+    status: pending
+",
+    )
+    .expect("write workspace plan.yaml");
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "--plan-dir"])
+        .arg(workspace.path())
+        .args(["source", "extract", "legacy", "user-registration"])
+        .args(["--slice", "identity"])
+        .assert()
+        .success();
+
+    let body = parse_stdout(&assert.get_output().stdout, project.root());
+    let briefs = body["brief"].as_str().map(String::from).unwrap_or_else(|| {
+        body["briefs-dir"].as_str().unwrap_or_default().to_string()
+    });
+    assert!(
+        briefs.starts_with(workspace.path().to_str().expect("utf8 workspace path")),
+        "brief must resolve from the workspace-vendored adapter, got: {body}"
+    );
+}
+
+#[test]
 fn prepare_value_bound_carries_inline() {
     let project = Project::init();
     stage_intent(&project);

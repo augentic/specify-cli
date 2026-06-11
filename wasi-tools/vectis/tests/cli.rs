@@ -73,6 +73,22 @@ fn invalid_invocation_exits_two() {
 }
 
 #[test]
+fn composition_absent_skips_cleanly() {
+    // Core-only projects carry no composition.yaml by design; default
+    // resolution (no `[path]`) must skip, not error.
+    let tmp = tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir .specify");
+
+    let assert =
+        vectis_validate().env("PROJECT_DIR", tmp.path()).arg("composition").assert().success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["mode"], "composition");
+    assert_eq!(value["status"], "skipped");
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
 fn omitted_path_uses_default_root() {
     let tmp = tempdir().unwrap();
     let slice_dir = tmp.path().join(".specify/slices/active");

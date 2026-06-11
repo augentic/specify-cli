@@ -155,6 +155,11 @@ pub struct PrepRequest<'a> {
     pub adapter: &'a str,
     /// Project directory containing `adapters/` and `.specify/`.
     pub project_dir: &'a Path,
+    /// Plan root (`--plan-dir` override) used as the adapter-resolution
+    /// fallback. Source bindings live in the plan, so the plan's home —
+    /// the workspace root in workspace mode — also vendors/caches the
+    /// source adapters; a slot project need not duplicate them.
+    pub plan_dir: Option<&'a Path>,
     /// Operation the prep targets — drives the `$SCRATCH_DIR` keying.
     pub op: SourceOp,
     /// Bound source path → `$SOURCE_DIR`. `None` for value-bound
@@ -196,13 +201,17 @@ pub struct SourcePrep {
 /// Resolve the adapter, compute the brief directory and four-root
 /// sandbox layout, and scaffold the `evidence/` output target.
 ///
+/// Resolution is project-local first; on `adapter-not-found` it falls
+/// back to the plan root when a `--plan-dir` override is active (the
+/// workspace owns the plan's source bindings and their adapters).
+///
 /// # Errors
 ///
 /// Propagates [`SourceAdapter::resolve`] failures (`adapter-not-found`,
 /// `adapter-schema-violation`, …) and I/O failures from the `evidence/`
 /// directory create.
 pub fn prepare(request: &PrepRequest<'_>) -> Result<SourcePrep> {
-    let resolved = SourceAdapter::resolve(request.adapter, request.project_dir)?;
+    let resolved = resolve_with_plan_fallback(request)?;
     let adapter_dir = resolved.location.path().clone();
     let briefs_dir = adapter_dir.join(BRIEFS_DIR);
 
@@ -226,6 +235,26 @@ pub fn prepare(request: &PrepRequest<'_>) -> Result<SourcePrep> {
         evidence_dir,
         leads: request.leads.to_vec(),
     })
+}
+
+/// Project-local adapter resolution with a plan-root fallback. Only
+/// the `adapter-not-found` miss falls through — schema violations and
+/// axis collisions surface from whichever root actually carried the
+/// manifest.
+fn resolve_with_plan_fallback(
+    request: &PrepRequest<'_>,
+) -> Result<specify_workflow::adapter::ResolvedSourceAdapter> {
+    match SourceAdapter::resolve(request.adapter, request.project_dir) {
+        Ok(resolved) => Ok(resolved),
+        Err(Error::Diag {
+            code: "adapter-not-found",
+            ..
+        }) if request.plan_dir.is_some_and(|plan| plan != request.project_dir) => {
+            let plan_dir = request.plan_dir.unwrap_or(request.project_dir);
+            SourceAdapter::resolve(request.adapter, plan_dir)
+        }
+        Err(err) => Err(err),
+    }
 }
 
 /// Resolve a `plan.yaml.sources.<key>.path` binding against

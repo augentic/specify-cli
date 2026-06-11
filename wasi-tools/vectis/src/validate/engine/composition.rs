@@ -53,14 +53,26 @@ use crate::validate::error::VectisError;
 ///
 /// # Errors
 ///
-/// Returns [`VectisError::InvalidProject`] when the resolved file is
-/// unreadable, and [`VectisError::Internal`] if the embedded schema
-/// fails to compile.
+/// Returns [`VectisError::InvalidProject`] when an explicitly supplied
+/// file is unreadable, and [`VectisError::Internal`] if the embedded
+/// schema fails to compile. With no `[path]` and no discoverable
+/// `composition.yaml` (a core-only project has none by design), the
+/// mode exits cleanly with a `skipped` envelope instead of erroring.
 pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
     let target = path.map_or_else(
         || resolve_default_path(ValidateMode::Composition),
         std::path::Path::to_path_buf,
     );
+
+    if path.is_none() && !target.exists() {
+        return Ok(json!({
+            "mode": "composition",
+            "status": "skipped",
+            "reason": format!("no composition.yaml discoverable (looked at {}); core-only projects carry none", target.display()),
+            "errors": [],
+            "warnings": [],
+        }));
+    }
 
     let source = std::fs::read_to_string(&target).map_err(|err| VectisError::InvalidProject {
         message: format!("composition.yaml not readable at {}: {err}", target.display()),
