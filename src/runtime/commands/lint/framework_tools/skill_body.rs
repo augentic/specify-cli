@@ -1,40 +1,31 @@
-//! Pure SKILL.md body-discipline checks for the `skill-body`
-//! framework-authoring tool, lifted from the host CLI's retiring
-//! `skill_body` imperative predicates (Road B framework tool).
+//! In-process `skill-body` framework checker (Road B `kind: tool`).
 //!
-//! The tool covers the filesystem-only skill-body family: CORE-040
-//! (critical-path shape), CORE-046 (step-body duplicates critical path),
-//! and CORE-048 (`$VAR` definition / reference coverage). Each check
-//! mirrors its counterpart in `framework::check::skill_body`; the
-//! discovery walk mirrors the host's `walk_skill_files`. (CORE-041 —
-//! threshold-gated critical-path presence — moved to the native Road A
-//! `kind: presence` `markdown-section` selector.)
-//!
-//! Policy is `specify`-owned, never baked here: the line threshold and
-//! item bounds (CORE-040) and the built-in variable allow-list
-//! (CORE-048) arrive as call parameters the entrypoint reads from the
-//! rule's `config:` (forwarded by the `kind: tool` evaluator). The only
-//! literals in this crate are mechanism — the section heading names and
-//! the markdown list/heading parsing regexes.
-//!
-//! Carve-out posture: this crate owns its logic and depends only on
-//! `serde` / `serde_json` / `regex`, never the host diagnostics crate
-//! (`main.rs` renders the wire envelope).
+//! Covers the filesystem-only skill-body family: CORE-040
+//! (critical-path shape), CORE-046 (step-body duplicates critical
+//! path), and CORE-048 (`$VAR` definition / reference coverage). The
+//! line threshold, item bounds, and built-in variable allow-list are
+//! `specify`-owned policy read from the rule's forwarded `config:`.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
 
-/// Codex ids each check stamps onto its findings (closed `CORE-NNN`).
-pub const RULE_INVALID_CRITICAL_PATH: &str = "CORE-040";
-pub const RULE_STEP_BODY_DUPLICATES: &str = "CORE-046";
-pub const RULE_VARIABLE_COVERAGE: &str = "CORE-048";
+use super::support::{
+    ToolFinding, parsed_config, relative_display, requested_rule, string_array_field, usize_field,
+    walk_files,
+};
+
+const RULE_INVALID_CRITICAL_PATH: &str = "CORE-040";
+const RULE_STEP_BODY_DUPLICATES: &str = "CORE-046";
+const RULE_VARIABLE_COVERAGE: &str = "CORE-048";
+
+const RULES: &[&str] =
+    &[RULE_INVALID_CRITICAL_PATH, RULE_STEP_BODY_DUPLICATES, RULE_VARIABLE_COVERAGE];
 
 /// The H2 section a long skill must carry / whose entries must not be
-/// duplicated by step bodies. Mechanism (the rules' structural subject),
-/// not a tunable policy value.
+/// duplicated by step bodies. Mechanism, not a tunable policy value.
 const CRITICAL_PATH_HEADING: &str = "## Critical Path";
 
 static LIST_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| cached(r"^(?:\d+\.|-)\s+\S"));
@@ -57,24 +48,67 @@ fn cached(pattern: &str) -> Regex {
         .unwrap_or_else(|err| unreachable!("static skill-body regex must compile: {err}"))
 }
 
-/// One skill-body violation: its codex `rule_id`, the offending file's
-/// project-relative path, and a human-readable message. The caller
-/// stamps the wire severity (always `important` for this family).
+/// One skill-body violation before wire guidance is attached.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SkillBodyFinding {
-    /// Codex `CORE-NNN` id this finding belongs to.
-    pub rule_id: &'static str,
-    /// Project-relative, forward-slash path of the offending file.
-    pub path: String,
-    /// Operator-facing message describing the violation.
-    pub message: String,
+struct SkillBodyFinding {
+    rule_id: &'static str,
+    path: String,
+    message: String,
+}
+
+/// Run the skill-body family scoped by the candidate sentinel path.
+pub fn run(project_dir: &Path, args: &[String]) -> Vec<ToolFinding> {
+    let scoped = requested_rule(args, RULES);
+    let config = parsed_config(args);
+    let findings = match scoped {
+        Some(RULE_INVALID_CRITICAL_PATH) => check_invalid_critical_path(
+            project_dir,
+            usize_field(config.as_ref(), "min-body-lines"),
+            usize_field(config.as_ref(), "min-items"),
+            usize_field(config.as_ref(), "max-items"),
+        ),
+        Some(RULE_STEP_BODY_DUPLICATES) => check_step_body_duplicates(project_dir),
+        Some(RULE_VARIABLE_COVERAGE) => check_variable_coverage(
+            project_dir,
+            &string_array_field(config.as_ref(), "builtin-vars"),
+        ),
+        _ => Vec::new(),
+    };
+    findings.into_iter().map(wire_finding).collect()
+}
+
+fn wire_finding(finding: SkillBodyFinding) -> ToolFinding {
+    let (impact, remediation) = guidance(finding.rule_id);
+    ToolFinding {
+        rule_id: finding.rule_id,
+        path: Some(finding.path),
+        message: finding.message,
+        impact,
+        remediation,
+    }
+}
+
+fn guidance(rule_id: &str) -> (&'static str, &'static str) {
+    match rule_id {
+        RULE_INVALID_CRITICAL_PATH => (
+            "A long skill's `## Critical Path` section does not list the required number of steps, so the table of contents is not a faithful map of the skill body.",
+            "Rewrite the `## Critical Path` section to list the configured number of bullets or numbered steps.",
+        ),
+        RULE_STEP_BODY_DUPLICATES => (
+            "A step body repeats a `## Critical Path` entry verbatim, duplicating the table of contents instead of pointing to references.",
+            "Keep step bodies as short pointers to references; do not restate the Critical Path entries.",
+        ),
+        _ => (
+            "A skill defines a `$VAR` in its Arguments section that is never referenced (or references one that is never defined), so the variable contract is inconsistent.",
+            "Reference every defined `$VAR` in the body and define every `$VAR` the body uses in the Arguments section.",
+        ),
+    }
 }
 
 /// CORE-040: a skill whose body is at least `min_body_lines` long and
 /// carries a `## Critical Path` section must list between `min_items`
 /// and `max_items` entries (list or H3 form).
-#[must_use]
-pub fn check_invalid_critical_path(
+fn check_invalid_critical_path(
     project_dir: &Path, min_body_lines: usize, min_items: usize, max_items: usize,
 ) -> Vec<SkillBodyFinding> {
     let mut findings = Vec::new();
@@ -111,8 +145,7 @@ pub fn check_invalid_critical_path(
 
 /// CORE-046: step bodies after the `## Critical Path` section must not
 /// duplicate Critical Path entries verbatim.
-#[must_use]
-pub fn check_step_body_duplicates(project_dir: &Path) -> Vec<SkillBodyFinding> {
+fn check_step_body_duplicates(project_dir: &Path) -> Vec<SkillBodyFinding> {
     let mut findings = Vec::new();
     for path in walk_skill_files(project_dir) {
         let rel = relative_display(project_dir, &path);
@@ -165,12 +198,8 @@ pub fn check_step_body_duplicates(project_dir: &Path) -> Vec<SkillBodyFinding> {
 }
 
 /// CORE-048: `$VAR`s declared in the Arguments section must be referenced
-/// in the body, and `$VAR`s used in the body must be defined. `builtin_vars`
-/// is the `specify`-owned allow-list of variables exempt from coverage.
-#[must_use]
-pub fn check_variable_coverage(
-    project_dir: &Path, builtin_vars: &[String],
-) -> Vec<SkillBodyFinding> {
+/// in the body, and `$VAR`s used in the body must be defined.
+fn check_variable_coverage(project_dir: &Path, builtin_vars: &[String]) -> Vec<SkillBodyFinding> {
     let mut findings = Vec::new();
     for path in walk_skill_files(project_dir) {
         let rel = relative_display(project_dir, &path);
@@ -186,8 +215,8 @@ pub fn check_variable_coverage(
             after_heading.find("\n## ").map_or(content.len(), |idx| heading_match.end() + idx);
         let args_section = &content[heading_idx..section_end];
 
-        let mut defined = HashSet::new();
-        let mut used_in_defs = HashSet::new();
+        let mut defined = BTreeSet::new();
+        let mut used_in_defs = BTreeSet::new();
         for block in TEXT_CODE_BLOCK_RE.captures_iter(args_section) {
             let block_text = block.get(1).map_or("", |m| m.as_str());
             for caps in VAR_DEF_RE.captures_iter(block_text) {
@@ -293,8 +322,8 @@ fn count_critical_path_items(section_lines: &[String]) -> usize {
     item_count
 }
 
-fn collect_critical_path_entries(lines: &[String], start: usize, end: usize) -> HashSet<String> {
-    let mut cp_entries = HashSet::new();
+fn collect_critical_path_entries(lines: &[String], start: usize, end: usize) -> BTreeSet<String> {
+    let mut cp_entries = BTreeSet::new();
     let mut in_fence = false;
     for line in &lines[start..end] {
         if line.starts_with("```") {
@@ -313,7 +342,7 @@ fn collect_critical_path_entries(lines: &[String], start: usize, end: usize) -> 
 }
 
 fn find_step_body_duplicates(
-    lines: &[String], cp_end: usize, cp_entries: &HashSet<String>,
+    lines: &[String], cp_end: usize, cp_entries: &BTreeSet<String>,
 ) -> Vec<(usize, String)> {
     let mut violations = Vec::new();
     let mut in_fence = false;
@@ -357,8 +386,8 @@ fn is_builtin_var(name: &str, builtin_vars: &[String]) -> bool {
     builtin_vars.iter().any(|builtin| builtin == name)
 }
 
-fn collect_var_uses(text: &str, builtin_vars: &[String]) -> HashSet<String> {
-    let mut out = HashSet::new();
+fn collect_var_uses(text: &str, builtin_vars: &[String]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
     for caps in VAR_USE_RE.captures_iter(text) {
         let name = caps[1].to_string();
         if !is_builtin_var(&name, builtin_vars) {
@@ -369,8 +398,7 @@ fn collect_var_uses(text: &str, builtin_vars: &[String]) -> HashSet<String> {
 }
 
 /// Return body lines after the closing frontmatter delimiter, trimming a
-/// single leading and trailing blank line. Mirrors the host's
-/// `skill_body_lines`.
+/// single leading and trailing blank line.
 fn skill_body_lines(content: &str) -> Option<Vec<String>> {
     let block = frontmatter_block(content)?;
     let start = content.find(block)? + block.len();
@@ -390,39 +418,14 @@ fn frontmatter_block(content: &str) -> Option<&str> {
     Some(&rest[..end])
 }
 
-fn relative_display(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
-}
-
 /// Walk every `SKILL.md` under `<project_dir>/plugins`, never following
-/// or collecting symlinks (mirrors the host's `walk_skill_files`
-/// `follow_links(false)` + symlink-skip posture).
+/// or collecting symlinks.
 fn walk_skill_files(project_dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     walk_files(&project_dir.join("plugins"), &mut out);
     out.retain(|path| path.file_name().and_then(|n| n.to_str()) == Some("SKILL.md"));
     out.sort();
     out
-}
-
-fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_symlink() {
-            continue;
-        }
-        let path = entry.path();
-        if file_type.is_dir() {
-            walk_files(&path, out);
-        } else if file_type.is_file() {
-            out.push(path);
-        }
-    }
 }
 
 #[cfg(test)]

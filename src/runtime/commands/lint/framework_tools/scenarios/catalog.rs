@@ -10,30 +10,28 @@ use std::path::Path;
 use regex::Regex;
 use serde_json::Value as JsonValue;
 
-use crate::ScenarioFinding;
+use super::ScenarioFinding;
 
 /// Codex id stamped on every catalog↔runs drift finding.
 pub const RULE_CATALOG_RUNS_DRIFT: &str = "CORE-056";
 
-/// CORE-056 policy parsed from the rule's forwarded `config:` — the
-/// catalog path, scenario/run directories, legal value sets, and the
-/// status↔result agreement map are rule-owned, never baked here.
+/// CORE-056 policy parsed from the rule's forwarded `config:`.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct CatalogPolicy {
+struct CatalogPolicy {
     /// Project-relative path of the catalog markdown (the group tables).
-    pub catalog: String,
+    catalog: String,
     /// Project-relative directory holding one `<id>.md` per scenario.
-    pub scenarios_dir: String,
+    scenarios_dir: String,
     /// Project-relative directory holding `<id>.<result>.md` run records.
-    pub runs_dir: String,
+    runs_dir: String,
     /// Legal `Status` column values.
-    pub statuses: Vec<String>,
+    statuses: Vec<String>,
     /// Legal `Gate` column values; an empty list skips gate validation.
-    pub gates: Vec<String>,
+    gates: Vec<String>,
     /// Status → record `<result>` token for statuses that require a
     /// committed record; statuses absent from the map must have none.
-    pub status_result_map: BTreeMap<String, String>,
+    status_result_map: BTreeMap<String, String>,
 }
 
 impl CatalogPolicy {
@@ -41,12 +39,7 @@ impl CatalogPolicy {
     /// without a `catalog` key — disables the check; a config that
     /// declares `catalog` but fails to parse is an `Err` the caller
     /// surfaces as a finding.
-    ///
-    /// # Errors
-    ///
-    /// Returns the serde detail string when the config names `catalog`
-    /// but does not deserialise into a complete [`CatalogPolicy`].
-    pub fn parse(config: Option<&JsonValue>) -> Result<Option<Self>, String> {
+    fn parse(config: Option<&JsonValue>) -> Result<Option<Self>, String> {
         let Some(value) = config else {
             return Ok(None);
         };
@@ -76,8 +69,7 @@ pub fn findings_from_config(
 
 /// Run the catalog↔runs drift check rooted at `project_dir` under the
 /// given policy.
-#[must_use]
-pub fn check_catalog_runs(project_dir: &Path, policy: &CatalogPolicy) -> Vec<ScenarioFinding> {
+fn check_catalog_runs(project_dir: &Path, policy: &CatalogPolicy) -> Vec<ScenarioFinding> {
     let catalog_rel = policy.catalog.as_str();
     let Ok(content) = std::fs::read_to_string(project_dir.join(catalog_rel)) else {
         return vec![drift(catalog_rel, &format!("catalog file {catalog_rel} cannot be read"))];
@@ -108,9 +100,7 @@ struct CatalogRow {
 }
 
 /// Parse every table data row in the catalog whose File cell carries a
-/// markdown link. Header and separator rows have no link and are
-/// skipped; a linked cell that does not parse as `` [`<id>`](<id>.md) ``
-/// is drift.
+/// markdown link.
 fn parse_rows(
     content: &str, catalog_rel: &str, findings: &mut Vec<ScenarioFinding>,
 ) -> Vec<CatalogRow> {
@@ -199,8 +189,7 @@ fn check_row_values(
     }
 }
 
-/// Row↔scenario-file parity in both directions: every row's id must
-/// name an existing `<id>.md`, and every scenario file must have a row.
+/// Row↔scenario-file parity in both directions.
 fn check_file_parity(
     project_dir: &Path, rows: &[CatalogRow], policy: &CatalogPolicy, catalog_rel: &str,
     findings: &mut Vec<ScenarioFinding>,
@@ -614,7 +603,7 @@ mod tests {
         assert!(CatalogPolicy::parse(Some(&unrelated)).expect("unrelated ok").is_none());
         assert!(CatalogPolicy::parse(Some(&policy_json())).expect("full ok").is_some());
         let broken = json!({"catalog": "x.md"});
-        assert!(CatalogPolicy::parse(Some(&broken)).is_err());
+        CatalogPolicy::parse(Some(&broken)).expect_err("partial config must fail to parse");
     }
 
     #[test]

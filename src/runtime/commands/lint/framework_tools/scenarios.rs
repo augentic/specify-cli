@@ -1,32 +1,34 @@
-//! Pure scenario-pack checks for the `scenarios` framework-authoring
-//! tool (Road B framework tool).
+//! In-process `scenarios` framework checker (Road B `kind: tool`).
 //!
-//! The tool covers the filesystem-only scenario family: CORE-028
-//! (artifact-path safety), CORE-029 (body↔frontmatter id), CORE-031
-//! (recorded-trace header validation), CORE-033 (stage contiguity),
-//! and CORE-056 (catalog↔runs drift, policy via the rule's forwarded
-//! `config:`). CORE-030 (whole-tree duplicate id) and CORE-032
-//! (frontmatter schema) are covered by Road A declarative hints over
-//! the `scenario` fact family. CORE-034's git-only staleness advisory
-//! is not covered here (it shells out to `git`, unfit for the WASI
-//! sandbox). Carve-out posture: this crate owns its logic, depending
-//! only on `serde` / `serde-saphyr` / `serde_json` / `regex`, never
-//! the host diagnostics crate (`main.rs` renders the wire envelope).
+//! Covers the filesystem-only scenario family: CORE-028 (artifact-path
+//! safety), CORE-029 (body↔frontmatter id), CORE-031 (recorded-trace
+//! header validation), CORE-033 (stage contiguity), and CORE-056
+//! (catalog↔runs drift, policy via the rule's forwarded `config:`).
+//! CORE-030 and CORE-032 are Road A declarative hints over the
+//! `scenario` fact family.
 
 mod catalog;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-pub use catalog::{CatalogPolicy, RULE_CATALOG_RUNS_DRIFT, check_catalog_runs};
 use regex::Regex;
 use serde_json::Value as JsonValue;
 
-/// Codex ids each check stamps onto its findings (closed `CORE-NNN`).
-pub const RULE_ARTIFACT_PATH_UNSAFE: &str = "CORE-028";
-pub const RULE_BODY_ID_MISMATCH: &str = "CORE-029";
-pub const RULE_RECORDED_TRACE_VIOLATION: &str = "CORE-031";
-pub const RULE_STAGES_NOT_CONTIGUOUS: &str = "CORE-033";
+use super::support::{ToolFinding, parsed_config, relative_display, requested_rule, walk_files};
+
+const RULE_ARTIFACT_PATH_UNSAFE: &str = "CORE-028";
+const RULE_BODY_ID_MISMATCH: &str = "CORE-029";
+const RULE_RECORDED_TRACE_VIOLATION: &str = "CORE-031";
+const RULE_STAGES_NOT_CONTIGUOUS: &str = "CORE-033";
+
+const RULES: &[&str] = &[
+    RULE_ARTIFACT_PATH_UNSAFE,
+    RULE_BODY_ID_MISMATCH,
+    catalog::RULE_CATALOG_RUNS_DRIFT,
+    RULE_RECORDED_TRACE_VIOLATION,
+    RULE_STAGES_NOT_CONTIGUOUS,
+];
 
 /// The fixed slice-loop stage order a scenario's `stages` list must be a
 /// contiguous slice of, anchored at any element.
@@ -36,39 +38,71 @@ const STAGES_ORDER: [&str; 5] = ["plan", "refine", "build", "merge", "drop"];
 const TRACE_REQUIRED_FIELDS: [&str; 6] =
     ["kind", "schemaVersion", "sourceBackend", "sourceRunId", "sourceTimestamp", "scenarioId"];
 
-/// One scenario-pack violation: its codex `rule_id`, an optional
-/// project-relative path, and a human-readable message. The caller
-/// stamps the wire severity (always `important` for this family).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ScenarioFinding {
-    /// Codex `CORE-NNN` id this finding belongs to.
-    pub rule_id: &'static str,
-    /// Project-relative, forward-slash path of the offending file, or
-    /// `None` for whole-tree findings (duplicate id, schema infra).
-    pub path: Option<String>,
-    /// Operator-facing message describing the violation.
-    pub message: String,
+/// Run the scenario family scoped by the candidate sentinel path.
+pub fn run(project_dir: &Path, args: &[String]) -> Vec<ToolFinding> {
+    let scoped = requested_rule(args, RULES);
+    let config = parsed_config(args);
+    let mut findings: Vec<ScenarioFinding> = run_with_config(project_dir, config.as_ref())
+        .into_iter()
+        .filter(|finding| scoped.is_none_or(|rule| finding.rule_id == rule))
+        .collect();
+    findings
+        .sort_by(|a, b| (a.rule_id, &a.path, &a.message).cmp(&(b.rule_id, &b.path, &b.message)));
+    findings.into_iter().map(wire_finding).collect()
 }
 
-/// Run every scenario-pack check rooted at `project_dir` (the framework
-/// tree) without rule config — the CORE-028..033 family only. The
-/// caller scopes the set to a single rule before emitting.
-#[must_use]
-pub fn run(project_dir: &Path) -> Vec<ScenarioFinding> {
-    run_with_config(project_dir, None)
+fn wire_finding(finding: ScenarioFinding) -> ToolFinding {
+    let (impact, remediation) = guidance(finding.rule_id);
+    ToolFinding {
+        rule_id: finding.rule_id,
+        path: finding.path,
+        message: finding.message,
+        impact,
+        remediation,
+    }
+}
+
+/// Per-rule operator-facing impact / remediation prose.
+fn guidance(rule_id: &str) -> (&'static str, &'static str) {
+    match rule_id {
+        RULE_ARTIFACT_PATH_UNSAFE => (
+            "A scenario declares an expected artifact path that is empty, absolute, or escapes the scenario workspace.",
+            "Rewrite each `expected-artifacts` entry as a non-empty path relative to the scenario workspace, with no leading '/' or '..' segments.",
+        ),
+        RULE_BODY_ID_MISMATCH => (
+            "A scenario's visible 'Scenario ID' body line disagrees with its frontmatter id, so readers cannot trust the citation.",
+            "Align the body 'Scenario ID: `…`' line with the frontmatter `id`.",
+        ),
+        RULE_RECORDED_TRACE_VIOLATION => (
+            "A recorded-trace file's first line is not a well-formed `recorded-trace-header`, so replay cannot trust its provenance.",
+            "Make the first line a JSON `recorded-trace-header` object with schemaVersion 1 and every required field populated.",
+        ),
+        catalog::RULE_CATALOG_RUNS_DRIFT => (
+            "The scenario catalog, the scenario files, and the committed run records disagree, so the catalog's gate status cannot be trusted.",
+            "Reconcile the catalog row with the scenario tree and evals/runs/: status-bearing rows need exactly one committed record whose <result> agrees.",
+        ),
+        _ => (
+            "Scenario stages are not a contiguous slice of the slice loop; the pack does not describe a runnable lifecycle window.",
+            "Reorder the scenario's `stages` list to a contiguous run of [plan, refine, build, merge, drop] anchored at any element.",
+        ),
+    }
+}
+
+/// One scenario-pack violation before wire guidance is attached.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ScenarioFinding {
+    rule_id: &'static str,
+    path: Option<String>,
+    message: String,
 }
 
 /// Run every scenario-pack check rooted at `project_dir`, including the
 /// config-driven catalog↔runs check (CORE-056) when the forwarded rule
-/// `config:` carries a catalog policy. Findings are sorted by
-/// `(rule_id, path, message)` for a stable wire order.
-#[must_use]
-pub fn run_with_config(project_dir: &Path, config: Option<&JsonValue>) -> Vec<ScenarioFinding> {
+/// `config:` carries a catalog policy.
+fn run_with_config(project_dir: &Path, config: Option<&JsonValue>) -> Vec<ScenarioFinding> {
     let mut findings = validate_scenario_frontmatter(project_dir);
     findings.extend(check_recorded_trace_freshness(project_dir));
     findings.extend(catalog::findings_from_config(project_dir, config));
-    findings
-        .sort_by(|a, b| (a.rule_id, &a.path, &a.message).cmp(&(b.rule_id, &b.path, &b.message)));
     findings
 }
 
@@ -79,10 +113,6 @@ struct ScenarioFile {
     frontmatter: BTreeMap<String, JsonValue>,
 }
 
-/// Run the frontmatter family of checks: stages (CORE-033), body-id
-/// (CORE-029), and artifact-path (CORE-028). Schema (CORE-032) and
-/// whole-tree duplicate id (CORE-030) moved to Road A. Mirrors the
-/// host's `validate_scenario_frontmatter`.
 fn validate_scenario_frontmatter(project_dir: &Path) -> Vec<ScenarioFinding> {
     let opted = collect_opted_scenarios(project_dir);
     let mut findings = check_stages(&opted);
@@ -104,7 +134,7 @@ fn collect_opted_scenarios(project_dir: &Path) -> Vec<ScenarioFile> {
         let Some(block) = frontmatter_block(&content) else {
             continue;
         };
-        if let Ok(frontmatter) = parse_frontmatter_yaml(block) {
+        if let Ok(frontmatter) = serde_saphyr::from_str::<BTreeMap<String, JsonValue>>(block) {
             opted.push(ScenarioFile {
                 rel,
                 content,
@@ -209,9 +239,8 @@ fn check_artifact_paths(opted: &[ScenarioFile]) -> Vec<ScenarioFinding> {
     findings
 }
 
-/// Run recorded-trace header validation (CORE-031). Mirrors the
-/// filesystem half of the host's `check_recorded_trace_freshness`; the
-/// git-only staleness advisory (CORE-034) is deliberately not lifted.
+/// CORE-031: recorded-trace header validation. The git-only staleness
+/// advisory (CORE-034) is deliberately not covered.
 fn check_recorded_trace_freshness(project_dir: &Path) -> Vec<ScenarioFinding> {
     let recorded_root = project_dir.join("evals").join("recorded");
     if !recorded_root.is_dir() {
@@ -310,10 +339,9 @@ fn trace_finding(rel: &str, detail: &str) -> ScenarioFinding {
     }
 }
 
-/// Port of the host's `is_contiguous_stages_prefix`: the `stages` array
-/// must be a contiguous run of [`STAGES_ORDER`] anchored at any element.
-#[must_use]
-pub fn is_contiguous_stages_prefix(stages: &JsonValue) -> bool {
+/// The `stages` array must be a contiguous run of [`STAGES_ORDER`]
+/// anchored at any element.
+fn is_contiguous_stages_prefix(stages: &JsonValue) -> bool {
     let Some(stages) = stages.as_array() else {
         return false;
     };
@@ -335,18 +363,10 @@ pub fn is_contiguous_stages_prefix(stages: &JsonValue) -> bool {
     true
 }
 
-fn parse_frontmatter_yaml(block: &str) -> Result<BTreeMap<String, JsonValue>, String> {
-    serde_saphyr::from_str(block).map_err(|err| err.to_string())
-}
-
-/// Extract the YAML block between a leading `---` line and its closing
-/// `---`. Mirrors the host frontmatter splitter.
 fn frontmatter_block(content: &str) -> Option<&str> {
     frontmatter_split(content).map(|(block, _)| block)
 }
 
-/// Split into the frontmatter block and the body following the closing
-/// `---` delimiter.
 fn frontmatter_split(content: &str) -> Option<(&str, &str)> {
     let rest = content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n"))?;
     let end = rest.find("\n---")?;
@@ -354,15 +374,9 @@ fn frontmatter_split(content: &str) -> Option<(&str, &str)> {
     Some((&rest[..end], &content[body_start..]))
 }
 
-fn relative_display(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
-}
-
 /// Discover scenario candidate files across the eval scenario pack,
-/// target adapter tests, and plugin skill fixtures — mirroring the host's
-/// `discover_scenario_candidates`. Symlinks are never traversed or
-/// collected (the host walks with `follow_links(false)` and skips
-/// symlinked plugin fixtures).
+/// target adapter tests, and plugin skill fixtures. Symlinks are never
+/// traversed or collected.
 fn discover_scenario_candidates(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect_eval_scenarios(&root.join("evals").join("scenarios"), &mut out);
@@ -441,35 +455,15 @@ fn collect_plugin_fixture_scenarios(plugins_dir: &Path, out: &mut Vec<PathBuf>) 
     }
 }
 
-/// Recursive file collector that never follows or records symlinks (so a
-/// symlinked directory is not traversed and a symlinked file is not
-/// collected), matching the host's `follow_links(false)` + symlink-skip
-/// discovery posture.
-fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_symlink() {
-            continue;
-        }
-        let path = entry.path();
-        if file_type.is_dir() {
-            walk_files(&path, out);
-        } else if file_type.is_file() {
-            out.push(path);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn run_all(project_dir: &Path) -> Vec<ScenarioFinding> {
+        run_with_config(project_dir, None)
+    }
 
     #[test]
     fn contiguous_accepts_anchored_slice() {
@@ -509,7 +503,7 @@ mod tests {
         bad = bad.replace("[refine, build]", "[plan, build]");
         write_scenario(dir.path(), "bad.md", &bad);
 
-        let stages = flagged(&run(dir.path()), RULE_STAGES_NOT_CONTIGUOUS);
+        let stages = flagged(&run_all(dir.path()), RULE_STAGES_NOT_CONTIGUOUS);
         assert_eq!(stages, vec![Some("evals/scenarios/bad.md".to_string())]);
     }
 
@@ -522,7 +516,7 @@ mod tests {
             "isolation: fresh-project\nexpected-artifacts: ['../escape.txt']\n",
         );
         write_scenario(dir.path(), "arts.md", &body);
-        let unsafe_paths = flagged(&run(dir.path()), RULE_ARTIFACT_PATH_UNSAFE);
+        let unsafe_paths = flagged(&run_all(dir.path()), RULE_ARTIFACT_PATH_UNSAFE);
         assert_eq!(unsafe_paths, vec![Some("evals/scenarios/arts.md".to_string())]);
     }
 
@@ -531,7 +525,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let body = format!("{}\nScenario ID: `other`\n", valid_frontmatter("real"));
         write_scenario(dir.path(), "mismatch.md", &body);
-        let mismatch = flagged(&run(dir.path()), RULE_BODY_ID_MISMATCH);
+        let mismatch = flagged(&run_all(dir.path()), RULE_BODY_ID_MISMATCH);
         assert_eq!(mismatch, vec![Some("evals/scenarios/mismatch.md".to_string())]);
     }
 
@@ -541,7 +535,7 @@ mod tests {
         let recorded = dir.path().join("evals/recorded/run-1");
         std::fs::create_dir_all(&recorded).expect("mkdir");
         std::fs::write(recorded.join("trace.jsonl"), "not json\n").expect("write trace");
-        let trace = flagged(&run(dir.path()), RULE_RECORDED_TRACE_VIOLATION);
+        let trace = flagged(&run_all(dir.path()), RULE_RECORDED_TRACE_VIOLATION);
         assert_eq!(trace, vec![Some("evals/recorded/run-1/trace.jsonl".to_string())]);
     }
 
@@ -549,6 +543,6 @@ mod tests {
     fn clean_tree_is_silent() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_scenario(dir.path(), "ok.md", &valid_frontmatter("ok"));
-        assert!(run(dir.path()).is_empty(), "a schema-valid contiguous scenario flags nothing");
+        assert!(run_all(dir.path()).is_empty(), "a schema-valid contiguous scenario flags nothing");
     }
 }

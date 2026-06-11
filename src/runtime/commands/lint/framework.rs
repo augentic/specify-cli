@@ -82,7 +82,7 @@ fn build_report(
     // tool via `kind: tool`, folded by the declarative pass.
     let producers: [&dyn DiagnosticProducer; 0] = [];
     let rule_filter_slice: Vec<&str> = action.rules.iter().map(String::as_str).collect();
-    let tool_runner = FrameworkToolRunner::new()?;
+    let tool_runner = FrameworkToolRunner;
     let cli_contract = crate::runtime::commands::contract::dump::build_contract();
     let config = PipelineConfig {
         profile: ScanProfile::Framework,

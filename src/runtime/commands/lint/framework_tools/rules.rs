@@ -1,84 +1,122 @@
-//! Pure rule-tree checks for the `rules` framework-authoring tool
-//! (Road B framework tool).
+//! In-process `rules` framework checker (Road B `kind: tool`).
 //!
-//! The tool covers the whole-tree `rules.*` family:
-//!
-//! - CORE-009 (`rules.namespace-ownership-violation`) — each rule
-//!   markdown file's id-namespace prefix must be authored only under the
-//!   rules directory that owns that namespace. Covers all four
-//!   branches: the reserved-namespace reservation (`FRAME-*`), dynamic
-//!   source-owner discovery, the unknown-owner diagnostic, and the
-//!   placement check.
-//! - CORE-026 (`rules.duplicate-rule-id`) — a rule id declared in more
-//!   than one rules markdown file is a whole-tree duplicate.
-//! - CORE-053 (`rules.body-heading-missing`) — every rule markdown file's
-//!   body must carry the verbatim `## Rule` heading the frontmatter schema
-//!   (CORE-027) does not cover.
-//!
-//! Policy is `specify`-owned, never baked here: the owner→allowed-prefix
-//! map, the source-axis prefixes, and the reserved-namespace owners all
-//! arrive as the [`OwnerPolicy`] the entrypoint reads from CORE-009's
-//! `config:` (forwarded by the `kind: tool` evaluator). No owner name,
-//! id-namespace prefix, or reserved namespace is hard-coded in this
-//! crate — only the filesystem mechanism (the `adapters/{sources,targets}`
-//! axis layout, the shared `universal` / `core` pack directories, and the
-//! `<adapter>/rules/` placement shape) is.
-//!
-//! Carve-out posture: this crate owns its logic and depends only on
-//! `serde-saphyr` / `serde_json`, never the host diagnostics crate
-//! (`main.rs` renders the wire envelope).
+//! Covers the whole-tree rule-tree family: CORE-009 namespace
+//! ownership, CORE-026 duplicate rule id, CORE-053 body heading. All
+//! policy (the owner→prefix map, source-axis prefixes, and
+//! reserved-namespace owners) arrives in CORE-009's forwarded
+//! `config:`; only the filesystem mechanism (the axis layout, the
+//! shared `universal` / `core` packs, the `<adapter>/rules/` shape) is
+//! code.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value as JsonValue;
 
-/// Codex ids each check stamps onto its findings (closed `CORE-NNN`).
-pub const RULE_NAMESPACE_OWNERSHIP_VIOLATION: &str = "CORE-009";
-pub const RULE_DUPLICATE_RULE_ID: &str = "CORE-026";
-pub const RULE_BODY_HEADING_MISSING: &str = "CORE-053";
+use super::support::{ToolFinding, parsed_config, relative_display, requested_rule, walk_files};
+
+const RULE_NAMESPACE_OWNERSHIP_VIOLATION: &str = "CORE-009";
+const RULE_DUPLICATE_RULE_ID: &str = "CORE-026";
+const RULE_BODY_HEADING_MISSING: &str = "CORE-053";
+
+const RULES: &[&str] =
+    &[RULE_NAMESPACE_OWNERSHIP_VIOLATION, RULE_DUPLICATE_RULE_ID, RULE_BODY_HEADING_MISSING];
 
 /// Shared `universal` / `core` rules-pack directory names under
-/// `adapters/shared/rules/`. Mechanism (filesystem layout), not policy:
-/// the owner→prefix mapping for these names lives in [`OwnerPolicy`].
+/// `adapters/shared/rules/`. Mechanism (filesystem layout), not policy.
 const SHARED_PACKS: [&str; 2] = ["universal", "core"];
 
-/// One rule-tree violation: its codex `rule_id`, an optional
-/// project-relative path, and a human-readable message. The caller
-/// stamps the wire severity (always `important` for this family).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RulesFinding {
-    /// Codex `CORE-NNN` id this finding belongs to.
-    pub rule_id: &'static str,
-    /// Project-relative, forward-slash path of the offending file, or
-    /// `None` for whole-tree findings (duplicate id).
-    pub path: Option<String>,
-    /// Operator-facing message describing the violation.
-    pub message: String,
+/// `specify`-owned namespace policy CORE-009 supplies in `config:`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct OwnerPolicy {
+    owner_prefixes: BTreeMap<String, BTreeSet<String>>,
+    source_axis_prefixes: BTreeSet<String>,
+    reserved: BTreeMap<String, String>,
 }
 
-/// `specify`-owned namespace policy CORE-009 supplies in `config:`.
-///
-/// Every value here is framework policy relayed by the engine; the tool
-/// embeds none of it. The directory→owner derivation that pairs a rule
-/// file with an `owner_prefixes` key is mechanism and stays in code.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct OwnerPolicy {
-    /// `<rules-directory-owner> -> {allowed id-namespace prefixes}`.
-    pub owner_prefixes: BTreeMap<String, BTreeSet<String>>,
-    /// Id-namespace prefixes every dynamically-discovered source-adapter
-    /// owner may use (e.g. `SRC`).
-    pub source_axis_prefixes: BTreeSet<String>,
-    /// `<reserved namespace> -> <sole owner>` (e.g. `FRAME -> universal`).
-    pub reserved: BTreeMap<String, String>,
+/// Run the rule-tree family scoped by the candidate sentinel path.
+pub fn run(project_dir: &Path, args: &[String]) -> Vec<ToolFinding> {
+    let scoped = requested_rule(args, RULES);
+    let config = parsed_config(args);
+
+    let mut findings = Vec::new();
+    if scoped.is_none() || scoped == Some(RULE_NAMESPACE_OWNERSHIP_VIOLATION) {
+        // No owner policy supplied means nothing to compare against; emit
+        // a clean report rather than treating every owner as unknown.
+        if let Some(policy) = parse_policy(config.as_ref()) {
+            findings.extend(check_namespace_ownership(project_dir, &policy));
+        }
+    }
+    if scoped.is_none() || scoped == Some(RULE_DUPLICATE_RULE_ID) {
+        findings.extend(check_duplicate_rule_id(project_dir));
+    }
+    if scoped.is_none() || scoped == Some(RULE_BODY_HEADING_MISSING) {
+        findings.extend(check_rule_body_heading(project_dir));
+    }
+    findings
+}
+
+/// Build the CORE-009 namespace policy from the forwarded `config:`;
+/// `None` when the required `owner-prefixes` map is absent.
+fn parse_policy(config: Option<&JsonValue>) -> Option<OwnerPolicy> {
+    let config = config?;
+    let owner_prefixes = parse_prefix_map(config.get("owner-prefixes")?)?;
+    let source_axis_prefixes =
+        config.get("source-axis-prefixes").map(parse_string_set).unwrap_or_default();
+    let reserved = config.get("reserved-namespaces").map(parse_string_map).unwrap_or_default();
+    Some(OwnerPolicy {
+        owner_prefixes,
+        source_axis_prefixes,
+        reserved,
+    })
+}
+
+fn parse_prefix_map(value: &JsonValue) -> Option<BTreeMap<String, BTreeSet<String>>> {
+    let object = value.as_object()?;
+    let mut map = BTreeMap::new();
+    for (owner, prefixes) in object {
+        map.insert(owner.clone(), parse_string_set(prefixes));
+    }
+    Some(map)
+}
+
+fn parse_string_map(value: &JsonValue) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    if let Some(object) = value.as_object() {
+        for (key, raw) in object {
+            if let Some(text) = raw.as_str() {
+                map.insert(key.clone(), text.to_string());
+            }
+        }
+    }
+    map
+}
+
+fn parse_string_set(value: &JsonValue) -> BTreeSet<String> {
+    let mut set = BTreeSet::new();
+    if let Some(array) = value.as_array() {
+        for raw in array {
+            if let Some(text) = raw.as_str() {
+                set.insert(text.to_string());
+            }
+        }
+    }
+    set
+}
+
+fn ownership_finding(rel: &str, message: String) -> ToolFinding {
+    ToolFinding {
+        rule_id: RULE_NAMESPACE_OWNERSHIP_VIOLATION,
+        path: Some(rel.to_string()),
+        message,
+        impact: "A rule's id-namespace prefix is not owned by the rules directory it lives under, so the codex namespace ownership invariant is broken.",
+        remediation: "Move the rule into the directory that owns its namespace prefix, or renumber the id to the prefix its current directory owns.",
+    }
 }
 
 /// CORE-009: assert each rule file's id-namespace prefix is owned by its
-/// containing rules directory. Walks the rule trees (target + source
-/// axes, then the shared `universal` / `core` packs) and applies, in
-/// order: reserved-namespace reservation, unknown-owner, placement.
-#[must_use]
-pub fn check_namespace_ownership(project_dir: &Path, policy: &OwnerPolicy) -> Vec<RulesFinding> {
+/// containing rules directory.
+fn check_namespace_ownership(project_dir: &Path, policy: &OwnerPolicy) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
     for path in discover_rule_files(project_dir) {
         let rel = relative_display(project_dir, &path);
@@ -98,36 +136,27 @@ pub fn check_namespace_ownership(project_dir: &Path, policy: &OwnerPolicy) -> Ve
         if let Some(reserved_owner) = policy.reserved.get(namespace)
             && owner != *reserved_owner
         {
-            findings.push(RulesFinding {
-                rule_id: RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-                path: Some(rel.clone()),
-                message: format!(
-                    "Rules namespace ownership: {rel} — {namespace}-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got '{id}' under rules owner '{owner}')"
-                ),
-            });
+            findings.push(ownership_finding(&rel, format!(
+                "Rules namespace ownership: {rel} — {namespace}-* ids are reserved for framework-repo declarative rules and may not be placed under adapter trees (got '{id}' under rules owner '{owner}')"
+            )));
             continue;
         }
 
         let Some(allowed) = allowed_prefixes(project_dir, &path, &owner, policy) else {
-            findings.push(RulesFinding {
-                rule_id: RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-                path: Some(rel.clone()),
-                message: format!(
-                    "Rules namespace ownership: {rel} — rules owner '{owner}' has no configured namespace; add it to the CORE-009 rule's owner-prefixes config before adding first-party rules here"
-                ),
-            });
+            findings.push(ownership_finding(&rel, format!(
+                "Rules namespace ownership: {rel} — rules owner '{owner}' has no configured namespace; add it to the CORE-009 rule's owner-prefixes config before adding first-party rules here"
+            )));
             continue;
         };
 
         if !allowed.contains(namespace) {
-            findings.push(RulesFinding {
-                rule_id: RULE_NAMESPACE_OWNERSHIP_VIOLATION,
-                path: Some(rel.clone()),
-                message: format!(
+            findings.push(ownership_finding(
+                &rel,
+                format!(
                     "Rules namespace ownership: {rel} — rules owner '{owner}' may only use {} ids, got '{id}'",
                     namespace_list(allowed)
                 ),
-            });
+            ));
         }
     }
     findings
@@ -135,8 +164,7 @@ pub fn check_namespace_ownership(project_dir: &Path, policy: &OwnerPolicy) -> Ve
 
 /// CORE-026: a rule id declared in more than one rules markdown file is a
 /// whole-tree duplicate.
-#[must_use]
-pub fn check_duplicate_rule_id(project_dir: &Path) -> Vec<RulesFinding> {
+fn check_duplicate_rule_id(project_dir: &Path) -> Vec<ToolFinding> {
     let mut ids_by_value: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for path in discover_rule_files(project_dir) {
         let rel = relative_display(project_dir, &path);
@@ -153,10 +181,12 @@ pub fn check_duplicate_rule_id(project_dir: &Path) -> Vec<RulesFinding> {
     for (id, mut paths) in ids_by_value {
         if paths.len() > 1 {
             paths.sort();
-            findings.push(RulesFinding {
+            findings.push(ToolFinding {
                 rule_id: RULE_DUPLICATE_RULE_ID,
                 path: None,
                 message: format!("Rule duplicate id '{id}' across files: {}", paths.join(", ")),
+                impact: "The same rule id appears in more than one rules markdown file, so codex consumers cannot resolve a single rule.",
+                remediation: "Rename the colliding rules so each frontmatter id is unique across the rules tree.",
             });
         }
     }
@@ -164,11 +194,8 @@ pub fn check_duplicate_rule_id(project_dir: &Path) -> Vec<RulesFinding> {
 }
 
 /// CORE-053: every rules markdown file's body must carry the verbatim
-/// `## Rule` heading on its own line. The frontmatter schema (CORE-027)
-/// does not cover body conventions, so the heading is enforced here over
-/// the same rule-tree walk as the namespace and duplicate-id checks.
-#[must_use]
-pub fn check_rule_body_heading(project_dir: &Path) -> Vec<RulesFinding> {
+/// `## Rule` heading on its own line.
+fn check_rule_body_heading(project_dir: &Path) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
     for path in discover_rule_files(project_dir) {
         let Ok(content) = std::fs::read_to_string(&path) else {
@@ -176,26 +203,24 @@ pub fn check_rule_body_heading(project_dir: &Path) -> Vec<RulesFinding> {
         };
         if !has_rule_heading(&content) {
             let rel = relative_display(project_dir, &path);
-            findings.push(RulesFinding {
+            findings.push(ToolFinding {
                 rule_id: RULE_BODY_HEADING_MISSING,
                 path: Some(rel.clone()),
                 message: format!(
                     "Rule body heading: {rel} — rule markdown must carry a verbatim `## Rule` heading in its body"
                 ),
+                impact: "A rule markdown file's body is missing the `## Rule` heading, so reviewing agents cannot locate the policy text.",
+                remediation: "Add a verbatim `## Rule` heading on its own line above the rule's policy statement.",
             });
         }
     }
     findings
 }
 
-/// True when the post-frontmatter body carries a `## Rule` heading on its
-/// own line. Matches the host parser's body convention.
 fn has_rule_heading(content: &str) -> bool {
     body_after_frontmatter(content).lines().any(|line| line == "## Rule")
 }
 
-/// The content after the YAML frontmatter block, or the whole content
-/// when no frontmatter is present.
 fn body_after_frontmatter(content: &str) -> &str {
     let Some(rest) = content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n"))
     else {
@@ -205,10 +230,7 @@ fn body_after_frontmatter(content: &str) -> &str {
         return content;
     };
     let after_fence = &rest[end + 1..];
-    match after_fence.find('\n') {
-        Some(newline) => &after_fence[newline + 1..],
-        None => "",
-    }
+    after_fence.find('\n').map_or("", |newline| &after_fence[newline + 1..])
 }
 
 /// Resolve the allowed id-prefix set for a rule file: the source-axis
@@ -257,8 +279,6 @@ fn discover_rule_files(project_dir: &Path) -> Vec<PathBuf> {
     paths
 }
 
-/// True when `path` sits at `<adapter>/rules/**` under `axis_root`
-/// (relative depth ≥ 3 with `rules` as the second component).
 fn is_rule_in_axis(path: &Path, axis_root: &Path) -> bool {
     let Ok(rel) = path.strip_prefix(axis_root) else {
         return false;
@@ -267,8 +287,6 @@ fn is_rule_in_axis(path: &Path, axis_root: &Path) -> bool {
     parts.len() >= 3 && parts.get(1).copied() == Some("rules")
 }
 
-/// Resolve the rules-directory owner for `path`: the adapter name for an
-/// axis rule, or the pack name for a shared-pack rule.
 fn owner_for_path(project_dir: &Path, path: &Path) -> Option<String> {
     for axis in ["sources", "targets"] {
         let axis_dir = project_dir.join("adapters").join(axis);
@@ -288,15 +306,13 @@ fn owner_for_path(project_dir: &Path, path: &Path) -> Option<String> {
     None
 }
 
-/// True when `path` is a source-adapter rule (`adapters/sources/<name>/rules/**`).
 fn is_source_rule(project_dir: &Path, path: &Path) -> bool {
     let axis_dir = project_dir.join("adapters").join("sources");
     is_rule_in_axis(path, &axis_dir)
 }
 
-/// Extract the `PREFIX` from a `PREFIX-NNN` rule id (uppercase ASCII
-/// letters, hyphen, three digits). Returns `None` for any other shape so
-/// malformed ids are left to the schema rule.
+/// Extract the `PREFIX` from a `PREFIX-NNN` rule id; `None` for any
+/// other shape so malformed ids are left to the schema rule.
 fn namespace_prefix(id: &str) -> Option<&str> {
     let (prefix, suffix) = id.split_once('-')?;
     let well_formed = !prefix.is_empty()
@@ -306,7 +322,6 @@ fn namespace_prefix(id: &str) -> Option<&str> {
     well_formed.then_some(prefix)
 }
 
-/// Render the allowed set as a sorted, comma-joined `PREFIX-*` list.
 fn namespace_list(namespaces: &BTreeSet<String>) -> String {
     namespaces.iter().map(|namespace| format!("{namespace}-*")).collect::<Vec<_>>().join(", ")
 }
@@ -330,45 +345,16 @@ fn normal_parts(rel: &Path) -> Vec<&str> {
         .collect()
 }
 
-fn relative_display(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
-}
-
-/// Read and parse a rule file's YAML frontmatter into a JSON map.
 fn read_frontmatter(path: &Path) -> Option<BTreeMap<String, JsonValue>> {
     let content = std::fs::read_to_string(path).ok()?;
     let block = frontmatter_block(&content)?;
     serde_saphyr::from_str(block).ok()
 }
 
-/// Extract the YAML block between a leading `---` line and its closing
-/// `---`. Mirrors the host frontmatter splitter.
 fn frontmatter_block(content: &str) -> Option<&str> {
     let rest = content.strip_prefix("---\n").or_else(|| content.strip_prefix("---\r\n"))?;
     let end = rest.find("\n---")?;
     Some(&rest[..end])
-}
-
-/// Recursive file collector that never follows or records symlinks,
-/// matching the host's `follow_links(false)` + symlink-skip discovery.
-fn walk_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_symlink() {
-            continue;
-        }
-        let path = entry.path();
-        if file_type.is_dir() {
-            walk_files(&path, out);
-        } else if file_type.is_file() {
-            out.push(path);
-        }
-    }
 }
 
 #[cfg(test)]

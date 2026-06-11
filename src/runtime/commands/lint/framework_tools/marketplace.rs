@@ -1,58 +1,42 @@
-//! Pure marketplace-manifest checks for the `marketplace`
-//! framework-authoring tool, lifted from the host CLI's retiring
-//! `framework::check::plugins` (`MarketplaceDriftCheck`) imperative
-//! predicate (Road B framework tool).
+//! In-process `marketplace` framework checker (Road B `kind: tool`).
 //!
-//! The tool covers CORE-022 (`plugins.marketplace-drift` — the
-//! `.cursor-plugin/marketplace.json` manifest must satisfy its schema and
-//! agree bidirectionally with the on-disk `plugins/` layout: every
-//! declared plugin has a `skills/` directory and a `plugin.json`, and
-//! every on-disk `plugin.json` is declared). This is a whole-tree,
-//! bidirectional cross-fact check the indexer's per-file passes cannot
-//! express.
-//!
-//! CORE-022 carries no policy — the manifest schema is embedded as a
-//! byte-identical mechanism copy of `schemas/authoring/marketplace.schema.json`
-//! and the plugin layout is structural. The only literals here are
-//! mechanism (the manifest path, the `plugins/` and `.cursor-plugin/`
-//! layout, the `skills/` directory name).
-//!
-//! Carve-out posture: this crate owns its logic and embeds its own copy
-//! of `marketplace.schema.json`, depending only on `serde` / `serde_json`
-//! / `jsonschema`, never the host diagnostics crate (`main.rs` renders
-//! the wire envelope).
+//! Covers CORE-022 (`plugins.marketplace-drift`): the
+//! `.cursor-plugin/marketplace.json` manifest must satisfy the
+//! canonical [`specify_schema::MARKETPLACE_JSON_SCHEMA`] and agree
+//! bidirectionally with the on-disk `plugins/` layout. Carries no
+//! policy — the schema is the canonical embedded constant and the
+//! plugin layout is structural.
 
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::sync::OnceLock;
 
 use serde_json::Value as JsonValue;
 
-/// Codex id every finding stamps (closed `CORE-NNN`).
-pub const RULE_MARKETPLACE_DRIFT: &str = "CORE-022";
+use super::support::{ToolFinding, relative_display};
 
-/// Tool-owned copy of the canonical marketplace manifest schema
-/// (`schemas/authoring/marketplace.schema.json`). Embedded so the tool
-/// never reaches back into the host engine for policy (Road B B-2).
-const MARKETPLACE_SCHEMA_SOURCE: &str = include_str!("../embedded/marketplace.schema.json");
+const RULE_MARKETPLACE_DRIFT: &str = "CORE-022";
 
-/// One marketplace-drift violation: its codex `rule_id`, an optional
-/// project-relative path, and a human-readable message. The caller
-/// stamps the wire severity (always `important`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MarketplaceFinding {
-    /// Codex `CORE-NNN` id this finding belongs to.
-    pub rule_id: &'static str,
-    /// Project-relative, forward-slash path of the offending file.
-    pub path: Option<String>,
-    /// Operator-facing message describing the violation.
-    pub message: String,
+const IMPACT: &str = "The marketplace manifest disagrees with the on-disk plugin layout, so the plugin set advertised to Cursor is wrong.";
+const REMEDIATION: &str = "Reconcile .cursor-plugin/marketplace.json with the plugins/ tree: declare every on-disk plugin and ensure each declared plugin has skills/ and a plugin.json.";
+
+/// Run the marketplace drift check (whole-tree; args carry no policy).
+pub fn run(project_dir: &Path, _args: &[String]) -> Vec<ToolFinding> {
+    check_marketplace_drift(project_dir)
+}
+
+fn drift(rel: &str, message: &str) -> ToolFinding {
+    ToolFinding {
+        rule_id: RULE_MARKETPLACE_DRIFT,
+        path: Some(rel.to_string()),
+        message: message.to_string(),
+        impact: IMPACT,
+        remediation: REMEDIATION,
+    }
 }
 
 /// CORE-022: validate the marketplace manifest shape and its consistency
 /// with the on-disk plugin layout rooted at `project_dir`.
-#[must_use]
-pub fn check_marketplace_drift(project_dir: &Path) -> Vec<MarketplaceFinding> {
+fn check_marketplace_drift(project_dir: &Path) -> Vec<ToolFinding> {
     let manifest_path = project_dir.join(".cursor-plugin").join("marketplace.json");
     let manifest_rel = relative_display(project_dir, &manifest_path);
 
@@ -136,11 +120,12 @@ pub fn check_marketplace_drift(project_dir: &Path) -> Vec<MarketplaceFinding> {
     findings
 }
 
-/// Validate the parsed manifest against the embedded marketplace schema,
-/// returning one finding per constraint violation (or an infrastructure
-/// finding when the schema itself cannot compile).
-fn schema_findings(value: &JsonValue, manifest_rel: &str) -> Vec<MarketplaceFinding> {
-    let validator = match marketplace_validator() {
+/// Validate the parsed manifest against the canonical marketplace
+/// schema, returning one finding per constraint violation (or an
+/// infrastructure finding when the schema itself cannot compile).
+fn schema_findings(value: &JsonValue, manifest_rel: &str) -> Vec<ToolFinding> {
+    let validator = match specify_schema::cached_validator(specify_schema::MARKETPLACE_JSON_SCHEMA)
+    {
         Ok(validator) => validator,
         Err(error) => {
             return vec![drift(
@@ -167,24 +152,11 @@ fn schema_findings(value: &JsonValue, manifest_rel: &str) -> Vec<MarketplaceFind
         .collect()
 }
 
-fn marketplace_validator() -> Result<&'static jsonschema::Validator, String> {
-    static VALIDATOR: OnceLock<Result<jsonschema::Validator, String>> = OnceLock::new();
-    VALIDATOR
-        .get_or_init(|| {
-            let schema: JsonValue = serde_json::from_str(MARKETPLACE_SCHEMA_SOURCE)
-                .map_err(|err| format!("embedded marketplace.schema.json is not JSON: {err}"))?;
-            jsonschema::validator_for(&schema)
-                .map_err(|err| format!("embedded marketplace.schema.json failed to compile: {err}"))
-        })
-        .as_ref()
-        .map_err(Clone::clone)
-}
-
 /// Flag every on-disk `plugins/<plugin>/.cursor-plugin/plugin.json` whose
 /// `<plugin>` directory name is not a declared `source`.
 fn undeclared_findings(
     project_dir: &Path, plugins_dir: &Path, declared: &BTreeSet<String>,
-) -> Vec<MarketplaceFinding> {
+) -> Vec<ToolFinding> {
     let Ok(entries) = std::fs::read_dir(plugins_dir) else {
         return Vec::new();
     };
@@ -213,18 +185,6 @@ fn undeclared_findings(
     }
     findings.sort_by(|a, b| a.message.cmp(&b.message));
     findings
-}
-
-fn drift(rel: &str, message: &str) -> MarketplaceFinding {
-    MarketplaceFinding {
-        rule_id: RULE_MARKETPLACE_DRIFT,
-        path: Some(rel.to_string()),
-        message: message.to_string(),
-    }
-}
-
-fn relative_display(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
 }
 
 #[cfg(test)]

@@ -1,67 +1,110 @@
-//! Pure link-registry checks for the `links-registry` framework-authoring
-//! tool, lifted from the host CLI's retiring `framework::check::schema_links`
-//! (`SchemaLinksCheck`) and the directive half of `framework::check::links`
-//! (`LinksCheck`) imperative predicates
-//! (Road B framework tool).
+//! In-process `links-registry` framework checker (Road B `kind: tool`).
 //!
-//! The tool covers the link-registry family: CORE-018
-//! (`links.brief-schema-link-resolve` — a `schemas.specify.dev` URL in an
-//! adapter brief must resolve to a known tool-owned schema, a tool→schema
-//! registry join) and CORE-020 (`links.unresolved-directive` — a
-//! `<!-- skill: plugin:skill -->` directive must resolve against the
-//! on-disk skill registry discovered under `plugins/`).
-//!
-//! Policy is `specify`-owned, never baked here: CORE-018's tool→schema
-//! registry arrives as a parameter the entrypoint reads from the rule's
-//! `config:` (forwarded by the `kind: tool` evaluator). CORE-020 joins
-//! against a registry discovered from the tree, so it carries no policy.
-//! The only literals in this crate are mechanism — the `adapters/`
-//! sub-tree, the `schemas.specify.dev` URL grammar, the directive
-//! grammar, and the `plugins/<plugin>/skills/<skill>/` layout.
-//!
-//! Carve-out posture: this crate owns its logic and depends only on
-//! `serde` / `serde_json` / `regex`, never the host diagnostics crate
-//! (`main.rs` renders the wire envelope).
+//! Covers CORE-018 (`schemas.specify.dev` URLs in adapter briefs must
+//! resolve to a known tool-owned schema; the tool→schema registry is
+//! CORE-018's forwarded `config:`) and CORE-020 (`<!-- skill:
+//! plugin:skill -->` directives must resolve against the on-disk skill
+//! registry under `plugins/`).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
+use serde_json::Value as JsonValue;
 
-/// Codex ids each check stamps onto its findings (closed `CORE-NNN`).
-pub const RULE_BRIEF_SCHEMA_LINK_RESOLVE: &str = "CORE-018";
-pub const RULE_UNRESOLVED_DIRECTIVE: &str = "CORE-020";
+use super::support::{ToolFinding, parsed_config, relative_display, requested_rule, walk_files};
 
-/// One link-registry violation: its codex `rule_id`, an optional
-/// project-relative path, and a human-readable message. The caller
-/// stamps the wire severity (always `important` for this family).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LinkFinding {
-    /// Codex `CORE-NNN` id this finding belongs to.
-    pub rule_id: &'static str,
-    /// Project-relative, forward-slash path of the offending file.
-    pub path: Option<String>,
-    /// Operator-facing message describing the violation.
-    pub message: String,
-}
+const RULE_BRIEF_SCHEMA_LINK_RESOLVE: &str = "CORE-018";
+const RULE_UNRESOLVED_DIRECTIVE: &str = "CORE-020";
+
+const RULES: &[&str] = &[RULE_BRIEF_SCHEMA_LINK_RESOLVE, RULE_UNRESOLVED_DIRECTIVE];
 
 /// One tool→schema-name registry row the CORE-018 rule supplies in
-/// `config:`: a tool name and the schema names it owns.
+/// `config:`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KnownSchema {
-    /// Tool that owns the listed schemas (e.g. `vectis`).
-    pub tool: String,
-    /// Schema base names the tool owns (e.g. `tokens`, `assets`).
-    pub schemas: Vec<String>,
+struct KnownSchema {
+    tool: String,
+    schemas: Vec<String>,
+}
+
+/// One link-registry violation before wire guidance is attached.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinkFinding {
+    rule_id: &'static str,
+    path: Option<String>,
+    message: String,
+}
+
+/// Run the link-registry family scoped by the candidate sentinel path.
+pub fn run(project_dir: &Path, args: &[String]) -> Vec<ToolFinding> {
+    let scoped = requested_rule(args, RULES);
+    let config = parsed_config(args);
+
+    let mut findings = Vec::new();
+    if scoped.is_none() || scoped == Some(RULE_BRIEF_SCHEMA_LINK_RESOLVE) {
+        let registry = known_schemas(config.as_ref());
+        findings.extend(check_schema_links(project_dir, &registry));
+    }
+    if scoped.is_none() || scoped == Some(RULE_UNRESOLVED_DIRECTIVE) {
+        findings.extend(check_directives(project_dir));
+    }
+    findings.into_iter().map(wire_finding).collect()
+}
+
+fn wire_finding(finding: LinkFinding) -> ToolFinding {
+    let (impact, remediation) = guidance(finding.rule_id);
+    ToolFinding {
+        rule_id: finding.rule_id,
+        path: finding.path,
+        message: finding.message,
+        impact,
+        remediation,
+    }
+}
+
+fn guidance(rule_id: &str) -> (&'static str, &'static str) {
+    match rule_id {
+        RULE_BRIEF_SCHEMA_LINK_RESOLVE => (
+            "An adapter brief references a schemas.specify.dev URL that does not resolve to a known tool-owned schema, so readers follow a dead link.",
+            "Point the URL at a schema named in the rule's known-schemas registry, or register the schema with its owning tool first.",
+        ),
+        _ => (
+            "A skill directive references a plugin or skill that does not exist on disk, so the directive cannot resolve at runtime.",
+            "Fix the `<!-- skill: plugin:skill -->` directive to name an existing plugin and skill under plugins/.",
+        ),
+    }
+}
+
+/// Parse CORE-018's tool→schema registry out of the forwarded
+/// `config.known-schemas` array. Rows missing fields are dropped.
+fn known_schemas(config: Option<&JsonValue>) -> Vec<KnownSchema> {
+    config
+        .and_then(|value| value.get("known-schemas"))
+        .and_then(JsonValue::as_array)
+        .map(|rows| rows.iter().filter_map(known_schema_row).collect())
+        .unwrap_or_default()
+}
+
+fn known_schema_row(row: &JsonValue) -> Option<KnownSchema> {
+    let tool = row.get("tool").and_then(JsonValue::as_str)?;
+    let schemas = row
+        .get("schemas")
+        .and_then(JsonValue::as_array)?
+        .iter()
+        .filter_map(|s| s.as_str().map(str::to_string))
+        .collect();
+    Some(KnownSchema {
+        tool: tool.to_string(),
+        schemas,
+    })
 }
 
 /// CORE-018: every `https://schemas.specify.dev/<tool>/<name>.schema.json`
 /// URL in an adapter brief or reference must resolve to a known
 /// tool-owned schema named in the supplied `registry`. URLs in fenced or
 /// inline code are ignored.
-#[must_use]
-pub fn check_schema_links(project_dir: &Path, registry: &[KnownSchema]) -> Vec<LinkFinding> {
+fn check_schema_links(project_dir: &Path, registry: &[KnownSchema]) -> Vec<LinkFinding> {
     let adapters_dir = project_dir.join("adapters");
     if !adapters_dir.is_dir() {
         return Vec::new();
@@ -117,8 +160,7 @@ fn is_known_schema(registry: &[KnownSchema], tool: &str, name: &str) -> bool {
 /// CORE-020: every `<!-- skill: plugin:skill -->` directive across the
 /// tree must resolve against the skill registry discovered under
 /// `plugins/`. Directives in fenced or inline code are ignored.
-#[must_use]
-pub fn check_directives(project_dir: &Path) -> Vec<LinkFinding> {
+fn check_directives(project_dir: &Path) -> Vec<LinkFinding> {
     let directive_re = directive_pattern();
     let fence_re = fenced_code_pattern();
     let inline_re = inline_code_pattern();
@@ -168,8 +210,10 @@ pub fn check_directives(project_dir: &Path) -> Vec<LinkFinding> {
 /// `plugins/<plugin>/skills/<skill>/SKILL.md` paths.
 fn build_skill_registry(project_dir: &Path) -> BTreeMap<String, BTreeSet<String>> {
     let plugins_dir = project_dir.join("plugins");
+    let mut files = Vec::new();
+    walk_files(&plugins_dir, &mut files);
     let mut registry: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for path in walk_files(&plugins_dir) {
+    for path in files {
         if path.file_name().and_then(|n| n.to_str()) != Some("SKILL.md") {
             continue;
         }
@@ -196,44 +240,14 @@ fn skip_path(path: &str) -> bool {
 
 /// Collect every `.md` file under `dir`, skipping symlinked paths.
 fn walk_markdown(dir: &Path) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = walk_files(dir)
+    let mut files = Vec::new();
+    walk_files(dir, &mut files);
+    let mut out: Vec<PathBuf> = files
         .into_iter()
         .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("md"))
         .collect();
     out.sort();
     out
-}
-
-/// Recursive file collector that never follows or records symlinks,
-/// matching the host's `follow_links(false)` + symlink-skip walk.
-fn walk_files(dir: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    collect_files(dir, &mut out);
-    out
-}
-
-fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_symlink() {
-            continue;
-        }
-        let path = entry.path();
-        if file_type.is_dir() {
-            collect_files(&path, out);
-        } else if file_type.is_file() {
-            out.push(path);
-        }
-    }
-}
-
-fn relative_display(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
 }
 
 fn schema_url_pattern() -> &'static Regex {
