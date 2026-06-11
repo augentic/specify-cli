@@ -87,7 +87,6 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
     let prepared = prep::prepare(&prep::PrepRequest {
         adapter: &binding.adapter,
         project_dir: &ctx.project_dir,
-        plan_dir: ctx.plan_dir.as_deref(),
         op: prep::SourceOp::Survey,
         source: source_path.as_deref(),
         leads: &[],

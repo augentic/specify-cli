@@ -33,7 +33,7 @@ mod validate_manifest;
 
 pub use core::{
     ADAPTER_FILENAME, ADAPTERS_DIR, AdapterLocation, Axis, BuildInputDeclaration, Execution,
-    PlatformsCapability, ResolvedSourceAdapter, ResolvedTargetAdapter, SourceAdapter,
+    PlatformsCapability, ResolvedTargetAdapter, SourceAdapter,
     TargetAdapter, cache_dir, scratch_dir,
 };
 
