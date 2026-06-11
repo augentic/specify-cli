@@ -6,6 +6,7 @@ use crate::support::*;
 fn plan_next_picks_first_pending_text() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
+    let _lock = project.hold_plan_lock();
 
     let assert =
         specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
@@ -17,6 +18,7 @@ fn plan_next_picks_first_pending_text() {
 fn plan_next_picks_first_pending_json() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
+    let _lock = project.hold_plan_lock();
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -42,6 +44,7 @@ fn plan_next_journals_entry_advanced() {
     // matching `plan.entry.advanced` event fires only on the write.
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
+    let _lock = project.hold_plan_lock();
 
     specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
 
@@ -73,6 +76,7 @@ fn plan_next_journals_entry_advanced() {
 fn plan_next_drained_no_journal() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
+    let _lock = project.hold_plan_lock();
 
     specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
     assert!(
@@ -85,6 +89,7 @@ fn plan_next_drained_no_journal() {
 fn plan_next_reports_in_progress() {
     let project = Project::init();
     project.seed_plan(A_IN_PROGRESS);
+    let _lock = project.hold_plan_lock();
 
     let text = specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
@@ -106,6 +111,7 @@ fn plan_next_reports_in_progress() {
 fn plan_next_all_done_text() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
+    let _lock = project.hold_plan_lock();
 
     let text = specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
@@ -127,6 +133,7 @@ fn plan_next_all_done_text() {
 fn plan_next_stuck_when_deps_unmet() {
     let project = Project::init();
     project.seed_plan(STUCK_PLAN);
+    let _lock = project.hold_plan_lock();
 
     let json = specify_cmd()
         .current_dir(project.root())

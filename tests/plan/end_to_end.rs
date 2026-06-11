@@ -63,8 +63,8 @@ use serde_json::Value;
 use tempfile::{TempDir, tempdir};
 
 use crate::common::{
-    copy_dir, init_workspace, omnia_schema_dir, parse_json, parse_stderr, parse_stdout, repo_root,
-    specify_cmd,
+    copy_dir, hold_plan_lock, init_workspace, omnia_schema_dir, parse_json, parse_stderr,
+    parse_stdout, repo_root, specify_cmd,
 };
 
 // ---------------------------------------------------------------------------
@@ -349,6 +349,11 @@ fn fan_in_twice_fan_out_once() {
     let root = tmp.path();
 
     prove_plan_time_fan_out(root);
+
+    // From here on this test *is* the driver session: hold the plan
+    // lock the way the /spec:execute snippet does, so the gated verbs
+    // (`plan next`, `slice merge run`) accept the writes.
+    let _lock = hold_plan_lock(root);
 
     // --- depends-on ordering, gate 1: the driver must pick
     // identity-contracts first — never identity-service while its upstream

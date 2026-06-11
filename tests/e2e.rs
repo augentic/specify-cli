@@ -20,8 +20,8 @@ use serde_json::Value;
 
 mod common;
 use common::{
-    GIT_ENV, Project, assert_golden_at, copy_dir, omnia_schema_dir, parse_stdout, repo_root,
-    run_git, specify_cmd,
+    GIT_ENV, Project, assert_golden_at, copy_dir, hold_plan_lock, omnia_schema_dir, parse_stdout,
+    repo_root, run_git, specify_cmd,
 };
 use tempfile::tempdir;
 
@@ -120,6 +120,7 @@ slices:
     status: in-progress
 ",
     );
+    let _lock = project.hold_plan_lock();
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -192,6 +193,10 @@ slices:
         &e2e_fixtures().join("merge-two-spec-slice"),
         &project_root.join(".specify/slices/my-slice"),
     );
+
+    // The driver lock lives at the *workspace* root (`--plan-dir`), not
+    // the slot — the probe must resolve through `Layout::plan_dir()`.
+    let _lock = hold_plan_lock(workspace_root);
 
     specify_cmd()
         .current_dir(&project_root)

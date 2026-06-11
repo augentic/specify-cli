@@ -172,6 +172,33 @@ fn load_no_migration_same_major() {
 }
 
 #[test]
+fn load_refuses_migration_owed_pin() {
+    // The exit-4 wiring: a pinned major strictly older than the
+    // binary's raises ProjectNeedsMigration from `load`. Unreachable at
+    // runtime while the binary is 0.x, so the injected `current` keeps
+    // the refusal covered until the 1.0 cut.
+    let tmp = tempdir().unwrap();
+    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"1.5.0\"\n");
+    let err = ProjectConfig::load_with_current(tmp.path(), "2.0.0")
+        .expect_err("older pinned major refused");
+    match err {
+        Error::ProjectNeedsMigration { from, to } => {
+            assert_eq!(from, "1.5.0");
+            assert_eq!(to, "2.0.0");
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+}
+
+#[test]
+fn load_same_major_injected_current() {
+    let tmp = tempdir().unwrap();
+    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"2.0.0\"\n");
+    let cfg = ProjectConfig::load_with_current(tmp.path(), "2.4.1").expect("same major loads");
+    assert_eq!(cfg.specify_version.as_deref(), Some("2.0.0"));
+}
+
+#[test]
 fn load_for_migration_same_major() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");

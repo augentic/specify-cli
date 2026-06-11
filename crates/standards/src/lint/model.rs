@@ -133,8 +133,8 @@ pub struct WorkspaceModel {
     /// Version discriminant pinned to `1` per the standards-layer contract
     /// §"`WorkspaceModel`".
     pub version: WorkspaceModelVersion,
-    /// Scan root; project root for `consumer`, framework checkout
-    /// for `framework`.
+    /// Scan root; project root for `consumer`, the framework repo root
+    /// (`--framework-root`, default cwd) for `framework`.
     pub project_dir: String,
     /// Profile selector that controls which extractors run.
     pub scan_profile: ScanProfile,

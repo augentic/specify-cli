@@ -79,7 +79,7 @@ This collapsed 73 integration binaries to 30 (standards 24 → 5, host 34 → 16
 
 **Decision (2026-06).** The `specify lint framework` engine is a generic, rule-agnostic dispatcher carrying **no rule-specific check logic and no rule policy**. Every framework `CORE-*` check resolves through one of two roads, and `specify` (the framework repo) owns both the checks and the values they enforce:
 
-- **Road A — declarative hint.** The rule carries a `kind:` ∈ `schema | reference-resolves | cardinality | set-coverage | set-eq | constant-eq | content-digest-eq | unique | fenced-block | regex | path-pattern | presence | field-grammar | cross-reference`, interpreted by a generic per-kind evaluator in `crates/standards/src/lint/eval/*` over `WorkspaceModel` facts. `hint.value` names the mechanism selector and `hint.config` carries the policy. The per-kind selector semantics live in the eval modules' rustdoc and [AGENTS.md §"Crate graph"](./AGENTS.md) (`crates/standards/src/lint/` bullet).
+- **Road A — declarative hint.** The rule carries a `kind:` ∈ `schema | reference-resolves | cardinality | set-coverage | set-eq | constant-eq | content-digest-eq | unique | fenced-block | regex | path-pattern | presence | field-grammar | cross-reference | cli-contract`, interpreted by a generic per-kind evaluator in `crates/standards/src/lint/eval/*` over `WorkspaceModel` facts. `hint.value` names the mechanism selector and `hint.config` carries the policy. The per-kind selector semantics live in the eval modules' rustdoc and [AGENTS.md §"Crate graph"](./AGENTS.md) (`crates/standards/src/lint/` bullet).
 - **Road B — referenced WASI tool.** The rule carries `kind: tool, value: <tool>` plus a sentinel `path-pattern`. `lint/eval/tool.rs` resolves the tool **by name** from a declared inventory, runs it once per lint, and folds its `DiagnosticReport` (findings stamped with the tool's own `rule_id` / `severity`; the engine restamps only `id` / `fingerprint`).
 
 **Policy lives in the rule's `config:`**, in `specify`. Road A reads it directly; Road B has it forwarded as a second positional argument — the engine relays, it never interprets. Enforced permanently by the Layer-3 guard test [`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs), which fails if any eval arm or `framework/check` module reintroduces a rule-specific literal. The only engine-side constants left are mechanism (evidence-size / snippet / iteration bounds, the repo-local rust-quality threshold).
@@ -124,6 +124,18 @@ Per workflow §"Note to the implementing agent", touching any of these symbols r
 ### First-party `<adapter>` shorthand at init
 
 `specify init <adapter>` accepts a first-party **shorthand** — `^[a-z][a-z0-9-]*(@v\d+)?$` (`omnia`, `omnia@v1`; ref defaults to `v1`) — alongside the local-path and GitHub-URL forms. `AdapterUri::parse` (`crates/workflow/src/init/adapter_uri.rs`) expands it to the canonical published adapter `https://github.com/augentic/specify/adapters/targets/<name>@<ref>` (a networked sparse checkout). `init` is target-only, so the shorthand resolves under `adapters/targets/`; anything carrying `:` or `/` is not shorthand and continues through `from_local` / `from_github` unchanged.
+
+### Per-adapter versioning — forward position only
+
+Recorded position for RM-21 (third-party adapter ecosystem); **no pre-1.0 commitment**. Today `omnia@v1` pins a *repo ref* of `augentic/specify` — the adapter's content is whatever that ref's tree carries, and `adapter.yaml.version` is a schema field, not a resolution key. Per-adapter semver would change, relative to that status quo:
+
+- **Resolution key** — the shorthand grammar becomes `<name>@<semver-req>` resolved against a per-adapter release index, not a repo branch/tag; `adapter.yaml.version` graduates from descriptive field to resolution authority (and must become full semver).
+- **Cache identity** — the manifest cache keys on `(name, adapter-version)` instead of `(name, repo-ref)`; two adapters published from one repo ref stop sharing an identity.
+- **Compatibility contract** — an adapter release declares the CLI floor it needs (a `requires-cli` field validated at resolve time), replacing today's implicit "the ref tree matches the binary that documented it".
+- **Migration surface** — adapter majors become `MigrationKind` candidates alongside CLI majors, so a project pinned to `omnia@^1` crossing to `@2` runs a registered migrator rather than a silent re-vendor.
+- **Namespacing** — third-party adapters need an owner segment (`org/name@req`) and a publish channel outside `augentic/specify`; name-axis uniqueness (§"Adapter name uniqueness") then applies per-namespace.
+
+Until RM-21 activates, repo-ref pinning stays: it is one mechanism, already exercised, and the ecosystem is N=1 publisher. Revisit when the first third-party adapter exists or RM-21 is scheduled, whichever lands first.
 
 ## Plan lifecycle: two stored states
 
@@ -326,6 +338,16 @@ Workspace routing runs phase work inside a materialised slot while `plan.yaml` /
 - **Merge keeps its writer monopoly.** With the override, slot-side `specify slice merge` stamps per-entry `done` in the workspace plan — the "sole writer of `done`" contract holds in workspace mode without a second stamping verb at the workspace.
 - **No back-pointer, no discovery.** The CLI never guesses: an override naming a plan-less directory fails with the same typed errors (e.g. `slice-synthesize-plan-missing`), whose message cites the overridden path. Adapter resolution is untouched — slot-side source adapters resolve project-locally (vendored tree or manifest cache) per §"Adapter loader axis routing".
 
+## Slot adapter provisioning via workspace sync (RFC-45)
+
+Slots carry no plan and no adapters by design, yet slot-side phase work must resolve the adapters the workspace's `plan.yaml.sources` bind. The loader stays exactly as recorded (§"Adapter loader axis routing": resolution is project-local only); `specify workspace sync` provisions the probe location the loader already consults — it mirrors the workspace's adapter set (both axes, vendored tree and manifest-cache mirror alike, `tools.yaml` sidecars included) into each synced slot's `.specify/cache/manifests/{sources,targets}/`. Mirroring is unconditional over the workspace adapter set: no plan parsing in sync, and the cache is gitignored so slots carry no repo residue. Implementation: `crates/workflow/src/registry/workspace/mirror.rs`.
+
+- **Per-name delete-then-copy, no GC of foreign names.** Each workspace-owned name is removed and re-copied per sync, so re-sync refreshes. Names the workspace does not own are never pruned — the slot cache has a second legitimate writer (`specify init` caches greenfield adapter seeds), and a per-axis wipe could delete an adapter only the slot has. A name present at the workspace in both probe locations copies from the manifest cache, matching the loader's probe order.
+- **Slot-vendored names are skipped at mirror time, cross-axis.** The loader probes the cache *before* the vendored tree, so "the slot's own copy wins" cannot come from probe order — the mirror skips any name the slot vendors under `adapters/{sources,targets}/<name>/` on either axis. The same-axis skip keeps the slot copy winning resolution; the opposite-axis skip means the mirror can never manufacture an `adapter-name-axis-collision` in a previously healthy slot.
+- **Local symlink slots are mirrored too** — unlike the contracts distribution, which skips them — because the adapter gap is slot-side resolution regardless of slot backing, and the write lands only under the peer's gitignored `.specify/cache/`. A `url: .` self-slot is skipped: mirroring the workspace onto itself would remove-then-copy the cache from itself. Peers without `.specify/` are skipped, never scaffolded.
+
+The rejected alternative — a resolve-time plan-root fallback — shipped mid-run and was removed (`204e3867`): it contradicted the loader contract, keyed on the `adapter-not-found` string discriminant, and covered only the source axis. Staleness keeps its existing answer everywhere in workspace mode: re-run sync (the per-slice sync in the execute loop makes that automatic).
+
 ## Registry projection and topology cache (RFC-36)
 
 Give every fact one writer; derive everything else. A project's *authored intent* — target `adapter` and `description` — lives only in its `.specify/project.yaml`. Its *routing identity* is **derived, not authored**: a deterministic structural projection of the project's own baseline. There are no `capabilities` / `keywords` facets — a derived routing identity needs no second writer duplicating what the baseline already states. `registry.yaml` carries membership + location, cross-project `contracts` wiring, and an optional `adapter` used solely as a greenfield scaffold seed.
@@ -412,6 +434,15 @@ Consumer projects resolve shared `UNI-*` rules without a co-located framework ch
 - **One artifact.** A synthesized slice persists exactly one structured file, `model.yaml`, with provenance inline (`requirements[].claims[]` carrying `winner`, plus `resolution`). There is no on-disk `provenance.yaml`.
 - **Provenance is a projection.** `ProvenanceIndex` (`crates/workflow/src/slice/provenance.rs`) is computed from `model.yaml` and emitted on demand by `specify slice provenance`; it is never loaded from disk. There is no file-drift gate (a projection cannot drift from its source); spec-vs-model staleness and `(source, id)` orphan checks apply. There is no `slice.provenance.written` journal kind.
 - **One schema.** `SLICE_MODEL_JSON_SCHEMA` validates both the agent's synthesis-response `model` and the persisted file; kernel-owned fields are optional, re-derived, and ignored if supplied (normalize, never reject), so `DRAFT_MODEL_JSON_SCHEMA` and the `slice-synthesize-kernel-field-usurped` abort both retire.
+
+## Projection over persistence
+
+Derived state is projected on demand from the journal plus committed artifacts — or pinned to its single authored home by lint — never persisted as a second hand-maintained copy. A projection cannot drift from its source; a persisted copy drifts the moment the source moves.
+
+- **The journal is the anchor.** `.specify/journal.jsonl` ([§"Journal event names"](#journal-event-names)) plus the committed artifacts (`plan.yaml`, slice `metadata.yaml`, the specs baseline) are the only stores; everything downstream is recomputed per invocation.
+- **Live projections.** Provenance ([§"Single slice-model artifact"](#single-slice-model-artifact) — "Provenance is a projection") and `specify plan status`, which projects plan entries + the candidate slice's lifecycle + the journal tail into a deterministic `next-action` with stop classification read from the `slice.synthesize.failed` / `slice.build.failed` / `slice.merge.failed` terminals, writing nothing and emitting no event. RM-15's re-entry fields extend the same body rather than persisting a status file.
+- **One read surface.** `specify journal show [--filter <event-id-prefix>] [--limit N]` is the read verb over the journal; eval probes and any future dashboard consume it instead of bespoke `jq` bridges over the JSONL.
+- **Lint-pinned homes.** Where derived prose must exist as a copy (the eval catalog's status table, restated vocabulary), a framework rule pins it to its authored home (CORE-056 catalog↔runs agreement, `content-digest-eq`) so divergence is a lint finding, not a review discovery.
 
 ## Authority: document-level plus one override (v1)
 

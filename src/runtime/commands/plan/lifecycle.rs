@@ -8,7 +8,8 @@ use specify_diagnostics::{
 };
 use specify_error::{Error, Result};
 use specify_workflow::change::{
-    Lifecycle, NextBody, NextReason, Plan, Status, plan_doctor, plan_finding, plan_next_body,
+    Lifecycle, NextActionKind, NextBody, NextReason, Plan, Status, StatusBody, drained_line,
+    plan_doctor, plan_finding, plan_next_body, plan_status_body,
 };
 use specify_workflow::config::with_state;
 use specify_workflow::registry::Registry;
@@ -59,6 +60,12 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
 /// return it. The only writer of per-entry `in-progress` per
 /// workflow §CLI surface.
 pub(super) fn next(ctx: &Ctx) -> Result<()> {
+    // RFC-44 R2: refuse an unlocked driver before touching plan state.
+    // A missing plan.yaml falls through to the artifact-not-found error
+    // below — the lock refusal only makes sense once a plan exists.
+    if ctx.layout().plan_path().exists() {
+        specify_workflow::plan_lock::require_held(ctx.layout())?;
+    }
     // The slice's target adapter is resolved on demand from the bound
     // project's topology, so the
     // topology inputs (`config` / `project_dir`) ride into the state
@@ -93,6 +100,18 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
+/// `specify plan status` — read-only projection of the plan's
+/// execution state into a deterministic `next-action`. All projection
+/// logic lives in `specify-workflow` (`plan_status_body`); the handler
+/// loads the plan and renders the body. No journal emit, no writes.
+pub(super) fn status(ctx: &Ctx) -> Result<()> {
+    let plan_path = require_file(ctx)?;
+    let plan = Plan::load(&plan_path)?;
+    let body = plan_status_body(&plan, ctx.layout())?;
+    ctx.write(&body, write_status_text)?;
+    Ok(())
+}
+
 /// `specify plan transition <name> <target>` — dispatches to either
 /// the plan-level Gate 1 stamp (`<plan-name> approved`) or the
 /// per-entry close (`<entry-name> done`). `--undo` swaps the
@@ -118,9 +137,10 @@ pub(super) fn transition(
             detail,
         })?;
     let plan_path = ctx.layout().plan_path();
+    let layout = ctx.layout();
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
         if undo {
-            dispatch_undo(plan, &plan_path, &name)
+            dispatch_undo(plan, layout, &plan_path, &name)
         } else {
             // Clap's `required_unless_present = "undo"` guarantees a
             // target here; the unwrap_or surfaces the same usage
@@ -129,7 +149,7 @@ pub(super) fn transition(
                 flag: "<target>",
                 detail: "transition target is required unless --undo is set".to_string(),
             })?;
-            dispatch_transition(plan, &plan_path, &name, &target)
+            dispatch_transition(plan, layout, &plan_path, &name, &target)
         }
     })?;
     // workflow §Observability: every status / lifecycle move emits
@@ -170,7 +190,8 @@ pub(super) fn transition(
 }
 
 fn dispatch_undo(
-    plan: &mut Plan, plan_path: &std::path::Path, name: &str,
+    plan: &mut Plan, layout: specify_workflow::config::Layout<'_>, plan_path: &std::path::Path,
+    name: &str,
 ) -> Result<TransitionBody> {
     if name == plan.name.as_str() {
         return Err(Error::Argument {
@@ -181,6 +202,9 @@ fn dispatch_undo(
                 .to_string(),
         });
     }
+    // RFC-44 R2: per-entry status walks are loop-phase plan-state
+    // writes — refuse an unlocked driver.
+    specify_workflow::plan_lock::require_held(layout)?;
     let (from, to) = plan.transition_undo(name)?;
     let entry = plan.entries.iter().find(|e| e.name == name).ok_or_else(|| Error::Diag {
         code: "plan-entry-not-found",
@@ -198,7 +222,8 @@ fn dispatch_undo(
 }
 
 fn dispatch_transition(
-    plan: &mut Plan, plan_path: &std::path::Path, name: &str, target: &str,
+    plan: &mut Plan, layout: specify_workflow::config::Layout<'_>, plan_path: &std::path::Path,
+    name: &str, target: &str,
 ) -> Result<TransitionBody> {
     if name == plan.name.as_str() {
         // Plan-level transition: only `approved` is legal.
@@ -241,6 +266,11 @@ fn dispatch_transition(
     // `blocked`/`failed`/`skipped` are not v1 states.
     match target {
         "done" => {
+            // RFC-44 R2: the per-entry close is a loop-phase plan-state
+            // write — refuse an unlocked driver. The plan-level Gate 1
+            // stamp above is exempt (it precedes any driver session);
+            // invalid targets fail on the argument before the probe.
+            specify_workflow::plan_lock::require_held(layout)?;
             let idx =
                 plan.entries.iter().position(|e| e.name == name).ok_or_else(|| Error::Diag {
                     code: "plan-entry-not-found",
@@ -356,6 +386,40 @@ fn write_validate_row_text(w: &mut dyn Write, finding: &Diagnostic) -> std::io::
     let code = finding.rule_id.as_deref().unwrap_or("<unknown>");
     let entry_col = finding.slice.as_ref().map_or_else(String::new, |e| format!("[{e}]"));
     writeln!(w, "{label} {:<32} {:<24} {}", code, entry_col, finding.impact)
+}
+
+/// Text rendering for `plan status`: a plan/entries header, then the
+/// next-action line. Stops render the stop-conditions block shape
+/// (`stop: <reason>` + indented context + `hint:`); drained renders
+/// the literal stop-conditions drained string.
+fn write_status_text(w: &mut dyn Write, body: &StatusBody) -> std::io::Result<()> {
+    writeln!(w, "plan: {} ({})", body.plan, body.lifecycle)?;
+    writeln!(
+        w,
+        "entries: {} done / {} in-progress / {} pending",
+        body.counts.done, body.counts.in_progress, body.counts.pending
+    )?;
+    match (body.action, &body.stop) {
+        (NextActionKind::Drained, _) => writeln!(w, "{}", drained_line(&body.plan))?,
+        (NextActionKind::Stop, Some(stop)) => {
+            writeln!(w, "stop: {}", stop.reason)?;
+            if let Some(slice) = &body.slice {
+                writeln!(w, "  slice: {slice}")?;
+                writeln!(w, "  project: {}", body.project.as_deref().unwrap_or("-"))?;
+            }
+            if let Some(detail) = &stop.detail {
+                writeln!(w, "  detail: {detail}")?;
+            }
+            writeln!(w, "hint: {}", stop.hint)?;
+        }
+        _ => writeln!(w, "next-action: {}", body.next_action)?,
+    }
+    if body.action != NextActionKind::Drained
+        && let Some(resume) = &body.resume
+    {
+        writeln!(w, "resume: {resume}")?;
+    }
+    Ok(())
 }
 
 fn write_next_text(w: &mut dyn Write, body: &NextBody) -> std::io::Result<()> {

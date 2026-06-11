@@ -17,6 +17,7 @@ slices:
     status: done
 ",
     );
+    let _lock = project.hold_plan_lock();
 
     specify_cmd()
         .current_dir(project.root())

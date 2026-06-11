@@ -4,7 +4,7 @@ Workspace shape, crate dependency direction, the WASI carve-out, the `Layout<'a>
 
 ## Workspace layout
 
-Binary crate (`name = "specify"`) at the repo root. `src/bin/specify.rs` is a thin `ExitCode` shim over `specify::runtime::run` in [`src/lib.rs`](../../src/lib.rs); hosting dispatch in a library module keeps the binary entry point minimal and supports doc tests. The whole CLI lives under [`src/runtime/`](../../src/runtime/) — including both lint surfaces (`lint project` and `lint framework`). Workspace member crates live under `crates/`; the dependency direction is leaf → root:
+Binary crate (`name = "specify"`) at the repo root. [`src/main.rs`](../../src/main.rs) is a thin `ExitCode` shim over `specify::runtime::run` in [`src/lib.rs`](../../src/lib.rs); hosting dispatch in a library module keeps the binary entry point minimal and supports doc tests. The whole CLI lives under [`src/runtime/`](../../src/runtime/) — including both lint surfaces (`lint project` and `lint framework`). Workspace member crates live under `crates/`; the dependency direction is leaf → root:
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
@@ -12,6 +12,7 @@ specify-digest                   # leaf — sha2 + base16ct only (SHA-256 hex di
 specify-schema                   # depends on specify-error (embedded JSON Schemas + jsonschema plumbing)
 specify-diagnostics              # depends on specify-{error,schema,digest} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
 specify-model                    # depends on specify-{error,diagnostics} (artifact types + parsers: spec, task, evidence, discovery; shared atomic writer)
+specify-agents                   # depends on specify-{error,digest,model} (init-time AGENTS.md context-fence generation); Ctx-free, consumed only by the root binary
 specify-tool                     # depends on specify-{error,diagnostics,digest} (WASI tool runner; wasmtime, gated)
 specify-validate                 # depends on specify-{model,error,diagnostics} — artifact rule registry; NOT on specify-workflow or anything named lint
 specify-standards                # standards layer — depends on specify-{error,schema,digest,diagnostics}; NOT on specify-workflow or specify-tool
@@ -27,7 +28,7 @@ The framework authoring checks behind `specify lint framework` live in the `spec
 
 `specify-standards` (standards) and `specify-workflow` (workflow) are deliberately siblings. The §"Principles" / "No lifecycle authority in review" rule from [DECISIONS.md §"Standards layer split into `specify-standards` and `specify-schema`"](../../DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema) is a type-system invariant rather than a coding convention: `specify-workflow` MUST NOT depend on `specify-standards` (review code never reaches workflow lifecycle types), and `specify-standards` MUST NOT depend on `specify-workflow` (review code cannot transition a slice or stamp a plan). Both depend on `specify-schema` so the embedded JSON Schemas live in one place, and both depend on the `specify-diagnostics` leaf for the neutral `Diagnostic` substrate — so a workflow validator mints findings without `specify-workflow` ever depending on anything named `lint`. See [DECISIONS.md §"Drained `Error::Validation` and the `Diagnostic` substrate"](../../DECISIONS.md#drained-errorvalidation-and-the-diagnostic-substrate). Refer to [DECISIONS.md §"Standards layer split into `specify-standards` and `specify-schema`"](../../DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema).
 
-Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-version = "1.93"`, MIT/Apache-2.0) and the shared `[workspace.lints]` block in the root `Cargo.toml` (clippy `all`/`cargo`/`nursery`/`pedantic` warned, plus a hand-picked `restriction` subset and a tightened rust lint set — `missing_debug_implementations`, `single_use_lifetimes`, `redundant_lifetimes`).
+Every crate uses the shared `[workspace.package]` (`edition = "2024"`, `rust-version = "1.95"`, MIT/Apache-2.0) and the shared `[workspace.lints]` block in the root `Cargo.toml` (clippy `all`/`cargo`/`nursery`/`pedantic` warned, plus a hand-picked `restriction` subset and a tightened rust lint set — `missing_debug_implementations`, `single_use_lifetimes`, `redundant_lifetimes`).
 
 **Hard dependency rule:** `specify-error` is the leaf and depends on no other workspace crate. Adding a workspace dep to `specify-error` re-introduces the cycle the layering was designed to avoid; do not. The long-form rationale lives in [DECISIONS.md §"Error layering"](../../DECISIONS.md#error-layering).
 
@@ -62,7 +63,7 @@ The WASI tool cache root resolves `$SPECIFY_TOOLS_CACHE` → `$XDG_CACHE_HOME/sp
 
 ## WASI carve-outs
 
-WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lint posture. Members are `wasi-tools/contract` (`specify-contract`) and `wasi-tools/vectis` (`specify-vectis`). Build them by running `cargo build` inside `wasi-tools/` so the sibling workspace's lockfile and target dir are used — `cargo make contract-wasm` is a thin wrapper that does this for `specify-contract` and is required before running `tests/tool/contract.rs`; `scripts/build-vectis-local.sh` does the same for `specify-vectis` and adds sha256 sidecars for pre-release smoke tests.
+WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lint posture (a dedicated CI job runs its clippy + tests; see AGENTS.md). Members are the two adapter validators — `wasi-tools/contract` (`specify-contract`) and `wasi-tools/vectis` (`specify-vectis`) — the seven framework checkers (`scenarios`, `skill-body`, `agent-teams`, `links-registry`, `marketplace`, `prose`, `rules`), and the workspace-internal `wasi-tools/framework-wire` lib crate that owns the checkers' shared stdout envelope. Build them by running `cargo build` inside `wasi-tools/` so the sibling workspace's lockfile and target dir are used — `cargo make contract-wasm` is a thin wrapper that does this for `specify-contract` and refreshes its checked-in `dist/` blob + sha256 sidecar (required before running `tests/tool/contract.rs`); `cargo make framework-wasm` does the same for the seven checkers; `scripts/build-vectis-local.sh` does it for `specify-vectis` and adds sha256 sidecars for pre-release smoke tests.
 
 `wasi-tools/contract` and `wasi-tools/vectis` are deliberate carve-outs from the workspace's Render/emit/`specify-error` discipline. They ship as standalone WASI components and live in their own sibling workspace at `wasi-tools/Cargo.toml`, which inherits a leaner lint posture and a minimal `[workspace.dependencies]` set. Do not pull `specify-error` (or any other host workspace crate that drags in `wasmtime`, `tokio`, `ureq`, …) into either; the carve-out comments in `wasi-tools/contract/src/main.rs` and `wasi-tools/vectis/src/lib.rs` are authoritative.
 
@@ -72,7 +73,7 @@ When editing these crates:
 
 - They cannot use anything that isn't WASI-compatible. No threads, no networking primitives outside the declared WASI imports, no clock unless the manifest declares it.
 - They stay outside the host workspace's Render/emit/`specify-error` discipline. Do not pull host workspace crates into either; the carve-out is the single source of truth for the plugin's logic.
-- Rebuild artifacts from inside `wasi-tools/` so the sibling workspace's lockfile is used (`cargo make contract-wasm` and `scripts/build-vectis-local.sh` both do this). Do not check the `.wasm` outputs into git — the release workflow handles distribution.
+- Rebuild artifacts from inside `wasi-tools/` so the sibling workspace's lockfile is used (`cargo make contract-wasm`, `cargo make framework-wasm`, and `scripts/build-vectis-local.sh` all do this). The seven framework checkers and the contract tool ship **checked-in** `dist/<name>-<ver>.wasm` blobs, each pinned by a `.sha256` sidecar and a digest drift test (`dist_digests_pinned`, `tool contract::dist_digest_pinned`); vectis release blobs are distributed by the release workflow instead and stay out of git.
 - Keep their crate dependency surface minimal — they ship as standalone components and bloat the WASM size if you pull in heavy crates.
 
 The `specify-tool` runner (`wasmtime` + `wasmtime-wasi`) loads them through `specify tool run <name>` per declared-tool permissions in `project.yaml.tools[]`.

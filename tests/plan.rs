@@ -22,6 +22,9 @@ mod validate;
 #[path = "workflow/next.rs"]
 mod next;
 
+#[path = "workflow/status.rs"]
+mod status;
+
 #[path = "workflow/mutate.rs"]
 mod mutate;
 
@@ -30,6 +33,9 @@ mod source_binding;
 
 #[path = "workflow/transition.rs"]
 mod transition;
+
+#[path = "workflow/plan_lock.rs"]
+mod plan_lock;
 
 #[path = "workflow/create.rs"]
 mod create;

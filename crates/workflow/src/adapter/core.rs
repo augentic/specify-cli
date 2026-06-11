@@ -213,6 +213,15 @@ impl AdapterLocation {
     }
 }
 
+/// Manifest cache root for an axis —
+/// `.specify/cache/manifests/{sources,targets}/`.
+///
+/// Path-only helper — the directory may or may not exist on disk.
+#[must_use]
+pub fn cache_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
+    project_dir.join(".specify").join("cache").join(MANIFESTS_CACHE_DIR).join(axis.dir_segment())
+}
+
 /// Manifest cache root for `(axis, name)` —
 /// `.specify/cache/manifests/{sources,targets}/<name>/`.
 ///
@@ -225,12 +234,7 @@ impl AdapterLocation {
 /// [DECISIONS.md §"Cache layout"]: ../../../../DECISIONS.md#cache-layout
 #[must_use]
 pub fn cache_dir(project_dir: &Path, axis: Axis, name: &str) -> PathBuf {
-    project_dir
-        .join(".specify")
-        .join("cache")
-        .join(MANIFESTS_CACHE_DIR)
-        .join(axis.dir_segment())
-        .join(name)
+    cache_axis_dir(project_dir, axis).join(name)
 }
 
 /// Per-operation agent scratch lane for `(adapter, segment)` —

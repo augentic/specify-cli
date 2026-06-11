@@ -1,6 +1,6 @@
 //! Integration test for the `presence` hint evaluator.
 //!
-//! Exercises the three mechanism selectors over a framework model with
+//! Exercises the four mechanism selectors over a framework model with
 //! no reference to any real `CORE-NNN`:
 //!
 //! - `frontmatter` — candidate `SKILL.md` files absent from (or empty
@@ -10,10 +10,14 @@
 //! - `markdown-section` — skills whose `skill-body-line-count` reaches
 //!   the `config` threshold but lack the required section are flagged,
 //!   with the boundary proven at `min` and `min - 1`.
+//! - `directory-index` — corpus directories matching a `roots` glob
+//!   with enough files beneath them but no index file are flagged;
+//!   indexed and below-threshold directories pass, and the glob stays
+//!   one directory depth (`*` does not cross `/`).
 //!
 //! Every value (the required path, the section title / level, the
-//! threshold) is policy supplied by the rule's `config`, never a
-//! `const` in the engine arm.
+//! threshold, the corpus roots / index name) is policy supplied by the
+//! rule's `config`, never a `const` in the engine arm.
 
 use std::fs;
 use std::path::Path;
@@ -163,4 +167,63 @@ fn section_hint(min: u32) -> RuleHint {
             "when": { "metric": "skill-body-line-count", "min": min }
         })),
     )
+}
+
+fn write_doc(project: &Path, rel: &str) {
+    let path = project.join(rel);
+    fs::create_dir_all(path.parent().expect("parent")).expect("doc dir");
+    fs::write(&path, "# Doc\n").expect("write doc");
+}
+
+/// A `directory-index` presence hint over `adapters/*/*/references/*`
+/// corpus directories requiring a `README.md` once `min` files live
+/// beneath the directory.
+fn directory_index_hint(min: u32) -> RuleHint {
+    hint_with_config(
+        HintKind::Presence,
+        "directory-index",
+        Some(json!({
+            "roots": ["adapters/*/*/references/*"],
+            "index": "README.md",
+            "min-files": min
+        })),
+    )
+}
+
+#[test]
+fn directory_index_flags_unindexed_corpus() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    // Unindexed corpus: two files, no README.md → flagged.
+    write_doc(tmp.path(), "adapters/targets/demo/references/guides/a.md");
+    write_doc(tmp.path(), "adapters/targets/demo/references/guides/b.md");
+    // Indexed corpus: same shape plus README.md → passes.
+    write_doc(tmp.path(), "adapters/targets/demo/references/indexed/a.md");
+    write_doc(tmp.path(), "adapters/targets/demo/references/indexed/b.md");
+    write_doc(tmp.path(), "adapters/targets/demo/references/indexed/README.md");
+    // Sparse corpus: one file, below min-files → passes.
+    write_doc(tmp.path(), "adapters/targets/demo/references/sparse/only.md");
+
+    let flagged = flagged_paths(tmp.path(), "UNI-974", vec![directory_index_hint(2)]);
+    assert_eq!(
+        flagged,
+        vec!["adapters/targets/demo/references/guides".to_string()],
+        "only the unindexed at-threshold corpus directory is flagged",
+    );
+}
+
+#[test]
+fn directory_index_counts_nested_files() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    // Files nest one level deeper; the references/<sub> dir still owes
+    // the index (recursive count), but the nested dirs themselves are
+    // not matched by the one-depth glob.
+    write_doc(tmp.path(), "adapters/targets/demo/references/examples/core/a.md");
+    write_doc(tmp.path(), "adapters/targets/demo/references/examples/shell/b.md");
+
+    let flagged = flagged_paths(tmp.path(), "UNI-975", vec![directory_index_hint(2)]);
+    assert_eq!(
+        flagged,
+        vec!["adapters/targets/demo/references/examples".to_string()],
+        "the depth-one corpus dir is flagged once; nested dirs are out of glob scope",
+    );
 }

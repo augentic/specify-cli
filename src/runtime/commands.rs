@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod archive;
+pub mod contract;
 mod init;
 pub mod journal;
 pub mod lint;
@@ -24,6 +25,7 @@ use specify_error::Result;
 use specify_workflow::adapter::{Axis, SourceAdapter, TargetAdapter};
 
 use crate::runtime::cli::{Cli, Commands, Format};
+use crate::runtime::commands::contract::cli::ContractAction;
 use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::rules::cli::RulesAction;
@@ -85,6 +87,9 @@ pub fn run(cli: Cli) -> Exit {
             JournalAction::Emit { event, payload } => {
                 scoped(format, plan_dir, |ctx| journal::emit::emit(ctx, &event, payload.as_deref()))
             }
+            JournalAction::Show { filter, limit } => {
+                scoped(format, plan_dir, |ctx| journal::show::show(ctx, filter.as_deref(), limit))
+            }
         },
         Commands::Slice { action } => scoped(format, plan_dir, |ctx| slice::run(ctx, action)),
         Commands::Archive { action } => scoped(format, plan_dir, |ctx| archive::run(ctx, &action)),
@@ -95,6 +100,9 @@ pub fn run(cli: Cli) -> Exit {
             clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
             Exit::Success
         }
+        Commands::Contract { action } => match action {
+            ContractAction::Dump => dispatch(format, || contract::dump::run(format)),
+        },
         Commands::Migrate {
             from,
             to,

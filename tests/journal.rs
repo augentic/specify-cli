@@ -16,7 +16,7 @@ use specify_workflow::config::Layout;
 use specify_workflow::journal::{self, Event, EventKind};
 
 mod common;
-use common::{Project, assert_golden_at, parse_stderr, repo_root, specify_cmd};
+use common::{Project, assert_golden_at, parse_stderr, parse_stdout, repo_root, specify_cmd};
 
 /// Pinned RFC 3339 timestamp used by every golden snapshot. CLI-driven
 /// emits use `Timestamp::now()`; tests normalise the value to this
@@ -729,4 +729,113 @@ fn divergence_kebab_case_round_trip() {
             "Divergence `{state:?}` must not contain `_` on the wire; got {rendered}"
         );
     }
+}
+
+// -- journal show (RFC-44 R3 read surface) ----------------------------
+
+/// Seed three build/merge events through the `emit` front door so
+/// `show` reads a journal written by the production append path.
+fn seed_show_journal(project: &Project) {
+    let cases: [(&str, &str); 3] = [
+        ("slice.build.started", r#"{"slice-name":"checkout"}"#),
+        ("slice.build.succeeded", r#"{"slice-name":"checkout"}"#),
+        ("slice.merge.started", r#"{"slice-name":"checkout"}"#),
+    ];
+    for (event_id, payload) in cases {
+        specify_cmd()
+            .current_dir(project.root())
+            .args(["journal", "emit", event_id, "--payload", payload])
+            .assert()
+            .success();
+    }
+}
+
+#[test]
+fn show_text_is_canonical_jsonl() {
+    // Text mode replaces the eval probes' `jq` bridge: the lines it
+    // prints are byte-identical to the on-disk journal lines.
+    let project = Project::init();
+    seed_show_journal(&project);
+
+    let assert =
+        specify_cmd().current_dir(project.root()).args(["journal", "show"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    let on_disk = fs::read_to_string(journal_path(project.root())).expect("read journal");
+    assert_eq!(stdout, on_disk, "show must emit the journal's own JSONL lines in append order");
+}
+
+#[test]
+fn show_filter_and_limit() {
+    let project = Project::init();
+    seed_show_journal(&project);
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["journal", "show", "--filter", "slice.build"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    let ids: Vec<Value> = stdout
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("line is JSON")["event"].clone())
+        .collect();
+    assert_eq!(
+        ids,
+        vec![Value::from("slice.build.started"), Value::from("slice.build.succeeded")],
+        "--filter must keep the dotted-prefix family only"
+    );
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["journal", "show", "--filter", "slice.build", "--limit", "1"])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 1, "--limit must keep the most recent match only");
+    let event: Value = serde_json::from_str(lines[0]).expect("line is JSON");
+    assert_eq!(event["event"], "slice.build.succeeded", "the newest build event wins the tail");
+}
+
+#[test]
+fn show_json_envelope() {
+    let project = Project::init();
+    seed_show_journal(&project);
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "journal", "show", "--filter", "slice.merge."])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(actual["count"], 1);
+    assert_eq!(actual["events"][0]["event"], "slice.merge.started");
+    assert_eq!(actual["events"][0]["payload"]["slice-name"], "checkout");
+    assert!(
+        actual["events"][0]["timestamp"].as_str().is_some(),
+        "envelope events must carry the wire timestamp, got:\n{actual}"
+    );
+}
+
+#[test]
+fn show_missing_journal_is_empty() {
+    // A read verb on a project with no journal succeeds with nothing
+    // to print — probes can run it before any event has fired.
+    let project = Project::init();
+
+    let assert =
+        specify_cmd().current_dir(project.root()).args(["journal", "show"]).assert().success();
+    assert!(
+        assert.get_output().stdout.is_empty(),
+        "text mode on a missing journal must print nothing"
+    );
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "journal", "show"])
+        .assert()
+        .success();
+    let actual = parse_stdout(&assert.get_output().stdout, project.root());
+    assert_eq!(actual["count"], 0);
+    assert_eq!(actual["events"], Value::Array(vec![]));
 }

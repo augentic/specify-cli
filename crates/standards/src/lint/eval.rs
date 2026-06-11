@@ -10,7 +10,7 @@
 //! and [`HintKind::ContentDigestEq`] in
 //! the same family. Each rule's
 //! hints are partitioned by kind and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → presence → field-grammar → cross-reference → regex → tool`
+//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
@@ -43,6 +43,7 @@
 //! payload.
 
 pub mod cardinality;
+pub mod cli_contract;
 pub mod constant_eq;
 pub mod content_digest_eq;
 pub mod cross_reference;
@@ -60,6 +61,7 @@ pub mod set_eq;
 pub mod tool;
 pub mod unique;
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 pub use error::HintError;
@@ -69,6 +71,7 @@ use specify_error::Error as CliError;
 pub use tool::{ToolOutput, ToolRunError, ToolRunner};
 
 use crate::lint::WorkspaceModel;
+use crate::lint::contract::CliContract;
 use crate::lint::diagnostics::map_hint_error;
 use crate::rules::{HintKind, LintMode, ResolvedRule, RuleHint};
 
@@ -82,10 +85,39 @@ pub struct HintEvalOutcome {
     pub next_id_counter: u64,
 }
 
+/// Borrowed evaluation environment shared by every per-kind arm.
+///
+/// Carries the indexed model, the project root, the tool runner
+/// behind `kind: tool`, and the binary-injected CLI contract behind
+/// `kind: cli-contract` (absent when the embedder injects none —
+/// `cli-contract` hints then fail as unsupported).
+#[derive(Clone, Copy)]
+pub struct EvalEnv<'a> {
+    /// Indexed workspace facts.
+    pub model: &'a WorkspaceModel,
+    /// Project root candidate paths are relative to.
+    pub project_dir: &'a Path,
+    /// Runner backing `kind: tool` hints.
+    pub tool_runner: &'a dyn ToolRunner,
+    /// Binary-injected CLI contract backing `kind: cli-contract`.
+    pub cli_contract: Option<&'a CliContract>,
+}
+
+impl fmt::Debug for EvalEnv<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // `tool_runner` is a trait object without `Debug`; surface its
+        // presence without its contents.
+        f.debug_struct("EvalEnv")
+            .field("project_dir", &self.project_dir)
+            .field("cli_contract", &self.cli_contract.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
 /// Evaluate a single rule's hints against the workspace model.
 ///
 /// Hints are partitioned by kind and run in the order
-/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → presence → field-grammar → cross-reference → regex → tool`
+/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
 /// consume.
@@ -94,6 +126,9 @@ pub struct HintEvalOutcome {
 /// threads [`HintEvalOutcome::next_id_counter`] into the next call so
 /// ids stay monotonic across rules.
 ///
+/// Convenience wrapper over [`evaluate_env`] with no injected CLI
+/// contract.
+///
 /// # Errors
 ///
 /// Any [`HintError`] variant — see the per-variant docs.
@@ -101,30 +136,46 @@ pub fn evaluate(
     rule: &ResolvedRule, hints: &[RuleHint], model: &WorkspaceModel, project_dir: &Path,
     tool_runner: &dyn ToolRunner, start_id_counter: u64,
 ) -> Result<HintEvalOutcome, HintError> {
-    let mut schema_cache = schema::SchemaCache::default();
-    evaluate_with_cache(
+    evaluate_env(
         rule,
         hints,
-        model,
-        project_dir,
-        tool_runner,
+        EvalEnv {
+            model,
+            project_dir,
+            tool_runner,
+            cli_contract: None,
+        },
         start_id_counter,
-        &mut schema_cache,
     )
 }
 
-/// [`evaluate`] threaded with a caller-owned [`schema::SchemaCache`] so a
+/// [`evaluate`] with the full [`EvalEnv`], including the
+/// binary-injected CLI contract.
+///
+/// # Errors
+///
+/// Any [`HintError`] variant — see the per-variant docs.
+pub fn evaluate_env(
+    rule: &ResolvedRule, hints: &[RuleHint], env: EvalEnv<'_>, start_id_counter: u64,
+) -> Result<HintEvalOutcome, HintError> {
+    let mut schema_cache = schema::SchemaCache::default();
+    evaluate_with_cache(rule, hints, env, start_id_counter, &mut schema_cache)
+}
+
+/// [`evaluate_env`] threaded with a caller-owned [`schema::SchemaCache`] so a
 /// `kind: schema` validator (and its resolved project path) is built once
 /// per lint run rather than once per rule. [`evaluate_rules`] owns the
-/// run-scoped cache; the standalone [`evaluate`] entry point passes a
+/// run-scoped cache; the standalone [`evaluate_env`] entry point passes a
 /// fresh per-call cache (behaviour is identical either way — the cache
 /// only elides recompilation).
 fn evaluate_with_cache(
-    rule: &ResolvedRule, hints: &[RuleHint], model: &WorkspaceModel, project_dir: &Path,
-    tool_runner: &dyn ToolRunner, start_id_counter: u64, schema_cache: &mut schema::SchemaCache,
+    rule: &ResolvedRule, hints: &[RuleHint], env: EvalEnv<'_>, start_id_counter: u64,
+    schema_cache: &mut schema::SchemaCache,
 ) -> Result<HintEvalOutcome, HintError> {
     let mut findings: Vec<Diagnostic> = Vec::new();
     let mut next_id = start_id_counter;
+    let model = env.model;
+    let project_dir = env.project_dir;
 
     let partition = PartitionedHints::from_hints(hints);
     let candidates = build_candidate_set(rule, &partition.path_pattern, model)?;
@@ -166,7 +217,8 @@ fn evaluate_with_cache(
         findings.append(&mut new);
     }
     for hint in partition.content_digest_eq {
-        let mut new = content_digest_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
+        let mut new =
+            content_digest_eq::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
         findings.append(&mut new);
     }
     for hint in partition.fenced_block {
@@ -185,13 +237,25 @@ fn evaluate_with_cache(
         let mut new = cross_reference::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
+    for hint in partition.cli_contract {
+        let mut new = cli_contract::evaluate(
+            rule,
+            hint,
+            &candidates,
+            project_dir,
+            model,
+            env.cli_contract,
+            &mut next_id,
+        )?;
+        findings.append(&mut new);
+    }
     for hint in partition.regex {
         let mut new = regex::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
         findings.append(&mut new);
     }
     for hint in partition.tool {
         let mut new =
-            tool::evaluate(rule, hint, &candidates, project_dir, tool_runner, &mut next_id)?;
+            tool::evaluate(rule, hint, &candidates, project_dir, env.tool_runner, &mut next_id)?;
         findings.append(&mut new);
     }
 
@@ -219,6 +283,7 @@ struct PartitionedHints<'a> {
     presence: Vec<&'a RuleHint>,
     field_grammar: Vec<&'a RuleHint>,
     cross_reference: Vec<&'a RuleHint>,
+    cli_contract: Vec<&'a RuleHint>,
     regex: Vec<&'a RuleHint>,
     tool: Vec<&'a RuleHint>,
 }
@@ -241,6 +306,7 @@ impl<'a> PartitionedHints<'a> {
                 HintKind::Presence => partition.presence.push(hint),
                 HintKind::FieldGrammar => partition.field_grammar.push(hint),
                 HintKind::CrossReference => partition.cross_reference.push(hint),
+                HintKind::CliContract => partition.cli_contract.push(hint),
                 HintKind::Regex => partition.regex.push(hint),
                 HintKind::Tool => partition.tool.push(hint),
             }
@@ -249,7 +315,7 @@ impl<'a> PartitionedHints<'a> {
     }
 }
 
-/// Fold [`evaluate`] over every rule, accumulating findings and the
+/// Fold [`evaluate_env`] over every rule, accumulating findings and the
 /// `FIND-NNNN` id counter.
 ///
 /// Shared by both lint surfaces (`specify lint project` and `specify lint framework`)
@@ -266,11 +332,10 @@ impl<'a> PartitionedHints<'a> {
 ///
 /// # Errors
 ///
-/// The [`map_hint_error`] mapping of the first rule whose [`evaluate`]
-/// call fails.
+/// The [`map_hint_error`] mapping of the first rule whose
+/// [`evaluate_env`] call fails.
 pub fn evaluate_rules(
-    rules: &[ResolvedRule], model: &WorkspaceModel, project_dir: &Path, runner: &dyn ToolRunner,
-    start_id: u64, rule_filter: &[&str],
+    rules: &[ResolvedRule], env: EvalEnv<'_>, start_id: u64, rule_filter: &[&str],
 ) -> Result<(Vec<Diagnostic>, u64), CliError> {
     let mut findings: Vec<Diagnostic> = Vec::new();
     let mut next_id = start_id;
@@ -297,16 +362,8 @@ pub fn evaluate_rules(
         if hints.is_empty() {
             continue;
         }
-        let outcome = evaluate_with_cache(
-            rule,
-            hints,
-            model,
-            project_dir,
-            runner,
-            next_id,
-            &mut schema_cache,
-        )
-        .map_err(|err| map_hint_error(rule, err))?;
+        let outcome = evaluate_with_cache(rule, hints, env, next_id, &mut schema_cache)
+            .map_err(|err| map_hint_error(rule, err))?;
         findings.extend(outcome.findings);
         next_id = outcome.next_id_counter;
     }

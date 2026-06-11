@@ -154,3 +154,79 @@ pub const BUILD_REQUEST_JSON_SCHEMA: &str =
 /// `../diagnostics/diagnostic.schema.json` `$ref`.
 pub const BUILD_REPORT_JSON_SCHEMA: &str =
     include_str!("../../../schemas/target/build-report.schema.json");
+
+/// Schema for the `specify contract dump` payload — the machine-readable
+/// CLI contract (verb tree, exit codes, error discriminants, journal
+/// event ids, embedded schema paths).
+pub const CONTRACT_DUMP_JSON_SCHEMA: &str =
+    include_str!("../../../schemas/contract/dump.schema.json");
+
+/// Every embedded schema as `(constant-name, schemas/-relative path,
+/// body)`, in declaration order.
+///
+/// The canonical inventory behind two consumers: the
+/// `embedded_schemas_match_on_disk_sources` parity test (each body must
+/// byte-match its on-disk source) and `specify contract dump` (which
+/// publishes the relative paths). Add new embedded constants here in
+/// the same change that declares them.
+pub const EMBEDDED_SCHEMAS: &[(&str, &str, &str)] = &[
+    ("ADAPTER_JSON_SCHEMA", "schemas/adapter.schema.json", ADAPTER_JSON_SCHEMA),
+    ("SOURCE_JSON_SCHEMA", "schemas/source.schema.json", SOURCE_JSON_SCHEMA),
+    ("TARGET_JSON_SCHEMA", "schemas/target.schema.json", TARGET_JSON_SCHEMA),
+    ("TOOL_JSON_SCHEMA", "schemas/tool.schema.json", TOOL_JSON_SCHEMA),
+    ("TOOL_SIDECAR_JSON_SCHEMA", "schemas/tool-sidecar.schema.json", TOOL_SIDECAR_JSON_SCHEMA),
+    ("PLAN_JSON_SCHEMA", "schemas/plan/plan.schema.json", PLAN_JSON_SCHEMA),
+    ("EVIDENCE_JSON_SCHEMA", "schemas/evidence.schema.json", EVIDENCE_JSON_SCHEMA),
+    ("LEAD_JSON_SCHEMA", "schemas/discovery/lead.schema.json", LEAD_JSON_SCHEMA),
+    ("PROPOSAL_JSON_SCHEMA", "schemas/discovery/proposal.schema.json", PROPOSAL_JSON_SCHEMA),
+    ("SLICE_MODEL_JSON_SCHEMA", "schemas/slice/model.schema.json", SLICE_MODEL_JSON_SCHEMA),
+    ("SYNTHESIS_JSON_SCHEMA", "schemas/slice/synthesis.schema.json", SYNTHESIS_JSON_SCHEMA),
+    ("PROVENANCE_JSON_SCHEMA", "schemas/slice/provenance.schema.json", PROVENANCE_JSON_SCHEMA),
+    ("DECISION_JSON_SCHEMA", "schemas/decision.schema.json", DECISION_JSON_SCHEMA),
+    ("TOPOLOGY_LOCK_JSON_SCHEMA", "schemas/topology-lock.schema.json", TOPOLOGY_LOCK_JSON_SCHEMA),
+    (
+        "COMPONENTS_JSON_SCHEMA",
+        "schemas/design-system/components.schema.json",
+        COMPONENTS_JSON_SCHEMA,
+    ),
+    (
+        "RESOLVED_RULES_JSON_SCHEMA",
+        "schemas/rules/resolved.schema.json",
+        RESOLVED_RULES_JSON_SCHEMA,
+    ),
+    ("RULE_JSON_SCHEMA", "schemas/rules/rule.schema.json", RULE_JSON_SCHEMA),
+    (
+        "DIAGNOSTIC_JSON_SCHEMA",
+        "schemas/diagnostics/diagnostic.schema.json",
+        DIAGNOSTIC_JSON_SCHEMA,
+    ),
+    (
+        "DIAGNOSTIC_REPORT_JSON_SCHEMA",
+        "schemas/diagnostics/diagnostic-report.schema.json",
+        DIAGNOSTIC_REPORT_JSON_SCHEMA,
+    ),
+    (
+        "WORKSPACE_MODEL_JSON_SCHEMA",
+        "schemas/lint/workspace-model.schema.json",
+        WORKSPACE_MODEL_JSON_SCHEMA,
+    ),
+    ("SKILL_JSON_SCHEMA", "schemas/authoring/skill.schema.json", SKILL_JSON_SCHEMA),
+    ("SCENARIO_JSON_SCHEMA", "schemas/authoring/scenario.schema.json", SCENARIO_JSON_SCHEMA),
+    (
+        "MARKETPLACE_JSON_SCHEMA",
+        "schemas/authoring/marketplace.schema.json",
+        MARKETPLACE_JSON_SCHEMA,
+    ),
+    ("FRAMEWORK_JSON_SCHEMA", "schemas/authoring/framework.schema.json", FRAMEWORK_JSON_SCHEMA),
+    (
+        "BUILD_REQUEST_JSON_SCHEMA",
+        "schemas/target/build-request.schema.json",
+        BUILD_REQUEST_JSON_SCHEMA,
+    ),
+    (
+        "BUILD_REPORT_JSON_SCHEMA",
+        "schemas/target/build-report.schema.json",
+        BUILD_REPORT_JSON_SCHEMA,
+    ),
+    ("CONTRACT_DUMP_JSON_SCHEMA", "schemas/contract/dump.schema.json", CONTRACT_DUMP_JSON_SCHEMA),
+];

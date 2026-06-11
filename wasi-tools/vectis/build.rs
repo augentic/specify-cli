@@ -1,6 +1,7 @@
 //! Codegen for Vectis scaffold template registries from `templates/vectis/manifest.yaml`.
 
 use std::collections::{BTreeSet, HashMap};
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
@@ -86,7 +87,7 @@ fn validate_schema(schema_text: &str, value: &serde_json::Value) -> Result<(), S
     let validator = Validator::new(&schema).map_err(|err| format!("compile schema: {err}"))?;
     let mut details = String::new();
     for err in validator.iter_errors(value) {
-        details.push_str(&format!("- {err}\n"));
+        let _ = writeln!(details, "- {err}");
     }
     if details.is_empty() {
         Ok(())
@@ -137,7 +138,7 @@ fn detect_orphans(assembly: &str, assembly_dir: &Path, spec: &AssemblySpec) -> R
 fn emit_assembly(
     out: &mut String, assembly: &str, spec: &AssemblySpec, templates_root: &Path,
 ) -> Result<(), String> {
-    out.push_str(&format!("pub(crate) mod {assembly} {{\n"));
+    let _ = writeln!(out, "pub(crate) mod {assembly} {{");
     if spec.files.iter().any(|entry| entry.include_when.is_some()) {
         out.push_str("    use crate::scaffold::Capability;\n");
     }
@@ -151,16 +152,14 @@ fn emit_assembly(
         }
         let include_path = format!("{INCLUDE_STR_PREFIX}/{assembly}/{}", entry.source);
         out.push_str("        TemplateEntry {\n");
-        out.push_str(&format!("            target: {:?},\n", entry.target));
-        out.push_str(&format!("            contents: include_str!(\"{include_path}\"),\n"));
-        out.push_str(&format!(
-            "            path_mode: PathMode::{},\n",
-            path_mode_rust(&spec.path_mode)
-        ));
-        out.push_str(&format!(
-            "            include_when: {},\n",
+        let _ = writeln!(out, "            target: {:?},", entry.target);
+        let _ = writeln!(out, "            contents: include_str!(\"{include_path}\"),");
+        let _ = writeln!(out, "            path_mode: PathMode::{},", path_mode_rust(&spec.path_mode));
+        let _ = writeln!(
+            out,
+            "            include_when: {},",
             include_when_rust(entry.include_when.as_ref())
-        ));
+        );
         out.push_str("        },\n");
     }
 

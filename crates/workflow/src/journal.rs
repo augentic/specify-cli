@@ -8,8 +8,9 @@
 //! The closed [`Event`] / [`EventKind`] taxonomy and wire DTOs live in
 //! `event`; the append plus dropped-event sidecar in `append`; the
 //! best-effort emit helpers in `emit`. This root owns the read side
-//! (forward [`read`] and backward `read_recent`) and re-exports the
-//! public surface so callers keep importing `crate::journal::*`.
+//! (forward [`read`], backward [`read_recent`], and the filtered
+//! [`show`] projection behind `specify journal show`) and re-exports
+//! the public surface so callers keep importing `crate::journal::*`.
 //!
 //! [workflow §Observability]: ../../../../docs/standards/workflow.md#observability
 
@@ -26,12 +27,14 @@ use std::fs::File;
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
 use specify_error::Error;
 
 pub use self::append::append_batch;
 pub use self::emit::{emit_best_effort, emit_lint_completed};
 pub use self::event::{
     Actor, AuthorityOverrideAction, Event, EventKind, LintCompletedPayload, LintCounts, LintScope,
+    WIRE_EVENT_IDS,
 };
 use crate::config::Layout;
 
@@ -79,7 +82,7 @@ const TAIL_CHUNK: usize = 8192;
 /// Read the most recent journal [`Event`]s that `select` maps to a value,
 /// returning at most `limit` of them in append (file) order.
 ///
-/// Tails the journal backward (see [`for_each_line_rev`]) and stops as
+/// Tails the journal backward (via the private `for_each_line_rev`) and stops as
 /// soon as `limit` matches are collected, so the bytes touched are bounded
 /// by how far back the `limit`-th match sits — not by total history. This
 /// keeps the projection cost flat as the journal grows.
@@ -89,12 +92,12 @@ const TAIL_CHUNK: usize = 8192;
 /// [`read`], so a journal written by a newer binary still yields the
 /// matches this binary understands. A missing journal yields an empty
 /// vector. This is the read side the identity projection
-/// (`recent[]`) consumes.
+/// (`recent[]`) and [`show`] consume.
 ///
 /// # Errors
 ///
 /// Propagates I/O failures other than a missing file.
-pub(crate) fn read_recent<T>(
+pub fn read_recent<T>(
     layout: Layout<'_>, limit: usize, mut select: impl FnMut(Event) -> Option<T>,
 ) -> Result<Vec<T>, Error> {
     let mut newest_first: Vec<T> = Vec::new();
@@ -118,6 +121,40 @@ pub(crate) fn read_recent<T>(
     .map_err(Error::Io)?;
     newest_first.reverse();
     Ok(newest_first)
+}
+
+/// Read events for `specify journal show`, in append (file) order.
+///
+/// `filter` keeps events whose dotted-kebab wire id starts with the
+/// given prefix (e.g. `slice.build` or `plan.entry.advanced`); `limit`
+/// keeps only the most recent N matches, tailing via [`read_recent`]
+/// so the bytes touched stay bounded by the limit rather than total
+/// history. Reader leniency matches [`read`]: blank and unparseable
+/// lines are skipped and a missing journal yields an empty vector.
+///
+/// # Errors
+///
+/// Propagates I/O failures other than a missing file.
+pub fn show(
+    layout: Layout<'_>, filter: Option<&str>, limit: Option<usize>,
+) -> Result<Vec<Event>, Error> {
+    let keep = |event: &Event| filter.is_none_or(|prefix| wire_id(&event.kind).starts_with(prefix));
+    match limit {
+        Some(limit) => read_recent(layout, limit, |event| keep(&event).then_some(event)),
+        None => Ok(read(layout)?.into_iter().filter(keep).collect()),
+    }
+}
+
+/// Dotted-kebab wire id of `kind`, read back from its serde tag so the
+/// adjacently-tagged wire shape stays the single source of truth (no
+/// hand-maintained per-variant match to drift). [`EventKind`] always
+/// serialises, so the fallback empty string (which matches no filter
+/// prefix) is unreachable in practice.
+fn wire_id(kind: &EventKind) -> String {
+    serde_json::to_value(kind)
+        .ok()
+        .and_then(|value| value.get("event").and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// Visit the complete lines of the file at `path` newest-first, invoking

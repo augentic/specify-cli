@@ -1,6 +1,5 @@
-//! Clap derive surface for `specify plan *` and the nested
-//! `plan lock *` verbs. The umbrella `cli.rs` re-exports both action
-//! enums.
+//! Clap derive surface for the `specify plan *` verbs. The umbrella
+//! `cli.rs` re-exports [`PlanAction`].
 
 use std::path::PathBuf;
 
@@ -66,6 +65,20 @@ pub enum PlanAction {
     /// `Pending` entry to `InProgress` and return it. `plan next` is the
     /// only writer of per-entry `in-progress` (workflow §CLI surface).
     Next,
+    /// Read-only projection of the plan's execution state into a
+    /// deterministic `next-action` — `refine|build|merge <slice>`,
+    /// `stop <reason>`, or `drained`.
+    ///
+    /// Projects `plan.yaml` entries, the candidate slice's
+    /// `metadata.yaml` lifecycle (slot-aware in workspace mode), and
+    /// the journal tail. Stop reasons (`plan-not-approved`,
+    /// `refine-failed`, `build-failed`, `merge-conflict`,
+    /// `slice-dropped`, `merge-incomplete`, `stuck`) are classified
+    /// from `slice.synthesize.failed` / `slice.build.failed` /
+    /// `slice.merge.failed` journal events scoped to the active
+    /// entry's claim window. Writes nothing — `plan next` stays the
+    /// only writer of per-entry `in-progress`.
+    Status,
     /// Add a new plan entry (status: pending)
     Add(AddArgs),
     /// Edit non-status fields on an existing plan entry.

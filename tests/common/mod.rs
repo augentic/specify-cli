@@ -56,6 +56,32 @@ pub fn specify_cmd() -> Command {
     cmd
 }
 
+/// Exclusive hold on `<root>/.specify/plan.lock` for the guard's
+/// lifetime — stands in for the `/spec:execute` driver session now
+/// that the plan-state-writing verbs (`plan next`, per-entry
+/// `plan transition`, `slice merge run`) probe the lock and refuse an
+/// unlocked driver (RFC-44 R2). Dropping the guard closes the file
+/// and releases the OS advisory lock.
+pub struct PlanLock {
+    _file: fs::File,
+}
+
+/// Acquire the plan lock at `<root>/.specify/plan.lock`, creating the
+/// lockfile (and `.specify/`) as the skill snippet would.
+pub fn hold_plan_lock(root: &Path) -> PlanLock {
+    let dir = root.join(".specify");
+    fs::create_dir_all(&dir).expect("mkdir .specify");
+    let file = fs::File::options()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(dir.join("plan.lock"))
+        .expect("open plan.lock");
+    file.lock().expect("acquire plan lock");
+    PlanLock { _file: file }
+}
+
 /// Stamp a phase outcome on `<project>/slices/<name>/metadata.yaml`
 /// through the domain writer merge uses (`stamp_outcome`).
 ///
@@ -479,6 +505,13 @@ impl Project {
     /// going through the `plan create` verb.
     pub fn seed_plan(&self, yaml: &str) {
         fs::write(self.plan_path(), yaml).expect("write plan.yaml");
+    }
+
+    /// Hold the project's plan lock for the guard's lifetime (the
+    /// driver-session stand-in for `plan next` / per-entry
+    /// `plan transition` / `slice merge run` invocations).
+    pub fn hold_plan_lock(&self) -> PlanLock {
+        hold_plan_lock(self.root())
     }
 }
 

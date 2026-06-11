@@ -115,15 +115,20 @@ args = ["publish", "--registry=augentic", "--allow-dirty", "--dry-run"]
 # Auxiliary tasks
 # -------------------------------------
 
-# Build the first-party `contract` WASI tool into the sibling
-# workspace's target dir. `tests/tool/contract.rs` reads the
-# artifact directly from `wasi-tools/target/wasm32-wasip2/release/`,
-# so this task is a precondition for that integration test.
+# Build the first-party `contract` WASI tool and refresh the checked-in
+# `wasi-tools/contract/dist/` artifact (and its sha256 sidecar) that
+# `tests/tool/contract.rs` loads. Rerun after editing the contract crate
+# so the committed blob reflects the new checks; the `dist_digest_pinned`
+# drift test fails when blob and sidecar disagree. Mirrors the
+# `framework-wasm` pattern.
 [tasks.contract-wasm]
 script = '''
 set -euo pipefail
 cd wasi-tools
 cargo build -p specify-contract --target wasm32-wasip2 --release
+cp target/wasm32-wasip2/release/specify-contract.wasm contract/dist/contract-0.2.0.wasm
+( cd contract/dist && shasum -a 256 contract-0.2.0.wasm > contract-0.2.0.wasm.sha256 )
+echo "contract WASI component written to wasi-tools/contract/dist/contract-0.2.0.wasm"
 '''
 
 # Build the first-party framework-authoring WASI tools and refresh the

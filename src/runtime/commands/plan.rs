@@ -28,6 +28,7 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
         } => create::create(ctx, name, sources, auto_approve, &authority_override),
         PlanAction::Validate => lifecycle::validate(ctx),
         PlanAction::Next => lifecycle::next(ctx),
+        PlanAction::Status => lifecycle::status(ctx),
         PlanAction::Add(args) => add::add(ctx, args),
         PlanAction::Amend(args) => amend::amend(ctx, args),
         PlanAction::Propose(args) => propose::propose(ctx, args),

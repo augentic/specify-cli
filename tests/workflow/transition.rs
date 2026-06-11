@@ -26,6 +26,7 @@ fn plan_transition_happy_path_text() {
     // (the only writer of `in-progress`) and then close the entry.
     let project = Project::init();
     project.seed_plan(SINGLE_PENDING);
+    let _lock = project.hold_plan_lock();
 
     specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
 
@@ -43,6 +44,7 @@ fn plan_transition_happy_path_text() {
 fn plan_transition_legal_edge_json() {
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
+    let _lock = project.hold_plan_lock();
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -88,6 +90,7 @@ fn plan_transition_rejects_illegal_edge() {
 fn transition_undo_done_to_in_progress() {
     let project = Project::init();
     project.seed_plan(SINGLE_DONE);
+    let _lock = project.hold_plan_lock();
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -120,6 +123,7 @@ fn transition_undo_done_to_in_progress() {
 fn undo_in_progress_to_pending_refuses() {
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
+    let _lock = project.hold_plan_lock();
 
     specify_cmd()
         .current_dir(project.root())

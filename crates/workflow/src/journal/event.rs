@@ -516,6 +516,49 @@ pub struct LintCounts {
     pub false_positive: u32,
 }
 
+/// Every wire event id in the closed [`EventKind`] taxonomy, sorted.
+///
+/// This is the inventory `specify contract dump` publishes and the
+/// `cli-contract` lint kind checks citations against. The
+/// `wire_event_ids` test in `journal/tests.rs` serialises one sample
+/// per variant to prove the table matches the serde renames; adding a
+/// variant without updating this table fails that test.
+pub const WIRE_EVENT_IDS: &[&str] = &[
+    "cli.upgraded",
+    "lint-completed",
+    "migration.applied",
+    "migration.skipped",
+    "plan.amend.authority-override",
+    "plan.amend.divergence",
+    "plan.entry.advanced",
+    "plan.reconcile.completed",
+    "plan.transition.approved",
+    "plan.transition.undone",
+    "plugins.refreshed",
+    "slice.archive.created",
+    "slice.build.failed",
+    "slice.build.started",
+    "slice.build.succeeded",
+    "slice.extract.completed",
+    "slice.merge.failed",
+    "slice.merge.started",
+    "slice.merge.succeeded",
+    "slice.replay.completed",
+    "slice.synthesis.conflict",
+    "slice.synthesis.divergence",
+    "slice.synthesis.unknown",
+    "slice.synthesize.agent",
+    "slice.synthesize.completed",
+    "slice.synthesize.failed",
+    "slice.synthesize.started",
+    "slice.transition.refined",
+    "source.execution.agent",
+    "source.survey.completed",
+    "target.execution.agent",
+    "workspace.push.completed",
+    "workspace.sync.completed",
+];
+
 /// Closed `actor` enum on [`EventKind::PlanTransitionApproved`] —
 /// who drove the Gate-1 stamp.
 ///

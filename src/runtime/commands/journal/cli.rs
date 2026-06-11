@@ -26,4 +26,23 @@ pub enum JournalAction {
         #[arg(long)]
         payload: Option<String>,
     },
+
+    /// Read events from `.specify/journal.jsonl` in append order.
+    ///
+    /// Read-only: emits no journal event and writes nothing. Text mode
+    /// prints the canonical JSONL lines — one `{ timestamp, event,
+    /// payload }` object per event, pipeable — while `--format json`
+    /// wraps the same events in the standard envelope. Blank and
+    /// unparseable lines are skipped, matching every other journal
+    /// reader; a missing journal yields no events.
+    Show {
+        /// Keep only events whose dotted-kebab id starts with this
+        /// prefix (e.g. `slice.build` or `plan.entry.advanced`).
+        #[arg(long)]
+        filter: Option<String>,
+
+        /// Keep only the most recent N matching events.
+        #[arg(long)]
+        limit: Option<usize>,
+    },
 }

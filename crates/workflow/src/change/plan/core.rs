@@ -11,6 +11,7 @@ pub mod model;
 pub mod next;
 pub mod propose;
 pub mod remove;
+pub mod status;
 pub mod transitions;
 pub mod validate;
 
@@ -27,6 +28,9 @@ pub use propose::{
     LeadCatalog, LeadCatalogEntry, ProjectMissingPlatforms, ProjectRef, ProposalKind,
     ProposalRequest, ProposalResponse, ProposeOutcome, ResponseMember, ResponseSlice,
     build_catalog, build_request, detect_missing_platforms, resolve_target, resolve_topology,
+};
+pub use status::{
+    NextActionKind, StatusBody, StatusCounts, StopBody, StopReason, drained_line, plan_status_body,
 };
 #[cfg(test)]
 pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};

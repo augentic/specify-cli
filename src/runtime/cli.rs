@@ -10,6 +10,7 @@ use specify_model::evidence::ClaimKind;
 
 pub use crate::output::Format;
 use crate::runtime::commands::archive::cli::ArchiveAction;
+use crate::runtime::commands::contract::cli::ContractAction;
 use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
@@ -215,6 +216,15 @@ pub enum Commands {
     Completions {
         /// Target shell — one of `bash`, `elvish`, `fish`, `powershell`, `zsh`.
         shell: Shell,
+    },
+
+    /// Machine-readable CLI contract (verbs, exit codes, error ids,
+    /// journal event ids, embedded schemas). Read-only and
+    /// project-context-free; the lint cross-check and external
+    /// documentation tooling consume `contract dump --format json`.
+    Contract {
+        #[command(subcommand)]
+        action: ContractAction,
     },
 
     /// Migrate a `.specify/` project across a major version boundary.

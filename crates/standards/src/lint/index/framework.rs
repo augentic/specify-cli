@@ -5,7 +5,8 @@
 //! follow-the-link symlink policy, and cycle detection. Recognised
 //! roots: `adapters/**`, `plugins/**`, `docs/**`, `.cursor/**`,
 //! `rfcs/**`, `scripts/**`, `schemas/**`, plus the catch-all
-//! `**/AGENTS.md` and `**/REVIEW.md` files.
+//! `**/AGENTS.md` and `**/REVIEW.md` files and the repo-root
+//! `README.md`.
 //!
 //! Discovery returns a [`FrameworkDiscovery`] payload carrying the
 //! sorted file set, the recorded [`Symlink`] facts (with
@@ -251,6 +252,11 @@ fn classify(bytes: &[u8]) -> (FileKind, Option<Vec<u8>>) {
 /// Framework include set per §F1.
 fn is_included(relative: &str) -> bool {
     if INCLUDE_PREFIXES.iter().any(|prefix| relative.starts_with(prefix)) {
+        return true;
+    }
+    // Repo-root README.md only (deeper READMEs ride their prefix):
+    // the digest-pinned vocabulary cheat sheet lives there.
+    if relative == "README.md" {
         return true;
     }
     let Some(file_name) = relative.rsplit_once('/').map_or(Some(relative), |(_, name)| Some(name))

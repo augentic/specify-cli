@@ -18,7 +18,8 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use crate::common::{
-    Project, TEMPDIR_PLACEHOLDER, parse_stderr, parse_stdout, repo_root, specify_cmd,
+    Project, TEMPDIR_PLACEHOLDER, init_workspace, omnia_schema_dir, parse_stderr, parse_stdout,
+    repo_root, specify_cmd,
 };
 
 /// Stage the path-bound `typescript` source adapter (the in-repo
@@ -208,6 +209,86 @@ slices:
     // Slot-anchored outputs stay slot-anchored.
     let evidence = body["evidence-dir"].as_str().expect("evidence-dir str");
     assert_eq!(evidence, format!("{TEMPDIR_PLACEHOLDER}/.specify/slices/identity/evidence"));
+}
+
+#[test]
+fn slot_extract_resolves_after_sync() {
+    // RFC-45 slot adapter provisioning: the source adapter is vendored
+    // only at the workspace; `specify workspace sync` mirrors it into
+    // the slot's manifest cache, and slot-side extract resolves it
+    // through ordinary project-local probing — no new resolution
+    // semantics, no manual cache staging.
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    init_workspace(&workspace, "platform-workspace");
+
+    // A local peer that is itself a Specify project, bound as a slot.
+    let peer = workspace.path().join("peer");
+    fs::create_dir_all(&peer).expect("create peer dir");
+    specify_cmd()
+        .current_dir(&peer)
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "peer"])
+        .assert()
+        .success();
+    fs::write(
+        workspace.path().join("registry.yaml"),
+        "version: 1
+projects:
+  - name: peer
+    url: ./peer
+    adapter: omnia@v1
+",
+    )
+    .expect("write registry.yaml");
+    fs::write(
+        workspace.path().join("plan.yaml"),
+        "name: platform-v2
+sources:
+  legacy:
+    adapter: typescript
+    path: vendor/legacy
+slices:
+  - name: identity
+    project: peer
+    status: pending
+",
+    )
+    .expect("write workspace plan.yaml");
+
+    // Vendor the source adapter at the workspace only.
+    let adapter_src = repo_root()
+        .join("crates/workflow/tests/fixtures/plugins/adapters/sources/typescript/adapter.yaml");
+    let adapter_dir = workspace.path().join("adapters/sources/typescript");
+    fs::create_dir_all(adapter_dir.join("briefs")).expect("create workspace adapter dir");
+    fs::copy(&adapter_src, adapter_dir.join("adapter.yaml")).expect("copy adapter.yaml");
+    fs::write(adapter_dir.join("briefs/extract.md"), "# extract brief\n")
+        .expect("write extract brief");
+
+    specify_cmd().current_dir(workspace.path()).args(["workspace", "sync"]).assert().success();
+
+    let slot = workspace.path().join(".specify/workspace/peer");
+    assert!(
+        slot.join(".specify/cache/manifests/sources/typescript/adapter.yaml").is_file(),
+        "sync must mirror the workspace adapter into the slot manifest cache"
+    );
+
+    let assert = specify_cmd()
+        .current_dir(&slot)
+        .args(["--format", "json", "--plan-dir"])
+        .arg(workspace.path())
+        .args(["source", "extract", "legacy", "user-registration"])
+        .args(["--slice", "identity"])
+        .assert()
+        .success();
+
+    let body = parse_stdout(&assert.get_output().stdout, &peer);
+    assert_eq!(body["adapter"], "typescript", "the mirrored adapter must resolve in the slot");
+    let evidence = body["evidence-dir"].as_str().expect("evidence-dir str");
+    assert!(
+        evidence.ends_with(".specify/slices/identity/evidence"),
+        "slice state stays slot-local: {evidence}"
+    );
 }
 
 #[test]

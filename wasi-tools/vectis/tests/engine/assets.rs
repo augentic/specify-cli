@@ -463,14 +463,14 @@ assets:
 /// rejected by the schema.
 #[test]
 fn variant_of_pattern_violation_schema_error() {
-    let yaml = r#"version: 1
+    let yaml = "version: 1
 assets:
   nav-lists-active:
     kind: vector
     role: icon
     variant_of: Nav-Lists
     source: assets/nav-lists-active.svg
-"#;
+";
     let (_tmp, assets_path) = write_assets_project(yaml, &["assets/nav-lists-active.svg"]);
     let args = Args {
         mode: ValidateMode::Assets,

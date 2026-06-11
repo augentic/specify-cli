@@ -22,6 +22,7 @@
 //! `review` (enforcement) surfaces cannot collide.
 
 pub mod adapter_briefs;
+pub mod contract;
 pub mod diagnostics;
 pub mod eval;
 pub mod ignore;

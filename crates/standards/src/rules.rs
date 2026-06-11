@@ -95,7 +95,8 @@ pub enum LintMode {
 /// After C17 every kind is executable: `path-pattern`, `regex`,
 /// `schema`, `tool`, `reference-resolves`, `unique`, `set-coverage`,
 /// `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`,
-/// `fenced-block`, `presence`, `field-grammar`, and `cross-reference`.
+/// `fenced-block`, `presence`, `field-grammar`, `cross-reference`,
+/// and `cli-contract`.
 /// No kind is reserved. (Whole-tree namespace-ownership runs through the
 /// `rules` WASI tool via `kind: tool`, not a dedicated hint kind.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -133,9 +134,13 @@ pub enum HintKind {
     /// tightening of [`Self::SetCoverage`] (v1 source discriminator:
     /// `adapter-briefs`; the expected set rides `config`).
     SetEq,
-    /// Assert that the content digest (SHA-256) of one file equals an
-    /// expected digest (v1 source discriminator:
-    /// `agent-teams-match-canonical`).
+    /// Assert that the content digest (SHA-256) of one surface equals
+    /// an expected digest (v1 source discriminators:
+    /// `agent-teams-match-canonical` — every followed overlay symlink
+    /// hashes equal to the `config: { canonical-path }` document;
+    /// `markdown-section` — the section body named by
+    /// `config: { path, section }` hashes equal to the body named by
+    /// `config: { canonical-path, canonical-section }`).
     ContentDigestEq,
     /// Fence-aware body predicate over [`crate::lint::FencedBlock`] facts
     /// (`skill-envelope-json-in-body`, …).
@@ -162,6 +167,18 @@ pub enum HintKind {
     /// selector: `adapter-dir` joined against the `adapter-manifest`
     /// target on the manifest's containing directory).
     CrossReference,
+    /// Check documentation against the binary-injected
+    /// [`crate::lint::contract::CliContract`] (v1 mechanism selectors:
+    /// `invocations` — `specify …` command lines in fenced blocks /
+    /// inline code walk the contract's verb tree; `event-ids` —
+    /// dotted-kebab inline code spans and configured JSON fields,
+    /// gated to the contract's own event-id families, must be known
+    /// journal event ids; `error-codes` — configured JSON fields must
+    /// be known error discriminants; `test-citations` — `tests/…`
+    /// inline code spans and configured link-prefix targets must exist
+    /// in the contract's build-time tests inventory. Exclusions ride
+    /// `config`).
+    CliContract,
 }
 
 /// Inclusive narrowing filter — all populated dimensions match (AND).

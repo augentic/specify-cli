@@ -89,6 +89,14 @@ impl ProjectConfig {
     /// - [`Error::CliTooOld`] if the pinned `specify_version` floor is
     ///   newer than this binary's version.
     pub fn load(project_dir: &Path) -> Result<Self, Error> {
+        Self::load_with_current(project_dir, env!("CARGO_PKG_VERSION"))
+    }
+
+    /// Version-injectable body of [`ProjectConfig::load`]; `current` is
+    /// the running binary's version. Split out so the migration refusal
+    /// (dormant at runtime while the binary is pre-1.0 — majors never
+    /// differ) keeps unit coverage until the 1.0 cut makes it reachable.
+    fn load_with_current(project_dir: &Path, current: &str) -> Result<Self, Error> {
         let path = Layout::new(project_dir).config_path();
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
@@ -100,7 +108,6 @@ impl ProjectConfig {
 
         let cfg: Self = serde_saphyr::from_str(&text)?;
 
-        let current = env!("CARGO_PKG_VERSION");
         if let Some(required) = &cfg.specify_version
             && version_is_older(current, required)
         {
@@ -351,6 +358,15 @@ impl<'a> Layout<'a> {
     #[must_use]
     pub fn plan_path(&self) -> PathBuf {
         self.plan_dir().join("plan.yaml")
+    }
+
+    /// Absolute path to `<plan-root>/.specify/plan.lock` — the
+    /// skill-acquired `/spec:execute` driver lock
+    /// ([`crate::plan_lock`]). Anchored at the plan root so slot-side
+    /// phase work under `--plan-dir` probes the *workspace* lock.
+    #[must_use]
+    pub fn plan_lock_path(&self) -> PathBuf {
+        self.plan_dir().join(".specify").join("plan.lock")
     }
 
     /// Absolute path to `<plan-root>/change.md` — the umbrella

@@ -527,6 +527,242 @@ fn c02_sync_preserves_gitignore_once() {
     assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/scratch/").count(), 1);
 }
 
+// ---------- adapter mirror (RFC-45 slot adapter provisioning) ---------
+
+/// Stage an adapter dir (`adapter.yaml` + optional extra files) under
+/// `root/<rel>/`.
+fn stage_adapter_at(root: &Path, rel: &str, body: &str, extra: &[(&str, &str)]) {
+    let dir = root.join(rel);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("adapter.yaml"), body).unwrap();
+    for (name, contents) in extra {
+        let path = dir.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+}
+
+/// A workspace with one local symlink peer (`./peer`) that is itself a
+/// Specify project (carries `.specify/`). Returns the peer dir.
+fn workspace_with_specify_peer(project_dir: &Path) -> PathBuf {
+    let peer = project_dir.join("peer");
+    fs::create_dir_all(peer.join(".specify")).unwrap();
+    fs::write(
+        project_dir.join("registry.yaml"),
+        "version: 1\nprojects:\n  - name: peer\n    url: ./peer\n    adapter: omnia@v1\n",
+    )
+    .unwrap();
+    peer
+}
+
+fn sync_all(project_dir: &Path) {
+    let registry = Registry::load(project_dir).unwrap().expect("registry present");
+    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).expect("sync ok");
+}
+
+#[test]
+fn mirror_lands_and_resync_refreshes() {
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    let peer = workspace_with_specify_peer(project_dir);
+    stage_adapter_at(
+        project_dir,
+        "adapters/sources/documentation",
+        "name: documentation\n",
+        &[("briefs/extract.md", "# extract brief\n")],
+    );
+
+    sync_all(project_dir);
+
+    let mirrored = peer.join(".specify/cache/manifests/sources/documentation");
+    assert_eq!(
+        fs::read_to_string(mirrored.join("adapter.yaml")).expect("mirrored adapter.yaml"),
+        "name: documentation\n",
+        "sync must mirror the workspace adapter into the slot manifest cache"
+    );
+    assert_eq!(
+        fs::read_to_string(mirrored.join("briefs/extract.md")).expect("mirrored brief"),
+        "# extract brief\n"
+    );
+
+    // Re-sync refreshes: per-name delete-then-copy.
+    fs::write(
+        project_dir.join("adapters/sources/documentation/adapter.yaml"),
+        "name: documentation\nversion: 2\n",
+    )
+    .unwrap();
+    sync_all(project_dir);
+    assert_eq!(
+        fs::read_to_string(mirrored.join("adapter.yaml")).unwrap(),
+        "name: documentation\nversion: 2\n",
+        "re-sync must refresh the mirrored copy"
+    );
+}
+
+#[test]
+fn mirror_covers_target_axis_and_sidecars() {
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    let peer = workspace_with_specify_peer(project_dir);
+    stage_adapter_at(
+        project_dir,
+        "adapters/targets/vectis",
+        "name: vectis\n",
+        &[("tools.yaml", "tools: []\n")],
+    );
+
+    sync_all(project_dir);
+
+    let mirrored = peer.join(".specify/cache/manifests/targets/vectis");
+    assert!(mirrored.join("adapter.yaml").is_file(), "target axis must be mirrored");
+    assert_eq!(
+        fs::read_to_string(mirrored.join("tools.yaml")).expect("mirrored tools.yaml"),
+        "tools: []\n",
+        "tool sidecars must ride the mirror"
+    );
+}
+
+#[test]
+fn mirror_skips_slot_vendored_name() {
+    // The loader probes the cache before the vendored tree, so the
+    // mirror must skip a name the slot vendors itself — otherwise the
+    // mirrored twin would shadow the slot's copy.
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    let peer = workspace_with_specify_peer(project_dir);
+    stage_adapter_at(project_dir, "adapters/sources/documentation", "workspace copy\n", &[]);
+    stage_adapter_at(&peer, "adapters/sources/documentation", "slot copy\n", &[]);
+
+    sync_all(project_dir);
+
+    assert!(
+        !peer.join(".specify/cache/manifests/sources/documentation").exists(),
+        "a slot-vendored name must not be shadowed by a mirrored cache copy"
+    );
+    assert_eq!(
+        fs::read_to_string(peer.join("adapters/sources/documentation/adapter.yaml")).unwrap(),
+        "slot copy\n",
+        "the slot's vendored copy must be untouched"
+    );
+}
+
+#[test]
+fn mirror_skips_opposite_axis_vendored_name() {
+    // Mirroring a name the slot vendors on the other axis would
+    // manufacture an adapter-name-axis-collision in a healthy slot.
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    let peer = workspace_with_specify_peer(project_dir);
+    stage_adapter_at(project_dir, "adapters/sources/shared", "workspace source\n", &[]);
+    stage_adapter_at(&peer, "adapters/targets/shared", "slot target\n", &[]);
+
+    sync_all(project_dir);
+
+    assert!(
+        !peer.join(".specify/cache/manifests/sources/shared").exists(),
+        "an opposite-axis vendored name must not be mirrored"
+    );
+}
+
+#[test]
+fn mirror_leaves_foreign_cache_entries() {
+    // The slot cache has a second writer (`specify init` caches its
+    // greenfield adapter seed); names the workspace does not own are
+    // never pruned.
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    let peer = workspace_with_specify_peer(project_dir);
+    stage_adapter_at(&peer, ".specify/cache/manifests/targets/omnia", "init seed\n", &[]);
+    stage_adapter_at(project_dir, "adapters/sources/documentation", "name: documentation\n", &[]);
+
+    sync_all(project_dir);
+
+    assert_eq!(
+        fs::read_to_string(peer.join(".specify/cache/manifests/targets/omnia/adapter.yaml"))
+            .unwrap(),
+        "init seed\n",
+        "cache entries the workspace does not own must survive sync"
+    );
+}
+
+#[test]
+fn mirror_prefers_workspace_cache_copy() {
+    // A name in both workspace probe locations copies from the
+    // manifest cache, matching the loader's probe order.
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    let peer = workspace_with_specify_peer(project_dir);
+    stage_adapter_at(project_dir, "adapters/sources/documentation", "vendored\n", &[]);
+    stage_adapter_at(
+        project_dir,
+        ".specify/cache/manifests/sources/documentation",
+        "cached\n",
+        &[],
+    );
+
+    sync_all(project_dir);
+
+    assert_eq!(
+        fs::read_to_string(
+            peer.join(".specify/cache/manifests/sources/documentation/adapter.yaml")
+        )
+        .unwrap(),
+        "cached\n"
+    );
+}
+
+#[test]
+fn mirror_skips_non_specify_peer() {
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    let peer = project_dir.join("peer");
+    fs::create_dir_all(&peer).unwrap();
+    fs::write(
+        project_dir.join("registry.yaml"),
+        "version: 1\nprojects:\n  - name: peer\n    url: ./peer\n    adapter: omnia@v1\n",
+    )
+    .unwrap();
+    stage_adapter_at(project_dir, "adapters/sources/documentation", "name: documentation\n", &[]);
+
+    sync_all(project_dir);
+
+    assert!(
+        !peer.join(".specify").exists(),
+        "the mirror must not manufacture `.specify/` in a non-Specify peer"
+    );
+}
+
+#[test]
+fn mirror_skips_self_slot() {
+    // A `url: .` entry symlinks the slot to the workspace itself;
+    // mirroring there would copy the manifest cache over itself.
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path();
+    fs::create_dir_all(project_dir.join(".specify")).unwrap();
+    fs::write(
+        project_dir.join("registry.yaml"),
+        "version: 1\nprojects:\n  - name: platform\n    url: .\n    adapter: omnia@v1\n",
+    )
+    .unwrap();
+    stage_adapter_at(
+        project_dir,
+        ".specify/cache/manifests/sources/documentation",
+        "cached\n",
+        &[],
+    );
+
+    sync_all(project_dir);
+
+    assert_eq!(
+        fs::read_to_string(
+            project_dir.join(".specify/cache/manifests/sources/documentation/adapter.yaml")
+        )
+        .unwrap(),
+        "cached\n",
+        "a self-slot must be skipped, not remove-then-copied from itself"
+    );
+}
+
 // ---------- branch preparation (workspace orchestration contract C04) ----------------------------
 
 #[test]

@@ -17,8 +17,8 @@ use serde_json::Value as JsonValue;
 /// open per-kind body posture — the adapter records whatever the
 /// captured scenario carried (HTTP method/route/body, message topic /
 /// payload shape, scheduled-job arguments). Downstream code consults
-/// `replay_digest` for cache fingerprinting and `path` for the
-/// on-disk location of the full body.
+/// `replay_digest` as the stable content anchor for replay
+/// verification and `path` for the on-disk location of the full body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ExampleClaim {
