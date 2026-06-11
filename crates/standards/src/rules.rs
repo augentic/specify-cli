@@ -150,7 +150,10 @@ pub enum HintKind {
     /// frontmatter fact family; `file` — a single required path in
     /// `config: { path }`; `markdown-section` — skills over a
     /// `config: { when: { metric, min } }` threshold lacking the
-    /// `config: { title, level }` section).
+    /// `config: { title, level }` section; `directory-index` —
+    /// directories matching a `config: { roots }` glob with at least
+    /// `config: { min-files }` files beneath them but no
+    /// `config: { index }` file inside them).
     Presence,
     /// Assert that a candidate's named frontmatter field obeys a
     /// token / first-word grammar (v1 mechanism modes: `field-tokens` —

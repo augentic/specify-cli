@@ -210,15 +210,14 @@ fn evaluate_directory_index(
         });
     };
     let min_files = cfg.min_files.unwrap_or(1);
-    let patterns: Vec<Pattern> = roots
-        .iter()
-        .map(|root| Pattern::new(root))
-        .collect::<Result<_, _>>()
-        .map_err(|_silenced| HintError::Unsupported {
-            rule_id: rule.rule_id.clone(),
-            kind: HintKind::Presence,
-            reason: "invalid glob pattern in `roots`",
-        })?;
+    let patterns: Vec<Pattern> =
+        roots.iter().map(|root| Pattern::new(root)).collect::<Result<_, _>>().map_err(
+            |_silenced| HintError::Unsupported {
+                rule_id: rule.rule_id.clone(),
+                kind: HintKind::Presence,
+                reason: "invalid glob pattern in `roots`",
+            },
+        )?;
     let options = MatchOptions {
         require_literal_separator: true,
         ..MatchOptions::default()
