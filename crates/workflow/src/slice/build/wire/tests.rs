@@ -217,8 +217,7 @@ fn output_gate_rejects_empty_directory() {
     let dir = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir_all(dir.path().join("shared")).expect("mkdir");
 
-    let report =
-        report_with_outputs("success", &[json!({ "platform": "core", "path": "shared" })]);
+    let report = report_with_outputs("success", &[json!({ "platform": "core", "path": "shared" })]);
     match enforce_report_outputs_exist(&report, dir.path()) {
         Err(Error::Validation { code, detail }) => {
             assert_eq!(code, "target-build-output-missing");
