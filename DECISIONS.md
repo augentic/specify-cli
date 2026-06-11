@@ -400,6 +400,10 @@ Every check surface — `specify lint`, `specify lint framework`, `specify slice
 
 **Widened `ruleId` namespace.** The diagnostic `ruleId` pattern accepts both the closed codex family (`UNI-`/`CORE-`/… `-NNN`) and the runtime-validation discriminant form (dotted/kebab lowercase), so workflow and validate producers stamp their invariant ids onto the same finding shape the codex engine uses.
 
+## Composition validation is vectis-tool-owned
+
+`specify-validate` carries no `composition` rule namespace. The registry once registered four `composition.*` rules, but `validate_slice`'s canonical artifact set never fed them — they were dead at the runner while their unit tests asserted the registry entry existed (false confidence). Rather than wiring `composition.yaml` into `CANONICAL_ARTIFACTS`, the namespace was deleted: deep composition validation (schema, structural identity, token/asset refs, catalog cross-references) is owned by the vectis WASI tool's `validate composition` mode, and a shallow host-side duplicate would only drift from it. The host keeps exactly one composition touchpoint: `cross.composition-maps-to-consistent`, which checks `maps_to` well-formedness against the slice's specs. `Artifact::Composition` survives in `specify-diagnostics` — the vectis tool and build wire still stamp findings with it.
+
 ## Codex-rule schema: one source of truth
 
 The `specify_standards::framework` predicates consume the canonical rule schema directly via `specify_schema::RULE_JSON_SCHEMA` (paired with the typed `Rule` DTO). One source of truth means no vendored copy and no drift check: the canonical schema lives at `schemas/rules/rule.schema.json` and is embedded through `specify-schema` like every other schema.

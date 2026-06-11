@@ -12,8 +12,6 @@
 
 use std::path::Path;
 
-use sha2::{Digest, Sha256};
-
 use crate::lint::AgentTeam;
 
 const AGENT_TEAMS_FILE: &str = "agent-teams.md";
@@ -56,16 +54,7 @@ fn resolve(link_path: &Path, project_dir: &Path) -> (Option<String>, Option<Stri
         .ok()
         .and_then(|root| canon_link.strip_prefix(&root).ok().map(Path::to_path_buf))
         .and_then(|relative| super::path_util::render(&relative));
-    let target_sha256 = std::fs::read(&canon_link).ok().map(|bytes| {
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let digest = hasher.finalize();
-        let mut out = String::with_capacity(digest.len() * 2);
-        for byte in digest {
-            use std::fmt::Write as _;
-            write!(&mut out, "{byte:02x}").expect("write to string");
-        }
-        out
-    });
+    let target_sha256 =
+        std::fs::read(&canon_link).ok().map(|bytes| specify_digest::sha256_hex(&bytes));
     (resolved_target, target_sha256)
 }
