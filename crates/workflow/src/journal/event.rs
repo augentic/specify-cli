@@ -50,6 +50,12 @@ pub enum EventKind {
     PlanTransitionApproved {
         /// Plan name from `plan.yaml.name`.
         plan_name: PlanName,
+        /// Who drove the stamp. Self-reported via `--actor`
+        /// (default `operator`); evidence for eval probes, never
+        /// enforcement. `#[serde(default)]` keeps pre-actor journal
+        /// lines parseable as `operator`.
+        #[serde(default)]
+        actor: Actor,
     },
     /// Operator walked one rung backwards on per-entry status via
     /// `specify plan transition <entry> --undo`. One event per rung
@@ -67,6 +73,19 @@ pub enum EventKind {
         from: crate::change::Status,
         /// Status the entry holds after the undo.
         to: crate::change::Status,
+    },
+    /// `specify plan next` advanced one entry `pending → in-progress`
+    /// (the sole writer of per-entry `in-progress`). Fires only when
+    /// an entry actually advanced — returning the already-active entry
+    /// or reporting drained/stuck emits nothing, so the *absence* of
+    /// this event over a window is probeable evidence that the execute
+    /// loop parked rather than advancing.
+    #[serde(rename = "plan.entry.advanced", rename_all = "kebab-case")]
+    PlanEntryAdvanced {
+        /// Plan name from `plan.yaml.name`.
+        plan_name: PlanName,
+        /// Entry id under `plan.yaml.slices[].name` that advanced.
+        slice_name: SliceName,
     },
     /// Stamped `slices[].divergence` via
     /// `specify plan amend --divergence <likely|accepted|rejected>`.
@@ -404,6 +423,27 @@ pub enum EventKind {
         /// Short diagnostic (e.g. `staged-validation-failed`).
         reason: String,
     },
+    /// `specify workspace sync` materialised the selected workspace
+    /// slots and regenerated `topology.lock`. Fires once per
+    /// successful sync; the registry-less no-op path emits nothing.
+    #[serde(rename = "workspace.sync.completed", rename_all = "kebab-case")]
+    WorkspaceSyncCompleted {
+        /// Registry project names the sync materialised, in registry
+        /// (selection) order.
+        projects: Vec<String>,
+    },
+    /// `specify workspace push` pushed the active plan's
+    /// `specify/<plan-name>` branch across the selected projects with
+    /// no failed project. Dry runs and failed pushes emit nothing.
+    #[serde(rename = "workspace.push.completed", rename_all = "kebab-case")]
+    WorkspacePushCompleted {
+        /// Plan name from `plan.yaml.name`.
+        plan_name: PlanName,
+        /// Branch the push targeted (`specify/<plan-name>`).
+        branch: String,
+        /// Registry project names the push covered, in selection order.
+        projects: Vec<String>,
+    },
     /// `specify lint` finished a scan. The payload carries the scan
     /// scope, wall-clock duration, per-status counts, a
     /// `baseline_present` flag (currently hard-coded `false`), and the
@@ -474,6 +514,37 @@ pub struct LintCounts {
     /// `specify-ignore` directive whose rationale begins with
     /// `false-positive:`.
     pub false_positive: u32,
+}
+
+/// Closed `actor` enum on [`EventKind::PlanTransitionApproved`] —
+/// who drove the Gate-1 stamp.
+///
+/// Self-reported through `specify plan transition --actor` (default
+/// `operator`), so the value is grading evidence for eval probes
+/// (`gate-1-not-auto-stamped`), not an enforcement surface. Defaults
+/// to [`Actor::Operator`] both at the flag and at deserialisation so
+/// journal lines written before the field existed keep parsing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, strum::Display)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum Actor {
+    /// A human operator ran the verb (the default).
+    #[default]
+    Operator,
+    /// An agent ran the verb on the operator's behalf.
+    Agent,
+}
+
+impl std::str::FromStr for Actor {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "operator" => Ok(Self::Operator),
+            "agent" => Ok(Self::Agent),
+            other => Err(format!("unknown actor `{other}`; expected `operator` or `agent`")),
+        }
+    }
 }
 
 /// Closed `action` enum on [`EventKind::PlanAmendAuthorityOverride`].

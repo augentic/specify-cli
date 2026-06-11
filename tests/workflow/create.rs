@@ -177,6 +177,11 @@ fn create_auto_approve_stamps() {
         "plan-name must serialise kebab-case, got:\n{}",
         lines[0]
     );
+    assert!(
+        lines[0].contains(r#""actor":"operator""#),
+        "--auto-approve is operator consent, so the stamp records actor: operator, got:\n{}",
+        lines[0]
+    );
 }
 
 #[test]

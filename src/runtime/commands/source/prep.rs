@@ -229,13 +229,16 @@ pub fn prepare(request: &PrepRequest<'_>) -> Result<SourcePrep> {
 }
 
 /// Resolve a `plan.yaml.sources.<key>.path` binding against
-/// `project_dir`: absolute paths pass through, relative paths join
-/// onto the project root. Shared by the `survey` and `extract` runners
-/// so the `$SOURCE_DIR` host path is computed in one place.
+/// `plan_root`: absolute paths pass through, relative paths join onto
+/// the directory `plan.yaml` lives in (the project root, or the
+/// initiating workspace under a `--plan-dir` override) — relative
+/// bindings are authored against the plan's home. Shared by the
+/// `survey` and `extract` runners so the `$SOURCE_DIR` host path is
+/// computed in one place.
 #[must_use]
-pub fn resolve_source_path(project_dir: &Path, raw: &str) -> PathBuf {
+pub fn resolve_source_path(plan_root: &Path, raw: &str) -> PathBuf {
     let candidate = Path::new(raw);
-    if candidate.is_absolute() { candidate.to_path_buf() } else { project_dir.join(candidate) }
+    if candidate.is_absolute() { candidate.to_path_buf() } else { plan_root.join(candidate) }
 }
 
 /// `.specify/scratch/<adapter>/<segment>/`, where `<segment>` is

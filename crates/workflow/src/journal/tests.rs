@@ -39,6 +39,7 @@ fn append_batch_writes_in_order() {
             test_timestamp("2026-05-22T13:30:00Z"),
             EventKind::PlanTransitionApproved {
                 plan_name: "fresh".into(),
+                actor: Actor::Operator,
             },
         ),
         Event::new(
@@ -141,6 +142,23 @@ fn event_wire_shapes_match_contract() {
     wire_shapes::check_contract_part2();
     wire_shapes::check_contract_part3();
     wire_shapes::check_contract_part4();
+}
+
+#[test]
+fn approved_actor_defaults_on_legacy_lines() {
+    // Journal lines written before the `actor` field existed carry
+    // only `plan-name`; `#[serde(default)]` must parse them as
+    // `actor: operator` so historic journals stay readable.
+    let legacy = r#"{"timestamp":"2026-05-21T20:00:00Z","event":"plan.transition.approved","payload":{"plan-name":"platform-v2"}}"#;
+    let event: Event = serde_json::from_str(legacy).expect("legacy line parses");
+    assert_eq!(
+        event.kind,
+        EventKind::PlanTransitionApproved {
+            plan_name: "platform-v2".into(),
+            actor: Actor::Operator,
+        },
+        "absent actor must default to operator"
+    );
 }
 
 #[test]

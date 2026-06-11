@@ -41,8 +41,9 @@ use specify_tool::resolver::ResolvedTool;
 
 /// `scenarios` framework checker component, built from
 /// `wasi-tools/scenarios/` via `cargo make framework-wasm scenarios` (Road B
-/// scenario family: CORE-028, 029, 031, 033; CORE-030 and CORE-032
-/// moved to Road A `scenario`-fact hints).
+/// scenario family: CORE-028, 029, 031, 033, plus the config-driven
+/// CORE-056 catalog↔runs drift check; CORE-030 and CORE-032 moved to
+/// Road A `scenario`-fact hints).
 const SCENARIOS_WASM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/wasi-tools/scenarios/dist/scenarios-0.1.0.wasm"

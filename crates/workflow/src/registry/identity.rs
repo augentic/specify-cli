@@ -261,6 +261,7 @@ mod tests {
             ts,
             EventKind::PlanTransitionApproved {
                 plan_name: "p".into(),
+                actor: journal::Actor::Operator,
             },
         ));
         journal::append_batch(layout, &events).expect("append journal");

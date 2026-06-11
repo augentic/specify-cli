@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::Plan;
-use specify_workflow::config::Layout;
 use specify_workflow::registry::Registry;
 
 use self::cli::PlanAction;
@@ -33,9 +32,12 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
         PlanAction::Amend(args) => amend::amend(ctx, args),
         PlanAction::Propose(args) => propose::propose(ctx, args),
         PlanAction::Remove { name } => remove::remove(ctx, name),
-        PlanAction::Transition { name, target, undo } => {
-            lifecycle::transition(ctx, name, target, undo)
-        }
+        PlanAction::Transition {
+            name,
+            target,
+            undo,
+            actor,
+        } => lifecycle::transition(ctx, name, target, undo, &actor),
         PlanAction::Archive { force } => lifecycle::archive(ctx, force),
     }
 }
@@ -44,9 +46,10 @@ pub fn run(ctx: &Ctx, action: PlanAction) -> Result<()> {
 
 /// Ensure the plan file exists before we try to load it. Error text is
 /// the stable "plan file not found: plan.yaml" string that skill
-/// authors match on.
-pub(super) fn require_file(project_dir: &Path) -> Result<PathBuf> {
-    let path = Layout::new(project_dir).plan_path();
+/// authors match on. Resolves through `ctx.layout()` so the global
+/// `--plan-dir` plan-root override applies.
+pub(super) fn require_file(ctx: &Ctx) -> Result<PathBuf> {
+    let path = ctx.layout().plan_path();
     if !path.exists() {
         return Err(Error::ArtifactNotFound {
             kind: "plan.yaml",

@@ -105,6 +105,96 @@ fn c01_sync_skips_unselected_slots() {
 }
 
 #[test]
+fn c01_sync_journals_completed_event() {
+    // workflow §Observability: one `workspace.sync.completed` per
+    // successful sync, carrying the materialised project names.
+    let tmp = tempdir().unwrap();
+    init_workspace(&tmp, "platform-workspace");
+    for name in ["billing", "orders"] {
+        fs::create_dir_all(tmp.path().join(name)).unwrap();
+    }
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: billing\n\
+         \x20\x20\x20\x20url: ./billing\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n\
+         \x20\x20- name: orders\n\
+         \x20\x20\x20\x20url: ./orders\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n",
+    )
+    .unwrap();
+
+    specify_cmd().current_dir(tmp.path()).args(["workspace", "sync"]).assert().success();
+
+    let raw = fs::read_to_string(tmp.path().join(".specify/journal.jsonl"))
+        .expect("sync must journal workspace.sync.completed");
+    let lines: Vec<&str> = raw.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "exactly one event per sync, got:\n{raw}");
+    assert!(lines[0].contains(r#""event":"workspace.sync.completed""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""projects":["billing","orders"]"#), "got:\n{}", lines[0]);
+}
+
+#[test]
+fn sync_no_registry_no_journal() {
+    let project = Project::init();
+    specify_cmd().current_dir(project.root()).args(["workspace", "sync"]).assert().success();
+    assert!(
+        !project.root().join(".specify/journal.jsonl").exists(),
+        "the registry-less no-op sync must not journal workspace.sync.completed"
+    );
+}
+
+#[test]
+fn push_journals_completed_event() {
+    // workflow §Observability: one `workspace.push.completed` per
+    // successful non-dry-run push (a `local-only` outcome is not a
+    // failure); dry runs emit nothing.
+    let tmp = tempdir().unwrap();
+    init_workspace(&tmp, "platform-workspace");
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
+    // A local git worktree without an `origin` remote resolves to the
+    // `local-only` push outcome — success without network.
+    let alpha = tmp.path().join("alpha");
+    fs::create_dir_all(&alpha).unwrap();
+    run_git(&alpha, &["init", "-b", "main"]);
+    fs::write(alpha.join("README.md"), "seed\n").unwrap();
+    run_git(&alpha, &["add", "README.md"]);
+    run_git(&alpha, &["commit", "--no-gpg-sign", "-m", "seed"]);
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: alpha\n\
+         \x20\x20\x20\x20url: ./alpha\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n",
+    )
+    .unwrap();
+
+    specify_cmd()
+        .current_dir(tmp.path())
+        .args(["workspace", "push", "--dry-run"])
+        .assert()
+        .success();
+    assert!(
+        !tmp.path().join(".specify/journal.jsonl").exists(),
+        "--dry-run must not journal workspace.push.completed"
+    );
+
+    specify_cmd().current_dir(tmp.path()).args(["workspace", "push"]).assert().success();
+
+    let raw = fs::read_to_string(tmp.path().join(".specify/journal.jsonl"))
+        .expect("push must journal workspace.push.completed");
+    let lines: Vec<&str> = raw.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "exactly one event per push, got:\n{raw}");
+    assert!(lines[0].contains(r#""event":"workspace.push.completed""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""plan-name":"demo-change""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""branch":"specify/demo-change""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""projects":["alpha"]"#), "got:\n{}", lines[0]);
+}
+
+#[test]
 fn c01_push_unknown_selector_preflight() {
     let tmp = tempdir().unwrap();
     init_workspace(&tmp, "platform-workspace");

@@ -104,7 +104,7 @@ pub fn run(ctx: &Ctx, source: &str, lead: &str, slice: &str, phase: Phase) -> Re
     })?;
 
     let source_path =
-        binding.path.as_deref().map(|raw| prep::resolve_source_path(&ctx.project_dir, raw));
+        binding.path.as_deref().map(|raw| prep::resolve_source_path(ctx.layout().plan_dir(), raw));
 
     let slice_dir = ctx.slices_dir().join(slice);
     let leads = [lead.to_string()];

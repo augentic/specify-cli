@@ -198,16 +198,46 @@ impl ProjectConfig {
 /// `.specify/` boundary in one place: callers never join
 /// `.specify/...` literally; they ask the layout for the directory
 /// they want.
+///
+/// The **plan root** (where `plan.yaml`, `change.md`, and
+/// `discovery.md` live) defaults to `project_dir` and is overridable
+/// with [`Layout::with_plan_dir`]: during workspace-routed phase work
+/// the plan artifacts live at the initiating workspace, not the slot,
+/// and slot-side verbs receive the workspace root via the global
+/// `--plan-dir` flag (env `SPECIFY_PLAN_DIR`).
 #[derive(Debug, Clone, Copy)]
 pub struct Layout<'a> {
     project_dir: &'a Path,
+    plan_dir: Option<&'a Path>,
 }
 
 impl<'a> Layout<'a> {
     /// Wrap `project_dir` as the typed root for path lookups.
     #[must_use]
     pub const fn new(project_dir: &'a Path) -> Self {
-        Self { project_dir }
+        Self {
+            project_dir,
+            plan_dir: None,
+        }
+    }
+
+    /// Override the plan root: `plan.yaml`, `change.md`, and
+    /// `discovery.md` resolve against `plan_dir` instead of the
+    /// project root. `None` leaves the default in place.
+    #[must_use]
+    pub const fn with_plan_dir(mut self, plan_dir: Option<&'a Path>) -> Self {
+        self.plan_dir = plan_dir;
+        self
+    }
+
+    /// The plan root: `plan_dir` when overridden, the project root
+    /// otherwise.
+    #[must_use]
+    pub const fn plan_dir(&self) -> &'a Path {
+        match self.plan_dir {
+            Some(dir) => dir,
+            None => self.project_dir,
+        }
     }
 
     /// Project root the layout is anchored at.
@@ -314,26 +344,28 @@ impl<'a> Layout<'a> {
         self.project_dir.join("registry.yaml")
     }
 
-    /// Absolute path to `<project_dir>/plan.yaml` — the change
-    /// plan. Platform-level artifact, lives at the repo root.
+    /// Absolute path to `<plan-root>/plan.yaml` — the change plan.
+    /// Platform-level artifact at the repo root, or at the initiating
+    /// workspace root when the plan root is overridden
+    /// ([`Layout::with_plan_dir`]).
     #[must_use]
     pub fn plan_path(&self) -> PathBuf {
-        self.project_dir.join("plan.yaml")
+        self.plan_dir().join("plan.yaml")
     }
 
-    /// Absolute path to `<project_dir>/change.md` — the umbrella
-    /// operator brief at the repo root. Platform-level artifact.
+    /// Absolute path to `<plan-root>/change.md` — the umbrella
+    /// operator brief beside `plan.yaml`. Platform-level artifact.
     #[must_use]
     pub fn change_brief_path(&self) -> PathBuf {
-        self.project_dir.join("change.md")
+        self.plan_dir().join("change.md")
     }
 
-    /// Absolute path to `<project_dir>/discovery.md` — the candidate
+    /// Absolute path to `<plan-root>/discovery.md` — the candidate
     /// inventory written at `/spec:plan`'s survey step and read during
-    /// lead reconciliation.
+    /// lead reconciliation. Lives beside `plan.yaml`.
     #[must_use]
     pub fn discovery_path(&self) -> PathBuf {
-        self.project_dir.join("discovery.md")
+        self.plan_dir().join("discovery.md")
     }
 }
 

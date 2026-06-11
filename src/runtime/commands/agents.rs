@@ -127,6 +127,7 @@ mod tests {
             format: Format::Text,
             project_dir: tmp.path().to_path_buf(),
             config: sample_config(),
+            plan_dir: None,
         };
 
         let assembly = assemble::render_input(&ctx).expect("assemble render input");
@@ -179,6 +180,7 @@ mod tests {
                 platforms: Vec::new(),
                 workspace: true,
             },
+            plan_dir: None,
         };
 
         let assembly = assemble::render_input(&ctx).expect("workspace assembly");

@@ -37,6 +37,16 @@ pub struct Cli {
     /// out from skills.
     #[arg(long, env = "SPECIFY_FORMAT", default_value = "text", global = true)]
     pub(crate) format: Format,
+
+    /// Plan root override: the directory holding the governing
+    /// `plan.yaml` (plus `change.md` / `discovery.md`) when it is not
+    /// the project root. Set by the `/spec:execute` routing layer (or
+    /// `SPECIFY_PLAN_DIR`) to the initiating workspace root while
+    /// phase verbs run inside a workspace slot, so slice-time plan
+    /// reads and the merge `done` stamp resolve against the
+    /// workspace's plan.
+    #[arg(long, env = "SPECIFY_PLAN_DIR", value_name = "PATH", global = true)]
+    pub(crate) plan_dir: Option<std::path::PathBuf>,
 }
 
 #[derive(Subcommand)]

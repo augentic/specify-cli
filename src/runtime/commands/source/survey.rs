@@ -82,7 +82,7 @@ pub fn run(ctx: &Ctx, source: &str, plan_name: Option<&str>, phase: Phase) -> Re
     })?;
 
     let source_path =
-        binding.path.as_deref().map(|raw| prep::resolve_source_path(&ctx.project_dir, raw));
+        binding.path.as_deref().map(|raw| prep::resolve_source_path(ctx.layout().plan_dir(), raw));
 
     let prepared = prep::prepare(&prep::PrepRequest {
         adapter: &binding.adapter,

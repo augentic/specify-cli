@@ -3,8 +3,9 @@
 //!
 //! The tool covers the filesystem-only scenario family: CORE-028
 //! (artifact-path safety), CORE-029 (body↔frontmatter id), CORE-031
-//! (recorded-trace header validation), and CORE-033 (stage
-//! contiguity). CORE-030 (whole-tree duplicate id) and CORE-032
+//! (recorded-trace header validation), CORE-033 (stage contiguity),
+//! and CORE-056 (catalog↔runs drift, policy via the rule's forwarded
+//! `config:`). CORE-030 (whole-tree duplicate id) and CORE-032
 //! (frontmatter schema) are covered by Road A declarative hints over
 //! the `scenario` fact family. CORE-034's git-only staleness advisory
 //! is not covered here (it shells out to `git`, unfit for the WASI
@@ -12,9 +13,12 @@
 //! only on `serde` / `serde-saphyr` / `serde_json` / `regex`, never
 //! the host diagnostics crate (`main.rs` renders the wire envelope).
 
+mod catalog;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+pub use catalog::{CatalogPolicy, RULE_CATALOG_RUNS_DRIFT, check_catalog_runs};
 use regex::Regex;
 use serde_json::Value as JsonValue;
 
@@ -47,13 +51,22 @@ pub struct ScenarioFinding {
 }
 
 /// Run every scenario-pack check rooted at `project_dir` (the framework
-/// tree) and return all findings across the CORE-028..033 family,
-/// sorted by `(rule_id, path, message)` for a stable wire order. The
+/// tree) without rule config — the CORE-028..033 family only. The
 /// caller scopes the set to a single rule before emitting.
 #[must_use]
 pub fn run(project_dir: &Path) -> Vec<ScenarioFinding> {
+    run_with_config(project_dir, None)
+}
+
+/// Run every scenario-pack check rooted at `project_dir`, including the
+/// config-driven catalog↔runs check (CORE-056) when the forwarded rule
+/// `config:` carries a catalog policy. Findings are sorted by
+/// `(rule_id, path, message)` for a stable wire order.
+#[must_use]
+pub fn run_with_config(project_dir: &Path, config: Option<&JsonValue>) -> Vec<ScenarioFinding> {
     let mut findings = validate_scenario_frontmatter(project_dir);
     findings.extend(check_recorded_trace_freshness(project_dir));
+    findings.extend(catalog::findings_from_config(project_dir, config));
     findings
         .sort_by(|a, b| (a.rule_id, &a.path, &a.message).cmp(&(b.rule_id, &b.path, &b.message)));
     findings

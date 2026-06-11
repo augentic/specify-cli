@@ -3,12 +3,15 @@
 //! Run under `specify lint framework`'s `kind: tool` evaluator. The
 //! evaluator invokes the tool once per candidate file (a sentinel path,
 //! since scenario checks are whole-tree) and reads `PROJECT_DIR` from the
-//! environment. The positional path argument names the rule's own
-//! sentinel file (e.g. `…/CORE-028-…md`); the tool reads the `CORE-NNN`
-//! out of it and scopes its output to that rule, so the family tool can
-//! back CORE-028..033 without each rule double-counting the others'
-//! findings. With no recognisable rule in the args the tool emits the
-//! whole family (direct local debugging).
+//! environment. The positional args carry the rule's own sentinel file
+//! (e.g. `…/CORE-028-…md`) and — when the rule declares one — its
+//! `config:` serialised as JSON. The tool reads the `CORE-NNN` out of
+//! the sentinel and scopes its output to that rule, so the family tool
+//! can back CORE-028..033 and CORE-056 without each rule
+//! double-counting the others' findings; CORE-056's catalog↔runs policy
+//! (paths, value sets, status↔result map) rides in the forwarded
+//! config, never this binary. With no recognisable rule in the args the
+//! tool emits the whole family (direct local debugging).
 //!
 //! Findings are emitted on stdout as a `DiagnosticReport` envelope the
 //! host folds into its scan output; each carries its own
@@ -23,9 +26,10 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use serde::Serialize;
+use serde_json::Value as JsonValue;
 use specify_scenarios::{
-    RULE_ARTIFACT_PATH_UNSAFE, RULE_BODY_ID_MISMATCH, RULE_RECORDED_TRACE_VIOLATION,
-    RULE_STAGES_NOT_CONTIGUOUS, ScenarioFinding, run,
+    RULE_ARTIFACT_PATH_UNSAFE, RULE_BODY_ID_MISMATCH, RULE_CATALOG_RUNS_DRIFT,
+    RULE_RECORDED_TRACE_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS, ScenarioFinding, run_with_config,
 };
 
 /// Placeholder fingerprint; the host recomputes it on fold. Kept in the
@@ -38,6 +42,7 @@ const PLACEHOLDER_FINGERPRINT: &str =
 const RULES: &[&str] = &[
     RULE_ARTIFACT_PATH_UNSAFE,
     RULE_BODY_ID_MISMATCH,
+    RULE_CATALOG_RUNS_DRIFT,
     RULE_RECORDED_TRACE_VIOLATION,
     RULE_STAGES_NOT_CONTIGUOUS,
 ];
@@ -47,8 +52,10 @@ fn main() -> ExitCode {
         print_report(&[]);
         return ExitCode::SUCCESS;
     };
-    let scoped = requested_rule();
-    let findings: Vec<ScenarioFinding> = run(&project_dir)
+    let args: Vec<String> = std::env::args().collect();
+    let scoped = requested_rule(&args);
+    let config = parsed_config(&args);
+    let findings: Vec<ScenarioFinding> = run_with_config(&project_dir, config.as_ref())
         .into_iter()
         .filter(|finding| scoped.is_none_or(|rule| finding.rule_id == rule))
         .collect();
@@ -58,8 +65,17 @@ fn main() -> ExitCode {
 
 /// The single `CORE-NNN` named in the positional args (the rule's
 /// sentinel file path), or `None` when no recognised rule is present.
-fn requested_rule() -> Option<&'static str> {
-    std::env::args().find_map(|arg| RULES.iter().copied().find(|rule| arg.contains(rule)))
+fn requested_rule(args: &[String]) -> Option<&'static str> {
+    args.iter().find_map(|arg| RULES.iter().copied().find(|rule| arg.contains(rule)))
+}
+
+/// The first positional arg that parses as a JSON object — the rule's
+/// `config:` forwarded by the `kind: tool` evaluator.
+fn parsed_config(args: &[String]) -> Option<JsonValue> {
+    args.iter().find_map(|arg| match serde_json::from_str::<JsonValue>(arg) {
+        Ok(value) if value.is_object() => Some(value),
+        _ => None,
+    })
 }
 
 fn print_report(findings: &[ScenarioFinding]) {
@@ -153,6 +169,10 @@ fn guidance(rule_id: &str) -> (&'static str, &'static str) {
         RULE_RECORDED_TRACE_VIOLATION => (
             "A recorded-trace file's first line is not a well-formed `recorded-trace-header`, so replay cannot trust its provenance.",
             "Make the first line a JSON `recorded-trace-header` object with schemaVersion 1 and every required field populated.",
+        ),
+        RULE_CATALOG_RUNS_DRIFT => (
+            "The scenario catalog, the scenario files, and the committed run records disagree, so the catalog's gate status cannot be trusted.",
+            "Reconcile the catalog row with the scenario tree and evals/runs/: status-bearing rows need exactly one committed record whose <result> agrees.",
         ),
         _ => (
             "Scenario stages are not a contiguous slice of the slice loop; the pack does not describe a runnable lifecycle window.",

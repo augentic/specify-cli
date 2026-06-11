@@ -85,12 +85,78 @@ slices:
     assert_eq!(events.len(), 1, "expected one journal event, got {}", events.len());
     assert_eq!(events[0]["event"], "plan.transition.approved");
     assert_eq!(events[0]["payload"]["plan-name"], "platform-v2");
+    assert_eq!(
+        events[0]["payload"]["actor"], "operator",
+        "bare `plan transition` must record the default actor"
+    );
     assert!(
         events[0]["timestamp"].as_str().is_some(),
         "timestamp must be present, got:\n{}",
         events[0]
     );
     assert_journal_golden("plan-transition-approved.json", events);
+}
+
+#[test]
+fn plan_transition_records_agent_actor() {
+    // `--actor agent` is self-reported grading evidence for the eval
+    // probes (`gate-1-not-auto-stamped`): the stamp succeeds either
+    // way, but the journal records who drove it.
+    let project = Project::init();
+    project.seed_plan(
+        "name: platform-v2
+slices:
+  - name: a
+    project: default
+    status: done
+",
+    );
+
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["plan", "transition", "platform-v2", "approved", "--actor", "agent"])
+        .assert()
+        .success();
+
+    let events = read_journal(project.root());
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["event"], "plan.transition.approved");
+    assert_eq!(events[0]["payload"]["actor"], "agent");
+}
+
+#[test]
+fn plan_transition_rejects_unknown_actor() {
+    let project = Project::init();
+    project.seed_plan(
+        "name: platform-v2
+slices:
+  - name: a
+    project: default
+    status: done
+",
+    );
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args([
+            "--format",
+            "json",
+            "plan",
+            "transition",
+            "platform-v2",
+            "approved",
+            "--actor",
+            "robot",
+        ])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+    let actual = parse_stderr(&assert.get_output().stderr, project.root());
+    assert_eq!(actual["error"], "argument");
+    assert!(
+        !journal_path(project.root()).exists(),
+        "a rejected --actor must not stamp the plan nor append to the journal"
+    );
 }
 
 // -- plan.amend.divergence -------------------------------------------

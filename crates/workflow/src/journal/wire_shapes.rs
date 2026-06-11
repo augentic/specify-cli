@@ -130,7 +130,54 @@ pub fn check_contract_part3() {
 }
 
 pub fn check_contract_part4() {
-    let rows: &[(EventKind, &[&str])] = &[];
+    let rows: &[(EventKind, &[&str])] = &[
+        (
+            EventKind::PlanTransitionApproved {
+                plan_name: "identity-revamp".into(),
+                actor: Actor::Operator,
+            },
+            &[
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"plan.transition.approved","payload":{"plan-name":"identity-revamp","actor":"operator"}}"#,
+            ],
+        ),
+        (
+            EventKind::PlanTransitionApproved {
+                plan_name: "identity-revamp".into(),
+                actor: Actor::Agent,
+            },
+            &[r#""event":"plan.transition.approved""#, r#""actor":"agent""#],
+        ),
+        (
+            EventKind::PlanEntryAdvanced {
+                plan_name: "identity-revamp".into(),
+                slice_name: "identity-contracts".into(),
+            },
+            &[
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"plan.entry.advanced","payload":{"plan-name":"identity-revamp","slice-name":"identity-contracts"}}"#,
+            ],
+        ),
+        (
+            EventKind::WorkspaceSyncCompleted {
+                projects: vec!["alpha".to_string(), "beta".to_string()],
+            },
+            &[
+                r#"{"timestamp":"2026-05-22T13:15:00Z","event":"workspace.sync.completed","payload":{"projects":["alpha","beta"]}}"#,
+            ],
+        ),
+        (
+            EventKind::WorkspacePushCompleted {
+                plan_name: "identity-revamp".into(),
+                branch: "specify/identity-revamp".to_string(),
+                projects: vec!["alpha".to_string(), "beta".to_string()],
+            },
+            &[
+                r#""event":"workspace.push.completed""#,
+                r#""plan-name":"identity-revamp""#,
+                r#""branch":"specify/identity-revamp""#,
+                r#""projects":["alpha","beta"]"#,
+            ],
+        ),
+    ];
     assert_wire_rows(rows);
 }
 
@@ -169,6 +216,11 @@ fn probe_kinds_part1() -> Vec<EventKind> {
     vec![
         EventKind::PlanTransitionApproved {
             plan_name: "p".into(),
+            actor: Actor::Operator,
+        },
+        EventKind::PlanEntryAdvanced {
+            plan_name: "p".into(),
+            slice_name: "s".into(),
         },
         EventKind::PlanAmendDivergence {
             plan_name: "p".into(),
@@ -246,6 +298,14 @@ fn probe_kinds_part2() -> Vec<EventKind> {
             outcome_summary: "identity: 1 modified".to_string(),
             merge_sha: Some("abc1234".to_string()),
             decisions: Vec::new(),
+        },
+        EventKind::WorkspaceSyncCompleted {
+            projects: vec!["alpha".to_string()],
+        },
+        EventKind::WorkspacePushCompleted {
+            plan_name: "p".into(),
+            branch: "specify/p".to_string(),
+            projects: vec!["alpha".to_string()],
         },
     ]
 }

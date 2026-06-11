@@ -36,6 +36,7 @@ use crate::runtime::output::{self, Exit, report};
 
 pub fn run(cli: Cli) -> Exit {
     let format = cli.format;
+    let plan_dir = cli.plan_dir;
     match cli.command {
         Commands::Init {
             adapter,
@@ -59,7 +60,7 @@ pub fn run(cli: Cli) -> Exit {
                 upgrade,
             })
         }),
-        Commands::Source { action } => dispatch_source(format, action),
+        Commands::Source { action } => dispatch_source(format, plan_dir, action),
         Commands::Target { action } => match action {
             TargetAction::Resolve { value, project_dir } => {
                 dispatch(format, || resolve_adapter(format, Axis::Target, &value, &project_dir))
@@ -67,26 +68,30 @@ pub fn run(cli: Cli) -> Exit {
         },
         Commands::Rules { action } => match action {
             RulesAction::Export(args) => dispatch(format, || rules::export::run(format, &args)),
-            RulesAction::Sync(args) => scoped(format, |ctx| rules::sync::run(ctx, &args)),
+            RulesAction::Sync(args) => scoped(format, plan_dir, |ctx| rules::sync::run(ctx, &args)),
         },
         Commands::Tool { action } => match action {
             ToolAction::Run { name, args } => run_tool_with(format, &name, args),
-            ToolAction::Fetch { name } => scoped(format, |ctx| tool::fetch(ctx, name.as_deref())),
-            ToolAction::Gc => scoped(format, tool::gc),
+            ToolAction::Fetch { name } => {
+                scoped(format, plan_dir, |ctx| tool::fetch(ctx, name.as_deref()))
+            }
+            ToolAction::Gc => scoped(format, plan_dir, tool::gc),
             ToolAction::Schema { name, schema } => {
                 run_tool_with(format, &name, vec!["schema".to_string(), schema])
             }
         },
         Commands::Lint { action } => dispatch_lint(format, action),
         Commands::Journal { action } => match action {
-            JournalAction::Emit { event, payload } => {
-                scoped(format, |ctx| journal::emit::emit(ctx, &event, payload.as_deref()))
-            }
+            JournalAction::Emit { event, payload } => scoped(format, plan_dir, |ctx| {
+                journal::emit::emit(ctx, &event, payload.as_deref())
+            }),
         },
-        Commands::Slice { action } => scoped(format, |ctx| slice::run(ctx, action)),
-        Commands::Archive { action } => scoped(format, |ctx| archive::run(ctx, &action)),
-        Commands::Plan { action } => scoped(format, |ctx| plan::run(ctx, action)),
-        Commands::Registry { action } => scoped(format, |ctx| registry::run(ctx, action)),
+        Commands::Slice { action } => scoped(format, plan_dir, |ctx| slice::run(ctx, action)),
+        Commands::Archive { action } => scoped(format, plan_dir, |ctx| archive::run(ctx, &action)),
+        Commands::Plan { action } => scoped(format, plan_dir, |ctx| plan::run(ctx, action)),
+        Commands::Registry { action } => {
+            scoped(format, plan_dir, |ctx| registry::run(ctx, action))
+        }
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
@@ -108,16 +113,18 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Plugins { action } => dispatch(format, || plugins::run(format, action)),
         Commands::Workspace { action } => match action {
             WorkspaceAction::Sync { projects } => {
-                scoped(format, |ctx| workspace::sync(ctx, &projects))
+                scoped(format, plan_dir, |ctx| workspace::sync(ctx, &projects))
             }
             WorkspaceAction::Prepare {
                 project,
                 change,
                 sources,
                 outputs,
-            } => scoped(format, |ctx| workspace::prepare(ctx, &project, change, sources, outputs)),
+            } => scoped(format, plan_dir, |ctx| {
+                workspace::prepare(ctx, &project, change, sources, outputs)
+            }),
             WorkspaceAction::Push { projects, dry_run } => {
-                scoped(format, |ctx| workspace::push(ctx, &projects, dry_run))
+                scoped(format, plan_dir, |ctx| workspace::push(ctx, &projects, dry_run))
             }
         },
     }
@@ -131,7 +138,7 @@ pub fn run(cli: Cli) -> Exit {
 /// posture — `resolve` / `preview` are project-context-free
 /// ([`dispatch`]), `survey` / `extract` are project-scoped
 /// ([`scoped`]).
-fn dispatch_source(format: Format, action: SourceAction) -> Exit {
+fn dispatch_source(format: Format, plan_dir: Option<PathBuf>, action: SourceAction) -> Exit {
     match action {
         SourceAction::Resolve { name, project_dir } => {
             dispatch(format, || resolve_adapter(format, Axis::Source, &name, &project_dir))
@@ -145,15 +152,17 @@ fn dispatch_source(format: Format, action: SourceAction) -> Exit {
         } => dispatch(format, || {
             source::preview::preview(format, &adapter, &source, &lead, out.as_deref(), &project_dir)
         }),
-        SourceAction::Survey { source, plan, phase } => {
-            scoped(format, |ctx| source::survey::run(ctx, &source, plan.as_deref(), phase))
-        }
+        SourceAction::Survey { source, plan, phase } => scoped(format, plan_dir, |ctx| {
+            source::survey::run(ctx, &source, plan.as_deref(), phase)
+        }),
         SourceAction::Extract {
             source,
             lead,
             slice,
             phase,
-        } => scoped(format, |ctx| source::extract::run(ctx, &source, &lead, &slice, phase)),
+        } => scoped(format, plan_dir, |ctx| {
+            source::extract::run(ctx, &source, &lead, &slice, phase)
+        }),
     }
 }
 
@@ -173,11 +182,14 @@ fn dispatch_lint(format: Format, action: LintAction) -> Exit {
 /// `Error` to the appropriate format-aware exit code via
 /// [`report`]. This is the single error-handling boundary for
 /// project-aware handlers — they can use `?` freely inside `f`.
-fn scoped<F>(format: Format, f: F) -> Exit
+/// `plan_dir` is the global `--plan-dir` plan-root override,
+/// threaded into [`Ctx`] so `ctx.layout()` resolves plan artifacts
+/// against it.
+fn scoped<F>(format: Format, plan_dir: Option<PathBuf>, f: F) -> Exit
 where
     F: FnOnce(&Ctx) -> Result<()>,
 {
-    let ctx = match Ctx::load(format) {
+    let ctx = match Ctx::load(format, plan_dir) {
         Ok(ctx) => ctx,
         Err(err) => return report(format, &err),
     };
@@ -189,12 +201,13 @@ where
 
 /// Variant of [`scoped`] that loads `Ctx` against an explicit
 /// project directory instead of the process CWD. Used by handlers
-/// that take a `--project-dir` flag (e.g. `specify lint`).
+/// that take a `--project-dir` flag (e.g. `specify lint`), none of
+/// which read plan artifacts — so no plan-root override is threaded.
 fn scoped_at<F>(format: Format, project_dir: &Path, f: F) -> Exit
 where
     F: FnOnce(&Ctx) -> Result<()>,
 {
-    let ctx = match Ctx::load_at(format, project_dir) {
+    let ctx = match Ctx::load_at(format, None, project_dir) {
         Ok(ctx) => ctx,
         Err(err) => return report(format, &err),
     };
@@ -223,7 +236,7 @@ where
 /// success branch can carry the guest's exit code rather than
 /// collapsing to `Success`.
 fn run_tool_with(format: Format, name: &str, args: Vec<String>) -> Exit {
-    let ctx = match Ctx::load(format) {
+    let ctx = match Ctx::load(format, None) {
         Ok(ctx) => ctx,
         Err(err) => return report(format, &err),
     };

@@ -152,7 +152,7 @@
             "description": "Optional human explanation for the hint."
           },
           "config": {
-            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `content-digest-eq` -> agentTeamsHintConfig; `presence` (file / markdown-section) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (agent-teams) -> agentTeamsHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig.",
+            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `content-digest-eq` -> agentTeamsHintConfig; `presence` (file / markdown-section) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (agent-teams) -> agentTeamsHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig; `tool` (scenarios) -> catalogRunsHintConfig.",
             "oneOf": [
               { "$ref": "#/$defs/regexHintConfig" },
               { "$ref": "#/$defs/referenceResolvesHintConfig" },
@@ -170,6 +170,7 @@
               { "$ref": "#/$defs/schemaRegistryHintConfig" },
               { "$ref": "#/$defs/numericCapHintConfig" },
               { "$ref": "#/$defs/nsOwnerHintConfig" },
+              { "$ref": "#/$defs/catalogRunsHintConfig" },
               { "$ref": "#/$defs/presenceHintConfig" },
               { "$ref": "#/$defs/fieldGrammarHintConfig" },
               { "$ref": "#/$defs/crossReferenceHintConfig" }
@@ -671,6 +672,48 @@
           "minProperties": 1,
           "additionalProperties": { "type": "string", "minLength": 1 },
           "description": "`<reserved namespace> -> <sole owner>` map (e.g. `FRAME -> universal`). A rule whose id carries a reserved namespace under any other owner is flagged."
+        }
+      }
+    },
+    "catalogRunsHintConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalog", "scenarios-dir", "runs-dir", "statuses", "gates", "status-result-map"],
+      "description": "`kind: tool` (`scenarios`) configuration for the catalog\u2194runs drift check (CORE-056). The catalog path, the scenario / run directories, the legal Status and Gate value sets, and the status\u2194result agreement map are policy supplied by the rule, not the tool; the engine relays this block to the tool verbatim.",
+      "properties": {
+        "catalog": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative path of the catalog markdown whose group tables are parsed (id from each row's File link)."
+        },
+        "scenarios-dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative directory holding one `<id>.md` per scenario (README.md excluded)."
+        },
+        "runs-dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative directory holding committed `<id>.<result>.md` run records (README.md excluded)."
+        },
+        "statuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Legal Status column values (e.g. `pending`, `passed`, `failed`, `deferred`)."
+        },
+        "gates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Legal Gate column values (e.g. `release-blocker`, `full`). An empty list skips gate validation."
+        },
+        "status-result-map": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "minLength": 1 },
+          "description": "`<status> -> <record result token>` map for statuses that require a committed record (e.g. `passed -> pass`). Statuses absent from the map (e.g. `pending`) must have no record at all."
         }
       }
     },

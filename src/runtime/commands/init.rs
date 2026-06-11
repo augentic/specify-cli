@@ -215,6 +215,7 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option
         format,
         project_dir: project_dir.to_path_buf(),
         config,
+        plan_dir: None,
     };
     let outcome = agents::generate_for_init(&ctx)?;
     debug_assert!(

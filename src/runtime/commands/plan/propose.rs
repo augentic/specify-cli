@@ -70,7 +70,7 @@ pub(super) fn propose(ctx: &Ctx, args: cli::ProposeArgs) -> Result<()> {
 /// (`.specify/scratch/plan/propose-response.json`) is always this
 /// run's — mirroring the source-operation `prepare` scratch reset.
 fn dry_run(ctx: &Ctx) -> Result<()> {
-    require_file(&ctx.project_dir)?;
+    require_file(ctx)?;
     let discovery = load_discovery(ctx)?;
     let topology = load_topology(ctx)?;
     let request = build_request(&discovery, &topology)?;
@@ -93,7 +93,7 @@ fn reset_plan_scratch(ctx: &Ctx) -> Result<()> {
 /// `--from`: schema-gate and project the agent response onto
 /// `plan.yaml.slices[]`, then emit the paired reconciliation events.
 fn from(ctx: &Ctx, response_path: &Path, reconcile_platforms: bool) -> Result<()> {
-    let plan_path = require_file(&ctx.project_dir)?;
+    let plan_path = require_file(ctx)?;
     let raw = read_response(response_path)?;
 
     // Schema gate on the raw bytes first: it enforces the kebab

@@ -17,7 +17,7 @@ use super::{Ref, plan_ref, require_file};
 use crate::runtime::context::Ctx;
 
 pub(super) fn validate(ctx: &Ctx) -> Result<()> {
-    let plan_path = require_file(&ctx.project_dir)?;
+    let plan_path = require_file(ctx)?;
     let plan = Plan::load(&plan_path)?;
     let slices_dir = ctx.layout().slices_dir();
 
@@ -64,14 +64,31 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
     // topology inputs (`config` / `project_dir`) ride into the state
     // closure for `plan_next_body` to resolve the advanced entry's
     // `$TARGET` lazily. All projection logic lives in `specify-workflow`;
-    // the handler only renders the returned body.
+    // the handler only renders the returned body and owns the
+    // journal/emit bracket.
     let slices_dir = ctx.layout().slices_dir();
     let config = ctx.config.clone();
     let project_dir = ctx.project_dir.clone();
 
-    let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
-        plan_next_body(plan, &slices_dir, &config, &project_dir)
+    let (body, plan_name) = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
+        let body = plan_next_body(plan, &slices_dir, &config, &project_dir)?;
+        Ok((body, plan.name.clone()))
     })?;
+    // workflow §Observability: `plan.entry.advanced` fires only when an
+    // entry actually moved `pending → in-progress` (`body.next`
+    // populated). Returning the active entry or reporting
+    // drained/stuck emits nothing, so a parked execute loop leaves no
+    // advance event behind.
+    if let Some(advanced) = &body.next {
+        let event = specify_workflow::journal::Event::new(
+            Timestamp::now(),
+            specify_workflow::journal::EventKind::PlanEntryAdvanced {
+                plan_name,
+                slice_name: advanced.clone().into(),
+            },
+        );
+        specify_workflow::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+    }
     ctx.write(&body, write_next_text)?;
     Ok(())
 }
@@ -88,9 +105,18 @@ pub(super) fn next(ctx: &Ctx) -> Result<()> {
 /// running the explicit transition after `specify plan create
 /// --auto-approve` must not double-stamp the lifecycle nor double-
 /// fire `plan.transition.approved`.
+///
+/// `--actor <operator|agent>` (default `operator`) is recorded on the
+/// `plan.transition.approved` event only — self-reported grading
+/// evidence for eval probes, ignored on per-entry and `--undo` paths.
 pub(super) fn transition(
-    ctx: &Ctx, name: String, target: Option<String>, undo: bool,
+    ctx: &Ctx, name: String, target: Option<String>, undo: bool, actor: &str,
 ) -> Result<()> {
+    let actor: specify_workflow::journal::Actor =
+        actor.parse().map_err(|detail| Error::Argument {
+            flag: "--actor",
+            detail,
+        })?;
     let plan_path = ctx.layout().plan_path();
     let body = with_state::<Plan, _, _>(ctx.layout(), "plan.yaml", move |plan| {
         if undo {
@@ -116,6 +142,7 @@ pub(super) fn transition(
                 Timestamp::now(),
                 specify_workflow::journal::EventKind::PlanTransitionApproved {
                     plan_name: body.name.clone().into(),
+                    actor,
                 },
             );
             specify_workflow::journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;

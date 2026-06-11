@@ -146,6 +146,14 @@ pub enum PlanAction {
         /// by editing `plan.yaml` directly (out of scope for v1).
         #[arg(long = "undo", action = ArgAction::SetTrue, conflicts_with = "target")]
         undo: bool,
+        /// Who is driving this invocation — `operator` (default) or
+        /// `agent`. Recorded on the `plan.transition.approved`
+        /// journal event so eval probes can grade
+        /// `gate-1-not-auto-stamped` mechanically; self-reported
+        /// evidence, not an enforcement gate. Ignored on per-entry
+        /// and `--undo` transitions.
+        #[arg(long = "actor", value_name = "ACTOR", default_value = "operator")]
+        actor: String,
     },
     /// Archive the current plan to `.specify/archive/plans/<name>-<YYYYMMDD>.yaml`
     Archive {

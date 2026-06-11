@@ -28,6 +28,33 @@ fn specify_subpaths() {
     assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
 }
 
+#[test]
+fn plan_dir_override_moves_plan_artifacts_only() {
+    // Workspace routing: phase verbs run inside a slot while the plan
+    // artifacts live at the initiating workspace. The override moves
+    // exactly the three plan-root artifacts; every `.specify/` path
+    // stays anchored to the project (slot) root.
+    let slot = Path::new("/ws/.specify/workspace/orders");
+    let workspace = Path::new("/ws");
+    let layout = Layout::new(slot).with_plan_dir(Some(workspace));
+    assert_eq!(layout.project_dir(), slot);
+    assert_eq!(layout.plan_dir(), workspace);
+    assert_eq!(layout.plan_path(), PathBuf::from("/ws/plan.yaml"));
+    assert_eq!(layout.change_brief_path(), PathBuf::from("/ws/change.md"));
+    assert_eq!(layout.discovery_path(), PathBuf::from("/ws/discovery.md"));
+    assert_eq!(layout.specify_dir(), PathBuf::from("/ws/.specify/workspace/orders/.specify"));
+    assert_eq!(layout.slices_dir(), PathBuf::from("/ws/.specify/workspace/orders/.specify/slices"));
+    assert_eq!(layout.registry_path(), PathBuf::from("/ws/.specify/workspace/orders/registry.yaml"));
+}
+
+#[test]
+fn plan_dir_none_keeps_project_root() {
+    let base = Path::new("/a/b");
+    let layout = Layout::new(base).with_plan_dir(None);
+    assert_eq!(layout.plan_dir(), base);
+    assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
+}
+
 fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {
     ProjectConfig {
         name: "demo".to_string(),
