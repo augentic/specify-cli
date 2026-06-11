@@ -119,9 +119,5 @@ fn schema_undeclared_tool_exits_two() {
     assert_eq!(value["error"], "tool-not-declared");
 }
 
-#[test]
-fn help_lists_schema_verb() {
-    let assert = specify_cmd().args(["tool", "--help"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(stdout.contains("schema"), "tool --help must list `schema`, got:\n{stdout}");
-}
+// `schema` membership in the `tool` verb inventory is asserted by
+// `run::help_lists_active_verbs` against the contract dump.

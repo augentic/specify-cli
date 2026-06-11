@@ -1,16 +1,12 @@
-//! Integration tests for `schemas/plan/plan.schema.json` plus the
-//! kebab-name regex shared with `specify_workflow::slice::actions::validate_name`.
-//!
-//! The schema tests are pure-library: they compile the bundled JSON
-//! Schema and feed it YAML fixtures converted to `serde_json::Value`.
-//! CLI integration tests for the `specify plan *` group live in
-//! `tests/workflow/`.
-
-use std::fs;
-use std::path::PathBuf;
+//! Pure-library tests for `schemas/plan/plan.schema.json` (embedded as
+//! `specify_schema::PLAN_JSON_SCHEMA`) plus the kebab-name regex shared
+//! with `specify_workflow::slice::actions::validate_name`. CLI
+//! integration tests for the `specify plan *` group live in the binary
+//! harness under `tests/workflow/`.
 
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
+use specify_schema::PLAN_JSON_SCHEMA;
 
 /// `platform-v2` plan example, inline.
 ///
@@ -93,13 +89,9 @@ slices:
     status: pending
 ";
 
-fn schema_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("schemas/plan/plan.schema.json")
-}
-
 fn load_validator() -> Validator {
-    let raw = fs::read_to_string(schema_path()).expect("read plan.schema.json");
-    let schema: JsonValue = serde_json::from_str(&raw).expect("plan.schema.json is valid JSON");
+    let schema: JsonValue =
+        serde_json::from_str(PLAN_JSON_SCHEMA).expect("plan.schema.json is valid JSON");
     jsonschema::validator_for(&schema).expect("plan.schema.json compiles as a JSON Schema")
 }
 
@@ -161,10 +153,10 @@ fn kebab_name_regex_matches_validate_name() {
     use regex::Regex;
     use specify_workflow::slice::actions as slice_actions;
 
-    // Extract the pattern from the compiled schema to keep this test
-    // honest against drift — the schema file is the source of truth.
-    let raw = fs::read_to_string(schema_path()).expect("read plan.schema.json");
-    let schema: JsonValue = serde_json::from_str(&raw).expect("plan.schema.json is valid JSON");
+    // Extract the pattern from the embedded schema to keep this test
+    // honest against drift — the schema is the source of truth.
+    let schema: JsonValue =
+        serde_json::from_str(PLAN_JSON_SCHEMA).expect("plan.schema.json is valid JSON");
     let pattern = schema["$defs"]["kebabName"]["pattern"]
         .as_str()
         .expect("$defs.kebabName.pattern is a string");

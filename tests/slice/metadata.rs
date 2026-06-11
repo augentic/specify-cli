@@ -42,27 +42,21 @@ fn phase_outcome_round_trips_serde() {
     }
 }
 
-// ---- Top-level help surfaces source/target axis verbs ----
+// ---- Top-level verb surface carries source/target axis verbs ----
 
 #[test]
 fn help_lists_axis_verbs() {
-    let assert = specify_cmd().arg("--help").assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(stdout.contains("slice"), "Top-level --help must still list `slice`, got:\n{stdout}");
-    assert!(
-        stdout.lines().any(|line| line.trim_start().starts_with("source ")),
-        "Top-level --help must list the `source` axis verb, got:\n{stdout}"
-    );
-    assert!(
-        stdout.lines().any(|line| line.trim_start().starts_with("target ")),
-        "Top-level --help must list the `target` axis verb, got:\n{stdout}"
-    );
-    assert!(
-        !stdout.lines().any(|line| line.trim_start().starts_with("change ")),
-        "Top-level --help must NOT list the retired `change` verb, got:\n{stdout}"
-    );
-    assert!(
-        !stdout.lines().any(|line| line.trim_start().starts_with("adapter ")),
-        "Top-level --help must NOT list the retired `adapter` verb, got:\n{stdout}"
-    );
+    // Inventory asserted via the contract dump, not clap help wording:
+    // the axis verbs must be present and the retired `change` / `adapter`
+    // verbs must stay gone.
+    let verbs = crate::common::contract_dump_verbs(&[]);
+    for verb in ["slice", "source", "target"] {
+        assert!(verbs.iter().any(|v| v == verb), "top level must declare `{verb}`: {verbs:?}");
+    }
+    for retired in ["change", "adapter"] {
+        assert!(
+            !verbs.iter().any(|v| v == retired),
+            "retired verb `{retired}` must not resurface: {verbs:?}"
+        );
+    }
 }

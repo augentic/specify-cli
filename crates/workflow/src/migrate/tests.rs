@@ -1,23 +1,12 @@
 use super::*;
 
 #[test]
-fn resolve_empty_when_to_equals_from() {
-    assert!(MigrationKind::resolve(2, 2).is_empty());
-    assert!(MigrationKind::resolve(0, 0).is_empty());
-}
-
-#[test]
-fn resolve_empty_when_to_below_from() {
-    assert!(MigrationKind::resolve(2, 1).is_empty());
-}
-
-#[test]
 fn resolve_dormant_without_migrators() {
-    // No major-version migrators are registered, so every window
-    // resolves to an empty chain regardless of the span.
-    assert!(MigrationKind::resolve(0, 1).is_empty());
-    assert!(MigrationKind::resolve(1, 2).is_empty());
-    assert!(MigrationKind::resolve(1, 3).is_empty());
+    // No major-version migrators are registered, so every window —
+    // equal, backwards, or spanning — resolves to an empty chain.
+    for (from, to) in [(2, 2), (0, 0), (2, 1), (0, 1), (1, 2), (1, 3)] {
+        assert!(MigrationKind::resolve(from, to).is_empty(), "({from}, {to}) should be dormant");
+    }
 }
 
 #[test]

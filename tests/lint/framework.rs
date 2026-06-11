@@ -15,11 +15,12 @@
 //!   from [`specify_diagnostics`] round-trips through
 //!   the new verb.
 //!
-//! The scaffold mirrors `tests/lint_framework_json.rs::write_scaffold`
-//! and is deliberately small: just enough framework structure to
-//! satisfy `Context::is_framework_root` and silence the marketplace
-//! / agent-teams predicates so the JSON envelope shape — not
-//! individual finding contents — is what this test pins.
+//! The scaffold (shared with `framework_json.rs` via
+//! `crate::support::scaffold_framework`) is deliberately small: just
+//! enough framework structure to satisfy `Context::is_framework_root`
+//! and silence the marketplace / agent-teams predicates so the JSON
+//! envelope shape — not individual finding contents — is what this
+//! test pins.
 
 use std::fs;
 use std::path::Path;
@@ -29,79 +30,7 @@ use serde_json::Value;
 use specify_standards::rules::{HintKind, ParseError, parse_rule};
 use tempfile::TempDir;
 
-/// Scaffold a minimal framework tree that passes
-/// `specify_standards::framework::context::Context::from_framework_root` and
-/// supplies the marketplace + canonical-doc files the framework rules'
-/// referenced tools expect. Intentionally identical in shape to
-/// the scaffold used by `tests/lint_framework_json.rs` so both
-/// surfaces exercise the same fixture profile.
-fn scaffold_framework(root: &Path) {
-    for rel in [
-        "adapters/sources",
-        "adapters/targets",
-        "adapters/shared",
-        "plugins",
-        "plugins/test/skills",
-    ] {
-        fs::create_dir_all(root.join(rel)).expect("scaffold dir");
-    }
-
-    let marketplace = root.join(".cursor-plugin").join("marketplace.json");
-    fs::create_dir_all(marketplace.parent().expect("marketplace parent"))
-        .expect("mkdir .cursor-plugin");
-    fs::write(
-        &marketplace,
-        r#"{
-  "name": "test",
-  "owner": { "name": "Test Owner", "email": "test@example.com" },
-  "metadata": {
-    "description": "Synthetic marketplace for specify lint framework e2e tests.",
-    "version": "0.0.0",
-    "pluginRoot": "plugins"
-  },
-  "plugins": [
-    {
-      "name": "test",
-      "source": "test",
-      "description": "Synthetic plugin used by specify lint framework e2e tests."
-    }
-  ]
-}
-"#,
-    )
-    .expect("marketplace.json");
-
-    let plugin_manifest =
-        root.join("plugins").join("test").join(".cursor-plugin").join("plugin.json");
-    fs::create_dir_all(plugin_manifest.parent().expect("plugin manifest parent"))
-        .expect("mkdir plugins/test/.cursor-plugin");
-    fs::write(
-        &plugin_manifest,
-        r#"{
-  "name": "test",
-  "displayName": "Test Plugin",
-  "description": "Synthetic plugin used by specify lint framework e2e tests.",
-  "version": "0.0.0"
-}
-"#,
-    )
-    .expect("plugins/test/.cursor-plugin/plugin.json");
-
-    let standards = root.join("docs").join("standards").join("skill-authoring.md");
-    fs::create_dir_all(standards.parent().expect("standards parent"))
-        .expect("mkdir docs/standards");
-    fs::write(
-        &standards,
-        "# Skill authoring (synthetic)\n\nDescription cap: 512 characters. Body cap: 200 lines.\n",
-    )
-    .expect("skill-authoring.md");
-
-    let canonical = root.join("docs").join("reference").join("review-team-protocol.md");
-    fs::create_dir_all(canonical.parent().expect("canonical parent"))
-        .expect("mkdir docs/reference");
-    fs::write(&canonical, "# Review Team Protocol\n\nSynthetic stub for tests.\n")
-        .expect("review-team-protocol.md");
-}
+use crate::support::scaffold_framework;
 
 /// Run `specify lint framework --framework-root <root> --output-format json`
 /// and return the captured `(exit, stdout, stderr)` triple.

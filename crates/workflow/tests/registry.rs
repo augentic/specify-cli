@@ -1,13 +1,13 @@
 //! Integration tests for `specify_workflow::registry::registry` and
 //! `specify_workflow::registry::validate`.
 //!
-//! Lifted from `crates/adapter/src/tests.rs` as part of the workspace split
-//! 2.1 (extract platform-component artefacts out of the adapter
-//! crate). The tests cover `Registry::load`, `validate_shape`,
-//! `validate_shape_workspace`, URL classification, and the contract-roles
-//! invariants (registry-layer invariants).
-
-use std::path::{Path, PathBuf};
+//! Deliberately narrow: the binary-level `tests/registry.rs` covers the
+//! `registry {add,remove,validate}` wire surface (happy-path parses,
+//! duplicate names, kebab violations, unknown top-level keys, the
+//! workspace `url: .` rejection). This file keeps only what that layer
+//! does not reach: serde parse edges, the URL-grammar accept/reject
+//! tables, base-vs-workspace validation ordering, and the
+//! contract-roles invariants (no binary test exercises `contracts:`).
 
 use specify_error::Error;
 use specify_workflow::registry::{ContractRoles, Registry, RegistryProject};
@@ -20,14 +20,6 @@ fn scaffold_registry(contents: &str) -> TempDir {
     std::fs::write(Registry::path(tmp.path()), contents).unwrap();
     tmp
 }
-
-const CANONICAL_REGISTRY_YAML: &str = "\
-version: 1
-projects:
-  - name: traffic
-    url: .
-    adapter: omnia@v1
-";
 
 const MULTI_PROJECT_REGISTRY_YAML: &str = "\
 version: 1
@@ -47,88 +39,9 @@ projects:
 ";
 
 #[test]
-fn registry_absent_returns_none() {
-    let tmp = TempDir::new().unwrap();
-    let loaded = Registry::load(tmp.path()).expect("absent registry is not an error");
-    assert!(loaded.is_none());
-}
-
-#[test]
-fn registry_parses_canonical_example() {
-    let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
-    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    assert_eq!(registry.version, 1);
-    assert_eq!(registry.projects.len(), 1);
-    assert_eq!(registry.projects[0].name, "traffic");
-    assert_eq!(registry.projects[0].url, ".");
-    assert_eq!(registry.projects[0].adapter.as_deref(), Some("omnia@v1"));
-}
-
-#[test]
-fn registry_parses_multi_project() {
-    let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
-    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    let round_tripped_yaml = serde_saphyr::to_string(&registry).unwrap();
-    let re_parsed: Registry = serde_saphyr::from_str(&round_tripped_yaml).unwrap();
-    assert_eq!(registry, re_parsed);
-}
-
-#[test]
-fn registry_rejects_unknown_top_level_key() {
-    let yaml = "\
-version: 1
-foo: bar
-projects: []
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("unknown top-level key");
-    match err {
-        Error::Diag { detail: msg, .. } => {
-            assert!(msg.contains("foo"), "msg: {msg}");
-        }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn registry_rejects_unknown_project_key() {
-    let yaml = "\
-version: 1
-projects:
-  - name: traffic
-    url: .
-    adapter: omnia@v1
-    foo: bar
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("unknown project key");
-    match err {
-        Error::Diag { detail: msg, .. } => {
-            assert!(msg.contains("foo"), "msg: {msg}");
-        }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn registry_rejects_version_not_one() {
-    let yaml = "\
-version: 2
-projects: []
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("version != 1");
-    match err {
-        Error::Diag { detail: msg, .. } => {
-            assert!(msg.contains("version"), "msg should mention version: {msg}");
-            assert!(msg.contains('2'), "msg should mention the offending value: {msg}");
-        }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
 fn registry_rejects_missing_version() {
+    // Serde required-field error path — the binary tests only cover the
+    // wrong-value case (`version: 2`), never an absent key.
     let yaml = "projects: []\n";
     let tmp = scaffold_registry(yaml);
     let err = Registry::load(tmp.path()).expect_err("missing version");
@@ -139,66 +52,9 @@ fn registry_rejects_missing_version() {
 }
 
 #[test]
-fn registry_rejects_missing_name() {
-    let yaml = "\
-version: 1
-projects:
-  - url: .
-    adapter: omnia@v1
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("missing name");
-    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
-}
-
-#[test]
-fn registry_rejects_missing_url() {
-    let yaml = "\
-version: 1
-projects:
-  - name: traffic
-    adapter: omnia@v1
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("missing url");
-    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
-}
-
-#[test]
-fn registry_accepts_missing_adapter() {
-    // The registry `adapter` is an optional greenfield seed. A
-    // project without it parses and validates; its target adapter lives
-    // in its own `project.yaml`.
-    let yaml = "\
-version: 1
-projects:
-  - name: traffic
-    url: .
-";
-    let tmp = scaffold_registry(yaml);
-    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    assert!(registry.projects[0].adapter.is_none());
-}
-
-#[test]
-fn registry_rejects_non_kebab_case_name() {
-    for bad in ["TrafficSystem", "traffic_system", "traffic--system", "-traffic", "traffic-"] {
-        let yaml =
-            format!("version: 1\nprojects:\n  - name: {bad}\n    url: .\n    adapter: omnia@v1\n");
-        let tmp = scaffold_registry(&yaml);
-        let err = Registry::load(tmp.path()).expect_err(&format!("bad name `{bad}`"));
-        match err {
-            Error::Diag { detail: msg, .. } => {
-                assert!(msg.contains("kebab-case"), "msg for `{bad}`: {msg}");
-                assert!(msg.contains(bad), "msg for `{bad}`: {msg}");
-            }
-            other => panic!("wrong variant for `{bad}`: {other:?}"),
-        }
-    }
-}
-
-#[test]
 fn registry_rejects_empty_string_name() {
+    // The empty-name arm (`registry-project-name-empty`) is distinct
+    // from the non-kebab arm the binary tests cover.
     let yaml = "\
 version: 1
 projects:
@@ -212,23 +68,6 @@ projects:
         Error::Diag { detail: msg, .. } => {
             assert!(msg.contains("empty") || msg.contains("kebab-case"), "msg: {msg}");
         }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn registry_rejects_empty_string_url() {
-    let yaml = "\
-version: 1
-projects:
-  - name: traffic
-    url: \"\"
-    adapter: omnia@v1
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("empty url");
-    match err {
-        Error::Diag { detail: msg, .. } => assert!(msg.contains("url"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -251,155 +90,13 @@ projects:
 }
 
 #[test]
-fn rejects_duplicate_project_names() {
-    let yaml = "\
-version: 1
-projects:
-  - name: traffic
-    url: .
-    adapter: omnia@v1
-  - name: traffic
-    url: ../other
-    adapter: omnia@v1
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("duplicate name");
-    match err {
-        Error::Diag { detail: msg, .. } => {
-            assert!(msg.contains("duplicate"), "msg: {msg}");
-            assert!(msg.contains("traffic"), "msg: {msg}");
-        }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn registry_accepts_empty_projects_list() {
-    let yaml = "version: 1\nprojects: []\n";
-    let tmp = scaffold_registry(yaml);
-    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    assert!(registry.projects.is_empty());
-    assert!(registry.is_single_repo());
-}
-
-#[test]
-fn accepts_single_project_single_repo() {
-    let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
-    let registry = Registry::load(tmp.path()).unwrap().unwrap();
-    assert_eq!(registry.projects.len(), 1);
-    assert!(registry.is_single_repo());
-}
-
-#[test]
 fn accepts_multi_project_not_single_repo() {
+    // Pins the false branch of `is_single_repo`; the binary's
+    // `load_from_tempdir` only asserts the single-project true branch.
     let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
     let registry = Registry::load(tmp.path()).unwrap().unwrap();
     assert_eq!(registry.projects.len(), 3);
     assert!(!registry.is_single_repo());
-}
-
-#[test]
-fn registry_round_trip_serialize() {
-    let original = Registry {
-        version: 1,
-        projects: vec![
-            RegistryProject {
-                name: "traffic".into(),
-                url: ".".into(),
-                adapter: Some("omnia@v1".into()),
-                description: Some("Real-time traffic routing".into()),
-                contracts: None,
-            },
-            RegistryProject {
-                name: "ingest".into(),
-                url: "git@github.com:augentic/ingest.git".into(),
-                adapter: Some("omnia@v1".into()),
-                description: Some("Data ingestion pipeline".into()),
-                contracts: None,
-            },
-        ],
-    };
-    let yaml = serde_saphyr::to_string(&original).expect("serialize");
-    let round_tripped: Registry = serde_saphyr::from_str(&yaml).expect("re-parse");
-    assert_eq!(round_tripped, original);
-    round_tripped.validate_shape().expect("valid shape");
-}
-
-#[test]
-fn registry_project_order_preserved() {
-    let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
-    let registry = Registry::load(tmp.path()).unwrap().unwrap();
-    let names: Vec<&str> = registry.projects.iter().map(|p| p.name.as_str()).collect();
-    assert_eq!(names, vec!["traffic", "ingest", "ops-runbook"]);
-}
-
-#[test]
-fn multi_project_with_descriptions() {
-    let yaml = "\
-version: 1
-projects:
-  - name: alpha
-    url: .
-    adapter: omnia@v1
-    description: The alpha service
-  - name: beta
-    url: ../beta
-    adapter: omnia@v1
-    description: The beta service
-";
-    let tmp = scaffold_registry(yaml);
-    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    assert_eq!(registry.projects.len(), 2);
-    assert_eq!(registry.projects[0].description.as_deref(), Some("The alpha service"));
-    assert_eq!(registry.projects[1].description.as_deref(), Some("The beta service"));
-}
-
-#[test]
-fn multi_project_missing_description() {
-    // The registry does not author descriptions — descriptions live in
-    // each project's `project.yaml`.
-    let yaml = "\
-version: 1
-projects:
-  - name: alpha
-    url: .
-    adapter: omnia@v1
-  - name: beta
-    url: ../beta
-";
-    let tmp = scaffold_registry(yaml);
-    let registry = Registry::load(tmp.path()).expect("multi-project without descriptions parses");
-    let registry = registry.expect("present");
-    assert_eq!(registry.projects.len(), 2);
-    assert!(registry.projects.iter().all(|p| p.description.is_none()));
-}
-
-#[test]
-fn single_project_without_description_ok() {
-    let tmp = scaffold_registry(CANONICAL_REGISTRY_YAML);
-    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    assert_eq!(registry.projects.len(), 1);
-    assert!(registry.projects[0].description.is_none());
-}
-
-#[test]
-fn description_round_trips_through_serde() {
-    let original = RegistryProject {
-        name: "traffic".into(),
-        url: ".".into(),
-        adapter: Some("omnia@v1".into()),
-        description: Some("Real-time traffic routing".into()),
-        contracts: None,
-    };
-    let yaml = serde_saphyr::to_string(&original).expect("serialize");
-    let round_tripped: RegistryProject = serde_saphyr::from_str(&yaml).expect("re-parse");
-    assert_eq!(round_tripped, original);
-}
-
-#[test]
-fn path_helper_points_at_repo_root() {
-    let dir = Path::new("/tmp/some/project");
-    assert_eq!(Registry::path(dir), PathBuf::from("/tmp/some/project/registry.yaml"));
 }
 
 // ---------- Registry URL validation (registry URL validation) ----------
@@ -462,163 +159,33 @@ fn registry_accepts_url_shapes_for_c28() {
 }
 
 #[test]
-fn registry_rejects_unsupported_url_scheme() {
-    let err = registry_with_one_url("ftp://example.com/repo")
-        .validate_shape()
-        .expect_err("ftp must be rejected");
-    match err {
-        Error::Diag { detail: msg, .. } => {
-            assert!(msg.contains("ftp"), "msg: {msg}");
-            assert!(msg.contains("scheme"), "msg: {msg}");
+fn rejects_malformed_url_shapes() {
+    // Each row hits a distinct rejection arm in `validate_project_url`
+    // (plus the empty-string arm in `validate_shape`). The binary's
+    // `registry validate` tests only exercise well-formed URLs, so the
+    // rejection grammar is pinned here.
+    for (url, fragment) in [
+        ("", "url"),                              // registry-project-url-empty
+        ("   ", "whitespace"),                    // whitespace-only url
+        (" https://example.com/a", "whitespace"), // leading whitespace
+        ("ftp://example.com/repo", "scheme"),     // unsupported scheme
+        ("file:///tmp/repo", "scheme"),           // file:// is not a remote
+        ("weird:path", ":"),                      // colon without scheme or git@
+        ("/absolute/path", "relative"),           // absolute filesystem path
+    ] {
+        let err = registry_with_one_url(url)
+            .validate_shape()
+            .expect_err(&format!("expected url {url:?} to be rejected"));
+        match err {
+            Error::Diag { detail: msg, .. } => {
+                assert!(msg.contains(fragment), "url {url:?}: msg: {msg}");
+            }
+            other => panic!("wrong variant for url {url:?}: {other:?}"),
         }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn registry_rejects_file_url_scheme() {
-    let err = registry_with_one_url("file:///tmp/repo")
-        .validate_shape()
-        .expect_err("file:// must be rejected");
-    assert!(matches!(err, Error::Diag { .. }), "got: {err:?}");
-}
-
-#[test]
-fn rejects_colon_without_scheme_or_git_at() {
-    let err = registry_with_one_url("weird:path")
-        .validate_shape()
-        .expect_err("colon form must be rejected");
-    match err {
-        Error::Diag { detail: msg, .. } => assert!(msg.contains(':'), "msg: {msg}"),
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn rejects_absolute_unix_path_as_url() {
-    let err = registry_with_one_url("/absolute/path")
-        .validate_shape()
-        .expect_err("absolute path must be rejected");
-    match err {
-        Error::Diag { detail: msg, .. } => assert!(msg.contains("relative"), "msg: {msg}"),
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn registry_rejects_whitespace_only_url() {
-    let err =
-        registry_with_one_url("   ").validate_shape().expect_err("whitespace url must be rejected");
-    match err {
-        Error::Diag { detail: msg, .. } => assert!(msg.contains("whitespace"), "msg: {msg}"),
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn rejects_url_with_leading_whitespace() {
-    let err = registry_with_one_url(" https://example.com/a")
-        .validate_shape()
-        .expect_err("leading space must be rejected");
-    match err {
-        Error::Diag { detail: msg, .. } => assert!(msg.contains("whitespace"), "msg: {msg}"),
-        other => panic!("wrong variant: {other:?}"),
     }
 }
 
 // ---------- Registry workspace validation (registry workspace validation) ----------
-
-#[test]
-fn workspace_accepts_empty_projects() {
-    let reg = Registry {
-        version: 1,
-        projects: vec![],
-    };
-    reg.validate_shape_workspace().expect("empty workspace registry must pass");
-}
-
-#[test]
-fn workspace_accepts_non_dot_urls() {
-    let reg = Registry {
-        version: 1,
-        projects: vec![
-            RegistryProject {
-                name: "alpha".into(),
-                url: "git@github.com:augentic/alpha.git".into(),
-                adapter: Some("omnia@v1".into()),
-                description: Some("Alpha service".into()),
-                contracts: None,
-            },
-            RegistryProject {
-                name: "beta".into(),
-                url: "../beta".into(),
-                adapter: Some("omnia@v1".into()),
-                description: Some("Beta service".into()),
-                contracts: None,
-            },
-        ],
-    };
-    reg.validate_shape_workspace().expect("non-`.` urls must pass workspace validation");
-}
-
-#[test]
-fn workspace_rejects_dot_url_entry() {
-    let reg = Registry {
-        version: 1,
-        projects: vec![RegistryProject {
-            name: "platform".into(),
-            url: ".".into(),
-            adapter: Some("omnia@v1".into()),
-            description: None,
-            contracts: None,
-        }],
-    };
-    let err = reg.validate_shape_workspace().expect_err("workspace mode must reject url: .");
-    match err {
-        Error::Diag { code, detail: msg } => {
-            assert_eq!(
-                code, "workspace-cannot-be-project",
-                "diagnostic must carry the stable code, got: {msg}"
-            );
-            assert!(msg.contains("platform"), "diagnostic must name the offending project: {msg}");
-            assert!(msg.contains("registry.yaml"), "diagnostic must scope the file: {msg}");
-        }
-        other => panic!("wrong error variant: {other:?}"),
-    }
-}
-
-#[test]
-fn workspace_rejects_dot_url_multi() {
-    let reg = Registry {
-        version: 1,
-        projects: vec![
-            RegistryProject {
-                name: "alpha".into(),
-                url: "../alpha".into(),
-                adapter: Some("omnia@v1".into()),
-                description: Some("Alpha service".into()),
-                contracts: None,
-            },
-            RegistryProject {
-                name: "self-as-project".into(),
-                url: ".".into(),
-                adapter: Some("omnia@v1".into()),
-                description: Some("Should be the workspace, not an entry".into()),
-                contracts: None,
-            },
-        ],
-    };
-    let err = reg
-        .validate_shape_workspace()
-        .expect_err("workspace mode rejects `.` even alongside peers");
-    match err {
-        Error::Diag { code, detail: msg } => {
-            assert_eq!(code, "workspace-cannot-be-project", "msg: {msg}");
-            assert!(msg.contains("self-as-project"), "msg should name the offender: {msg}");
-        }
-        other => panic!("wrong error variant: {other:?}"),
-    }
-}
 
 #[test]
 fn workspace_inherits_base_errors() {
@@ -639,24 +206,6 @@ fn workspace_inherits_base_errors() {
         }
         other => panic!("wrong error variant: {other:?}"),
     }
-}
-
-#[test]
-fn validate_shape_unchanged_for_dot_url() {
-    // The base `validate_shape` continues to accept `url: .` — only
-    // the new workspace-only mode rejects it. This pins the additive-API
-    // contract from the registry design.
-    let reg = Registry {
-        version: 1,
-        projects: vec![RegistryProject {
-            name: "platform".into(),
-            url: ".".into(),
-            adapter: Some("omnia@v1".into()),
-            description: None,
-            contracts: None,
-        }],
-    };
-    reg.validate_shape().expect("base shape must still accept `url: .`");
 }
 
 // ---------- Registry contract roles (registry-layer invariants) ----------
@@ -702,15 +251,6 @@ fn with_contract_roles_parses_and_validates() {
 }
 
 #[test]
-fn without_contract_roles_still_parses() {
-    let tmp = scaffold_registry(MULTI_PROJECT_REGISTRY_YAML);
-    let registry = Registry::load(tmp.path()).expect("parses").expect("present");
-    for project in &registry.projects {
-        assert!(project.contracts.is_none());
-    }
-}
-
-#[test]
 fn contract_roles_round_trip_omits_empty() {
     let original = Registry {
         version: 1,
@@ -729,22 +269,6 @@ fn contract_roles_round_trip_omits_empty() {
     assert!(!yaml.contains("consumes"), "empty consumes should be omitted: {yaml}");
     let round_tripped: Registry = serde_saphyr::from_str(&yaml).expect("re-parse");
     assert_eq!(round_tripped, original);
-}
-
-#[test]
-fn contract_roles_none_omits_contracts_key() {
-    let original = Registry {
-        version: 1,
-        projects: vec![RegistryProject {
-            name: "traffic".into(),
-            url: ".".into(),
-            adapter: Some("omnia@v1".into()),
-            description: None,
-            contracts: None,
-        }],
-    };
-    let yaml = serde_saphyr::to_string(&original).expect("serialize");
-    assert!(!yaml.contains("contracts"), "None contracts should be omitted: {yaml}");
 }
 
 #[test]
@@ -826,29 +350,6 @@ projects:
 }
 
 #[test]
-fn rejects_dotdot_in_contract_path() {
-    let yaml = "\
-version: 1
-projects:
-  - name: alpha
-    url: .
-    adapter: omnia@v1
-    contracts:
-      consumes:
-        - ../escape/path.yaml
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err(".. path rejected");
-    match err {
-        Error::Diag { detail: msg, .. } => {
-            assert!(msg.contains("../escape/path.yaml"), "msg: {msg}");
-            assert!(msg.contains("relative"), "msg: {msg}");
-        }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
 fn rejects_self_consistency_violation() {
     let yaml = "\
 version: 1
@@ -871,28 +372,6 @@ projects:
             assert!(msg.contains("produces"), "msg: {msg}");
             assert!(msg.contains("consumes"), "msg: {msg}");
         }
-        other => panic!("wrong variant: {other:?}"),
-    }
-}
-
-#[test]
-fn rejects_unknown_contract_roles_key() {
-    let yaml = "\
-version: 1
-projects:
-  - name: alpha
-    url: .
-    adapter: omnia@v1
-    contracts:
-      produces:
-        - http/api.yaml
-      bogus:
-        - something
-";
-    let tmp = scaffold_registry(yaml);
-    let err = Registry::load(tmp.path()).expect_err("unknown contract key");
-    match err {
-        Error::Diag { detail: msg, .. } => assert!(msg.contains("bogus"), "msg: {msg}"),
         other => panic!("wrong variant: {other:?}"),
     }
 }

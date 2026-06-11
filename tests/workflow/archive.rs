@@ -89,27 +89,6 @@ fn archive_dir(project: &Project) -> PathBuf {
 }
 
 #[test]
-fn plan_archive_happy_path_text() {
-    let project = Project::init();
-    project.seed_plan(ALL_DONE);
-
-    let assert =
-        specify_cmd().current_dir(project.root()).args(["plan", "archive"]).assert().success();
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-    assert!(
-        stdout.contains("Archived plan to"),
-        "stdout should announce archive path, got: {stdout:?}"
-    );
-
-    assert!(!project.plan_path().exists(), "original plan.yaml must be gone");
-    assert!(
-        archived_plan_file(&project, "demo").is_some(),
-        "archived plan file not found under {}",
-        archive_dir(&project).display()
-    );
-}
-
-#[test]
 fn plan_archive_happy_path_json() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
@@ -126,6 +105,15 @@ fn plan_archive_happy_path_json() {
         actual["archived"].as_str().unwrap_or_default().contains("demo-"),
         "archived path should contain the plan name, got: {}",
         actual["archived"]
+    );
+
+    // Filesystem effects of the move, asserted here rather than in a
+    // separate text-format twin.
+    assert!(!project.plan_path().exists(), "original plan.yaml must be gone");
+    assert!(
+        archived_plan_file(&project, "demo").is_some(),
+        "archived plan file not found under {}",
+        archive_dir(&project).display()
     );
 
     strip_date_stamps(&mut actual);

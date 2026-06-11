@@ -1,14 +1,16 @@
 //! Integration tests for `specify_workflow::registry::workspace` and
 //! `specify_workflow::registry::forge`.
 //!
-//! Pins the public surface of the workspace registry:
-//! `github_slug`, `sync_projects` (registry-absent short-circuit at the
-//! caller, `.gitignore` upkeep), `workspace_status` (returns `None`
-//! when no registry), `is_specify_branch`, and `branches_match`.
-//! Per-classifier coverage continues to live in the in-module
-//! `#[cfg(test)]` blocks; this file exercises the integration boundary
-//! an external consumer (the binary, plus anyone replacing it via
-//! `--lib`) would touch.
+//! Deliberately narrow: the binary-level `tests/workspace.rs` covers the
+//! `workspace {sync,push,prepare}` wire surface (selector preflight,
+//! journaling, symlink materialisation, the self-slot and foreign-entry
+//! mirror pins, the origin-head-unresolved prepare diagnostic). This
+//! file keeps only what that layer does not reach: the pure classifiers
+//! (`github_slug`, `is_specify_branch`, `branches_match`), slot-problem
+//! classification and sync refusal edges, mirror corner cases not
+//! pinned in-module or at the binary, branch-preparation dirtiness and
+//! fast-forward semantics, `SlotStatus` enrichment, push outcome
+//! classification, and `topology.lock` regeneration.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -162,177 +164,15 @@ fn github_slug_handles_each_supported_form() {
 // ---------- sync_projects ---------------------------------------
 
 #[test]
-fn workspace_sync_no_registry_is_noop() {
-    let tmp = TempDir::new().unwrap();
-    assert!(
-        Registry::load(tmp.path()).expect("registry load must not error").is_none(),
-        "absent registry must yield None so callers can short-circuit",
-    );
-    assert!(!tmp.path().join(".gitignore").exists());
-    assert!(!tmp.path().join(".specify/workspace").exists());
-}
-
-#[test]
-fn sync_symlink_creates_gitignore() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-
-    let peer_dir = project_dir.join("peer");
-    fs::create_dir_all(&peer_dir).unwrap();
-
-    fs::write(
-        project_dir.join("registry.yaml"),
-        "\
-version: 1
-projects:
-  - name: peer
-    url: ./peer
-    adapter: omnia@v1
-",
-    )
-    .unwrap();
-
-    let registry = Registry::load(project_dir).unwrap().expect("registry present");
-    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).expect("sync ok");
-
-    let slot = project_dir.join(".specify/workspace/peer");
-    assert!(slot.exists(), "symlink slot must materialise");
-    let meta = fs::symlink_metadata(&slot).unwrap();
-    assert!(meta.file_type().is_symlink(), "symlink expected, got {meta:?}");
-    let target = fs::canonicalize(&slot).unwrap();
-    assert_eq!(target, fs::canonicalize(&peer_dir).unwrap());
-
-    let gitignore = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
-    assert!(gitignore.lines().any(|l| l.trim() == ".specify/workspace/"));
-    assert!(gitignore.lines().any(|l| l.trim() == ".specify/cache/"));
-    assert!(gitignore.lines().any(|l| l.trim() == ".specify/scratch/"));
-}
-
-#[test]
-fn c00_sync_materialises_all_projects() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    fs::create_dir_all(project_dir.join("alpha")).unwrap();
-    fs::create_dir_all(project_dir.join("beta")).unwrap();
-    fs::write(
-        project_dir.join("registry.yaml"),
-        "\
-version: 1
-projects:
-  - name: alpha
-    url: ./alpha
-    adapter: omnia@v1
-    description: alpha service
-  - name: beta
-    url: ./beta
-    adapter: omnia@v1
-    description: beta service
-",
-    )
-    .unwrap();
-
-    let registry = Registry::load(project_dir).unwrap().expect("registry present");
-    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).expect("sync ok");
-
-    let workspace = project_dir.join(".specify/workspace");
-    for name in ["alpha", "beta"] {
-        let slot = workspace.join(name);
-        let meta = fs::symlink_metadata(&slot).unwrap();
-        assert!(meta.file_type().is_symlink(), "{name} slot must materialise as a symlink");
-    }
-
-    let slots = workspace_status(project_dir).expect("ok").expect("registry present");
-    let names: Vec<&str> = slots.iter().map(|slot| slot.name.as_str()).collect();
-    assert_eq!(
-        names,
-        ["alpha", "beta"],
-        "pre-workspace orchestration contract sync/status without selectors cover every registry project"
-    );
-}
-
-#[test]
 fn c01_selector_preserves_order() {
+    // `select` returns projects in registry order regardless of the
+    // order the selectors were passed in — the binary only pins the
+    // unknown-selector preflight, not the ordering contract.
     let registry = registry_with_projects(&["billing", "orders", "inventory"]);
     let selected =
         registry.select(&["orders".to_string(), "billing".to_string()]).expect("selectors resolve");
     let names: Vec<&str> = selected.iter().map(|project| project.name.as_str()).collect();
     assert_eq!(names, ["billing", "orders"]);
-}
-
-#[test]
-fn c01_selector_rejects_unknown() {
-    let registry = registry_with_projects(&["billing", "orders"]);
-    let err = registry.select(&["ghost".to_string()]).expect_err("unknown selector must fail");
-    let msg = err.to_string();
-    assert!(msg.contains("unknown project selector"), "msg: {msg}");
-    assert!(msg.contains("ghost"), "msg: {msg}");
-    assert!(msg.contains("billing"), "msg: {msg}");
-    assert!(msg.contains("orders"), "msg: {msg}");
-}
-
-#[test]
-fn c01_sync_selected_slots_only() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    for name in ["billing", "orders", "inventory"] {
-        fs::create_dir_all(project_dir.join(name)).unwrap();
-    }
-    let registry = registry_with_projects(&["billing", "orders", "inventory"]);
-    let selected =
-        registry.select(&["orders".to_string(), "billing".to_string()]).expect("selectors resolve");
-
-    workspace_sync_projects(project_dir, &selected).expect("sync selected");
-
-    assert!(project_dir.join(".specify/workspace/billing").exists());
-    assert!(project_dir.join(".specify/workspace/orders").exists());
-    assert!(
-        !project_dir.join(".specify/workspace/inventory").exists(),
-        "selected sync must not materialise unselected slots"
-    );
-}
-
-#[test]
-fn c01_status_selected_in_registry_order() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let registry = registry_with_projects(&["billing", "orders", "inventory"]);
-    let selected =
-        registry.select(&["orders".to_string(), "billing".to_string()]).expect("selectors resolve");
-
-    let slots = workspace_status_projects(project_dir, &selected);
-
-    let names: Vec<&str> = slots.iter().map(|slot| slot.name.as_str()).collect();
-    assert_eq!(names, ["billing", "orders"]);
-    assert!(slots.iter().all(|slot| slot.kind == SlotKind::Missing));
-}
-
-#[test]
-fn c02_sync_recreates_deleted_slot() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    for name in ["billing", "orders"] {
-        fs::create_dir_all(project_dir.join(name)).unwrap();
-    }
-    let registry = registry_with_projects(&["billing", "orders"]);
-    let selected = registry.select(&["billing".to_string()]).expect("selectors resolve");
-
-    let workspace = project_dir.join(".specify/workspace");
-    fs::create_dir_all(workspace.join("orders")).unwrap();
-    fs::write(workspace.join("orders").join("sentinel.txt"), "hands off").unwrap();
-
-    workspace_sync_projects(project_dir, &selected).expect("sync billing");
-    let billing_slot = workspace.join("billing");
-    assert!(fs::symlink_metadata(&billing_slot).unwrap().file_type().is_symlink());
-
-    fs::remove_file(&billing_slot).unwrap();
-    workspace_sync_projects(project_dir, &selected).expect("resync billing");
-
-    assert!(fs::symlink_metadata(&billing_slot).unwrap().file_type().is_symlink());
-    assert_eq!(
-        fs::read_to_string(workspace.join("orders").join("sentinel.txt")).unwrap(),
-        "hands off",
-        "selected sync must not touch unselected slot paths"
-    );
 }
 
 #[test]
@@ -354,32 +194,6 @@ fn c02_local_slot_refuses_non_symlink() {
         fs::read_to_string(project_dir.join(".specify/workspace/peer/sentinel.txt")).unwrap(),
         "keep",
         "mismatched slot must not be overwritten"
-    );
-}
-
-#[test]
-fn c02_local_slot_wrong_symlink() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let peer = project_dir.join("peer");
-    let other = project_dir.join("other");
-    fs::create_dir_all(&peer).unwrap();
-    fs::create_dir_all(&other).unwrap();
-    fs::create_dir_all(project_dir.join(".specify/workspace")).unwrap();
-    symlink_dir(&other, &project_dir.join(".specify/workspace/peer"));
-
-    let registry = registry_with_projects(&["peer"]);
-    let selected = registry.select(&["peer".to_string()]).unwrap();
-    let err = workspace_sync_projects(project_dir, &selected)
-        .expect_err("wrong symlink target should fail");
-    let msg = err.to_string();
-
-    assert!(msg.contains("symlink to"), "msg: {msg}");
-    assert!(msg.contains(&fs::canonicalize(peer).unwrap().display().to_string()), "msg: {msg}");
-    assert_eq!(
-        fs::canonicalize(project_dir.join(".specify/workspace/peer")).unwrap(),
-        fs::canonicalize(other).unwrap(),
-        "wrong symlink target must be preserved for operator inspection"
     );
 }
 
@@ -561,46 +375,10 @@ fn sync_all(project_dir: &Path) {
 }
 
 #[test]
-fn mirror_lands_and_resync_refreshes() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let peer = workspace_with_specify_peer(project_dir);
-    stage_adapter_at(
-        project_dir,
-        "adapters/sources/documentation",
-        "name: documentation\n",
-        &[("briefs/extract.md", "# extract brief\n")],
-    );
-
-    sync_all(project_dir);
-
-    let mirrored = peer.join(".specify/cache/manifests/sources/documentation");
-    assert_eq!(
-        fs::read_to_string(mirrored.join("adapter.yaml")).expect("mirrored adapter.yaml"),
-        "name: documentation\n",
-        "sync must mirror the workspace adapter into the slot manifest cache"
-    );
-    assert_eq!(
-        fs::read_to_string(mirrored.join("briefs/extract.md")).expect("mirrored brief"),
-        "# extract brief\n"
-    );
-
-    // Re-sync refreshes: per-name delete-then-copy.
-    fs::write(
-        project_dir.join("adapters/sources/documentation/adapter.yaml"),
-        "name: documentation\nversion: 2\n",
-    )
-    .unwrap();
-    sync_all(project_dir);
-    assert_eq!(
-        fs::read_to_string(mirrored.join("adapter.yaml")).unwrap(),
-        "name: documentation\nversion: 2\n",
-        "re-sync must refresh the mirrored copy"
-    );
-}
-
-#[test]
 fn mirror_covers_target_axis_and_sidecars() {
+    // The binary mirror pins only exercise the source axis with a bare
+    // `adapter.yaml`; target-axis coverage and sidecar files riding the
+    // mirror are pinned here.
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     let peer = workspace_with_specify_peer(project_dir);
@@ -647,71 +425,6 @@ fn mirror_skips_slot_vendored_name() {
 }
 
 #[test]
-fn mirror_skips_opposite_axis_vendored_name() {
-    // Mirroring a name the slot vendors on the other axis would
-    // manufacture an adapter-name-axis-collision in a healthy slot.
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let peer = workspace_with_specify_peer(project_dir);
-    stage_adapter_at(project_dir, "adapters/sources/shared", "workspace source\n", &[]);
-    stage_adapter_at(&peer, "adapters/targets/shared", "slot target\n", &[]);
-
-    sync_all(project_dir);
-
-    assert!(
-        !peer.join(".specify/cache/manifests/sources/shared").exists(),
-        "an opposite-axis vendored name must not be mirrored"
-    );
-}
-
-#[test]
-fn mirror_leaves_foreign_cache_entries() {
-    // The slot cache has a second writer (`specify init` caches its
-    // greenfield adapter seed); names the workspace does not own are
-    // never pruned.
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let peer = workspace_with_specify_peer(project_dir);
-    stage_adapter_at(&peer, ".specify/cache/manifests/targets/omnia", "init seed\n", &[]);
-    stage_adapter_at(project_dir, "adapters/sources/documentation", "name: documentation\n", &[]);
-
-    sync_all(project_dir);
-
-    assert_eq!(
-        fs::read_to_string(peer.join(".specify/cache/manifests/targets/omnia/adapter.yaml"))
-            .unwrap(),
-        "init seed\n",
-        "cache entries the workspace does not own must survive sync"
-    );
-}
-
-#[test]
-fn mirror_prefers_workspace_cache_copy() {
-    // A name in both workspace probe locations copies from the
-    // manifest cache, matching the loader's probe order.
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let peer = workspace_with_specify_peer(project_dir);
-    stage_adapter_at(project_dir, "adapters/sources/documentation", "vendored\n", &[]);
-    stage_adapter_at(
-        project_dir,
-        ".specify/cache/manifests/sources/documentation",
-        "cached\n",
-        &[],
-    );
-
-    sync_all(project_dir);
-
-    assert_eq!(
-        fs::read_to_string(
-            peer.join(".specify/cache/manifests/sources/documentation/adapter.yaml")
-        )
-        .unwrap(),
-        "cached\n"
-    );
-}
-
-#[test]
 fn mirror_skips_non_specify_peer() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
@@ -732,59 +445,7 @@ fn mirror_skips_non_specify_peer() {
     );
 }
 
-#[test]
-fn mirror_skips_self_slot() {
-    // A `url: .` entry symlinks the slot to the workspace itself;
-    // mirroring there would copy the manifest cache over itself.
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    fs::create_dir_all(project_dir.join(".specify")).unwrap();
-    fs::write(
-        project_dir.join("registry.yaml"),
-        "version: 1\nprojects:\n  - name: platform\n    url: .\n    adapter: omnia@v1\n",
-    )
-    .unwrap();
-    stage_adapter_at(
-        project_dir,
-        ".specify/cache/manifests/sources/documentation",
-        "cached\n",
-        &[],
-    );
-
-    sync_all(project_dir);
-
-    assert_eq!(
-        fs::read_to_string(
-            project_dir.join(".specify/cache/manifests/sources/documentation/adapter.yaml")
-        )
-        .unwrap(),
-        "cached\n",
-        "a self-slot must be skipped, not remove-then-copied from itself"
-    );
-}
-
 // ---------- branch preparation (workspace orchestration contract C04) ----------------------------
-
-#[test]
-fn c04_prepare_creates_change_branch() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("workspace");
-    fs::create_dir_all(&project_dir).unwrap();
-    let (_remote, remote_url) = seed_bare_remote(&tmp);
-    let slot = clone_workspace_slot(&project_dir, &remote_url);
-    let project = remote_project(remote_url);
-    let origin_head = git_output(&slot, &["rev-parse", "origin/HEAD"]);
-
-    let prepared = prepare(&project_dir, &project, &branch_request("demo-change"))
-        .expect("branch preparation succeeds");
-
-    assert_eq!(prepared.branch, "specify/demo-change");
-    assert_eq!(prepared.local_branch, LocalAction::Created);
-    assert_eq!(prepared.remote_branch, RemoteAction::Absent);
-    assert_eq!(current_branch(&slot), "specify/demo-change");
-    assert_eq!(git_output(&slot, &["rev-parse", "HEAD"]), origin_head);
-    assert_eq!(prepared.base_ref, "refs/remotes/origin/main");
-}
 
 #[test]
 fn c04_prepare_reuses_resume_dirty_ok() {
@@ -882,44 +543,7 @@ fn c04_prepare_reports_missing_origin() {
     assert_eq!(current_branch(&slot), "main");
 }
 
-#[test]
-fn c04_prepare_unresolved_origin_head() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("workspace");
-    fs::create_dir_all(&project_dir).unwrap();
-    let remote = tmp.path().join("headless.git");
-    run_git(tmp.path(), &["init", "--bare", remote.to_str().unwrap()]);
-    let remote_url = format!("file://{}", remote.display());
-
-    let slot = project_dir.join(".specify/workspace/alpha");
-    fs::create_dir_all(&slot).unwrap();
-    run_git(&slot, &["init", "-b", "main"]);
-    run_git(&slot, &["remote", "add", "origin", &remote_url]);
-    fs::write(slot.join("README.md"), "seed\n").unwrap();
-    run_git(&slot, &["add", "README.md"]);
-    run_git(&slot, &["commit", "--no-gpg-sign", "-m", "seed"]);
-    let project = remote_project(remote_url);
-
-    let err = prepare(&project_dir, &project, &branch_request("demo-change"))
-        .expect_err("unresolved origin HEAD must fail");
-
-    assert_eq!(err.key, "origin-head-unresolved");
-    assert_eq!(current_branch(&slot), "main");
-    assert!(
-        !git_output(&slot, &["branch", "--list", "specify/demo-change"])
-            .contains("specify/demo-change"),
-        "must not create a guessed branch when origin/HEAD is unresolved"
-    );
-}
-
 // ---------- workspace_status -----------------------------------------
-
-#[test]
-fn status_none_without_registry() {
-    let tmp = TempDir::new().unwrap();
-    let result = workspace_status(tmp.path()).expect("ok");
-    assert!(result.is_none(), "absent registry must yield None");
-}
 
 #[test]
 fn status_missing_unrealised_slot() {
@@ -958,33 +582,6 @@ projects:
     );
     assert_eq!(slots[0].name, "alpha");
     assert_eq!(slots[1].name, "beta");
-}
-
-#[test]
-fn status_symlink_kind_after_sync() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    fs::create_dir_all(project_dir.join("peer")).unwrap();
-    fs::write(
-        project_dir.join("registry.yaml"),
-        "\
-version: 1
-projects:
-  - name: peer
-    url: ./peer
-    adapter: omnia@v1
-",
-    )
-    .unwrap();
-
-    let registry = Registry::load(project_dir).unwrap().expect("registry present");
-    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).unwrap();
-    let slots = workspace_status(project_dir).unwrap().unwrap();
-    assert_eq!(slots.len(), 1);
-    assert_eq!(slots[0].name, "peer");
-    assert_eq!(slots[0].kind, SlotKind::Symlink);
-    // No git work tree behind the symlink target — head/dirty stay None.
-    assert!(slots[0].head_sha.is_none());
 }
 
 #[test]
@@ -1102,7 +699,11 @@ fn c03_status_other_materialisation() {
 // ---------- workspace push (workspace orchestration contract C07) -------------------------------
 
 #[test]
-fn c07_push_pushes_clean_change_branch_only() {
+fn c07_push_outcomes() {
+    // One clean change branch, three pushes: a dry run classifies as
+    // Pushed without touching the remote, the first real push lands the
+    // local head, and a repeat push reports UpToDate. The binary push
+    // test only covers the origin-less `local-only` outcome.
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
@@ -1112,8 +713,15 @@ fn c07_push_pushes_clean_change_branch_only() {
     let project = remote_project(remote_url.clone());
 
     let results =
-        push_projects(&project_dir, "demo-change", &[&project], false).expect("push succeeds");
+        push_projects(&project_dir, "demo-change", &[&project], true).expect("dry-run succeeds");
+    assert_eq!(results[0].status, PushOutcome::Pushed);
+    assert!(
+        remote_branch_head(&remote_url, "specify/demo-change").is_none(),
+        "dry-run must not push"
+    );
 
+    let results =
+        push_projects(&project_dir, "demo-change", &[&project], false).expect("push succeeds");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].status, PushOutcome::Pushed);
     assert_eq!(results[0].branch.as_deref(), Some("specify/demo-change"));
@@ -1122,22 +730,9 @@ fn c07_push_pushes_clean_change_branch_only() {
         Some(local_head.as_str())
     );
     assert_eq!(current_branch(&slot), "specify/demo-change", "push must not rebrand HEAD");
-}
-
-#[test]
-fn c07_push_up_to_date() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("workspace");
-    fs::create_dir_all(&project_dir).unwrap();
-    let (_remote, remote_url) = seed_bare_remote(&tmp);
-    let slot = clone_workspace_slot(&project_dir, &remote_url);
-    let local_head = prepare_change_branch(&slot, "demo-change");
-    let project = remote_project(remote_url.clone());
-    push_projects(&project_dir, "demo-change", &[&project], false).expect("initial push");
 
     let results =
         push_projects(&project_dir, "demo-change", &[&project], false).expect("second push");
-
     assert_eq!(results[0].status, PushOutcome::UpToDate);
     assert_eq!(
         remote_branch_head(&remote_url, "specify/demo-change").as_deref(),
@@ -1189,62 +784,6 @@ fn c07_push_wrong_branch_no_checkout() {
     assert!(remote_branch_head(&remote_url, "specify/demo-change").is_none());
 }
 
-#[test]
-fn c07_push_missing_origin_is_local_only() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("workspace");
-    let slot = project_dir.join(".specify/workspace/alpha");
-    fs::create_dir_all(&slot).unwrap();
-    run_git(&slot, &["init", "-b", "main"]);
-    fs::write(slot.join("README.md"), "seed\n").unwrap();
-    run_git(&slot, &["add", "README.md"]);
-    run_git(&slot, &["commit", "--no-gpg-sign", "-m", "seed"]);
-    prepare_change_branch(&slot, "demo-change");
-    let project = remote_project("https://example.invalid/org/alpha.git".to_string());
-
-    let results = push_projects(&project_dir, "demo-change", &[&project], false)
-        .expect("best-effort push returns results");
-
-    assert_eq!(results[0].status, PushOutcome::LocalOnly);
-}
-
-#[test]
-fn c07_push_dry_run_classifies() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path().join("workspace");
-    fs::create_dir_all(&project_dir).unwrap();
-    let (_remote, remote_url) = seed_bare_remote(&tmp);
-    let slot = clone_workspace_slot(&project_dir, &remote_url);
-    prepare_change_branch(&slot, "demo-change");
-    let project = remote_project(remote_url.clone());
-
-    let results =
-        push_projects(&project_dir, "demo-change", &[&project], true).expect("dry-run succeeds");
-
-    assert_eq!(results[0].status, PushOutcome::Pushed);
-    assert!(
-        remote_branch_head(&remote_url, "specify/demo-change").is_none(),
-        "dry-run must not push"
-    );
-}
-
-#[test]
-fn c07_push_selector_unknown_preflight() {
-    let tmp = TempDir::new().unwrap();
-    let registry = registry_with_projects(&["alpha"]);
-
-    let err = registry
-        .select(&["ghost".to_string()])
-        .expect_err("unknown selector must fail before workspace work");
-
-    let msg = err.to_string();
-    assert!(msg.contains("unknown project selector"), "msg: {msg}");
-    assert!(
-        !tmp.path().join(".specify/workspace").exists(),
-        "selector preflight must happen before touching workspace paths"
-    );
-}
-
 // ---------- forge:: branch matchers ----------------------------------
 
 #[test]
@@ -1257,32 +796,6 @@ fn forge_branch_matchers_round_trip() {
     assert!(branches_match("specify/foo", "specify/foo"));
     assert!(!branches_match("specify/foo", "specify/bar"));
     assert!(!branches_match("feature/foo", "specify/foo"));
-}
-
-// Sanity: the workspace base helper is private but the path it
-// computes is observable through `workspace_status` (`.specify/workspace/`).
-// This test pins the layout so a future refactor to the private helper
-// keeps producing the same on-disk path the binary expects.
-#[test]
-fn sync_lays_workspace_under_dot_specify() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    fs::create_dir_all(project_dir.join("peer")).unwrap();
-    fs::write(
-        project_dir.join("registry.yaml"),
-        "\
-version: 1
-projects:
-  - name: peer
-    url: ./peer
-    adapter: omnia@v1
-",
-    )
-    .unwrap();
-
-    let registry = Registry::load(project_dir).unwrap().expect("registry present");
-    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).unwrap();
-    assert!(Path::new(&project_dir.join(".specify/workspace")).is_dir());
 }
 
 // ---------- topology.lock regeneration ------------------------

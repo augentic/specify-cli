@@ -131,19 +131,3 @@ slices:
     project: default
     status: done
 ";
-
-/// All entries done — `next` reports `drained` post-2.0 (the
-/// previous "stuck" semantics relied on the now-removed `failed`
-/// state). Kept under the historical name for fixture continuity;
-/// the test asserts the new `drained` reason.
-pub const STUCK_PLAN: &str = "\
-name: demo
-slices:
-  - name: a
-    project: default
-    status: done
-  - name: b
-    project: default
-    status: done
-    depends-on: [a]
-";
