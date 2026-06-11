@@ -206,6 +206,17 @@ _Codified in: `crates/vectis/src/validate.rs` (the public
 `Args`, `ValidateMode`, `render_json`, and `validate_exit_code`
 surface) and `src/main.rs` (the binary entry point)._
 
+## RFC-45 — asset materialization (draft, not implemented)
+
+> Canonical draft: [`augentic/specify` `rfcs/rfc-45-asset-materialization.md`](https://github.com/augentic/specify/blob/rfc-45/rfcs/rfc-45-asset-materialization.md). Refinement branch: `rfc-45` in both repos. Not codified until implementation lands.
+>
+> Headline decisions when implemented:
+>
+> - **`vectis materialize assets`** — deterministic SVG/raster → per-platform exports under `design-system/assets/exports/<platform>/`; hooked from `specify slice build --phase prepare`.
+> - **Render-by-`kind`** — shell writers use materialized `vector`/`raster` assets; `kind: symbol` is the only explicit platform-glyph path (inference may add symbol entries; build must not substitute silently).
+> - **`assets.yaml` `app-icon`** — top-level field pointing at a `role: app-icon` entry; `specify plan validate` errors with `plan-bootstrap-app-icon-missing` when the plan implies UI platform bootstrap (`app-foundation`, `bootstrap-ios`/`android`, or absent ios/android shells per `detect_missing_platforms`).
+> - **Per-platform app icon outputs** — iOS `AppIcon.appiconset` (1024 PNG minimum); Android adaptive `ic_launcher` + legacy mipmaps; web favicon/manifest icons when the web shell exists.
+
 ### Scaffold version-pin resolution
 
 > `vectis scaffold` resolves Crux + toolchain pins from embedded
