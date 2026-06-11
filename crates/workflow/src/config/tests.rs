@@ -29,7 +29,7 @@ fn specify_subpaths() {
 }
 
 #[test]
-fn plan_dir_override_moves_plan_artifacts_only() {
+fn plan_dir_moves_plan_artifacts_only() {
     // Workspace routing: phase verbs run inside a slot while the plan
     // artifacts live at the initiating workspace. The override moves
     // exactly the three plan-root artifacts; every `.specify/` path
@@ -44,7 +44,10 @@ fn plan_dir_override_moves_plan_artifacts_only() {
     assert_eq!(layout.discovery_path(), PathBuf::from("/ws/discovery.md"));
     assert_eq!(layout.specify_dir(), PathBuf::from("/ws/.specify/workspace/orders/.specify"));
     assert_eq!(layout.slices_dir(), PathBuf::from("/ws/.specify/workspace/orders/.specify/slices"));
-    assert_eq!(layout.registry_path(), PathBuf::from("/ws/.specify/workspace/orders/registry.yaml"));
+    assert_eq!(
+        layout.registry_path(),
+        PathBuf::from("/ws/.specify/workspace/orders/registry.yaml")
+    );
 }
 
 #[test]

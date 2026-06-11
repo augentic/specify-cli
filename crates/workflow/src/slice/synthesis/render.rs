@@ -127,7 +127,13 @@ fn render_block(req: &ModelRequirement) -> String {
     }
     out.push('\n');
     let _ = writeln!(out, "ID: {}", req.id.as_deref().unwrap_or_default());
-    let _ = writeln!(out, "Sources: {}", req.sources.join(", "));
+    // Contract: an evidence-less (`unknown`) requirement renders the
+    // literal `Sources: []`, never a bare line with trailing space.
+    if req.sources.is_empty() {
+        out.push_str("Sources: []\n");
+    } else {
+        let _ = writeln!(out, "Sources: {}", req.sources.join(", "));
+    }
     if let Some(status) = req.status {
         let _ = writeln!(out, "Status: {status}");
     }

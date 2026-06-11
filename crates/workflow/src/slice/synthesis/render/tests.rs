@@ -103,6 +103,35 @@ fn divergence_emits_tag_and_round_trips() {
 }
 
 #[test]
+fn unknown_block_renders_empty_sources() {
+    // Contract: an evidence-less requirement renders the literal
+    // `Sources: []` (legal exactly when `Status: unknown`) and
+    // round-trips the provenance validator cleanly.
+    let raw = "version: 1
+slice: bootstrap-core
+project: shop-mobile
+requirements:
+  - id: REQ-001
+    title: Buildable core crate
+    status: unknown
+    domain: app-foundation
+    sources: []
+    claims: []
+    statement: The repository contains a buildable core crate.
+tasks: []
+";
+    let model = SliceModel::parse_yaml(raw).expect("model validates");
+    let block = render_block(&model.requirements[0]);
+    assert!(block.contains("\nSources: []\n"), "renders bracketed empty list: {block}");
+
+    let parsed = parse_spec_md(&block);
+    assert!(parsed.findings.is_empty(), "{:?}", parsed.findings);
+    let findings =
+        specify_model::spec::provenance::validate(&parsed, &std::collections::BTreeSet::new());
+    assert!(findings.is_empty(), "{findings:?}");
+}
+
+#[test]
 fn scenarios_render_as_headings_and_parse() {
     // Regression for augentic/specify#150: scenarios must render as
     // `#### Scenario:` H4 headings (not `- ` bullets) so the spec parser

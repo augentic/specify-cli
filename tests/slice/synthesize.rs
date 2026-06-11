@@ -11,17 +11,6 @@
 
 use crate::support::*;
 
-/// Evidence the synthesis kernel resolves authority and anchors claims
-/// against. One `requirement` claim, behaviour authority.
-const SYNTH_EVIDENCE_YAML: &str = "authority: behaviour
-lead: my-slice
-claims:
-  - id: password-reset.request
-    kind: requirement
-    statement: \"The system lets a user request a reset link.\"
-    path: src/users/reset.ts#L42
-";
-
 /// Agent synthesis response — one agreed requirement (single claim) and
 /// one task. Kernel-owned fields omitted so the kernel projects them.
 const SYNTH_RESPONSE_JSON: &str = r###"{
@@ -58,17 +47,7 @@ const SYNTH_RESPONSE_JSON: &str = r###"{
 /// `slice synthesize` can read both the inline Evidence (dry-run) and
 /// the on-disk Evidence the kernel resolves authority from (`--from`).
 fn stage_synthesizable_slice() -> Project {
-    let project = Project::init().with_schemas();
-    specify_cmd()
-        .current_dir(project.root())
-        .args(["slice", "create", "my-slice"])
-        .assert()
-        .success();
-    let slice_dir = project.slices_dir().join("my-slice");
-    let evidence_dir = slice_dir.join("evidence");
-    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
-    fs::write(evidence_dir.join("legacy-monolith.yaml"), SYNTH_EVIDENCE_YAML)
-        .expect("write evidence");
+    let project = stage_synthesizable_slice_without_plan();
     project.seed_plan(PLAN_WITH_LEGACY_MONOLITH);
     project
 }

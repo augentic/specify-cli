@@ -317,6 +317,15 @@ The word **workspace** overloads three related concepts. Use them verbatim in op
 
 `/spec:init workspace` and `specify init --workspace` scaffold a workspace; init chains an initial workspace sync before returning.
 
+## Plan-root override: global `--plan-dir` (env `SPECIFY_PLAN_DIR`)
+
+Workspace routing runs phase work inside a materialised slot while `plan.yaml` / `change.md` / `discovery.md` stay at the initiating workspace — by design no slot grows its own plan, and symlinked slots physically live outside the workspace tree so upward path-walking cannot find it. The bridge is an **explicit pass-through from the executor**, which already knows the workspace root: the global `--plan-dir <PATH>` flag (env `SPECIFY_PLAN_DIR`) names the directory holding the governing plan artifacts.
+
+- **One seam.** `Ctx::layout()` applies the override via `Layout::with_plan_dir`; only `plan_path()`, `change_brief_path()`, and `discovery_path()` move. Every `.specify/`-anchored path (slices, journal, scratch, cache, archive) stays on the project (slot) root — observability and slice state remain project-local.
+- **Relative source bindings follow the plan.** `plan.yaml.sources.<key>.path` relative bindings are authored against the plan's home, so `resolve_source_path` joins them onto the plan root, not the slot.
+- **Merge keeps its writer monopoly.** With the override, slot-side `specify slice merge` stamps per-entry `done` in the workspace plan — the "sole writer of `done`" contract holds in workspace mode without a second stamping verb at the workspace.
+- **No back-pointer, no discovery.** The CLI never guesses: an override naming a plan-less directory fails with the same typed errors (e.g. `slice-synthesize-plan-missing`), whose message cites the overridden path. Adapter resolution is untouched — slot-side source adapters resolve project-locally (vendored tree or manifest cache) per §"Adapter loader axis routing".
+
 ## Registry projection and topology cache (RFC-36)
 
 Give every fact one writer; derive everything else. A project's *authored intent* — target `adapter` and `description` — lives only in its `.specify/project.yaml`. Its *routing identity* is **derived, not authored**: a deterministic structural projection of the project's own baseline. There are no `capabilities` / `keywords` facets — a derived routing identity needs no second writer duplicating what the baseline already states. `registry.yaml` carries membership + location, cross-project `contracts` wiring, and an optional `adapter` used solely as a greenfield scaffold seed.

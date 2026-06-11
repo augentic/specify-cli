@@ -359,12 +359,20 @@ fn check_sources(req: &Requirement, source_keys: &BTreeSet<String>, out: &mut Ve
         return;
     }
     if req.sources.is_empty() {
-        out.push(Finding {
-            rule_id: "spec.requirement-sources-empty",
-            rule: "`Sources:` lists at least one key",
-            detail: format!("requirement {} has an empty `Sources:` line", req.id_or_name()),
-            span: req.span,
-        });
+        // Contract: `Sources: []` is legal exactly when `Status: unknown`
+        // — an evidence-less requirement (e.g. a reconciliation-inserted
+        // bootstrap slice) has no contributing source to cite.
+        if req.status != Some(RequirementStatus::Unknown) {
+            out.push(Finding {
+                rule_id: "spec.requirement-sources-empty",
+                rule: "`Sources:` lists at least one key (empty only with `Status: unknown`)",
+                detail: format!(
+                    "requirement {} has an empty `Sources:` line but is not `Status: unknown`",
+                    req.id_or_name()
+                ),
+                span: req.span,
+            });
+        }
         return;
     }
     for key in &req.sources {

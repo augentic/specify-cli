@@ -159,6 +159,57 @@ slices:
 }
 
 #[test]
+fn workspace_merge_stamps_plan_via_plan_dir() {
+    // Workspace routing: merge runs inside the slot (which carries no
+    // plan.yaml by design) with `--plan-dir` pointing at the initiating
+    // workspace root, so `slice merge` — the sole writer of per-entry
+    // `done` — stamps the workspace plan from the slot.
+    let tmp = tempdir().expect("tempdir");
+    let workspace_root = tmp.path();
+    fs::write(
+        workspace_root.join("plan.yaml"),
+        "\
+name: merge-e2e
+slices:
+  - name: my-slice
+    project: orders
+    status: in-progress
+",
+    )
+    .expect("write workspace plan.yaml");
+
+    let project_root = workspace_root.join(".specify/workspace/orders");
+    fs::create_dir_all(&project_root).expect("mkdir workspace project");
+    specify_cmd()
+        .current_dir(&project_root)
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "orders"])
+        .assert()
+        .success();
+    copy_dir(&omnia_schema_dir(), &project_root.join("adapters").join("targets").join("omnia"));
+    copy_dir(
+        &e2e_fixtures().join("merge-two-spec-slice"),
+        &project_root.join(".specify/slices/my-slice"),
+    );
+
+    specify_cmd()
+        .current_dir(&project_root)
+        .args(["--format", "json", "--plan-dir"])
+        .arg(workspace_root)
+        .args(["slice", "merge", "run", "my-slice"])
+        .assert()
+        .success();
+
+    assert!(!project_root.join("plan.yaml").exists(), "the slot must not grow its own plan.yaml");
+    let plan_yaml = fs::read_to_string(workspace_root.join("plan.yaml")).expect("read plan.yaml");
+    assert!(
+        plan_yaml.contains("status: done"),
+        "merge must stamp the workspace plan entry done, got:\n{plan_yaml}"
+    );
+}
+
+#[test]
 fn workspace_merge_excludes_generated() {
     let tmp = tempdir().expect("tempdir");
     let project_root = tmp.path().join(".specify/workspace/orders");

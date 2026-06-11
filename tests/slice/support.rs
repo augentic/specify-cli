@@ -58,9 +58,39 @@ requirements:
 tasks: []
 ";
 
+/// Evidence the synthesis kernel resolves authority and anchors claims
+/// against. One `requirement` claim, behaviour authority. Shared by
+/// the `synthesize` and `plan_dir` suites.
+pub const SYNTH_EVIDENCE_YAML: &str = "authority: behaviour
+lead: my-slice
+claims:
+  - id: password-reset.request
+    kind: requirement
+    statement: \"The system lets a user request a reset link.\"
+    path: src/users/reset.ts#L42
+";
+
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
+
+/// Stage a slice with one bound source's Evidence but **no**
+/// `plan.yaml` — the workspace-slot shape, where the governing plan
+/// lives elsewhere. Callers either seed a project-root plan
+/// ([`stage_synthesizable_slice`]-style) or point `--plan-dir` at one.
+pub fn stage_synthesizable_slice_without_plan() -> Project {
+    let project = Project::init().with_schemas();
+    specify_cmd()
+        .current_dir(project.root())
+        .args(["slice", "create", "my-slice"])
+        .assert()
+        .success();
+    let evidence_dir = project.slices_dir().join("my-slice/evidence");
+    fs::create_dir_all(&evidence_dir).expect("mkdir evidence");
+    fs::write(evidence_dir.join("legacy-monolith.yaml"), SYNTH_EVIDENCE_YAML)
+        .expect("write evidence");
+    project
+}
 
 /// Stage a slice on disk and seed `<slice>/specs/login/spec.md`
 /// directly, plus optionally a `plan.yaml` at the project root, so the

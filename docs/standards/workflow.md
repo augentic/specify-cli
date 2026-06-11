@@ -124,9 +124,11 @@ Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$S
 
 Headline verbs: `init`, `source {resolve, survey, extract, preview}`, `target resolve`, `slice {create, synthesize, model show, build, transition, validate, provenance, merge}`, `plan {create, propose, add, amend, transition, next, finalize}`, `workspace {sync, push, prepare}`, `tool run`, `journal emit`. See [`specify --help`](../init.md) and the parent repo's [`AGENTS.md` §"Skill / CLI responsibility split"](https://github.com/augentic/specify/blob/main/AGENTS.md#skill--cli-responsibility-split).
 
+The global `--plan-dir <PATH>` flag (env `SPECIFY_PLAN_DIR`) overrides where `plan.yaml` / `change.md` / `discovery.md` resolve — the workspace-routing bridge that lets slot-side phase verbs (`source extract`, `slice synthesize`, `slice validate`, `slice provenance`, `slice merge`'s `done` stamp) read the initiating workspace's plan while every `.specify/` path stays slot-local. Relative `sources.<key>.path` bindings join onto the plan root. See [`DECISIONS.md` §"Plan-root override: global `--plan-dir`"](../../DECISIONS.md#plan-root-override-global---plan-dir-env-specify_plan_dir).
+
 ## Writer ownership
 
-Per-entry status writes route to exactly one CLI verb each — `plan add` / `plan amend` write `pending`, `plan next` writes `in-progress`, `slice merge` (via `plan transition <entry> done`) writes `done`. Plan-level `approved` is operator-only. See [`DECISIONS.md` §"Lifecycle write-ownership"](../../DECISIONS.md#lifecycle-write-ownership).
+Per-entry status writes route to exactly one CLI verb each — `plan add` / `plan amend` write `pending`, `plan next` writes `in-progress`, `slice merge` (via `plan transition <entry> done`) writes `done`. Plan-level `approved` is operator-only; in workspace mode the slot-side merge stamps the workspace plan through `--plan-dir`. See [`DECISIONS.md` §"Lifecycle write-ownership"](../../DECISIONS.md#lifecycle-write-ownership).
 
 ## Observability
 

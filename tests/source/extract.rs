@@ -166,6 +166,51 @@ fn prepare_prints_envelope_emits_event() {
 }
 
 #[test]
+fn prepare_resolves_via_plan_dir() {
+    // Workspace routing: extract runs inside a plan-less slot with
+    // `--plan-dir` naming the initiating workspace root. The plan loads
+    // from the override, and the binding's *relative* `path:` resolves
+    // against the plan's home — the workspace — not the slot.
+    let project = Project::init();
+    stage_typescript(&project);
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    fs::write(
+        workspace.path().join("plan.yaml"),
+        "name: platform-v2
+sources:
+  legacy:
+    adapter: typescript
+    path: vendor/legacy
+slices:
+  - name: identity
+    project: default
+    status: pending
+",
+    )
+    .expect("write workspace plan.yaml");
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "--plan-dir"])
+        .arg(workspace.path())
+        .args(["source", "extract", "legacy", "user-registration"])
+        .args(["--slice", "identity"])
+        .assert()
+        .success();
+
+    let body = parse_stdout(&assert.get_output().stdout, project.root());
+    let source_dir = body["source-dir"].as_str().expect("path binding carries source-dir");
+    assert_eq!(
+        source_dir,
+        workspace.path().join("vendor/legacy").to_str().expect("utf8 workspace path"),
+        "relative source path must join the plan root, not the slot"
+    );
+    // Slot-anchored outputs stay slot-anchored.
+    let evidence = body["evidence-dir"].as_str().expect("evidence-dir str");
+    assert_eq!(evidence, format!("{TEMPDIR_PLACEHOLDER}/.specify/slices/identity/evidence"));
+}
+
+#[test]
 fn prepare_value_bound_carries_inline() {
     let project = Project::init();
     stage_intent(&project);

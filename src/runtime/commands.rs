@@ -82,16 +82,14 @@ pub fn run(cli: Cli) -> Exit {
         },
         Commands::Lint { action } => dispatch_lint(format, action),
         Commands::Journal { action } => match action {
-            JournalAction::Emit { event, payload } => scoped(format, plan_dir, |ctx| {
-                journal::emit::emit(ctx, &event, payload.as_deref())
-            }),
+            JournalAction::Emit { event, payload } => {
+                scoped(format, plan_dir, |ctx| journal::emit::emit(ctx, &event, payload.as_deref()))
+            }
         },
         Commands::Slice { action } => scoped(format, plan_dir, |ctx| slice::run(ctx, action)),
         Commands::Archive { action } => scoped(format, plan_dir, |ctx| archive::run(ctx, &action)),
         Commands::Plan { action } => scoped(format, plan_dir, |ctx| plan::run(ctx, action)),
-        Commands::Registry { action } => {
-            scoped(format, plan_dir, |ctx| registry::run(ctx, action))
-        }
+        Commands::Registry { action } => scoped(format, plan_dir, |ctx| registry::run(ctx, action)),
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
             clap_complete::generate(shell, &mut cmd, "specify", &mut std::io::stdout());
@@ -160,9 +158,9 @@ fn dispatch_source(format: Format, plan_dir: Option<PathBuf>, action: SourceActi
             lead,
             slice,
             phase,
-        } => scoped(format, plan_dir, |ctx| {
-            source::extract::run(ctx, &source, &lead, &slice, phase)
-        }),
+        } => {
+            scoped(format, plan_dir, |ctx| source::extract::run(ctx, &source, &lead, &slice, phase))
+        }
     }
 }
 

@@ -139,6 +139,21 @@ fn empty_sources_reported() {
 }
 
 #[test]
+fn empty_sources_legal_for_unknown() {
+    // Contract: `Sources: []` appears exactly when `Status: unknown` —
+    // an evidence-less requirement (e.g. on a reconciliation-inserted
+    // bootstrap slice) has no contributing source to cite.
+    let parsed = parse_spec_md(
+        "### Requirement: Evidence-less [unknown]\n\nID: REQ-001\nSources: []\nStatus: unknown\n",
+    );
+    let findings = validate(&parsed, &keys(["a"]));
+    assert!(
+        !findings.iter().any(|f| f.rule_id == "spec.requirement-sources-empty"),
+        "{findings:?}"
+    );
+}
+
+#[test]
 fn missing_status_reported() {
     let parsed = parse_spec_md("### Requirement: No status\n\nID: REQ-001\nSources: [a]\n");
     let findings = validate(&parsed, &keys(["a"]));
