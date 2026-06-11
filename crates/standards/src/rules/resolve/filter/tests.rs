@@ -104,10 +104,10 @@ fn adapters_match_target() {
 fn adapters_match_source() {
     let entry = make_entry(
         "SRC-001",
-        Some(applicability_with(Some(vec!["code-typescript"]), None, None, None)),
+        Some(applicability_with(Some(vec!["typescript"]), None, None, None)),
         None,
     );
-    let sources = vec!["code-typescript".to_string()];
+    let sources = vec!["typescript".to_string()];
     let inputs = make_inputs("omnia", &sources, &[], &[], false, false);
     let out = filter(vec![entry], &inputs);
     assert_eq!(out.len(), 1);

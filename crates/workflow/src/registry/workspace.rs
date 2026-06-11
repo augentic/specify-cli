@@ -4,6 +4,7 @@
 
 mod bootstrap;
 mod git;
+mod mirror;
 mod push;
 mod slot_problem;
 mod status;

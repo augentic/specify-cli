@@ -54,11 +54,8 @@ fn name_from_value_handles_shapes() {
 fn shorthand_splits_name_and_default_ref() {
     assert_eq!(parse_first_party_shorthand("omnia"), Some(("omnia", "v1")));
     assert_eq!(parse_first_party_shorthand("omnia@v2"), Some(("omnia", "v2")));
-    assert_eq!(parse_first_party_shorthand("code-typescript"), Some(("code-typescript", "v1")));
-    assert_eq!(
-        parse_first_party_shorthand("code-typescript@v12"),
-        Some(("code-typescript", "v12"))
-    );
+    assert_eq!(parse_first_party_shorthand("typescript"), Some(("typescript", "v1")));
+    assert_eq!(parse_first_party_shorthand("typescript@v12"), Some(("typescript", "v12")));
 }
 
 #[test]

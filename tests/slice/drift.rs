@@ -26,7 +26,7 @@ requirements:
   - id: REQ-001
     title: Password reset request
     status: agreed
-    unit: password-reset
+    domain: password-reset
     sources: [legacy-monolith]
     claims:
       - source: legacy-monolith
@@ -67,7 +67,7 @@ name: drift
 lifecycle: pending
 sources:
   legacy-monolith:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices:
   - name: my-slice
@@ -78,7 +78,7 @@ slices:
 ";
 
 /// Stage `my-slice` with a `model.yaml`, optional Evidence files
-/// (`<key>` → body), optional `specs/<unit>/spec.md` files, and an
+/// (`<key>` → body), optional `specs/<domain>/spec.md` files, and an
 /// optional `plan.yaml`. Returns the project handle for driving
 /// `specify slice validate`.
 fn drift_stage(
@@ -100,10 +100,10 @@ fn drift_stage(
             fs::write(evidence_dir.join(format!("{key}.yaml")), body).expect("write evidence");
         }
     }
-    for (unit, body) in specs {
-        let unit_dir = slice_dir.join("specs").join(unit);
-        fs::create_dir_all(&unit_dir).expect("mkdir specs unit");
-        fs::write(unit_dir.join("spec.md"), body).expect("write spec.md");
+    for (domain, body) in specs {
+        let domain_dir = slice_dir.join("specs").join(domain);
+        fs::create_dir_all(&domain_dir).expect("mkdir specs domain");
+        fs::write(domain_dir.join("spec.md"), body).expect("write spec.md");
     }
     if let Some(yaml) = plan {
         project.seed_plan(yaml);
@@ -189,7 +189,7 @@ name: drift
 lifecycle: pending
 sources:
   legacy-monolith:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy
 slices:
   - name: my-slice
@@ -218,7 +218,7 @@ requirements:
   - id: REQ-001
     title: Password reset request
     status: agreed
-    unit: password-reset
+    domain: password-reset
     sources: [legacy-monolith]
     claims:
       - source: legacy-monolith
@@ -250,7 +250,7 @@ requirements:
   - id: REQ-001
     title: Password reset request
     status: agreed
-    unit: password-reset
+    domain: password-reset
     sources: [legacy-monolith]
     claims:
       - source: legacy-monolith
@@ -282,7 +282,7 @@ requirements:
   - id: REQ-001
     title: Password reset request
     status: agreed
-    unit: password-reset
+    domain: password-reset
     sources: [legacy-monolith]
     claims:
       - source: legacy-monolith
@@ -315,7 +315,7 @@ requirements:
   - id: REQ-001
     title: Password reset request
     status: agreed
-    unit: password-reset
+    domain: password-reset
     sources: [legacy-monolith]
     claims:
       - source: legacy-monolith

@@ -123,7 +123,7 @@
     "scenarios": {
       "type": "array",
       "items": { "$ref": "#/$defs/scenario" },
-      "description": "`WorkspaceModel` entity: `scenario` facts from the dedicated scenario discovery pass over the opt-in scenario roots (`acceptance/scenarios/*.md`, `adapters/targets/*/tests/**`, plugin skill fixtures) under the framework scan profile. Kept out of `files` so no other rule's candidate set changes. Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
+      "description": "`WorkspaceModel` entity: `scenario` facts from the dedicated scenario discovery pass over the opt-in scenario roots (`evals/scenarios/*.md`, `adapters/targets/*/tests/**`, plugin skill fixtures) under the framework scan profile. Kept out of `files` so no other rule's candidate set changes. Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
     },
     "adapter_dirs": {
       "type": "array",

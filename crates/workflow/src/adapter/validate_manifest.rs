@@ -44,7 +44,7 @@ pub(super) fn axis_collision_error(
         "adapter-name-axis-collision",
         format!("adapter name `{name}` is unique across axes"),
         format!(
-            "adapter name `{name}` is declared under both `adapters/sources/` and `adapters/targets/` (or the equivalent `.specify/.cache/manifests/{{sources,targets}}/<name>/` mirror); names must be unique across axes (axis `{located_axis}`: {}; axis `{opposite}`: {})",
+            "adapter name `{name}` is declared under both `adapters/sources/` and `adapters/targets/` (or the equivalent `.specify/cache/manifests/{{sources,targets}}/<name>/` mirror); names must be unique across axes (axis `{located_axis}`: {}; axis `{opposite}`: {})",
             located_path.display(),
             sibling_path.display(),
         ),
@@ -57,7 +57,7 @@ pub(super) fn axis_collision_error(
 /// Used at `specify init` time (with `axis = Axis::Target`, since
 /// `init` only caches target adapters) before the per-axis manifest
 /// cache directory at
-/// `.specify/.cache/manifests/{sources,targets}/<name>/` is rewritten,
+/// `.specify/cache/manifests/{sources,targets}/<name>/` is rewritten,
 /// so the operator hits a clear collision diagnostic ahead of the
 /// downstream `TargetAdapter::resolve` call. The same invariant fires
 /// inside the private `locate_axis` helper used by

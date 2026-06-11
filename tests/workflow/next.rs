@@ -6,6 +6,7 @@ use crate::support::*;
 fn plan_next_picks_first_pending_text() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
+    let _lock = project.hold_plan_lock();
 
     let assert =
         specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
@@ -17,6 +18,7 @@ fn plan_next_picks_first_pending_text() {
 fn plan_next_picks_first_pending_json() {
     let project = Project::init();
     project.seed_plan(A_DONE_B_PENDING);
+    let _lock = project.hold_plan_lock();
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -37,9 +39,57 @@ fn plan_next_picks_first_pending_json() {
 }
 
 #[test]
+fn plan_next_journals_entry_advanced() {
+    // `plan next` is the sole writer of per-entry `in-progress`; the
+    // matching `plan.entry.advanced` event fires only on the write.
+    let project = Project::init();
+    project.seed_plan(A_DONE_B_PENDING);
+    let _lock = project.hold_plan_lock();
+
+    specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
+
+    let journal = project.root().join(".specify").join("journal.jsonl");
+    let raw = fs::read_to_string(&journal).expect("read journal.jsonl");
+    let lines: Vec<&str> = raw.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "exactly one event per fresh advance, got:\n{raw}");
+    assert!(
+        lines[0].contains(r#""event":"plan.entry.advanced""#),
+        "advance must journal plan.entry.advanced, got:\n{}",
+        lines[0]
+    );
+    assert!(lines[0].contains(r#""plan-name":"demo""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""slice-name":"b""#), "got:\n{}", lines[0]);
+
+    // Re-running `plan next` returns the active entry unchanged — no
+    // second advance event, so probes can read "did not advance"
+    // from the journal window.
+    specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    let raw_after = fs::read_to_string(&journal).expect("read journal.jsonl");
+    assert_eq!(
+        raw_after.lines().filter(|l| !l.is_empty()).count(),
+        1,
+        "returning the active entry must not append a second event, got:\n{raw_after}"
+    );
+}
+
+#[test]
+fn plan_next_drained_no_journal() {
+    let project = Project::init();
+    project.seed_plan(ALL_DONE);
+    let _lock = project.hold_plan_lock();
+
+    specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
+    assert!(
+        !project.root().join(".specify").join("journal.jsonl").exists(),
+        "a drained plan must not journal plan.entry.advanced"
+    );
+}
+
+#[test]
 fn plan_next_reports_in_progress() {
     let project = Project::init();
     project.seed_plan(A_IN_PROGRESS);
+    let _lock = project.hold_plan_lock();
 
     let text = specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
@@ -61,6 +111,7 @@ fn plan_next_reports_in_progress() {
 fn plan_next_all_done_text() {
     let project = Project::init();
     project.seed_plan(ALL_DONE);
+    let _lock = project.hold_plan_lock();
 
     let text = specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
     let stdout = std::str::from_utf8(&text.get_output().stdout).expect("utf8");
@@ -82,6 +133,7 @@ fn plan_next_all_done_text() {
 fn plan_next_stuck_when_deps_unmet() {
     let project = Project::init();
     project.seed_plan(STUCK_PLAN);
+    let _lock = project.hold_plan_lock();
 
     let json = specify_cmd()
         .current_dir(project.root())

@@ -105,6 +105,96 @@ fn c01_sync_skips_unselected_slots() {
 }
 
 #[test]
+fn c01_sync_journals_completed_event() {
+    // workflow §Observability: one `workspace.sync.completed` per
+    // successful sync, carrying the materialised project names.
+    let tmp = tempdir().unwrap();
+    init_workspace(&tmp, "platform-workspace");
+    for name in ["billing", "orders"] {
+        fs::create_dir_all(tmp.path().join(name)).unwrap();
+    }
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: billing\n\
+         \x20\x20\x20\x20url: ./billing\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n\
+         \x20\x20- name: orders\n\
+         \x20\x20\x20\x20url: ./orders\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n",
+    )
+    .unwrap();
+
+    specify_cmd().current_dir(tmp.path()).args(["workspace", "sync"]).assert().success();
+
+    let raw = fs::read_to_string(tmp.path().join(".specify/journal.jsonl"))
+        .expect("sync must journal workspace.sync.completed");
+    let lines: Vec<&str> = raw.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "exactly one event per sync, got:\n{raw}");
+    assert!(lines[0].contains(r#""event":"workspace.sync.completed""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""projects":["billing","orders"]"#), "got:\n{}", lines[0]);
+}
+
+#[test]
+fn sync_no_registry_no_journal() {
+    let project = Project::init();
+    specify_cmd().current_dir(project.root()).args(["workspace", "sync"]).assert().success();
+    assert!(
+        !project.root().join(".specify/journal.jsonl").exists(),
+        "the registry-less no-op sync must not journal workspace.sync.completed"
+    );
+}
+
+#[test]
+fn push_journals_completed_event() {
+    // workflow §Observability: one `workspace.push.completed` per
+    // successful non-dry-run push (a `local-only` outcome is not a
+    // failure); dry runs emit nothing.
+    let tmp = tempdir().unwrap();
+    init_workspace(&tmp, "platform-workspace");
+    fs::write(tmp.path().join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
+    // A local git worktree without an `origin` remote resolves to the
+    // `local-only` push outcome — success without network.
+    let alpha = tmp.path().join("alpha");
+    fs::create_dir_all(&alpha).unwrap();
+    run_git(&alpha, &["init", "-b", "main"]);
+    fs::write(alpha.join("README.md"), "seed\n").unwrap();
+    run_git(&alpha, &["add", "README.md"]);
+    run_git(&alpha, &["commit", "--no-gpg-sign", "-m", "seed"]);
+    fs::write(
+        tmp.path().join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: alpha\n\
+         \x20\x20\x20\x20url: ./alpha\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n",
+    )
+    .unwrap();
+
+    specify_cmd()
+        .current_dir(tmp.path())
+        .args(["workspace", "push", "--dry-run"])
+        .assert()
+        .success();
+    assert!(
+        !tmp.path().join(".specify/journal.jsonl").exists(),
+        "--dry-run must not journal workspace.push.completed"
+    );
+
+    specify_cmd().current_dir(tmp.path()).args(["workspace", "push"]).assert().success();
+
+    let raw = fs::read_to_string(tmp.path().join(".specify/journal.jsonl"))
+        .expect("push must journal workspace.push.completed");
+    let lines: Vec<&str> = raw.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "exactly one event per push, got:\n{raw}");
+    assert!(lines[0].contains(r#""event":"workspace.push.completed""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""plan-name":"demo-change""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""branch":"specify/demo-change""#), "got:\n{}", lines[0]);
+    assert!(lines[0].contains(r#""projects":["alpha"]"#), "got:\n{}", lines[0]);
+}
+
+#[test]
 fn c01_push_unknown_selector_preflight() {
     let tmp = tempdir().unwrap();
     init_workspace(&tmp, "platform-workspace");
@@ -287,7 +377,114 @@ projects:
 
     assert!(root.join(".specify/workspace/alpha").exists());
     assert!(root.join(".specify/workspace/beta").exists());
+}
 
-    assert!(root.join(".specify/workspace/alpha").exists());
-    assert!(root.join(".specify/workspace/beta").exists());
+// ---- RFC-45 adapter-mirror conflict pins ----
+
+/// Vendor a minimal source adapter named `docs` at the workspace root.
+fn vendor_docs_adapter(root: &std::path::Path) {
+    let dir = root.join("adapters/sources/docs");
+    fs::create_dir_all(&dir).expect("vendor adapter dir");
+    fs::write(dir.join("adapter.yaml"), "workspace copy\n").expect("vendor adapter.yaml");
+}
+
+#[test]
+fn sync_mirror_skips_self_slot() {
+    // RFC-45: a `url: .` registry entry symlinks its slot to the
+    // workspace itself; mirroring there would remove-then-copy the
+    // workspace cache from itself. The self-slot is skipped: the
+    // vendored adapter must not be self-mirrored into the workspace's
+    // own manifest cache, and the init-seeded cache survives intact.
+    let tmp = tempdir().expect("tempdir");
+    let root = tmp.path().join("root");
+    fs::create_dir_all(&root).expect("root");
+    specify_cmd()
+        .current_dir(&root)
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "self-slot-ws"])
+        .assert()
+        .success();
+    vendor_docs_adapter(&root);
+    fs::write(
+        root.join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: alpha\n\
+         \x20\x20\x20\x20url: .\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n",
+    )
+    .expect("registry");
+
+    specify_cmd().current_dir(&root).args(["workspace", "sync"]).assert().success();
+
+    assert!(
+        !root.join(".specify/cache/manifests/sources/docs").exists(),
+        "the self-slot must be skipped: the vendored adapter must not be mirrored \
+         into the workspace's own manifest cache"
+    );
+    assert!(
+        root.join(".specify/cache/manifests/targets/omnia/adapter.yaml").is_file(),
+        "the init-seeded cache entry must survive a sync over a `url: .` self-slot"
+    );
+}
+
+#[test]
+fn sync_mirror_keeps_foreign_cache_entries() {
+    // RFC-45: per-name delete-then-copy GC. Cache entries the workspace
+    // does not own (e.g. an init-time adapter seed in the slot) are
+    // never pruned; workspace-owned names are refreshed on re-sync.
+    let tmp = tempdir().expect("tempdir");
+    let peer = tmp.path().join("peer-proj");
+    let foreign = peer.join(".specify/cache/manifests/sources/slot-local");
+    fs::create_dir_all(&foreign).expect("foreign cache entry");
+    fs::write(foreign.join("adapter.yaml"), "slot-only adapter\n").expect("foreign adapter.yaml");
+    let root = tmp.path().join("root");
+    fs::create_dir_all(&root).expect("root");
+    specify_cmd()
+        .current_dir(&root)
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "foreign-ws"])
+        .assert()
+        .success();
+    vendor_docs_adapter(&root);
+    fs::write(
+        root.join("registry.yaml"),
+        "version: 1\n\
+         projects:\n\
+         \x20\x20- name: beta\n\
+         \x20\x20\x20\x20url: ../peer-proj\n\
+         \x20\x20\x20\x20adapter: omnia@v1\n",
+    )
+    .expect("registry");
+
+    specify_cmd().current_dir(&root).args(["workspace", "sync"]).assert().success();
+
+    let slot_cache = root.join(".specify/workspace/beta/.specify/cache/manifests/sources");
+    assert!(
+        slot_cache.join("docs/adapter.yaml").is_file(),
+        "sync must mirror the workspace adapter into the slot cache"
+    );
+    assert_eq!(
+        fs::read_to_string(slot_cache.join("slot-local/adapter.yaml")).expect("foreign entry"),
+        "slot-only adapter\n",
+        "a cache entry the workspace does not own must survive sync"
+    );
+
+    // Re-sync refreshes workspace-owned names and still leaves the
+    // foreign entry alone.
+    fs::write(root.join("adapters/sources/docs/adapter.yaml"), "workspace copy v2\n")
+        .expect("edit vendored adapter");
+    specify_cmd().current_dir(&root).args(["workspace", "sync"]).assert().success();
+
+    assert_eq!(
+        fs::read_to_string(slot_cache.join("docs/adapter.yaml")).expect("mirrored entry"),
+        "workspace copy v2\n",
+        "re-sync must refresh the mirrored copy"
+    );
+    assert!(
+        slot_cache.join("slot-local/adapter.yaml").is_file(),
+        "the foreign entry must survive re-sync"
+    );
 }

@@ -12,24 +12,20 @@
 //!    with the per-operation scratch path keyed by operation; and
 //! 4. `evidence/` scaffolding for the output target.
 //!
-//! It produces *prep*, not behaviour: the actual WASI preopen wiring,
-//! the `tool` / `agent` dispatch branch, the extraction cache, the
-//! journal events, validate-before-visible, and the `discovery.md`
-//! merge / Evidence persist are what the workflow-integrated layer
-//! adds on top — none of it lives here.
+//! It produces *prep*, not behaviour: the agent handoff, the journal
+//! events, validate-before-visible, and the `discovery.md` merge /
+//! Evidence persist are what the workflow-integrated layer adds on
+//! top — none of it lives here.
 
 use std::path::{Path, PathBuf};
 
 use specify_error::{Error, Result};
-use specify_workflow::adapter::{CacheLayout, SourceAdapter};
+use specify_workflow::adapter::SourceAdapter;
 
 use crate::runtime::commands::BRIEFS_DIR;
 
 /// `evidence/` subdirectory scaffolded under the output target.
 const EVIDENCE_DIR: &str = "evidence";
-
-/// Leaf segment of every `$SCRATCH_DIR` path.
-const SCRATCH_LEAF: &str = "scratch";
 
 /// Scratch-tree segment for the slice-less `survey` operation.
 /// Kept in sync with the `survey` operation's wire
@@ -52,10 +48,10 @@ const PROJECT_DIR_VAR: &str = "PROJECT_DIR";
 /// scratch under `<slice>/`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceOp {
-    /// Plan-time lead discovery — scratch under `…/survey/scratch/`.
+    /// Plan-time lead discovery — scratch under `…/scratch/survey/`.
     Survey,
     /// Slice-time evidence extraction — scratch under
-    /// `…/<slice>/scratch/`. Constructed by the `extract`
+    /// `…/scratch/<slice>/`. Constructed by the `extract`
     /// runner ([`crate::runtime::commands::source::extract`]).
     Extract {
         /// Slice name keying the scratch directory.
@@ -64,7 +60,7 @@ pub enum SourceOp {
 }
 
 impl SourceOp {
-    /// Scratch-tree segment under `extractions/<adapter>/` for this
+    /// Scratch-lane segment under `scratch/<adapter>/` for this
     /// operation: the literal `survey` for the slice-less survey op,
     /// the slice name for slice-time extract.
     fn scratch_segment(&self) -> &str {
@@ -105,9 +101,9 @@ pub struct Preopen {
 
 /// The four-root source-adapter sandbox preopen layout.
 ///
-/// Data only: this computes the roots and their modes. The actual WASI
-/// preopen wiring, the `tool` / `agent` dispatch, the cache, and the
-/// journal events are the workflow-integrated layer's job.
+/// Data only: this computes the roots and their modes. The agent
+/// handoff and the journal events are the workflow-integrated layer's
+/// job.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxLayout {
     /// `$SOURCE_DIR` — read-only bound source path; absent
@@ -116,8 +112,8 @@ pub struct SandboxLayout {
     /// `$CAPABILITY_DIR` — read-only resolved adapter manifest cache
     /// (the adapter root the manifest loaded from).
     pub capability: Preopen,
-    /// `$SCRATCH_DIR` — write-only per-operation scratch under the
-    /// extraction tree.
+    /// `$SCRATCH_DIR` — write-only per-operation scratch lane under
+    /// `.specify/scratch/`.
     pub scratch: Preopen,
     /// `$PROJECT_DIR` — not visible to the adapter operation.
     pub project: Preopen,
@@ -233,25 +229,26 @@ pub fn prepare(request: &PrepRequest<'_>) -> Result<SourcePrep> {
 }
 
 /// Resolve a `plan.yaml.sources.<key>.path` binding against
-/// `project_dir`: absolute paths pass through, relative paths join
-/// onto the project root. Shared by the `survey` and `extract` runners
-/// so the `$SOURCE_DIR` host path is computed in one place.
+/// `plan_root`: absolute paths pass through, relative paths join onto
+/// the directory `plan.yaml` lives in (the project root, or the
+/// initiating workspace under a `--plan-dir` override) — relative
+/// bindings are authored against the plan's home. Shared by the
+/// `survey` and `extract` runners so the `$SOURCE_DIR` host path is
+/// computed in one place.
 #[must_use]
-pub fn resolve_source_path(project_dir: &Path, raw: &str) -> PathBuf {
+pub fn resolve_source_path(plan_root: &Path, raw: &str) -> PathBuf {
     let candidate = Path::new(raw);
-    if candidate.is_absolute() { candidate.to_path_buf() } else { project_dir.join(candidate) }
+    if candidate.is_absolute() { candidate.to_path_buf() } else { plan_root.join(candidate) }
 }
 
-/// `.specify/.cache/extractions/<adapter>/<segment>/scratch/`, where
-/// `<segment>` is `survey` for the slice-less survey op or the slice
-/// name for extract. Disjoint from the fingerprint
-/// result cache: a 64-hex digest dir can never equal `survey` or a
-/// kebab slice name.
+/// `.specify/scratch/<adapter>/<segment>/`, where `<segment>` is
+/// `survey` for the slice-less survey op or the slice name for
+/// extract. Rooted under the transient working-state tree
+/// (`.specify/scratch/`), disjoint from the memoization tree at
+/// `.specify/cache/`, so a scratch write never shares a namespace
+/// with a cache artifact.
 fn scratch_dir(project_dir: &Path, adapter: &str, op: &SourceOp) -> PathBuf {
-    CacheLayout::new(project_dir, adapter)
-        .adapter_dir()
-        .join(op.scratch_segment())
-        .join(SCRATCH_LEAF)
+    specify_workflow::adapter::scratch_dir(project_dir, adapter, op.scratch_segment())
 }
 
 #[cfg(test)]
@@ -268,10 +265,7 @@ mod tests {
     #[test]
     fn scratch_keys_under_survey_segment() {
         let scratch = scratch_dir(Path::new("/proj"), "documentation", &SourceOp::Survey);
-        assert_eq!(
-            scratch,
-            Path::new("/proj/.specify/.cache/extractions/documentation/survey/scratch")
-        );
+        assert_eq!(scratch, Path::new("/proj/.specify/scratch/documentation/survey"));
     }
 
     #[test]
@@ -279,20 +273,15 @@ mod tests {
         let op = SourceOp::Extract {
             slice: "identity-password-reset".to_string(),
         };
-        let scratch = scratch_dir(Path::new("/proj"), "code-typescript", &op);
-        assert_eq!(
-            scratch,
-            Path::new(
-                "/proj/.specify/.cache/extractions/code-typescript/identity-password-reset/scratch"
-            )
-        );
+        let scratch = scratch_dir(Path::new("/proj"), "typescript", &op);
+        assert_eq!(scratch, Path::new("/proj/.specify/scratch/typescript/identity-password-reset"));
     }
 
     #[test]
     fn path_bound_mounts_four_roots() {
         let source = PathBuf::from("/repo/legacy");
-        let capability = PathBuf::from("/proj/adapters/sources/code-typescript");
-        let scratch = PathBuf::from("/proj/.specify/.cache/extractions/code-typescript/s/scratch");
+        let capability = PathBuf::from("/proj/adapters/sources/typescript");
+        let scratch = PathBuf::from("/proj/.specify/scratch/typescript/s");
         let layout = SandboxLayout::new(Some(&source), &capability, scratch.clone());
 
         assert_eq!(layout.source.var, "SOURCE_DIR");
@@ -315,7 +304,7 @@ mod tests {
     #[test]
     fn value_bound_source_dir_absent() {
         let capability = PathBuf::from("/proj/adapters/sources/intent");
-        let scratch = PathBuf::from("/proj/.specify/.cache/extractions/intent/survey/scratch");
+        let scratch = PathBuf::from("/proj/.specify/scratch/intent/survey");
         let layout = SandboxLayout::new(None, &capability, scratch);
 
         assert_eq!(layout.source.access, PreopenAccess::None);

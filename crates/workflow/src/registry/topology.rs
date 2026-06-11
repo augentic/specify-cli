@@ -4,7 +4,7 @@
 //! `registry.yaml` carries membership + location only. A project's
 //! authored intent (`adapter`, `description`) lives in its
 //! `.specify/project.yaml`; its derived identity — the `surface[]` of
-//! owned units and a `recent[]` tail of merge outcomes — is a
+//! owned domains and a `recent[]` tail of merge outcomes — is a
 //! deterministic structural projection of its baseline
 //! (`.specify/specs/` + `.specify/journal.jsonl`). `specify workspace
 //! sync` resolves both into this committed lockfile so workspace plan-time
@@ -59,7 +59,7 @@ pub struct TopologyProject {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// Deterministic baseline surface: one entry per
-    /// `.specify/specs/<unit>/spec.md`, projected from the slot's
+    /// `.specify/specs/<domain>/spec.md`, projected from the slot's
     /// merged baseline. Empty stays off the wire (greenfield).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub surface: Vec<Surface>,
@@ -98,21 +98,21 @@ pub struct Decision {
     pub title: String,
 }
 
-/// One baseline unit's projected surface.
+/// One baseline domain's projected surface.
 ///
-/// The unit slug and a bounded sample of its requirement titles. Shared
+/// The domain slug and a bounded sample of its requirement titles. Shared
 /// by [`TopologyProject`] and the reconciliation envelope's `ProjectRef`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Surface {
-    /// Unit directory slug under `.specify/specs/`.
-    pub unit: String,
+    /// Domain directory slug under `.specify/specs/`.
+    pub domain: String,
     /// Requirement-block headings (`Requirement.name`, inline tag
     /// stripped) in `REQ-NNN` id order, capped at
     /// [`super::identity::SURFACE_TITLE_CAP`].
     pub requirements: Vec<String>,
     /// Count of requirement titles elided past the cap. Absent when
-    /// the unit fits within the cap.
+    /// the domain fits within the cap.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub more: Option<u64>,
 }

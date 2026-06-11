@@ -21,14 +21,14 @@ fn stage_source_adapter(root: &std::path::Path, name: &str) {
 fn preview_succeeds_without_specify_dir() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
-    stage_source_adapter(root, "code-typescript");
+    stage_source_adapter(root, "typescript");
 
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
     let assert = specify_cmd()
         .current_dir(root)
-        .args(["--format", "json", "source", "preview", "code-typescript"])
+        .args(["--format", "json", "source", "preview", "typescript"])
         .arg("--source")
         .arg(&source_dir)
         .arg("--project-dir")
@@ -37,7 +37,7 @@ fn preview_succeeds_without_specify_dir() {
         .success();
 
     let actual = parse_stdout(&assert.get_output().stdout, root);
-    assert_eq!(actual["adapter"], "code-typescript");
+    assert_eq!(actual["adapter"], "typescript");
     assert_eq!(actual["version"], 1);
 
     let briefs = actual["briefs"].as_array().expect("briefs array");
@@ -51,7 +51,7 @@ fn preview_succeeds_without_specify_dir() {
 fn preview_creates_output_directory() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
-    stage_source_adapter(root, "code-typescript");
+    stage_source_adapter(root, "typescript");
 
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
@@ -60,7 +60,7 @@ fn preview_creates_output_directory() {
 
     specify_cmd()
         .current_dir(root)
-        .args(["--format", "json", "source", "preview", "code-typescript"])
+        .args(["--format", "json", "source", "preview", "typescript"])
         .arg("--source")
         .arg(&source_dir)
         .arg("--out")
@@ -78,14 +78,14 @@ fn preview_creates_output_directory() {
 fn default_out_creates_preview() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
-    stage_source_adapter(root, "code-typescript");
+    stage_source_adapter(root, "typescript");
 
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
     specify_cmd()
         .current_dir(root)
-        .args(["source", "preview", "code-typescript"])
+        .args(["source", "preview", "typescript"])
         .arg("--source")
         .arg(&source_dir)
         .arg("--project-dir")
@@ -103,14 +103,14 @@ fn default_out_creates_preview() {
 fn preview_passes_leads_through() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
-    stage_source_adapter(root, "code-typescript");
+    stage_source_adapter(root, "typescript");
 
     let source_dir = root.join("my-source");
     fs::create_dir_all(&source_dir).expect("create source dir");
 
     let assert = specify_cmd()
         .current_dir(root)
-        .args(["--format", "json", "source", "preview", "code-typescript"])
+        .args(["--format", "json", "source", "preview", "typescript"])
         .arg("--source")
         .arg(&source_dir)
         .args(["--lead", "login-screen", "--lead", "settings"])
@@ -130,11 +130,11 @@ fn preview_passes_leads_through() {
 fn preview_fails_when_source_path_missing() {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
-    stage_source_adapter(root, "code-typescript");
+    stage_source_adapter(root, "typescript");
 
     let assert = specify_cmd()
         .current_dir(root)
-        .args(["--format", "json", "source", "preview", "code-typescript"])
+        .args(["--format", "json", "source", "preview", "typescript"])
         .arg("--source")
         .arg(root.join("nonexistent"))
         .arg("--project-dir")

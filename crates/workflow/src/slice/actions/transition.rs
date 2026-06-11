@@ -17,7 +17,7 @@ use crate::slice::{LifecycleStatus, SLICES_DIR_NAME, SliceMetadata};
 /// illegal edges return `Error::Diag` with `code = "lifecycle"` without
 /// touching disk. On success the metadata's `status` is updated, the
 /// appropriate `*_at` timestamp is filled in (idempotent: an existing
-/// non-`None` timestamp is preserved), and `.metadata.yaml` is rewritten
+/// non-`None` timestamp is preserved), and `metadata.yaml` is rewritten
 /// atomically.
 ///
 /// Returns the updated `SliceMetadata`.

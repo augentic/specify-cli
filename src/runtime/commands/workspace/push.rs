@@ -1,8 +1,10 @@
 use std::io::Write;
 
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::Plan;
+use specify_workflow::journal;
 use specify_workflow::registry::Registry;
 use specify_workflow::registry::workspace::{PushOutcome, PushResult, push_projects};
 
@@ -31,6 +33,20 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     let any_failed = results.iter().any(|r| r.status == PushOutcome::Failed);
 
     let plan_name = plan.name.clone();
+    // workflow §Observability: one `workspace.push.completed` per
+    // successful non-dry-run invocation; dry runs and failed pushes
+    // emit nothing.
+    if !dry_run && !any_failed {
+        let event = journal::Event::new(
+            Timestamp::now(),
+            journal::EventKind::WorkspacePushCompleted {
+                plan_name: plan_name.clone(),
+                branch: format!("specify/{plan_name}"),
+                projects: results.iter().map(|r| r.name.clone()).collect(),
+            },
+        );
+        journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
+    }
     ctx.write(
         &PushBody {
             plan_name: plan.name.to_string(),

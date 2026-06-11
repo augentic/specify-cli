@@ -83,10 +83,13 @@ pub(super) fn create(
     // without a partial-state window in the journal.
     let mut events: Vec<journal::Event> = Vec::new();
     if auto_approve {
+        // Typing `--auto-approve` *is* the operator's Gate-1 consent,
+        // so the create path always records `actor: operator`.
         events.push(journal::Event::new(
             now,
             journal::EventKind::PlanTransitionApproved {
                 plan_name: plan_name.clone(),
+                actor: journal::Actor::Operator,
             },
         ));
     }

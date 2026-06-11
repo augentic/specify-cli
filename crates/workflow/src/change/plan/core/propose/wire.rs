@@ -69,8 +69,8 @@ pub struct ProjectRef {
     /// more than one project shares a target. Absent stays off the wire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Deterministic baseline surface: the units this project
-    /// owns and a sample of each unit's requirement titles, projected
+    /// Deterministic baseline surface: the domains this project
+    /// owns and a sample of each domain's requirement titles, projected
     /// from `.specify/specs/` through `.specify/topology.lock`. The
     /// agent binds a slice on actual owned behaviour. Empty stays off
     /// the wire (greenfield routes on `description` alone).

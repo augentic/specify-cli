@@ -1,7 +1,7 @@
 //! `spec.md` provenance-line rendering.
 //!
 //! The render step is the third synthesis phase: given a projected
-//! [`SliceModel`], it emits one `specs/<unit>/spec.md` per owning unit,
+//! [`SliceModel`], it emits one `specs/<domain>/spec.md` per owning domain,
 //! injecting the kernel-owned `ID:` / `Sources:` / `Status:` provenance
 //! lines (and the inline status tag) under each requirement heading.
 //!
@@ -30,22 +30,22 @@ use specify_model::spec::provenance::RequirementStatus;
 
 use crate::slice::model::{ModelRequirement, SliceModel};
 
-/// Unit key used to group requirements that carry no `unit` field.
-const DEFAULT_UNIT: &str = "default";
+/// Domain key used to group requirements that carry no `domain` field.
+const DEFAULT_DOMAIN: &str = "default";
 
 const HEADING_PREFIX: &str = "### Requirement:";
 
-/// One rendered `specs/<unit>/spec.md`.
+/// One rendered `specs/<domain>/spec.md`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedSpec {
-    /// Owning unit (the `specs/<unit>/spec.md` directory segment).
-    pub unit: String,
+    /// Owning domain (the `specs/<domain>/spec.md` directory segment).
+    pub domain: String,
     /// Full rendered Markdown content, provenance lines injected.
     pub content: String,
 }
 
 /// The canonical `(ID, Sources, Status)` provenance triplet a single
-/// requirement renders, paired with its owning unit.
+/// requirement renders, paired with its owning domain.
 ///
 /// [`expected_provenance_lines`] returns one per requirement; the C9
 /// staleness check (`slice-spec-provenance-stale`) parses the on-disk
@@ -57,8 +57,8 @@ pub struct RenderedSpec {
 /// is the optional enum the parser yields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedRequirement {
-    /// Owning unit.
-    pub unit: String,
+    /// Owning domain.
+    pub domain: String,
     /// Projected `REQ-NNN` id (empty when the model carried none).
     pub id: String,
     /// Rendered source list, highest authority first.
@@ -67,10 +67,10 @@ pub struct ExpectedRequirement {
     pub status: Option<RequirementStatus>,
 }
 
-/// Render every `specs/<unit>/spec.md` from a projected [`SliceModel`].
+/// Render every `specs/<domain>/spec.md` from a projected [`SliceModel`].
 ///
-/// Requirements are grouped by `unit` (declaration order of first
-/// appearance), and within a unit render in declaration order. Each
+/// Requirements are grouped by `domain` (declaration order of first
+/// appearance), and within a domain render in declaration order. Each
 /// requirement becomes one `### Requirement:` block carrying the
 /// injected provenance lines followed by its behavioral body.
 #[must_use]
@@ -78,19 +78,19 @@ pub fn render_spec_files(model: &SliceModel) -> Vec<RenderedSpec> {
     let mut order: Vec<String> = Vec::new();
     let mut blocks: HashMap<String, Vec<String>> = HashMap::new();
     for req in &model.requirements {
-        let unit = unit_of(req);
-        if !blocks.contains_key(&unit) {
-            order.push(unit.clone());
+        let domain = domain_of(req);
+        if !blocks.contains_key(&domain) {
+            order.push(domain.clone());
         }
-        blocks.entry(unit).or_default().push(render_block(req));
+        blocks.entry(domain).or_default().push(render_block(req));
     }
     order
         .into_iter()
-        .map(|unit| {
-            let unit_blocks = blocks.remove(&unit).unwrap_or_default();
-            let mut content = unit_blocks.join("\n\n");
+        .map(|domain| {
+            let domain_blocks = blocks.remove(&domain).unwrap_or_default();
+            let mut content = domain_blocks.join("\n\n");
             content.push('\n');
-            RenderedSpec { unit, content }
+            RenderedSpec { domain, content }
         })
         .collect()
 }
@@ -103,7 +103,7 @@ pub fn expected_provenance_lines(model: &SliceModel) -> Vec<ExpectedRequirement>
         .requirements
         .iter()
         .map(|req| ExpectedRequirement {
-            unit: unit_of(req),
+            domain: domain_of(req),
             id: req.id.clone().unwrap_or_default(),
             sources: req.sources.clone(),
             status: req.status,
@@ -111,8 +111,8 @@ pub fn expected_provenance_lines(model: &SliceModel) -> Vec<ExpectedRequirement>
         .collect()
 }
 
-fn unit_of(req: &ModelRequirement) -> String {
-    req.unit.clone().unwrap_or_else(|| DEFAULT_UNIT.to_string())
+fn domain_of(req: &ModelRequirement) -> String {
+    req.domain.clone().unwrap_or_else(|| DEFAULT_DOMAIN.to_string())
 }
 
 fn render_block(req: &ModelRequirement) -> String {
@@ -127,7 +127,13 @@ fn render_block(req: &ModelRequirement) -> String {
     }
     out.push('\n');
     let _ = writeln!(out, "ID: {}", req.id.as_deref().unwrap_or_default());
-    let _ = writeln!(out, "Sources: {}", req.sources.join(", "));
+    // Contract: an evidence-less (`unknown`) requirement renders the
+    // literal `Sources: []`, never a bare line with trailing space.
+    if req.sources.is_empty() {
+        out.push_str("Sources: []\n");
+    } else {
+        let _ = writeln!(out, "Sources: {}", req.sources.join(", "));
+    }
     if let Some(status) = req.status {
         let _ = writeln!(out, "Status: {status}");
     }

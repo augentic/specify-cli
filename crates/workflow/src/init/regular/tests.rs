@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use tempfile::tempdir;
 
 use crate::config::ProjectConfig;
-use crate::init::cache::CacheMeta;
+use crate::init::cache::ManifestMeta;
 use crate::init::{InitOptions, fixed_now, init};
 
 fn repo_root() -> PathBuf {
@@ -105,7 +105,7 @@ fn init_creates_specify_tree() {
     let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
     for sub in
-        [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/.cache"]
+        [".specify", ".specify/slices", ".specify/specs", ".specify/archive", ".specify/cache"]
     {
         assert!(tmp.path().join(sub).is_dir(), "expected directory {sub} to exist");
     }
@@ -170,12 +170,12 @@ fn init_distributes_shared_codex() {
         "codex must be distributed from a source carrying the shared pack"
     );
     let universal =
-        project.path().join(".specify/.cache/codex/adapters/shared/rules/universal/UNI-901.md");
+        project.path().join(".specify/cache/codex/adapters/shared/rules/universal/UNI-901.md");
     assert!(universal.is_file(), "universal pack must land in the codex cache");
-    let core = project.path().join(".specify/.cache/codex/adapters/shared/rules/core/CORE-901.md");
+    let core = project.path().join(".specify/cache/codex/adapters/shared/rules/core/CORE-901.md");
     assert!(!core.exists(), "core pack must NOT be distributed without --include-framework");
 
-    let meta = project.path().join(".specify/.cache/codex/.codex-meta.yaml");
+    let meta = project.path().join(".specify/cache/codex/codex-meta.yaml");
     let meta_text = fs::read_to_string(&meta).expect("read codex meta");
     assert!(meta_text.contains("include_framework: false"), "meta:\n{meta_text}");
     assert!(
@@ -205,9 +205,9 @@ fn include_framework_distributes_core_pack() {
     )
     .expect("init ok");
 
-    let core = project.path().join(".specify/.cache/codex/adapters/shared/rules/core/CORE-901.md");
+    let core = project.path().join(".specify/cache/codex/adapters/shared/rules/core/CORE-901.md");
     assert!(core.is_file(), "core pack must be distributed under --include-framework");
-    let meta = project.path().join(".specify/.cache/codex/.codex-meta.yaml");
+    let meta = project.path().join(".specify/cache/codex/codex-meta.yaml");
     let meta_text = fs::read_to_string(&meta).expect("read codex meta");
     assert!(meta_text.contains("include_framework: true"), "meta:\n{meta_text}");
 }
@@ -235,12 +235,12 @@ fn init_vendors_spec_runtime_in_cache() {
 
     let guardrails = project
         .path()
-        .join(".specify/.cache/manifests/targets/omnia/references/spec-runtime/guardrails.md");
+        .join(".specify/cache/manifests/targets/omnia/references/spec-runtime/guardrails.md");
     assert!(guardrails.is_file(), "spec-runtime must be vendored as regular files");
     let text = fs::read_to_string(&guardrails).expect("read vendored guardrails");
     assert!(text.contains("Single-writer for lifecycle state"));
     let authority = project.path().join(
-        ".specify/.cache/manifests/targets/omnia/references/spec-runtime/synthesis/authority.md",
+        ".specify/cache/manifests/targets/omnia/references/spec-runtime/synthesis/authority.md",
     );
     assert!(authority.is_file(), "nested spec-runtime paths must vendor");
 }
@@ -253,7 +253,7 @@ fn init_without_shared_pack_skips_codex() {
     let tmp = tempdir().unwrap();
     let result = init(base_opts(tmp.path(), &omnia_target_dir()), fixed_now()).expect("init ok");
     assert!(!result.codex_present, "no shared pack at the source means no codex distribution");
-    assert!(!tmp.path().join(".specify/.cache/codex").exists());
+    assert!(!tmp.path().join(".specify/cache/codex").exists());
 }
 
 #[test]
@@ -278,13 +278,15 @@ fn gitignore_missing_existing_duplicate() {
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
     let text = fs::read_to_string(&gitignore).expect("read gitignore");
-    assert!(text.contains(".specify/.cache/"));
+    assert!(text.contains(".specify/cache/"));
+    assert!(text.contains(".specify/scratch/"));
     assert!(text.contains(".specify/workspace/"));
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("re-init ok");
     let text = fs::read_to_string(&gitignore).expect("reread gitignore");
-    let occurrences = text.matches(".specify/.cache/").count();
+    let occurrences = text.matches(".specify/cache/").count();
     assert_eq!(occurrences, 1);
+    assert_eq!(text.matches(".specify/scratch/").count(), 1);
     assert_eq!(text.matches(".specify/workspace/").count(), 1);
 }
 
@@ -298,9 +300,10 @@ fn gitignore_appends_to_existing() {
 
     let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read gitignore");
     assert!(text.contains("target/"));
-    assert!(text.contains(".specify/.cache/"));
+    assert!(text.contains(".specify/cache/"));
+    assert!(text.contains(".specify/scratch/"));
     assert!(text.contains(".specify/workspace/"));
-    assert_eq!(text.matches(".specify/.cache/").count(), 1);
+    assert_eq!(text.matches(".specify/cache/").count(), 1);
     assert_eq!(text.matches(".specify/workspace/").count(), 1);
 }
 
@@ -308,13 +311,13 @@ fn gitignore_appends_to_existing() {
 fn gitignore_existing_entry_noop() {
     let tmp = tempdir().unwrap();
     let target_dir = omnia_target_dir();
-    fs::write(tmp.path().join(".gitignore"), "target/\n.specify/.cache/\n.specify/workspace/\n")
+    fs::write(tmp.path().join(".gitignore"), "target/\n.specify/cache/\n.specify/workspace/\n")
         .expect("seed gitignore");
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
     let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
-    assert_eq!(text.matches(".specify/.cache/").count(), 1);
+    assert_eq!(text.matches(".specify/cache/").count(), 1);
     assert_eq!(text.matches(".specify/workspace/").count(), 1);
 }
 
@@ -322,29 +325,28 @@ fn gitignore_existing_entry_noop() {
 fn gitignore_appends_workspace_only() {
     let tmp = tempdir().unwrap();
     let target_dir = omnia_target_dir();
-    fs::write(tmp.path().join(".gitignore"), "target/\n.specify/.cache/\n")
-        .expect("seed gitignore");
+    fs::write(tmp.path().join(".gitignore"), "target/\n.specify/cache/\n").expect("seed gitignore");
 
     init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
 
     let text = fs::read_to_string(tmp.path().join(".gitignore")).expect("read");
-    assert_eq!(text.matches(".specify/.cache/").count(), 1);
+    assert_eq!(text.matches(".specify/cache/").count(), 1);
     assert_eq!(text.matches(".specify/workspace/").count(), 1);
 }
 
 #[test]
-fn cache_present_matches_cache_meta() {
+fn cache_present_matches_manifest_meta() {
     let tmp = tempdir().unwrap();
     let target_dir = omnia_target_dir();
     let result = init(base_opts(tmp.path(), &target_dir), fixed_now()).expect("init ok");
     assert!(result.cache_present);
 
-    let cache_meta = CacheMeta::path(tmp.path());
-    assert!(cache_meta.is_file(), "expected cache-meta yaml at {}", cache_meta.display());
-    let yaml = fs::read_to_string(&cache_meta).expect("read cache meta");
+    let manifest_meta = ManifestMeta::path(tmp.path());
+    assert!(manifest_meta.is_file(), "expected manifest-meta yaml at {}", manifest_meta.display());
+    let yaml = fs::read_to_string(&manifest_meta).expect("read manifest meta");
     assert!(
-        yaml.contains("schema_url:") && yaml.contains("file://"),
-        "expected schema_url with file:// in cache-meta:\n{yaml}",
+        yaml.contains("source:") && yaml.contains("file://"),
+        "expected source with file:// in manifest-meta:\n{yaml}",
     );
 }
 
@@ -416,7 +418,7 @@ description: Colliding source adapter for the init-time uniqueness check.
     assert_eq!(code, "adapter-name-axis-collision");
     // Cache must not have been clobbered: the target cache dir
     // should be absent because the check fires before the copy.
-    let cache_dir = tmp.path().join(".specify/.cache/manifests/targets/omnia");
+    let cache_dir = tmp.path().join(".specify/cache/manifests/targets/omnia");
     assert!(
         !cache_dir.exists(),
         "init must reject the collision before writing {}",

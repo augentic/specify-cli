@@ -127,7 +127,7 @@ pub struct PreviewResult {
 pub struct BaselineConflict {
     /// Adapter (spec directory) name.
     pub adapter: String,
-    /// Slice's `defined_at` stamp, copied verbatim from `.metadata.yaml`.
+    /// Slice's `defined_at` stamp, copied verbatim from `metadata.yaml`.
     pub defined_at: String,
     /// Baseline file modification time.
     #[serde(with = "specify_error::serde_rfc3339")]
@@ -172,13 +172,13 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// in-memory plan, writes each merged baseline, transitions status to
 /// `Merged` with `merged_at`/`completed_at` timestamps, stamps an
 /// `Outcome { phase: Merge, outcome: Success }` into
-/// `.metadata.yaml`, then archives the slice directory via
+/// `metadata.yaml`, then archives the slice directory via
 /// `crate::slice::actions::archive`.
 ///
 /// The outcome stamp is written atomically with the status transition,
-/// before the archive move. This ensures the archived `.metadata.yaml`
+/// before the archive move. This ensures the archived `metadata.yaml`
 /// carries the merge-success outcome so that `/spec:execute` can read
-/// it via direct `.metadata.yaml` inspection (falling back to the archive
+/// it via direct `metadata.yaml` inspection (falling back to the archive
 /// when the active slice directory no longer exists).
 ///
 /// `now` records the `merged_at`, `completed_at`, and outcome stamp;

@@ -138,7 +138,8 @@
               { "const": "fenced-block" },
               { "const": "presence" },
               { "const": "field-grammar" },
-              { "const": "cross-reference" }
+              { "const": "cross-reference" },
+              { "const": "cli-contract" }
             ]
           },
           "value": {
@@ -152,7 +153,7 @@
             "description": "Optional human explanation for the hint."
           },
           "config": {
-            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `content-digest-eq` -> agentTeamsHintConfig; `presence` (file / markdown-section) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (agent-teams) -> agentTeamsHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig.",
+            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `content-digest-eq` (agent-teams-match-canonical) -> agentTeamsHintConfig; `content-digest-eq` (markdown-section) -> markdownSectionDigestHintConfig; `presence` (file / markdown-section / directory-index) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `cli-contract` (invocations) -> cliContractInvocationsHintConfig; `cli-contract` (event-ids / error-codes) -> cliContractIdsHintConfig; `cli-contract` (test-citations) -> cliContractTestCitationsHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (agent-teams) -> agentTeamsHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig; `tool` (scenarios) -> catalogRunsHintConfig.",
             "oneOf": [
               { "$ref": "#/$defs/regexHintConfig" },
               { "$ref": "#/$defs/referenceResolvesHintConfig" },
@@ -167,12 +168,17 @@
               { "$ref": "#/$defs/criticalPathHintConfig" },
               { "$ref": "#/$defs/variableCoverageHintConfig" },
               { "$ref": "#/$defs/agentTeamsHintConfig" },
+              { "$ref": "#/$defs/markdownSectionDigestHintConfig" },
               { "$ref": "#/$defs/schemaRegistryHintConfig" },
               { "$ref": "#/$defs/numericCapHintConfig" },
               { "$ref": "#/$defs/nsOwnerHintConfig" },
+              { "$ref": "#/$defs/catalogRunsHintConfig" },
               { "$ref": "#/$defs/presenceHintConfig" },
               { "$ref": "#/$defs/fieldGrammarHintConfig" },
-              { "$ref": "#/$defs/crossReferenceHintConfig" }
+              { "$ref": "#/$defs/crossReferenceHintConfig" },
+              { "$ref": "#/$defs/cliContractInvocationsHintConfig" },
+              { "$ref": "#/$defs/cliContractIdsHintConfig" },
+              { "$ref": "#/$defs/cliContractTestCitationsHintConfig" }
             ]
           }
         }
@@ -578,6 +584,86 @@
         }
       }
     },
+    "cliContractInvocationsHintConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["langs"],
+      "description": "`kind: cli-contract` configuration for the `invocations` selector. The fence language set and the offending-token exemptions are policy supplied by the rule, not the engine; the contract itself is injected by the running binary.",
+      "properties": {
+        "langs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Fence info strings whose bodies are scanned for `specify …` command lines (e.g. `bash`, `sh`, `console`)."
+        },
+        "ignore": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Offending tokens (verbs or `--flags`) exempted from findings (e.g. verbs that are illustrative, not shipped)."
+        }
+      }
+    },
+    "cliContractIdsHintConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["json-fields"],
+      "description": "`kind: cli-contract` configuration for the `event-ids` / `error-codes` selectors. The probed JSON field names and every exemption are policy supplied by the rule, not the engine; the id lists come from the binary-injected contract.",
+      "properties": {
+        "json-fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "JSON field names whose string values are membership-checked in fenced bodies (e.g. `event` for journal lines, `code` for error envelopes)."
+        },
+        "ignore": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Exact tokens exempted from findings (e.g. dotted YAML paths that are not event ids)."
+        },
+        "ignore-suffixes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Suffix exemptions for the `event-ids` inline-span scan (e.g. `.yaml`, `.md` — dotted tokens that are file names, not ids)."
+        },
+        "allow-prefixes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Prefix exemptions for dynamically composed id families."
+        }
+      }
+    },
+    "cliContractTestCitationsHintConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["link-prefixes"],
+      "description": "`kind: cli-contract` configuration for the `test-citations` selector. The link-target prefixes and exemptions are policy supplied by the rule, not the engine; the tests/ inventory comes from the binary-injected contract.",
+      "properties": {
+        "link-prefixes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Link-target prefixes that root a citation of the CLI repo's tests/ tree (e.g. the blob/ and tree/ GitHub URL prefixes)."
+        },
+        "ignore": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Exact cited paths exempted from findings (e.g. downstream generated-project test layouts that are not CLI tests)."
+        }
+      }
+    },
     "agentTeamsHintConfig": {
       "type": "object",
       "additionalProperties": false,
@@ -588,6 +674,34 @@
           "type": "string",
           "minLength": 1,
           "description": "Project-relative path to the canonical review-team-protocol document every per-target agent-teams.md overlay must mirror."
+        }
+      }
+    },
+    "markdownSectionDigestHintConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "section", "canonical-path", "canonical-section"],
+      "description": "`kind: content-digest-eq` configuration for the `markdown-section` selector. Pins a restated markdown section to its canonical home: the body under `section` in `path` must be byte-identical (modulo leading/trailing blank lines) to the body under `canonical-section` in `canonical-path`. All four values are policy supplied by the rule, not the engine.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative path of the markdown file carrying the pinned restatement."
+        },
+        "section": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Heading title (text after the leading `#`s) of the pinned section in `path`."
+        },
+        "canonical-path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative path of the markdown file carrying the canonical section."
+        },
+        "canonical-section": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Heading title of the canonical section in `canonical-path`."
         }
       }
     },
@@ -674,8 +788,50 @@
         }
       }
     },
+    "catalogRunsHintConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalog", "scenarios-dir", "runs-dir", "statuses", "gates", "status-result-map"],
+      "description": "`kind: tool` (`scenarios`) configuration for the catalog\u2194runs drift check (CORE-056). The catalog path, the scenario / run directories, the legal Status and Gate value sets, and the status\u2194result agreement map are policy supplied by the rule, not the tool; the engine relays this block to the tool verbatim.",
+      "properties": {
+        "catalog": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative path of the catalog markdown whose group tables are parsed (id from each row's File link)."
+        },
+        "scenarios-dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative directory holding one `<id>.md` per scenario (README.md excluded)."
+        },
+        "runs-dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project-relative directory holding committed `<id>.<result>.md` run records (README.md excluded)."
+        },
+        "statuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Legal Status column values (e.g. `pending`, `passed`, `failed`, `deferred`)."
+        },
+        "gates": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Legal Gate column values (e.g. `release-blocker`, `full`). An empty list skips gate validation."
+        },
+        "status-result-map": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string", "minLength": 1 },
+          "description": "`<status> -> <record result token>` map for statuses that require a committed record (e.g. `passed -> pass`). Statuses absent from the map (e.g. `pending`) must have no record at all."
+        }
+      }
+    },
     "presenceHintConfig": {
-      "description": "`kind: presence` hint configuration. The `file` selector carries `{ path }`; the `markdown-section` selector carries `{ title, level, when: { metric, min } }`. The `frontmatter` selector carries no config. Each variant has a unique required key (`path` vs `title`) so the oneOf disambiguates. All values are policy supplied by the rule, not the engine.",
+      "description": "`kind: presence` hint configuration. The `file` selector carries `{ path }`; the `markdown-section` selector carries `{ title, level, when: { metric, min } }`; the `directory-index` selector carries `{ roots, index, min-files? }`. The `frontmatter` selector carries no config. Each variant has a unique required key (`path` vs `title` vs `roots`) so the oneOf disambiguates. All values are policy supplied by the rule, not the engine.",
       "oneOf": [
         {
           "type": "object",
@@ -687,6 +843,34 @@
               "type": "string",
               "minLength": 1,
               "description": "Project-relative path the rule requires to be present."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["roots", "index"],
+          "description": "`directory-index` selector: each directory matching a root glob and holding enough files beneath it must carry the named index file directly inside it.",
+          "properties": {
+            "roots": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Directory glob patterns selecting the corpus directories that owe an index. `*` does not cross `/` for this selector, so a pattern names one directory depth.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "index": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Index filename required directly inside each matched directory (e.g. `README.md`)."
+            },
+            "min-files": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Require the index only when at least this many files live beneath the directory (recursive count; default 1)."
             }
           }
         },

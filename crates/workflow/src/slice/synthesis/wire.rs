@@ -88,16 +88,16 @@ pub struct SynthesisArtifacts {
     pub design: String,
     /// `tasks.md` body.
     pub tasks: String,
-    /// Per-unit spec bodies (`specs/<unit>/spec.md`).
+    /// Per-domain spec bodies (`specs/<domain>/spec.md`).
     pub specs: Vec<SynthesisSpec>,
 }
 
-/// One per-unit spec body under [`SynthesisArtifacts::specs`].
+/// One per-domain spec body under [`SynthesisArtifacts::specs`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SynthesisSpec {
-    /// Owning unit (kebab-case spec group).
-    pub unit: String,
+    /// Owning domain (kebab-case spec group).
+    pub domain: String,
     /// The spec body, without `ID:` / `Sources:` / `Status:` lines.
     pub content: String,
 }

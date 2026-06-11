@@ -30,8 +30,8 @@ fn drop_transitions_and_archives() {
     let archive_path = value["archive-path"].as_str().unwrap();
     assert!(archive_path.ends_with("-my-slice"));
 
-    // `.metadata.yaml` inside the archive should reflect the drop.
-    let archived_meta = fs::read_to_string(format!("{archive_path}/.metadata.yaml")).unwrap();
+    // `metadata.yaml` inside the archive should reflect the drop.
+    let archived_meta = fs::read_to_string(format!("{archive_path}/metadata.yaml")).unwrap();
     assert!(archived_meta.contains("status: dropped"));
     assert!(archived_meta.contains("drop-reason: Needs design call-out"));
     assert!(archived_meta.contains("dropped-at:"));

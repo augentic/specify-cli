@@ -1,7 +1,9 @@
 use std::io::Write;
 
+use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::Result;
+use specify_workflow::journal;
 use specify_workflow::registry::Registry;
 use specify_workflow::registry::workspace::{regenerate_topology_lock, sync_projects};
 
@@ -16,6 +18,15 @@ pub fn sync(ctx: &Ctx, projects: &[String]) -> Result<()> {
         // Project the materialised slots' `project.yaml` topology
         // facets into the committed `.specify/topology.lock`.
         regenerate_topology_lock(&ctx.project_dir, reg)?;
+        // workflow §Observability: one `workspace.sync.completed` per
+        // successful sync; the registry-less no-op path emits nothing.
+        let event = journal::Event::new(
+            Timestamp::now(),
+            journal::EventKind::WorkspaceSyncCompleted {
+                projects: selected.iter().map(|p| p.name.clone()).collect(),
+            },
+        );
+        journal::append_batch(ctx.layout(), std::slice::from_ref(&event))?;
         true
     } else if !projects.is_empty() {
         return Err(registry_missing());

@@ -15,6 +15,7 @@ use petgraph::graph::DiGraph;
 use specify_diagnostics::{
     Artifact, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence, Severity, fingerprint,
 };
+use specify_error::{Error, Result};
 
 use super::model::{Entry, Plan, Status};
 use crate::registry::Registry;
@@ -79,8 +80,9 @@ impl Plan {
     ///
     /// Findings are accumulated — no check short-circuits another. Order
     /// is structural checks first (duplicate names, unknown
-    /// depends-on / sources, multiple in-progress) followed by
-    /// consistency checks against `slices_dir` when provided.
+    /// depends-on / sources, duplicate source keys, multiple
+    /// in-progress) followed by consistency checks against `slices_dir`
+    /// when provided.
     ///
     /// Note on "well-formed status values": `Status` is an enum, so
     /// every in-memory instance is well-formed by construction. serde
@@ -94,6 +96,7 @@ impl Plan {
         results.extend(duplicate_names(&self.entries));
         results.extend(check_unknown_depends_on(&self.entries));
         results.extend(check_unknown_sources(self));
+        results.extend(check_duplicate_source_keys(&self.entries));
         results.extend(check_single_in_progress(&self.entries));
         results.extend(check_context_paths(&self.entries));
         results.extend(orphan_authority_override_keys(&self.entries));
@@ -181,6 +184,60 @@ fn check_unknown_sources(plan: &Plan) -> Vec<Diagnostic> {
         }
     }
     out
+}
+
+/// A slice binds at most one lead per source key: Evidence persists to
+/// `evidence/<source>.yaml`, so a second lead under the same key would
+/// silently overwrite the first at refine time. The propose kernel
+/// rejects this shape at projection
+/// (`plan-reconcile-slice-source-collision`); this check catches plans
+/// reshaped after propose (e.g. via `plan amend`).
+fn check_duplicate_source_keys(changes: &[Entry]) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for entry in changes {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for binding in &entry.sources {
+            let key = binding.source();
+            if !seen.insert(key) {
+                out.push(plan_finding(
+                    "duplicate-source-key",
+                    Severity::Important,
+                    format!("slice '{}' binds source key '{key}' more than once", entry.name),
+                    Some(entry.name.to_string()),
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Post-mutation duplicate-source-key gate.
+///
+/// Runs `check_duplicate_source_keys` over `plan` and short-circuits
+/// the CLI write with a single `Error::Validation` (exit 2) when any
+/// finding fires. The additive `plan amend --add-source` path mutates
+/// entry sources after [`Plan::amend`]'s own validate-and-rollback gate
+/// has run, so the handler calls this afterwards; the wholesale
+/// `--sources` replacement and `plan add` paths are already covered by
+/// the validate folded into [`Plan::amend`] / [`Plan::create`].
+///
+/// # Errors
+///
+/// Returns `Error::Validation` (`duplicate-source-key`) when at least
+/// one slice binds the same source key more than once.
+pub fn reject_duplicate_source_keys(plan: &Plan) -> Result<()> {
+    let findings: Vec<_> = check_duplicate_source_keys(&plan.entries)
+        .into_iter()
+        .filter(specify_diagnostics::blocking)
+        .collect();
+    let Some(first) = findings.first() else {
+        return Ok(());
+    };
+    let detail = findings.iter().map(|f| f.impact.clone()).collect::<Vec<_>>().join("; ");
+    Err(Error::Validation {
+        code: first.rule_id.clone().unwrap_or_default().into(),
+        detail,
+    })
 }
 
 fn check_single_in_progress(changes: &[Entry]) -> Vec<Diagnostic> {

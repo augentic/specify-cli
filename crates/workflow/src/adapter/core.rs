@@ -40,27 +40,14 @@ pub const ADAPTER_FILENAME: &str = "adapter.yaml";
 /// Parent directory for in-repo adapter trees.
 pub const ADAPTERS_DIR: &str = "adapters";
 
-/// Manifest-cache root segment under `.specify/.cache/`.
+/// Manifest-cache root segment under `.specify/cache/`.
 ///
-/// `.specify/.cache/manifests/{sources,targets}/<name>/` mirrors the
-/// in-repo `adapters/{sources,targets}/<name>/` tree. Paired with
-/// [`EXTRACTIONS_CACHE_DIR`] so the manifest and extraction cache fingerprint contract extraction
-/// caches own disjoint roots (see [DECISIONS.md §"Cache layout"]).
-///
-/// [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
-pub const MANIFESTS_CACHE_DIR: &str = "manifests";
-
-/// Extraction-cache root segment under `.specify/.cache/`.
-///
-/// `.specify/.cache/extractions/<adapter>/<fingerprint>/` holds the
-/// extraction cache fingerprint contract per-source extraction result cache (with `index.jsonl`
-/// at the adapter root). Per-adapter only — extraction is a source-axis
-/// operation — and partitioned from [`MANIFESTS_CACHE_DIR`] so each
-/// cache owns its own tree (no co-tenancy heuristic; see
+/// `.specify/cache/manifests/{sources,targets}/<name>/` mirrors the
+/// in-repo `adapters/{sources,targets}/<name>/` tree (see
 /// [DECISIONS.md §"Cache layout"]).
 ///
 /// [DECISIONS.md §"Cache layout"]: ../../../DECISIONS.md#cache-layout
-pub const EXTRACTIONS_CACHE_DIR: &str = "extractions";
+pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 
 /// Axis discriminator for an adapter manifest.
 ///
@@ -170,37 +157,25 @@ pub struct PlatformsCapability {
     pub default: Vec<Platform>,
 }
 
-/// Closed enum for the optional `cache:` field on an adapter manifest
-/// (extraction cache fingerprint contract). Single variant in v1; widened only behind an accepted design change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
-#[serde(rename_all = "kebab-case")]
-#[strum(serialize_all = "kebab-case")]
-pub enum CacheMode {
-    /// `cache: opt-out` — the CLI bypasses the cache for every run
-    /// of this adapter; the matching `slice.extract.cache-miss`
-    /// journal event carries `reason: adapter-opt-out`.
-    OptOut,
-}
-
 /// Closed adapter execution mode.
 ///
 /// Declared by the required `execution:` field on `adapter.yaml`.
-/// Source and target adapters share the enum; the source-side dispatch
-/// is wired, while the target-side `build` / `merge` dispatch carries
-/// `agent` as a placeholder. See DECISIONS.md §"Adapter execution mode (D9)".
+/// Source adapters are agent-only (`source.schema.json` enumerates
+/// `["agent"]`); target adapters may still declare `tool`, though the
+/// target-side `build` / `merge` dispatch carries `agent` as a
+/// placeholder. See DECISIONS.md §"Adapter execution mode (D9)".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
 pub enum Execution {
     /// `execution: agent` — the adapter's brief is executed by an agent
     /// against the sandbox preopens. The CLI orchestrates inputs and
-    /// validates outputs against the schemas, but does not cache the
-    /// result: `agent` forces `cache: opt-out` (see
-    /// [`SourceAdapter::effective_cache_mode`]).
+    /// validates outputs against the schemas; agent outputs are
+    /// non-deterministic, so nothing is memoized.
     Agent,
-    /// `execution: tool` — `survey` / `extract` (sources) or `build` /
-    /// `merge` (targets) are dispatched through a declared WASI tool or
-    /// a built-in deterministic Rust path.
+    /// `execution: tool` — target-axis only: `build` / `merge` are
+    /// dispatched through a declared WASI tool or a built-in
+    /// deterministic Rust path. Source adapters are agent-only.
     Tool,
 }
 
@@ -210,11 +185,9 @@ pub enum AdapterLocation {
     /// Resolved from `<project_dir>/adapters/{sources,targets}/<name>/`.
     Local(PathBuf),
     /// Resolved from the manifest cache at
-    /// `<project_dir>/.specify/.cache/manifests/{sources,targets}/<name>/`.
+    /// `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`.
     /// The manifest cache mirrors the in-repo adapter tree
-    /// (`adapter.yaml` plus brief markdown); the extraction cache fingerprint contract extraction
-    /// result cache lives in a sibling tree under
-    /// `.specify/.cache/extractions/<adapter>/` — see
+    /// (`adapter.yaml` plus brief markdown) — see
     /// [DECISIONS.md §"Cache layout"].
     ///
     /// [DECISIONS.md §"Cache layout"]: ../../../../DECISIONS.md#cache-layout
@@ -240,27 +213,47 @@ impl AdapterLocation {
     }
 }
 
+/// Manifest cache root for an axis —
+/// `.specify/cache/manifests/{sources,targets}/`.
+///
+/// Path-only helper — the directory may or may not exist on disk.
+#[must_use]
+pub fn cache_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
+    project_dir.join(".specify").join("cache").join(MANIFESTS_CACHE_DIR).join(axis.dir_segment())
+}
+
 /// Manifest cache root for `(axis, name)` —
-/// `.specify/.cache/manifests/{sources,targets}/<name>/`.
+/// `.specify/cache/manifests/{sources,targets}/<name>/`.
 ///
 /// This is the agent-populated mirror of `adapters/{sources,targets}/<name>/`
-/// — `adapter.yaml` plus the brief markdown files it references. The
-/// extraction cache fingerprint contract per-source extraction result cache lives in a separate
-/// sibling tree under `.specify/.cache/extractions/<adapter>/` (with
-/// `index.jsonl` at the adapter root) so the two caches do not share
-/// a root; see [DECISIONS.md §"Cache layout"].
+/// — `adapter.yaml` plus the brief markdown files it references. See
+/// [DECISIONS.md §"Cache layout"].
 ///
 /// Path-only helper — the directory may or may not exist on disk.
 ///
 /// [DECISIONS.md §"Cache layout"]: ../../../../DECISIONS.md#cache-layout
 #[must_use]
 pub fn cache_dir(project_dir: &Path, axis: Axis, name: &str) -> PathBuf {
-    project_dir
-        .join(".specify")
-        .join(".cache")
-        .join(MANIFESTS_CACHE_DIR)
-        .join(axis.dir_segment())
-        .join(name)
+    cache_axis_dir(project_dir, axis).join(name)
+}
+
+/// Per-operation agent scratch lane for `(adapter, segment)` —
+/// `.specify/scratch/<adapter>/<segment>/`.
+///
+/// `<segment>` is the literal `survey` for the slice-less survey op or
+/// the slice name for extract.
+/// The write-only `$SCRATCH_DIR` preopen of the source-operation
+/// sandbox. Rooted under the transient working-state tree
+/// (`.specify/scratch/`), structurally disjoint from the memoization
+/// tree at `.specify/cache/`, so a scratch write can never pollute a
+/// cache artifact; see [DECISIONS.md §"Cache layout"].
+///
+/// Path-only helper — the directory may or may not exist on disk.
+///
+/// [DECISIONS.md §"Cache layout"]: ../../../../DECISIONS.md#cache-layout
+#[must_use]
+pub fn scratch_dir(project_dir: &Path, adapter: &str, segment: &str) -> PathBuf {
+    crate::config::Layout::new(project_dir).scratch_dir().join(adapter).join(segment)
 }
 
 /// In-memory representation of a source-adapter manifest
@@ -302,9 +295,6 @@ pub struct SourceAdapter {
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Optional cache opt-out switch (extraction cache fingerprint contract).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache: Option<CacheMode>,
 }
 
 /// In-memory representation of a target-adapter manifest
@@ -353,9 +343,6 @@ pub struct TargetAdapter {
     /// Optional human-readable summary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// Optional cache opt-out switch (extraction cache fingerprint contract).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache: Option<CacheMode>,
     /// Optional platforms capability. When present the target declares
     /// the closed set of [`Platform`] tokens it accepts, whether
     /// projects must declare platforms, and the default set for
@@ -372,7 +359,7 @@ pub struct ResolvedSourceAdapter {
     /// Parsed manifest.
     pub manifest: SourceAdapter,
     /// Whether the manifest came from
-    /// `.specify/.cache/manifests/sources/<name>/` or from
+    /// `.specify/cache/manifests/sources/<name>/` or from
     /// `<project_dir>/adapters/sources/<name>/`, and the directory
     /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,
@@ -386,7 +373,7 @@ pub struct ResolvedTargetAdapter {
     /// Parsed manifest.
     pub manifest: TargetAdapter,
     /// Whether the manifest came from
-    /// `.specify/.cache/manifests/targets/<name>/` or from
+    /// `.specify/cache/manifests/targets/<name>/` or from
     /// `<project_dir>/adapters/targets/<name>/`, and the directory
     /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,
@@ -401,27 +388,6 @@ impl SourceAdapter {
     pub fn operations(&self) -> impl Iterator<Item = &SourceOperation> {
         self.briefs.keys()
     }
-
-    /// Effective extraction-cache mode after applying the
-    /// `execution: agent` forced opt-out. When `execution: agent` the
-    /// cache is always bypassed regardless of the declared `cache:`
-    /// field; otherwise the declared mode (or its absence) applies. The
-    /// source-operation runner consumes this rather than the raw
-    /// [`Self::cache`] field.
-    #[must_use]
-    pub const fn effective_cache_mode(&self) -> Option<CacheMode> {
-        effective_cache_mode(self.execution, self.cache)
-    }
-}
-
-/// Shared `execution: agent` forced-opt-out rule behind
-/// [`SourceAdapter::effective_cache_mode`] (REVIEW.md A9): an
-/// `agent`-dispatched adapter always bypasses the cache regardless of
-/// the declared `cache:` field; otherwise the declared mode applies.
-const fn effective_cache_mode(
-    execution: Option<Execution>, cache: Option<CacheMode>,
-) -> Option<CacheMode> {
-    if matches!(execution, Some(Execution::Agent)) { Some(CacheMode::OptOut) } else { cache }
 }
 
 impl TargetAdapter {
@@ -470,47 +436,21 @@ pub(super) fn check_axis_and_name(
 /// Typed `execution`-mode gate, run after schema validation
 /// and the axis/name coherence check.
 ///
-/// Two single-signal aborts, both `Error::Validation` (exit 2) with the
-/// kebab `error` discriminants from the wire contract:
-///
-/// - `adapter-execution-mode-required` — the manifest omits `execution`.
-///   The per-axis JSON Schemas also mark `execution` `required`, so this
-///   typed gate is the belt-and-suspenders that refuses to default
-///   silently when a manifest reaches the loader through a path that
-///   bypassed schema validation.
-/// - `adapter-execution-agent-cache-conflict` — `execution: agent` is
-///   declared together with a `cache:` mode other than the forced
-///   opt-out. This arm is a forward guard: [`CacheMode`] is
-///   single-variant (`OptOut`) today and `source.schema.json` /
-///   `target.schema.json` enumerate only `["opt-out"]`, so no legal
-///   manifest can declare a non-opt-out cache mode — the arm cannot
-///   fire until the cache enum widens. The runtime "agent forces
-///   opt-out" behaviour itself is modelled by
-///   [`SourceAdapter::effective_cache_mode`], not here.
+/// Single-signal abort, `Error::Validation` (exit 2) with the kebab
+/// `error` discriminant from the wire contract:
+/// `adapter-execution-mode-required` — the manifest omits `execution`.
+/// The per-axis JSON Schemas also mark `execution` `required`, so this
+/// typed gate is the belt-and-suspenders that refuses to default
+/// silently when a manifest reaches the loader through a path that
+/// bypassed schema validation.
 pub(super) fn check_execution(
-    execution: Option<Execution>, cache: Option<CacheMode>, manifest_path: &Path,
+    execution: Option<Execution>, manifest_path: &Path,
 ) -> Result<(), Error> {
-    let Some(execution) = execution else {
+    if execution.is_none() {
         return Err(Error::validation_failed(
             "adapter-execution-mode-required",
             "adapter manifest declares a closed `execution` mode",
-            format!(
-                "{} omits the required `execution` field (`agent` or `tool`)",
-                manifest_path.display(),
-            ),
-        ));
-    };
-    if execution == Execution::Agent
-        && let Some(mode) = cache
-        && mode != CacheMode::OptOut
-    {
-        return Err(Error::validation_failed(
-            "adapter-execution-agent-cache-conflict",
-            "`execution: agent` forces `cache: opt-out`",
-            format!(
-                "{} declares `execution: agent` with `cache: {mode}`; agent execution forces `cache: opt-out`",
-                manifest_path.display(),
-            ),
+            format!("{} omits the required `execution` field", manifest_path.display()),
         ));
     }
     Ok(())

@@ -204,7 +204,7 @@ fn resolve_topology_hub_reads_topology_lock() {
                  target: contracts@v1\n    \
                  description: Contracts crate.\n    \
                  surface:\n      \
-                   - unit: identity-api\n        \
+                   - domain: identity-api\n        \
                      requirements:\n          \
                        - Authenticate user\n  \
                - name: identity-service\n    \
@@ -221,7 +221,7 @@ fn resolve_topology_hub_reads_topology_lock() {
                 target: "contracts@v1".to_string(),
                 description: Some("Contracts crate.".to_string()),
                 surface: vec![Surface {
-                    unit: "identity-api".to_string(),
+                    domain: "identity-api".to_string(),
                     requirements: vec!["Authenticate user".to_string()],
                     more: None,
                 }],
@@ -452,6 +452,47 @@ fn propose_n1_auto_binds_sole_project() {
     assert_eq!(entry.status, Status::Pending);
     assert!(entry.depends_on.is_empty());
     assert_eq!(entry.sources, vec![SliceSourceBinding::structured("intent", "fix-typo")]);
+}
+
+#[test]
+fn propose_multi_homes_cross_cutting_lead() {
+    // Same-project multi-membership: coverage is at-least-once, so a
+    // cross-cutting lead (a conventions document informing several
+    // work leads from another source) may be bound into every slice
+    // it informs within one project. Fan-out is not restricted to the
+    // cross-project case, and no `depends-on` edge is implied.
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["docs", "legacy"]);
+    let doc = discovery_with(&[
+        ("docs", "conventions"),
+        ("legacy", "user-registration"),
+        ("legacy", "password-reset"),
+    ]);
+    let topo = vec![project("identity-service", "omnia@v1", "Omnia identity service.")];
+
+    let resp = response(vec![
+        slice(
+            "user-registration",
+            vec![member("legacy", "user-registration"), member("docs", "conventions")],
+        ),
+        slice(
+            "password-reset",
+            vec![member("legacy", "password-reset"), member("docs", "conventions")],
+        ),
+    ]);
+
+    let out = plan.propose_from(resp, &doc, &topo).expect("multi-homed lead projects");
+
+    assert_eq!(out.slice_names, vec!["user-registration", "password-reset"]);
+    assert_eq!(plan.entries.len(), 2);
+    for entry in &plan.entries {
+        assert_eq!(entry.project.as_deref(), Some("identity-service"));
+        assert!(entry.depends_on.is_empty(), "multi-homing implies no depends-on edge");
+        assert!(
+            entry.sources.contains(&SliceSourceBinding::structured("docs", "conventions")),
+            "every informed slice carries the cross-cutting lead: {:?}",
+            entry.sources
+        );
+    }
 }
 
 #[test]

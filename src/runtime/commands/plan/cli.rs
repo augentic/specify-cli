@@ -1,6 +1,5 @@
-//! Clap derive surface for `specify plan *` and the nested
-//! `plan lock *` verbs. The umbrella `cli.rs` re-exports both action
-//! enums.
+//! Clap derive surface for the `specify plan *` verbs. The umbrella
+//! `cli.rs` re-exports [`PlanAction`].
 
 use std::path::PathBuf;
 
@@ -66,6 +65,20 @@ pub enum PlanAction {
     /// `Pending` entry to `InProgress` and return it. `plan next` is the
     /// only writer of per-entry `in-progress` (workflow §CLI surface).
     Next,
+    /// Read-only projection of the plan's execution state into a
+    /// deterministic `next-action` — `refine|build|merge <slice>`,
+    /// `stop <reason>`, or `drained`.
+    ///
+    /// Projects `plan.yaml` entries, the candidate slice's
+    /// `metadata.yaml` lifecycle (slot-aware in workspace mode), and
+    /// the journal tail. Stop reasons (`plan-not-approved`,
+    /// `refine-failed`, `build-failed`, `merge-conflict`,
+    /// `slice-dropped`, `merge-incomplete`, `stuck`) are classified
+    /// from `slice.synthesize.failed` / `slice.build.failed` /
+    /// `slice.merge.failed` journal events scoped to the active
+    /// entry's claim window. Writes nothing — `plan next` stays the
+    /// only writer of per-entry `in-progress`.
+    Status,
     /// Add a new plan entry (status: pending)
     Add(AddArgs),
     /// Edit non-status fields on an existing plan entry.
@@ -87,12 +100,14 @@ pub enum PlanAction {
     ///
     /// Exactly one mode is required — the parser rejects passing both:
     ///
-    /// - `--dry-run` is read-only. It reads the surveyed `discovery.md`
-    ///   lead inventory and the resolved project topology (`registry.yaml`
-    ///   for a workspace, or the sole project synthesised from `project.yaml`)
-    ///   and emits the `kind: request` envelope for the agent to group.
-    ///   Aborts with `plan-reconcile-empty-catalog` when `discovery.md`
-    ///   carries no leads.
+    /// - `--dry-run` reads the surveyed `discovery.md` lead inventory and
+    ///   the resolved project topology (`registry.yaml` for a workspace, or
+    ///   the sole project synthesised from `project.yaml`) and emits the
+    ///   `kind: request` envelope for the agent to group, recreating the
+    ///   plan scratch lane (`.specify/scratch/plan/`) empty for the
+    ///   response envelope. Writes no plan state. Aborts with
+    ///   `plan-reconcile-empty-catalog` when `discovery.md` carries no
+    ///   leads.
     /// - `--from <response.json>` is the only writer. On every invocation
     ///   it re-reads `discovery.md`, rebuilds the lead catalog (never
     ///   trusting a prior dry-run snapshot), validates the agent's
@@ -144,6 +159,14 @@ pub enum PlanAction {
         /// by editing `plan.yaml` directly (out of scope for v1).
         #[arg(long = "undo", action = ArgAction::SetTrue, conflicts_with = "target")]
         undo: bool,
+        /// Who is driving this invocation — `operator` (default) or
+        /// `agent`. Recorded on the `plan.transition.approved`
+        /// journal event so eval probes can grade
+        /// `gate-1-not-auto-stamped` mechanically; self-reported
+        /// evidence, not an enforcement gate. Ignored on per-entry
+        /// and `--undo` transitions.
+        #[arg(long = "actor", value_name = "ACTOR", default_value = "operator")]
+        actor: String,
     },
     /// Archive the current plan to `.specify/archive/plans/<name>-<YYYYMMDD>.yaml`
     Archive {
@@ -159,7 +182,7 @@ pub enum PlanAction {
 /// rejects passing neither with `plan-propose-mode-required`.
 #[derive(Args)]
 pub struct ProposeArgs {
-    /// Emit the reconciliation request envelope (flat lead catalog + project topology) for the agent. Writes nothing.
+    /// Emit the reconciliation request envelope (flat lead catalog + project topology) for the agent. Writes no plan state; resets .specify/scratch/plan/.
     #[arg(long = "dry-run", action = ArgAction::SetTrue)]
     pub dry_run: bool,
     /// Apply the agent's grouping response, validate it, and replace plan.yaml.slices[]. The only writer.

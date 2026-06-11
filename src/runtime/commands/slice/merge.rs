@@ -20,6 +20,13 @@ use super::artifact_classes;
 use crate::runtime::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: &str, allow_composition_replace: bool) -> Result<()> {
+    // RFC-44 R2: a plan-backed `merge run` writes plan state (the
+    // per-entry `done` stamp) — refuse an unlocked driver before the
+    // merge bracket so a refusal never journals `slice.merge.*`.
+    // Standalone merges (no plan.yaml) stamp nothing and stay unguarded.
+    if ctx.layout().plan_path().exists() {
+        specify_workflow::plan_lock::require_held(ctx.layout())?;
+    }
     // The `slice.merge.*` pair fires on the validator outcome.
     // `started` brackets entry; the fallible body runs the validator +
     // apply and (on success) the durable `slice.archive.created` ledger

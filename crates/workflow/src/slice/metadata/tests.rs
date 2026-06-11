@@ -61,7 +61,7 @@ fn load_missing_errors() {
     // rely on: an absent file is `ArtifactNotFound`, never a panic.
     let dir = tempdir().expect("tempdir");
     match SliceMetadata::load(dir.path()) {
-        Err(Error::ArtifactNotFound { kind, .. }) => assert_eq!(kind, ".metadata.yaml"),
+        Err(Error::ArtifactNotFound { kind, .. }) => assert_eq!(kind, "metadata.yaml"),
         other => panic!("absent metadata must be ArtifactNotFound, got {other:?}"),
     }
 }

@@ -78,7 +78,7 @@ pub struct BriefContext<'a> {
 /// A rule that spans multiple briefs.
 #[derive(Debug, Clone, Copy)]
 pub struct CrossRule {
-    /// Stable dot-namespaced identifier (e.g. `cross.proposal-units-have-specs`).
+    /// Stable dot-namespaced identifier (e.g. `cross.proposal-domains-have-specs`).
     pub id: &'static str,
     /// Human-readable description of what the rule checks.
     pub description: &'static str,

@@ -1,7 +1,7 @@
 //! Dedicated scenario discovery + extraction pass per the standards
 //! layer's scoped scenario fact family.
 //!
-//! Scenario files live partly under the un-indexed `acceptance/` tree,
+//! Scenario files live partly under the un-indexed `evals/` tree,
 //! so this pass walks the opt-in scenario roots itself rather than
 //! reading [`super::framework`]'s file set, and emits a dedicated
 //! [`Scenario`] fact family that is appended to the model WITHOUT
@@ -10,7 +10,7 @@
 //! `path-pattern` candidate set changes (zero blast radius).
 //!
 //! Discovery mirrors the retiring `scenarios` WASI tool's
-//! `discover_scenario_candidates`: flat `acceptance/scenarios/<id>.md`
+//! `discover_scenario_candidates`: flat `evals/scenarios/<id>.md`
 //! files (skipping the pack `README.md`), `adapters/targets/<adapter>/
 //! tests/<file>.md` and `.../tests/<dir>/scenario.md`, and
 //! `plugins/<plugin>/skills/<skill>/fixtures/<case>/scenario.md`.
@@ -90,11 +90,11 @@ fn body_scenario_id(body: &str) -> Option<String> {
     None
 }
 
-/// Discover scenario candidate files across the acceptance scenario
+/// Discover scenario candidate files across the eval scenario
 /// pack, target adapter tests, and plugin skill fixtures.
 fn discover_candidates(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    collect_acceptance(&root.join("acceptance").join("scenarios"), &mut out);
+    collect_evals(&root.join("evals").join("scenarios"), &mut out);
     collect_targets(&root.join("adapters").join("targets"), &mut out);
     collect_plugin_fixtures(&root.join("plugins"), &mut out);
     out.sort();
@@ -102,9 +102,9 @@ fn discover_candidates(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Flat `acceptance/scenarios/<id>.md` files (depth 1), skipping the
+/// Flat `evals/scenarios/<id>.md` files (depth 1), skipping the
 /// pack `README.md` catalog.
-fn collect_acceptance(dir: &Path, out: &mut Vec<PathBuf>) {
+fn collect_evals(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };

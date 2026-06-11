@@ -6,11 +6,11 @@
 //! with `evidence-dir`, a single lead, and either `source-dir` or
 //! `value-inline` — and emits `source.execution.agent`; finalize
 //! validates-before-visible, persists the Evidence, and emits
-//! `slice.extract.cache-miss` under the forced opt-out), the
-//! validate-before-visible guarantee that an invalid Evidence document
-//! persists no file, the value-bound `intent` path, and the sandbox
-//! path-denied acceptance scenario `5j` (`$PROJECT_DIR` invisible to
-//! the adapter; out-of-sandbox Evidence denied).
+//! `slice.extract.completed`), the validate-before-visible guarantee
+//! that an invalid Evidence document persists no file, the value-bound
+//! `intent` path, and the sandbox path-denied eval scenario `5j`
+//! (`$PROJECT_DIR` invisible to the adapter; out-of-sandbox Evidence
+//! denied).
 
 use std::fs;
 use std::path::PathBuf;
@@ -18,17 +18,17 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use crate::common::{
-    Project, TEMPDIR_PLACEHOLDER, parse_stderr, parse_stdout, repo_root, specify_cmd,
+    Project, TEMPDIR_PLACEHOLDER, init_workspace, omnia_schema_dir, parse_stderr, parse_stdout,
+    repo_root, specify_cmd,
 };
 
-/// Stage the path-bound `code-typescript` source adapter (the in-repo
+/// Stage the path-bound `typescript` source adapter (the in-repo
 /// fixture ships only `adapter.yaml`; author the `extract` brief the
-/// fingerprint hashes).
-fn stage_code_typescript(project: &Project) {
-    let src = repo_root().join(
-        "crates/workflow/tests/fixtures/plugins/adapters/sources/code-typescript/adapter.yaml",
-    );
-    let adapter_dir = project.root().join("adapters/sources/code-typescript");
+/// agent reads).
+fn stage_typescript(project: &Project) {
+    let src = repo_root()
+        .join("crates/workflow/tests/fixtures/plugins/adapters/sources/typescript/adapter.yaml");
+    let adapter_dir = project.root().join("adapters/sources/typescript");
     fs::create_dir_all(adapter_dir.join("briefs")).expect("create adapter briefs dir");
     fs::copy(&src, adapter_dir.join("adapter.yaml")).expect("copy adapter.yaml");
     fs::write(adapter_dir.join("briefs/extract.md"), "# extract brief\n")
@@ -61,7 +61,7 @@ fn seed_plan_with_legacy_source(project: &Project) {
         "name: platform-v2
 sources:
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: vendor/legacy
 slices:
   - name: identity
@@ -87,7 +87,7 @@ slices:
 }
 
 fn extract_scratch_dir(project: &Project, adapter: &str, slice: &str) -> PathBuf {
-    project.root().join(format!(".specify/.cache/extractions/{adapter}/{slice}/scratch"))
+    project.root().join(format!(".specify/scratch/{adapter}/{slice}"))
 }
 
 fn slice_evidence_path(project: &Project, slice: &str, source: &str) -> PathBuf {
@@ -112,7 +112,7 @@ claims: []
 #[test]
 fn prepare_prints_envelope_emits_event() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
     let assert = specify_cmd()
@@ -123,7 +123,7 @@ fn prepare_prints_envelope_emits_event() {
         .success();
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(body["adapter"], "code-typescript");
+    assert_eq!(body["adapter"], "typescript");
     assert_eq!(body["version"], 1);
     assert_eq!(body["execution"], "agent");
 
@@ -135,7 +135,7 @@ fn prepare_prints_envelope_emits_event() {
     );
     let scratch = body["scratch-dir"].as_str().expect("scratch-dir str");
     assert!(
-        scratch.ends_with(".specify/.cache/extractions/code-typescript/identity/scratch"),
+        scratch.ends_with(".specify/scratch/typescript/identity"),
         "scratch-dir {scratch} must key under the slice segment"
     );
     let source_dir = body["source-dir"].as_str().expect("path binding carries source-dir");
@@ -150,7 +150,7 @@ fn prepare_prints_envelope_emits_event() {
 
     // prepare builds scratch up front and scaffolds the evidence target.
     assert!(
-        extract_scratch_dir(&project, "code-typescript", "identity").is_dir(),
+        extract_scratch_dir(&project, "typescript", "identity").is_dir(),
         "prepare must create the scratch dir"
     );
     assert!(
@@ -162,8 +162,133 @@ fn prepare_prints_envelope_emits_event() {
     assert_eq!(events.len(), 1, "prepare emits exactly one event");
     assert_eq!(events[0]["event"], "source.execution.agent");
     assert_eq!(events[0]["payload"]["source"], "legacy");
-    assert_eq!(events[0]["payload"]["adapter"], "code-typescript");
+    assert_eq!(events[0]["payload"]["adapter"], "typescript");
     assert_eq!(events[0]["payload"]["operation"], "extract");
+}
+
+#[test]
+fn prepare_resolves_via_plan_dir() {
+    // Workspace routing: extract runs inside a plan-less slot with
+    // `--plan-dir` naming the initiating workspace root. The plan loads
+    // from the override, and the binding's *relative* `path:` resolves
+    // against the plan's home — the workspace — not the slot.
+    let project = Project::init();
+    stage_typescript(&project);
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    fs::write(
+        workspace.path().join("plan.yaml"),
+        "name: platform-v2
+sources:
+  legacy:
+    adapter: typescript
+    path: vendor/legacy
+slices:
+  - name: identity
+    project: default
+    status: pending
+",
+    )
+    .expect("write workspace plan.yaml");
+
+    let assert = specify_cmd()
+        .current_dir(project.root())
+        .args(["--format", "json", "--plan-dir"])
+        .arg(workspace.path())
+        .args(["source", "extract", "legacy", "user-registration"])
+        .args(["--slice", "identity"])
+        .assert()
+        .success();
+
+    let body = parse_stdout(&assert.get_output().stdout, project.root());
+    let source_dir = body["source-dir"].as_str().expect("path binding carries source-dir");
+    assert_eq!(
+        source_dir,
+        workspace.path().join("vendor/legacy").to_str().expect("utf8 workspace path"),
+        "relative source path must join the plan root, not the slot"
+    );
+    // Slot-anchored outputs stay slot-anchored.
+    let evidence = body["evidence-dir"].as_str().expect("evidence-dir str");
+    assert_eq!(evidence, format!("{TEMPDIR_PLACEHOLDER}/.specify/slices/identity/evidence"));
+}
+
+#[test]
+fn slot_extract_resolves_after_sync() {
+    // RFC-45 slot adapter provisioning: the source adapter is vendored
+    // only at the workspace; `specify workspace sync` mirrors it into
+    // the slot's manifest cache, and slot-side extract resolves it
+    // through ordinary project-local probing — no new resolution
+    // semantics, no manual cache staging.
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    init_workspace(&workspace, "platform-workspace");
+
+    // A local peer that is itself a Specify project, bound as a slot.
+    let peer = workspace.path().join("peer");
+    fs::create_dir_all(&peer).expect("create peer dir");
+    specify_cmd()
+        .current_dir(&peer)
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "peer"])
+        .assert()
+        .success();
+    fs::write(
+        workspace.path().join("registry.yaml"),
+        "version: 1
+projects:
+  - name: peer
+    url: ./peer
+    adapter: omnia@v1
+",
+    )
+    .expect("write registry.yaml");
+    fs::write(
+        workspace.path().join("plan.yaml"),
+        "name: platform-v2
+sources:
+  legacy:
+    adapter: typescript
+    path: vendor/legacy
+slices:
+  - name: identity
+    project: peer
+    status: pending
+",
+    )
+    .expect("write workspace plan.yaml");
+
+    // Vendor the source adapter at the workspace only.
+    let adapter_src = repo_root()
+        .join("crates/workflow/tests/fixtures/plugins/adapters/sources/typescript/adapter.yaml");
+    let adapter_dir = workspace.path().join("adapters/sources/typescript");
+    fs::create_dir_all(adapter_dir.join("briefs")).expect("create workspace adapter dir");
+    fs::copy(&adapter_src, adapter_dir.join("adapter.yaml")).expect("copy adapter.yaml");
+    fs::write(adapter_dir.join("briefs/extract.md"), "# extract brief\n")
+        .expect("write extract brief");
+
+    specify_cmd().current_dir(workspace.path()).args(["workspace", "sync"]).assert().success();
+
+    let slot = workspace.path().join(".specify/workspace/peer");
+    assert!(
+        slot.join(".specify/cache/manifests/sources/typescript/adapter.yaml").is_file(),
+        "sync must mirror the workspace adapter into the slot manifest cache"
+    );
+
+    let assert = specify_cmd()
+        .current_dir(&slot)
+        .args(["--format", "json", "--plan-dir"])
+        .arg(workspace.path())
+        .args(["source", "extract", "legacy", "user-registration"])
+        .args(["--slice", "identity"])
+        .assert()
+        .success();
+
+    let body = parse_stdout(&assert.get_output().stdout, &peer);
+    assert_eq!(body["adapter"], "typescript", "the mirrored adapter must resolve in the slot");
+    let evidence = body["evidence-dir"].as_str().expect("evidence-dir str");
+    assert!(
+        evidence.ends_with(".specify/slices/identity/evidence"),
+        "slice state stays slot-local: {evidence}"
+    );
 }
 
 #[test]
@@ -196,15 +321,13 @@ fn prepare_value_bound_carries_inline() {
 }
 
 #[test]
-fn finalize_persists_and_cache_miss() {
+fn finalize_persists_and_completes() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    // The fingerprint canonicalises the bound source path, so it must exist.
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // Stand in for the agent: write the produced Evidence into scratch.
-    let scratch = extract_scratch_dir(&project, "code-typescript", "identity");
+    let scratch = extract_scratch_dir(&project, "typescript", "identity");
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(scratch.join("evidence.yaml"), VALID_EVIDENCE).expect("write evidence.yaml");
 
@@ -216,14 +339,10 @@ fn finalize_persists_and_cache_miss() {
         .success();
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
-    assert_eq!(body["adapter"], "code-typescript");
+    assert_eq!(body["adapter"], "typescript");
     assert_eq!(body["source"], "legacy");
     assert_eq!(body["slice"], "identity");
     assert_eq!(body["lead"], "user-registration");
-    assert_eq!(body["cache"], "miss", "agent execution forces a cache miss");
-    assert_eq!(body["reason"], "adapter-opt-out");
-    let fingerprint = body["fingerprint"].as_str().expect("fingerprint str");
-    assert!(fingerprint.starts_with("sha256:"), "fingerprint: {fingerprint}");
 
     // The validated Evidence is now persisted to the slice evidence path.
     let persisted = slice_evidence_path(&project, "identity", "legacy");
@@ -231,15 +350,12 @@ fn finalize_persists_and_cache_miss() {
     assert_eq!(fs::read_to_string(&persisted).expect("read persisted"), VALID_EVIDENCE);
 
     let events = journal_events(&project);
-    let miss = events
+    let completed = events
         .iter()
-        .find(|e| e["event"] == "slice.extract.cache-miss")
-        .expect("a slice.extract.cache-miss event");
-    assert_eq!(miss["payload"]["slice-name"], "identity");
-    assert_eq!(miss["payload"]["source"], "legacy");
-    assert_eq!(miss["payload"]["adapter"], "code-typescript");
-    assert_eq!(miss["payload"]["reason"], "adapter-opt-out");
-    assert_eq!(miss["payload"]["fingerprint"], fingerprint);
+        .find(|e| e["event"] == "slice.extract.completed")
+        .expect("a slice.extract.completed event");
+    assert_eq!(completed["payload"]["slice-name"], "identity");
+    assert_eq!(completed["payload"]["source"], "legacy");
 }
 
 #[test]
@@ -265,8 +381,6 @@ fn finalize_value_bound_persists() {
 
     let body = parse_stdout(&assert.get_output().stdout, project.root());
     assert_eq!(body["adapter"], "intent");
-    assert_eq!(body["cache"], "miss");
-    assert_eq!(body["reason"], "adapter-opt-out");
 
     assert!(
         slice_evidence_path(&project, "identity", "brief").is_file(),
@@ -277,12 +391,11 @@ fn finalize_value_bound_persists() {
 #[test]
 fn finalize_invalid_persists_no_file() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // Missing the required `claims` field — parses as YAML but fails the schema.
-    let scratch = extract_scratch_dir(&project, "code-typescript", "identity");
+    let scratch = extract_scratch_dir(&project, "typescript", "identity");
     fs::create_dir_all(&scratch).expect("create scratch dir");
     fs::write(scratch.join("evidence.yaml"), "authority: behaviour\nlead: user-registration\n")
         .expect("write invalid evidence.yaml");
@@ -303,20 +416,18 @@ fn finalize_invalid_persists_no_file() {
         !slice_evidence_path(&project, "identity", "legacy").exists(),
         "an invalid Evidence document must persist no file"
     );
-    // No cache event fires for an invalid Evidence document.
+    // No completion event fires for an invalid Evidence document.
     assert!(
         !project.root().join(".specify/journal.jsonl").exists()
-            || !journal_events(&project).iter().any(|e| {
-                e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
-            }),
-        "invalid Evidence must not emit a cache event"
+            || !journal_events(&project).iter().any(|e| e["event"] == "slice.extract.completed"),
+        "invalid Evidence must not emit a completion event"
     );
 }
 
 /// Acceptance scenario `extract-failure` — the extract step fails to
 /// produce Evidence (the agent's extract brief ran but staged nothing in
 /// `$SCRATCH_DIR`). finalize fails closed with `extract-evidence-missing`,
-/// persists no Evidence, emits no cache event, and leaves the slice
+/// persists no Evidence, emits no completion event, and leaves the slice
 /// `refining` so no synthesis can run. Distinct from
 /// `finalize_invalid_persists_no_file` (schema failure on a *present*
 /// document) and `sandbox_denies_out_of_scope` (a document staged outside
@@ -324,12 +435,11 @@ fn finalize_invalid_persists_no_file() {
 #[test]
 fn finalize_missing_evidence_stays_refining() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // The agent produced nothing: scratch exists but holds no evidence.yaml.
-    let scratch = extract_scratch_dir(&project, "code-typescript", "identity");
+    let scratch = extract_scratch_dir(&project, "typescript", "identity");
     fs::create_dir_all(&scratch).expect("create empty scratch dir");
 
     let assert = specify_cmd()
@@ -349,18 +459,16 @@ fn finalize_missing_evidence_stays_refining() {
         !slice_evidence_path(&project, "identity", "legacy").exists(),
         "a failed extract must persist no Evidence"
     );
-    // A failed extract fires no cache event.
+    // A failed extract fires no completion event.
     assert!(
         !project.root().join(".specify/journal.jsonl").exists()
-            || !journal_events(&project).iter().any(|e| {
-                e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
-            }),
-        "a failed extract must not emit a cache event"
+            || !journal_events(&project).iter().any(|e| e["event"] == "slice.extract.completed"),
+        "a failed extract must not emit a completion event"
     );
 }
 
 /// Scenario `5j` — source-adapter sandbox path-denied (the parent
-/// `augentic/specify` repo's `docs/contributing/acceptance.md`
+/// `augentic/specify` repo's `docs/contributing/evals.md`
 /// §Scenario IDs, stub `05j-source-sandbox-denied.md`).
 ///
 /// Proves the two halves of the four-root sandbox the C5 prep seam
@@ -380,18 +488,14 @@ fn finalize_missing_evidence_stays_refining() {
 ///     `extract-evidence-missing`, persists no Evidence, and leaves the
 ///     slice `refining`.
 ///
-/// M1 ships the first-party sources as `execution: agent`, so the
-/// denial is structural — the runner never mounts or hands over
-/// `$PROJECT_DIR` — rather than a live WASI preopen rejection; the
-/// `tool` WASI-dispatch seam that would surface a kernel-level denial
-/// is wired but unexercised (see `dispatch_extract_tool`).
+/// Source operations are agent-only, so the denial is structural —
+/// the runner never mounts or hands over `$PROJECT_DIR` — rather than
+/// a live WASI preopen rejection.
 #[test]
 fn sandbox_denies_out_of_scope() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
-    // The fingerprint canonicalises the bound source path, so it must exist.
-    fs::create_dir_all(project.root().join("vendor/legacy")).expect("create bound source dir");
 
     // (a) prepare: the handoff envelope must not expose $PROJECT_DIR.
     let assert = specify_cmd()
@@ -440,19 +544,17 @@ fn sandbox_denies_out_of_scope() {
         !slice_evidence_path(&project, "identity", "legacy").exists(),
         "out-of-sandbox Evidence must not be persisted"
     );
-    // A denied finalize fails before any cache event is emitted.
+    // A denied finalize fails before any completion event is emitted.
     assert!(
-        !journal_events(&project).iter().any(|e| {
-            e["event"] == "slice.extract.cache-miss" || e["event"] == "slice.extract.cache-hit"
-        }),
-        "a denied out-of-sandbox extract must not emit a cache event"
+        !journal_events(&project).iter().any(|e| e["event"] == "slice.extract.completed"),
+        "a denied out-of-sandbox extract must not emit a completion event"
     );
 }
 
 #[test]
 fn unknown_source_errors() {
     let project = Project::init();
-    stage_code_typescript(&project);
+    stage_typescript(&project);
     seed_plan_with_legacy_source(&project);
 
     let assert = specify_cmd()

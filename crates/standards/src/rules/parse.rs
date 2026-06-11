@@ -184,7 +184,7 @@ fn split_frontmatter(content: &str) -> Result<(&str, &str), ParseError> {
 /// other than the `snake_case` authoring convention (`lint_mode`,
 /// `rule_hints`, `replaced_by`), so a blind `_` -> `-`
 /// rewrite is safe. String VALUES (e.g. adapter names like
-/// `code-typescript`) are untouched — only keys are transformed.
+/// `typescript`) are untouched — only keys are transformed.
 fn snake_to_kebab_keys(value: JsonValue) -> JsonValue {
     match value {
         JsonValue::Object(map) => {

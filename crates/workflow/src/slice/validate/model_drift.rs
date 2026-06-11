@@ -87,20 +87,20 @@ fn model_drift(code: &'static str, rule: &'static str, detail: String) -> Diagno
 
 /// `slice-spec-provenance-stale` — compare each model requirement's
 /// kernel-owned `id` / `sources` / `status` against the matching
-/// requirement parsed from the on-disk `specs/<unit>/spec.md`. A
+/// requirement parsed from the on-disk `specs/<domain>/spec.md`. A
 /// disagreement (or an absent rendered requirement) means an operator
 /// hand-edited a kernel-rendered provenance line without
 /// re-synthesising.
 fn provenance_stale_findings(slice_dir: &Path, model: &SliceModel) -> Result<Vec<Diagnostic>> {
     const RULE: &str = "spec.md provenance lines agree with model.yaml";
-    let mut parsed_units: BTreeMap<String, Option<ParsedSpec>> = BTreeMap::new();
+    let mut parsed_domains: BTreeMap<String, Option<ParsedSpec>> = BTreeMap::new();
     let mut findings = Vec::new();
     for exp in expected_provenance_lines(model) {
         if exp.id.is_empty() {
             continue;
         }
-        if !parsed_units.contains_key(&exp.unit) {
-            let path = slice_dir.join("specs").join(&exp.unit).join("spec.md");
+        if !parsed_domains.contains_key(&exp.domain) {
+            let path = slice_dir.join("specs").join(&exp.domain).join("spec.md");
             let parsed = match std::fs::read_to_string(&path) {
                 Ok(text) => Some(provenance::parse_spec_md(&text)),
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
@@ -112,15 +112,15 @@ fn provenance_stale_findings(slice_dir: &Path, model: &SliceModel) -> Result<Vec
                     });
                 }
             };
-            parsed_units.insert(exp.unit.clone(), parsed);
+            parsed_domains.insert(exp.domain.clone(), parsed);
         }
-        let Some(parsed) = parsed_units.get(&exp.unit).and_then(Option::as_ref) else {
+        let Some(parsed) = parsed_domains.get(&exp.domain).and_then(Option::as_ref) else {
             findings.push(model_drift(
                 "slice-spec-provenance-stale",
                 RULE,
                 format!(
                     "model requirement `{}` has no rendered `specs/{}/spec.md`",
-                    exp.id, exp.unit
+                    exp.id, exp.domain
                 ),
             ));
             continue;
@@ -131,7 +131,7 @@ fn provenance_stale_findings(slice_dir: &Path, model: &SliceModel) -> Result<Vec
                 RULE,
                 format!(
                     "model requirement `{}` is absent from `specs/{}/spec.md`",
-                    exp.id, exp.unit
+                    exp.id, exp.domain
                 ),
             ));
             continue;
@@ -144,7 +144,7 @@ fn provenance_stale_findings(slice_dir: &Path, model: &SliceModel) -> Result<Vec
                     "requirement `{}` `Sources:` in `specs/{}/spec.md` ({}) disagrees with \
                      model.yaml ({})",
                     exp.id,
-                    exp.unit,
+                    exp.domain,
                     render_sources(&req.sources),
                     render_sources(&exp.sources),
                 ),
@@ -158,7 +158,7 @@ fn provenance_stale_findings(slice_dir: &Path, model: &SliceModel) -> Result<Vec
                     "requirement `{}` `Status:` in `specs/{}/spec.md` ({}) disagrees with \
                      model.yaml ({})",
                     exp.id,
-                    exp.unit,
+                    exp.domain,
                     render_status(req.status),
                     render_status(exp.status),
                 ),

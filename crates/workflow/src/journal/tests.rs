@@ -39,6 +39,7 @@ fn append_batch_writes_in_order() {
             test_timestamp("2026-05-22T13:30:00Z"),
             EventKind::PlanTransitionApproved {
                 plan_name: "fresh".into(),
+                actor: Actor::Operator,
             },
         ),
         Event::new(
@@ -144,17 +145,20 @@ fn event_wire_shapes_match_contract() {
 }
 
 #[test]
-fn cache_miss_reason_round_trips() {
-    for (variant, wire) in [
-        (CacheMissReason::NoPriorEntry, "no-prior-entry"),
-        (CacheMissReason::SourcePathChanged, "source-path-changed"),
-        (CacheMissReason::AdapterVersionChanged, "adapter-version-changed"),
-        (CacheMissReason::BriefShaChanged, "brief-sha-changed"),
-        (CacheMissReason::ToolVersionChanged, "tool-version-changed"),
-        (CacheMissReason::AdapterOptOut, "adapter-opt-out"),
-    ] {
-        assert_eq!(serde_json::to_string(&variant).expect("serialise"), format!("\"{wire}\""));
-    }
+fn approved_actor_defaults_on_legacy_lines() {
+    // Journal lines written before the `actor` field existed carry
+    // only `plan-name`; `#[serde(default)]` must parse them as
+    // `actor: operator` so historic journals stay readable.
+    let legacy = r#"{"timestamp":"2026-05-21T20:00:00Z","event":"plan.transition.approved","payload":{"plan-name":"platform-v2"}}"#;
+    let event: Event = serde_json::from_str(legacy).expect("legacy line parses");
+    assert_eq!(
+        event.kind,
+        EventKind::PlanTransitionApproved {
+            plan_name: "platform-v2".into(),
+            actor: Actor::Operator,
+        },
+        "absent actor must default to operator"
+    );
 }
 
 #[test]
@@ -594,4 +598,350 @@ fn read_recent_short_missing_and_zero_limit() {
     })
     .expect("read_recent zero");
     assert!(none.is_empty(), "a zero limit must yield no summaries");
+}
+
+mod show {
+    use super::*;
+
+    fn seed(layout: Layout<'_>) {
+        // Three families so prefix filtering has neighbours to exclude:
+        // 2x slice.build.*, 1x slice.merge.*, 5x slice.archive.created.
+        let build_started = Event::new(
+            test_timestamp("2026-05-22T13:15:00Z"),
+            EventKind::SliceBuildStarted {
+                slice_name: "checkout".into(),
+            },
+        );
+        let build_succeeded = Event::new(
+            test_timestamp("2026-05-22T13:16:00Z"),
+            EventKind::SliceBuildSucceeded {
+                slice_name: "checkout".into(),
+            },
+        );
+        let merge_started = Event::new(
+            test_timestamp("2026-05-22T13:17:00Z"),
+            EventKind::SliceMergeStarted {
+                slice_name: "checkout".into(),
+            },
+        );
+        append_batch(layout, &[build_started, build_succeeded, merge_started])
+            .expect("append seed events");
+        write_archive_summaries(layout, &["m-0", "m-1", "m-2", "m-3", "m-4"]);
+    }
+
+    fn ids(events: &[Event]) -> Vec<String> {
+        events.iter().map(|event| wire_id(&event.kind)).collect()
+    }
+
+    #[test]
+    fn unfiltered_returns_all_in_order() {
+        let dir = tempdir().expect("tempdir");
+        let layout = Layout::new(dir.path());
+        seed(layout);
+
+        let events = show(layout, None, None).expect("show");
+        assert_eq!(events.len(), 8, "all parseable events must be returned");
+        assert_eq!(
+            ids(&events)[..3],
+            ["slice.build.started", "slice.build.succeeded", "slice.merge.started"],
+            "append (file) order must be preserved"
+        );
+    }
+
+    #[test]
+    fn filter_is_id_prefix() {
+        let dir = tempdir().expect("tempdir");
+        let layout = Layout::new(dir.path());
+        seed(layout);
+
+        let builds = show(layout, Some("slice.build"), None).expect("show filtered");
+        assert_eq!(
+            ids(&builds),
+            ["slice.build.started", "slice.build.succeeded"],
+            "the dotted prefix must keep the whole family and nothing else"
+        );
+
+        let exact = show(layout, Some("slice.merge.started"), None).expect("show exact");
+        assert_eq!(ids(&exact), ["slice.merge.started"], "a full id is its own prefix");
+
+        let none = show(layout, Some("workspace."), None).expect("show no match");
+        assert!(none.is_empty(), "an unmatched prefix must yield no events");
+    }
+
+    #[test]
+    fn limit_tails_matches() {
+        let dir = tempdir().expect("tempdir");
+        let layout = Layout::new(dir.path());
+        seed(layout);
+
+        let recent = show(layout, Some("slice.archive.created"), Some(2)).expect("show limited");
+        let summaries: Vec<&str> = recent
+            .iter()
+            .map(|event| match &event.kind {
+                EventKind::SliceArchiveCreated { outcome_summary, .. } => outcome_summary.as_str(),
+                other => panic!("filter must only keep archive events, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(summaries, ["m-3", "m-4"], "limit keeps the most recent matches, in order");
+    }
+
+    #[test]
+    fn missing_journal_yields_empty() {
+        let dir = tempdir().expect("tempdir");
+        let layout = Layout::new(dir.path());
+        let events = show(layout, None, Some(10)).expect("show on missing journal");
+        assert!(events.is_empty(), "a missing journal must yield no events");
+    }
+}
+
+/// One sample per [`EventKind`] variant (composed from the per-family
+/// helpers below). The exhaustive match in
+/// [`wire_event_ids_match_serde_renames`] fails to compile when a
+/// variant is added, prompting a new sample here and a new id in
+/// [`WIRE_EVENT_IDS`].
+fn sample_event_kinds() -> Vec<EventKind> {
+    let mut samples = sample_plan_kinds();
+    samples.extend(sample_slice_kinds());
+    samples.extend(sample_runtime_kinds());
+    samples
+}
+
+fn sample_plan_kinds() -> Vec<EventKind> {
+    use crate::change::{Divergence, Status};
+
+    vec![
+        EventKind::PlanTransitionApproved {
+            plan_name: "plan".into(),
+            actor: Actor::Operator,
+        },
+        EventKind::PlanTransitionUndone {
+            plan_name: "plan".into(),
+            slice_name: "slice".into(),
+            from: Status::Done,
+            to: Status::InProgress,
+        },
+        EventKind::PlanEntryAdvanced {
+            plan_name: "plan".into(),
+            slice_name: "slice".into(),
+        },
+        EventKind::PlanAmendDivergence {
+            plan_name: "plan".into(),
+            slice_name: "slice".into(),
+            from: Divergence::None,
+            to: Divergence::Likely,
+        },
+        EventKind::PlanAmendAuthorityOverride {
+            plan_name: "plan".into(),
+            slice_name: "slice".into(),
+            action: AuthorityOverrideAction::Set,
+            claim_kind: None,
+            source: None,
+        },
+        EventKind::PlanReconcileCompleted {
+            plan_name: "plan".into(),
+            slice_count: 0,
+            slice_names: vec![],
+        },
+    ]
+}
+
+fn sample_slice_kinds() -> Vec<EventKind> {
+    vec![
+        EventKind::SliceTransitionRefined {
+            slice_name: "slice".into(),
+        },
+        EventKind::SliceExtractCompleted {
+            slice_name: "slice".into(),
+            source: "src".to_string(),
+        },
+        EventKind::SliceSynthesisConflict {
+            slice_name: "slice".into(),
+            requirement_id: "REQ-001".to_string(),
+        },
+        EventKind::SliceSynthesisDivergence {
+            slice_name: "slice".into(),
+            requirement_id: "REQ-001".to_string(),
+        },
+        EventKind::SliceSynthesisUnknown {
+            slice_name: "slice".into(),
+            requirement_id: "REQ-001".to_string(),
+        },
+        EventKind::SliceSynthesizeStarted {
+            slice_name: "slice".into(),
+        },
+        EventKind::SliceSynthesizeAgent {
+            slice_name: "slice".into(),
+        },
+        EventKind::SliceSynthesizeCompleted {
+            slice_name: "slice".into(),
+            artifacts: vec![],
+        },
+        EventKind::SliceSynthesizeFailed {
+            slice_name: "slice".into(),
+            reason: "r".to_string(),
+        },
+        EventKind::SliceBuildStarted {
+            slice_name: "slice".into(),
+        },
+        EventKind::SliceBuildSucceeded {
+            slice_name: "slice".into(),
+        },
+        EventKind::SliceBuildFailed {
+            slice_name: "slice".into(),
+            reason: "r".to_string(),
+        },
+        EventKind::SliceMergeStarted {
+            slice_name: "slice".into(),
+        },
+        EventKind::SliceMergeSucceeded {
+            slice_name: "slice".into(),
+        },
+        EventKind::SliceMergeFailed {
+            slice_name: "slice".into(),
+            reason: "r".to_string(),
+        },
+        EventKind::SliceReplayCompleted {
+            slice_name: "slice".into(),
+            runner: "runner".to_string(),
+            passed: 1,
+            failed: 0,
+            skipped: 0,
+        },
+        EventKind::SliceArchiveCreated {
+            slice_name: "slice".into(),
+            touched_specs: vec![],
+            outcome_summary: "ok".to_string(),
+            merge_sha: None,
+            decisions: vec![],
+        },
+    ]
+}
+
+fn sample_runtime_kinds() -> Vec<EventKind> {
+    use crate::adapter::operation::SourceOperation;
+
+    vec![
+        EventKind::SourceSurveyCompleted {
+            source: "src".to_string(),
+            adapter: "adp".to_string(),
+        },
+        EventKind::SourceExecutionAgent {
+            source: "src".to_string(),
+            adapter: "adp".to_string(),
+            operation: SourceOperation::Survey,
+        },
+        EventKind::TargetExecutionAgent {
+            slice: "slice".into(),
+            target: "omnia".to_string(),
+        },
+        EventKind::CliUpgraded {
+            from: "0.1.0".to_string(),
+            to: "0.2.0".to_string(),
+            channel: "cargo".to_string(),
+        },
+        EventKind::PluginsRefreshed {
+            deleted_paths: vec![],
+            marketplace: "marketplace.json".to_string(),
+        },
+        EventKind::MigrationApplied {
+            kind: "v2-to-v3".to_string(),
+            files_rewritten: 0,
+            files_moved: 0,
+        },
+        EventKind::MigrationSkipped {
+            kind: "v2-to-v3".to_string(),
+            reason: "staged-validation-failed".to_string(),
+        },
+        EventKind::WorkspaceSyncCompleted { projects: vec![] },
+        EventKind::WorkspacePushCompleted {
+            plan_name: "plan".into(),
+            branch: "specify/plan".to_string(),
+            projects: vec![],
+        },
+        EventKind::LintCompleted(LintCompletedPayload {
+            scope: LintScope {
+                target: None,
+                slice: None,
+                artifact: None,
+            },
+            duration_ms: 0,
+            counts: LintCounts {
+                open: 0,
+                ignored: 0,
+                false_positive: 0,
+            },
+            baseline_present: false,
+            exit_code: 0,
+        }),
+    ]
+}
+
+#[test]
+fn wire_event_ids_match_serde_renames() {
+    // Compile-time exhaustiveness: listing every variant with no
+    // wildcard arm makes this match fail to compile when a variant is
+    // added — the prompt to extend `sample_event_kinds` and
+    // `WIRE_EVENT_IDS` together.
+    let samples = sample_event_kinds();
+    for kind in &samples {
+        match kind {
+            EventKind::PlanTransitionApproved { .. }
+            | EventKind::PlanTransitionUndone { .. }
+            | EventKind::PlanEntryAdvanced { .. }
+            | EventKind::PlanAmendDivergence { .. }
+            | EventKind::SliceTransitionRefined { .. }
+            | EventKind::SliceExtractCompleted { .. }
+            | EventKind::SliceSynthesisConflict { .. }
+            | EventKind::SliceSynthesisDivergence { .. }
+            | EventKind::SliceSynthesisUnknown { .. }
+            | EventKind::SliceSynthesizeStarted { .. }
+            | EventKind::SliceSynthesizeAgent { .. }
+            | EventKind::SliceSynthesizeCompleted { .. }
+            | EventKind::SliceSynthesizeFailed { .. }
+            | EventKind::SliceBuildStarted { .. }
+            | EventKind::SliceBuildSucceeded { .. }
+            | EventKind::SliceBuildFailed { .. }
+            | EventKind::SliceMergeStarted { .. }
+            | EventKind::SliceMergeSucceeded { .. }
+            | EventKind::SliceMergeFailed { .. }
+            | EventKind::SourceSurveyCompleted { .. }
+            | EventKind::SourceExecutionAgent { .. }
+            | EventKind::TargetExecutionAgent { .. }
+            | EventKind::SliceReplayCompleted { .. }
+            | EventKind::PlanAmendAuthorityOverride { .. }
+            | EventKind::PlanReconcileCompleted { .. }
+            | EventKind::SliceArchiveCreated { .. }
+            | EventKind::CliUpgraded { .. }
+            | EventKind::PluginsRefreshed { .. }
+            | EventKind::MigrationApplied { .. }
+            | EventKind::MigrationSkipped { .. }
+            | EventKind::WorkspaceSyncCompleted { .. }
+            | EventKind::WorkspacePushCompleted { .. }
+            | EventKind::LintCompleted(_) => {}
+        }
+    }
+
+    let mut serialised: Vec<String> = samples
+        .iter()
+        .map(|kind| {
+            let event = Event::new(test_timestamp("2026-05-21T20:00:00Z"), kind.clone());
+            let value = serde_json::to_value(&event).expect("event serialises");
+            value["event"].as_str().expect("event id is a string").to_string()
+        })
+        .collect();
+    serialised.sort();
+    serialised.dedup();
+    assert_eq!(
+        serialised, WIRE_EVENT_IDS,
+        "WIRE_EVENT_IDS must equal the serde renames of every EventKind variant"
+    );
+
+    for window in WIRE_EVENT_IDS.windows(2) {
+        assert!(
+            window[0] < window[1],
+            "WIRE_EVENT_IDS must stay sorted: `{}` >= `{}`",
+            window[0],
+            window[1]
+        );
+    }
 }

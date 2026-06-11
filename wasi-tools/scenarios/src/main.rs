@@ -3,17 +3,20 @@
 //! Run under `specify lint framework`'s `kind: tool` evaluator. The
 //! evaluator invokes the tool once per candidate file (a sentinel path,
 //! since scenario checks are whole-tree) and reads `PROJECT_DIR` from the
-//! environment. The positional path argument names the rule's own
-//! sentinel file (e.g. `…/CORE-028-…md`); the tool reads the `CORE-NNN`
-//! out of it and scopes its output to that rule, so the family tool can
-//! back CORE-028..033 without each rule double-counting the others'
-//! findings. With no recognisable rule in the args the tool emits the
-//! whole family (direct local debugging).
+//! environment. The positional args carry the rule's own sentinel file
+//! (e.g. `…/CORE-028-…md`) and — when the rule declares one — its
+//! `config:` serialised as JSON. The tool reads the `CORE-NNN` out of
+//! the sentinel and scopes its output to that rule, so the family tool
+//! can back CORE-028..033 and CORE-056 without each rule
+//! double-counting the others' findings; CORE-056's catalog↔runs policy
+//! (paths, value sets, status↔result map) rides in the forwarded
+//! config, never this binary. With no recognisable rule in the args the
+//! tool emits the whole family (direct local debugging).
 //!
-//! Findings are emitted on stdout as a `DiagnosticReport` envelope the
-//! host folds into its scan output; each carries its own
-//! `rule-id: CORE-NNN` and `severity: important`. The host restamps `id`
-//! and `fingerprint`.
+//! Findings are emitted on stdout as the shared
+//! [`specify_framework_wire`] `DiagnosticReport` envelope; each carries
+//! its own `rule-id: CORE-NNN` and `severity: important`. The host
+//! restamps `id` and `fingerprint`.
 //!
 //! Exit is always `0` on a successful run: the host treats a non-zero
 //! exit with no parsed findings as an invocation failure, so a clean tree
@@ -22,120 +25,46 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use serde::Serialize;
+use specify_framework_wire::{Row, parsed_config, print_report, requested_rule};
 use specify_scenarios::{
-    RULE_ARTIFACT_PATH_UNSAFE, RULE_BODY_ID_MISMATCH, RULE_RECORDED_TRACE_VIOLATION,
-    RULE_STAGES_NOT_CONTIGUOUS, ScenarioFinding, run,
+    RULE_ARTIFACT_PATH_UNSAFE, RULE_BODY_ID_MISMATCH, RULE_CATALOG_RUNS_DRIFT,
+    RULE_RECORDED_TRACE_VIOLATION, RULE_STAGES_NOT_CONTIGUOUS, ScenarioFinding, run_with_config,
 };
-
-/// Placeholder fingerprint; the host recomputes it on fold. Kept in the
-/// `sha256:<64 hex>` wire shape so the envelope deserialises.
-const PLACEHOLDER_FINGERPRINT: &str =
-    "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Every codex id this tool can emit, scanned for in the positional
 /// args to scope a single invocation to one rule.
 const RULES: &[&str] = &[
     RULE_ARTIFACT_PATH_UNSAFE,
     RULE_BODY_ID_MISMATCH,
+    RULE_CATALOG_RUNS_DRIFT,
     RULE_RECORDED_TRACE_VIOLATION,
     RULE_STAGES_NOT_CONTIGUOUS,
 ];
 
 fn main() -> ExitCode {
     let Ok(project_dir) = std::env::var("PROJECT_DIR").map(PathBuf::from) else {
-        print_report(&[]);
+        print_report("scenarios", []);
         return ExitCode::SUCCESS;
     };
-    let scoped = requested_rule();
-    let findings: Vec<ScenarioFinding> = run(&project_dir)
+    let args: Vec<String> = std::env::args().collect();
+    let scoped = requested_rule(&args, RULES);
+    let config = parsed_config(&args);
+    let findings: Vec<ScenarioFinding> = run_with_config(&project_dir, config.as_ref())
         .into_iter()
         .filter(|finding| scoped.is_none_or(|rule| finding.rule_id == rule))
         .collect();
-    print_report(&findings);
+    print_report("scenarios", findings.iter().map(row));
     ExitCode::SUCCESS
 }
 
-/// The single `CORE-NNN` named in the positional args (the rule's
-/// sentinel file path), or `None` when no recognised rule is present.
-fn requested_rule() -> Option<&'static str> {
-    std::env::args().find_map(|arg| RULES.iter().copied().find(|rule| arg.contains(rule)))
-}
-
-fn print_report(findings: &[ScenarioFinding]) {
-    let report = Report::from_findings(findings);
-    match serde_json::to_string(&report) {
-        Ok(json) => println!("{json}"),
-        Err(err) => eprintln!("scenarios: failed to serialise report: {err}"),
-    }
-}
-
-#[derive(Serialize)]
-struct Report {
-    version: u8,
-    summary: Summary,
-    findings: Vec<Finding>,
-}
-
-impl Report {
-    fn from_findings(findings: &[ScenarioFinding]) -> Self {
-        let wire: Vec<Finding> = findings.iter().enumerate().map(Finding::from_indexed).collect();
-        Self {
-            version: 1,
-            summary: Summary {
-                critical: 0,
-                important: u32::try_from(wire.len()).unwrap_or(u32::MAX),
-                suggestion: 0,
-                optional: 0,
-            },
-            findings: wire,
-        }
-    }
-}
-
-#[derive(Serialize)]
-struct Summary {
-    critical: u32,
-    important: u32,
-    suggestion: u32,
-    optional: u32,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct Finding {
-    id: String,
-    rule_id: String,
-    title: String,
-    severity: String,
-    source: String,
-    artifact: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    location: Option<Location>,
-    evidence: Evidence,
-    impact: String,
-    remediation: String,
-    fingerprint: String,
-}
-
-impl Finding {
-    fn from_indexed((index, finding): (usize, &ScenarioFinding)) -> Self {
-        let (impact, remediation) = guidance(finding.rule_id);
-        Self {
-            id: format!("FIND-{:04}", index + 1),
-            rule_id: finding.rule_id.to_string(),
-            title: finding.message.clone(),
-            severity: "important".to_string(),
-            source: "tool".to_string(),
-            artifact: "unknown".to_string(),
-            location: finding.path.clone().map(|path| Location { path }),
-            evidence: Evidence::Snippet {
-                value: finding.message.clone(),
-            },
-            impact: impact.to_string(),
-            remediation: remediation.to_string(),
-            fingerprint: PLACEHOLDER_FINGERPRINT.to_string(),
-        }
+fn row(finding: &ScenarioFinding) -> Row<'_> {
+    let (impact, remediation) = guidance(finding.rule_id);
+    Row {
+        rule_id: finding.rule_id,
+        message: &finding.message,
+        path: finding.path.as_deref(),
+        impact,
+        remediation,
     }
 }
 
@@ -154,20 +83,13 @@ fn guidance(rule_id: &str) -> (&'static str, &'static str) {
             "A recorded-trace file's first line is not a well-formed `recorded-trace-header`, so replay cannot trust its provenance.",
             "Make the first line a JSON `recorded-trace-header` object with schemaVersion 1 and every required field populated.",
         ),
+        RULE_CATALOG_RUNS_DRIFT => (
+            "The scenario catalog, the scenario files, and the committed run records disagree, so the catalog's gate status cannot be trusted.",
+            "Reconcile the catalog row with the scenario tree and evals/runs/: status-bearing rows need exactly one committed record whose <result> agrees.",
+        ),
         _ => (
             "Scenario stages are not a contiguous slice of the slice loop; the pack does not describe a runnable lifecycle window.",
             "Reorder the scenario's `stages` list to a contiguous run of [plan, refine, build, merge, drop] anchored at any element.",
         ),
     }
-}
-
-#[derive(Serialize)]
-struct Location {
-    path: String,
-}
-
-#[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-enum Evidence {
-    Snippet { value: String },
 }

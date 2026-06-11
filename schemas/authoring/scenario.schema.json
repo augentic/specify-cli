@@ -8,7 +8,6 @@
     "id",
     "owner",
     "kind",
-    "backend",
     "entrypoint",
     "stages",
     "isolation"
@@ -36,11 +35,6 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]*@v\\d+$",
       "description": "Versioned adapter identifier, e.g. `contracts@v1`. Required when `kind` is `adapter` or `adapter-boundary` (enforced by allOf below)."
-    },
-    "backend": {
-      "type": "string",
-      "enum": ["manual", "agent", "recorded", "fixture"],
-      "description": "Scenario execution style. `manual` documents a human-driven scenario; `agent`, `recorded`, and `fixture` are reserved for future automation."
     },
     "entrypoint": {
       "type": "string",

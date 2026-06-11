@@ -10,7 +10,7 @@
 //! replaced tempdir paths and today's date with deterministic placeholders.
 //! When a subcommand's output shape intentionally changes, rerun this file
 //! with `REGENERATE_GOLDENS=1` and commit the diff — see
-//! [DECISIONS.md](../DECISIONS.md) §"Change J — golden JSON generation".
+//! [testing.md §"Golden files"](../docs/standards/testing.md).
 
 use std::fs;
 use std::path::PathBuf;
@@ -20,8 +20,8 @@ use serde_json::Value;
 
 mod common;
 use common::{
-    GIT_ENV, Project, assert_golden_at, copy_dir, omnia_schema_dir, parse_stdout, repo_root,
-    run_git, specify_cmd,
+    GIT_ENV, Project, assert_golden_at, copy_dir, hold_plan_lock, omnia_schema_dir, parse_stdout,
+    repo_root, run_git, specify_cmd,
 };
 use tempfile::tempdir;
 
@@ -120,6 +120,7 @@ slices:
     status: in-progress
 ",
     );
+    let _lock = project.hold_plan_lock();
 
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -156,6 +157,61 @@ slices:
 
     let actual = parse_stdout(&assert.get_output().stdout, project.root());
     assert_golden("merge-two-spec.json", actual);
+}
+
+#[test]
+fn workspace_merge_stamps_plan_via_plan_dir() {
+    // Workspace routing: merge runs inside the slot (which carries no
+    // plan.yaml by design) with `--plan-dir` pointing at the initiating
+    // workspace root, so `slice merge` — the sole writer of per-entry
+    // `done` — stamps the workspace plan from the slot.
+    let tmp = tempdir().expect("tempdir");
+    let workspace_root = tmp.path();
+    fs::write(
+        workspace_root.join("plan.yaml"),
+        "\
+name: merge-e2e
+slices:
+  - name: my-slice
+    project: orders
+    status: in-progress
+",
+    )
+    .expect("write workspace plan.yaml");
+
+    let project_root = workspace_root.join(".specify/workspace/orders");
+    fs::create_dir_all(&project_root).expect("mkdir workspace project");
+    specify_cmd()
+        .current_dir(&project_root)
+        .args(["init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "orders"])
+        .assert()
+        .success();
+    copy_dir(&omnia_schema_dir(), &project_root.join("adapters").join("targets").join("omnia"));
+    copy_dir(
+        &e2e_fixtures().join("merge-two-spec-slice"),
+        &project_root.join(".specify/slices/my-slice"),
+    );
+
+    // The driver lock lives at the *workspace* root (`--plan-dir`), not
+    // the slot — the probe must resolve through `Layout::plan_dir()`.
+    let _lock = hold_plan_lock(workspace_root);
+
+    specify_cmd()
+        .current_dir(&project_root)
+        .args(["--format", "json", "--plan-dir"])
+        .arg(workspace_root)
+        .args(["slice", "merge", "run", "my-slice"])
+        .assert()
+        .success();
+
+    assert!(!project_root.join("plan.yaml").exists(), "the slot must not grow its own plan.yaml");
+    let plan_yaml = fs::read_to_string(workspace_root.join("plan.yaml")).expect("read plan.yaml");
+    assert!(
+        plan_yaml.contains("status: done"),
+        "merge must stamp the workspace plan entry done, got:\n{plan_yaml}"
+    );
 }
 
 #[test]

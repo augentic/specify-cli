@@ -18,6 +18,11 @@ pub struct Ctx {
     pub(crate) format: Format,
     pub(crate) project_dir: PathBuf,
     pub(crate) config: ProjectConfig,
+    /// Plan root override from the global `--plan-dir` flag
+    /// (env `SPECIFY_PLAN_DIR`): the initiating workspace root while
+    /// phase verbs run inside a workspace slot. `None` anchors plan
+    /// artifacts at the project root as usual.
+    pub(crate) plan_dir: Option<PathBuf>,
 }
 
 impl Ctx {
@@ -27,22 +32,25 @@ impl Ctx {
     /// Returns `Err(Error)` on failure so callers can propagate with `?`.
     /// The top-level dispatcher (`scoped`) converts `Error` to
     /// the format-aware exit code.
-    pub(crate) fn load(format: Format) -> Result<Self, Error> {
+    pub(crate) fn load(format: Format, plan_dir: Option<PathBuf>) -> Result<Self, Error> {
         let current_dir = std::env::current_dir().map_err(Error::Io)?;
-        Self::load_at(format, &current_dir)
+        Self::load_at(format, plan_dir, &current_dir)
     }
 
     /// Variant of [`Self::load`] that walks from `start_dir` instead of
     /// the process CWD. Used by handlers that accept a `--project-dir`
     /// flag (e.g. `specify lint`); the resolved `project_dir` is the
     /// nearest ancestor of `start_dir` containing `.specify/project.yaml`.
-    pub(crate) fn load_at(format: Format, start_dir: &Path) -> Result<Self, Error> {
+    pub(crate) fn load_at(
+        format: Format, plan_dir: Option<PathBuf>, start_dir: &Path,
+    ) -> Result<Self, Error> {
         let project_dir = ProjectConfig::find_root(start_dir).ok_or(Error::NotInitialized)?;
         let config = ProjectConfig::load(&project_dir)?;
         Ok(Self {
             format,
             project_dir,
             config,
+            plan_dir,
         })
     }
 
@@ -71,7 +79,7 @@ impl Ctx {
     /// [`specify_workflow::config::with_state`] in handlers that mutate
     /// `plan.yaml` / `registry.yaml`.
     pub(crate) fn layout(&self) -> Layout<'_> {
-        Layout::new(&self.project_dir)
+        Layout::new(&self.project_dir).with_plan_dir(self.plan_dir.as_deref())
     }
 
     /// Single dispatcher-boundary read of the wall clock. Library crates

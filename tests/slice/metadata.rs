@@ -6,7 +6,7 @@ use crate::support::*;
 #[test]
 fn metadata_without_outcome_still_parses() {
     use specify_workflow::slice::SliceMetadata;
-    // A freshly-created slice writes `.metadata.yaml` with no `outcome`
+    // A freshly-created slice writes `metadata.yaml` with no `outcome`
     // key (omitted via `skip_serializing_if`) — byte-for-byte the
     // back-compat shape of metadata that predates the field. Drive
     // creation through `slice create` rather than hand-writing the file

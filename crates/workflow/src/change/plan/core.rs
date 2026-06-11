@@ -11,6 +11,7 @@ pub mod model;
 pub mod next;
 pub mod propose;
 pub mod remove;
+pub mod status;
 pub mod transitions;
 pub mod validate;
 
@@ -28,9 +29,15 @@ pub use propose::{
     ProposalRequest, ProposalResponse, ProposeOutcome, ResponseMember, ResponseSlice,
     build_catalog, build_request, detect_missing_platforms, resolve_target, resolve_topology,
 };
+pub use status::{
+    NextActionKind, StatusBody, StatusCounts, StopBody, StopReason, drained_line, plan_status_body,
+};
 #[cfg(test)]
 pub use test_fixtures::{PLAN_EXAMPLE_YAML, change, change_with_deps, plan_with_changes};
-pub use validate::{orphan_authority_override_keys, plan_finding, plan_finding_structured};
+pub use validate::{
+    orphan_authority_override_keys, plan_finding, plan_finding_structured,
+    reject_duplicate_source_keys,
+};
 
 #[cfg(test)]
 mod test_fixtures {
@@ -46,16 +53,16 @@ mod test_fixtures {
     pub const PLAN_EXAMPLE_YAML: &str = r"name: platform-v2
 sources:
   monolith:
-    adapter: code-typescript
+    adapter: typescript
     path: /path/to/legacy-codebase
   orders:
-    adapter: code-typescript
+    adapter: typescript
     path: git@github.com:org/orders-service.git
   payments:
-    adapter: code-typescript
+    adapter: typescript
     path: git@github.com:org/payments-service.git
   frontend:
-    adapter: code-typescript
+    adapter: typescript
     path: git@github.com:org/web-app.git
 slices:
   - name: user-registration

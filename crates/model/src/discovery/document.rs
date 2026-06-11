@@ -76,7 +76,7 @@ impl Discovery {
         Parser::new(text).run()
     }
 
-    /// Parse a survey `lead-set.md` artifact.
+    /// Parse a survey `leads.md` artifact.
     ///
     /// Survey briefs ask agents to write only `### <lead>` blocks; the
     /// CLI owns the surrounding `## Lead inventory` frame. This accepts

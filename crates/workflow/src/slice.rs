@@ -1,4 +1,4 @@
-//! Slice `.metadata.yaml`, lifecycle, and naming.
+//! Slice `metadata.yaml`, lifecycle, and naming.
 //!
 //! Verb-level filesystem operations live in [`actions`].
 

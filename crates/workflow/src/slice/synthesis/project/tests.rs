@@ -40,7 +40,7 @@ fn requirement(
         title: title.to_string(),
         status: None,
         agreement,
-        unit: Some("password-reset".to_string()),
+        domain: Some("password-reset".to_string()),
         sources: Vec::new(),
         claims,
         statement: statement.to_string(),

@@ -24,7 +24,7 @@ pub struct Overlap {
 
 /// Detect overlap between this slice's `touched_specs` and every other
 /// active slice's. "Active" means a directory under `slices_dir` that
-/// has a `.metadata.yaml` and is not `slice_name` itself.
+/// has a `metadata.yaml` and is not `slice_name` itself.
 ///
 /// Merged and dropped slices still appear on disk until the archive
 /// move completes, so we additionally filter by status: only

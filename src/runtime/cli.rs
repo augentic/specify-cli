@@ -11,6 +11,7 @@ use specify_model::evidence::ClaimKind;
 pub use crate::output::Format;
 use crate::runtime::commands::archive::cli::ArchiveAction;
 use crate::runtime::commands::catalog::cli::CatalogAction;
+use crate::runtime::commands::contract::cli::ContractAction;
 use crate::runtime::commands::journal::cli::JournalAction;
 use crate::runtime::commands::lint::cli::LintAction;
 use crate::runtime::commands::plan::cli::PlanAction;
@@ -38,6 +39,16 @@ pub struct Cli {
     /// out from skills.
     #[arg(long, env = "SPECIFY_FORMAT", default_value = "text", global = true)]
     pub(crate) format: Format,
+
+    /// Plan root override: the directory holding the governing
+    /// `plan.yaml` (plus `change.md` / `discovery.md`) when it is not
+    /// the project root. Set by the `/spec:execute` routing layer (or
+    /// `SPECIFY_PLAN_DIR`) to the initiating workspace root while
+    /// phase verbs run inside a workspace slot, so slice-time plan
+    /// reads and the merge `done` stamp resolve against the
+    /// workspace's plan.
+    #[arg(long, env = "SPECIFY_PLAN_DIR", value_name = "PATH", global = true)]
+    pub(crate) plan_dir: Option<std::path::PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -113,7 +124,7 @@ pub enum Commands {
     /// Source adapter operations (workflow contract). Source adapters provide
     /// `extract` + `survey` capabilities and are resolved against
     /// `adapters/sources/<name>/adapter.yaml` (in-repo) or
-    /// `.specify/.cache/manifests/sources/<name>/` (agent manifest cache).
+    /// `.specify/cache/manifests/sources/<name>/` (agent manifest cache).
     Source {
         #[command(subcommand)]
         action: SourceAction,
@@ -122,7 +133,7 @@ pub enum Commands {
     /// Target adapter operations (workflow contract). Target adapters provide
     /// `shape` + `build` + `merge` capabilities and are resolved
     /// against `adapters/targets/<name>/adapter.yaml` (in-repo) or
-    /// `.specify/.cache/manifests/targets/<name>/` (agent manifest cache).
+    /// `.specify/cache/manifests/targets/<name>/` (agent manifest cache).
     Target {
         #[command(subcommand)]
         action: TargetAction,
@@ -216,6 +227,15 @@ pub enum Commands {
     Completions {
         /// Target shell — one of `bash`, `elvish`, `fish`, `powershell`, `zsh`.
         shell: Shell,
+    },
+
+    /// Machine-readable CLI contract (verbs, exit codes, error ids,
+    /// journal event ids, embedded schemas). Read-only and
+    /// project-context-free; the lint cross-check and external
+    /// documentation tooling consume `contract dump --format json`.
+    Contract {
+        #[command(subcommand)]
+        action: ContractAction,
     },
 
     /// Migrate a `.specify/` project across a major version boundary.

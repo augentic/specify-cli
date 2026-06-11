@@ -24,7 +24,7 @@ fn root_spec_without_canonical() {
     assert_eq!(value["error"], "slice-pre-adapter-gate");
     let detail = find_finding_impact(assert.get_output(), "specs.file-location");
     assert!(
-        detail.contains("specs/<unit>/spec.md"),
+        detail.contains("specs/<domain>/spec.md"),
         "detail must name the canonical layout, got: {detail}"
     );
     assert!(detail.contains("slice root"), "detail must mention the slice root, got: {detail}");

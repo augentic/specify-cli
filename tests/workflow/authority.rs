@@ -8,7 +8,7 @@ const AUTHORITY_OVERRIDE_PLAN: &str = "\
 name: identity-revamp
 sources:
   legacy:
-    adapter: code-typescript
+    adapter: typescript
     path: ./legacy-monolith
   runtime:
     adapter: captures
@@ -328,7 +328,7 @@ fn add_authority_override_seeds_map() {
         "name: identity-revamp\n\
         sources:\n\
         \x20\x20legacy:\n\
-        \x20\x20\x20\x20adapter: code-typescript\n\
+        \x20\x20\x20\x20adapter: typescript\n\
         \x20\x20\x20\x20path: ./legacy\n\
         \x20\x20runtime:\n\
         \x20\x20\x20\x20adapter: captures\n\

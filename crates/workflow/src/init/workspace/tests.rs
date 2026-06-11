@@ -43,7 +43,7 @@ mod init {
 
         assert!(!tmp.path().join(".specify/slices").exists());
         assert!(!tmp.path().join(".specify/specs").exists());
-        assert!(!tmp.path().join(".specify/.cache").exists());
+        assert!(!tmp.path().join(".specify/cache").exists());
 
         let cfg = ProjectConfig::load(tmp.path()).expect("reload project.yaml");
         assert!(cfg.adapter.is_none(), "workspace project.yaml must omit adapter:");

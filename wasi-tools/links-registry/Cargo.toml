@@ -24,6 +24,7 @@ path = "src/lib.rs"
 regex = "1"
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+specify-framework-wire.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

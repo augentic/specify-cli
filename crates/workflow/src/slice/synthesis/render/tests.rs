@@ -14,7 +14,7 @@ requirements:
   - id: REQ-001
     title: Request password reset
     status: agreed
-    unit: password-reset
+    domain: password-reset
     agreement: agreed
     sources: [docs, legacy]
     claims:
@@ -28,7 +28,7 @@ requirements:
   - id: REQ-002
     title: Reset link expiry
     status: divergence
-    unit: password-reset
+    domain: password-reset
     agreement: disagreed
     sources: [docs, legacy]
     claims:
@@ -70,7 +70,7 @@ fn agreed_block_round_trips_through_parser() {
     let model = worked_model();
     let specs = render_spec_files(&model);
     assert_eq!(specs.len(), 1);
-    assert_eq!(specs[0].unit, "password-reset");
+    assert_eq!(specs[0].domain, "password-reset");
 
     let parsed = parse_spec_md(&specs[0].content);
     assert!(parsed.findings.is_empty(), "rendered output parses cleanly");
@@ -103,6 +103,35 @@ fn divergence_emits_tag_and_round_trips() {
 }
 
 #[test]
+fn unknown_block_renders_empty_sources() {
+    // Contract: an evidence-less requirement renders the literal
+    // `Sources: []` (legal exactly when `Status: unknown`) and
+    // round-trips the provenance validator cleanly.
+    let raw = "version: 1
+slice: bootstrap-core
+project: shop-mobile
+requirements:
+  - id: REQ-001
+    title: Buildable core crate
+    status: unknown
+    domain: app-foundation
+    sources: []
+    claims: []
+    statement: The repository contains a buildable core crate.
+tasks: []
+";
+    let model = SliceModel::parse_yaml(raw).expect("model validates");
+    let block = render_block(&model.requirements[0]);
+    assert!(block.contains("\nSources: []\n"), "renders bracketed empty list: {block}");
+
+    let parsed = parse_spec_md(&block);
+    assert!(parsed.findings.is_empty(), "{:?}", parsed.findings);
+    let findings =
+        specify_model::spec::provenance::validate(&parsed, &std::collections::BTreeSet::new());
+    assert!(findings.is_empty(), "{findings:?}");
+}
+
+#[test]
 fn scenarios_render_as_headings_and_parse() {
     // Regression for augentic/specify#150: scenarios must render as
     // `#### Scenario:` H4 headings (not `- ` bullets) so the spec parser
@@ -114,7 +143,7 @@ requirements:
   - id: REQ-001
     title: Fix the typo
     status: agreed
-    unit: greeting
+    domain: greeting
     sources: [intent]
     claims:
       - source: intent
@@ -164,13 +193,13 @@ fn expected_provenance_lines_match_model() {
         expected,
         vec![
             ExpectedRequirement {
-                unit: "password-reset".to_string(),
+                domain: "password-reset".to_string(),
                 id: "REQ-001".to_string(),
                 sources: vec!["docs".to_string(), "legacy".to_string()],
                 status: Some(RequirementStatus::Agreed),
             },
             ExpectedRequirement {
-                unit: "password-reset".to_string(),
+                domain: "password-reset".to_string(),
                 id: "REQ-002".to_string(),
                 sources: vec!["docs".to_string(), "legacy".to_string()],
                 status: Some(RequirementStatus::Divergence),

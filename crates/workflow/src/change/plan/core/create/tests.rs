@@ -180,15 +180,14 @@ fn init_empty_plan() {
 #[test]
 fn init_preserves_sources() {
     let mut sources = BTreeMap::new();
-    sources
-        .insert("monolith".to_string(), SourceBinding::path("code-typescript", "/path/to/legacy"));
+    sources.insert("monolith".to_string(), SourceBinding::path("typescript", "/path/to/legacy"));
     sources.insert(
         "orders".to_string(),
-        SourceBinding::path("code-typescript", "git@github.com:org/orders.git"),
+        SourceBinding::path("typescript", "git@github.com:org/orders.git"),
     );
     sources.insert(
         "payments".to_string(),
-        SourceBinding::path("code-typescript", "git@github.com:org/payments.git"),
+        SourceBinding::path("typescript", "git@github.com:org/payments.git"),
     );
 
     let plan = Plan::init("big", sources.clone()).expect("init ok");

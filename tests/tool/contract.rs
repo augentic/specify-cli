@@ -11,6 +11,29 @@ fn contract_wasm() -> PathBuf {
     repo_root().join("wasi-tools/contract/dist/contract-0.2.0.wasm")
 }
 
+/// The checked-in contract dist blob must hash to the digest recorded in
+/// its `.sha256` sidecar — the same trust anchor the seven framework
+/// tools carry (`dist_digests_pinned`). Goes red if the `.wasm` is
+/// rebuilt without regenerating its sidecar (or vice versa); `cargo make
+/// contract-wasm` refreshes both together.
+#[test]
+fn dist_digest_pinned() {
+    let wasm = contract_wasm();
+    let sidecar = wasm.with_extension("wasm.sha256");
+    let contents = fs::read_to_string(&sidecar)
+        .unwrap_or_else(|err| panic!("read sidecar {}: {err}", sidecar.display()));
+    let recorded = contents
+        .split_whitespace()
+        .next()
+        .unwrap_or_else(|| panic!("sidecar {} is empty", sidecar.display()));
+    assert_eq!(
+        sha256_hex(&wasm),
+        recorded,
+        "contract dist blob drifted from sidecar {}; run `cargo make contract-wasm`",
+        sidecar.display()
+    );
+}
+
 struct ContractToolFixture {
     _tmp: TempDir,
     project: PathBuf,

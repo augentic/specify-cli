@@ -8,6 +8,7 @@ use specify_error::Error;
 
 use super::bootstrap::{self, greenfield_init};
 use super::git::{self, git_output_ok};
+use super::mirror::mirror_adapters;
 use super::slot_problem::inspect_at;
 use super::{contracts_base, registry_symlink_target, workspace_base, workspace_slot_path};
 use crate::cmd;
@@ -49,6 +50,22 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
         });
         if let Err(err) = result {
             errors.push(format!("{}: {err}", project.name));
+        }
+    }
+
+    // RFC-45: provision each synced slot's manifest cache with the
+    // workspace's adapter set so slot-side resolution stays
+    // project-local. Local symlink slots are mirrored too — the write
+    // lands only under the peer's gitignored `.specify/cache/`.
+    for project in projects {
+        let Ok(slot) = workspace_slot_path(&base, &project.name) else {
+            continue;
+        };
+        if !slot.join(".specify").is_dir() || resolves_to_workspace(project_dir, &slot) {
+            continue;
+        }
+        if let Err(err) = mirror_adapters(project_dir, &slot) {
+            errors.push(format!("{} (adapters): {err}", project.name));
         }
     }
 
@@ -123,6 +140,15 @@ pub fn regenerate_topology_lock(project_dir: &Path, registry: &Registry) -> Resu
         fresh.save(&path)?;
     }
     Ok(())
+}
+
+/// A `url: .` registry entry symlinks its slot to the workspace
+/// itself; mirroring there would copy the manifest cache over itself.
+fn resolves_to_workspace(workspace_dir: &Path, slot: &Path) -> bool {
+    match (std::fs::canonicalize(workspace_dir), std::fs::canonicalize(slot)) {
+        (Ok(workspace), Ok(slot)) => workspace == slot,
+        _ => false,
+    }
 }
 
 fn prepare_workspace_base(project_dir: &Path) -> Result<PathBuf, Error> {

@@ -3,12 +3,15 @@
 //! Two mutually exclusive modes wrap the agent-led reconciliation kernel
 //! that lives in `crates/workflow/src/change/plan/core/propose.rs`:
 //!
-//! - `--dry-run` is read-only. It requires a `plan.yaml`, reads the
-//!   surveyed `discovery.md` lead inventory and the resolved project
-//!   topology, and emits the `kind: request` envelope
-//!   ([`ProposalRequest`]) for the agent to group. `--format json`
-//!   prints the schema-valid envelope verbatim; nothing is written and
-//!   no journal event fires.
+//! - `--dry-run` reads the surveyed `discovery.md` lead inventory and
+//!   the resolved project topology (a `plan.yaml` is required), and
+//!   emits the `kind: request` envelope ([`ProposalRequest`]) for the
+//!   agent to group. `--format json` prints the schema-valid envelope
+//!   verbatim. It writes no plan state and fires no journal event; its
+//!   only filesystem effect is recreating the plan scratch lane
+//!   (`.specify/scratch/plan/`) empty, so the agent has a fresh home
+//!   for the response envelope and `--from` can never consume a stale
+//!   one from a prior run.
 //! - `--from <response.json>` is the only writer. It schema-gates the
 //!   raw response bytes, deserialises the agent's grouping, **re-reads**
 //!   `discovery.md` and the topology (never trusting a prior dry-run
@@ -62,19 +65,35 @@ pub(super) fn propose(ctx: &Ctx, args: cli::ProposeArgs) -> Result<()> {
 }
 
 /// `--dry-run`: emit the `kind: request` reconciliation envelope. Reads
-/// `discovery.md` + topology; writes nothing.
+/// `discovery.md` + topology; writes no plan state. Recreates the plan
+/// scratch lane empty so the agent's response envelope
+/// (`.specify/scratch/plan/propose-response.json`) is always this
+/// run's — mirroring the source-operation `prepare` scratch reset.
 fn dry_run(ctx: &Ctx) -> Result<()> {
-    require_file(&ctx.project_dir)?;
+    require_file(ctx)?;
     let discovery = load_discovery(ctx)?;
     let topology = load_topology(ctx)?;
     let request = build_request(&discovery, &topology)?;
+    reset_plan_scratch(ctx)?;
     ctx.write(&request, write_request_text)
+}
+
+/// Recreate `.specify/scratch/plan/` empty, dropping any response
+/// envelope a prior run left behind.
+fn reset_plan_scratch(ctx: &Ctx) -> Result<()> {
+    let lane = ctx.layout().plan_scratch_dir();
+    match std::fs::remove_dir_all(&lane) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(Error::Io(err)),
+    }
+    std::fs::create_dir_all(&lane).map_err(Error::Io)
 }
 
 /// `--from`: schema-gate and project the agent response onto
 /// `plan.yaml.slices[]`, then emit the paired reconciliation events.
 fn from(ctx: &Ctx, response_path: &Path, reconcile_platforms: bool) -> Result<()> {
-    let plan_path = require_file(&ctx.project_dir)?;
+    let plan_path = require_file(ctx)?;
     let raw = read_response(response_path)?;
 
     // Schema gate on the raw bytes first: it enforces the kebab

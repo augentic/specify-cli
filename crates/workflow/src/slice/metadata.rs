@@ -1,4 +1,4 @@
-//! On-disk `<slice_dir>/.metadata.yaml` representation.
+//! On-disk `<slice_dir>/metadata.yaml` representation.
 //!
 //! [`SliceMetadata`] is the document, [`Outcome`] is the latest phase return
 //! surface read by `/spec:execute`, and [`TouchedSpec`] lists the specs
@@ -16,7 +16,7 @@ use crate::slice::OutcomeKind;
 /// Basename of the slice working directory under `.specify/`.
 pub const SLICES_DIR_NAME: &str = "slices";
 
-/// On-disk representation of `<slice_dir>/.metadata.yaml`.
+/// On-disk representation of `<slice_dir>/metadata.yaml`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub struct SliceMetadata {
@@ -73,7 +73,7 @@ pub struct SliceMetadata {
 }
 
 /// Result of a target-adapter operation (shape | build | merge) as
-/// recorded in `.metadata.yaml`. Read by `/spec:execute` on phase
+/// recorded in `metadata.yaml`. Read by `/spec:execute` on phase
 /// return to decide the next plan transition.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -82,7 +82,7 @@ pub struct Outcome {
     pub phase: TargetOperation,
     /// Success, failure, or deferred classification. The wire field
     /// name stays `outcome` for back-compat with existing
-    /// `.metadata.yaml` files and skill JSON consumers; the Rust name
+    /// `metadata.yaml` files and skill JSON consumers; the Rust name
     /// is `kind` so the `Outcome.outcome` field clash with the enclosing
     /// type is gone.
     #[serde(rename = "outcome")]
@@ -123,17 +123,17 @@ pub enum SpecKind {
 }
 
 impl SliceMetadata {
-    /// Convenience helper: `<slice_dir>/.metadata.yaml`.
+    /// Convenience helper: `<slice_dir>/metadata.yaml`.
     #[must_use]
     pub fn path(slice_dir: &Path) -> PathBuf {
-        slice_dir.join(".metadata.yaml")
+        slice_dir.join("metadata.yaml")
     }
 
-    /// Load `.metadata.yaml` from a slice directory.
+    /// Load `metadata.yaml` from a slice directory.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::ArtifactNotFound`] (`kind = ".metadata.yaml"`)
+    /// Returns [`Error::ArtifactNotFound`] (`kind = "metadata.yaml"`)
     /// when the file is absent — the canonical "not a slice directory"
     /// signal that `specify slice list` and `/spec:execute` rely on.
     /// [`Error::YamlDe`] surfaces serde-saphyr deserialisation failures
@@ -144,7 +144,7 @@ impl SliceMetadata {
         let path = Self::path(slice_dir);
         if !path.exists() {
             return Err(Error::ArtifactNotFound {
-                kind: ".metadata.yaml",
+                kind: "metadata.yaml",
                 path,
             });
         }
@@ -153,7 +153,7 @@ impl SliceMetadata {
         Ok(meta)
     }
 
-    /// Atomically write `.metadata.yaml` to a slice directory,
+    /// Atomically write `metadata.yaml` to a slice directory,
     /// overwriting if present. Always trailing-newlined.
     ///
     /// # Errors
@@ -165,7 +165,7 @@ impl SliceMetadata {
     /// write / `sync_all` / atomic rename in
     /// [`specify_model::atomic::yaml_write`] fails. The atomicity
     /// envelope is preserved: a failure here leaves any pre-existing
-    /// `.metadata.yaml` intact.
+    /// `metadata.yaml` intact.
     pub fn save(&self, slice_dir: &Path) -> Result<(), Error> {
         let path = Self::path(slice_dir);
         specify_model::atomic::yaml_write(&path, self)

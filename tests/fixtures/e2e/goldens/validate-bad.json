@@ -139,17 +139,17 @@
       "artifact": "specs",
       "evidence": {
         "kind": "snippet",
-        "value": "one or more units listed in the proposal have no matching spec file"
+        "value": "one or more domains listed in the proposal have no matching spec file"
       },
-      "fingerprint": "sha256:910e2c6eb4aa4f7894698df1901d8fa3e895945d94ff51b6bb411cfa9c28ce94",
+      "fingerprint": "sha256:ecd81088f322a3f6a9e1c1ee807e29ee3bbfca08d96b020d94a887b13319235e",
       "id": "DIAG-0008",
-      "impact": "one or more units listed in the proposal have no matching spec file",
+      "impact": "one or more domains listed in the proposal have no matching spec file",
       "kind": "violation",
-      "remediation": "Every unit listed in the proposal has a matching spec file",
-      "rule-id": "cross.proposal-units-have-specs",
+      "remediation": "Every domain listed in the proposal has a matching spec file",
+      "rule-id": "cross.proposal-domains-have-specs",
       "severity": "important",
       "source": "deterministic",
-      "title": "Every unit listed in the proposal has a matching spec file"
+      "title": "Every domain listed in the proposal has a matching spec file"
     },
     {
       "artifact": "specs",

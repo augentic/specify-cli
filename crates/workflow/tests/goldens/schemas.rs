@@ -47,7 +47,7 @@ fn assert_invalid(validator: &Validator, instance: &JsonValue, ctx: &str) {
 // --- adapter.schema.json --------------------------------------------
 
 const PLUGIN_VALID_SOURCE: &str = r"
-name: code-typescript
+name: typescript
 version: 1
 axis: source
 execution: agent
@@ -70,7 +70,7 @@ description: Omnia Rust WASM target adapter.
 ";
 
 const PLUGIN_INVALID_NO_AXIS: &str = r"
-name: code-typescript
+name: typescript
 version: 1
 briefs:
   survey: briefs/survey.md
@@ -78,7 +78,7 @@ briefs:
 ";
 
 const PLUGIN_INVALID_BAD_AXIS: &str = r"
-name: code-typescript
+name: typescript
 version: 1
 axis: lens
 briefs:
@@ -96,7 +96,7 @@ briefs:
 ";
 
 const PLUGIN_INVALID_VERSION_FLOAT: &str = r"
-name: code-typescript
+name: typescript
 version: 1.5
 axis: source
 briefs:
@@ -123,7 +123,7 @@ fn plugin_rejects_axis_and_primitives() {
 // --- source.schema.json --------------------------------------------
 
 const SOURCE_INVALID_AXIS_TARGET: &str = r"
-name: code-typescript
+name: typescript
 version: 1
 axis: target
 briefs:
@@ -132,7 +132,7 @@ briefs:
 ";
 
 const SOURCE_INVALID_EXTRA_BRIEF: &str = r"
-name: code-typescript
+name: typescript
 version: 1
 axis: source
 briefs:
@@ -142,7 +142,7 @@ briefs:
 ";
 
 const SOURCE_INVALID_MISSING_BRIEF: &str = r"
-name: code-typescript
+name: typescript
 version: 1
 axis: source
 briefs:

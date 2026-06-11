@@ -12,16 +12,16 @@ fn cache_dir_routes_by_axis() {
     let project = Path::new("/proj");
     assert_eq!(
         cache_dir(project, Axis::Source, "documentation"),
-        project.join(".specify/.cache/manifests/sources/documentation")
+        project.join(".specify/cache/manifests/sources/documentation")
     );
     assert_eq!(
         cache_dir(project, Axis::Target, "omnia"),
-        project.join(".specify/.cache/manifests/targets/omnia")
+        project.join(".specify/cache/manifests/targets/omnia")
     );
 }
 
 #[test]
-fn source_cache_field_defaults_to_none() {
+fn source_briefs_typed_at_parse_boundary() {
     let yaml = r"name: documentation
 version: 1
 axis: source
@@ -30,35 +30,11 @@ briefs:
   extract: briefs/extract.md
 ";
     let manifest: SourceAdapter = serde_saphyr::from_str(yaml).expect("parse");
-    assert_eq!(manifest.cache, None, "missing cache field must default to None");
-    let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
-    assert!(
-        !rendered.contains("cache:"),
-        "absent cache field must elide on write, got:\n{rendered}"
-    );
-}
-
-#[test]
-fn source_cache_opt_out_round_trips() {
-    let yaml = r"name: documentation
-version: 1
-axis: source
-briefs:
-  survey: briefs/survey.md
-  extract: briefs/extract.md
-cache: opt-out
-";
-    let manifest: SourceAdapter = serde_saphyr::from_str(yaml).expect("parse");
-    assert_eq!(manifest.cache, Some(CacheMode::OptOut));
     assert_eq!(
         manifest.operations().copied().collect::<Vec<_>>(),
         vec![SourceOperation::Extract, SourceOperation::Survey]
     );
     let rendered = serde_saphyr::to_string(&manifest).expect("serialise");
-    assert!(
-        rendered.contains("cache: opt-out"),
-        "cache: opt-out must round-trip as kebab-case, got:\n{rendered}"
-    );
     let reparsed: SourceAdapter = serde_saphyr::from_str(&rendered).expect("reparse");
     assert_eq!(manifest, reparsed);
 }
@@ -121,7 +97,7 @@ briefs:
 fn check_execution_rejects_missing_mode() {
     // The typed gate refuses to default silently when `execution`
     // is absent — the kebab discriminant routes to exit 2.
-    let err = check_execution(None, None, Path::new("adapter.yaml"))
+    let err = check_execution(None, Path::new("adapter.yaml"))
         .expect_err("missing execution must be rejected");
     let Error::Validation { code, .. } = err else {
         panic!("expected Error::Validation, got: {err:?}");
@@ -130,40 +106,11 @@ fn check_execution_rejects_missing_mode() {
 }
 
 #[test]
-fn execution_agent_allows_forced_opt_out() {
-    // `execution: agent` forces `cache: opt-out`; declaring the
-    // matching opt-out (or no cache at all) is not a conflict.
-    check_execution(Some(Execution::Agent), Some(CacheMode::OptOut), Path::new("adapter.yaml"))
-        .expect("agent + opt-out is consistent");
-    check_execution(Some(Execution::Agent), None, Path::new("adapter.yaml"))
-        .expect("agent + absent cache is consistent");
-}
-
-#[test]
-fn check_execution_tool_passes() {
-    check_execution(Some(Execution::Tool), None, Path::new("adapter.yaml"))
-        .expect("tool execution with no cache declaration passes");
-    check_execution(Some(Execution::Tool), Some(CacheMode::OptOut), Path::new("adapter.yaml"))
-        .expect("tool execution may still opt out of the cache");
-}
-
-#[test]
-fn agent_execution_forces_effective_opt_out() {
-    let yaml = r"name: documentation
-version: 1
-axis: source
-execution: agent
-briefs:
-  survey: briefs/survey.md
-  extract: briefs/extract.md
-";
-    let manifest: SourceAdapter = serde_saphyr::from_str(yaml).expect("parse");
-    assert_eq!(manifest.cache, None, "no declared cache field");
-    assert_eq!(
-        manifest.effective_cache_mode(),
-        Some(CacheMode::OptOut),
-        "execution: agent forces cache: opt-out even with no declared cache"
-    );
+fn check_execution_accepts_declared_mode() {
+    check_execution(Some(Execution::Agent), Path::new("adapter.yaml"))
+        .expect("agent execution passes");
+    check_execution(Some(Execution::Tool), Path::new("adapter.yaml"))
+        .expect("tool execution passes (target axis)");
 }
 
 #[test]

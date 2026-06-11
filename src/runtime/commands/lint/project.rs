@@ -81,6 +81,7 @@ fn build_report(
     };
 
     let tool_runner = WasiToolRunner::new(ctx)?;
+    let cli_contract = crate::runtime::commands::contract::dump::build_contract();
     let config = PipelineConfig {
         profile: ScanProfile::Project,
         dump_model: args.dump_model,
@@ -88,6 +89,7 @@ fn build_report(
         rule_filter: &[],
         resolver_degradation: ResolverDegradation::Fatal,
         tool_runner: &tool_runner,
+        cli_contract: Some(&cli_contract),
         producers: &[],
     };
 

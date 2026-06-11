@@ -23,7 +23,7 @@ pub struct ProjectConfig {
     /// and testing approach. Falls back to the adapter's domain when empty.
     ///
     /// Authored intent only. A project's *derived* routing identity —
-    /// the `surface[]` of owned units and a `recent[]` merge tail — is
+    /// the `surface[]` of owned domains and a `recent[]` merge tail — is
     /// projected from its baseline (`.specify/specs/` + journal), never
     /// re-authored here. Unknown facets such as `capabilities` /
     /// `keywords` are silently ignored (this struct does not
@@ -89,6 +89,14 @@ impl ProjectConfig {
     /// - [`Error::CliTooOld`] if the pinned `specify_version` floor is
     ///   newer than this binary's version.
     pub fn load(project_dir: &Path) -> Result<Self, Error> {
+        Self::load_with_current(project_dir, env!("CARGO_PKG_VERSION"))
+    }
+
+    /// Version-injectable body of [`ProjectConfig::load`]; `current` is
+    /// the running binary's version. Split out so the migration refusal
+    /// (dormant at runtime while the binary is pre-1.0 — majors never
+    /// differ) keeps unit coverage until the 1.0 cut makes it reachable.
+    fn load_with_current(project_dir: &Path, current: &str) -> Result<Self, Error> {
         let path = Layout::new(project_dir).config_path();
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
@@ -100,7 +108,6 @@ impl ProjectConfig {
 
         let cfg: Self = serde_saphyr::from_str(&text)?;
 
-        let current = env!("CARGO_PKG_VERSION");
         if let Some(required) = &cfg.specify_version
             && version_is_older(current, required)
         {
@@ -198,16 +205,46 @@ impl ProjectConfig {
 /// `.specify/` boundary in one place: callers never join
 /// `.specify/...` literally; they ask the layout for the directory
 /// they want.
+///
+/// The **plan root** (where `plan.yaml`, `change.md`, and
+/// `discovery.md` live) defaults to `project_dir` and is overridable
+/// with [`Layout::with_plan_dir`]: during workspace-routed phase work
+/// the plan artifacts live at the initiating workspace, not the slot,
+/// and slot-side verbs receive the workspace root via the global
+/// `--plan-dir` flag (env `SPECIFY_PLAN_DIR`).
 #[derive(Debug, Clone, Copy)]
 pub struct Layout<'a> {
     project_dir: &'a Path,
+    plan_dir: Option<&'a Path>,
 }
 
 impl<'a> Layout<'a> {
     /// Wrap `project_dir` as the typed root for path lookups.
     #[must_use]
     pub const fn new(project_dir: &'a Path) -> Self {
-        Self { project_dir }
+        Self {
+            project_dir,
+            plan_dir: None,
+        }
+    }
+
+    /// Override the plan root: `plan.yaml`, `change.md`, and
+    /// `discovery.md` resolve against `plan_dir` instead of the
+    /// project root. `None` leaves the default in place.
+    #[must_use]
+    pub const fn with_plan_dir(mut self, plan_dir: Option<&'a Path>) -> Self {
+        self.plan_dir = plan_dir;
+        self
+    }
+
+    /// The plan root: `plan_dir` when overridden, the project root
+    /// otherwise.
+    #[must_use]
+    pub const fn plan_dir(&self) -> &'a Path {
+        match self.plan_dir {
+            Some(dir) => dir,
+            None => self.project_dir,
+        }
     }
 
     /// Project root the layout is anchored at.
@@ -243,10 +280,35 @@ impl<'a> Layout<'a> {
         self.specify_dir().join("topology.lock")
     }
 
-    /// Absolute path to `<project_dir>/.specify/.cache/`.
+    /// Absolute path to `<project_dir>/.specify/cache/` — the
+    /// memoization root (manifest mirror, codex, extraction results).
+    /// Deleting it costs recomputation only; transient working state
+    /// lives under the sibling [`Self::scratch_dir`].
     #[must_use]
     pub fn cache_dir(&self) -> PathBuf {
-        self.specify_dir().join(".cache")
+        self.specify_dir().join("cache")
+    }
+
+    /// Absolute path to `<project_dir>/.specify/scratch/` — the
+    /// transient working-state root. Per-run lanes only (source
+    /// operation `$SCRATCH_DIR` lanes, the plan handoff lane); every
+    /// lane is recreated empty by its owning verb, so the tree can be
+    /// wiped at any time at zero cost. Disjoint from
+    /// [`Self::cache_dir`] so a scratch write can never pollute a
+    /// cache artifact. See DECISIONS.md §"Cache layout".
+    #[must_use]
+    pub fn scratch_dir(&self) -> PathBuf {
+        self.specify_dir().join("scratch")
+    }
+
+    /// Absolute path to `<project_dir>/.specify/scratch/plan/` — the
+    /// plan-phase handoff lane. `specify plan propose --dry-run`
+    /// recreates it empty; the agent writes the reconciliation
+    /// response envelope (`propose-response.json`) into it for
+    /// `specify plan propose --from`.
+    #[must_use]
+    pub fn plan_scratch_dir(&self) -> PathBuf {
+        self.scratch_dir().join("plan")
     }
 
     /// Absolute path to `<project_dir>/.specify/decisions/` — the
@@ -289,26 +351,37 @@ impl<'a> Layout<'a> {
         self.project_dir.join("registry.yaml")
     }
 
-    /// Absolute path to `<project_dir>/plan.yaml` — the change
-    /// plan. Platform-level artifact, lives at the repo root.
+    /// Absolute path to `<plan-root>/plan.yaml` — the change plan.
+    /// Platform-level artifact at the repo root, or at the initiating
+    /// workspace root when the plan root is overridden
+    /// ([`Layout::with_plan_dir`]).
     #[must_use]
     pub fn plan_path(&self) -> PathBuf {
-        self.project_dir.join("plan.yaml")
+        self.plan_dir().join("plan.yaml")
     }
 
-    /// Absolute path to `<project_dir>/change.md` — the umbrella
-    /// operator brief at the repo root. Platform-level artifact.
+    /// Absolute path to `<plan-root>/.specify/plan.lock` — the
+    /// skill-acquired `/spec:execute` driver lock
+    /// ([`crate::plan_lock`]). Anchored at the plan root so slot-side
+    /// phase work under `--plan-dir` probes the *workspace* lock.
+    #[must_use]
+    pub fn plan_lock_path(&self) -> PathBuf {
+        self.plan_dir().join(".specify").join("plan.lock")
+    }
+
+    /// Absolute path to `<plan-root>/change.md` — the umbrella
+    /// operator brief beside `plan.yaml`. Platform-level artifact.
     #[must_use]
     pub fn change_brief_path(&self) -> PathBuf {
-        self.project_dir.join("change.md")
+        self.plan_dir().join("change.md")
     }
 
-    /// Absolute path to `<project_dir>/discovery.md` — the candidate
+    /// Absolute path to `<plan-root>/discovery.md` — the candidate
     /// inventory written at `/spec:plan`'s survey step and read during
-    /// lead reconciliation.
+    /// lead reconciliation. Lives beside `plan.yaml`.
     #[must_use]
     pub fn discovery_path(&self) -> PathBuf {
-        self.project_dir.join("discovery.md")
+        self.plan_dir().join("discovery.md")
     }
 }
 

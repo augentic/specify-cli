@@ -86,7 +86,7 @@ The codebase optimises for short reading over short writing. Concretely:
 
 ## Format dispatch
 
-Handlers do **not** open-code `match ctx.format { Json, Text }`. There is one entry point — `ctx.write(&body, write_text)?` for success bodies, and `report(ctx.format, &err)` (which dispatches `ErrorBody` to stderr) for failures. The underlying `emit` function is private to `src/runtime/output.rs`; handlers never spell it, and they never pick a sink directly. `emit_err` / `emit_response` / `emit_error` / `emit_json_error` have all been collapsed into this single surface. See [handler-shape.md](./handler-shape.md) for how `Ctx` and the free `output::write` compose.
+Handlers do **not** open-code `match ctx.format { Json, Text }`. There is one entry point — `ctx.write(&body, write_text)?` for success bodies, and `report(ctx.format, &err)` (which dispatches `ErrorBody` to stderr) for failures. The underlying `emit` function lives in `src/output.rs` (re-exported through `src/runtime/output.rs`); handlers never spell it, and they never pick a sink directly. `emit_err` / `emit_response` / `emit_error` / `emit_json_error` have all been collapsed into this single surface. See [handler-shape.md](./handler-shape.md) for how `Ctx` and the free `output::write` compose.
 
 ```rust
 // BAD
@@ -105,7 +105,7 @@ The `write_text` closure receives `(&mut dyn Write, &Body)` and renders the text
 
 ## One emit path
 
-Success bodies leave handlers via `ctx.write(&body, write_text)?;` (or the free `output::write(format, &body, write_text)?;` for the rare `Ctx`-less verb). Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/runtime/commands.rs` routes them through `output::report(format, &err)`. No handler writes its own stderr envelope. If you need a bespoke failure shape, add an `Error` variant with a kebab-case discriminant; do not hand-roll a `*ErrBody` DTO. `emit` is private to `src/runtime/output.rs` and stays that way.
+Success bodies leave handlers via `ctx.write(&body, write_text)?;` (or the free `output::write(format, &body, write_text)?;` for the rare `Ctx`-less verb). Failure envelopes leave handlers as `Err(Error::*)`; the dispatcher in `src/runtime/commands.rs` routes them through `output::report(format, &err)`. No handler writes its own stderr envelope. If you need a bespoke failure shape, add an `Error` variant with a kebab-case discriminant; do not hand-roll a `*ErrBody` DTO. `emit` stays internal to the output module (`src/output.rs`); handlers never call it directly.
 
 ## DTOs
 
@@ -196,7 +196,7 @@ Every public `enum` or `struct` that may grow gets `#[non_exhaustive]`. The exce
 
 YAML (de)serialization goes through `serde-saphyr`, not `serde_yaml_ng` or the deprecated `serde_yaml`. `serde-saphyr` has no `Value` type; for dynamic YAML access deserialize into `serde_json::Value`. Deser and ser errors ride directly on `specify_error::Error::YamlDe(serde_saphyr::Error)` and `Error::YamlSer(serde_saphyr::ser::Error)` — both `#[error(transparent)]` `#[from]` variants — so `?` on a raw `serde_saphyr` result still propagates, the kebab discriminant on the wire stays `yaml` for either side, and call sites that don't care which API tripped match on either variant. Library crates return `Result<…, specify_error::Error>` rather than re-exposing `serde_saphyr::*::Error` types in their own public signatures.
 
-Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`yaml_write` / `bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `.metadata.yaml`). See [architecture.md §"Atomic writes"](./architecture.md#atomic-writes) for the rationale and [DECISIONS.md §"Atomic writes"](../../DECISIONS.md#atomic-writes) for the long form.
+Writes that must not be observed mid-update use the shared atomic helpers in `specify_slice::atomic` (`yaml_write` / `bytes_write`). `fs::write` is fine for single-shot scratch files but never for files that other live processes read (`plan.yaml`, `registry.yaml`, `change.md`, `tasks.md`, `.specify/plan.lock`, `metadata.yaml`). See [architecture.md §"Atomic writes"](./architecture.md#atomic-writes) for the rationale and [DECISIONS.md §"Atomic writes"](../../DECISIONS.md#atomic-writes) for the long form.
 
 ## Module layout
 

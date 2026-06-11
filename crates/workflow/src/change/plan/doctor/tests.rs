@@ -29,7 +29,7 @@ fn data(d: &Diagnostic) -> &serde_json::Value {
 fn plan_with_sources(sources: Vec<(&str, &str)>, changes: Vec<Entry>) -> Plan {
     let mut map = BTreeMap::new();
     for (k, v) in sources {
-        map.insert(k.to_string(), SourceBinding::path("code-typescript", v));
+        map.insert(k.to_string(), SourceBinding::path("typescript", v));
     }
     Plan {
         name: "test".into(),
