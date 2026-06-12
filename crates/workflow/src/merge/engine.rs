@@ -1,5 +1,5 @@
-//! Pure in-memory delta merge — port of the Python `merge()` from
-//! archived Python reference, `merge` lines 203–291.
+//! Pure in-memory delta merge: applies a delta spec's
+//! ADDED / MODIFIED / REMOVED / RENAMED sections to a baseline.
 
 use std::collections::{HashMap, HashSet};
 
@@ -11,10 +11,10 @@ use specify_model::spec::{
 
 /// Result of a successful [`merge`] call.
 ///
-/// `output` is the merged baseline text (byte-for-byte parity with the
-/// Python reference). `operations` records every change applied, in the
-/// order `RENAMED → REMOVED → MODIFIED → ADDED` — the same order used
-/// when mutating the underlying block list.
+/// `output` is the merged baseline text (pinned byte-for-byte by the
+/// merge-engine goldens). `operations` records every change applied, in
+/// the order `RENAMED → REMOVED → MODIFIED → ADDED` — the same order
+/// used when mutating the underlying block list.
 ///
 /// The `Serialize` derive omits `output` so the type can be `#[serde(flatten)]`-ed
 /// into wire envelopes (e.g. `MergePreviewEntry`) that carry only the
@@ -291,8 +291,8 @@ fn count_requirement_headings(text: &str) -> usize {
     text.lines().filter(|line| line.trim_start().starts_with(REQ_HEADING)).count()
 }
 
-/// Python's `str.replace(old, new, 1)`: replace only the first occurrence.
-/// If `needle` is empty we mirror Python by returning `haystack` unchanged.
+/// Replace only the first occurrence of `needle`; an empty `needle`
+/// returns `haystack` unchanged.
 fn replace_first(haystack: &str, needle: &str, replacement: &str) -> String {
     if needle.is_empty() {
         return haystack.to_string();

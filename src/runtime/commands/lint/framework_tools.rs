@@ -3,14 +3,15 @@
 //!
 //! Framework runs have no `project.yaml` to populate a tool inventory, so
 //! the first-party framework checkers are declared here as a closed
-//! inventory keyed by name. `is_declared` / `run` dispatch by name — the
-//! standards engine never calls a checker directly, which is the
-//! decoupling lever the standards-layer split requires: the engine sees
-//! only the [`ToolRunner`] trait and folds each checker's
-//! `DiagnosticReport` envelope, exactly as it did when the checkers were
-//! out-of-process WASI components (the B-2 exit replaced the Wasmtime
-//! hop with an in-process call; the wire shape, name resolution, and
-//! rule-owned `config:` policy forwarding are unchanged).
+//! inventory keyed by name. `is_declared` / `run_diagnostics` dispatch by
+//! name — the standards engine never calls a checker directly, which is
+//! the decoupling lever the standards-layer split requires: the engine
+//! sees only the [`ToolRunner`] trait. `run_diagnostics` hands typed
+//! findings straight to the evaluator (no JSON serialise→reparse);
+//! `run` keeps the wire-stable `DiagnosticReport` JSON envelope for
+//! callers that want the WASI-equivalent stdout shape. Name resolution
+//! and rule-owned `config:` policy forwarding are unchanged from the
+//! out-of-process era.
 
 mod links_registry;
 mod marketplace;
@@ -22,7 +23,7 @@ mod support;
 
 use std::path::Path;
 
-use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
+use specify_standards::lint::eval::tool::{ToolDiagnostics, ToolOutput, ToolRunError, ToolRunner};
 
 use self::support::ToolFinding;
 
@@ -84,6 +85,22 @@ impl ToolRunner for FrameworkToolRunner {
         };
         let findings = (tool.run)(project_dir, args);
         Ok(support::report_output(&findings))
+    }
+
+    fn run_diagnostics(
+        &self, tool_name: &str, args: &[String], project_dir: &Path,
+    ) -> Result<ToolDiagnostics, ToolRunError> {
+        let Some(tool) = lookup(tool_name) else {
+            return Err(ToolRunError::Runtime(format!(
+                "tool {tool_name} is not a declared framework checker"
+            )));
+        };
+        let findings = (tool.run)(project_dir, args);
+        Ok(ToolDiagnostics {
+            findings: support::to_diagnostics(&findings),
+            stderr: Vec::new(),
+            exit_code: 0,
+        })
     }
 }
 

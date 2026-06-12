@@ -188,7 +188,7 @@ pub fn preview(slice_dir: &Path, classes: &[ArtifactClass]) -> Result<PreviewRes
 /// slice composition to overwrite a non-empty baseline. It threads no
 /// further than this function: the A3 `composition_overwrite_gate`
 /// precondition reads it directly, and it never reaches the pure merge
-/// kernel (RFC-40 §A3 "Placement").
+/// kernel (composition overwrite-gate placement).
 ///
 /// # Errors
 ///

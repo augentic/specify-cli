@@ -61,18 +61,18 @@ fn sparse_checkout_path(adapter_path: &str) -> &str {
 }
 
 fn run_git(args: &[&str], action: &str) -> Result<(), Error> {
-    let output = cmd::git(&cmd::real_cmd, None, args).map_err(|err| Error::Diag {
-        code: "adapter-git-spawn-failed",
-        detail: format!("failed to spawn `git` to {action}: {err}"),
-    })?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    Err(Error::Diag {
-        code: "adapter-git-failed",
-        detail: format!("git failed to {action}: {}", stderr.trim()),
-    })
+    cmd::git_checked(&cmd::real_cmd, None, args).map(|_output| ()).map_err(
+        |failure| match failure {
+            cmd::GitFailure::Spawn(err) => Error::Diag {
+                code: "adapter-git-spawn-failed",
+                detail: format!("failed to spawn `git` to {action}: {err}"),
+            },
+            cmd::GitFailure::Exit { stderr } => Error::Diag {
+                code: "adapter-git-failed",
+                detail: format!("git failed to {action}: {stderr}"),
+            },
+        },
+    )
 }
 
 #[cfg(test)]

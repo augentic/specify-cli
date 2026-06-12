@@ -10,8 +10,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 
 use super::{AdapterAxis, FileKind};
-use crate::rules::Origin;
-
 /// `file` fact per the `WorkspaceModel` entity families — produced
 /// by the filesystem walk.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -326,57 +324,6 @@ pub struct Scenario {
     /// [`serde_json::Map`] so a `kind: schema` hint can validate it
     /// directly; empty when the opted-in frontmatter failed to parse.
     pub fields: JsonMap<String, JsonValue>,
-}
-
-/// `marketplace_entry` fact per the `WorkspaceModel` entity families
-/// — extracted from `.cursor-plugin/marketplace.json`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct MarketplaceEntry {
-    /// Plugin slug declared by `.cursor-plugin/marketplace.json`.
-    pub plugin: String,
-    /// JSON-pointer-style location inside `marketplace.json` where
-    /// the entry was discovered.
-    pub path_in_manifest: String,
-}
-
-/// `rule_index` fact per the `WorkspaceModel` entity families —
-/// rules tree discovery (reuses the rule frontmatter parser).
-///
-/// Named `RuleIndexEntry` rather than `Rule` so the entity-fact
-/// shape does not collide with the parsed-frontmatter
-/// [`crate::rules::Rule`] DTO that ships its full body.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct RuleIndexEntry {
-    /// Rule id (matches the rule schema's `id`
-    /// regex).
-    pub rule_id: String,
-    /// Project-relative path of the rule markdown file.
-    pub path: String,
-    /// Which rules tree contributed the rule. Reuses the rules contract
-    /// [`crate::rules::Origin`] enum so resolver and review surfaces
-    /// share one type.
-    pub origin: Origin,
-    /// Path back to the originating [`Frontmatter`] fact so
-    /// consumers can join through the frontmatter table.
-    pub frontmatter_ref: String,
-}
-
-/// `text_match` fact per the `WorkspaceModel` entity families —
-/// optional precomputed regex index.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct TextMatch {
-    /// Project-relative path of the file the match was found in.
-    pub path: String,
-    /// 1-based line of the match.
-    pub line: u32,
-    /// 1-based column of the match.
-    pub column: u32,
-    /// Stable identifier for the precomputed regex pattern that
-    /// produced this match.
-    pub pattern_id: String,
 }
 
 /// `ignore_directive` fact per the `WorkspaceModel` entity families.

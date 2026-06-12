@@ -26,7 +26,6 @@
 use std::io::Write;
 use std::path::Path;
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
@@ -188,7 +187,7 @@ struct ProposeSummary {
 /// the `plan.yaml` write has committed.
 fn emit_reconcile_event(ctx: &Ctx, projected: &Projected) -> Result<()> {
     let event = Event::new(
-        Timestamp::now(),
+        ctx.now(),
         EventKind::PlanReconcileCompleted {
             plan_name: projected.plan.name.clone().into(),
             slice_count: projected.outcome.slice_names.len(),

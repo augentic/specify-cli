@@ -6,7 +6,6 @@
 
 use std::io::Write;
 
-use jiff::Timestamp;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use specify_error::{Error, Result};
@@ -47,7 +46,7 @@ pub fn emit(ctx: &Ctx, event: &str, payload: Option<&str>) -> Result<()> {
     let kind: EventKind =
         serde_json::from_value(Value::Object(tagged)).map_err(|err| classify(event, &err))?;
 
-    let journal_event = Event::new(Timestamp::now(), kind);
+    let journal_event = Event::new(ctx.now(), kind);
     journal::append_batch(ctx.layout(), std::slice::from_ref(&journal_event))?;
 
     ctx.write(

@@ -123,11 +123,12 @@ fn every_interpreter_maps_to_kind() {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        // `error.rs` (the `HintError` enum) and `finding.rs` (the finding
-        // constructors + evidence-cap clamp, with its own unit tests) are
+        // `error.rs` (the `HintError` enum), `finding.rs` (the finding
+        // constructors + evidence-cap clamp, with its own unit tests), and
+        // `testkit.rs` (the cfg(test) unit-test scaffolding) are
         // orchestrator-support submodules of `eval.rs`, not hint-kind
         // interpreters; skip them.
-        if matches!(name.as_str(), "error.rs" | "finding.rs") {
+        if matches!(name.as_str(), "error.rs" | "finding.rs" | "testkit.rs") {
             continue;
         }
         assert!(

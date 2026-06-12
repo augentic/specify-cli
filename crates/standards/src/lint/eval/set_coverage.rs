@@ -208,3 +208,95 @@ fn skill_allowed_tools(
     }
     out
 }
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+    use crate::lint::{AdapterAxis, AdapterManifest, Frontmatter};
+
+    fn manifest(name: &str, axis: AdapterAxis, briefs: &[&str]) -> AdapterManifest {
+        let axis_dir = match axis {
+            AdapterAxis::Sources => "sources",
+            AdapterAxis::Targets => "targets",
+        };
+        AdapterManifest {
+            axis,
+            name: name.to_string(),
+            path: format!("adapters/{axis_dir}/{name}/adapter.yaml"),
+            version: None,
+            brief_keys: briefs.iter().map(|b| (*b).to_string()).collect(),
+            tools: vec![],
+        }
+    }
+
+    fn skill_frontmatter(path: &str, allowed_tools: &str) -> Frontmatter {
+        let mut fields = serde_json::Map::new();
+        fields.insert("allowed-tools".to_string(), json!(allowed_tools));
+        Frontmatter {
+            path: path.to_string(),
+            schema_id: None,
+            fields,
+        }
+    }
+
+    // Fixture operation names are deliberately not the real adapter
+    // operations: the expected sets are rule-supplied policy, and the
+    // `no_embedded_policy` guard rejects real operation-set literals
+    // anywhere under `lint/eval/`.
+    fn expected_ops() -> serde_json::Value {
+        json!({ "expected-operations": { "sources": ["alpha", "beta"], "targets": ["gamma", "delta", "epsilon"] } })
+    }
+
+    #[test]
+    fn missing_operation_flagged_extras_silent() {
+        let mut model = empty_model();
+        model.adapter_manifests =
+            vec![manifest("demo", AdapterAxis::Targets, &["gamma", "delta", "extra"])];
+        let cands = candidates(&["adapters/targets/demo/adapter.yaml"]);
+        let hint = hint_with_config(HintKind::SetCoverage, "adapter-briefs", Some(expected_ops()));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        // One-sided: only the missing `epsilon` fires; the `extra` key is set-eq's job.
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("missing brief for operation 'epsilon'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn covered_manifest_is_silent() {
+        let mut model = empty_model();
+        model.adapter_manifests = vec![manifest("demo", AdapterAxis::Sources, &["alpha", "beta"])];
+        let cands = candidates(&["adapters/sources/demo/adapter.yaml"]);
+        let hint = hint_with_config(HintKind::SetCoverage, "adapter-briefs", Some(expected_ops()));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn uncovered_tool_flagged() {
+        let mut model = empty_model();
+        let path = "plugins/p/skills/s/SKILL.md";
+        model.frontmatter = vec![skill_frontmatter(path, "Read Write mcp__custom rogue")];
+        let cands = candidates(&[path]);
+        let cfg = json!({ "allowed": ["Read", "Write"], "allowed-prefixes": ["mcp__"] });
+        let hint = hint_with_config(HintKind::SetCoverage, "skill-allowed-tools", Some(cfg));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("'rogue'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn missing_config_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::SetCoverage, "skill-allowed-tools");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn unknown_source_is_unsupported() {
+        let model = empty_model();
+        let hint = hint_with_config(HintKind::SetCoverage, "no-such-source", Some(json!({})));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+}

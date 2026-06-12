@@ -1,4 +1,4 @@
-//! Model viewer — `slice model show` (RFC-29 §"Operator surface").
+//! Model viewer — `slice model show`.
 
 use crate::support::*;
 

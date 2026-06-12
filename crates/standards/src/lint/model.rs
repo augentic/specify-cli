@@ -38,8 +38,7 @@ mod facts;
 
 pub use facts::{
     AdapterDir, AdapterManifest, AdapterTool, Brief, BriefScope, FencedBlock, File, Frontmatter,
-    IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry, Scenario,
-    Skill, Symlink, TextMatch,
+    IgnoreDirective, MarkdownLink, MarkdownSection, Scenario, Skill, Symlink,
 };
 
 /// Type-level pin of the `WorkspaceModel` envelope version.
@@ -160,14 +159,6 @@ pub struct WorkspaceModel {
     /// `adapter_manifest` facts from
     /// `adapters/{sources,targets}/**/adapter.yaml`.
     pub adapter_manifests: Vec<AdapterManifest>,
-    /// `marketplace_entry` facts from
-    /// `.cursor-plugin/marketplace.json`.
-    pub marketplace_entries: Vec<MarketplaceEntry>,
-    /// `rule_index` facts from rules tree discovery.
-    pub rule_index: Vec<RuleIndexEntry>,
-    /// `text_match` facts from the optional precomputed regex
-    /// index.
-    pub text_matches: Vec<TextMatch>,
     /// `ignore_directive` facts from the directive indexer.
     /// Optional in v1 envelopes per the schema; the producer always
     /// serialises the array so consumers see one consistent wire

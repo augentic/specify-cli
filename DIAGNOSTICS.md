@@ -13,7 +13,6 @@ Related docs:
 - [docs/standards/handler-shape.md](./docs/standards/handler-shape.md) — "The two lint handlers share one tail"
 - [adapters/shared/rules/core/README.md](https://github.com/augentic/specify/blob/main/adapters/shared/rules/core/README.md) (framework repo)
 - [docs/contributing/checks.md](https://github.com/augentic/specify/blob/main/docs/contributing/checks.md) — parity contract and extension guide (framework repo)
-- [docs/quality-debt.md](./docs/quality-debt.md) — suppression burn-down tied to A16
 
 ---
 
@@ -94,4 +93,3 @@ Six framework checkers — `scenarios`, `skill-body`, `links-registry`, `marketp
 | Declarative CORE rules | specify | `adapters/shared/rules/core/CORE-*.md` |
 | Layer-3 policy guard | specify-cli | [crates/standards/tests/lint_engine_guards/no_embedded_policy.rs](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) |
 | Per-kind evaluator suite | specify-cli | `crates/standards/tests/lint_hint_*.rs` |
-| Suppression burn-down | specify-cli | [docs/quality-debt.md](./docs/quality-debt.md) |

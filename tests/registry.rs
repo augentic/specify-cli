@@ -113,7 +113,7 @@ fn add_round_trips_through_show() {
 
 #[test]
 fn add_succeeds_without_adapter() {
-    // RFC-36: `--adapter` is an optional greenfield seed. Omitting it is
+    // `--adapter` is an optional greenfield seed. Omitting it is
     // legal — the project's own `project.yaml` authors its target adapter.
     let tmp = tempdir().unwrap();
     init_workspace(&tmp, "platform-workspace");

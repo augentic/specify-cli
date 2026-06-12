@@ -1,32 +1,24 @@
-//! Golden tests for the the workflow contract JSON Schemas shipped under
-//! `cli/schemas/`: `adapter.schema.json`, `source.schema.json`,
-//! `target.schema.json`, `evidence.schema.json`, and
-//! `discovery/lead.schema.json`. Each schema gets a "valid"
-//! fixture that must validate cleanly plus a small set of "invalid"
-//! fixtures (missing required field, wrong enum value, wrong type)
-//! that the schema must reject.
+//! Accept / reject fixture tests for the workflow wire schemas:
+//! `adapter`, `source`, `target`, `evidence`, `discovery/lead`, and
+//! `plan/plan`. Each schema gets a "valid" fixture that must validate
+//! cleanly plus a small set of "invalid" fixtures (missing required
+//! field, wrong enum value, wrong type) that the schema must reject.
 //!
-//! Fixtures are inlined as `&str` so a fixture-vs-rule mismatch is
-//! diff-visible in one file; if this list outgrows the file, move the
-//! YAML/JSON bodies under `tests/schemas/<schema>/{valid,invalid}/*`.
+//! This crate is the single compile/parity/fixture home for the
+//! embedded schemas; workflow keeps only its behavior edges (wrapper
+//! error codes).
 
 use std::path::PathBuf;
 
 use jsonschema::Validator;
 use serde_json::Value as JsonValue;
+use specify_schema::{
+    ADAPTER_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, PLAN_JSON_SCHEMA,
+    SOURCE_JSON_SCHEMA, TARGET_JSON_SCHEMA, compile_schema,
+};
 
-fn schemas_root() -> PathBuf {
-    // `crates/workflow/tests/` -> `crates/workflow/` -> `crates/` -> repo root.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas")
-}
-
-fn load(path: &str) -> Validator {
-    let raw = std::fs::read_to_string(schemas_root().join(path))
-        .unwrap_or_else(|err| panic!("read {path}: {err}"));
-    let schema: JsonValue =
-        serde_json::from_str(&raw).unwrap_or_else(|err| panic!("{path} is valid JSON: {err}"));
-    jsonschema::validator_for(&schema)
-        .unwrap_or_else(|err| panic!("{path} compiles as JSON Schema: {err}"))
+fn load(source: &str) -> Validator {
+    compile_schema(source).expect("embedded schema compiles")
 }
 
 fn yaml(input: &str) -> JsonValue {
@@ -106,14 +98,14 @@ briefs:
 
 #[test]
 fn plugin_accepts_source_and_target_shapes() {
-    let v = load("adapter.schema.json");
+    let v = load(ADAPTER_JSON_SCHEMA);
     assert_valid(&v, &yaml(PLUGIN_VALID_SOURCE), "plugin/source");
     assert_valid(&v, &yaml(PLUGIN_VALID_TARGET), "plugin/target");
 }
 
 #[test]
 fn plugin_rejects_axis_and_primitives() {
-    let v = load("adapter.schema.json");
+    let v = load(ADAPTER_JSON_SCHEMA);
     assert_invalid(&v, &yaml(PLUGIN_INVALID_NO_AXIS), "plugin/no-axis");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_BAD_AXIS), "plugin/bad-axis");
     assert_invalid(&v, &yaml(PLUGIN_INVALID_NAME_NOT_KEBAB), "plugin/name-not-kebab");
@@ -151,17 +143,16 @@ briefs:
 
 #[test]
 fn source_accepts_canonical_shape() {
-    let v = load("source.schema.json");
+    let v = load(SOURCE_JSON_SCHEMA);
     assert_valid(&v, &yaml(PLUGIN_VALID_SOURCE), "source/valid");
 }
 
 #[test]
 fn source_rejects_axis_and_brief_violations() {
-    // With the dedicated `operations[]` field collapsed (review 1.A1),
-    // brief-key validity is the only thing closing the operation set.
+    // Brief-key validity is the only thing closing the operation set.
     // Cover both "extra key under briefs:" and "required brief
     // missing" to pin that surface.
-    let v = load("source.schema.json");
+    let v = load(SOURCE_JSON_SCHEMA);
     assert_invalid(&v, &yaml(SOURCE_INVALID_AXIS_TARGET), "source/axis-target");
     assert_invalid(&v, &yaml(SOURCE_INVALID_EXTRA_BRIEF), "source/extra-brief");
     assert_invalid(&v, &yaml(SOURCE_INVALID_MISSING_BRIEF), "source/missing-brief");
@@ -201,17 +192,16 @@ briefs:
 
 #[test]
 fn target_accepts_canonical_shape() {
-    let v = load("target.schema.json");
+    let v = load(TARGET_JSON_SCHEMA);
     assert_valid(&v, &yaml(PLUGIN_VALID_TARGET), "target/valid");
 }
 
 #[test]
 fn target_rejects_axis_and_brief_violations() {
-    // With the dedicated `operations[]` field collapsed (review 1.A1),
-    // the `briefs.*` key set is what closes the target operation set.
+    // The `briefs.*` key set is what closes the target operation set.
     // Cover an axis-mismatch fixture, an extra source-axis brief key,
     // and a missing required brief.
-    let v = load("target.schema.json");
+    let v = load(TARGET_JSON_SCHEMA);
     assert_invalid(&v, &yaml(TARGET_INVALID_AXIS_SOURCE), "target/axis-source");
     assert_invalid(
         &v,
@@ -286,7 +276,7 @@ claims: []
 
 #[test]
 fn evidence_accepts_doc_legacy_and_spatial() {
-    let v = load("evidence.schema.json");
+    let v = load(EVIDENCE_JSON_SCHEMA);
     assert_valid(&v, &yaml(EVIDENCE_VALID_REQUIREMENT), "evidence/requirement");
     assert_valid(&v, &yaml(EVIDENCE_VALID_SPATIAL), "evidence/spatial-region-container-leaf");
     assert_valid(&v, &yaml(EVIDENCE_VALID_EMPTY_CLAIMS), "evidence/empty-claims");
@@ -294,7 +284,7 @@ fn evidence_accepts_doc_legacy_and_spatial() {
 
 #[test]
 fn evidence_rejects_bad_authority_and_kinds() {
-    let v = load("evidence.schema.json");
+    let v = load(EVIDENCE_JSON_SCHEMA);
     assert_invalid(&v, &yaml(EVIDENCE_INVALID_MISSING_AUTHORITY), "evidence/missing-authority");
     assert_invalid(&v, &yaml(EVIDENCE_INVALID_BAD_AUTHORITY), "evidence/bad-authority");
     assert_invalid(&v, &yaml(EVIDENCE_INVALID_BAD_KIND), "evidence/bad-kind");
@@ -342,13 +332,13 @@ aliases:
 
 #[test]
 fn lead_accepts_minimal_shape() {
-    let v = load("discovery/lead.schema.json");
+    let v = load(LEAD_JSON_SCHEMA);
     assert_valid(&v, &yaml(LEAD_VALID), "lead/minimal");
 }
 
 #[test]
 fn lead_rejects_source_id_tentative() {
-    let v = load("discovery/lead.schema.json");
+    let v = load(LEAD_JSON_SCHEMA);
     assert_invalid(&v, &yaml(LEAD_INVALID_MISSING_SOURCE_KEY), "lead/missing-source");
     assert_invalid(&v, &yaml(LEAD_INVALID_BAD_ID), "lead/bad-id");
     // `tentative` is not a lead field (DECISIONS §Lead reconciliation D2.3); the schema
@@ -359,11 +349,10 @@ fn lead_rejects_source_id_tentative() {
     assert_invalid(&v, &yaml(LEAD_INVALID_ALIASES_REMOVED), "lead/retired-aliases");
 }
 
-// --- plan/plan.schema.json (source/target adapter split deltas) -------------------------
+// --- plan/plan.schema.json -------------------------------------------
 
 fn plan_v2_fixture_path(name: &str) -> PathBuf {
-    // `crates/workflow/tests/` -> `crates/workflow/` -> `crates/` -> repo
-    // root -> `tests/fixtures/plan/v2/`.
+    // `crates/schema/` -> `crates/` -> repo root -> `tests/fixtures/plan/v2/`.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("tests/fixtures/plan/v2")
@@ -372,21 +361,21 @@ fn plan_v2_fixture_path(name: &str) -> PathBuf {
 
 #[test]
 fn plan_schema_accepts_workflow_intent_n1() {
-    let v = load("plan/plan.schema.json");
+    let v = load(PLAN_JSON_SCHEMA);
     let raw = std::fs::read_to_string(plan_v2_fixture_path("intent-n1.yaml")).expect("read");
     assert_valid(&v, &yaml(&raw), "plan/v2/intent-n1");
 }
 
 #[test]
 fn plan_accepts_multi_source() {
-    let v = load("plan/plan.schema.json");
+    let v = load(PLAN_JSON_SCHEMA);
     let raw = std::fs::read_to_string(plan_v2_fixture_path("multi-source.yaml")).expect("read");
     assert_valid(&v, &yaml(&raw), "plan/v2/multi-source");
 }
 
 #[test]
 fn plan_accepts_divergence_likely() {
-    let v = load("plan/plan.schema.json");
+    let v = load(PLAN_JSON_SCHEMA);
     let raw =
         std::fs::read_to_string(plan_v2_fixture_path("divergence-likely.yaml")).expect("read");
     assert_valid(&v, &yaml(&raw), "plan/v2/divergence-likely");
@@ -394,7 +383,7 @@ fn plan_accepts_divergence_likely() {
 
 #[test]
 fn plan_rejects_unknown_divergence() {
-    let v = load("plan/plan.schema.json");
+    let v = load(PLAN_JSON_SCHEMA);
     let raw =
         std::fs::read_to_string(plan_v2_fixture_path("divergence-likely.yaml")).expect("read");
     let mutated = raw.replace("divergence: likely", "divergence: maybe");
@@ -403,7 +392,7 @@ fn plan_rejects_unknown_divergence() {
 
 #[test]
 fn plan_rejects_slice_missing_lead() {
-    let v = load("plan/plan.schema.json");
+    let v = load(PLAN_JSON_SCHEMA);
     let bad = r"
 name: bad
 slices:

@@ -1,5 +1,5 @@
-//! Slice synthesis engine — `slice synthesize` (RFC-29c M2b) plus the
-//! acceptance / end-to-end coverage (RFC-29c C12).
+//! Slice synthesis engine — `slice synthesize` plus the
+//! acceptance / end-to-end coverage.
 //!
 //! The kernel-level cases (normalize, orphan, divergence, determinism)
 //! are unit-covered in `crates/workflow/src/slice/synthesis/*`; these
@@ -184,7 +184,7 @@ fn run_synthesize_from(project: &Project, response_json: &str) -> std::process::
 /// schema-valid) value — `REQ-999`, `status: conflict`, a stray
 /// `sources` list, a claim `winner`, and a bogus `model.slice` /
 /// `model.project` header. The kernel must ignore each and re-derive the
-/// canonical projection (RFC-29c §"Synthesis response": normalize, never
+/// canonical projection (normalize, never
 /// reject). The single in-Evidence claim is `agreed` once re-derived.
 const SYNTH_RESPONSE_PRE_ASSIGNED: &str = r###"{
   "version": 1,
@@ -289,9 +289,8 @@ const SYNTH_RESPONSE_KIND_MISMATCH: &str = r###"{
 
 /// Plan binding two sources to `my-slice`: documentation-authority
 /// `docs` and behaviour-authority `legacy`, both citing the same
-/// `password-reset.expiry` claim. The RFC-29c §"Slice model (D4)"
-/// worked divergence: the documentation `criterion` beats the behaviour
-/// `example`.
+/// `password-reset.expiry` claim. The worked divergence: the
+/// documentation `criterion` beats the behaviour `example`.
 const DIVERGENCE_PLAN: &str = "\
 name: divergence
 lifecycle: pending
@@ -390,8 +389,8 @@ fn stage_divergence_slice() -> Project {
 fn synthesize_dry_run_omits_authority() {
     // The inputs envelope carries each source's inline `lead` + `claims`
     // and the resolved shape brief, but never the document-level
-    // `authority` — the kernel resolves authority post-response (RFC-29c
-    // §"Synthesis response").
+    // `authority` — the kernel resolves authority post-response (see
+    // "Synthesis response").
     let project = stage_synthesizable_slice();
     let assert = specify_cmd()
         .current_dir(project.root())
@@ -418,7 +417,7 @@ fn synthesize_dry_run_omits_authority() {
 
 #[test]
 fn synthesize_from_no_provenance() {
-    // RFC-29c §"Command": provenance is carried inline in `model.yaml`;
+    // Provenance is carried inline in `model.yaml`;
     // there is no persisted `provenance.yaml`.
     let project = stage_synthesizable_slice();
     let output = run_synthesize_from(&project, SYNTH_RESPONSE_JSON);
@@ -436,7 +435,7 @@ fn synthesize_from_no_provenance() {
 fn synthesize_normalizes_fields() {
     // The agent pre-assigns wrong-but-valid kernel/header fields; the
     // command ignores them all and persists the canonical derivation
-    // (RFC-29c §"Synthesis response": normalize, never reject).
+    // (normalize, never reject).
     let project = stage_synthesizable_slice();
     let output = run_synthesize_from(&project, SYNTH_RESPONSE_PRE_ASSIGNED);
     assert_eq!(output.status.code(), Some(0), "a normalizing projection must succeed");
@@ -469,8 +468,8 @@ fn synthesize_normalizes_fields() {
 #[test]
 fn synthesize_aborts_on_source_orphan() {
     // A claim that anchors no on-disk Evidence aborts the command before
-    // any write, emitting the failure journal event (RFC-29c §"Persist
-    // pipeline" step 1).
+    // any write, emitting the failure journal event (persist-pipeline
+    // step 1).
     let project = stage_synthesizable_slice();
     let output = run_synthesize_from(&project, SYNTH_RESPONSE_ORPHAN);
     assert_eq!(output.status.code(), Some(2));
@@ -507,7 +506,7 @@ fn synthesize_aborts_on_claim_kind_mismatch() {
 
 #[test]
 fn synthesize_resolves_per_kind_divergence() {
-    // The RFC-29c worked divergence: a documentation `criterion` beats a
+    // The worked divergence example: a documentation `criterion` beats a
     // behaviour `example`. The command derives `status: divergence`, the
     // winner / loser markers, the rendered source order, and the
     // `[divergence]` spec tag.
@@ -550,7 +549,7 @@ fn synthesize_resolves_per_kind_divergence() {
 fn synthesize_then_validate_is_drift_clean() {
     // A slice synthesized by the command must pass `slice validate`'s
     // typed-model drift gate: the command loaded and re-validated
-    // `model.yaml`, so none of the seven RFC-29c §"Drift validation"
+    // `model.yaml`, so none of the seven drift-validation
     // findings fire. (Crafted-bad-slice coverage lives in
     // `tests/slice_drift.rs`; this is the synthesized happy path.)
     let project = stage_synthesizable_slice();
@@ -579,7 +578,7 @@ fn synthesize_then_validate_is_drift_clean() {
 fn provenance_recomputes_labels() {
     // `slice provenance` over a synthesized divergence model recomputes
     // the `authority-resolved` label and reads each claim's `value` /
-    // `path` from on-disk Evidence (RFC-29c §"Provenance projection").
+    // `path` from on-disk Evidence (the provenance projection).
     let project = stage_divergence_slice();
     let output = run_synthesize_from(&project, DIVERGENCE_RESPONSE_JSON);
     assert_eq!(output.status.code(), Some(0), "the divergence slice synthesizes");
@@ -613,7 +612,7 @@ fn provenance_recomputes_labels() {
 
 #[test]
 fn synthesize_from_is_deterministic() {
-    // RFC-29c §"Kernel determinism": running `--from` twice over the
+    // Kernel determinism: running `--from` twice over the
     // same response yields a byte-identical `model.yaml`. (The model
     // carries no timestamp, and the kernel is target-independent.)
     let project = stage_synthesizable_slice();

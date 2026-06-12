@@ -14,14 +14,14 @@ specify-diagnostics              # depends on specify-{error,schema,digest} (Dia
 specify-model                    # depends on specify-{error,diagnostics} (artifact types + parsers: spec, task, evidence, discovery; shared atomic writer)
 specify-agents                   # depends on specify-{error,digest,model} (init-time AGENTS.md context-fence generation); Ctx-free, consumed only by the root binary
 specify-tool-manifest            # depends on specify-{diagnostics,schema} (tool manifest DTOs + structural validation; wasmtime-free)
-specify-tool                     # depends on specify-{error,diagnostics,digest,tool-manifest} (WASI tool runner; wasmtime, gated)
+specify-tool                     # depends on specify-{error,digest,schema,tool-manifest} (WASI tool runner; wasmtime, gated)
 specify-validate                 # depends on specify-{model,error,diagnostics} — artifact rule registry; NOT on specify-workflow or anything named lint
 specify-standards                # standards layer — depends on specify-{error,schema,digest,diagnostics}; NOT on specify-workflow or specify-tool
 specify-workflow                 # workflow layer — depends on specify-{error,schema,digest,tool-manifest,model,diagnostics}; NOT on specify-standards / specify-validate / specify-tool (no wasmtime in its graph)
 specify (root crate)             # wires runtime + framework crates into the specify binary
 ```
 
-The framework authoring checks behind `specify lint framework` run entirely through the declarative hint interpreter and WASI tools in `specify_standards::lint`; there is no imperative `Check` substrate (see [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout)).
+The framework authoring checks behind `specify lint framework` run entirely through the declarative hint interpreter in `specify_standards::lint` plus the in-process Road B checkers in the root binary (`src/runtime/commands/lint/framework_tools/`); there is no imperative `Check` substrate (see [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout)).
 
 `specify-standards` (standards) and `specify-workflow` (workflow) are siblings: they never import each other. `specify-validate` is the validation analog: it depends on `specify-model` only and never on `specify-workflow`, so an artifact rule cannot reach workflow lifecycle types — the same no-lifecycle-authority invariant `specify-standards` enforces. `specify-model` is the lifecycle-free leaf carrying the artifact types and parsers both `specify-validate` and `specify-workflow` read, alongside `specify-schema` and `specify-error` at the bottom. The Phase 1B collapse from 13 crates, the standards-layer split that re-introduced `specify-standards` and `specify-schema`, and the model/validate split that extracted `specify-model` and `specify-validate` are logged in [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout) and [DECISIONS.md §"Standards layer split into `specify-standards` and `specify-schema`"](../../DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema).
 
@@ -43,7 +43,7 @@ Three `specify-standards` module trees carry the standards-layer contract; touch
 
 - **`crates/standards/src/rules/`** — rules parser and resolver pipeline (`parse.rs`, `resolve.rs`, `resolve/{filter,sort}.rs`). The fingerprint algorithm and finding validators live in the `specify-diagnostics` leaf — import them from there directly. The resolver walks both `adapters/shared/rules/universal/` (`Origin::Shared`) and `adapters/shared/rules/core/` (`Origin::Core`) and tags every resolved rule with its origin so `specify lint` / `specify rules export` can default-exclude `CORE-*` unless `--include-core` is passed (§A3).
 - **`crates/standards/src/lint/index/`** — dual-profile indexer that produces a `WorkspaceModel` from a tree on disk. The closed `ScanProfile::{Project, Framework}` enum picks the walk shape: the project profile roots at `project_dir` (or the supplied `artifact_paths`), records symlinks without traversing them, and runs only the shared per-file extractors (`frontmatter`, `markdown`, `ignore_directives`); the framework profile (`index/framework.rs`) applies the §F1 include set, follows symlinks with cycle detection (recording both endpoints), and runs the framework-only extractors (`skill.rs`, `adapter.rs`, `marketplace.rs`, `brief.rs`) alongside the shared passes. `lint::index::build(project_dir, ScanProfile::Framework, &[], &[])` is the entry point `specify lint framework` calls; `specify lint project` calls the project counterpart. Both profiles share the same `WorkspaceModel` assembly invariants (byte-stable enumeration, sorted output collections).
-- **`crates/standards/src/lint/eval/`** — deterministic-hint interpreters for the implemented kinds (`path_pattern.rs`, `regex.rs`, `schema.rs`, `tool.rs`); reserved kinds in `schemas/rules/rule.schema.json` (annotated `"x-hint-status": "reserved"`) are implemented paired with their interpreter, one PR per kind. `lint-mode: model-assisted` rules are not skipped — they surface as `kind: review` diagnostics (the deterministic engine raises the question without scoring it). The four formatters live in the neutral `specify-diagnostics` leaf (`crates/diagnostics/src/render/{json,pretty,github,compact}.rs`) and consume the closed `Diagnostic` shape every surface emits.
+- **`crates/standards/src/lint/eval/`** — deterministic-hint interpreters, one `eval/<kind>.rs` module per hint kind in `schemas/rules/rule.schema.json`'s closed enum (`path-pattern`, `regex`, `schema`, `tool`, `unique`, `reference-resolves`, `set-coverage`, `set-eq`, `cardinality`, `constant-eq`, `fenced-block`, `presence`, `field-grammar`, `cross-reference`, `cli-contract`). No kind is reserved — adding a kind requires landing its interpreter in the same change. `lint-mode: model-assisted` rules are not skipped — they surface as `kind: review` diagnostics (the deterministic engine raises the question without scoring it). The four formatters live in the neutral `specify-diagnostics` leaf (`crates/diagnostics/src/render/{json,pretty,github,compact}.rs`) and consume the closed `Diagnostic` shape every surface emits.
 
 ## workflow domain modules
 
@@ -61,6 +61,8 @@ Four module trees carry the workflow contract — three in `specify-workflow`, p
 ## WASI tool sidecar scope
 
 The WASI tool cache root resolves `$SPECIFY_TOOLS_CACHE` → `$XDG_CACHE_HOME/specify/tools/` → `$HOME/.cache/specify/tools/`. Inside it the scope segment is `project--<project-name>` for project-scope tools and `adapter--<axis>--<slug>` for adapter-scope tools (e.g. `adapter--target--contracts` for tools declared in the `contracts` target adapter's `tools.yaml`). The `--` separator avoids collisions with hyphenated tool names. The adapter-scope substitution variable that maps into permission paths is `$CAPABILITY_DIR` (it expands to the resolved adapter's root directory and is rejected on project-scope use as `tool.capability-dir-out-of-scope`).
+
+Beside the per-scope tool directories, `<tool cache root>/wasmtime/` holds the wasmtime **compilation** cache (compiled-component artifacts, not tool bytes) configured by `WasiRunner::new`. It is best-effort — any resolution or setup failure disables it — and `$SPECIFY_WASMTIME_CACHE` overrides its location independently of the tool cache root (the integration suite pins it to `target/wasmtime-cache/` so per-test `SPECIFY_TOOLS_CACHE` isolation does not defeat compiled-component reuse). The gc scan never touches it: `tool gc` enumerates only `<root>/<scope-segment>/` trees.
 
 ## WASI carve-outs
 
@@ -111,10 +113,10 @@ cargo +nightly fmt --all
 
 ## Supply chain
 
-`cargo-vet`, `cargo-deny`, `cargo-audit`, `cargo-outdated`, and `cargo-udeps` all run in CI (`cargo make ci`). When a new dependency lands:
+`cargo-vet` and `cargo-deny` gate `cargo make ci`; `cargo-audit`, `cargo-outdated`, and `cargo-udeps` are advisory tasks run on demand (`cargo make audit` / `outdated` / `deps`). The vet task is check-only (`cargo vet --locked`) — regeneration is deliberately not part of the gate, since regenerating exemptions before checking would auto-exempt anything unaudited. When a new dependency lands:
 
 1. Add it to `[workspace.dependencies]` in the root `Cargo.toml` with a major-version pin (e.g. `serde = { version = "1", features = ["derive"] }`). Per-crate `Cargo.toml` references it as `serde.workspace = true`.
-2. Run `cargo make vet` to regenerate the supply-chain audits, then commit the diff.
+2. Run `cargo make vet-regenerate` to refresh the supply-chain audits, review the `supply-chain/` diff, then commit it.
 3. Check `deny.toml` allows the dependency's licence. The current allowlist is in `deny.toml`; add a new SPDX id only after confirming compatibility with MIT-OR-Apache-2.0.
 
 `clippy::multiple_crate_versions` is silenced workspace-wide (`Cargo.toml`'s `[workspace.lints.clippy]`); duplicate transitive versions are audited by hand via `cargo tree --duplicates` on each `cargo update`, not gated through a ratchet.

@@ -10,10 +10,11 @@
 mod catalog;
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use regex::Regex;
 use serde_json::Value as JsonValue;
+use specify_standards::lint::index::scenario::discover_scenario_candidates;
 
 use super::support::{ToolFinding, parsed_config, relative_display, requested_rule, walk_files};
 
@@ -39,13 +40,27 @@ const TRACE_REQUIRED_FIELDS: [&str; 6] =
     ["kind", "schemaVersion", "sourceBackend", "sourceRunId", "sourceTimestamp", "scenarioId"];
 
 /// Run the scenario family scoped by the candidate sentinel path.
+/// A scoped invocation dispatches only the matching sub-check (the
+/// `skill_body` / `rules` per-rule idiom) — with five `kind: tool`
+/// scenario rules per `specify lint framework`, running every
+/// sub-check and filtering would repeat the full tree walks ×5.
 pub fn run(project_dir: &Path, args: &[String]) -> Vec<ToolFinding> {
     let scoped = requested_rule(args, RULES);
     let config = parsed_config(args);
-    let mut findings: Vec<ScenarioFinding> = run_with_config(project_dir, config.as_ref())
-        .into_iter()
-        .filter(|finding| scoped.is_none_or(|rule| finding.rule_id == rule))
-        .collect();
+    let mut findings: Vec<ScenarioFinding> = match scoped {
+        Some(RULE_ARTIFACT_PATH_UNSAFE) => {
+            check_artifact_paths(&collect_opted_scenarios(project_dir))
+        }
+        Some(RULE_BODY_ID_MISMATCH) => check_body_id(&collect_opted_scenarios(project_dir)),
+        Some(RULE_STAGES_NOT_CONTIGUOUS) => check_stages(&collect_opted_scenarios(project_dir)),
+        Some(RULE_RECORDED_TRACE_VIOLATION) => check_recorded_trace_freshness(project_dir),
+        Some(catalog::RULE_CATALOG_RUNS_DRIFT) => {
+            catalog::findings_from_config(project_dir, config.as_ref())
+        }
+        // Unscoped (or unrecognised-candidate) invocations run the
+        // whole family once — the direct-tool-run path.
+        _ => run_with_config(project_dir, config.as_ref()),
+    };
     findings
         .sort_by(|a, b| (a.rule_id, &a.path, &a.message).cmp(&(b.rule_id, &b.path, &b.message)));
     findings.into_iter().map(wire_finding).collect()
@@ -372,87 +387,6 @@ fn frontmatter_split(content: &str) -> Option<(&str, &str)> {
     let end = rest.find("\n---")?;
     let body_start = content.len() - (rest.len() - end) + "\n---".len();
     Some((&rest[..end], &content[body_start..]))
-}
-
-/// Discover scenario candidate files across the eval scenario pack,
-/// target adapter tests, and plugin skill fixtures. Symlinks are never
-/// traversed or collected.
-fn discover_scenario_candidates(root: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    collect_eval_scenarios(&root.join("evals").join("scenarios"), &mut out);
-    collect_target_scenarios(&root.join("adapters").join("targets"), &mut out);
-    collect_plugin_fixture_scenarios(&root.join("plugins"), &mut out);
-    out.sort();
-    out.dedup();
-    out
-}
-
-/// Flat `evals/scenarios/<id>.md` files (depth 1), skipping the pack
-/// `README.md` catalog.
-fn collect_eval_scenarios(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if !file_type.is_file() {
-            continue;
-        }
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        let is_md =
-            path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("md"));
-        if name == "README.md" || !is_md {
-            continue;
-        }
-        out.push(path);
-    }
-}
-
-/// `adapters/targets/<adapter>/tests/<file>.md` and
-/// `adapters/targets/<adapter>/tests/<dir>/scenario.md`.
-fn collect_target_scenarios(targets_dir: &Path, out: &mut Vec<PathBuf>) {
-    let mut files = Vec::new();
-    walk_files(targets_dir, &mut files);
-    for path in files {
-        let Ok(rel) = path.strip_prefix(targets_dir) else {
-            continue;
-        };
-        let parts: Vec<&str> = rel.iter().filter_map(|c| c.to_str()).collect();
-        let ext_md = path.extension().and_then(|e| e.to_str()) == Some("md");
-        if ext_md && parts.len() == 3 && parts[1] == "tests" {
-            out.push(path.clone());
-        }
-        if parts.len() == 4 && parts[1] == "tests" && parts[3] == "scenario.md" {
-            out.push(path);
-        }
-    }
-}
-
-/// `plugins/<plugin>/skills/<skill>/fixtures/<case>/scenario.md`.
-fn collect_plugin_fixture_scenarios(plugins_dir: &Path, out: &mut Vec<PathBuf>) {
-    let mut files = Vec::new();
-    walk_files(plugins_dir, &mut files);
-    for path in files {
-        if path.file_name().and_then(|n| n.to_str()) != Some("scenario.md") {
-            continue;
-        }
-        let Ok(rel) = path.strip_prefix(plugins_dir) else {
-            continue;
-        };
-        let parts: Vec<&str> = rel.iter().filter_map(|c| c.to_str()).collect();
-        if parts.len() == 6
-            && parts[1] == "skills"
-            && parts[3] == "fixtures"
-            && parts[5] == "scenario.md"
-        {
-            out.push(path);
-        }
-    }
 }
 
 #[cfg(test)]

@@ -1,6 +1,5 @@
 //! `specify tool fetch` handler.
 
-use jiff::Timestamp;
 use specify_error::Result;
 use specify_tool::cache::Status as CacheStatus;
 
@@ -14,12 +13,7 @@ pub fn run(ctx: &Ctx, name: Option<&str>) -> Result<()> {
     let mut rows = Vec::with_capacity(selected.len());
     for scoped in selected {
         let before = cache_status_for(scoped)?;
-        specify_tool::resolver::resolve(
-            &scoped.scope,
-            &scoped.tool,
-            Timestamp::now(),
-            &ctx.project_dir,
-        )?;
+        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, ctx.now(), &ctx.project_dir)?;
         rows.push(ToolFetchRow {
             row: row_for(scoped)?,
             fetched: before != CacheStatus::Hit,

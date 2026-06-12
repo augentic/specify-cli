@@ -4,7 +4,7 @@
 //! codes, error discriminants, journal event ids, embedded schema
 //! paths) into one `CliContract` payload, so documentation and skill
 //! prose can be cross-checked against the binary instead of by `rg`
-//! discipline (RFC-44 R1).
+//! discipline.
 
 pub mod cli;
 pub mod dump;

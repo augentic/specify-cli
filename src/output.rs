@@ -61,7 +61,7 @@ pub fn emit<T: Serialize>(
 }
 
 /// The shared lint-output tail for the `specify lint` and `specify lint framework`
-/// handlers (REVIEW.md A19). Carries the already-composed
+/// handlers. Carries the already-composed
 /// [`DiagnosticReport`] plus everything [`emit_diagnostic_report`] needs
 /// to render it, journal the run, and decide blocking status in one
 /// place so neither handler re-implements the sequence.

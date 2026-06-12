@@ -1,10 +1,10 @@
-//! Integration test for the the executable hint-kind contract
-//! `path-pattern` evaluator.
+//! Umbrella smoke for the `path-pattern` candidate-set construction.
 //!
-//! `path-pattern` is a candidate-set filter, not a finder. The lint contract
-//! contract is verified indirectly: a rule with `path-pattern: *.rs`
-//! plus `regex: fn` MUST emit findings only for the `*.rs` files
-//! reachable from the workspace model.
+//! `path-pattern` is a candidate-set filter, not a finder. The contract
+//! is verified indirectly through the indexer + umbrella: a rule with
+//! `path-pattern: *.rs` plus `regex: fn` MUST emit findings only for
+//! the `*.rs` files reachable from the workspace model; exclusion
+//! globs subtract from the include union.
 
 use std::fs;
 

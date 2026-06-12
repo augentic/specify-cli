@@ -1,16 +1,14 @@
-//! Integration tests for `specify_workflow::registry::workspace` and
-//! `specify_workflow::registry::forge`.
+//! Integration tests for `specify_workflow::registry::workspace`.
 //!
 //! Deliberately narrow: the binary-level `tests/workspace.rs` covers the
 //! `workspace {sync,push,prepare}` wire surface (selector preflight,
 //! journaling, symlink materialisation, the self-slot and foreign-entry
 //! mirror pins, the origin-head-unresolved prepare diagnostic). This
-//! file keeps only what that layer does not reach: the pure classifiers
-//! (`github_slug`, `is_specify_branch`, `branches_match`), slot-problem
-//! classification and sync refusal edges, mirror corner cases not
-//! pinned in-module or at the binary, branch-preparation dirtiness and
-//! fast-forward semantics, `SlotStatus` enrichment, push outcome
-//! classification, and `topology.lock` regeneration.
+//! file keeps only what that layer does not reach: the pure classifier
+//! (`github_slug`), slot-problem classification and sync refusal edges,
+//! mirror corner cases not pinned in-module or at the binary,
+//! branch-preparation dirtiness and fast-forward semantics, push
+//! outcome classification, and `topology.lock` regeneration.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,10 +17,8 @@ use std::process::Command;
 use specify_workflow::registry::branch::{
     LocalAction, RemoteAction, Request as BranchRequest, prepare,
 };
-use specify_workflow::registry::forge::{branches_match, is_specify_branch};
 use specify_workflow::registry::workspace::{
-    PushOutcome, SlotKind, SlotProblemReason, SlotStatus, github_slug, push_projects, slot_problem,
-    status as workspace_status, status_projects as workspace_status_projects,
+    PushOutcome, SlotKind, SlotProblemReason, github_slug, push_projects, slot_problem,
     sync_projects as workspace_sync_projects,
 };
 use specify_workflow::registry::{Registry, RegistryProject};
@@ -38,29 +34,9 @@ fn symlink_dir(target: &Path, link: &Path) {
     std::os::windows::fs::symlink_dir(target, link).expect("symlink");
 }
 
-const GIT_ENV: [(&str, &str); 4] = [
-    ("GIT_AUTHOR_NAME", "Specify Test"),
-    ("GIT_AUTHOR_EMAIL", "specify-test@example.com"),
-    ("GIT_COMMITTER_NAME", "Specify Test"),
-    ("GIT_COMMITTER_EMAIL", "specify-test@example.com"),
-];
-
-fn run_git(root: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .current_dir(root)
-        .args(args)
-        .envs(GIT_ENV)
-        .output()
-        .unwrap_or_else(|err| panic!("git {} failed to start: {err}", args.join(" ")));
-    assert!(
-        output.status.success(),
-        "git {} failed\nstdout:\n{}\nstderr:\n{}",
-        args.join(" "),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout).expect("git stdout utf8")
-}
+#[path = "../../../tests/common/fs_git.rs"]
+mod fs_git;
+use fs_git::run_git;
 
 fn registry_with_projects(names: &[&str]) -> Registry {
     Registry {
@@ -341,7 +317,7 @@ fn c02_sync_preserves_gitignore_once() {
     assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/scratch/").count(), 1);
 }
 
-// ---------- adapter mirror (RFC-45 slot adapter provisioning) ---------
+// ---------- adapter mirror (slot adapter provisioning) ---------
 
 /// Stage an adapter dir (`adapter.yaml` + optional extra files) under
 /// `root/<rel>/`.
@@ -543,159 +519,6 @@ fn c04_prepare_reports_missing_origin() {
     assert_eq!(current_branch(&slot), "main");
 }
 
-// ---------- workspace_status -----------------------------------------
-
-#[test]
-fn status_missing_unrealised_slot() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    fs::write(
-        project_dir.join("registry.yaml"),
-        "\
-version: 1
-projects:
-  - name: alpha
-    url: git@github.com:org/alpha.git
-    adapter: omnia@v1
-    description: alpha
-  - name: beta
-    url: git@github.com:org/beta.git
-    adapter: omnia@v1
-    description: beta
-",
-    )
-    .unwrap();
-
-    let slots = workspace_status(project_dir).expect("ok").expect("registry present");
-    assert_eq!(slots.len(), 2);
-    assert!(
-        slots.iter().all(|s| matches!(
-            s,
-            SlotStatus {
-                kind: SlotKind::Missing,
-                head_sha: None,
-                dirty: None,
-                ..
-            }
-        )),
-        "unmaterialised slots must classify as Missing, got: {slots:?}",
-    );
-    assert_eq!(slots[0].name, "alpha");
-    assert_eq!(slots[1].name, "beta");
-}
-
-#[test]
-fn c03_status_enriches_symlink_state() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let peer = project_dir.join("peer");
-    fs::create_dir_all(peer.join(".specify/slices/zeta")).unwrap();
-    fs::create_dir_all(peer.join(".specify/slices/alpha")).unwrap();
-    fs::write(peer.join(".specify/project.yaml"), "name: peer\nadapter: omnia@v1\n").unwrap();
-    fs::write(peer.join("README.md"), "# peer\n").unwrap();
-    run_git(&peer, &["init"]);
-    run_git(&peer, &["add", "."]);
-    run_git(&peer, &["commit", "-m", "initial"]);
-    run_git(&peer, &["checkout", "-b", "specify/demo-change"]);
-    fs::write(project_dir.join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
-    fs::write(
-        project_dir.join("registry.yaml"),
-        "\
-version: 1
-projects:
-  - name: peer
-    url: ./peer
-    adapter: omnia@v1
-",
-    )
-    .unwrap();
-
-    let registry = Registry::load(project_dir).unwrap().expect("registry present");
-    workspace_sync_projects(project_dir, &registry.select(&[]).unwrap()).unwrap();
-    let slots = workspace_status(project_dir).unwrap().unwrap();
-    let slot = &slots[0];
-
-    assert_eq!(slot.kind, SlotKind::Symlink);
-    assert_eq!(slot.slot_path, project_dir.join(".specify/workspace/peer"));
-    assert_eq!(
-        slot.configured_target_kind,
-        specify_workflow::registry::workspace::ConfiguredTargetKind::Local
-    );
-    assert_eq!(slot.configured_target, fs::canonicalize(&peer).unwrap().display().to_string());
-    assert_eq!(slot.actual_symlink_target, Some(fs::canonicalize(&peer).unwrap()));
-    assert_eq!(slot.current_branch.as_deref(), Some("specify/demo-change"));
-    assert!(slot.head_sha.as_ref().is_some_and(|sha| sha.len() == 40));
-    assert_eq!(slot.dirty, Some(false));
-    assert_eq!(slot.branch_matches_change, Some(true));
-    assert!(slot.project_config_present);
-    assert_eq!(slot.active_slices, ["alpha", "zeta"]);
-}
-
-#[test]
-fn c03_status_git_clone_mismatch() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let slot_path = project_dir.join(".specify/workspace/remote");
-    let remote_url = "https://example.invalid/org/remote.git";
-    fs::create_dir_all(slot_path.join(".specify/slices/draft")).unwrap();
-    fs::write(slot_path.join(".specify/project.yaml"), "name: remote\nadapter: omnia@v1\n")
-        .unwrap();
-    fs::write(slot_path.join("README.md"), "# remote\n").unwrap();
-    run_git(&slot_path, &["init"]);
-    run_git(&slot_path, &["remote", "add", "origin", remote_url]);
-    run_git(&slot_path, &["add", "."]);
-    run_git(&slot_path, &["commit", "-m", "initial"]);
-    run_git(&slot_path, &["checkout", "-b", "feature/work"]);
-    fs::write(slot_path.join("dirty.txt"), "dirty\n").unwrap();
-    fs::write(project_dir.join("plan.yaml"), "name: demo-change\nslices: []\n").unwrap();
-    let project = RegistryProject {
-        name: "remote".to_string(),
-        url: remote_url.to_string(),
-        adapter: Some("omnia@v1".to_string()),
-        description: Some("remote service".to_string()),
-        contracts: None,
-    };
-
-    let slots = workspace_status_projects(project_dir, &[&project]);
-    let slot = &slots[0];
-
-    assert_eq!(slot.kind, SlotKind::GitClone);
-    assert_eq!(
-        slot.configured_target_kind,
-        specify_workflow::registry::workspace::ConfiguredTargetKind::Remote
-    );
-    assert_eq!(slot.configured_target, remote_url);
-    assert_eq!(slot.actual_origin.as_deref(), Some(remote_url));
-    assert_eq!(slot.current_branch.as_deref(), Some("feature/work"));
-    assert_eq!(slot.dirty, Some(true));
-    assert_eq!(slot.branch_matches_change, Some(false));
-    assert!(slot.project_config_present);
-    assert_eq!(slot.active_slices, ["draft"]);
-}
-
-#[test]
-fn c03_status_other_materialisation() {
-    let tmp = TempDir::new().unwrap();
-    let project_dir = tmp.path();
-    let slot_path = project_dir.join(".specify/workspace/odd");
-    fs::create_dir_all(slot_path.join(".specify/slices/manual")).unwrap();
-    fs::write(slot_path.join(".specify/project.yaml"), "name: odd\nadapter: omnia@v1\n").unwrap();
-    let project = RegistryProject {
-        name: "odd".to_string(),
-        url: "https://example.invalid/org/odd.git".to_string(),
-        adapter: Some("omnia@v1".to_string()),
-        description: Some("odd service".to_string()),
-        contracts: None,
-    };
-
-    let slots = workspace_status_projects(project_dir, &[&project]);
-
-    assert_eq!(slots[0].kind, SlotKind::Other);
-    assert!(slots[0].project_config_present);
-    assert_eq!(slots[0].active_slices, ["manual"]);
-    assert_eq!(slots[0].dirty, None);
-}
-
 // ---------- workspace push (workspace orchestration contract C07) -------------------------------
 
 #[test]
@@ -782,20 +605,6 @@ fn c07_push_wrong_branch_no_checkout() {
     assert_eq!(results[0].status, PushOutcome::NoBranch);
     assert_eq!(current_branch(&slot), "feature/work", "push must not checkout another branch");
     assert!(remote_branch_head(&remote_url, "specify/demo-change").is_none());
-}
-
-// ---------- forge:: branch matchers ----------------------------------
-
-#[test]
-fn forge_branch_matchers_round_trip() {
-    assert!(is_specify_branch("specify/foo"));
-    assert!(is_specify_branch("specify/platform-v2"));
-    assert!(!is_specify_branch("feature/bar"));
-    assert!(!is_specify_branch("specify/foo/bar"));
-
-    assert!(branches_match("specify/foo", "specify/foo"));
-    assert!(!branches_match("specify/foo", "specify/bar"));
-    assert!(!branches_match("feature/foo", "specify/foo"));
 }
 
 // ---------- topology.lock regeneration ------------------------

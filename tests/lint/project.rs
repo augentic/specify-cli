@@ -366,14 +366,13 @@ fn emits_lint_completed_event() {
         "the directive demotes UNI-100; ignored bucket must be 1: {payload:#}",
     );
     assert_eq!(payload.pointer("/counts/false_positive").and_then(Value::as_u64), Some(0));
-    assert_eq!(payload.pointer("/baseline_present").and_then(Value::as_bool), Some(false));
     assert_eq!(payload.pointer("/exit_code").and_then(Value::as_i64), Some(0));
     assert!(
         payload.pointer("/duration_ms").and_then(Value::as_u64).is_some(),
         "duration_ms must be present and serialise as a JSON number: {payload:#}",
     );
 
-    for forbidden in ["duration-ms", "baseline-present", "false-positive", "exit-code"] {
+    for forbidden in ["duration-ms", "false-positive", "exit-code"] {
         assert!(
             !last_line.contains(&format!("\"{forbidden}\"")),
             "lint-completed payload must use snake_case field names; raw:\n{last_line}",

@@ -1,5 +1,5 @@
 //! Shared fixtures, seeds, and re-exports for the `workflow`
-//! integration suite (REVIEW.md A13).
+//! integration suite.
 //!
 //! The suite is split across themed submodules grouped by `plan`
 //! command family (`validate`, `next`, `mutate`, `source_binding`,
@@ -28,7 +28,7 @@ pub fn assert_golden(name: &str, actual: Value) {
     assert_golden_at(&plan_fixtures(), name, actual);
 }
 
-// -- setup helpers (REVIEW.md B4) -------------------------------------
+// -- setup helpers -----------------------------------------------------
 
 /// Load and parse the project's `plan.yaml` into the in-memory model.
 /// Used by setup helpers (and tests) that must assert a write actually

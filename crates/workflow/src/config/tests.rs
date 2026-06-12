@@ -72,31 +72,6 @@ fn sample_cfg(rules: BTreeMap<String, String>) -> ProjectConfig {
 }
 
 #[test]
-fn rule_path_empty_map_is_none() {
-    let cfg = sample_cfg(BTreeMap::new());
-    assert!(cfg.rule_path(Path::new("/proj"), "proposal").is_none());
-}
-
-#[test]
-fn rule_path_empty_value_is_none() {
-    let mut rules = BTreeMap::new();
-    rules.insert("proposal".to_string(), String::new());
-    let cfg = sample_cfg(rules);
-    assert!(cfg.rule_path(Path::new("/proj"), "proposal").is_none());
-}
-
-#[test]
-fn rule_path_resolves_under_specify_dir() {
-    let mut rules = BTreeMap::new();
-    rules.insert("proposal".to_string(), "rules/proposal.md".to_string());
-    let cfg = sample_cfg(rules);
-    assert_eq!(
-        cfg.rule_path(Path::new("/proj"), "proposal"),
-        Some(PathBuf::from("/proj/.specify/rules/proposal.md"))
-    );
-}
-
-#[test]
 fn load_not_initialized_when_missing() {
     let tmp = tempdir().unwrap();
     let err = ProjectConfig::load(tmp.path()).expect_err("missing file errs");
@@ -133,81 +108,11 @@ fn load_accepts_floor_lte_current() {
 }
 
 #[test]
-fn major_parses_or_none() {
-    assert_eq!(major("1.2.3"), Some(1));
-    assert_eq!(major("nope"), None);
-}
-
-#[test]
-fn needs_migration_detects_older_major() {
-    assert_eq!(needs_migration("2.0.0", "1.5.0"), Some(("1.5.0".to_string(), "2.0.0".to_string())));
-}
-
-#[test]
-fn needs_migration_none_for_same_major() {
-    assert_eq!(needs_migration("2.3.0", "2.0.0"), None);
-}
-
-#[test]
-fn needs_migration_none_for_newer_pin() {
-    assert_eq!(needs_migration("1.0.0", "2.0.0"), None);
-}
-
-#[test]
-fn needs_migration_none_for_unparseable_pin() {
-    assert_eq!(needs_migration("2.0.0", "not-a-semver"), None);
-}
-
-#[test]
-fn needs_migration_unparseable_current() {
-    assert_eq!(needs_migration("not-a-semver", "1.0.0"), None);
-}
-
-#[test]
-fn load_no_migration_same_major() {
-    let tmp = tempdir().unwrap();
-    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
-    let cfg = ProjectConfig::load(tmp.path()).expect("same-major pin loads");
-    assert_eq!(cfg.specify_version.as_deref(), Some("0.0.1"));
-}
-
-#[test]
-fn load_refuses_migration_owed_pin() {
-    // The exit-4 wiring: a pinned major strictly older than the
-    // binary's raises ProjectNeedsMigration from `load`. Unreachable at
-    // runtime while the binary is 0.x, so the injected `current` keeps
-    // the refusal covered until the 1.0 cut.
-    let tmp = tempdir().unwrap();
-    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"1.5.0\"\n");
-    let err = ProjectConfig::load_with_current(tmp.path(), "2.0.0")
-        .expect_err("older pinned major refused");
-    match err {
-        Error::ProjectNeedsMigration { from, to } => {
-            assert_eq!(from, "1.5.0");
-            assert_eq!(to, "2.0.0");
-        }
-        other => panic!("unexpected error: {other:?}"),
-    }
-}
-
-#[test]
 fn load_same_major_injected_current() {
     let tmp = tempdir().unwrap();
     write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"2.0.0\"\n");
     let cfg = ProjectConfig::load_with_current(tmp.path(), "2.4.1").expect("same major loads");
     assert_eq!(cfg.specify_version.as_deref(), Some("2.0.0"));
-}
-
-#[test]
-fn load_for_migration_same_major() {
-    let tmp = tempdir().unwrap();
-    write_config(tmp.path(), "name: demo\nadapter: omnia\nspecify_version: \"0.0.1\"\n");
-    let (cfg, migration) =
-        ProjectConfig::load_for_migration(tmp.path()).expect("loads for migration");
-    assert!(migration.is_none(), "same-major pin needs no migration");
-    assert_eq!(cfg.name, "demo");
-    assert_eq!(cfg.adapter.as_deref(), Some("omnia"));
-    assert_eq!(cfg.specify_version.as_deref(), Some("0.0.1"));
 }
 
 #[test]
@@ -386,47 +291,18 @@ fn platforms_field_preserves_order() {
 }
 
 proptest! {
-    // `major` returns the leading component of a well-formed semver.
+    // `version_is_older` is a strict semver order: irreflexive and
+    // antisymmetric over well-formed versions.
     #[test]
-    fn major_extracts_first_component(maj in 0_u64..50, min in 0_u64..50, pat in 0_u64..50) {
-        prop_assert_eq!(major(&format!("{maj}.{min}.{pat}")), Some(maj));
-    }
-
-    // Migration is required exactly when the pinned major is strictly
-    // older than the current major; otherwise the result is `None`.
-    #[test]
-    fn migration_iff_pin_major_older(
-        cur in (0_u64..8, 0_u64..5, 0_u64..5),
-        pin in (0_u64..8, 0_u64..5, 0_u64..5),
+    fn version_order_is_strict(
+        a in (0_u64..8, 0_u64..5, 0_u64..5),
+        b in (0_u64..8, 0_u64..5, 0_u64..5),
     ) {
-        let current = format!("{}.{}.{}", cur.0, cur.1, cur.2);
-        let pinned = format!("{}.{}.{}", pin.0, pin.1, pin.2);
-        let got = needs_migration(&current, &pinned);
-        if pin.0 < cur.0 {
-            prop_assert_eq!(got, Some((pinned, current)));
-        } else {
-            prop_assert!(got.is_none());
+        let va = format!("{}.{}.{}", a.0, a.1, a.2);
+        let vb = format!("{}.{}.{}", b.0, b.1, b.2);
+        prop_assert!(!version_is_older(&va, &va));
+        if version_is_older(&va, &vb) {
+            prop_assert!(!version_is_older(&vb, &va));
         }
-    }
-
-    // The relation is antisymmetric: if one direction needs migration the
-    // reverse direction never does.
-    #[test]
-    fn migration_is_antisymmetric(
-        cur in (0_u64..8, 0_u64..5, 0_u64..5),
-        pin in (0_u64..8, 0_u64..5, 0_u64..5),
-    ) {
-        let current = format!("{}.{}.{}", cur.0, cur.1, cur.2);
-        let pinned = format!("{}.{}.{}", pin.0, pin.1, pin.2);
-        if needs_migration(&current, &pinned).is_some() {
-            prop_assert!(needs_migration(&pinned, &current).is_none());
-        }
-    }
-
-    // A version is never older than itself.
-    #[test]
-    fn same_version_never_migrates(maj in 0_u64..50, min in 0_u64..50, pat in 0_u64..50) {
-        let v = format!("{maj}.{min}.{pat}");
-        prop_assert!(needs_migration(&v, &v).is_none());
     }
 }

@@ -15,8 +15,8 @@ const MAX_TEST_FN_LEN: usize = 40;
 
 /// Rule id for sentence-length test fn names.
 pub const RULE_TEST_FN_NAME: &str = "rust.test-fn-name-too-long";
-/// Rule id for archaeology markers in doc comments (burn-down tracked,
-/// not gated — see docs/quality-debt.md).
+/// Rule id for archaeology markers in doc comments (advisory only,
+/// not gated).
 pub const RULE_ARCHAEOLOGY: &str = "rust.archaeology-in-doc-comment";
 /// Rule id for `#[allow]` without a `reason`.
 pub const RULE_ALLOW_NO_REASON: &str = "rust.allow-without-reason";

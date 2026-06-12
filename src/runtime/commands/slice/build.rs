@@ -11,9 +11,8 @@
 //! - `execution: tool`: single-phase. Assemble + schema-validate the
 //!   request, then dispatch the declared build tool. No first-party
 //!   build tool exists yet, so the dispatch itself is a clear
-//!   unsupported seam ([`dispatch_build_tool`], mirroring source survey's
-//!   `dispatch_survey_tool`); the request-side aborts still fire so a
-//!   future tool slots in behind the same flow.
+//!   unsupported seam ([`dispatch_build_tool`]); the request-side
+//!   aborts still fire so a future tool slots in behind the same flow.
 //! - `execution: agent` (default): two-phase, and the CLI never blocks
 //!   on agent work.
 //!   - `--phase prepare` (default): assemble + schema-validate the
@@ -39,7 +38,6 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_diagnostics::Diagnostic;
 use specify_error::{Error, Result};
@@ -47,7 +45,7 @@ use specify_workflow::adapter::{
     BuildInputDeclaration, Execution, ResolvedTargetAdapter, TargetAdapter, TargetOperation,
 };
 use specify_workflow::init::adapter_name_from_value;
-use specify_workflow::journal::{self, Event, EventKind};
+use specify_workflow::journal::{self, EventKind};
 use specify_workflow::schema::{validate_build_report_json, validate_build_request_json};
 use specify_workflow::slice::{
     BuildReport, BuildRequest, BuildStatus, LifecycleStatus, SliceMetadata,
@@ -134,12 +132,14 @@ fn prepare(
     let manifest = &resolved.manifest;
     let request_path = assemble_and_write_request(ctx, name, slice_dir, &manifest.inputs)?;
 
-    emit_event(
-        ctx,
+    journal::emit_best_effort(
+        ctx.layout(),
+        ctx.now(),
         EventKind::TargetExecutionAgent {
             slice: name.into(),
             target: manifest.name.clone(),
         },
+        "slice.build",
     );
 
     let build_brief = build_brief_path(resolved)?;
@@ -162,43 +162,30 @@ fn prepare(
 /// `slice.build.succeeded` / `slice.build.failed`. Mirrors the
 /// `slice merge run` lifecycle-pair idiom.
 fn finalize(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<()> {
-    emit_event(
+    let body = super::bracket(
         ctx,
+        "slice.build",
         EventKind::SliceBuildStarted {
             slice_name: name.into(),
         },
-    );
-    match finalize_report(name, slice_dir, &ctx.project_dir) {
-        Ok(body) => {
-            emit_event(
-                ctx,
-                EventKind::SliceBuildSucceeded {
-                    slice_name: name.into(),
-                },
-            );
-            ctx.write(&body, write_result_text)
-        }
-        Err(err) => {
-            // `reason` is the error's stable kebab discriminant. The
-            // failed event is best-effort, but the original error still
-            // propagates so the exit code is unchanged.
-            emit_event(
-                ctx,
-                EventKind::SliceBuildFailed {
-                    slice_name: name.into(),
-                    reason: err.variant_str().into_owned(),
-                },
-            );
-            Err(err)
-        }
-    }
+        EventKind::SliceBuildSucceeded {
+            slice_name: name.into(),
+        },
+        |reason| EventKind::SliceBuildFailed {
+            slice_name: name.into(),
+            reason,
+        },
+        || finalize_report(ctx, name, slice_dir),
+    )?;
+    ctx.write(&body, write_result_text)
 }
 
 /// Validate the report, enforce the success-blocking gate and the
 /// output-existence gate, reject a failed report, and gate the
 /// `Refined → Built` transition. Wrapped by [`finalize`] so the
 /// `slice.build.*` pair brackets it.
-fn finalize_report(name: &str, slice_dir: &Path, project_dir: &Path) -> Result<BuildResult> {
+fn finalize_report(ctx: &Ctx, name: &str, slice_dir: &Path) -> Result<BuildResult> {
+    let project_dir: &Path = &ctx.project_dir;
     let raw = read_report(&report_path(slice_dir))?;
     validate_build_report_json(&raw)?;
     let report: BuildReport = serde_saphyr::from_str(&raw)?;
@@ -224,7 +211,7 @@ fn finalize_report(name: &str, slice_dir: &Path, project_dir: &Path) -> Result<B
         });
     }
 
-    slice_actions::transition(slice_dir, LifecycleStatus::Built, Timestamp::now())?;
+    slice_actions::transition(slice_dir, LifecycleStatus::Built, ctx.now())?;
 
     // A4 self-consistency: compare the brief-authored `ui_surface`
     // against the produced composition. These warnings are advisory —
@@ -333,16 +320,6 @@ fn read_report(path: &Path) -> Result<String> {
             Error::Io(err)
         }
     })
-}
-
-/// Best-effort append of a single `slice.build.*` / `target.execution.agent`
-/// event. A journal-write failure is logged and swallowed so it can
-/// never change the verb's exit code.
-fn emit_event(ctx: &Ctx, kind: EventKind) {
-    let event = Event::new(Timestamp::now(), kind);
-    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
-        eprintln!("warning: slice.build journal append: {err}");
-    }
 }
 
 fn write_handoff_text(w: &mut dyn Write, body: &BuildHandoff) -> std::io::Result<()> {

@@ -136,7 +136,7 @@ fn planning_stage_ab_brief_and_validate() {
 
     // Don't trust the bare exit code: assert `plan create` actually
     // wrote the named plan with the requested source binding before we
-    // validate it (REVIEW.md B4).
+    // validate it.
     let plan = load_plan(&project);
     assert_eq!(plan.name, "planning-path", "create must persist the plan name");
     assert!(plan.sources.contains_key("app"), "create must persist the `app` source binding");
@@ -252,7 +252,7 @@ fn validate_reports_all_health_diagnostics() {
 
 #[test]
 fn validate_reports_topology_cache_stale() {
-    // RFC-36: a slot's `project.yaml` is the authored home for its
+    // A slot's `project.yaml` is the authored home for its
     // facets; `.specify/topology.lock` is the derived projection. When a
     // materialised slot drifts from the committed cache, `plan validate`
     // emits the warning-only `topology-cache-stale` diagnostic whose fix

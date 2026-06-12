@@ -291,7 +291,7 @@ pub struct ToolManifest {
     pub tools: Vec<Tool>,
 }
 
-/// Plugin axis discriminator per workflow §Adapter axis.
+/// Plugin axis discriminator per workflow §Adapter vocabulary.
 ///
 /// Source plugins (`extract` / `survey`) and target plugins
 /// (`shape` / `build` / `merge`) share the `adapter.yaml` shape and

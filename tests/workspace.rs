@@ -378,7 +378,7 @@ projects:
     assert!(root.join(".specify/workspace/beta").exists());
 }
 
-// ---- RFC-45 adapter-mirror conflict pins ----
+// ---- adapter-mirror conflict pins ----
 
 /// Vendor a minimal source adapter named `docs` at the workspace root.
 fn vendor_docs_adapter(root: &std::path::Path) {
@@ -389,7 +389,7 @@ fn vendor_docs_adapter(root: &std::path::Path) {
 
 #[test]
 fn sync_mirror_skips_self_slot() {
-    // RFC-45: a `url: .` registry entry symlinks its slot to the
+    // A `url: .` registry entry symlinks its slot to the
     // workspace itself; mirroring there would remove-then-copy the
     // workspace cache from itself. The self-slot is skipped: the
     // vendored adapter must not be self-mirrored into the workspace's
@@ -430,7 +430,7 @@ fn sync_mirror_skips_self_slot() {
 
 #[test]
 fn sync_mirror_keeps_foreign_cache_entries() {
-    // RFC-45: per-name delete-then-copy GC. Cache entries the workspace
+    // Per-name delete-then-copy GC. Cache entries the workspace
     // does not own (e.g. an init-time adapter seed in the slot) are
     // never pruned; workspace-owned names are refreshed on re-sync.
     let tmp = tempdir().expect("tempdir");

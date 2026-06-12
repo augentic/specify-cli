@@ -4,8 +4,8 @@
 //! [`real_cmd`] (or `Command::output`) and test mocks pass closures
 //! that capture per-test recording state.
 //!
-//! [`git`] / [`git_as_specify`] are the single `git` boundary
-//! (REVIEW.md A7): every registry / init / workspace wrapper builds its
+//! [`git`] / [`git_as_specify`] are the single `git` boundary:
+//! every registry / init / workspace wrapper builds its
 //! `git -C <cwd> <args>` invocation here and runs it through the
 //! injected [`CmdRunner`], then maps the returned [`Output`] into its
 //! own error type. Spawn failures surface as `Err(io::Error)`; a
@@ -70,4 +70,62 @@ where
         .arg(cwd)
         .args(args);
     runner(&mut command)
+}
+
+/// Classified failure from [`git_checked`] / [`git_as_specify_checked`]:
+/// the spawn-vs-command split every wrapper used to re-roll by hand.
+/// Callers map each arm onto their own diagnostic code family.
+#[derive(Debug)]
+pub enum GitFailure {
+    /// The `git` child process could not start.
+    Spawn(io::Error),
+    /// `git` ran but exited non-zero; carries the trimmed stderr.
+    Exit {
+        /// Trimmed stderr text from the failed command.
+        stderr: String,
+    },
+}
+
+/// [`git`] plus exit-status classification: a non-zero git exit becomes
+/// [`GitFailure::Exit`] (trimmed stderr captured), so callers receive an
+/// [`Output`] only for a successful run.
+///
+/// # Errors
+///
+/// [`GitFailure::Spawn`] when the child cannot start;
+/// [`GitFailure::Exit`] on a non-zero git exit.
+pub fn git_checked<I, S>(
+    runner: CmdRunner<'_>, cwd: Option<&Path>, args: I,
+) -> Result<Output, GitFailure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    classify(git(runner, cwd, args))
+}
+
+/// [`git_as_specify`] with the same exit-status classification as
+/// [`git_checked`].
+///
+/// # Errors
+///
+/// See [`git_checked`].
+pub fn git_as_specify_checked<I, S>(
+    runner: CmdRunner<'_>, cwd: &Path, args: I,
+) -> Result<Output, GitFailure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    classify(git_as_specify(runner, cwd, args))
+}
+
+fn classify(result: io::Result<Output>) -> Result<Output, GitFailure> {
+    let output = result.map_err(GitFailure::Spawn)?;
+    if output.status.success() {
+        return Ok(output);
+    }
+    Err(GitFailure::Exit {
+        stderr: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+    })
 }

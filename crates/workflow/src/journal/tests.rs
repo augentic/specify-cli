@@ -161,212 +161,12 @@ fn approved_actor_defaults_on_legacy_lines() {
     );
 }
 
-#[test]
-fn plan_reconcile_event_round_trips() {
-    // `specify plan propose --from` emits one `plan.reconcile.completed` event; lock its wire shape.
-    let completed = Event::new(
-        test_timestamp("2026-05-22T13:15:00Z"),
-        EventKind::PlanReconcileCompleted {
-            plan_name: "identity-revamp".into(),
-            slice_count: 3,
-            slice_names: vec![
-                "identity-contracts".into(),
-                "identity-service".into(),
-                "password-reset".into(),
-            ],
-        },
-    );
-    let completed_json = serde_json::to_string(&completed).expect("serialise completed");
-    for needle in [
-        r#""event":"plan.reconcile.completed""#,
-        r#""plan-name":"identity-revamp""#,
-        r#""slice-count":3"#,
-        r#""slice-names":["identity-contracts","identity-service","password-reset"]"#,
-    ] {
-        assert!(
-            completed_json.contains(needle),
-            "completed wire form must contain `{needle}`; got:\n{completed_json}"
-        );
-    }
-    let completed_round: Event =
-        serde_json::from_str(&completed_json).expect("deserialise completed");
-    assert_eq!(completed_round, completed, "completed round-trip must preserve every field");
-}
-
-#[test]
-fn slice_synthesize_events_round_trip() {
-    let rows: &[(EventKind, &[&str])] = &[
-        (
-            EventKind::SliceSynthesizeStarted {
-                slice_name: "identity-user-registration".into(),
-            },
-            &[
-                r#""event":"slice.synthesize.started""#,
-                r#""slice-name":"identity-user-registration""#,
-            ],
-        ),
-        (
-            EventKind::SliceSynthesizeAgent {
-                slice_name: "identity-user-registration".into(),
-            },
-            &[
-                r#""event":"slice.synthesize.agent""#,
-                r#""slice-name":"identity-user-registration""#,
-            ],
-        ),
-        (
-            EventKind::SliceSynthesizeCompleted {
-                slice_name: "identity-user-registration".into(),
-                artifacts: vec![
-                    "proposal.md".to_string(),
-                    "specs/identity/spec.md".to_string(),
-                    "design.md".to_string(),
-                    "tasks.md".to_string(),
-                    "model.yaml".to_string(),
-                ],
-            },
-            &[
-                r#""event":"slice.synthesize.completed""#,
-                r#""slice-name":"identity-user-registration""#,
-                r#""artifacts":["proposal.md","specs/identity/spec.md","design.md","tasks.md","model.yaml"]"#,
-            ],
-        ),
-        (
-            EventKind::SliceSynthesizeFailed {
-                slice_name: "identity-user-registration".into(),
-                reason: "spec-requirement-missing-sources".to_string(),
-            },
-            &[
-                r#""event":"slice.synthesize.failed""#,
-                r#""slice-name":"identity-user-registration""#,
-                r#""reason":"spec-requirement-missing-sources""#,
-            ],
-        ),
-    ];
-    wire_shapes::assert_wire_rows(rows);
-}
-
-#[test]
-fn slice_build_merge_events_round_trip() {
-    let rows: &[(EventKind, &[&str])] = &[
-        (
-            EventKind::SliceBuildStarted {
-                slice_name: "identity-user-registration".into(),
-            },
-            &[r#""event":"slice.build.started""#, r#""slice-name":"identity-user-registration""#],
-        ),
-        (
-            EventKind::SliceBuildSucceeded {
-                slice_name: "identity-user-registration".into(),
-            },
-            &[r#""event":"slice.build.succeeded""#, r#""slice-name":"identity-user-registration""#],
-        ),
-        (
-            EventKind::SliceBuildFailed {
-                slice_name: "identity-user-registration".into(),
-                reason: "cargo-check-failed".to_string(),
-            },
-            &[
-                r#""event":"slice.build.failed""#,
-                r#""slice-name":"identity-user-registration""#,
-                r#""reason":"cargo-check-failed""#,
-            ],
-        ),
-        (
-            EventKind::SliceMergeStarted {
-                slice_name: "identity-user-registration".into(),
-            },
-            &[r#""event":"slice.merge.started""#, r#""slice-name":"identity-user-registration""#],
-        ),
-        (
-            EventKind::SliceMergeSucceeded {
-                slice_name: "identity-user-registration".into(),
-            },
-            &[r#""event":"slice.merge.succeeded""#, r#""slice-name":"identity-user-registration""#],
-        ),
-        (
-            EventKind::SliceMergeFailed {
-                slice_name: "identity-user-registration".into(),
-                reason: "baseline-conflict".to_string(),
-            },
-            &[
-                r#""event":"slice.merge.failed""#,
-                r#""slice-name":"identity-user-registration""#,
-                r#""reason":"baseline-conflict""#,
-            ],
-        ),
-        (
-            EventKind::TargetExecutionAgent {
-                slice: "identity-user-registration".into(),
-                target: "omnia".to_string(),
-            },
-            &[
-                r#""event":"target.execution.agent""#,
-                r#""slice":"identity-user-registration""#,
-                r#""target":"omnia""#,
-            ],
-        ),
-    ];
-    wire_shapes::assert_wire_rows(rows);
-}
-
-#[test]
-fn cli_plugins_migration_events_round_trip() {
-    let rows: &[(EventKind, &[&str])] = &[
-        (
-            EventKind::CliUpgraded {
-                from: "1.4.0".to_string(),
-                to: "1.5.0".to_string(),
-                channel: "brew".to_string(),
-            },
-            &[
-                r#""event":"cli.upgraded""#,
-                r#""from":"1.4.0""#,
-                r#""to":"1.5.0""#,
-                r#""channel":"brew""#,
-            ],
-        ),
-        (
-            EventKind::PluginsRefreshed {
-                deleted_paths: vec![
-                    ".cursor/plugins/cache/augentic/spec".to_string(),
-                    ".cursor/plugins/cache/augentic/capture".to_string(),
-                ],
-                marketplace: ".cursor-plugin/marketplace.json".to_string(),
-            },
-            &[
-                r#""event":"plugins.refreshed""#,
-                r#""deleted-paths":[".cursor/plugins/cache/augentic/spec",".cursor/plugins/cache/augentic/capture"]"#,
-                r#""marketplace":".cursor-plugin/marketplace.json""#,
-            ],
-        ),
-        (
-            EventKind::MigrationApplied {
-                kind: "v2-to-v3".to_string(),
-                files_rewritten: 7,
-                files_moved: 3,
-            },
-            &[
-                r#""event":"migration.applied""#,
-                r#""kind":"v2-to-v3""#,
-                r#""files-rewritten":7"#,
-                r#""files-moved":3"#,
-            ],
-        ),
-        (
-            EventKind::MigrationSkipped {
-                kind: "v2-to-v3".to_string(),
-                reason: "staged-validation-failed".to_string(),
-            },
-            &[
-                r#""event":"migration.skipped""#,
-                r#""kind":"v2-to-v3""#,
-                r#""reason":"staged-validation-failed""#,
-            ],
-        ),
-    ];
-    wire_shapes::assert_wire_rows(rows);
-}
+// Per-family CLI-emitted round-trips were trimmed: every variant's wire
+// id is locked by `wire_event_ids_match_serde_renames`, field casing by
+// the snake-case probe, the exact-line rows by the `wire_shapes` contract
+// tables, and the emission paths by the binary goldens in
+// `tests/journal.rs`. Agent-emitted rows (`slice.replay.completed`,
+// `plan.amend.authority-override`) stay in the contract tables.
 
 #[test]
 fn synthesize_omits_empty_artifacts() {
@@ -388,9 +188,9 @@ fn synthesize_omits_empty_artifacts() {
 #[test]
 fn lint_completed_round_trips() {
     // The lint-completed payload uses snake_case wire fields
-    // (`duration_ms`, `baseline_present`, `false_positive`,
-    // `exit_code`) so the JSON matches the payload example
-    // verbatim. The wire id itself stays dotted-kebab.
+    // (`duration_ms`, `false_positive`, `exit_code`) so the JSON
+    // matches the payload example verbatim. The wire id itself
+    // stays dotted-kebab.
     let event = Event::new(
         test_timestamp("2026-05-22T13:15:00Z"),
         EventKind::LintCompleted(LintCompletedPayload {
@@ -405,7 +205,6 @@ fn lint_completed_round_trips() {
                 ignored: 4,
                 false_positive: 0,
             },
-            baseline_present: false,
             exit_code: 2,
         }),
     );
@@ -421,7 +220,6 @@ fn lint_completed_round_trips() {
         r#""open":12"#,
         r#""ignored":4"#,
         r#""false_positive":0"#,
-        r#""baseline_present":false"#,
         r#""exit_code":2"#,
     ] {
         assert!(
@@ -431,9 +229,7 @@ fn lint_completed_round_trips() {
     }
 
     // Guard against an accidental rename_all = "kebab-case" on the payload structs.
-    for forbidden in
-        [r#""duration-ms""#, r#""baseline-present""#, r#""false-positive""#, r#""exit-code""#]
-    {
+    for forbidden in [r#""duration-ms""#, r#""false-positive""#, r#""exit-code""#] {
         assert!(
             !json.contains(forbidden),
             "lint-completed wire form must NOT contain kebab-case `{forbidden}`; got:\n{json}"
@@ -843,15 +639,6 @@ fn sample_runtime_kinds() -> Vec<EventKind> {
             deleted_paths: vec![],
             marketplace: "marketplace.json".to_string(),
         },
-        EventKind::MigrationApplied {
-            kind: "v2-to-v3".to_string(),
-            files_rewritten: 0,
-            files_moved: 0,
-        },
-        EventKind::MigrationSkipped {
-            kind: "v2-to-v3".to_string(),
-            reason: "staged-validation-failed".to_string(),
-        },
         EventKind::WorkspaceSyncCompleted { projects: vec![] },
         EventKind::WorkspacePushCompleted {
             plan_name: "plan".into(),
@@ -870,7 +657,6 @@ fn sample_runtime_kinds() -> Vec<EventKind> {
                 ignored: 0,
                 false_positive: 0,
             },
-            baseline_present: false,
             exit_code: 0,
         }),
     ]
@@ -913,8 +699,6 @@ fn wire_event_ids_match_serde_renames() {
             | EventKind::SliceArchiveCreated { .. }
             | EventKind::CliUpgraded { .. }
             | EventKind::PluginsRefreshed { .. }
-            | EventKind::MigrationApplied { .. }
-            | EventKind::MigrationSkipped { .. }
             | EventKind::WorkspaceSyncCompleted { .. }
             | EventKind::WorkspacePushCompleted { .. }
             | EventKind::LintCompleted(_) => {}

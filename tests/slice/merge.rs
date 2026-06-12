@@ -371,7 +371,7 @@ fn run_archives_and_emits_ledger_event() {
 
 #[test]
 fn run_emits_merge_started_then_succeeded() {
-    // RFC-29d: a successful `slice merge run` brackets the validator
+    // A successful `slice merge run` brackets the validator
     // outcome with `slice.merge.started` then `slice.merge.succeeded`,
     // with the durable `slice.archive.created` ledger entry in between.
     let project = Project::init().with_schemas();
@@ -434,7 +434,7 @@ fn run_emits_merge_started_then_succeeded() {
 
 #[test]
 fn emits_merge_started_then_failed() {
-    // RFC-29d: a forced validator/commit failure brackets the run with
+    // A forced validator/commit failure brackets the run with
     // `slice.merge.started` then `slice.merge.failed` (non-empty
     // `reason`), exits non-zero, and emits neither `slice.merge.succeeded`
     // nor the `slice.archive.created` ledger entry. A slice in `refined`

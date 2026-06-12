@@ -5,7 +5,7 @@ use crate::support::*;
 
 // -- plan archive (L1.K) ----------------------------------------------
 //
-// REVIEW.md B5 (determinism): the archive verb stamps its filename from
+// Determinism: the archive verb stamps its filename from
 // `Timestamp::now()` read *inside* the CLI subprocess, and the CLI
 // exposes no clock-injection seam (`Ctx::now()` hardcodes
 // `Timestamp::now()`; `plan archive` passes `Timestamp::now()` straight

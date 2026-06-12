@@ -27,8 +27,7 @@ pub(super) fn create(
     let slices_dir = ctx.slices_dir();
     std::fs::create_dir_all(&slices_dir)?;
 
-    let outcome =
-        slice_actions::create(&slices_dir, name, &target_value, if_exists, Timestamp::now())?;
+    let outcome = slice_actions::create(&slices_dir, name, &target_value, if_exists, ctx.now())?;
 
     ctx.write(&outcome, write_create_text)?;
     Ok(())
@@ -49,7 +48,7 @@ fn write_create_text(w: &mut dyn Write, c: &Created) -> std::io::Result<()> {
 
 pub(super) fn transition(ctx: &Ctx, name: String, target: LifecycleStatus) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(&name);
-    let metadata = slice_actions::transition(&slice_dir, target, Timestamp::now())?;
+    let metadata = slice_actions::transition(&slice_dir, target, ctx.now())?;
     ctx.write(
         &TransitionBody {
             name,
@@ -87,7 +86,7 @@ pub(super) fn discard_slice(ctx: &Ctx, name: String, reason: Option<&str>) -> Re
     let slice_dir = ctx.slices_dir().join(&name);
     let archive_dir = ctx.archive_dir();
     let (metadata, archive_path) =
-        slice_actions::discard(&slice_dir, &archive_dir, reason, Timestamp::now())?;
+        slice_actions::discard(&slice_dir, &archive_dir, reason, ctx.now())?;
     ctx.write(
         &DropBody {
             name,

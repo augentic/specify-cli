@@ -3,9 +3,7 @@ use std::path::Path;
 
 use tempfile::tempdir;
 
-use crate::config::ProjectConfig;
 use crate::init::{InitOptions, fixed_now, init};
-use crate::registry::Registry;
 
 fn workspace_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
     InitOptions {
@@ -23,55 +21,10 @@ fn workspace_opts<'a>(project_dir: &'a Path, name: &'a str) -> InitOptions<'a> {
 mod init {
     use super::*;
 
-    #[test]
-    fn canonical_shape() {
-        let tmp = tempdir().unwrap();
-        let result = init(workspace_opts(tmp.path(), "platform-workspace"), fixed_now())
-            .expect("workspace init ok");
-
-        let project_yaml = tmp.path().join(".specify/project.yaml");
-        let registry_yaml = tmp.path().join("registry.yaml");
-        assert!(project_yaml.is_file(), "project.yaml missing");
-        assert!(registry_yaml.is_file(), "registry.yaml missing at repo root");
-
-        for absent in ["plan.yaml", "change.md"] {
-            assert!(
-                !tmp.path().join(absent).exists(),
-                "workspace init must not pre-touch `{absent}` at the repo root"
-            );
-        }
-
-        assert!(!tmp.path().join(".specify/slices").exists());
-        assert!(!tmp.path().join(".specify/specs").exists());
-        assert!(!tmp.path().join(".specify/cache").exists());
-
-        let cfg = ProjectConfig::load(tmp.path()).expect("reload project.yaml");
-        assert!(cfg.adapter.is_none(), "workspace project.yaml must omit adapter:");
-        assert!(cfg.workspace, "project.yaml must carry workspace: true");
-        assert!(cfg.rules.is_empty(), "workspaces do not scaffold rules");
-        assert_eq!(cfg.name, "platform-workspace");
-
-        let on_disk = fs::read_to_string(&project_yaml).expect("read project.yaml");
-        assert!(
-            !on_disk.contains("adapter:"),
-            "workspace project.yaml must omit `adapter:`, got:\n{on_disk}"
-        );
-        assert!(
-            !on_disk.contains("schema:"),
-            "workspace project.yaml must omit the legacy `schema:` field, got:\n{on_disk}"
-        );
-        assert!(
-            on_disk.contains("workspace: true"),
-            "workspace project.yaml must serialise `workspace: true`, got:\n{on_disk}"
-        );
-
-        let registry = Registry::load(tmp.path()).expect("registry parses").expect("present");
-        assert_eq!(registry.version, 1);
-        assert!(registry.projects.is_empty(), "workspace registry starts empty");
-
-        assert_eq!(result.adapter_name, "workspace");
-        assert!(result.scaffolded_rule_keys.is_empty());
-    }
+    // The canonical on-disk shape (project.yaml / registry.yaml contents,
+    // absent phase-pipeline dirs) is pinned by the binary test
+    // `tests/init/base.rs::workspace_writes_canonical_shape`; this module
+    // keeps only the kernel behavior edges.
 
     #[test]
     fn refuses_existing_specify_dir() {

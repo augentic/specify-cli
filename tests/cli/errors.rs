@@ -49,15 +49,6 @@ fn error_exit_cases() -> Vec<(&'static str, Error, u8)> {
             },
             3,
         ),
-        // 4 — project pinned to an older major; migration required.
-        (
-            "needs-migration",
-            Error::ProjectNeedsMigration {
-                from: "1".to_string(),
-                to: "2".to_string(),
-            },
-            4,
-        ),
     ]
 }
 
@@ -85,5 +76,5 @@ fn every_documented_code_is_covered() {
     codes.push(Exit::Success.code());
     codes.sort_unstable();
     codes.dedup();
-    assert_eq!(codes, vec![0, 1, 2, 3, 4], "exit-code table must cover 0–4");
+    assert_eq!(codes, vec![0, 1, 2, 3], "exit-code table must cover 0–3");
 }

@@ -1,6 +1,6 @@
 # Release process
 
-Specify publishes binaries, crates, and a Homebrew formula on every tagged release. This page describes the end-to-end flow so a maintainer can cut a release without reading workflow YAML.
+Specify publishes platform binaries and WASI tool packages on every tagged release — those are the only release artifacts. The workspace crates are not published to crates.io (there are no external crate consumers; workspace deps are path-only by design). This page describes the end-to-end flow so a maintainer can cut a release without reading workflow YAML.
 
 ## Triggering a release
 
@@ -11,7 +11,7 @@ git tag -a v0.1.0 -m "Specify v0.1.0"
 git push origin v0.1.0
 ```
 
-The `.github/workflows/release.yaml` workflow fires on the tag push and runs four jobs in order.
+The `.github/workflows/release.yaml` workflow fires on the tag push and runs three jobs in order.
 
 ## Jobs that run
 
@@ -32,12 +32,6 @@ The `.github/workflows/release.yaml` workflow fires on the tag push and runs fou
    The job logs in to GHCR with the GitHub Actions token, uses the `specify -> augentic.io` wasm-pkg namespace mapping, and verifies both the built component and the pulled package with `wasm-tools validate`. Raw first-party `.wasm` files are not attached to GitHub Releases.
 
 3. **`release`.** Waits for every native matrix leg and the Vectis WASI tools, downloads all artifacts, and creates the GitHub Release with `softprops/action-gh-release@v2`. Release notes are generated from `.github/release.yaml`.
-
-4. **`publish-crates-io`.** Gated behind `if: github.repository == 'augentic/specify-cli'` so forks and non-canonical clones silently skip it. Publishes crates to crates.io in dependency order:
-
-   `specify-error` → `specify-workflow` → `specify`
-
-   A `sleep 30` between each publish gives the crates.io index time to propagate before the next dependent crate tries to resolve it. The job reads `secrets.CARGO_REGISTRY_TOKEN`; because the job is gated at the job-level `if:`, the workflow file remains valid even in repos where the secret does not exist (GitHub only evaluates `secrets.*` inside steps that actually execute).
 
 ## WASI Tool Packages
 
@@ -66,57 +60,17 @@ target/vectis-wasi-tools/release/SHA256SUMS
 
 To smoke-test a adapter before release, add a project-scope object declaration in `.specify/project.yaml` that keeps the adapter's tool name and permissions but overrides `source` to a local `file://` or absolute path. Include a matching `sha256` value if you want cache verification; otherwise omit `sha256` for rapid rebuilds and run `specify tool gc` when switching bytes without changing the declaration tuple. For package-path smoke tests, publish a unique prerelease package such as `specify:vectis@${VERSION}-dev.${RUN_ID}` and point a local `tools.yaml` override at that package.
 
-## Updating the Homebrew formula
+## Installing a release
 
-The formula at `Formula/specify.rb` carries placeholder SHA256 values for the initial commit. After each release, the four platform SHA256s need to be refreshed. The sanctioned tool is [`brew bump-formula-pr`](https://docs.brew.sh/Manpage#bump-formula-pr-options-formula), which rewrites `url`, `version`, and `sha256` in a single PR against the tap.
-
-Recipe:
-
-```bash
-VERSION="0.2.0"
-for target in \
-    aarch64-apple-darwin \
-    x86_64-apple-darwin \
-    aarch64-unknown-linux-gnu \
-    x86_64-unknown-linux-gnu; do
-    curl -sSfL \
-        "https://github.com/augentic/specify-cli/releases/download/v${VERSION}/specify-v${VERSION}-${target}.tar.gz.sha256"
-done
-```
-
-Then, for each target:
-
-```bash
-brew bump-formula-pr \
-    --url="https://github.com/augentic/specify-cli/releases/download/v${VERSION}/specify-v${VERSION}-aarch64-apple-darwin.tar.gz" \
-    --sha256="<value from above>" \
-    augentic/tap/specify
-```
-
-Once the formula lands in `homebrew-core`, the tap step disappears entirely — that's a Phase-2 move.
-
-## Install script hosting
-
-`install.sh` lives at the repo root and is served verbatim. Whether we front it on a `specify.sh` domain or serve it as a release asset (or both) is a Phase-2 choice: migrated skill-fallback prose already tolerates both distribution paths.
-
-Until a domain is purchased, users can still run:
-
-```bash
-curl -sSfL https://raw.githubusercontent.com/augentic/specify-cli/main/install.sh | sh
-```
-
-That URL is stable and requires no infrastructure beyond the repo itself.
+Download the archive for your platform from the GitHub Release page, verify it against the companion `.sha256` file, and place the `specify` binary on your `PATH`. `specify upgrade` handles subsequent updates channel-natively.
 
 ## Adding a new target triple
 
-1. Add a new entry to the `matrix.include` list in `.github/workflows/release.yml`, choosing the `runs-on` runner and whether `use_cross: true` is needed.
+1. Add a new entry to the `matrix.include` list in `.github/workflows/release.yaml`, choosing the `runs-on` runner and whether `use_cross: true` is needed.
 2. If the target needs system packages (e.g. `musl-tools` for `*-musl`), add an `apt-get install` step gated on `matrix.target == '<new triple>'`.
-3. Extend `Formula/specify.rb` — add a new `on_macos`/`on_linux` branch or a new `on_<platform>` block.
-4. Extend `install.sh`'s `detect_os` / `detect_arch` case statements.
-5. Document the new target in this file.
+3. Document the new target in this file.
 
 ## Troubleshooting
 
 - **`cross` installation fails.** Pin to a known-good commit in the `Install cross` step.
-- **crates.io publish races.** If a crate fails with "dependency not found", increase the `sleep` between publishes.
-- **Formula SHA256 drift.** Always regenerate after tagging — never hand-edit. The `.sha256` companion files uploaded by `release.yml` are authoritative.
+- **Archive SHA256 drift.** Always regenerate after tagging — never hand-edit. The `.sha256` companion files uploaded by `release.yaml` are authoritative.

@@ -1,5 +1,5 @@
 //! `specify plan status` CLI tests — the read-only next-action
-//! projection (RFC-44 R2). The projection matrix is unit-tested in
+//! projection. The projection matrix is unit-tested in
 //! `crates/workflow/src/change/plan/core/status/tests.rs`; this suite
 //! pins the verb's wire shapes and its read-only contract.
 

@@ -31,7 +31,6 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use jiff::Timestamp;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
@@ -39,7 +38,7 @@ use specify_model::evidence::{AuthorityClass, ClaimKind};
 use specify_workflow::adapter::{TargetAdapter, TargetOperation};
 use specify_workflow::change::{Entry, Plan};
 use specify_workflow::init::adapter_name_from_value;
-use specify_workflow::journal::{self, Event, EventKind};
+use specify_workflow::journal::{self, EventKind};
 use specify_workflow::schema::validate_synthesis_json;
 use specify_workflow::slice::{
     ProjectionHeader, SliceMetadata, SliceModel, SynthesisInputs, SynthesisResponse,
@@ -87,7 +86,7 @@ fn dry_run_inputs(ctx: &Ctx, name: &str) -> Result<()> {
         EventKind::SliceSynthesizeAgent {
             slice_name: name.into(),
         },
-    )?;
+    );
     ctx.write(&inputs, write_inputs_text)
 }
 
@@ -100,7 +99,7 @@ fn from_response(ctx: &Ctx, name: &str, response_path: &Path) -> Result<()> {
         EventKind::SliceSynthesizeStarted {
             slice_name: name.into(),
         },
-    )?;
+    );
     match synthesize_from(ctx, name, response_path) {
         Ok(written) => {
             emit(
@@ -109,7 +108,7 @@ fn from_response(ctx: &Ctx, name: &str, response_path: &Path) -> Result<()> {
                     slice_name: name.into(),
                     artifacts: written.clone(),
                 },
-            )?;
+            );
             let summary = SynthesizeSummary {
                 slice: name.to_string(),
                 artifacts: written,
@@ -117,13 +116,15 @@ fn from_response(ctx: &Ctx, name: &str, response_path: &Path) -> Result<()> {
             ctx.write(&summary, write_summary_text)
         }
         Err(err) => {
+            // The failed event is best-effort so a journal hiccup can
+            // never shadow the synthesis error itself.
             emit(
                 ctx,
                 EventKind::SliceSynthesizeFailed {
                     slice_name: name.into(),
                     reason: failure_reason(&err),
                 },
-            )?;
+            );
             Err(err)
         }
     }
@@ -355,10 +356,9 @@ fn failure_reason(err: &Error) -> String {
     }
 }
 
-/// Emit a single journal event.
-fn emit(ctx: &Ctx, kind: EventKind) -> Result<()> {
-    let event = Event::new(Timestamp::now(), kind);
-    journal::append_batch(ctx.layout(), std::slice::from_ref(&event))
+/// Best-effort emit of a single `slice.synthesize.*` journal event.
+fn emit(ctx: &Ctx, kind: EventKind) {
+    journal::emit_best_effort(ctx.layout(), ctx.now(), kind, "slice.synthesize");
 }
 
 fn write_inputs_text(w: &mut dyn Write, inputs: &SynthesisInputs) -> std::io::Result<()> {

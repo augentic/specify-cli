@@ -273,4 +273,64 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0], 2);
     }
+
+    #[test]
+    fn binary_candidates_skipped() {
+        let hint = RuleHint {
+            kind: HintKind::Regex,
+            value: r"https?://".to_string(),
+            description: None,
+            config: None,
+        };
+        let mut model = WorkspaceModel::default();
+        model.files.push(File {
+            path: "app.rs".into(),
+            kind: FileKind::Text,
+            language: None,
+            sha256: None,
+        });
+        model.files.push(File {
+            path: "blob.bin".into(),
+            kind: FileKind::Binary,
+            language: None,
+            sha256: None,
+        });
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("app.rs"), "fn url() { \"https://api.example.com\" }\n")
+            .expect("write rs");
+        std::fs::write(dir.path().join("blob.bin"), b"\x00\x00https://hidden\n")
+            .expect("write bin");
+
+        let cands = vec![PathBuf::from("app.rs"), PathBuf::from("blob.bin")];
+        let mut next_id = 1_u64;
+        let findings =
+            evaluate(&rule(), &hint, &cands, dir.path(), &model, &mut next_id).expect("eval");
+        assert_eq!(findings.len(), 1, "binary file must be skipped");
+        let location = findings[0].location.as_ref().expect("location");
+        assert_eq!(location.path, "app.rs");
+        assert_eq!(location.line, Some(1));
+        assert!(location.column.expect("column") >= 1);
+        match &findings[0].evidence {
+            specify_diagnostics::FindingEvidence::Snippet { value } => {
+                assert!(value.contains("https://api.example.com"), "{value}");
+            }
+            other => panic!("expected snippet evidence, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compile_failure_is_hard_error() {
+        let hint = RuleHint {
+            kind: HintKind::Regex,
+            value: "(unclosed".to_string(),
+            description: None,
+            config: None,
+        };
+        let model = WorkspaceModel::default();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut next_id = 1_u64;
+        let err = evaluate(&rule(), &hint, &[], dir.path(), &model, &mut next_id)
+            .expect_err("regex must fail to compile");
+        assert!(format!("{err}").contains("regex"), "{err}");
+    }
 }

@@ -229,7 +229,7 @@
           "enum": [
             "directive"
           ],
-          "description": "Origin of the non-`open` status decision. Directive producers emit `directive`; RFC-33b will widen this enum additively to add `baseline` when it lands."
+          "description": "Origin of the non-`open` status decision. Directive producers emit `directive`; a future baseline mechanism would widen this enum additively."
         },
         "directive": {
           "type": "object",

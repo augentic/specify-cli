@@ -37,14 +37,6 @@ pub struct Fences {
     pub body_sha256: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg(test)]
-pub struct InputDiff {
-    pub changed: Vec<String>,
-    pub added: Vec<String>,
-    pub removed: Vec<String>,
-}
-
 #[derive(Debug, Deserialize)]
 struct Version {
     version: u64,
@@ -119,43 +111,6 @@ pub fn save(path: &Path, lock: &ContextLock) -> Result<(), Error> {
     yaml_write(path, lock)
 }
 
-#[cfg(test)]
-pub fn diff_inputs(expected: &[Input], actual: &[Input]) -> InputDiff {
-    let expected_by_path = inputs_by_path(expected);
-    let actual_by_path = inputs_by_path(actual);
-
-    let changed = expected_by_path
-        .iter()
-        .filter_map(|(path, expected_sha)| {
-            actual_by_path
-                .get(path)
-                .filter(|actual_sha| *actual_sha != expected_sha)
-                .map(|_actual_sha| path.clone())
-        })
-        .collect();
-    let added = actual_by_path
-        .keys()
-        .filter(|path| !expected_by_path.contains_key(*path))
-        .cloned()
-        .collect();
-    let removed = expected_by_path
-        .keys()
-        .filter(|path| !actual_by_path.contains_key(*path))
-        .cloned()
-        .collect();
-
-    InputDiff {
-        changed,
-        added,
-        removed,
-    }
-}
-
-#[cfg(test)]
-fn inputs_by_path(inputs: &[Input]) -> BTreeMap<String, String> {
-    inputs.iter().map(|input| (input.path.clone(), input.sha256.clone())).collect()
-}
-
 fn validation_error(rule_id: &'static str, detail: String) -> Error {
     Error::validation_failed(rule_id, "context.lock must be a supported context lock file", detail)
 }
@@ -163,6 +118,48 @@ fn validation_error(rule_id: &'static str, detail: String) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct InputDiff {
+        pub changed: Vec<String>,
+        pub added: Vec<String>,
+        pub removed: Vec<String>,
+    }
+
+    pub fn diff_inputs(expected: &[Input], actual: &[Input]) -> InputDiff {
+        let expected_by_path = inputs_by_path(expected);
+        let actual_by_path = inputs_by_path(actual);
+
+        let changed = expected_by_path
+            .iter()
+            .filter_map(|(path, expected_sha)| {
+                actual_by_path
+                    .get(path)
+                    .filter(|actual_sha| *actual_sha != expected_sha)
+                    .map(|_actual_sha| path.clone())
+            })
+            .collect();
+        let added = actual_by_path
+            .keys()
+            .filter(|path| !expected_by_path.contains_key(*path))
+            .cloned()
+            .collect();
+        let removed = expected_by_path
+            .keys()
+            .filter(|path| !actual_by_path.contains_key(*path))
+            .cloned()
+            .collect();
+
+        InputDiff {
+            changed,
+            added,
+            removed,
+        }
+    }
+
+    fn inputs_by_path(inputs: &[Input]) -> BTreeMap<String, String> {
+        inputs.iter().map(|input| (input.path.clone(), input.sha256.clone())).collect()
+    }
 
     fn input(path: &str, sha256: &str) -> Input {
         Input {

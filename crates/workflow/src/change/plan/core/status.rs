@@ -1,4 +1,4 @@
-//! Read-only `specify plan status` projection (RFC-44 R2).
+//! Read-only `specify plan status` projection.
 //!
 //! [`plan_status_body`] projects `plan.yaml` entries, the candidate
 //! slice's `metadata.yaml` lifecycle, and the journal tail into a

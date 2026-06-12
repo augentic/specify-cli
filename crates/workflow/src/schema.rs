@@ -380,7 +380,7 @@ pub fn validate_components_yaml(content: &str, source_path: &Path) -> Result<()>
 ///
 /// `source_path` labels error messages with the originating file.
 /// Backs [`crate::design_system::Parts::load`] — the schema is the only
-/// gate on the operator-authored parts input (RFC-40 §C1: "beyond
+/// gate on the operator-authored parts input ("beyond
 /// schema conformance there are no coherence gates").
 ///
 /// # Errors

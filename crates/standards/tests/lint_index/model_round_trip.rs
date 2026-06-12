@@ -15,10 +15,9 @@ use serde_json::{Map, Value, json};
 use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 use specify_standards::lint::{
     AdapterAxis, AdapterDir, AdapterManifest, AdapterTool, Brief, BriefScope, File, FileKind,
-    Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry,
-    ScanProfile, Scenario, Skill, Symlink, TextMatch, WorkspaceModel, WorkspaceModelVersion,
+    Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, ScanProfile, Scenario, Skill,
+    Symlink, WorkspaceModel, WorkspaceModelVersion,
 };
-use specify_standards::rules::Origin;
 
 fn assert_schema_valid(value: &Value) {
     let summaries = validate_value(
@@ -47,9 +46,6 @@ fn empty_model_round_trips() {
         symlinks: vec![],
         skills: vec![],
         adapter_manifests: vec![],
-        marketplace_entries: vec![],
-        rule_index: vec![],
-        text_matches: vec![],
         ignore_directives: vec![],
         briefs: vec![],
         fenced_blocks: vec![],
@@ -72,9 +68,6 @@ fn empty_model_round_trips() {
         "symlinks",
         "skills",
         "adapter_manifests",
-        "marketplace_entries",
-        "rule_index",
-        "text_matches",
         "ignore_directives",
     ] {
         assert!(
@@ -160,22 +153,6 @@ fn populated_model_round_trips() {
                 version: "0.1.0".into(),
             }],
         }],
-        marketplace_entries: vec![MarketplaceEntry {
-            plugin: "spec".into(),
-            path_in_manifest: "/plugins/0".into(),
-        }],
-        rule_index: vec![RuleIndexEntry {
-            rule_id: "UNI-014".into(),
-            path: "adapters/shared/rules/universal/hardcoded-configuration.md".into(),
-            origin: Origin::Shared,
-            frontmatter_ref: "adapters/shared/rules/universal/hardcoded-configuration.md".into(),
-        }],
-        text_matches: vec![TextMatch {
-            path: "src/lib.rs".into(),
-            line: 1,
-            column: 1,
-            pattern_id: "url".into(),
-        }],
         ignore_directives: vec![IgnoreDirective {
             path: "src/lib.rs".into(),
             line: 12,
@@ -226,22 +203,6 @@ fn populated_model_round_trips() {
     let skill = value.pointer("/skills/0").expect("populated skills has index 0");
     assert!(skill.get("frontmatter-ref").is_some(), "skill.frontmatter-ref missing");
     assert!(skill.get("frontmatter_ref").is_none());
-
-    let entry =
-        value.pointer("/marketplace_entries/0").expect("populated marketplace_entries has index 0");
-    assert!(
-        entry.get("path-in-manifest").is_some(),
-        "marketplace_entries.path-in-manifest missing"
-    );
-    assert!(entry.get("path_in_manifest").is_none());
-
-    let rule = value.pointer("/rule_index/0").expect("populated rule_index has index 0");
-    assert!(rule.get("rule-id").is_some(), "rule_index.rule-id missing");
-    assert!(rule.get("rule_id").is_none());
-
-    let text = value.pointer("/text_matches/0").expect("populated text_matches has index 0");
-    assert!(text.get("pattern-id").is_some(), "text_matches.pattern-id missing");
-    assert!(text.get("pattern_id").is_none());
 
     let directive =
         value.pointer("/ignore_directives/0").expect("populated ignore_directives has index 0");

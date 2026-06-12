@@ -38,8 +38,7 @@ pub struct ToolFinding {
 /// Render checker findings as the wire-stable `DiagnosticReport` JSON
 /// `ToolOutput` the evaluator parses off "stdout".
 pub fn report_output(findings: &[ToolFinding]) -> ToolOutput {
-    let diagnostics: Vec<Diagnostic> =
-        findings.iter().enumerate().map(|(index, row)| diagnostic(index, row)).collect();
+    let diagnostics = to_diagnostics(findings);
     let report = DiagnosticReport {
         version: DiagnosticReportVersion,
         summary: DiagnosticSummary::from_diagnostics(&diagnostics),
@@ -51,6 +50,13 @@ pub fn report_output(findings: &[ToolFinding]) -> ToolOutput {
         stderr: Vec::new(),
         exit_code: 0,
     }
+}
+
+/// Map checker findings to typed [`Diagnostic`] values — the direct
+/// in-process path behind `ToolRunner::run_diagnostics`, with no JSON
+/// round-trip. The evaluator restamps `id` and `fingerprint` on fold.
+pub fn to_diagnostics(findings: &[ToolFinding]) -> Vec<Diagnostic> {
+    findings.iter().enumerate().map(|(index, row)| diagnostic(index, row)).collect()
 }
 
 fn diagnostic(index: usize, row: &ToolFinding) -> Diagnostic {
