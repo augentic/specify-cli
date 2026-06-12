@@ -117,8 +117,8 @@ fn from(ctx: &Ctx, response_path: &Path) -> Result<()> {
     let discovery = load_discovery(ctx)?;
     let topology = load_topology(ctx)?;
 
-    // Detect missing platforms before entering the write loop so tool
-    // dispatch happens outside the atomic transaction.
+    // Detect missing platforms before entering the write loop so shell
+    // scanning happens outside the atomic transaction.
     let project_missing = detect_missing_for_topology(&topology, ctx)?;
 
     // The projection runs inside the atomic write loop: `propose_from`
@@ -155,7 +155,6 @@ fn from(ctx: &Ctx, response_path: &Path) -> Result<()> {
 fn detect_missing_for_topology(
     topology: &[ProjectRef], ctx: &Ctx,
 ) -> Result<Vec<ProjectMissingPlatforms>> {
-    let now = Timestamp::now();
     topology
         .iter()
         .filter(|p| !p.platforms.is_empty())
@@ -165,7 +164,7 @@ fn detect_missing_for_topology(
             } else {
                 ctx.layout().specify_dir().join("workspace").join(&p.name)
             };
-            let missing = vectis_missing_platforms(&project_dir, &p.platforms, now)?;
+            let missing = vectis_missing_platforms(&project_dir, &p.platforms)?;
             Ok(ProjectMissingPlatforms {
                 project: p.name.clone(),
                 missing,

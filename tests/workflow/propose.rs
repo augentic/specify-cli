@@ -456,23 +456,9 @@ fn vectis_stub_dir() -> PathBuf {
     repo_root().join("tests/fixtures/adapters/targets/vectis-stub")
 }
 
-fn vectis_wasm() -> PathBuf {
-    repo_root().join("target/vectis-wasi-tools/release/vectis.wasm")
-}
-
 /// Scaffold a single-project tree backed by a Vectis target with
-/// `--platforms <set>`, a declared `vectis` WASI tool, then seed the
-/// propose inputs (plan + discovery). Returns the project tempdir and
-/// the tools cache directory (pass the latter as `SPECIFY_TOOLS_CACHE`
-/// on every `specify` invocation in the tree).
-fn platform_project(platforms: &str) -> (TempDir, PathBuf) {
-    let wasm = vectis_wasm();
-    assert!(
-        wasm.is_file(),
-        "vectis WASM not found at {}; run `cargo make vectis-wasm`",
-        wasm.display()
-    );
-
+/// `--platforms <set>`, then seed the propose inputs (plan + discovery).
+fn platform_project(platforms: &str) -> TempDir {
     let tmp = tempdir().expect("tempdir");
     let root = tmp.path();
     let adapter = root.join("adapters/targets/vectis");
@@ -486,22 +472,8 @@ fn platform_project(platforms: &str) -> (TempDir, PathBuf) {
     )
     .expect("patch adapter name to vectis");
 
-    let source = format!("file://{}", wasm.display());
-    let sha256 = crate::common::sha256_hex(&wasm);
-    fs::write(
-        adapter.join("tools.yaml"),
-        format!(
-            "tools:\n  - name: vectis\n    version: 0.4.0\n    source: \"{source}\"\n    sha256: \"{sha256}\"\n    permissions:\n      read:\n        - \"$PROJECT_DIR\"\n      write: []\n"
-        ),
-    )
-    .expect("write tools.yaml");
-
-    let cache = root.join("tools-cache");
-    fs::create_dir_all(&cache).expect("create tools cache");
-
     specify_cmd()
         .current_dir(root)
-        .env("SPECIFY_TOOLS_CACHE", &cache)
         .args(["init"])
         .arg(&adapter)
         .args(["--name", "platform-app", "--platforms", platforms])
@@ -509,7 +481,7 @@ fn platform_project(platforms: &str) -> (TempDir, PathBuf) {
         .success();
     fs::write(root.join("plan.yaml"), PLATFORM_PLAN).expect("write plan.yaml");
     seed_discovery(root, PLATFORM_DISCOVERY);
-    (tmp, cache)
+    tmp
 }
 
 /// Read `.specify/journal.jsonl` as one parsed `Value` per line.
@@ -523,11 +495,10 @@ fn journal_events(root: &Path) -> Vec<Value> {
 
 /// Run `plan propose --from <body>` expecting success and return the
 /// parsed `--format json` summary.
-fn propose_reconcile_ok(root: &Path, tools_cache: &Path, body: &str) -> Value {
+fn propose_reconcile_ok(root: &Path, body: &str) -> Value {
     let response = write_response(root, body);
     let assert = specify_cmd()
         .current_dir(root)
-        .env("SPECIFY_TOOLS_CACHE", tools_cache)
         .args(["--format", "json", "plan", "propose", "--from"])
         .arg(&response)
         .assert()
@@ -540,9 +511,9 @@ fn reconcile_greenfield_app_foundation() {
     // A greenfield tree (no shells on disk) with every supported
     // platform declared collapses to one `app-foundation` bootstrap
     // slice, prepended ahead of the feature slice.
-    let (tmp, cache) = platform_project("core,ios,android");
+    let tmp = platform_project("core,ios,android");
 
-    let summary = propose_reconcile_ok(tmp.path(), &cache, PLATFORM_RESPONSE);
+    let summary = propose_reconcile_ok(tmp.path(), PLATFORM_RESPONSE);
     assert_eq!(
         summary["slice-names"],
         serde_json::json!(["app-foundation", "add-feature"]),
@@ -574,12 +545,12 @@ fn reconcile_incremental_bootstraps() {
     // With the `core` shell already present on disk, only the absent
     // `ios` / `android` shells get per-platform `bootstrap-<platform>`
     // slices (no `app-foundation` collapse).
-    let (tmp, cache) = platform_project("core,ios,android");
+    let tmp = platform_project("core,ios,android");
     let core_shell = tmp.path().join("shared/src/app.rs");
     fs::create_dir_all(core_shell.parent().unwrap()).expect("mkdir shared/src");
     fs::write(&core_shell, "fn app() {}\n").expect("write core shell");
 
-    let summary = propose_reconcile_ok(tmp.path(), &cache, PLATFORM_RESPONSE);
+    let summary = propose_reconcile_ok(tmp.path(), PLATFORM_RESPONSE);
     assert_eq!(
         summary["slice-names"],
         serde_json::json!(["bootstrap-ios", "bootstrap-android", "add-feature"]),

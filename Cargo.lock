@@ -4794,6 +4794,7 @@ dependencies = [
  "specify-schema",
  "specify-tool",
  "specify-validate",
+ "specify-vectis-shell-detect",
  "strum 0.28.0",
  "tempfile",
  "ureq",
