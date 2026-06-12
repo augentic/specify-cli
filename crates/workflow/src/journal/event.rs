@@ -401,28 +401,6 @@ pub enum EventKind {
         /// the deletion.
         marketplace: String,
     },
-    /// `specify migrate` applied a registered migrator. `kind` is the
-    /// stable migrator id (e.g. `v2-to-v3`); the counts (wire:
-    /// `files-rewritten`, `files-moved`) summarise the applied plan.
-    #[serde(rename = "migration.applied", rename_all = "kebab-case")]
-    MigrationApplied {
-        /// Stable migrator id (e.g. `v2-to-v3`).
-        kind: String,
-        /// Count of files rewritten in place (wire: `files-rewritten`).
-        files_rewritten: usize,
-        /// Count of files moved (wire: `files-moved`).
-        files_moved: usize,
-    },
-    /// `specify migrate` staged a migrator but left the project
-    /// untouched (atomic rollback). `kind` is the migrator id; `reason`
-    /// is a short diagnostic (e.g. `staged-validation-failed`).
-    #[serde(rename = "migration.skipped", rename_all = "kebab-case")]
-    MigrationSkipped {
-        /// Stable migrator id (e.g. `v2-to-v3`).
-        kind: String,
-        /// Short diagnostic (e.g. `staged-validation-failed`).
-        reason: String,
-    },
     /// `specify workspace sync` materialised the selected workspace
     /// slots and regenerated `topology.lock`. Fires once per
     /// successful sync; the registry-less no-op path emits nothing.
@@ -445,15 +423,14 @@ pub enum EventKind {
         projects: Vec<String>,
     },
     /// `specify lint` finished a scan. The payload carries the scan
-    /// scope, wall-clock duration, per-status counts, a
-    /// `baseline_present` flag (currently hard-coded `false`), and the
+    /// scope, wall-clock duration, per-status counts, and the
     /// CLI exit code the scan resolved to. Emission is
     /// wired in the scanner; this variant exists so the taxonomy is
     /// closed even before the emitter ships.
     ///
     /// Field names on the wire are `snake_case` to match the journal
-    /// payload example verbatim (`duration_ms`, `baseline_present`,
-    /// `false_positive`, `exit_code`); this is the one variant in the
+    /// payload example verbatim (`duration_ms`, `false_positive`,
+    /// `exit_code`); this is the one variant in the
     /// taxonomy that does not project through `rename_all =
     /// "kebab-case"`, because that payload shape is the wire contract
     /// consumers will read.
@@ -474,9 +451,6 @@ pub struct LintCompletedPayload {
     /// Per-status counts. The scanner emits `open`, `ignored`, and
     /// `false_positive`.
     pub counts: LintCounts,
-    /// Whether the scan observed a baseline file. Hard-coded `false`
-    /// in current emitters.
-    pub baseline_present: bool,
     /// CLI exit code the scan resolved to (status-aware severity per
     /// the exit and presentation semantics). `0` on clean
     /// scans, `2` when an `open` finding of `important` or `critical`
@@ -526,8 +500,6 @@ pub struct LintCounts {
 pub const WIRE_EVENT_IDS: &[&str] = &[
     "cli.upgraded",
     "lint-completed",
-    "migration.applied",
-    "migration.skipped",
     "plan.amend.authority-override",
     "plan.amend.divergence",
     "plan.entry.advanced",

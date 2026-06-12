@@ -1,5 +1,4 @@
-//! Shared source-operation kernel for `survey` and `extract`
-//! (REVIEW.md A3 / A6).
+//! Shared source-operation kernel for `survey` and `extract`.
 //!
 //! `survey.rs` and `extract.rs` run the same two-phase agent flow
 //! around an adapter-declared brief: resolve the sandbox scratch path,
@@ -18,7 +17,6 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::adapter::SourceOperation;
@@ -33,7 +31,7 @@ use crate::runtime::context::Ctx;
 ///
 /// `survey` / `extract` prep always mounts a scratch root; a `None` is
 /// an unreachable prep-invariant violation surfaced as
-/// a diagnostic rather than a panic (REVIEW.md A6).
+/// a diagnostic rather than a panic.
 ///
 /// # Errors
 ///
@@ -185,7 +183,7 @@ fn finalize<'a, F: Flow<'a>>(flow: &F) -> Result<()> {
 /// handoff.
 fn emit_execution_agent(c: &Common<'_>) -> Result<()> {
     let event = Event::new(
-        Timestamp::now(),
+        c.ctx.now(),
         EventKind::SourceExecutionAgent {
             source: c.source.to_string(),
             adapter: c.prepared.manifest.name.clone(),
@@ -197,6 +195,6 @@ fn emit_execution_agent(c: &Common<'_>) -> Result<()> {
 
 /// Emit the operation's completion journal event.
 fn emit_completed<'a, F: Flow<'a>>(c: &Common<'a>, flow: &F) -> Result<()> {
-    let event = Event::new(Timestamp::now(), flow.completed_event());
+    let event = Event::new(c.ctx.now(), flow.completed_event());
     journal::append_batch(c.ctx.layout(), std::slice::from_ref(&event))
 }

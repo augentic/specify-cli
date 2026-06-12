@@ -26,19 +26,23 @@ pub(super) fn git_porcelain_non_empty(tree: &Path) -> bool {
 }
 
 pub(super) fn run(cwd: &Path, args: &[&str], label: &str) -> Result<(), Error> {
-    let output = cmd::git_as_specify(&cmd::real_cmd, cwd, args).map_err(|e| Error::Diag {
-        code: "workspace-git-spawn-failed",
-        detail: format!("{label}: failed to spawn git: {e}"),
-    })?;
+    cmd::git_as_specify_checked(&cmd::real_cmd, cwd, args)
+        .map(|_output| ())
+        .map_err(|failure| classify_workspace_failure(failure, label))
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(Error::Diag {
+/// Map a classified git failure onto the `workspace-git-*` family.
+fn classify_workspace_failure(failure: cmd::GitFailure, label: &str) -> Error {
+    match failure {
+        cmd::GitFailure::Spawn(err) => Error::Diag {
+            code: "workspace-git-spawn-failed",
+            detail: format!("{label}: failed to spawn git: {err}"),
+        },
+        cmd::GitFailure::Exit { stderr } => Error::Diag {
             code: "workspace-git-command-failed",
             detail: format!("{label} failed: {stderr}"),
-        });
+        },
     }
-    Ok(())
 }
 
 pub(super) fn git_status_porcelain(project_path: &Path) -> Result<String, Error> {
@@ -66,15 +70,7 @@ pub(super) fn git_stdout_trimmed(
 pub(super) fn git_stdout_allow_empty(
     project_path: &Path, args: &[&str], label: &str,
 ) -> Result<String, Error> {
-    let output = cmd::git(&cmd::real_cmd, Some(project_path), args).map_err(|err| Error::Diag {
-        code: "workspace-git-spawn-failed",
-        detail: format!("{label}: failed to spawn git: {err}"),
-    })?;
-    if output.status.success() {
-        return Ok(String::from_utf8_lossy(&output.stdout).to_string());
-    }
-    Err(Error::Diag {
-        code: "workspace-git-command-failed",
-        detail: format!("{label} failed: {}", String::from_utf8_lossy(&output.stderr).trim()),
-    })
+    cmd::git_checked(&cmd::real_cmd, Some(project_path), args)
+        .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
+        .map_err(|failure| classify_workspace_failure(failure, label))
 }

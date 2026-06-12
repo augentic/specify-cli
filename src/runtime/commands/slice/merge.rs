@@ -10,7 +10,7 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::{Plan, Status};
 use specify_workflow::config::with_state;
-use specify_workflow::journal::{self, Event, EventKind};
+use specify_workflow::journal::{self, EventKind};
 use specify_workflow::merge::{
     BaselineConflict, MergeOperation, MergePreviewEntry, OpaqueAction, clone_commit,
     conflict_check, slice,
@@ -20,7 +20,7 @@ use super::artifact_classes;
 use crate::runtime::context::Ctx;
 
 pub(super) fn run(ctx: &Ctx, name: &str, allow_composition_replace: bool) -> Result<()> {
-    // RFC-44 R2: a plan-backed `merge run` writes plan state (the
+    // Plan-lock gate: a plan-backed `merge run` writes plan state (the
     // per-entry `done` stamp) — refuse an unlocked driver before the
     // merge bracket so a refusal never journals `slice.merge.*`.
     // Standalone merges (no plan.yaml) stamp nothing and stay unguarded.
@@ -114,7 +114,8 @@ fn emit_archive_created(
             .collect::<Vec<_>>()
             .join("; ")
     };
-    let event = Event::new(
+    journal::emit_best_effort(
+        ctx.layout(),
         now,
         EventKind::SliceArchiveCreated {
             slice_name: name.into(),
@@ -123,10 +124,8 @@ fn emit_archive_created(
             merge_sha: clone_commit::head_sha(&ctx.project_dir),
             decisions: decisions.to_vec(),
         },
+        "slice.archive.created",
     );
-    if let Err(err) = journal::append_batch(ctx.layout(), std::slice::from_ref(&event)) {
-        eprintln!("warning: slice.archive.created journal append: {err}");
-    }
 }
 
 /// workflow §Workflow: `/spec:merge` is the sole writer of per-entry

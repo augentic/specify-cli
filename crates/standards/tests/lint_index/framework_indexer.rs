@@ -96,12 +96,6 @@ fn extractors_emit_facts() {
     assert!(names.contains(&"omnia"));
 
     assert!(
-        !model.marketplace_entries.is_empty(),
-        "marketplace extractor must emit at least one fact"
-    );
-    assert_eq!(model.marketplace_entries[0].plugin, "spec");
-
-    assert!(
         model.briefs.len() >= 2,
         "brief extractor must emit one fact per `briefs/*.md` (sources + targets)"
     );

@@ -600,7 +600,7 @@ fn emit_appends_one_line_per_event() {
 
 #[test]
 fn emit_appends_m3_build_merge() {
-    // The RFC-29d M3 build/merge lifecycle events and
+    // The build/merge lifecycle events and
     // `target.execution.agent` round-trip through the `journal emit`
     // front door with no new wiring — the closed taxonomy is the
     // payload schema, so id + --payload deserialise straight into the
@@ -731,7 +731,7 @@ fn divergence_kebab_case_round_trip() {
     }
 }
 
-// -- journal show (RFC-44 R3 read surface) ----------------------------
+// -- journal show (the journal read surface) ----------------------------
 
 /// Seed three build/merge events through the `emit` front door so
 /// `show` reads a journal written by the production append path.

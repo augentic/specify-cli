@@ -121,16 +121,7 @@
       "title": "Sibling"
     }
   ],
-  "marketplace_entries": [],
   "project_dir": "<TEMPDIR>",
-  "rule_index": [
-    {
-      "frontmatter-ref": ".specify/cache/codex/adapters/shared/rules/universal/UNI-099.md#frontmatter",
-      "origin": "shared",
-      "path": ".specify/cache/codex/adapters/shared/rules/universal/UNI-099.md",
-      "rule-id": "UNI-099"
-    }
-  ],
   "scan_profile": "project",
   "skills": [],
   "symlinks": [
@@ -140,6 +131,5 @@
       "target": "doc.md"
     }
   ],
-  "text_matches": [],
   "version": 1
 }

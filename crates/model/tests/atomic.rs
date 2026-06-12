@@ -1,5 +1,5 @@
 //! Behavioural coverage for the crash-safe atomic writers
-//! (`specify_model::atomic`). These had zero tests before REVIEW.md A12.
+//! (`specify_model::atomic`).
 
 use std::collections::BTreeMap;
 

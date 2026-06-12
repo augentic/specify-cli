@@ -16,7 +16,20 @@ use super::git::{self, git_output_ok, git_status_porcelain, git_stdout_trimmed};
 use super::workspace_base;
 use crate::cmd::{CmdRunner, real_cmd};
 use crate::registry::catalog::RegistryProject;
-use crate::registry::forge::project_path;
+
+/// Resolve the on-disk path for a workspace project.
+///
+/// Symlink projects use the original path (relative or `.`), everything
+/// else lives under `.specify/workspace/<name>/`.
+fn project_path(
+    project_dir: &Path, workspace_base: &Path, rp: &RegistryProject,
+) -> std::path::PathBuf {
+    if rp.is_local() {
+        if rp.url == "." { project_dir.to_path_buf() } else { project_dir.join(&rp.url) }
+    } else {
+        workspace_base.join(&rp.name)
+    }
+}
 
 /// Classification of a single project push outcome.
 #[derive(

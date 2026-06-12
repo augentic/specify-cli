@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 use specify_schema::{
     BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA, DECISION_JSON_SCHEMA,
     DIAGNOSTIC_JSON_SCHEMA, DIAGNOSTIC_REPORT_JSON_SCHEMA, EMBEDDED_SCHEMAS, PARTS_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, ValidationStatus,
-    WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
+    RESOLVED_RULES_JSON_SCHEMA, RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA,
+    ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, compile_schema, validate_value,
 };
 
 /// Every embedded schema compiles, table-driven over the canonical
@@ -42,8 +42,8 @@ fn every_schema_compiles() {
     }
 }
 
-/// Every embedded schema constant must byte-match its on-disk source
-/// (REVIEW.md A11). `include_str!` binds at compile time, so this guards
+/// Every embedded schema constant must byte-match its on-disk source.
+/// `include_str!` binds at compile time, so this guards
 /// against a constant pointing at a stale or duplicated copy: each
 /// [`EMBEDDED_SCHEMAS`] entry re-reads the canonical workspace file at
 /// runtime and asserts equality. The inventory itself lives in the
@@ -157,7 +157,7 @@ fn synthesis_accepts_example() {
     assert!(errors.is_empty(), "RFC synthesis response must validate; errors: {errors:?}");
 }
 
-/// The RFC-40 §C1 `parts.yaml` worked example validates: a kebab-case
+/// The `parts.yaml` worked example validates: a kebab-case
 /// part slug carrying a composition `group` fragment (with a `*-when`
 /// key and `items`) plus an optional description.
 #[test]
@@ -179,7 +179,7 @@ fn parts_schema_accepts_rfc_example() {
         }
     });
     let summaries =
-        validate_value(&instance, PARTS_JSON_SCHEMA, "parts", "parts.yaml RFC-40 §C1 example");
+        validate_value(&instance, PARTS_JSON_SCHEMA, "parts", "parts.yaml worked example");
     assert!(
         summaries.iter().all(|s| matches!(s.status, ValidationStatus::Pass)),
         "RFC parts example must validate; got {summaries:?}"
@@ -280,10 +280,7 @@ fn workspace_model_accepts_minimal() {
         "markdown_links": [],
         "symlinks": [],
         "skills": [],
-        "adapter_manifests": [],
-        "marketplace_entries": [],
-        "rule_index": [],
-        "text_matches": []
+        "adapter_manifests": []
     });
     let summaries = validate_value(
         &instance,
@@ -599,4 +596,85 @@ fn codex_rule_accepts_reserved_kinds() {
             "kind {kind} must validate; got {summaries:?}"
         );
     }
+}
+
+/// The `UNI-014` example for the `ResolvedRules` export validates
+/// cleanly against the resolved-codex schema.
+#[test]
+fn resolved_codex_accepts_example() {
+    let instance = json!({
+        "version": 1,
+        "target-adapter": "omnia",
+        "source-adapters": ["typescript"],
+        "rules": [
+            {
+                "rule-id": "UNI-014",
+                "title": "Hardcoded Configuration",
+                "severity": "important",
+                "trigger": "Generated code embeds environment-specific configuration instead of routing it through declared configuration.",
+                "lint-mode": "hybrid",
+                "origin": "shared",
+                "path-root": "rules-root",
+                "path": "adapters/shared/rules/universal/hardcoded-configuration.md",
+                "applicability": {
+                    "adapters": ["omnia"],
+                    "languages": ["rust"],
+                    "artifacts": ["code"]
+                },
+                "rule-hints": [
+                    {
+                        "kind": "regex",
+                        "value": "https?://",
+                        "description": "Literal URL in generated code."
+                    }
+                ],
+                "references": [
+                    {
+                        "label": "Omnia guardrails",
+                        "path": "adapters/targets/omnia/references/guardrails.md"
+                    }
+                ],
+                "body": "## Rule\n\nConfiguration values that vary between deployments must not be hardcoded in generated code.\n",
+                "deprecated": null
+            }
+        ]
+    });
+    let validator =
+        compile_schema(RESOLVED_RULES_JSON_SCHEMA).expect("resolved codex schema compiles");
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
+    assert!(errors.is_empty(), "UNI-014 example must validate; errors: {errors:?}");
+}
+
+/// The `FIND-0001` example for structured lint findings validates
+/// cleanly against the standalone diagnostic schema. The fingerprint
+/// placeholder `sha256:...` from the contract is replaced with a
+/// deterministic 64-hex-char digest so the fingerprint pattern check
+/// passes.
+#[test]
+fn review_finding_accepts_example() {
+    let instance = json!({
+        "id": "FIND-0001",
+        "rule-id": "UNI-014",
+        "title": "Literal deployment URL in generated handler",
+        "severity": "important",
+        "source": "hybrid",
+        "target-adapter": "omnia",
+        "slice": "billing-invoice-export",
+        "artifact": "code",
+        "location": {
+            "path": "crates/invoice_export/src/config.rs",
+            "line": 18
+        },
+        "evidence": {
+            "kind": "snippet",
+            "value": "const BASE_URL: &str = \"https://api.example.com\";"
+        },
+        "impact": "Generated code will point every deployment at the same external endpoint.",
+        "remediation": "Read the endpoint from Omnia configuration and add a required config key to the design.",
+        "confidence": "high",
+        "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    });
+    let validator = compile_schema(DIAGNOSTIC_JSON_SCHEMA).expect("review finding schema compiles");
+    let errors: Vec<String> = validator.iter_errors(&instance).map(|e| e.to_string()).collect();
+    assert!(errors.is_empty(), "FIND-0001 example must validate; errors: {errors:?}");
 }

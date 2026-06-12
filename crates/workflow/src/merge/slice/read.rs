@@ -150,7 +150,7 @@ fn merge_delta_spec(
         Err(other) => return Err(other),
     };
 
-    let issues: Vec<String> = validate_baseline(&result.output, None)
+    let issues: Vec<String> = validate_baseline(&result.output)
         .into_iter()
         .map(|diagnostic| format!("{}: {}", spec.spec_name, diagnostic.impact))
         .collect();
@@ -219,7 +219,7 @@ fn merge_composition_delta(
 /// This is a single-responsibility authorisation precondition — it
 /// carries no merge mechanism. The pure shape predicates it composes
 /// live in `crate::merge::composition`; this function adds only the
-/// file reads and the authorisation policy (RFC-40 §A3 "Placement").
+/// file reads and the authorisation policy (composition overwrite-gate placement).
 ///
 /// # Errors
 ///

@@ -2,7 +2,6 @@
 //! WASI binary that returns the guest's exit byte verbatim via
 //! [`crate::runtime::output::Exit::Code`].
 
-use jiff::Timestamp;
 use specify_error::Result;
 use specify_tool::host::{CapturedOutput, RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
@@ -14,12 +13,8 @@ pub fn run(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<u8> {
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, name)?;
-    let resolved = specify_tool::resolver::resolve(
-        &scoped.scope,
-        &scoped.tool,
-        Timestamp::now(),
-        &ctx.project_dir,
-    )?;
+    let resolved =
+        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, ctx.now(), &ctx.project_dir)?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
     if let ToolScope::Plugin { capability_dir, .. } = &scoped.scope {
         run_ctx = run_ctx.with_capability_dir(capability_dir);
@@ -43,12 +38,8 @@ pub fn run_captured(ctx: &Ctx, name: &str, args: Vec<String>) -> Result<Captured
     let inventory = build_inventory(ctx)?;
     emit_warnings_to_stderr(&inventory.warnings);
     let scoped = find(&inventory, name)?;
-    let resolved = specify_tool::resolver::resolve(
-        &scoped.scope,
-        &scoped.tool,
-        Timestamp::now(),
-        &ctx.project_dir,
-    )?;
+    let resolved =
+        specify_tool::resolver::resolve(&scoped.scope, &scoped.tool, ctx.now(), &ctx.project_dir)?;
     let mut run_ctx = RunContext::new(&ctx.project_dir, args);
     if let ToolScope::Plugin { capability_dir, .. } = &scoped.scope {
         run_ctx = run_ctx.with_capability_dir(capability_dir);

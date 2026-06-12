@@ -13,7 +13,6 @@ pub mod design_system;
 pub mod init;
 pub mod journal;
 pub mod merge;
-pub mod migrate;
 pub mod name;
 pub mod plan_lock;
 pub mod platform;

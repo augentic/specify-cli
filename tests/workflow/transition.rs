@@ -129,7 +129,7 @@ fn undo_in_progress_to_pending_refuses() {
 
 #[test]
 fn transition_plan_level_approved() {
-    // workflow §The plan gate: `specify plan transition <plan-name>
+    // workflow §The Plan: `specify plan transition <plan-name>
     // approved` is the operator-stamped Gate 1 transition. The plan
     // name on the wire matches `plan.yaml.name`.
     let project = Project::init();

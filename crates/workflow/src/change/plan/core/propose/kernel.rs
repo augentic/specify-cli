@@ -185,7 +185,7 @@ fn check_coverage(source_sets: &[SliceMembership], catalog: &LeadCatalog) -> Res
 ///
 /// This is the single project-binding rule shared by the propose kernel
 /// ([`bind_projects`]) and the read-time target resolver
-/// ([`resolve_target`]) so the two cannot drift (REVIEW.md A8).
+/// ([`resolve_target`]) so the two cannot drift.
 fn resolve_project_binding<'a>(
     slice_name: &str, project: Option<&str>, topology: &'a [ProjectRef],
 ) -> Result<&'a ProjectRef> {

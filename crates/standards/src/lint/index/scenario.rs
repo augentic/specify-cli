@@ -9,10 +9,11 @@
 //! files out of the file fact family means no other rule's
 //! `path-pattern` candidate set changes (zero blast radius).
 //!
-//! Discovery mirrors the retiring `scenarios` WASI tool's
-//! `discover_scenario_candidates`: flat `evals/scenarios/<id>.md`
-//! files (skipping the pack `README.md`), `adapters/targets/<adapter>/
-//! tests/<file>.md` and `.../tests/<dir>/scenario.md`, and
+//! [`discover_scenario_candidates`] is the **single** scenario
+//! discovery — the in-process `scenarios` framework checker consumes it
+//! too: flat `evals/scenarios/<id>.md` files (skipping the pack
+//! `README.md`), `adapters/targets/<adapter>/tests/<file>.md` and
+//! `.../tests/<dir>/scenario.md`, and
 //! `plugins/<plugin>/skills/<skill>/fixtures/<case>/scenario.md`.
 //! Symlinks are never traversed or collected (the host walks with
 //! `follow_links(false)`). A file opts in only when it begins with a
@@ -30,7 +31,7 @@ use crate::lint::Scenario;
 /// returning the [`Scenario`] facts sorted by path.
 #[must_use]
 pub fn extract(project_dir: &Path) -> Vec<Scenario> {
-    let mut scenarios: Vec<Scenario> = discover_candidates(project_dir)
+    let mut scenarios: Vec<Scenario> = discover_scenario_candidates(project_dir)
         .into_iter()
         .filter_map(|path| parse_scenario(project_dir, &path))
         .collect();
@@ -90,9 +91,16 @@ fn body_scenario_id(body: &str) -> Option<String> {
     None
 }
 
-/// Discover scenario candidate files across the eval scenario
-/// pack, target adapter tests, and plugin skill fixtures.
-fn discover_candidates(root: &Path) -> Vec<PathBuf> {
+/// Discover scenario candidate files under `root`.
+///
+/// Covers the eval scenario pack (`evals/scenarios/<id>.md`), target
+/// adapter tests (`adapters/targets/<adapter>/tests/…`), and plugin
+/// skill fixtures (`plugins/<plugin>/skills/<skill>/fixtures/<case>/scenario.md`).
+/// Symlinks are never traversed or collected. The single scenario
+/// discovery shared by this fact extractor and the in-process
+/// `scenarios` framework checker.
+#[must_use]
+pub fn discover_scenario_candidates(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect_evals(&root.join("evals").join("scenarios"), &mut out);
     collect_targets(&root.join("adapters").join("targets"), &mut out);

@@ -9,10 +9,7 @@
 //! the workflow layer may not depend on), renders the report on stdout,
 //! and maps the blocking decision to exit 2.
 
-use specify_diagnostics::{
-    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, blocking_present,
-    renumber,
-};
+use specify_diagnostics::{Diagnostic, blocking_present};
 use specify_error::{Error, Result};
 use specify_validate::validate_slice;
 use specify_workflow::slice::validate::{PreAdapter, append_synthesis_journal, pre_adapter_gates};
@@ -52,24 +49,11 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     }
 }
 
-/// Render `findings` as a [`DiagnosticReport`] on stdout in the active
-/// `Ctx` format. JSON serialises the wire envelope; text renders a
-/// PASS/FAIL banner plus one line per diagnostic. Ids are assigned
-/// sequentially at render time.
-fn render_report(ctx: &Ctx, mut findings: Vec<Diagnostic>) -> Result<()> {
-    renumber(&mut findings);
-    let blocking = blocking_present(&findings);
-    let report = DiagnosticReport {
-        version: DiagnosticReportVersion,
-        summary: DiagnosticSummary::from_diagnostics(&findings),
-        findings,
-    };
-    ctx.write(&report, move |w, report| {
-        writeln!(w, "{}", if blocking { "FAIL" } else { "PASS" })?;
-        for finding in &report.findings {
-            writeln!(w, "  {}", format_finding_line(finding))?;
-        }
-        Ok(())
+/// Render `findings` through the shared diagnostic-report kernel with
+/// the slice-validate per-finding row format.
+fn render_report(ctx: &Ctx, findings: Vec<Diagnostic>) -> Result<()> {
+    crate::runtime::commands::render_diagnostic_report(ctx, findings, None, |w, finding| {
+        writeln!(w, "  {}", format_finding_line(finding))
     })
 }
 

@@ -1,4 +1,4 @@
-//! RFC-44 R2 dual-driving refusal: the plan-state-writing verbs
+//! Dual-driving refusal: the plan-state-writing verbs
 //! (`plan next`, per-entry `plan transition`, `slice merge run`)
 //! probe `<plan-root>/.specify/plan.lock` and refuse an unlocked
 //! driver with `plan-lock-not-held` (exit 2). Acquisition stays

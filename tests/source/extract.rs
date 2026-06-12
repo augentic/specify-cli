@@ -1,5 +1,5 @@
-//! Integration tests for `specify source extract` (RFC-29 D1;
-//! DECISIONS.md §"Source operations (D1)").
+//! Integration tests for `specify source extract`
+//! (DECISIONS.md §"Source operations (D1)").
 //!
 //! Covers source resolution against `plan.yaml.sources`, the agent
 //! two-phase dispatch (prepare prints the extract handoff envelope —
@@ -213,7 +213,7 @@ slices:
 
 #[test]
 fn slot_extract_resolves_after_sync() {
-    // RFC-45 slot adapter provisioning: the source adapter is vendored
+    // Slot adapter provisioning: the source adapter is vendored
     // only at the workspace; `specify workspace sync` mirrors it into
     // the slot's manifest cache, and slot-side extract resolves it
     // through ordinary project-local probing — no new resolution

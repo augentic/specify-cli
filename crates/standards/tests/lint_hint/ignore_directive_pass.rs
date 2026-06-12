@@ -256,7 +256,7 @@ fn assert_json_golden(result: &DiagnosticReport, golden_name: &str) {
 }
 
 /// Collapse the wording-sensitive prose on `  impact:` / `  remediation:`
-/// lines to a fixed token (REVIEW.md A13). The pretty goldens then pin
+/// lines to a fixed token. The pretty goldens then pin
 /// the structural skeleton — finding order, severity tags, rule ids,
 /// location and status tokens, header, and summary — without breaking
 /// every time an `impact`/`remediation` sentence is reworded.
@@ -319,6 +319,9 @@ fn assert_pretty_golden(result: &DiagnosticReport, golden_name: &str) {
 fn with_no_color<R>(f: impl FnOnce() -> R) -> R {
     // SAFETY: nextest grants this binary a fresh process per test
     // and no other thread reads `NO_COLOR` while the closure runs.
+    // NOTE: this argument holds only under nextest's process-per-test
+    // model (the repo's `cargo make test`); a plain `cargo test` run
+    // shares one process across threads and would race this mutation.
     let () = unsafe { std::env::set_var("NO_COLOR", "1") };
     let out = f();
     // SAFETY: same single-test sequencing argument as above.

@@ -53,7 +53,7 @@ pub fn sync_projects(project_dir: &Path, projects: &[&RegistryProject]) -> Resul
         }
     }
 
-    // RFC-45: provision each synced slot's manifest cache with the
+    // Slot adapter provisioning: provision each synced slot's manifest cache with the
     // workspace's adapter set so slot-side resolution stays
     // project-local. Local symlink slots are mirrored too — the write
     // lands only under the peer's gitignored `.specify/cache/`.
@@ -276,7 +276,7 @@ pub(super) fn materialise_git_remote(
             ensure_origin_matches(dest, url)?;
             if dest.join(".specify").join("project.yaml").exists() {
                 // A failed fetch leaves a stale registry clone; surface it rather
-                // than masking it with `.or(Ok(()))` (REVIEW.md A2).
+                // than masking it with `.or(Ok(()))`.
                 git::run(
                     dest,
                     &["fetch", "--depth", "1"],

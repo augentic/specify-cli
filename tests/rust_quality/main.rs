@@ -3,10 +3,10 @@
 //! Run with `cargo test --test rust_quality`. Hard gates: any
 //! `rust.test-fn-name-too-long`, `rust.workflow-clock-read`, or
 //! `rust.allow-without-reason` finding fails CI. The archaeology
-//! predicate (`rust.archaeology-in-doc-comment`) stays burn-down tracked
-//! in `docs/quality-debt.md` — its markers over-fire on the canonical
-//! contract vocabulary the codebase and AGENTS.md use, so it is not
-//! gated. The predicates live in [`checks`], dev-only beside this gate.
+//! predicate (`rust.archaeology-in-doc-comment`) is advisory only —
+//! its markers over-fire on the canonical contract vocabulary the
+//! codebase and AGENTS.md use, so it is not gated. The predicates
+//! live in [`checks`], dev-only beside this gate.
 
 mod checks;
 

@@ -178,3 +178,102 @@ fn emit_duplicates(
     }
     out
 }
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+    use crate::lint::{Scenario, Skill};
+
+    fn skill(name: &str, path: &str) -> Skill {
+        Skill {
+            name: name.to_string(),
+            path: path.to_string(),
+            plugin: "p".to_string(),
+            frontmatter_ref: path.to_string(),
+            body_line_count: None,
+        }
+    }
+
+    fn scenario(id: Option<&str>, path: &str) -> Scenario {
+        Scenario {
+            path: path.to_string(),
+            id: id.map(str::to_string),
+            stages: vec![],
+            expected_artifacts: vec![],
+            body_id: None,
+            fields: serde_json::Map::new(),
+        }
+    }
+
+    #[test]
+    fn duplicate_skill_names_flagged() {
+        let mut model = empty_model();
+        model.skills = vec![
+            skill("dup", "plugins/a/skills/x/SKILL.md"),
+            skill("dup", "plugins/b/skills/y/SKILL.md"),
+            skill("solo", "plugins/c/skills/z/SKILL.md"),
+        ];
+        let cands = candidates(&[
+            "plugins/a/skills/x/SKILL.md",
+            "plugins/b/skills/y/SKILL.md",
+            "plugins/c/skills/z/SKILL.md",
+        ]);
+        let hint =
+            hint_with_config(HintKind::Unique, "skill", Some(json!({ "field": "skill-name" })));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("'dup'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn duplicate_outside_candidates_skipped() {
+        let mut model = empty_model();
+        model.skills = vec![
+            skill("dup", "plugins/a/skills/x/SKILL.md"),
+            skill("dup", "plugins/b/skills/y/SKILL.md"),
+        ];
+        let cands = candidates(&["plugins/a/skills/x/SKILL.md"]);
+        let hint =
+            hint_with_config(HintKind::Unique, "skill", Some(json!({ "field": "skill-name" })));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn duplicate_scenario_ids_flagged_whole_tree() {
+        let mut model = empty_model();
+        model.scenarios = vec![
+            scenario(Some("s-1"), "evals/scenarios/a.md"),
+            scenario(Some("s-1"), "evals/scenarios/b.md"),
+            scenario(None, "evals/scenarios/c.md"),
+        ];
+        let hint = hint_with_config(HintKind::Unique, "scenario", Some(json!({ "field": "id" })));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("'s-1'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn wrong_field_is_unsupported() {
+        let model = empty_model();
+        let hint = hint_with_config(HintKind::Unique, "skill", Some(json!({ "field": "id" })));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn missing_config_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::Unique, "skill");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn unknown_selector_is_unsupported() {
+        let model = empty_model();
+        let hint = hint_with_config(HintKind::Unique, "adapter", Some(json!({ "field": "name" })));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+}

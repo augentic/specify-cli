@@ -6,7 +6,6 @@ use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::config::{ProjectConfig, is_slot};
 use specify_workflow::init::{InitOptions, InitResult, init};
-use specify_workflow::migrate::{self, MigrationAction};
 use specify_workflow::platform::parse_platforms_csv;
 use specify_workflow::registry::Registry;
 use specify_workflow::registry::workspace::{regenerate_topology_lock, sync_projects};
@@ -23,10 +22,6 @@ fn canonical(p: &Path) -> String {
 }
 
 /// Clap-mapped inputs for `specify init` (format-only handler).
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "mirrors the `Commands::Init` clap variant: each bool is an independent init flag."
-)]
 pub(super) struct Args<'a> {
     pub format: Format,
     pub adapter: Option<&'a str>,
@@ -35,16 +30,11 @@ pub(super) struct Args<'a> {
     pub workspace: bool,
     pub include_framework: bool,
     pub platforms: Option<&'a str>,
-    pub check_migration: bool,
     pub upgrade: bool,
 }
 
 pub(super) fn run(args: &Args<'_>) -> Result<()> {
     let project_dir = PathBuf::from(".");
-
-    if args.check_migration {
-        return check_migration_probe(args.format, &project_dir);
-    }
 
     let parsed_platforms =
         args.platforms.map(parse_platforms_csv).transpose().map_err(|e| Error::Argument {
@@ -224,82 +214,4 @@ fn generate_initial_context(format: Format, project_dir: &Path) -> Result<Option
     );
     debug_assert_eq!(outcome.disposition, "create");
     Ok(None)
-}
-
-/// `specify init --check-migration` read-only probe. Resolves config
-/// through the migration carve-out, runs the registered migrators'
-/// pure plans, and emits the stable probe envelope. Exits `0`
-/// regardless of the outcome (it is a probe, not an enforcement).
-fn check_migration_probe(format: Format, project_dir: &Path) -> Result<()> {
-    let (config, _migration) = ProjectConfig::load_for_migration(project_dir)?;
-    let from = config.specify_version;
-    let to = env!("CARGO_PKG_VERSION").to_string();
-    let body = probe_body(project_dir, from, to)?;
-    output::emit(&mut std::io::stdout().lock(), format, &body, write_probe_text)?;
-    Ok(())
-}
-
-/// Assemble the probe envelope for the `(from, to)` version window.
-fn probe_body(project_dir: &Path, from: Option<String>, to: String) -> Result<ProbeBody> {
-    let plan = match (from.as_deref().and_then(migrate::major), migrate::major(&to)) {
-        (Some(from_major), Some(to_major)) => migrate::probe(project_dir, from_major, to_major)?
-            .into_iter()
-            .map(|probed| ProbeKind {
-                kind: probed.kind.id().to_string(),
-                actions: probed.plan.actions,
-            })
-            .collect(),
-        _ => Vec::new(),
-    };
-    let needs_migration = plan.iter().any(|kind| !kind.actions.is_empty());
-    Ok(ProbeBody {
-        version: 1,
-        needs_migration,
-        from,
-        to,
-        plan,
-    })
-}
-
-/// Stable `init --check-migration` JSON envelope. Change G's
-/// `/spec:init` skill parses `needs-migration`; the other fields are
-/// informational. Keys are always present (`from` is `null` when the
-/// project pins no `specify_version`).
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ProbeBody {
-    /// Schema marker; `1` for this shape.
-    version: u32,
-    /// `true` when at least one registered migrator has a non-empty
-    /// plan over the project.
-    needs_migration: bool,
-    /// Pinned `project.yaml.specify_version`; `null` when unset.
-    from: Option<String>,
-    /// This binary's version (the migration target).
-    to: String,
-    /// One entry per registered hop in the `from → to` window.
-    plan: Vec<ProbeKind>,
-}
-
-/// One registered hop's pure plan on the probe envelope.
-#[derive(Serialize)]
-#[serde(rename_all = "kebab-case")]
-struct ProbeKind {
-    /// Stable migrator id (e.g. `v2-to-v3`).
-    kind: String,
-    /// Planned actions; empty when the project is already at target.
-    actions: Vec<MigrationAction>,
-}
-
-fn write_probe_text(w: &mut dyn Write, body: &ProbeBody) -> std::io::Result<()> {
-    let from = body.from.as_deref().unwrap_or("<unset>");
-    if !body.needs_migration {
-        writeln!(w, "No migration needed ({from} -> {}).", body.to)?;
-        return Ok(());
-    }
-    writeln!(w, "Migration needed: {from} -> {}", body.to)?;
-    for kind in &body.plan {
-        writeln!(w, "  {} ({} actions)", kind.kind, kind.actions.len())?;
-    }
-    Ok(())
 }

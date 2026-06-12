@@ -66,11 +66,11 @@ pub enum Commands {
         /// adapter on GitHub. Also accepts a local path
         /// (`./adapters/targets/omnia`, `file://…`) or a full
         /// `https://github.com/<owner>/<repo>/adapters/targets/<name>`
-        /// URL. Required unless `--workspace`, `--check-migration`, or
-        /// `--upgrade` is set; mutually exclusive with `--workspace`.
+        /// URL. Required unless `--workspace` or `--upgrade` is set;
+        /// mutually exclusive with `--workspace`.
         #[arg(
             conflicts_with = "workspace",
-            required_unless_present_any = ["workspace", "check_migration", "upgrade"]
+            required_unless_present_any = ["workspace", "upgrade"]
         )]
         adapter: Option<String>,
         /// Project name (defaults to the project directory name)
@@ -90,33 +90,22 @@ pub enum Commands {
         /// `--workspace`.
         #[arg(long, conflicts_with = "workspace")]
         include_framework: bool,
-        /// Read-only migration probe used by the `/spec:init` skill.
-        /// Emits a `{ needs-migration, from, to, plan }` JSON envelope
-        /// (exit `0`) without scaffolding anything. Mutually exclusive
-        /// with every other `init` argument.
-        #[arg(
-            long,
-            conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework"]
-        )]
-        check_migration: bool,
         /// Comma-separated target platforms (e.g. core,ios,android).
         /// Required when the target adapter declares platforms as mandatory.
         /// Run `specify init <adapter>` without --platforms to see the
         /// target's allowed and default sets.
-        #[arg(long, conflicts_with_all = ["workspace", "check_migration"])]
+        #[arg(long, conflicts_with = "workspace")]
         platforms: Option<String>,
         /// Re-entry version bump: over an already-populated `.specify/`,
         /// rewrite `project.yaml.specify_version` to this binary's
         /// version (preserving every other field) and regenerate
         /// `AGENTS.md` only when absent — scaffolding nothing else and
         /// never re-fetching the adapter cache. A project already at the
-        /// running version is a no-op. Refuses with exit `4` when the
-        /// project's major is older than this binary's (run `specify
-        /// migrate` first). Mutually exclusive with every other `init`
-        /// argument except `--platforms`.
+        /// running version is a no-op. Mutually exclusive with every
+        /// other `init` argument except `--platforms`.
         #[arg(
             long,
-            conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework", "check_migration"]
+            conflicts_with_all = ["adapter", "workspace", "name", "description", "include_framework"]
         )]
         upgrade: bool,
     },
@@ -172,7 +161,7 @@ pub enum Commands {
         action: SliceAction,
     },
 
-    /// Component-catalog inference (RFC-40). `infer --phase report`
+    /// Component-catalog inference. `infer --phase report`
     /// clusters repeated structures in the composition baseline and
     /// prints a name-free report; `infer --phase bind` records
     /// skill/operator names against fingerprints and writes
@@ -236,34 +225,6 @@ pub enum Commands {
     Contract {
         #[command(subcommand)]
         action: ContractAction,
-    },
-
-    /// Migrate a `.specify/` project across a major version boundary.
-    ///
-    /// Bootstrap verb: reads `project.yaml` through the migration
-    /// carve-out (the only verb that may operate on a project in the
-    /// "needs migration" state). `--from` defaults to the pinned
-    /// `specify_version`; `--to` defaults to this binary's version.
-    /// `--dry-run` previews the planned actions and the journal events
-    /// that would fire without writing; applying requires `--yes`
-    /// (the verb never prompts).
-    Migrate {
-        /// Source version to migrate from (`X.Y[.Z]`). Defaults to the
-        /// pinned `project.yaml.specify_version`.
-        #[arg(long)]
-        from: Option<String>,
-        /// Target version to migrate to (`X.Y[.Z]`). Defaults to this
-        /// binary's version.
-        #[arg(long)]
-        to: Option<String>,
-        /// Preview the planned actions and the journal events that
-        /// would fire without writing anything.
-        #[arg(long)]
-        dry_run: bool,
-        /// Apply the migration. Required to write; the verb never
-        /// prompts interactively.
-        #[arg(long)]
-        yes: bool,
     },
 
     /// Self-update the `specify` binary across its install channel.

@@ -15,6 +15,7 @@ workspace = true
 
 [dependencies]
 glob.workspace = true
+globset.workspace = true
 ignore.workspace = true
 jsonschema.workspace = true
 rayon.workspace = true

@@ -1,5 +1,5 @@
 //! `specify catalog infer` handler — the host orchestration around the
-//! deterministic `vectis infer` tool (RFC-40 §B2).
+//! deterministic `vectis infer` tool.
 //!
 //! Two phases, mirroring the `specify slice build --phase prepare|finalize`
 //! idiom:
@@ -8,18 +8,18 @@
 //!   composition baseline and prints its **name-free** cluster report.
 //!   It writes nothing.
 //! - `bind` consumes a skill-authored `{ fingerprint → slug }` bindings
-//!   file, reconciles it against the existing catalog under the §B6
+//!   file, reconciles it against the existing catalog under the
 //!   no-overwrite + one-skeleton-per-slug guards, and writes
 //!   `components.yaml` (or prints the diff under `--dry-run`).
 //!
 //! The host **invents no names**: `bind` is deterministic bookkeeping
-//! over names the build skill (Step 8) or operator parts (Step 11)
+//! over names the build skill or operator parts
 //! supply. The collision-suffix logic operates purely on the
 //! fingerprint strings already present in the bindings, so no skeleton
 //! logic crosses back into the host — the single normalizer stays
 //! tool-side.
 //!
-//! **Operator parts (RFC-40 Part C).** When `.specify/design-system/parts.yaml`
+//! **Operator parts.** When `.specify/design-system/parts.yaml`
 //! exists, both phases forward it to the tool with `--parts`. A part's
 //! `group` fragment is fingerprinted (tool-side, at read time) and
 //! registered as a pinned binding carrying two authorities: **naming**
@@ -30,16 +30,16 @@
 //! `status: confirmed` entry, re-derived from `parts.yaml` every run
 //! (so re-runs are no-ops), and surfaces the non-blocking `part-unmatched`
 //! report for pins that matched nothing — informational only, never an
-//! abort or a merge precondition (§C5).
+//! abort or a merge precondition.
 //!
-//! **Run-to-run binding stability (RFC §B2).** `bind` persists each
+//! **Run-to-run binding stability.** `bind` persists each
 //! `fingerprint → slug` binding on the catalog entry (the `fingerprint`
 //! field), and `report` reverse-maps the catalog by fingerprint to fill
 //! each already-named cluster's `bound-slug`. So once the skill names a
 //! fingerprint, every later `report` echoes that slug and the skill
 //! leaves the cluster untouched — naming never thrashes the catalog.
 //! `report` only fills a `bound-slug` the tool left `null`; it never
-//! clobbers a tool-emitted binding (e.g. an operator-pin echo, Step 11).
+//! clobbers a tool-emitted binding (e.g. an operator-pin echo).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
@@ -55,7 +55,7 @@ use crate::runtime::commands::tool;
 use crate::runtime::context::Ctx;
 
 /// Length of the fingerprint prefix appended when two distinct
-/// fingerprints are bound to the same bare slug (§B2 "first-writer-wins
+/// fingerprints are bound to the same bare slug ("first-writer-wins
 /// … suffixed `slug-<fp-prefix>`"). Eight hex characters keep the
 /// suffix readable while collisions stay astronomically unlikely.
 const FP_PREFIX_LEN: usize = 8;
@@ -67,7 +67,7 @@ const VECTIS_TOOL: &str = "vectis";
 const COMPOSITION_REL: &str = ".specify/specs/composition.yaml";
 
 /// Screenshot stage-6 candidate-cache directory relative to the project
-/// root (RFC-40 §B4). When present, `report` feeds it to the tool so
+/// root. When present, `report` feeds it to the tool so
 /// cached skeletons cluster alongside baseline groups.
 const CANDIDATE_CACHE_REL: &str = ".specify/.cache/component-candidates";
 
@@ -83,9 +83,9 @@ pub fn run(
 
 /// `--phase report`: dispatch `vectis infer` and print the name-free
 /// cluster report. An absent baseline emits an empty report and runs no
-/// tool (§B6 "absent catalog = no factoring") — but still lists every
+/// tool ("absent catalog = no factoring") — but still lists every
 /// operator part as `part-unmatched`, since nothing can match without a
-/// baseline yet (§C5).
+/// baseline yet.
 fn report(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<()> {
     match dispatch_infer(ctx, min_occurrences)? {
         None => emit_report(ctx, &empty_report(&all_part_slugs(ctx)?)),
@@ -101,7 +101,7 @@ fn report(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<()> {
 /// `parts.yaml` when each is present. Returns `Ok(None)` when no
 /// baseline exists (the tool requires one, and an absent baseline means
 /// nothing to cluster). `parts.yaml` is schema-validated before being
-/// forwarded (RFC-40 §C1 "schema-validated on read").
+/// forwarded (schema-validated on read).
 fn dispatch_infer(ctx: &Ctx, min_occurrences: Option<u32>) -> Result<Option<Value>> {
     let composition = ctx.project_dir.join(COMPOSITION_REL);
     if !composition.is_file() {
@@ -159,9 +159,9 @@ fn all_part_slugs(ctx: &Ctx) -> Result<Vec<String>> {
 }
 
 /// Fill each cluster's `bound-slug` from the existing catalog's
-/// `fingerprint → slug` index (RFC §B2 run-to-run stability). Only a
+/// `fingerprint → slug` index (run-to-run stability). Only a
 /// `null`/absent `bound-slug` is filled — a slug the tool already bound
-/// (e.g. an operator-pin echo, Step 11) is never overwritten.
+/// (e.g. an operator-pin echo) is never overwritten.
 fn populate_bound_slugs(ctx: &Ctx, report: &mut Value) -> Result<()> {
     let Some(catalog) = ComponentsCatalog::load(&ctx.project_dir)? else {
         return Ok(());
@@ -185,16 +185,16 @@ fn populate_bound_slugs(ctx: &Ctx, report: &mut Value) -> Result<()> {
 }
 
 /// `--phase bind`: reconcile skill-authored bindings **and** matched
-/// operator-part projections into the catalog under the §B6 guards,
+/// operator-part projections into the catalog under the bind guards,
 /// then write it (or print the diff under `--dry-run`).
 ///
 /// Operator parts win naming: a matched pin is a first-writer for its
 /// fingerprint (so a skill binding handed the same name under a
-/// *different* fingerprint is suffixed by the §B2 uniqueness guard), and
+/// *different* fingerprint is suffixed by the slug-uniqueness guard), and
 /// a skill binding for a *pinned* fingerprint is dropped (the operator
 /// already named it). Matched pins are re-derived from `parts.yaml`
-/// every run, so re-binding is a no-op (§C3); unmatched pins surface in
-/// the diff as `part-unmatched` (§C5).
+/// every run, so re-binding is a no-op; unmatched pins surface in
+/// the diff as `part-unmatched`.
 fn bind(ctx: &Ctx, bindings: Option<&Path>, dry_run: bool) -> Result<()> {
     let parts = part_projections(ctx)?;
     let skill = bindings.map(load_bindings).transpose()?;
@@ -225,8 +225,8 @@ fn bind(ctx: &Ctx, bindings: Option<&Path>, dry_run: bool) -> Result<()> {
         return emit_bind_diff(ctx, &added, &parts.unmatched, true);
     }
 
-    // Create the file only when there is something to record (§B6
-    // "absent catalog = no factoring"); an empty bindings file against
+    // Create the file only when there is something to record
+    // ("absent catalog = no factoring"); an empty bindings file against
     // an absent catalog writes nothing.
     if !catalog.components.is_empty() {
         catalog.save(&ctx.project_dir)?;
@@ -235,7 +235,7 @@ fn bind(ctx: &Ctx, bindings: Option<&Path>, dry_run: bool) -> Result<()> {
 }
 
 /// The matched + unmatched outcome of folding `parts.yaml` through the
-/// tool (RFC-40 §C2/§C5).
+/// tool.
 #[derive(Default)]
 struct PartsOutcome {
     /// Matched pins to project as `confirmed` catalog entries.
@@ -249,7 +249,7 @@ struct PartsOutcome {
 /// (those carrying `pinned: true` + a `bound-slug`) and the
 /// `unmatched-parts` list. Returns an empty outcome when no `parts.yaml`
 /// exists; when a parts file exists but no baseline does yet, every part
-/// is unmatched (§C5).
+/// is unmatched.
 fn part_projections(ctx: &Ctx) -> Result<PartsOutcome> {
     let Some(parts) = Parts::load(&ctx.project_dir)? else {
         return Ok(PartsOutcome::default());
@@ -297,7 +297,7 @@ fn part_projections(ctx: &Ctx) -> Result<PartsOutcome> {
 /// Merge matched part projections (first-writers) with the skill
 /// bindings into one desired-binding list. A skill binding for a
 /// fingerprint already pinned by an operator part is dropped — the
-/// operator owns that fingerprint's name (§C2 step 5).
+/// operator owns that fingerprint's name.
 fn combine_desired(
     projections: Vec<DesiredBinding>, skill: Option<BindingsFile>,
 ) -> Vec<DesiredBinding> {
@@ -343,7 +343,7 @@ impl BindingValue {
     }
 }
 
-/// The `{ fingerprint → slug }` map the build skill (Step 8) or a
+/// The `{ fingerprint → slug }` map the build skill or a
 /// future projection authors. An optional top-level `version` field is
 /// tolerated (and ignored) — serde drops unknown keys by default.
 #[derive(Deserialize)]
@@ -384,7 +384,7 @@ fn validate_bindings(file: &BindingsFile, path: &Path) -> Result<()> {
             ));
         }
         let slug = value.slug();
-        if !is_kebab_slug(slug) {
+        if !specify_error::is_kebab_leading_alpha(slug) {
             return Err(Error::validation_failed(
                 "catalog-bindings-malformed",
                 "each binding slug must be kebab-case (`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)",
@@ -402,17 +402,6 @@ fn validate_bindings(file: &BindingsFile, path: &Path) -> Result<()> {
 /// the components-catalog schema's `^[0-9a-f]{64}$` fingerprint pattern.
 fn is_hex_fingerprint(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-
-/// Whether `s` is a kebab-case identifier, matching the
-/// components-catalog schema's `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` slug
-/// pattern: lowercase-alpha first character, `[a-z0-9]`/`-` body, and no
-/// leading, trailing, or doubled `-`.
-fn is_kebab_slug(s: &str) -> bool {
-    s.chars().next().is_some_and(|c| c.is_ascii_lowercase())
-        && s.split('-').all(|seg| {
-            !seg.is_empty() && seg.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
-        })
 }
 
 /// A desired binding before de-collision: the requested bare slug, the
@@ -433,12 +422,12 @@ struct ResolvedBinding {
     description: Option<String>,
 }
 
-/// Resolve desired bindings into final bindings, applying the §B2
+/// Resolve desired bindings into final bindings, applying the
 /// one-skeleton-per-slug uniqueness guard: when distinct fingerprints
 /// want the same bare slug, one keeps it (first-writer-wins) and every
 /// later fingerprint is suffixed `slug-<fp-prefix>` — deterministic and
 /// fingerprint-derived, never ordinal, so resolution is stable across
-/// runs. **Operator parts win the bare slug** (§C2): within a slug group
+/// runs. **Operator parts win the bare slug**: within a slug group
 /// a `pinned` binding sorts ahead of skill bindings regardless of
 /// fingerprint order; ties break lexicographically by fingerprint. The
 /// fingerprint travels through to the catalog so a later `report` run can

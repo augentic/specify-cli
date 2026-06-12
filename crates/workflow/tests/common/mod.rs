@@ -14,9 +14,9 @@
 )]
 
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Output};
-use std::{fs, io};
 
 /// One recorded invocation captured by [`MockCmd`].
 #[derive(Debug, Clone)]
@@ -99,24 +99,8 @@ fn failure_status() -> ExitStatus {
     ExitStatus::from_raw(1 << 8)
 }
 
-/// Recursively copy `src` into `dst`, creating directories as needed.
-///
-/// Single source for the fixture-staging helper every `specify-workflow`
-/// integration binary needs; replaces the per-binary `copy_dir_recursive`
-/// reimplementations.
-///
-/// # Panics
-///
-/// Panics if `src` cannot be read or a file cannot be copied.
-pub fn copy_dir(src: &Path, dst: &Path) {
-    fs::create_dir_all(dst).expect("create_dir_all dst");
-    for entry in fs::read_dir(src).expect("read_dir src") {
-        let entry = entry.expect("dir entry");
-        let target = dst.join(entry.file_name());
-        if entry.file_type().expect("file_type").is_dir() {
-            copy_dir(&entry.path(), &target);
-        } else {
-            fs::copy(entry.path(), &target).expect("copy");
-        }
-    }
-}
+// `copy_dir` (and the git helper trio) come from the workspace-shared
+// helper file; see `tests/common/fs_git.rs` at the repo root.
+#[path = "../../../../tests/common/fs_git.rs"]
+mod fs_git;
+pub use fs_git::copy_dir;

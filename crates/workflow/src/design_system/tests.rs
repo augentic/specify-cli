@@ -24,33 +24,6 @@ fn load_returns_none_when_absent() {
 }
 
 #[test]
-fn confirmed_slugs_filters_correctly() {
-    let catalog = ComponentsCatalog {
-        version: 1,
-        components: BTreeMap::from([
-            ("tab-bar".to_string(), confirmed(None)),
-            ("card-row".to_string(), confirmed(None)),
-            ("hero-banner".to_string(), rejected()),
-        ]),
-    };
-    let mut slugs = catalog.confirmed_slugs();
-    slugs.sort_unstable();
-    assert_eq!(slugs, vec!["card-row", "tab-bar"]);
-}
-
-#[test]
-fn rejected_slugs_filters_correctly() {
-    let catalog = ComponentsCatalog {
-        version: 1,
-        components: BTreeMap::from([
-            ("tab-bar".to_string(), confirmed(None)),
-            ("hero-banner".to_string(), rejected()),
-        ]),
-    };
-    assert_eq!(catalog.rejected_slugs(), vec!["hero-banner"]);
-}
-
-#[test]
 fn status_of_returns_correct_variant() {
     let catalog = ComponentsCatalog {
         version: 1,
@@ -98,7 +71,6 @@ fn empty_components_is_valid() {
     let path = Path::new("test.yaml");
     let catalog = ComponentsCatalog::from_yaml(yaml, path).expect("valid");
     assert!(catalog.components.is_empty());
-    assert!(catalog.confirmed_slugs().is_empty());
 }
 
 #[test]

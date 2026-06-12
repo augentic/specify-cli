@@ -5,7 +5,6 @@ pub mod contract;
 mod init;
 pub mod journal;
 pub mod lint;
-mod migrate;
 pub mod plan;
 pub mod plugins;
 pub mod registry;
@@ -22,6 +21,10 @@ use std::path::{Path, PathBuf};
 
 use clap::CommandFactory;
 use serde::Serialize;
+use specify_diagnostics::{
+    Diagnostic, DiagnosticReport, DiagnosticReportVersion, DiagnosticSummary, blocking_present,
+    renumber,
+};
 use specify_error::Result;
 use specify_workflow::adapter::{Axis, SourceAdapter, TargetAdapter};
 
@@ -48,7 +51,6 @@ pub fn run(cli: Cli) -> Exit {
             workspace,
             include_framework,
             platforms,
-            check_migration,
             upgrade,
         } => dispatch(format, || {
             init::run(&init::Args {
@@ -59,7 +61,6 @@ pub fn run(cli: Cli) -> Exit {
                 workspace,
                 include_framework,
                 platforms: platforms.as_deref(),
-                check_migration,
                 upgrade,
             })
         }),
@@ -105,14 +106,6 @@ pub fn run(cli: Cli) -> Exit {
         Commands::Contract { action } => match action {
             ContractAction::Dump => dispatch(format, || contract::dump::run(format)),
         },
-        Commands::Migrate {
-            from,
-            to,
-            dry_run,
-            yes,
-        } => {
-            dispatch(format, || migrate::run(format, from.as_deref(), to.as_deref(), dry_run, yes))
-        }
         Commands::Upgrade {
             channel,
             yes,
@@ -260,6 +253,39 @@ fn run_tool_with(format: Format, name: &str, args: Vec<String>) -> Exit {
 /// onto `<adapter-root>/briefs/`. Shared with the source prep seam
 /// ([`source::prep`]) so the C1 `briefs-dir` is computed in one place.
 pub const BRIEFS_DIR: &str = "briefs";
+
+/// Render `findings` as a neutral [`DiagnosticReport`] on stdout in the
+/// active `Ctx` format. JSON serialises the wire envelope
+/// (`{ version, summary, findings }`); text renders a PASS/FAIL banner
+/// plus one `row`-formatted line per finding. Ids are assigned
+/// sequentially at render time. `empty_text`, when set, replaces the
+/// banner entirely for a finding-free report (e.g. `Plan OK`). Shared
+/// by `slice validate` and `plan validate`, which differ only in the
+/// per-finding row formatter and the empty-report line.
+fn render_diagnostic_report(
+    ctx: &Ctx, mut findings: Vec<Diagnostic>, empty_text: Option<&'static str>,
+    row: fn(&mut dyn Write, &Diagnostic) -> std::io::Result<()>,
+) -> Result<()> {
+    renumber(&mut findings);
+    let blocking = blocking_present(&findings);
+    let report = DiagnosticReport {
+        version: DiagnosticReportVersion,
+        summary: DiagnosticSummary::from_diagnostics(&findings),
+        findings,
+    };
+    ctx.write(&report, move |w, report| {
+        if report.findings.is_empty()
+            && let Some(line) = empty_text
+        {
+            return writeln!(w, "{line}");
+        }
+        writeln!(w, "{}", if blocking { "FAIL" } else { "PASS" })?;
+        for finding in &report.findings {
+            row(w, finding)?;
+        }
+        Ok(())
+    })
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "kebab-case")]

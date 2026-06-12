@@ -3,19 +3,19 @@
 //! The verb clusters structurally-identical `group` subtrees across the
 //! composition baseline and emits a **name-free** cluster report as JSON.
 //! It performs *identity* and *clustering* only — it invents **no**
-//! component names (that is the build skill's job; see RFC-40 §B2 "The
-//! identity / label / bookkeeping split"). Each cluster carries only the
+//! component names (that is the build skill's job — the identity /
+//! label / bookkeeping split). Each cluster carries only the
 //! deterministic facts a namer needs: the structural fingerprint, the
 //! occurrence count, the screen provenance list, the representative
 //! normalised skeleton, and the raw semantic evidence (region, item
 //! kinds, `event` targets) passed through verbatim.
 //!
-//! Detection scope is the `group` (RFC-40 §B2 "Detection scope"): the
+//! Detection scope is the `group`: the
 //! walk descends through every screen region — including `states`,
 //! `overlays`, and `platforms` — but only a `group` is a detection unit.
 //!
 //! `--composition` supplies the baseline groups. `--candidate-cache`
-//! (RFC-40 §B4) folds screenshot stage-6 candidate skeletons into the
+//! folds screenshot stage-6 candidate skeletons into the
 //! same clustering pass: each cache entry stores a normalised `group`
 //! fragment keyed by provenance (`<slice>/<screen>/<group-path>.yaml`),
 //! and the fingerprint is recomputed **at read time** through the one
@@ -24,7 +24,7 @@
 //! fingerprint cluster as one candidate, giving inference cross-slice
 //! memory before the baseline accumulates.
 //!
-//! `--parts` (RFC-40 §C2) folds the operator-authored parts input into
+//! `--parts` folds the operator-authored parts input into
 //! the same read-time-fingerprint pass: each part's `group` fragment is
 //! normalised and registered as a **pinned binding** `{ fingerprint →
 //! slug }`. A pinned fingerprint carries two authorities — **naming**
@@ -58,12 +58,12 @@ pub struct InferArgs {
     #[arg(long)]
     pub composition: PathBuf,
 
-    /// Candidate-cache directory (RFC-40 §B4): screenshot stage-6
+    /// Candidate-cache directory: screenshot stage-6
     /// candidate skeletons, keyed by provenance, folded into clustering.
     #[arg(long)]
     pub candidate_cache: Option<PathBuf>,
 
-    /// Operator parts file (RFC-40 §C2): authoritative parts that seed
+    /// Operator parts file: authoritative parts that seed
     /// inference with naming + promotion authority, fingerprinted at
     /// read time through the single normaliser.
     #[arg(long)]
@@ -89,7 +89,7 @@ struct GroupOccurrence {
     /// `event:` targets wired anywhere inside the group subtree.
     event_targets: BTreeSet<String>,
     /// Non-authoritative name hint from a candidate-cache entry's
-    /// `candidate_component` label (RFC-40 §B4). `None` for baseline
+    /// `candidate_component` label. `None` for baseline
     /// groups. Surfaced as evidence; never sets `bound-slug`.
     candidate_name: Option<String>,
 }
@@ -107,7 +107,7 @@ struct Cluster {
     /// Union of `event:` targets across every instance in the cluster.
     event_targets: BTreeSet<String>,
     /// Union of candidate-cache `candidate_component` name hints across
-    /// the cluster (RFC-40 §B4). Surfaced as non-authoritative evidence.
+    /// the cluster. Surfaced as non-authoritative evidence.
     candidate_names: BTreeSet<String>,
 }
 
@@ -141,7 +141,7 @@ pub fn run(args: &InferArgs) -> Result<Value, VectisError> {
         collect_cached_groups(cache_dir, &mut occurrences);
     }
 
-    // Step 0 (RFC-40 §C2): register a pinned binding per operator part,
+    // Step 0: register a pinned binding per operator part,
     // fingerprinted at read time through the single normaliser — so the
     // pin is byte-comparable with discovered fingerprints by construction.
     let pins = if let Some(ref parts_path) = args.parts {
@@ -283,7 +283,7 @@ fn collect_event_targets(node: &Value, out: &mut BTreeSet<String>) {
 
 /// Read every `*.yaml` candidate-cache entry under `dir`, normalise its
 /// `group` fragment through the **single** [`build_group_skeleton`]
-/// path, and fold it into the occurrence list (RFC-40 §B4). The cache's
+/// path, and fold it into the occurrence list. The cache's
 /// on-disk key carries no identity — the fingerprint is recomputed at
 /// read time during clustering — so no agent-written fingerprint is
 /// trusted. Malformed entries and entries without a `group` fragment are
@@ -351,7 +351,7 @@ fn cache_screen_id(root: &Path, file: &Path) -> String {
 }
 
 /// One operator part registered as a pinned `{ fingerprint → slug }`
-/// binding (RFC-40 §C2 step 0). The fingerprint is recomputed at read
+/// binding (operator-part seeding, step 0). The fingerprint is recomputed at read
 /// time, so it is byte-comparable with discovered fingerprints.
 struct PartPin {
     /// Operator-authored part slug.
@@ -362,7 +362,7 @@ struct PartPin {
 
 /// Read every part in `parts.yaml`, normalise each `group` fragment
 /// through the **single** [`build_group_skeleton`] path, and fingerprint
-/// it at read time (RFC-40 §C2 step 0). A malformed parts file, or a
+/// it at read time (operator-part seeding, step 0). A malformed parts file, or a
 /// part without a `group`, yields no pin — the host already schema-gates
 /// the file, so this read is best-effort and never aborts inference.
 fn collect_part_pins(path: &Path) -> Vec<PartPin> {
@@ -391,7 +391,7 @@ fn collect_part_pins(path: &Path) -> Vec<PartPin> {
 /// above-threshold cluster into a name-free report entry. Counting is by
 /// **distinct screen** — a group repeated within one screen counts once.
 ///
-/// `pin_slug_by_fp` carries operator-part pins (RFC-40 §C2): a cluster
+/// `pin_slug_by_fp` carries operator-part pins: a cluster
 /// whose fingerprint matches a pin bypasses `min_occurrences` (promotion
 /// authority) and carries `bound-slug: <operator-slug>` + `pinned: true`
 /// (naming authority); the tool still invents no name of its own.
@@ -439,7 +439,7 @@ fn cluster(
                 "event-targets": c.event_targets.into_iter().collect::<Vec<_>>(),
             });
             // Candidate-cache name hints are non-authoritative evidence
-            // (RFC-40 §B4): emit them only when present so a baseline-only
+            // emit them only when present so a baseline-only
             // report keeps its `region` / `item-kinds` / `event-targets`
             // evidence shape unchanged.
             if !c.candidate_names.is_empty()

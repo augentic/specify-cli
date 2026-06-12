@@ -21,9 +21,6 @@ pub enum Exit {
     ValidationFailed,
     /// `Error::CliTooOld` — the binary is older than the project floor (exit 3).
     VersionTooOld,
-    /// The project's pinned `specify_version` major is older than the
-    /// running binary; the operator must run `specify migrate` first.
-    MigrationRequired,
     /// Argument-shape failure: `clap` exits 2 for unknown flags / missing
     /// arguments; we mirror that for argument errors discovered after
     /// parsing (kebab-case checks, mutually exclusive payloads, etc.).
@@ -42,7 +39,6 @@ impl Exit {
             Self::GenericFailure => 1,
             Self::ArgumentError | Self::ValidationFailed => 2,
             Self::VersionTooOld => 3,
-            Self::MigrationRequired => 4,
             Self::Code(code) => code,
         }
     }
@@ -67,11 +63,6 @@ pub const EXIT_CODES: &[(u8, &str, &str)] = &[
         "Validation findings, invalid arguments, or an undeclared/over-permissioned tool request.",
     ),
     (3, "version-too-old", "project.yaml.specify_version is newer than the binary."),
-    (
-        4,
-        "migration-required",
-        "The project's pinned specify_version major is older than the binary; run `specify migrate`.",
-    ),
 ];
 
 impl From<Exit> for ExitCode {
@@ -84,7 +75,6 @@ impl From<&Error> for Exit {
     fn from(err: &Error) -> Self {
         match err {
             Error::CliTooOld { .. } => Self::VersionTooOld,
-            Error::ProjectNeedsMigration { .. } => Self::MigrationRequired,
             Error::Validation { .. } => Self::ValidationFailed,
             Error::Argument { .. } => Self::ArgumentError,
             _ => Self::GenericFailure,
@@ -177,7 +167,6 @@ mod tests {
         assert_eq!(by_code(Exit::ValidationFailed.code()).1, "validation-failed");
         assert_eq!(by_code(Exit::ArgumentError.code()).1, "validation-failed");
         assert_eq!(by_code(Exit::VersionTooOld.code()).1, "version-too-old");
-        assert_eq!(by_code(Exit::MigrationRequired.code()).1, "migration-required");
-        assert_eq!(EXIT_CODES.len(), 5, "one row per fixed exit code");
+        assert_eq!(EXIT_CODES.len(), 4, "one row per fixed exit code");
     }
 }

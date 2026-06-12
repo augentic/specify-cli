@@ -9,8 +9,8 @@
 //! config it assembles:
 //!
 //! 1. Resolve and canonicalise the framework root (every `rules.*`
-//!    check runs through the `rules` WASI tool, so no imperative
-//!    producer is wired in).
+//!    check runs through the in-process `rules` checker, so no
+//!    imperative producer is wired in).
 //! 2. Configure the runner for the framework surface
 //!    ([`ScanProfile::Framework`], [`FrameworkToolRunner`],
 //!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
@@ -78,8 +78,8 @@ fn build_report(
     };
 
     // No imperative producer: every `rules.*` check (CORE-009 namespace
-    // ownership, CORE-026 duplicate id) now runs through the `rules` WASI
-    // tool via `kind: tool`, folded by the declarative pass.
+    // ownership, CORE-026 duplicate id) runs through the in-process
+    // `rules` checker via `kind: tool`, folded by the declarative pass.
     let producers: [&dyn DiagnosticProducer; 0] = [];
     let rule_filter_slice: Vec<&str> = action.rules.iter().map(String::as_str).collect();
     let tool_runner = FrameworkToolRunner;

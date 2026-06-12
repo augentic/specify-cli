@@ -3,11 +3,10 @@
 //!
 //! The catalog lives at `.specify/design-system/components.yaml` and
 //! declares shared UI components that the Vectis target factors into
-//! shared code at build time. Under RFC-40 the catalog is **written by
+//! shared code at build time. The catalog is **written by
 //! `specify catalog infer --phase bind`** (binding the names the build
 //! skill or operator parts supply) and **reviewed by the operator**,
-//! who may reject or rename entries — the inverse of the earlier
-//! operator-curated, opt-in posture. An absent catalog still means "no
+//! who may reject or rename entries. An absent catalog still means "no
 //! factoring", so projects without one work exactly as before.
 
 use std::collections::BTreeMap;
@@ -24,7 +23,7 @@ use crate::schema;
 const CATALOG_REL: &str = ".specify/design-system/components.yaml";
 
 /// On-disk path of the operator-authored parts input, relative to the
-/// project root (RFC-40 §C1).
+/// project root.
 const PARTS_REL: &str = ".specify/design-system/parts.yaml";
 
 /// Closed status enum for catalog entries.
@@ -50,8 +49,8 @@ pub struct ComponentEntry {
     /// Structural fingerprint (lowercase SHA-256 hex) of the normalised
     /// group skeleton this slug was bound to. Recorded by `bind` so a
     /// later `report` run can echo the bound slug for an already-named
-    /// cluster (run-to-run binding stability, RFC-40 §B2). `None` for
-    /// hand-authored or pre-RFC-40 entries.
+    /// cluster (run-to-run binding stability). `None` for
+    /// hand-authored entries.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<String>,
 }
@@ -101,7 +100,7 @@ impl ComponentsCatalog {
     /// # Errors
     ///
     /// - [`Error::Validation`] if YAML parsing or schema validation fails.
-    pub fn from_yaml(content: &str, source_path: &Path) -> Result<Self> {
+    fn from_yaml(content: &str, source_path: &Path) -> Result<Self> {
         schema::validate_components_yaml(content, source_path)?;
         let catalog: Self = serde_saphyr::from_str(content).map_err(|err| {
             Error::validation_failed(
@@ -117,26 +116,6 @@ impl ComponentsCatalog {
     #[must_use]
     pub fn path_in(project_dir: &Path) -> PathBuf {
         project_dir.join(CATALOG_REL)
-    }
-
-    /// Slugs whose status is `confirmed`.
-    #[must_use]
-    pub fn confirmed_slugs(&self) -> Vec<&str> {
-        self.components
-            .iter()
-            .filter(|(_, entry)| entry.status == ComponentStatus::Confirmed)
-            .map(|(slug, _)| slug.as_str())
-            .collect()
-    }
-
-    /// Slugs whose status is `rejected`.
-    #[must_use]
-    pub fn rejected_slugs(&self) -> Vec<&str> {
-        self.components
-            .iter()
-            .filter(|(_, entry)| entry.status == ComponentStatus::Rejected)
-            .map(|(slug, _)| slug.as_str())
-            .collect()
     }
 
     /// Look up the status of a component by slug.
@@ -156,7 +135,7 @@ impl ComponentsCatalog {
     }
 
     /// Bind `slug` as a `confirmed` component anchored to `fingerprint`,
-    /// honouring the RFC-40 §B6 no-overwrite rule: an entry that already
+    /// honouring the no-overwrite rule: an entry that already
     /// exists (whether `confirmed` or `rejected`) is left untouched, so a
     /// `rejected` slug is never silently re-confirmed and a hand-edited
     /// `description` survives. Only a brand-new slug is added. The stored
@@ -179,8 +158,8 @@ impl ComponentsCatalog {
     /// Reverse `fingerprint → slug` index over the catalog, built from the
     /// `fingerprint` recorded on each entry. Drives `report`'s `bound_slug`
     /// echo so an already-named cluster surfaces its bound slug on a later
-    /// run (RFC-40 §B2 run-to-run stability). Entries without a stored
-    /// fingerprint (hand-authored or pre-RFC-40) contribute nothing.
+    /// run (run-to-run stability). Entries without a stored
+    /// fingerprint (hand-authored) contribute nothing.
     #[must_use]
     pub fn fingerprint_index(&self) -> BTreeMap<&str, &str> {
         self.components
@@ -202,10 +181,10 @@ impl ComponentsCatalog {
 }
 
 /// A single operator-authored part: an authoritative composition
-/// `group` fragment plus optional metadata (RFC-40 §C1).
+/// `group` fragment plus optional metadata.
 ///
 /// The `group` value is carried as an opaque [`Value`] — the host never
-/// fingerprints it (that is the vectis tool's single normaliser, §B2);
+/// fingerprints it (that is the vectis tool's single normaliser);
 /// it only forwards the part file to the tool and reads back each
 /// part's slug + `description` to project matched pins into the catalog.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -222,7 +201,7 @@ pub struct Part {
 ///
 /// `parts.yaml` is an **input**, hand-authored and owned by the
 /// operator beside `tokens.yaml` / `assets.yaml`; the agent-written
-/// [`ComponentsCatalog`] is the **resolved** catalog (RFC-40 §C1). It is
+/// [`ComponentsCatalog`] is the **resolved** catalog. It is
 /// schema-validated on load with no further coherence gate. Absent
 /// parts are represented as `None` at the call site.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -265,7 +244,7 @@ impl Parts {
     /// # Errors
     ///
     /// - [`Error::Validation`] if YAML parsing or schema validation fails.
-    pub fn from_yaml(content: &str, source_path: &Path) -> Result<Self> {
+    fn from_yaml(content: &str, source_path: &Path) -> Result<Self> {
         schema::validate_parts_yaml(content, source_path)?;
         serde_saphyr::from_str(content).map_err(|err| {
             Error::validation_failed(
@@ -284,7 +263,7 @@ impl Parts {
     }
 
     /// The operator description for `slug`, if any — carried into the
-    /// projected `confirmed` catalog entry (RFC-40 §C3).
+    /// projected `confirmed` catalog entry.
     #[must_use]
     pub fn description_of(&self, slug: &str) -> Option<&str> {
         self.parts.get(slug).and_then(|part| part.description.as_deref())

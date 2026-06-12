@@ -1,4 +1,4 @@
-//! Integration tests for `specify slice build` (RFC-29d M3 / D6).
+//! Integration tests for `specify slice build`.
 //!
 //! Covers the two-phase agent contract that mirrors `specify source
 //! survey` / `extract`: `prepare` assembles + persists a schema-valid

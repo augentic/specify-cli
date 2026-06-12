@@ -8,7 +8,6 @@
 
 use std::collections::BTreeMap;
 
-use jiff::Timestamp;
 use specify_error::{Error, Result};
 use specify_model::evidence::ClaimKind;
 use specify_workflow::change::Plan;
@@ -56,7 +55,7 @@ pub(super) fn run(ctx: &Ctx, name: &str) -> Result<()> {
     }
     let model = SliceModel::load(&model_path)?;
     let overrides = slice_overrides(ctx, name)?;
-    let index = model.to_provenance_index(&slice_dir, &overrides, Timestamp::now(), generator())?;
+    let index = model.to_provenance_index(&slice_dir, &overrides, ctx.now(), generator())?;
 
     ctx.write(&index, |w, index| {
         writeln!(w, "slice: {}", index.slice)?;

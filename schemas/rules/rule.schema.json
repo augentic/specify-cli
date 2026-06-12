@@ -889,7 +889,7 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^(!?)(?!/)(?![A-Za-z][A-Za-z0-9+.-]*://)(?!.*(?:^|/)\\.\\.(?:/|$)).+$",
-      "description": "Relative path or glob. A leading `!` marks an exclusion path-pattern hint."
+      "description": "Relative path or glob (`*` does not cross `/`, `**` does, `{a,b}` brace alternation unions patterns). A leading `!` marks an exclusion path-pattern hint."
     }
   }
 }

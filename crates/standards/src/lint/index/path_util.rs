@@ -1,5 +1,4 @@
-//! Shared path-rendering helpers for the framework-profile indexers
-//! (REVIEW.md A10).
+//! Shared path-rendering helpers for the framework-profile indexers.
 //!
 //! The symlink and agent-teams indexers both emit `/`-normalised,
 //! project-relative path strings. The normalisation rule lives here so

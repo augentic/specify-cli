@@ -56,6 +56,8 @@ pub mod regex;
 pub mod schema;
 pub mod set_coverage;
 pub mod set_eq;
+#[cfg(test)]
+pub(crate) mod testkit;
 pub mod tool;
 pub mod unique;
 

@@ -1,10 +1,11 @@
 //! Wasmtime-backed WASI Preview 2 runner boundary.
 
 use std::collections::BTreeMap;
+use std::env;
 use std::path::{Path, PathBuf};
 
 use wasmtime::component::{Component, Linker, ResourceTable};
-use wasmtime::{Config, Engine, Store};
+use wasmtime::{Cache, CacheConfig, Config, Engine, Store};
 use wasmtime_wasi::p2::bindings::sync::Command;
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::{DirPerms, FilePerms, I32Exit, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
@@ -65,6 +66,9 @@ impl WasiRunner {
     pub fn new() -> Result<Self, ToolError> {
         let mut config = Config::new();
         config.wasm_component_model(true);
+        if let Some(cache) = compilation_cache() {
+            config.cache(Some(cache));
+        }
         let engine = Engine::new(&config).map_err(|err| ToolError::Diag {
             code: "tool-runtime",
             detail: format!("failed to create Wasmtime engine: {err}"),
@@ -207,6 +211,29 @@ struct Preopen {
     host_path: PathBuf,
     guest_path: String,
     writable: bool,
+}
+
+/// Best-effort Cranelift compilation cache so repeated runs of the same
+/// component bytes skip the JIT.
+///
+/// `SPECIFY_WASMTIME_CACHE` overrides the cache directory (absolute
+/// path required; any other value disables caching). Otherwise the
+/// cache lives at `<tool cache root>/wasmtime/`, beside the per-scope
+/// tool directories, so it follows the `SPECIFY_TOOLS_CACHE` → XDG →
+/// HOME precedence rather than wasmtime's default `~/.cache/wasmtime`.
+/// Failure to resolve or initialise the cache disables it — the engine
+/// still runs, it just recompiles.
+fn compilation_cache() -> Option<Cache> {
+    let dir = match env::var_os("SPECIFY_WASMTIME_CACHE") {
+        Some(value) => {
+            let path = PathBuf::from(value);
+            path.is_absolute().then_some(path)?
+        }
+        None => crate::cache::root().ok()?.join("wasmtime"),
+    };
+    let mut cache_config = CacheConfig::new();
+    cache_config.with_directory(dir);
+    Cache::new(cache_config).ok()
 }
 
 fn canonical_project_dir(project_dir: &Path) -> Result<PathBuf, ToolError> {

@@ -1,4 +1,4 @@
-//! Integration tests for `specify contract dump` (RFC-44 R1).
+//! Integration tests for `specify contract dump`.
 //!
 //! Locks the dump payload to `schemas/contract/dump.schema.json`,
 //! pins sentinel rows from each contract section, and keeps the
@@ -63,7 +63,6 @@ fn dump_carries_known_surface() {
         "workspace",
         "completions",
         "contract",
-        "migrate",
         "upgrade",
         "plugins",
     ] {
@@ -76,7 +75,7 @@ fn dump_carries_known_surface() {
         .iter()
         .map(|row| row["code"].as_u64().expect("numeric exit code"))
         .collect();
-    assert_eq!(exit_codes, vec![0, 1, 2, 3, 4]);
+    assert_eq!(exit_codes, vec![0, 1, 2, 3]);
 
     let error_ids = dump["error-ids"].as_array().expect("error-ids array");
     assert!(error_ids.iter().any(|id| id == "adapter-not-found"));

@@ -25,9 +25,8 @@ pub fn extract(file: &DiscoveredFile) -> Option<Frontmatter> {
     if file.language.as_deref() != Some("markdown") {
         return None;
     }
-    // Rule frontmatter is surfaced via the `rule_index` family
-    // per the doc-comment on `super::discover`; the two surfaces would
-    // double-count if the generic extractor also fired here.
+    // The distributed codex rules cache is resolver input, not
+    // authored project content; the generic extractor skips it.
     if file.relative.starts_with(".specify/cache/codex/") {
         return None;
     }

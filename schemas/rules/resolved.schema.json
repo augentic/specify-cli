@@ -183,7 +183,7 @@
           "description": "Optional human explanation for the hint."
         },
         "config": {
-          "description": "Per-kind configuration. Phase 1: `regex` uses regexHintConfig when kind is regex.",
+          "description": "Per-kind configuration: `regex` uses regexHintConfig when kind is regex.",
           "oneOf": [
             { "$ref": "#/$defs/regexHintConfig" }
           ]

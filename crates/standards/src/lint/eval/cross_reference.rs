@@ -290,3 +290,118 @@ fn mint(rule: &ResolvedRule, path: &str, summary: &str, next_id: &mut u64) -> Di
     *next_id += 1;
     finding
 }
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{empty_model, hint_with_config, rule};
+    use crate::lint::{AdapterAxis, AdapterDir, AdapterTool};
+
+    fn dir(path: &str) -> AdapterDir {
+        AdapterDir {
+            path: path.to_string(),
+            axis: AdapterAxis::Targets,
+            name: path.rsplit('/').next().unwrap_or(path).to_string(),
+        }
+    }
+
+    fn manifest_with_tools(name: &str, tools: &[(&str, &str)]) -> AdapterManifest {
+        AdapterManifest {
+            axis: AdapterAxis::Targets,
+            name: name.to_string(),
+            path: format!("adapters/targets/{name}/adapter.yaml"),
+            version: None,
+            brief_keys: vec![],
+            tools: tools
+                .iter()
+                .map(|(tool_name, version)| AdapterTool {
+                    name: (*tool_name).to_string(),
+                    version: (*version).to_string(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn orphan_adapter_dir_flagged() {
+        let mut model = empty_model();
+        model.adapter_dirs =
+            vec![dir("adapters/targets/with-manifest"), dir("adapters/targets/orphan")];
+        model.adapter_manifests = vec![manifest_with_tools("with-manifest", &[])];
+        let cfg = json!({ "target": "adapter-manifest" });
+        let hint = hint_with_config(HintKind::CrossReference, "adapter-dir", Some(cfg));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("adapters/targets/orphan"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn expected_set_value_join() {
+        let mut model = empty_model();
+        model.adapter_manifests = vec![manifest_with_tools("vectis", &[("vectis", "0.4.0")])];
+        let cfg = json!({
+            "target": "adapter-tool",
+            "entries": [
+                { "key": "vectis/vectis", "value": "0.4.0" },   // match: silent
+                { "key": "vectis/extra", "value": "1.0.0" },    // missing in present scope: flagged
+                { "key": "omnia/tool", "value": "1.0.0" },      // absent scope: skipped
+            ],
+        });
+        let hint = hint_with_config(HintKind::CrossReference, "expected-set", Some(cfg));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("'vectis/extra'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn expected_set_version_mismatch_flagged() {
+        let mut model = empty_model();
+        model.adapter_manifests = vec![manifest_with_tools("vectis", &[("vectis", "0.3.0")])];
+        let cfg = json!({
+            "target": "adapter-tool",
+            "entries": [{ "key": "vectis/vectis", "value": "0.4.0" }],
+        });
+        let hint = hint_with_config(HintKind::CrossReference, "expected-set", Some(cfg));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert_eq!(out.len(), 1);
+        assert!(out[0].title.contains("must be '0.4.0'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn entries_invalid_for_family_source() {
+        let model = empty_model();
+        let cfg = json!({
+            "target": "adapter-manifest",
+            "entries": [{ "key": "k", "value": "v" }],
+        });
+        let hint = hint_with_config(HintKind::CrossReference, "adapter-dir", Some(cfg));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn expected_set_requires_entries() {
+        let model = empty_model();
+        let cfg = json!({ "target": "adapter-tool" });
+        let hint = hint_with_config(HintKind::CrossReference, "expected-set", Some(cfg));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn unknown_selectors_rejected() {
+        let model = empty_model();
+        let source = hint_with_config(
+            HintKind::CrossReference,
+            "no-such-source",
+            Some(json!({ "target": "adapter-manifest" })),
+        );
+        evaluate(&rule(), &source, &[], &model, &mut 1).unwrap_err();
+        let target = hint_with_config(
+            HintKind::CrossReference,
+            "adapter-dir",
+            Some(json!({ "target": "no-such-target" })),
+        );
+        evaluate(&rule(), &target, &[], &model, &mut 1).unwrap_err();
+    }
+}

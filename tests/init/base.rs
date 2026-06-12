@@ -392,15 +392,14 @@ fn init_workspace_refuses_when_present() {
     assert_eq!(on_disk, "name: existing\nadapter: omnia\n");
 }
 
-// ---- `specify init --upgrade` (RFC-30 §D5 re-entry version bump) ----
+// ---- `specify init --upgrade` (re-entry version bump) ----
 
 /// This binary's version — the target every `--upgrade` bumps toward.
 const BINARY_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Populate a brownfield regular project: an older-but-same-major pin
-/// (`0.1.0`; the binary is a later `0.x`, same major `0`, so no
-/// migration), a bare `adapter:`, a spread of operator artifacts, and a
-/// sentinel `AGENTS.md`.
+/// Populate a brownfield regular project: an older pin (`0.1.0`; the
+/// binary is a later `0.x`), a bare `adapter:`, a spread of operator
+/// artifacts, and a sentinel `AGENTS.md`.
 fn seed_brownfield_regular(root: &Path) {
     let specify = root.join(".specify");
     fs::create_dir_all(specify.join("slices/my-slice")).unwrap();
@@ -536,8 +535,8 @@ fn upgrade_preserves_workspace_registry() {
 }
 
 #[test]
-fn upgrade_conflicts_workspace_migration() {
-    for extra in [vec!["omnia"], vec!["--workspace"], vec!["--check-migration"]] {
+fn upgrade_conflicts_adapter_workspace() {
+    for extra in [vec!["omnia"], vec!["--workspace"]] {
         let tmp = tempdir().unwrap();
         let mut cmd = specify_cmd();
         cmd.current_dir(tmp.path()).args(["init", "--upgrade"]).args(&extra);

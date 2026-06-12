@@ -1,6 +1,5 @@
 use std::io::Write;
 
-use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
 use specify_workflow::change::Plan;
@@ -38,7 +37,7 @@ pub fn push(ctx: &Ctx, projects: &[String], dry_run: bool) -> Result<()> {
     // emit nothing.
     if !dry_run && !any_failed {
         let event = journal::Event::new(
-            Timestamp::now(),
+            ctx.now(),
             journal::EventKind::WorkspacePushCompleted {
                 plan_name: plan_name.clone(),
                 branch: format!("specify/{plan_name}"),

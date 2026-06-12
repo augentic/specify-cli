@@ -51,7 +51,7 @@ pub const MANIFESTS_CACHE_DIR: &str = "manifests";
 
 /// Axis discriminator for an adapter manifest.
 ///
-/// Source vs target — see workflow §Adapter axis. The closed enum is
+/// Source vs target — see workflow §Adapter vocabulary. The closed enum is
 /// used by the resolver dispatcher (`commands::resolve_adapter`) and
 /// the manifest-cache helpers ([`cache_dir`], `adapter_axis_dir`);
 /// the in-memory manifests themselves are axis-typed
@@ -153,6 +153,65 @@ pub struct PlatformsCapability {
     pub allowed: Vec<Platform>,
     /// Default platform set for greenfield scaffolding.
     pub default: Vec<Platform>,
+}
+
+/// Typed outcome of [`PlatformsCapability::check`].
+///
+/// Each caller maps the violation onto its own diagnostic-code family
+/// (`project-platforms-*` at init, `topology-cache-project-platforms-*`
+/// at topology resolution) so the rules themselves live in one place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlatformsViolation {
+    /// The capability demands a platform set but none was declared.
+    /// Carries the capability's display-formatted `default` set for the
+    /// caller's hint text.
+    RequiredButMissing {
+        /// Display-formatted `default` platform tokens.
+        defaults: Vec<String>,
+    },
+    /// A non-empty platform set omits the mandatory `core` member.
+    MissingCore,
+    /// A declared platform is outside the capability's `allowed` set.
+    /// Carries the display-formatted allowed set for the hint text.
+    NotAllowed {
+        /// The offending platform.
+        platform: Platform,
+        /// Display-formatted `allowed` platform tokens.
+        allowed: Vec<String>,
+    },
+}
+
+impl PlatformsCapability {
+    /// Validate a declared platform set against this capability: a
+    /// required capability refuses an empty set; a non-empty set must
+    /// include [`Platform::Core`] and stay inside `allowed`. An empty
+    /// set on a non-required capability passes (platforms are opt-in).
+    ///
+    /// # Errors
+    ///
+    /// Returns the first [`PlatformsViolation`] in rule order.
+    pub fn check(&self, platforms: &[Platform]) -> Result<(), PlatformsViolation> {
+        if platforms.is_empty() {
+            if self.required {
+                return Err(PlatformsViolation::RequiredButMissing {
+                    defaults: self.default.iter().map(ToString::to_string).collect(),
+                });
+            }
+            return Ok(());
+        }
+        if !platforms.contains(&Platform::Core) {
+            return Err(PlatformsViolation::MissingCore);
+        }
+        for p in platforms {
+            if !self.allowed.contains(p) {
+                return Err(PlatformsViolation::NotAllowed {
+                    platform: *p,
+                    allowed: self.allowed.iter().map(ToString::to_string).collect(),
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Closed adapter execution mode.

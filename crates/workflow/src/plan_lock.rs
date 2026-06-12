@@ -1,4 +1,4 @@
-//! Plan-lock probe (RFC-44 R2 runtime enforcement).
+//! Plan-lock probe: runtime enforcement of the skill-acquired driver lock.
 //!
 //! The `/spec:execute` driver lock is the OS advisory lock on
 //! `<plan-root>/.specify/plan.lock`, **acquired skill-side** by the

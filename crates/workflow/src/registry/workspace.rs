@@ -1,23 +1,21 @@
 //! Multi-project workspace materialisation under `.specify/workspace/`
-//! — bootstrap, sync, status, and push helpers for the slots derived
-//! from `registry.yaml`.
+//! — bootstrap, sync, and push helpers for the slots derived from
+//! `registry.yaml`.
 
 mod bootstrap;
 mod git;
 mod mirror;
 mod push;
 mod slot_problem;
-mod status;
 mod sync;
 
 use std::path::{Component, Path, PathBuf};
 
 pub use push::{PushOutcome, PushResult, github_slug, push_projects};
 pub use slot_problem::{
-    Problem as SlotProblem, Reason as SlotProblemReason, inspect as slot_problem,
+    Problem as SlotProblem, Reason as SlotProblemReason, SlotKind, inspect as slot_problem,
 };
 use specify_error::Error;
-pub use status::{ConfiguredTargetKind, SlotKind, SlotStatus, status, status_projects};
 pub use sync::{regenerate_topology_lock, sync_projects};
 
 fn workspace_base(project_dir: &Path) -> PathBuf {
@@ -26,10 +24,6 @@ fn workspace_base(project_dir: &Path) -> PathBuf {
 
 fn contracts_base(project_dir: &Path) -> PathBuf {
     project_dir.join("contracts")
-}
-
-fn local_target_path(project_dir: &Path, url: &str) -> PathBuf {
-    if url == "." { project_dir.to_path_buf() } else { project_dir.join(url) }
 }
 
 fn workspace_slot_path(base: &Path, project_name: &str) -> Result<PathBuf, Error> {

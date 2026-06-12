@@ -93,9 +93,8 @@ impl ProjectConfig {
     }
 
     /// Version-injectable body of [`ProjectConfig::load`]; `current` is
-    /// the running binary's version. Split out so the migration refusal
-    /// (dormant at runtime while the binary is pre-1.0 — majors never
-    /// differ) keeps unit coverage until the 1.0 cut makes it reachable.
+    /// the running binary's version. Split out so the `CliTooOld` floor
+    /// check keeps unit coverage against arbitrary versions.
     fn load_with_current(project_dir: &Path, current: &str) -> Result<Self, Error> {
         let path = Layout::new(project_dir).config_path();
         let text = match std::fs::read_to_string(&path) {
@@ -117,61 +116,7 @@ impl ProjectConfig {
             });
         }
 
-        if let Some(pinned) = &cfg.specify_version
-            && let Some((from, to)) = needs_migration(current, pinned)
-        {
-            return Err(Error::ProjectNeedsMigration { from, to });
-        }
-
         Ok(cfg)
-    }
-
-    /// Bootstrap carve-out for the migration-aware commands
-    /// (`specify migrate` / `specify upgrade` / `specify init --upgrade`).
-    ///
-    /// Performs the same read + parse + [`Error::CliTooOld`] floor check as
-    /// [`ProjectConfig::load`], but instead of raising
-    /// [`Error::ProjectNeedsMigration`] it *returns* the parsed config plus
-    /// the `(from, to)` migration tuple (the `needs_migration` result;
-    /// `None` when no migration is required). This is the only legal way to
-    /// observe a project that is itself in the "needs migration" state, since
-    /// those commands exist precisely to resolve it.
-    ///
-    /// # Errors
-    ///
-    /// - [`Error::NotInitialized`] if `.specify/project.yaml` is absent.
-    /// - [`Error::Io`] if the file exists but cannot be read.
-    /// - [`Error::YamlDe`] if the file is not valid project YAML.
-    /// - [`Error::CliTooOld`] if the pinned `specify_version` floor is
-    ///   newer than this binary's version.
-    pub fn load_for_migration(
-        project_dir: &Path,
-    ) -> Result<(Self, Option<(String, String)>), Error> {
-        let path = Layout::new(project_dir).config_path();
-        let text = match std::fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                return Err(Error::NotInitialized);
-            }
-            Err(err) => return Err(Error::Io(err)),
-        };
-
-        let cfg: Self = serde_saphyr::from_str(&text)?;
-
-        let current = env!("CARGO_PKG_VERSION");
-        if let Some(required) = &cfg.specify_version
-            && version_is_older(current, required)
-        {
-            return Err(Error::CliTooOld {
-                required: required.clone(),
-                found: current.to_string(),
-            });
-        }
-
-        let migration =
-            cfg.specify_version.as_deref().and_then(|pinned| needs_migration(current, pinned));
-
-        Ok((cfg, migration))
     }
 
     /// Walk `start_dir` and its ancestors looking for the first directory
@@ -184,17 +129,6 @@ impl ProjectConfig {
             .ancestors()
             .find(|candidate| Layout::new(candidate).config_path().try_exists().unwrap_or(false))
             .map(Path::to_path_buf)
-    }
-
-    /// Resolve a `rules` value to an absolute path under `.specify/`.
-    /// Returns `None` when the brief has no override (absent or empty).
-    #[must_use]
-    pub fn rule_path(&self, project_dir: &Path, brief_id: &str) -> Option<PathBuf> {
-        let value = self.rules.get(brief_id)?;
-        if value.is_empty() {
-            return None;
-        }
-        Some(Layout::new(project_dir).specify_dir().join(value))
     }
 }
 
@@ -328,22 +262,6 @@ impl<'a> Layout<'a> {
         self.specify_dir().join("archive")
     }
 
-    /// Absolute path to `<project_dir>/.specify/.migrate/<kind>/` — the
-    /// per-migrator scratch root the migration framework owns. `kind`
-    /// is a stable `crate::migrate::MigrationKind::id` (e.g. `v2-to-v3`).
-    #[must_use]
-    pub fn migrate_dir(&self, kind: &str) -> PathBuf {
-        self.specify_dir().join(".migrate").join(kind)
-    }
-
-    /// Absolute path to `<project_dir>/.specify/.migrate/<kind>/staging/`
-    /// — where a migrator stages file writes before renaming them into
-    /// place atomically.
-    #[must_use]
-    pub fn migrate_staging_dir(&self, kind: &str) -> PathBuf {
-        self.migrate_dir(kind).join("staging")
-    }
-
     /// Absolute path to `<project_dir>/registry.yaml` — the platform
     /// catalogue. Platform-level artifact, lives at the repo root.
     #[must_use]
@@ -411,22 +329,6 @@ fn version_is_older(current: &str, required: &str) -> bool {
         return false;
     };
     cur < req
-}
-
-/// Parse the major version component; `None` for unparseable input.
-fn major(v: &str) -> Option<u64> {
-    semver::Version::parse(v).ok().map(|x| x.major)
-}
-
-/// Returns `Some((from, to))` when `pinned`'s major is strictly older than
-/// `current`'s, signalling that a migration must run before the CLI can
-/// operate. Unparseable versions yield `None` (permissive, matching the
-/// [`version_is_older`] stance). Dormant while the binary is pre-1.0.
-fn needs_migration(current: &str, pinned: &str) -> Option<(String, String)> {
-    match (major(pinned), major(current)) {
-        (Some(from), Some(to)) if to > from => Some((pinned.to_string(), current.to_string())),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

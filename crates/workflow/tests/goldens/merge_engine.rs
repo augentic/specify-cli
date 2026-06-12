@@ -1,6 +1,8 @@
-//! Parity tests — `tests/fixtures/parity/` holds byte-for-byte
-//! outputs captured from the archived Python reference implementation
-//! (now retired). The Rust port must match them exactly.
+//! Merge-engine goldens — `tests/fixtures/merge/` holds the canonical
+//! merged outputs for each delta-section edge (ADDED / MODIFIED /
+//! REMOVED / RENAMED, greenfield, all sections combined) plus the
+//! `validate_baseline` pass/fail fixtures. The engine must reproduce
+//! each `expected-merged.md` byte-for-byte.
 
 use specify_diagnostics::Diagnostic;
 use specify_error::Error;
@@ -10,7 +12,7 @@ macro_rules! fixture {
     ($case:literal, $file:literal) => {
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../tests/fixtures/parity/",
+            "/../../tests/fixtures/merge/",
             $case,
             "/",
             $file
@@ -30,7 +32,7 @@ fn assert_merge_success(case: &str, baseline: Option<&str>, delta: &str, expecte
 }
 
 #[test]
-fn case_01_single_req_identical() {
+fn case_01_single_req() {
     assert_merge_success(
         "case-01-single-req",
         Some(fixture!("case-01-single-req", "baseline.md")),
@@ -41,7 +43,7 @@ fn case_01_single_req_identical() {
 }
 
 #[test]
-fn case_02_multi_req_identical() {
+fn case_02_multi_req() {
     assert_merge_success(
         "case-02-multi-req",
         Some(fixture!("case-02-multi-req", "baseline.md")),
@@ -51,7 +53,7 @@ fn case_02_multi_req_identical() {
 }
 
 #[test]
-fn case_03_new_baseline_identical() {
+fn case_03_new_baseline() {
     assert_merge_success(
         "case-03-new-baseline",
         None,
@@ -61,7 +63,7 @@ fn case_03_new_baseline_identical() {
 }
 
 #[test]
-fn case_04_modified_identical() {
+fn case_04_modified() {
     assert_merge_success(
         "case-04-modified",
         Some(fixture!("case-04-modified", "baseline.md")),
@@ -71,7 +73,7 @@ fn case_04_modified_identical() {
 }
 
 #[test]
-fn case_05_removed_identical() {
+fn case_05_removed() {
     assert_merge_success(
         "case-05-removed",
         Some(fixture!("case-05-removed", "baseline.md")),
@@ -81,7 +83,7 @@ fn case_05_removed_identical() {
 }
 
 #[test]
-fn case_06_renamed_identical() {
+fn case_06_renamed() {
     assert_merge_success(
         "case-06-renamed",
         Some(fixture!("case-06-renamed", "baseline.md")),
@@ -91,7 +93,7 @@ fn case_06_renamed_identical() {
 }
 
 #[test]
-fn case_07_all_sections_identical() {
+fn case_07_all_sections() {
     assert_merge_success(
         "case-07-all-sections",
         Some(fixture!("case-07-all-sections", "baseline.md")),
@@ -119,7 +121,7 @@ fn merge_failure_consolidates_errors() {
 }
 
 // ---------------------------------------------------------------------------
-// validate_baseline parity
+// validate_baseline goldens
 // ---------------------------------------------------------------------------
 
 fn fails(results: &[Diagnostic]) -> Vec<&str> {
@@ -132,7 +134,7 @@ fn fails(results: &[Diagnostic]) -> Vec<&str> {
 fn case_08_validation_ok_has_no_failures() {
     let baseline = fixture!("case-08-validation-ok", "baseline.md");
     let expected = fixture!("case-08-validation-ok", "expected-validation.txt");
-    let results = validate_baseline(baseline, None);
+    let results = validate_baseline(baseline);
     assert!(fails(&results).is_empty(), "expected no fails; got {:?}", fails(&results));
     assert!(expected.trim().is_empty());
 }
@@ -141,7 +143,7 @@ fn case_08_validation_ok_has_no_failures() {
 fn case_09_validation_fails_failure_set() {
     let baseline = fixture!("case-09-validation-fails", "baseline.md");
     let expected = fixture!("case-09-validation-fails", "expected-validation.txt");
-    let results = validate_baseline(baseline, None);
+    let results = validate_baseline(baseline);
     let actual_details = fails(&results);
 
     let expected_details: Vec<&str> =
@@ -158,19 +160,4 @@ fn case_09_validation_fails_failure_set() {
         expected_details.len(),
         "failure count drift: expected {expected_details:?}, got {actual_details:?}"
     );
-}
-
-#[test]
-fn case_10_design_refs_python_regex_quirk() {
-    // The expected file is empty: Python's `^REQ-[0-9]{3}$` (no
-    // MULTILINE) never matches inside the multi-line design body, even
-    // though `design.md` mentions REQ-999 / REQ-042 that are not in the
-    // baseline. Change G's `cross.design-references-valid` will finally
-    // catch those; for now, parity requires zero fails.
-    let baseline = fixture!("case-10-design-refs", "baseline.md");
-    let design = fixture!("case-10-design-refs", "design.md");
-    let expected = fixture!("case-10-design-refs", "expected-validation.txt");
-    let results = validate_baseline(baseline, Some(design));
-    assert!(fails(&results).is_empty(), "got unexpected fails: {:?}", fails(&results));
-    assert!(expected.trim().is_empty());
 }

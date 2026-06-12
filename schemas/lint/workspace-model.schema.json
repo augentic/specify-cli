@@ -17,10 +17,7 @@
     "markdown_links",
     "symlinks",
     "skills",
-    "adapter_manifests",
-    "marketplace_entries",
-    "rule_index",
-    "text_matches"
+    "adapter_manifests"
   ],
   "properties": {
     "version": {
@@ -84,21 +81,6 @@
       "type": "array",
       "items": { "$ref": "#/$defs/adapterManifest" },
       "description": "`WorkspaceModel` entity: `adapter_manifest` facts from `adapters/{sources,targets}/**/adapter.yaml`."
-    },
-    "marketplace_entries": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/marketplaceEntry" },
-      "description": "`WorkspaceModel` entity: `marketplace_entry` facts from `.cursor-plugin/marketplace.json`."
-    },
-    "rule_index": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/ruleIndexEntry" },
-      "description": "`WorkspaceModel` entity: `rule_index` facts from rules tree discovery (reuses the rule frontmatter parser)."
-    },
-    "text_matches": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/textMatch" },
-      "description": "`WorkspaceModel` entity: `text_match` facts from the optional precomputed regex index."
     },
     "ignore_directives": {
       "type": "array",
@@ -428,68 +410,6 @@
           "type": "string",
           "minLength": 1,
           "description": "`WorkspaceModel` entity: directory name (the final path segment, e.g. `vectis`)."
-        }
-      }
-    },
-    "marketplaceEntry": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["plugin", "path-in-manifest"],
-      "properties": {
-        "plugin": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: plugin slug declared by `.cursor-plugin/marketplace.json`."
-        },
-        "path-in-manifest": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: JSON-pointer-style location inside `marketplace.json` where the entry was discovered."
-        }
-      }
-    },
-    "ruleIndexEntry": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["rule-id", "path", "origin", "frontmatter-ref"],
-      "properties": {
-        "rule-id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: rule id (matches the rule schema's `id` regex)."
-        },
-        "path": { "$ref": "#/$defs/relativePath" },
-        "origin": {
-          "type": "string",
-          "enum": ["target", "source", "shared", "core", "unknown"],
-          "description": "`WorkspaceModel` entity: which rules tree contributed the rule (target adapter, source adapter, shared universal tree, core rules pack, or `unknown` for cache files whose path does not match a recognized adapter shape)."
-        },
-        "frontmatter-ref": {
-          "$ref": "#/$defs/relativePath",
-          "description": "`WorkspaceModel` entity: path back to the originating `frontmatter` fact so consumers can join through the frontmatter table."
-        }
-      }
-    },
-    "textMatch": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "line", "column", "pattern-id"],
-      "properties": {
-        "path": { "$ref": "#/$defs/relativePath" },
-        "line": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "1-based line of the match."
-        },
-        "column": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "1-based column of the match."
-        },
-        "pattern-id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: stable identifier for the precomputed regex pattern that produced this match."
         }
       }
     },

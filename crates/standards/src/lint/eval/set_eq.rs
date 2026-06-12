@@ -142,3 +142,88 @@ pub(crate) fn evaluate(
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod unit {
+    use serde_json::json;
+
+    use super::*;
+    use crate::lint::eval::testkit::{candidates, empty_model, hint, hint_with_config, rule};
+    use crate::lint::{AdapterAxis, AdapterManifest};
+
+    fn manifest(name: &str, axis: AdapterAxis, briefs: &[&str]) -> AdapterManifest {
+        let axis_dir = match axis {
+            AdapterAxis::Sources => "sources",
+            AdapterAxis::Targets => "targets",
+        };
+        AdapterManifest {
+            axis,
+            name: name.to_string(),
+            path: format!("adapters/{axis_dir}/{name}/adapter.yaml"),
+            version: None,
+            brief_keys: briefs.iter().map(|b| (*b).to_string()).collect(),
+            tools: vec![],
+        }
+    }
+
+    // Fixture operation names are deliberately not the real adapter
+    // operations: the expected sets are rule-supplied policy, and the
+    // `no_embedded_policy` guard rejects real operation-set literals
+    // anywhere under `lint/eval/`.
+    fn expected_ops() -> serde_json::Value {
+        json!({ "expected-operations": { "sources": ["alpha", "beta"], "targets": ["gamma", "delta", "epsilon"] } })
+    }
+
+    #[test]
+    fn missing_and_unexpected_both_flagged() {
+        let mut model = empty_model();
+        model.adapter_manifests =
+            vec![manifest("demo", AdapterAxis::Targets, &["gamma", "delta", "rogue"])];
+        let cands = candidates(&["adapters/targets/demo/adapter.yaml"]);
+        let hint = hint_with_config(HintKind::SetEq, "adapter-briefs", Some(expected_ops()));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        let titles: Vec<&str> = out.iter().map(|f| f.title.as_str()).collect();
+        assert_eq!(out.len(), 2, "{titles:?}");
+        assert!(
+            titles.iter().any(|t| t.contains("missing brief operation 'epsilon'")),
+            "{titles:?}"
+        );
+        assert!(
+            titles.iter().any(|t| t.contains("unexpected brief operation 'rogue'")),
+            "{titles:?}"
+        );
+    }
+
+    #[test]
+    fn exact_set_is_silent() {
+        let mut model = empty_model();
+        model.adapter_manifests = vec![manifest("demo", AdapterAxis::Sources, &["alpha", "beta"])];
+        let cands = candidates(&["adapters/sources/demo/adapter.yaml"]);
+        let hint = hint_with_config(HintKind::SetEq, "adapter-briefs", Some(expected_ops()));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn manifest_outside_candidates_skipped() {
+        let mut model = empty_model();
+        model.adapter_manifests = vec![manifest("demo", AdapterAxis::Targets, &["gamma"])];
+        let hint = hint_with_config(HintKind::SetEq, "adapter-briefs", Some(expected_ops()));
+        let out = evaluate(&rule(), &hint, &[], &model, &mut 1).expect("evaluate");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn missing_config_is_unsupported() {
+        let model = empty_model();
+        let hint = hint(HintKind::SetEq, "adapter-briefs");
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+
+    #[test]
+    fn unknown_source_is_unsupported() {
+        let model = empty_model();
+        let hint = hint_with_config(HintKind::SetEq, "no-such-source", Some(expected_ops()));
+        evaluate(&rule(), &hint, &[], &model, &mut 1).unwrap_err();
+    }
+}

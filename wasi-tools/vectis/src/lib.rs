@@ -18,7 +18,7 @@
 //! - `verify` — declared-vs-present platform shell verification
 //!   (detect mode for plan-time, verify mode for build/lint).
 //! - `infer` — deterministic component-identity clustering over the
-//!   composition baseline (name-free cluster report; RFC-40 §B2).
+//!   composition baseline (name-free cluster report).
 //! - `scaffold` — render-only Crux project scaffolds (core / iOS /
 //!   Android shells).
 //! - `schema` — print a tool-owned embedded schema to stdout (the tool-owned schema and catalog decisions D1).

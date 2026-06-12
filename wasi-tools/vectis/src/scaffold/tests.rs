@@ -30,7 +30,11 @@ fn digest_plan(plan: &ScaffoldPlan) -> String {
         hasher.update(file.contents.as_bytes());
         hasher.update([0]);
     }
-    format!("{:x}", hasher.finalize())
+    hasher.finalize().iter().fold(String::with_capacity(64), |mut hex, byte| {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    })
 }
 
 fn env_lock() -> MutexGuard<'static, ()> {

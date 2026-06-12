@@ -82,7 +82,7 @@ const PROPOSE_DISCOVERY_WORKSPACE: &str = "\
 - synopsis: Legacy reset-password flow.
 ";
 
-/// Committed `.specify/topology.lock` for the workspace fixture (RFC-36) —
+/// Committed `.specify/topology.lock` for the workspace fixture —
 /// the projection `workspace sync` would derive from each member
 /// project's `project.yaml`. Descriptions mirror the registry seeds so
 /// the request envelope's `projects[]` stays the authoritative shape.
@@ -187,7 +187,7 @@ fn workspace_project(registry: &str, discovery: &str, plan: &str) -> TempDir {
     fs::write(tmp.path().join("registry.yaml"), registry).expect("write registry.yaml");
     seed_discovery(tmp.path(), discovery);
     fs::write(tmp.path().join("plan.yaml"), plan).expect("write plan.yaml");
-    // RFC-36: workspace plan-time topology reads the committed cache, not the
+    // Workspace plan-time topology reads the committed cache, not the
     // registry. Seed the projection `workspace sync` would produce for
     // the remote members (which a unit test cannot materialise).
     fs::write(tmp.path().join(".specify/topology.lock"), PROPOSE_TOPOLOGY_WORKSPACE)
@@ -342,7 +342,7 @@ fn propose_from_emits_single_journal_tail() {
         .collect();
     assert_eq!(events.len(), 1, "exactly one reconcile event fires, got:\n{events:#?}");
 
-    // RFC-29 review F8 folded the former agent/completed pair into one
+    // The former agent/completed pair folded into one
     // `plan.reconcile.completed` event carrying the slice names in order.
     let completed = &events[0];
     assert_eq!(completed["event"], "plan.reconcile.completed");

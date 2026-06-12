@@ -1,4 +1,4 @@
-//! RFC-29 acceptance proof (RFC-29d §"Acceptance proof (D7)").
+//! Plan-driven loop acceptance proof.
 //!
 //! This is the end-to-end fixture that proves fan-in *twice* (Lead sets
 //! at `survey`, Evidence at `extract`) and fan-out *once* (multiple
@@ -18,9 +18,9 @@
 //!
 //! ## Topology choice (documented simplification)
 //!
-//! RFC-29d describes the *same-tree registry-symlink* topology, where
+//! An alternative *same-tree registry-symlink* topology exists, where
 //! two registry projects resolve into one working tree via `registry.yaml`
-//! URLs materialised as symlinks. Per the C10 pragmatism guidance, this
+//! URLs materialised as symlinks. This
 //! test uses the **workspace + committed `topology.lock`** projection that the
 //! shipped `plan propose` tests already exercise (see
 //! `tests/workflow/propose.rs::propose_*`) — it exposes the same two
@@ -96,7 +96,7 @@ projects:
     description: Omnia identity service implementing auth and password flows.
 ";
 
-/// Committed plan-time topology projection (RFC-36) the workspace reads in
+/// Committed plan-time topology projection the workspace reads in
 /// place of materialising the remote members.
 const TOPOLOGY_HUB: &str = "\
 version: 1
@@ -560,9 +560,9 @@ fn drive_slice_to_built(root: &Path, slice: &str, target: &str, sources: Sources
 }
 
 /// Assert the rendered `DiagnosticReport` on stdout carries no
-/// slice-model / provenance staleness finding (RFC-29c §"Drift
-/// validation"). Tolerates unrelated adapter findings — the D7
-/// slice-time assertion is specifically "no staleness".
+/// slice-model / provenance staleness finding. Tolerates unrelated
+/// adapter findings — the slice-time assertion is specifically "no
+/// staleness".
 fn assert_no_staleness(output: &std::process::Output) {
     let Ok(report) = serde_json::from_slice::<Value>(&output.stdout) else {
         return;
@@ -587,7 +587,7 @@ fn assert_no_staleness(output: &std::process::Output) {
 }
 
 // ---------------------------------------------------------------------------
-// Non-blocking determinism property (RFC-29d §"Non-blocking determinism")
+// Non-blocking determinism property
 // ---------------------------------------------------------------------------
 
 /// Re-running kernel projection twice over a golden synthesis response
@@ -681,11 +681,11 @@ slices:
 }
 
 // ---------------------------------------------------------------------------
-// RFC-40 Phase 1 — composition accumulation + the A3 overwrite gate
+// Composition accumulation + the baseline-overwrite gate
 // ---------------------------------------------------------------------------
 //
 // The merge-kernel accumulation + gate assertions live in
-// `crates/workflow/tests/merge_slice.rs` (Step 1). These two tests are
+// `crates/workflow/tests/merge_slice.rs`. These two tests are
 // the integration layer: they drive whole `specify slice merge run`
 // invocations across several slices and assert (1) the merged baseline
 // at `.specify/specs/composition.yaml` grows monotonically as
@@ -708,7 +708,7 @@ fn composition_screens(root: &Path) -> serde_json::Map<String, Value> {
 }
 
 /// A one-screen `delta: { added }` composition — the accumulating shape a
-/// non-bootstrap screen-introducing slice emits (RFC-40 §A2).
+/// non-bootstrap screen-introducing slice emits.
 fn delta_added(screen: &str, name: &str) -> String {
     format!(
         "version: 1\ndelta:\n  added:\n    {screen}:\n      name: {name}\n  modified: {{}}\n  \
@@ -716,8 +716,8 @@ fn delta_added(screen: &str, name: &str) -> String {
     )
 }
 
-/// A whole-document `screens:` composition — the replacement shape the A3
-/// gate guards against once a non-empty baseline exists (RFC-40 §A3).
+/// A whole-document `screens:` composition — the replacement shape the
+/// overwrite gate guards against once a non-empty baseline exists.
 fn whole_document(screen: &str, name: &str) -> String {
     format!("version: 1\nscreens:\n  {screen}:\n    name: {name}\n")
 }
@@ -743,8 +743,8 @@ fn stage_built_composition_slice(project: &Project, name: &str, composition: &st
 
 /// Three screen-introducing slices, each contributing one `delta.added`
 /// screen, merged in sequence: the baseline `screens` map must grow
-/// 1 → 2 → 3 with no prior screen lost — the data-loss regression Phase 1
-/// closes (RFC-40 §A1/A2).
+/// 1 → 2 → 3 with no prior screen lost — the data-loss regression
+/// accumulation closes.
 #[test]
 fn composition_accumulates_across_slices() {
     let project = Project::init().with_schemas();
@@ -782,8 +782,7 @@ fn composition_accumulates_across_slices() {
 /// baseline aborts `slice merge run` with
 /// `composition-baseline-overwrite-blocked`; the gate is a precondition
 /// (the baseline is untouched and the slice stays `built`), and
-/// `--allow-composition-replace` authorises the full replacement
-/// (RFC-40 §A3).
+/// `--allow-composition-replace` authorises the full replacement.
 #[test]
 fn composition_overwrite_gate_blocks() {
     let project = Project::init().with_schemas();
@@ -840,11 +839,11 @@ fn composition_overwrite_gate_blocks() {
 }
 
 // ---------------------------------------------------------------------------
-// RFC-40 Phase 3 — acceptance capstone (Step 13)
+// Composition + component-inference acceptance capstone
 // ---------------------------------------------------------------------------
 //
-// The integration capstone exercises the full RFC-40 loop end-to-end and
-// locks the headline behaviours:
+// The integration capstone exercises the full composition-accumulation +
+// component-inference loop end-to-end and locks the headline behaviours:
 //
 //   1. Composition accumulates monotonically across screen-introducing
 //      slices (Part A): a whole-document first slice establishes the
@@ -856,14 +855,14 @@ fn composition_overwrite_gate_blocks() {
 //      Because naming is a skill judgement the CLI cannot perform, the
 //      test stands in for the agent: it takes the reported fingerprint and
 //      writes a fixed `{ <fingerprint>: shared-nav }` bindings map.
-//   3. Retroactive cross-slice factoring (B7): the build that discovers
+//   3. Retroactive cross-slice factoring: the build that discovers
 //      the component emits directive-only `delta.modified` entries that
 //      attach the `component:` directive to prior-slice screens, and the
 //      simulated writer brief drops the shared component module into the
 //      shell tree.
-//   4. A documentation-only slice surfaces the A4
+//   4. A documentation-only slice surfaces the
 //      `composition-unexpected-for-non-ui-slice` warning at finalize and
-//      is stopped by the A3 `composition-baseline-overwrite-blocked` gate
+//      is stopped by the `composition-baseline-overwrite-blocked` gate
 //      at merge — the motivating data-loss scenario, now closed twice
 //      over.
 //
@@ -1007,15 +1006,15 @@ fn infer_report(root: &Path, cache: &Path) -> Value {
     parse_json(&out.get_output().stdout)
 }
 
-/// The end-to-end RFC-40 acceptance proof: composition accumulation,
+/// The end-to-end composition acceptance proof: composition accumulation,
 /// agent-simulated component inference + binding, retroactive cross-slice
-/// factoring, and the A4/A3 non-UI-slice safety nets, all in one loop.
+/// factoring, and the non-UI-slice safety nets, all in one loop.
 #[test]
-fn rfc40_composition_inference_capstone() {
+fn composition_inference_capstone() {
     let wasm = vectis_wasm();
     if !wasm.is_file() {
         eprintln!(
-            "skipping rfc40_composition_inference_capstone: vectis WASM not found at {}; run \
+            "skipping composition_inference_capstone: vectis WASM not found at {}; run \
              `cargo make vectis-wasm`",
             wasm.display()
         );
@@ -1115,7 +1114,7 @@ fn factor_third_slice(root: &Path) {
     // into the live shell tree (B7 code side); merge leaves it as residue.
     let module_path = root.join("shared/src/components/shared-nav.rs");
     fs::create_dir_all(module_path.parent().unwrap()).expect("mkdir shared components");
-    fs::write(&module_path, "// shared-nav component (factored by RFC-40 B7)\n")
+    fs::write(&module_path, "// shared-nav component (retroactive cross-slice factoring)\n")
         .expect("write shared component module");
     merge_slice(root, "intro-profile");
 

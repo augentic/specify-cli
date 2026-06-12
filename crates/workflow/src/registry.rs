@@ -3,7 +3,6 @@
 
 pub mod branch;
 pub mod catalog;
-pub mod forge;
 pub mod gitignore;
 pub mod identity;
 pub mod topology;

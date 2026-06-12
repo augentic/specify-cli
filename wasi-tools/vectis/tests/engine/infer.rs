@@ -1,6 +1,6 @@
 //! Integration tests for the `vectis infer` subcommand — deterministic,
-//! name-free component clustering over the composition baseline (RFC-40
-//! §B2 / Step 5). These tests assert the *mechanism* (clustering, the
+//! name-free component clustering over the composition baseline.
+//! These tests assert the *mechanism* (clustering, the
 //! report shape, the per-cluster evidence) and the structural
 //! fingerprint — never that any specific English name emerges, because
 //! naming is the build skill's job, not the tool's.
@@ -293,7 +293,7 @@ delta:
 /// A cached candidate skeleton plus one structurally identical baseline
 /// group on a different screen cluster to a single candidate at the
 /// default threshold (2): the cache supplies cross-slice memory before
-/// the baseline accumulates the second screen (RFC-40 §B4).
+/// the baseline accumulates the second screen.
 #[test]
 fn cached_skeleton_clusters_with_baseline_group() {
     let baseline = r"version: 1
@@ -435,7 +435,7 @@ screens:
 /// A pinned operator part matching a single baseline group is promoted
 /// to a cluster below the default threshold (promotion authority) and
 /// carries the operator slug in `bound-slug` plus `pinned: true` (naming
-/// authority) — RFC-40 §C2. The tool still derives no name of its own.
+/// authority). The tool still derives no name of its own.
 #[test]
 fn pinned_part_promotes_below_threshold() {
     let baseline = r"version: 1
@@ -473,8 +473,8 @@ parts:
 }
 
 /// A pinned part whose skeleton matches no baseline group is not a
-/// cluster — it is surfaced under `unmatched-parts` (RFC-40 §C2 step 4 /
-/// §C5), and inference proceeds regardless.
+/// cluster — it is surfaced under `unmatched-parts`, and inference
+/// proceeds regardless.
 #[test]
 fn pinned_part_matching_nothing_is_unmatched() {
     let baseline = r"version: 1

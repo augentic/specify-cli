@@ -158,6 +158,7 @@ clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 futures-util = "0.3"
 glob = "0.3"
+globset = "0.4"
 ignore = "0.4"
 jiff = { version = "0.2", default-features = false, features = ["serde", "std"] }
 jsonschema = { version = "0.46", default-features = false }
@@ -185,15 +186,43 @@ specify-digest = { path = "crates/digest" }
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"
-toml = "0.8"
+toml = "1"
 tokio = { version = "1", features = ["fs", "io-util", "rt"] }
 ureq = { version = "3", features = ["json"] }
 wasm-pkg-client = "0.15"
-wasmtime = { version = "45.0.0", default-features = false, features = ["component-model", "cranelift", "runtime"] }
+wasmtime = { version = "45.0.0", default-features = false, features = ["cache", "component-model", "cranelift", "runtime"] }
 wasmtime-wasi = { version = "45.0.0", default-features = false, features = ["p2"] }
-walkdir = "2"
 
 [profile.release]
 lto = true
 opt-level = 2
 strip = true
+
+# Cranelift JIT-compiles WASI components at run time; built at debug
+# opt-level the vectis component costs 40-70s per compile, so the
+# compiler-path crates are optimized even in dev/test profiles. Sole
+# cost is one cold rebuild of these dependencies.
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 2
+[profile.dev.package.wasmtime-environ]
+opt-level = 2
+[profile.dev.package.cranelift-codegen]
+opt-level = 2
+[profile.dev.package.cranelift-frontend]
+opt-level = 2
+[profile.dev.package.cranelift-entity]
+opt-level = 2
+[profile.dev.package.cranelift-bforest]
+opt-level = 2
+[profile.dev.package.cranelift-bitset]
+opt-level = 2
+[profile.dev.package.cranelift-control]
+opt-level = 2
+[profile.dev.package.cranelift-native]
+opt-level = 2
+[profile.dev.package.cranelift-assembler-x64]
+opt-level = 2
+[profile.dev.package.regalloc2]
+opt-level = 2
+[profile.dev.package.wasmparser]
+opt-level = 2

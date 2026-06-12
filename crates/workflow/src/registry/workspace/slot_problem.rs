@@ -4,9 +4,25 @@
 use std::path::{Path, PathBuf};
 
 use super::git::git_output_ok;
-use super::status::SlotKind;
 use super::{registry_symlink_target, workspace_base, workspace_slot_path};
 use crate::registry::catalog::RegistryProject;
+
+/// Classification of a workspace slot on disk.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
+pub enum SlotKind {
+    /// Path missing.
+    Missing,
+    /// Symlink under `.specify/workspace/<name>/`.
+    Symlink,
+    /// Ordinary directory with a `.git/` metadata tree (clone target).
+    GitClone,
+    /// Present but neither a recognised symlink nor a git work tree.
+    Other,
+}
 
 /// A registry/workspace mismatch that would cause `workspace sync` to refuse a slot.
 #[derive(Debug, Clone, PartialEq, Eq)]

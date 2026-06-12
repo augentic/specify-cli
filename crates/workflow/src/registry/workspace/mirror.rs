@@ -1,4 +1,4 @@
-//! Slot adapter provisioning (RFC-45): mirror the workspace's adapter
+//! Slot adapter provisioning: mirror the workspace's adapter
 //! set into a synced slot's manifest cache so slot-side resolution
 //! stays project-local (workflow §"Resolver and cache"). See
 //! [DECISIONS.md §"Slot adapter provisioning via workspace sync"].
