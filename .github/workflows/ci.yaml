@@ -8,33 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  # Host integration tests (`tests/workflow/propose.rs` bootstrap
-  # reconciliation, `tests/catalog_infer.rs` report phase, …) dispatch
-  # the real `vectis` WASI tool from `target/vectis-wasi-tools/release/`.
-  # The reusable workflow's Test job runs `cargo nextest` without building
-  # that artifact — mirror `cargo make test`'s `vectis-wasm` dependency
-  # here so the cache is warm before the reusable Test job restores it.
-  vectis-wasm:
-    name: vectis-wasm
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          cache-on-failure: true
-
-      - name: Build vectis WASM for integration tests
-        run: bash scripts/build-vectis-local.sh
-
   ci:
-    needs: vectis-wasm
     uses: augentic/.github/.github/workflows/ci.yaml@main
     secrets: inherit
 
