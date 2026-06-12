@@ -210,10 +210,10 @@ fn duplicate_rule_id_skips_declarative_pass() {
 /// Severity is fixed `important` so a single finding gates the run to
 /// exit 2 and a clean pass exits 0.
 ///
-/// These rules exercise the five Road A kinds bound to framework-only
-/// fact families (`unique`, `constant-eq`, `set-eq`, `content-digest-eq`,
+/// These rules exercise the four Road A kinds bound to framework-only
+/// fact families (`unique`, `constant-eq`, `set-eq`,
 /// `cross-reference`); the consumer `specify lint project` profile never
-/// indexes the adapter / skill / scenario / agent-team facts they read,
+/// indexes the adapter / skill / scenario facts they read,
 /// so they are unreachable there and proven through `lint framework`
 /// here (see `tests/lint/project.rs` for the project-profile kinds).
 fn write_universal_rule(root: &Path, id: &str, hints: &str) {
@@ -392,56 +392,6 @@ fn set_eq_flags_brief_divergence() {
     assert_eq!(
         divergences, expected,
         "both halves of the symmetric difference are flagged; envelope:\n{envelope:#}",
-    );
-}
-
-/// Symlink `adapters/targets/<adapter>/references/agent-teams.md` at a
-/// `target_rel` document relative to the framework root. Mirrors the
-/// crate-level `content-digest-eq` link helper.
-fn link_agent_teams(root: &Path, adapter: &str, target_rel: &str) {
-    let link_dir = root.join("adapters/targets").join(adapter).join("references");
-    fs::create_dir_all(&link_dir).expect("mkdir references");
-    let link_path = link_dir.join("agent-teams.md");
-    // adapters/targets/<adapter>/references/ is four levels deep.
-    let link_target = format!("../../../../{target_rel}");
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&link_target, &link_path).expect("unix symlink");
-    #[cfg(windows)]
-    std::os::windows::fs::symlink_file(&link_target, &link_path).expect("windows symlink");
-}
-
-/// `kind: content-digest-eq` (the `agent-teams-match-canonical` source)
-/// through the binary: of two `agent-teams.md` overlays, the one
-/// resolving to a non-canonical document is flagged while the one
-/// matching the canonical digest passes. Mirrors the crate-level
-/// `flags_only_drifted_overlay`. The scaffold already writes the
-/// canonical `docs/reference/review-team-protocol.md`.
-#[test]
-fn content_digest_eq_flags_drifted_overlay() {
-    let temp = TempDir::new().expect("tempdir");
-    scaffold_framework(temp.path());
-    let divergent = temp.path().join("docs/reference/legacy-review-team.md");
-    fs::write(&divergent, "# Legacy\n\nDrifted copy.\n").expect("write divergent doc");
-
-    link_agent_teams(temp.path(), "aligned", "docs/reference/review-team-protocol.md");
-    link_agent_teams(temp.path(), "drifted", "docs/reference/legacy-review-team.md");
-    write_universal_rule(
-        temp.path(),
-        "UNI-213",
-        "  - kind: content-digest-eq\n    value: agent-teams-match-canonical\n    config:\n      canonical-path: docs/reference/review-team-protocol.md\n",
-    );
-
-    let (code, envelope) = run_single_rule(temp.path(), "UNI-213");
-    assert_eq!(code, Some(2), "the drifted overlay must gate; envelope:\n{envelope:#}");
-    let overlays: Vec<String> = findings_for(&envelope, "UNI-213")
-        .iter()
-        .filter_map(|f| f.pointer("/evidence/data/agent-team").and_then(Value::as_str))
-        .map(str::to_owned)
-        .collect();
-    assert_eq!(overlays.len(), 1, "exactly one overlay is flagged; envelope:\n{envelope:#}");
-    assert!(
-        overlays[0].ends_with("adapters/targets/drifted/references/agent-teams.md"),
-        "only the overlay resolving to a divergent digest is flagged; got {overlays:?}",
     );
 }
 

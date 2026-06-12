@@ -19,10 +19,9 @@
 //!   matching [`crate::lint::BriefScope`] and flag each brief whose
 //!   `body_line_count` exceeds `config.max`. The two scopes carry
 //!   distinct caps (a rule supplies both via `config`), so a rule that
-//!   enforces both budgets ships two `cardinality` hints. Like
-//!   `content-digest-eq`, the brief metrics narrow on a dedicated fact
-//!   family already scoped to brief paths, so they do not consult the
-//!   `path-pattern` candidate set.
+//!   enforces both budgets ships two `cardinality` hints. The brief
+//!   metrics narrow on a dedicated fact family already scoped to brief
+//!   paths, so they do not consult the `path-pattern` candidate set.
 //! - `skill-body-line-count` — counts the body lines of every
 //!   [`crate::lint::Skill`] in the candidate set (CORE-005) and flags
 //!   each skill whose `body_line_count` exceeds `config.max`. The cap
@@ -211,7 +210,7 @@ fn markdown_h2_sections(
 /// [`BriefScope`]. The cap is the `max` the rule file supplies. The
 /// `Brief` fact family is already restricted to brief paths, so this
 /// metric evaluates it directly rather than narrowing by the
-/// `path-pattern` candidate set (mirroring `content-digest-eq`).
+/// `path-pattern` candidate set.
 fn briefs(
     rule: &ResolvedRule, model: &WorkspaceModel, scope: BriefScope, max: u32, next_id: &mut u64,
 ) -> Vec<Diagnostic> {

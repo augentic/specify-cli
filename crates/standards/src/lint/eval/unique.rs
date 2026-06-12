@@ -11,7 +11,7 @@
 //!   scenario pass produced (see [`crate::lint::index::scenario`]); the
 //!   only supported field is `id`, evaluated whole-tree (scenario files
 //!   are kept out of `model.files`, so the candidate set can never
-//!   select them — like `content-digest-eq`).
+//!   select them).
 //!
 //! The field to enforce uniqueness on is **the field selector the rule
 //! supplies in `config: { field }`**, not a `const` discriminator in

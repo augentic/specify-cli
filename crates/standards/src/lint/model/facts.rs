@@ -210,31 +210,6 @@ pub struct Brief {
     pub body_line_count: u32,
 }
 
-/// `agent_team` fact per the `WorkspaceModel` entity families.
-///
-/// Produced by the framework profile when it follows an
-/// `agent-teams.md` symlink into the canonical review-team-protocol
-/// document. The endpoint pair plus content digest lets the
-/// review-team drift rule reason about both sides of the link.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub struct AgentTeam {
-    /// Project-relative path of the `agent-teams.md` symlink itself.
-    pub path: String,
-    /// Symlink target as recorded by `read_link` (may be relative
-    /// or absolute, possibly outside the project tree).
-    pub target_raw: String,
-    /// Project-relative path of the resolved canonical endpoint
-    /// when it lives under `project_dir`; absent when the target
-    /// resolves outside the tree or could not be canonicalised.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resolved_target: Option<String>,
-    /// Hex-encoded SHA-256 of the resolved target file's bytes.
-    /// Absent when the target is unreadable or broken.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target_sha256: Option<String>,
-}
-
 /// `adapter_manifest` fact per the `WorkspaceModel` entity families
 /// — extracted from `adapters/{sources,targets}/**/adapter.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

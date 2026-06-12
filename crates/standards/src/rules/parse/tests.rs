@@ -241,7 +241,7 @@ trigger: Reserved hint kind hint kinds must shape-validate without execution sem
 rule_hints:
   - kind: set-coverage
     value: 'rule.id'
-  - kind: content-digest-eq
+  - kind: constant-eq
     value: 'UNI'
 ---
 ## Rule
@@ -250,7 +250,7 @@ rule_hints:
     let hints = rule.rule_hints.expect("hints present");
     assert_eq!(hints.len(), 2);
     assert_eq!(hints[0].kind, HintKind::SetCoverage);
-    assert_eq!(hints[1].kind, HintKind::ContentDigestEq);
+    assert_eq!(hints[1].kind, HintKind::ConstantEq);
 }
 
 /// Framework-side `applicability.artifacts` tokens

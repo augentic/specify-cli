@@ -9,13 +9,11 @@
 //! `README.md`.
 //!
 //! Discovery returns a [`FrameworkDiscovery`] payload carrying the
-//! sorted file set, the recorded [`Symlink`] facts (with
-//! `resolved_target` populated under §F1's follow mode), and the
-//! [`AgentTeam`] facts emitted by [`super::agent_teams`] for the
-//! follow path. Cycle detection uses `std::fs::canonicalize` to
-//! collapse equivalent endpoints; the walker emits
-//! [`IndexError::Filesystem`] on revisit and aborts the walk for
-//! that subtree.
+//! sorted file set and the recorded [`Symlink`] facts (with
+//! `resolved_target` populated under §F1's follow mode). Cycle
+//! detection uses `std::fs::canonicalize` to collapse equivalent
+//! endpoints; the walker emits [`IndexError::Filesystem`] on revisit
+//! and aborts the walk for that subtree.
 
 use std::path::{MAIN_SEPARATOR, Path, PathBuf};
 
@@ -25,14 +23,13 @@ use ignore::overrides::OverrideBuilder;
 use super::files::DiscoveredFile;
 use super::languages::infer_language;
 use super::symlinks::FollowMode;
-use super::{IndexError, agent_teams, symlinks};
-use crate::lint::{AgentTeam, FileKind, Symlink};
+use super::{IndexError, symlinks};
+use crate::lint::{FileKind, Symlink};
 
 /// First 8 `KiB` window scanned for NUL bytes per §F1.
 const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 
-/// Files + symlinks + agent-team endpoints recorded during a single
-/// framework walk pass.
+/// Files + symlinks recorded during a single framework walk pass.
 #[derive(Debug, Default)]
 pub struct FrameworkDiscovery {
     /// Text + binary files discovered under the framework roots
@@ -41,9 +38,6 @@ pub struct FrameworkDiscovery {
     /// Symlinks discovered under the framework roots. Under follow
     /// mode `Symlink::resolved_target` holds the canonical endpoint.
     pub symlinks: Vec<Symlink>,
-    /// Endpoint + SHA-256 facts produced by following
-    /// `**/agent-teams.md` symlinks.
-    pub agent_teams: Vec<AgentTeam>,
 }
 
 /// Walk the framework tree rooted at `project_dir`.
@@ -93,7 +87,6 @@ pub fn discover(
 
     let mut files: Vec<DiscoveredFile> = Vec::new();
     let mut symlinks_out: Vec<Symlink> = Vec::new();
-    let mut agent_teams_out: Vec<AgentTeam> = Vec::new();
 
     for entry in builder.build() {
         let entry = match entry {
@@ -136,16 +129,12 @@ pub fn discover(
 
         // With `follow_links(true)` the walker reports the *target*
         // file type for a symlink, so `file_type.is_symlink()` would
-        // never fire and the `Symlink` / `AgentTeam` facts would be
-        // lost. Re-check via `symlink_metadata` which inspects the
-        // path itself, then record both the generic symlink fact
-        // and the agent-team endpoint fact when applicable.
+        // never fire and the `Symlink` facts would be lost. Re-check
+        // via `symlink_metadata` which inspects the path itself, then
+        // record the symlink fact.
         let is_symlink =
             std::fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink());
         if is_symlink {
-            if let Some(team) = agent_teams::record(path, project_dir) {
-                agent_teams_out.push(team);
-            }
             if let Some(fact) = symlinks::record(path, project_dir, FollowMode::Follow) {
                 symlinks_out.push(fact);
             }
@@ -189,12 +178,10 @@ pub fn discover(
 
     files.sort_by(|a, b| a.relative.cmp(&b.relative));
     symlinks_out.sort_by(|a, b| a.path.cmp(&b.path));
-    agent_teams_out.sort_by(|a, b| a.path.cmp(&b.path));
 
     Ok(FrameworkDiscovery {
         files,
         symlinks: symlinks_out,
-        agent_teams: agent_teams_out,
     })
 }
 
@@ -254,8 +241,7 @@ fn is_included(relative: &str) -> bool {
     if INCLUDE_PREFIXES.iter().any(|prefix| relative.starts_with(prefix)) {
         return true;
     }
-    // Repo-root README.md only (deeper READMEs ride their prefix):
-    // the digest-pinned vocabulary cheat sheet lives there.
+    // Repo-root README.md only (deeper READMEs ride their prefix).
     if relative == "README.md" {
         return true;
     }

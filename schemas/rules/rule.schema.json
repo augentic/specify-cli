@@ -134,7 +134,6 @@
               { "const": "cardinality" },
               { "const": "constant-eq" },
               { "const": "set-eq" },
-              { "const": "content-digest-eq" },
               { "const": "fenced-block" },
               { "const": "presence" },
               { "const": "field-grammar" },
@@ -153,7 +152,7 @@
             "description": "Optional human explanation for the hint."
           },
           "config": {
-            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `content-digest-eq` (agent-teams-match-canonical) -> agentTeamsHintConfig; `content-digest-eq` (markdown-section) -> markdownSectionDigestHintConfig; `presence` (file / markdown-section / directory-index) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `cli-contract` (invocations) -> cliContractInvocationsHintConfig; `cli-contract` (event-ids / error-codes) -> cliContractIdsHintConfig; `cli-contract` (test-citations) -> cliContractTestCitationsHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig; `tool` (scenarios) -> catalogRunsHintConfig.",
+            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `presence` (file / markdown-section / directory-index) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `cli-contract` (invocations) -> cliContractInvocationsHintConfig; `cli-contract` (event-ids / error-codes) -> cliContractIdsHintConfig; `cli-contract` (test-citations) -> cliContractTestCitationsHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig; `tool` (scenarios) -> catalogRunsHintConfig.",
             "oneOf": [
               { "$ref": "#/$defs/regexHintConfig" },
               { "$ref": "#/$defs/referenceResolvesHintConfig" },
@@ -167,8 +166,6 @@
               { "$ref": "#/$defs/constantFieldEqHintConfig" },
               { "$ref": "#/$defs/criticalPathHintConfig" },
               { "$ref": "#/$defs/variableCoverageHintConfig" },
-              { "$ref": "#/$defs/agentTeamsHintConfig" },
-              { "$ref": "#/$defs/markdownSectionDigestHintConfig" },
               { "$ref": "#/$defs/schemaRegistryHintConfig" },
               { "$ref": "#/$defs/numericCapHintConfig" },
               { "$ref": "#/$defs/nsOwnerHintConfig" },
@@ -661,47 +658,6 @@
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 },
           "description": "Exact cited paths exempted from findings (e.g. downstream generated-project test layouts that are not CLI tests)."
-        }
-      }
-    },
-    "agentTeamsHintConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["canonical-path"],
-      "description": "Shared `canonical-path` configuration for `kind: content-digest-eq` with the `agent-teams-match-canonical` selector: every followed overlay must digest-match the canonical document. The canonical-document path is policy supplied by the rule, not the engine. No first-party rule carries this hint today (the agent-teams digest rules retired when overlays became symlink-only); the mechanism remains available.",
-      "properties": {
-        "canonical-path": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Project-relative path to the canonical review-team-protocol document every per-target agent-teams.md overlay must mirror."
-        }
-      }
-    },
-    "markdownSectionDigestHintConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "section", "canonical-path", "canonical-section"],
-      "description": "`kind: content-digest-eq` configuration for the `markdown-section` selector. Pins a restated markdown section to its canonical home: the body under `section` in `path` must be byte-identical (modulo leading/trailing blank lines) to the body under `canonical-section` in `canonical-path`. All four values are policy supplied by the rule, not the engine.",
-      "properties": {
-        "path": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Project-relative path of the markdown file carrying the pinned restatement."
-        },
-        "section": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Heading title (text after the leading `#`s) of the pinned section in `path`."
-        },
-        "canonical-path": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Project-relative path of the markdown file carrying the canonical section."
-        },
-        "canonical-section": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Heading title of the canonical section in `canonical-path`."
         }
       }
     },

@@ -113,7 +113,6 @@
         "cardinality",
         "constant-eq",
         "set-eq",
-        "content-digest-eq",
         "fenced-block",
         "presence",
         "field-grammar",

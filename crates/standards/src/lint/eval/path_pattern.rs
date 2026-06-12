@@ -84,7 +84,6 @@ mod unit {
             text_matches: vec![],
             ignore_directives: vec![],
             briefs: vec![],
-            agent_teams: vec![],
             fenced_blocks: vec![],
             scenarios: vec![],
             adapter_dirs: vec![],
