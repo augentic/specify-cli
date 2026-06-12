@@ -23,4 +23,4 @@ pub mod schema;
 pub mod slice;
 pub mod upgrade;
 
-pub use platform::{Platform, parse_platforms_csv};
+pub use platform::{Platform, parse_platforms_csv, vectis_missing_platforms};

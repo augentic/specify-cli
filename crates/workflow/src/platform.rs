@@ -1,6 +1,10 @@
 //! Closed platform enum — the set of target platforms a project may
 //! declare in `project.yaml`.
 
+mod detect;
+
+pub use detect::vectis_missing_platforms;
+
 use serde::{Deserialize, Serialize};
 
 /// Target platform for a Specify project.
