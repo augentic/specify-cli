@@ -106,6 +106,30 @@ pub fn stamp_slice_outcome(
     .expect("stamp outcome");
 }
 
+/// Subcommand names beneath the given command path (empty slice for
+/// the top level), read from `specify contract dump`. The robust verb
+/// inventory help tests assert against instead of exact clap wording.
+pub fn contract_dump_verbs(path: &[&str]) -> Vec<String> {
+    let assert = specify_cmd().args(["--format", "json", "contract", "dump"]).assert().success();
+    let dump: Value =
+        serde_json::from_slice(&assert.get_output().stdout).expect("contract dump JSON");
+    let mut node = &dump["commands"];
+    for name in path {
+        node = node["subcommands"]
+            .as_array()
+            .expect("subcommands array")
+            .iter()
+            .find(|n| n["name"] == *name)
+            .unwrap_or_else(|| panic!("verb `{name}` missing from contract dump"));
+    }
+    node["subcommands"]
+        .as_array()
+        .expect("subcommands array")
+        .iter()
+        .map(|n| n["name"].as_str().expect("verb name").to_string())
+        .collect()
+}
+
 /// Hex-encoded SHA-256 of the bytes at `path`, used by every tool
 /// integration suite to pin a `sha256:` digest into a manifest fixture.
 ///

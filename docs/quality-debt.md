@@ -6,7 +6,6 @@ Living burn-down for the [quality improvement plan](https://github.com/augentic/
 
 | Location | Lint | Tier | Action |
 | -------- | ---- | ---- | ------ |
-| `crates/standards/src/framework.rs` | module `allow` (pedantic, missing_docs, …) | T2 | Vestigial — the CORE-NNN predicate migration is complete; the allow now governs only the surviving repo-local rust-quality predicates and the `Check`/`builder`/`context` substrate. Tighten or scope it down to those modules. |
 | `crates/standards/src/rules.rs` | `module_name_repetitions` | T0 | Keep — wire names `Rule`, `ResolvedRules` |
 | `crates/standards/src/lint/model.rs` | `module_name_repetitions` | T0 | Keep — schema `WorkspaceModel` |
 | `crates/tool/src/error.rs` | `needless_pass_by_value` | T0 | Keep — Diag helper ergonomics |
@@ -33,9 +32,9 @@ The predicate's `RFC-`/`Phase ` markers over-fire on the forward-looking referen
 - Renamed `init/workspace/tests.rs` fns under `mod init { … }`.
 - Renamed top-level `init/tests.rs` fns.
 - Tempdir `"hub"` already absent; workspace tests use `"workspace"`.
-- `RustTestNaming` / `RustSourceQuality` via `cargo test --test rust_quality` (specify-cli roots only).
-- Test-name burn-down complete: every `#[test]` / `#[tokio::test]` fn is `<= 40` chars and `tests/rust_quality.rs::no_long_test_fn_names` now hard-gates `rust.test-fn-name-too-long`.
-- Bare-`#[allow]` burn-down complete: the scanned tree (`crates/` + `src/`) carries zero `#[allow(…)]` without a `reason`, and `tests/rust_quality.rs::no_bare_allow_attributes` now hard-gates `rust.allow-without-reason`.
+- Dev-only predicates at `tests/rust_quality/checks.rs` via `cargo test --test rust_quality` (the `specify_standards::framework` substrate is deleted).
+- Test-name burn-down complete: every `#[test]` / `#[tokio::test]` fn is `<= 40` chars and `tests/rust_quality/main.rs::no_gated_rust_quality_findings` now hard-gates `rust.test-fn-name-too-long`.
+- Bare-`#[allow]` burn-down complete: the scanned tree (`crates/` + `src/`) carries zero `#[allow(…)]` without a `reason`, and the same gate hard-fails `rust.allow-without-reason`.
 - `rust.archaeology-in-doc-comment` is the only remaining burn-down-tracked predicate (see "Archaeology hotspots" — deferred, not gated).
 
 ## Trait audit (keep unless noted)

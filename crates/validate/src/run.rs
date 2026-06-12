@@ -40,7 +40,6 @@ fn artifact_for(brief_id: &str) -> Artifact {
         "design" => Artifact::Design,
         "tasks" => Artifact::Tasks,
         "contracts" => Artifact::Contracts,
-        "composition" => Artifact::Composition,
         _ => Artifact::Unknown,
     }
 }

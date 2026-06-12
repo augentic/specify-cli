@@ -14,10 +14,9 @@
 use serde_json::{Map, Value, json};
 use specify_schema::{ValidationStatus, WORKSPACE_MODEL_JSON_SCHEMA, validate_value};
 use specify_standards::lint::{
-    AdapterAxis, AdapterDir, AdapterManifest, AdapterTool, AgentTeam, Brief, BriefScope, File,
-    FileKind, Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry,
-    RuleIndexEntry, ScanProfile, Scenario, Skill, Symlink, TextMatch, WorkspaceModel,
-    WorkspaceModelVersion,
+    AdapterAxis, AdapterDir, AdapterManifest, AdapterTool, Brief, BriefScope, File, FileKind,
+    Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection, MarketplaceEntry, RuleIndexEntry,
+    ScanProfile, Scenario, Skill, Symlink, TextMatch, WorkspaceModel, WorkspaceModelVersion,
 };
 use specify_standards::rules::Origin;
 
@@ -53,7 +52,6 @@ fn empty_model_round_trips() {
         text_matches: vec![],
         ignore_directives: vec![],
         briefs: vec![],
-        agent_teams: vec![],
         fenced_blocks: vec![],
         scenarios: vec![],
         adapter_dirs: vec![],
@@ -194,12 +192,6 @@ fn populated_model_round_trips() {
             scope: BriefScope::Parent,
             sections: vec!["Inputs".into(), "Output contract".into()],
             body_line_count: 24,
-        }],
-        agent_teams: vec![AgentTeam {
-            path: "adapters/targets/omnia/references/agent-teams.md".into(),
-            target_raw: "../../../shared/agent-teams.md".into(),
-            resolved_target: Some("docs/reference/review-team-protocol.md".into()),
-            target_sha256: Some("0".repeat(64)),
         }],
         fenced_blocks: vec![],
         scenarios: vec![Scenario {

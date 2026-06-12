@@ -4712,7 +4712,6 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
- "sha2 0.11.0",
  "specify-diagnostics",
  "specify-digest",
  "specify-error",
@@ -4720,7 +4719,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "toml",
- "walkdir",
 ]
 
 [[package]]
@@ -4731,14 +4729,13 @@ dependencies = [
  "futures-util",
  "jiff",
  "jsonschema",
- "semver",
  "serde",
  "serde-saphyr",
  "serde_json",
- "specify-diagnostics",
  "specify-digest",
  "specify-error",
  "specify-schema",
+ "specify-tool-manifest",
  "strum 0.28.0",
  "tempfile",
  "thiserror 2.0.18",
@@ -4747,6 +4744,20 @@ dependencies = [
  "wasm-pkg-client",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "specify-tool-manifest"
+version = "0.2.0"
+dependencies = [
+ "jsonschema",
+ "semver",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "specify-diagnostics",
+ "specify-schema",
+ "strum 0.28.0",
 ]
 
 [[package]]
@@ -4768,7 +4779,6 @@ dependencies = [
 name = "specify-workflow"
 version = "0.2.0"
 dependencies = [
- "clap",
  "glob",
  "jiff",
  "jsonschema",
@@ -4785,7 +4795,7 @@ dependencies = [
  "specify-error",
  "specify-model",
  "specify-schema",
- "specify-tool",
+ "specify-tool-manifest",
  "specify-validate",
  "strum 0.28.0",
  "tempfile",

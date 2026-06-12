@@ -4,7 +4,6 @@
 
 use crate::Rule;
 
-mod composition;
 mod contract_rules;
 mod cross;
 mod design;
@@ -22,7 +21,6 @@ pub fn rules_for(brief_id: &str) -> &'static [Rule] {
         "specs" => specs::SPECS_RULES,
         "design" => design::DESIGN_RULES,
         "tasks" => tasks::TASKS_RULES,
-        "composition" => composition::COMPOSITION_RULES,
         "contracts" => contract_rules::CONTRACTS_RULES,
         _ => &[],
     }

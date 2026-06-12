@@ -1,18 +1,27 @@
 //! `validate composition` — schema validation, structural-identity,
 //! sibling auto-invoke (tokens / assets), and cross-artifact reference
-//! resolution. The structural-identity engine is shared with
-//! `validate layout`.
+//! resolution. The structural-identity engine lives in
+//! [`structural_identity`] (shared with `validate layout` and the
+//! `infer` verb); reference resolution in [`refs`]; the component
+//! catalog contract in [`catalog`]; the typed finding they all emit in
+//! [`finding`].
 
-use std::collections::BTreeMap;
+mod catalog;
+mod finding;
+mod refs;
+pub(crate) mod structural_identity;
+
 use std::path::Path;
 
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
-use super::assets::collect_asset_references;
+pub(crate) use self::finding::Finding;
+pub(crate) use self::structural_identity::{
+    Skeleton, build_group_skeleton, check_structural_identity, fingerprint, skeleton_to_json,
+};
 use super::paths::{discover_artifact, discover_catalog, resolve_default_path};
 use super::run_inner;
-use super::shared::{composition_validator, escape_pointer_token, parse_yaml_file};
+use super::shared::{composition_validator, parse_yaml_file};
 use crate::validate::ValidateMode;
 use crate::validate::error::VectisError;
 
@@ -79,18 +88,15 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
         message: format!("composition.yaml not readable at {}: {err}", target.display()),
     })?;
 
-    let mut errors: Vec<Value> = Vec::new();
-    let mut warnings: Vec<Value> = Vec::new();
+    let mut errors: Vec<Finding> = Vec::new();
+    let mut warnings: Vec<Finding> = Vec::new();
     let mut results: Vec<Value> = Vec::new();
 
     match serde_saphyr::from_str::<Value>(&source) {
         Ok(instance) => {
             let validator = composition_validator()?;
             for err in validator.iter_errors(&instance) {
-                errors.push(json!({
-                    "path": err.instance_path().to_string(),
-                    "message": err.to_string(),
-                }));
+                errors.push(Finding::new(err.instance_path().to_string(), err.to_string()));
             }
 
             // Structural identity walks both shapes. The schema's
@@ -136,12 +142,12 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
             if let Some(ref tokens_path) = tokens_sibling
                 && let Some(tokens_value) = parse_yaml_file(tokens_path)
             {
-                resolve_token_references(&instance, &tokens_value, &mut errors);
+                refs::resolve_token_references(&instance, &tokens_value, &mut errors);
             }
             if let Some(ref assets_path) = assets_sibling
                 && let Some(assets_value) = parse_yaml_file(assets_path)
             {
-                resolve_asset_references(&instance, &assets_value, &mut errors);
+                refs::resolve_asset_references(&instance, &assets_value, &mut errors);
             }
 
             // Catalog cross-reference (component catalog contract). When the
@@ -154,9 +160,9 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
             // their own parse errors), the catalog has no sibling
             // validator — report read/parse failures explicitly.
             if let Some(ref catalog_path) = discover_catalog(&target) {
-                match parse_catalog_file(catalog_path) {
+                match catalog::parse_catalog_file(catalog_path) {
                     Ok(catalog_value) => {
-                        check_catalog_cross_references(
+                        catalog::check_catalog_cross_references(
                             &instance,
                             &catalog_value,
                             &mut errors,
@@ -164,27 +170,21 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
                         );
                     }
                     Err(message) => {
-                        errors.push(json!({
-                            "path": "",
-                            "message": message,
-                        }));
+                        errors.push(Finding::new("", message));
                     }
                 }
             }
         }
         Err(err) => {
-            errors.push(json!({
-                "path": "",
-                "message": format!("invalid YAML: {err}"),
-            }));
+            errors.push(Finding::new("", format!("invalid YAML: {err}")));
         }
     }
 
     let mut envelope = json!({
         "mode": ValidateMode::Composition.as_str(),
         "path": target.display().to_string(),
-        "errors": errors,
-        "warnings": warnings,
+        "errors": finding::to_values(errors),
+        "warnings": finding::to_values(warnings),
     });
     // Only emit `results` when we actually folded something in.
     if !results.is_empty()
@@ -194,540 +194,4 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
     }
 
     Ok(envelope)
-}
-
-/// Walk a composition document and append an error for every token
-/// reference whose value is not present in `tokens` under the expected
-/// category.
-///
-/// V1 token-ref categories:
-///
-/// - `color`, `background`, `border.color` → `colors.<name>`
-/// - `elevation` (groupProps) → `elevation.<name>`
-/// - `gap`, `padding`, `padding.<side>` (when string-valued) →
-///   `spacing.<name>`
-/// - `corner_radius` (when string-valued) → `cornerRadius.<name>`
-///
-/// Skipped for v1 (deliberately ambiguous, deferred to a later rule):
-///
-/// - `style` — the schema declares `style: { type: string }` with no
-///   enum; it is a typography ref on `text` items but a presentation
-///   enum on `button`/`list`/etc. Without a per-item-kind classifier,
-///   autoresolving it generates false positives.
-/// - `size.width` / `size.height` — the schema's `sizingValue` only
-///   permits `"fill"` / `"hug"` strings, so these never reference
-///   tokens.
-fn resolve_token_references(composition: &Value, tokens: &Value, errors: &mut Vec<Value>) {
-    walk_token_refs(composition, "", tokens, errors);
-}
-
-/// Recursive walker driving [`resolve_token_references`]. Matches on
-/// the well-known token-bearing keys and recurses through the rest of
-/// the document. The category lookup is centralised in
-/// [`token_category_for_key`] so the walker stays small.
-fn walk_token_refs(node: &Value, json_path: &str, tokens: &Value, errors: &mut Vec<Value>) {
-    match node {
-        Value::Object(map) => {
-            for (key, val) in map {
-                let child_path = format!("{json_path}/{}", escape_pointer_token(key));
-
-                if let Some(category) = token_category_for_key(key)
-                    && let Some(name) = val.as_str()
-                {
-                    check_token_ref(category, name, &child_path, tokens, errors);
-                }
-
-                // `padding` may also be a paddingSpec object. Walk
-                // each side as a spacing ref. The string-valued
-                // `padding: md` case is already handled above.
-                if key == "padding"
-                    && let Some(side_map) = val.as_object()
-                {
-                    for (side, side_val) in side_map {
-                        if let Some(name) = side_val.as_str() {
-                            let side_path = format!("{child_path}/{}", escape_pointer_token(side));
-                            check_token_ref("spacing", name, &side_path, tokens, errors);
-                        }
-                    }
-                }
-
-                walk_token_refs(val, &child_path, tokens, errors);
-            }
-        }
-        Value::Array(arr) => {
-            for (i, v) in arr.iter().enumerate() {
-                walk_token_refs(v, &format!("{json_path}/{i}"), tokens, errors);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Map a composition-document key to the `tokens.yaml` category its
-/// string value resolves against, or `None` when the key does not
-/// carry a deterministic token reference in v1.
-const fn token_category_for_key(key: &str) -> Option<&'static str> {
-    match key.as_bytes() {
-        b"color" | b"background" => Some("colors"),
-        b"elevation" => Some("elevation"),
-        b"gap" | b"padding" => Some("spacing"),
-        b"corner_radius" => Some("cornerRadius"),
-        _ => None,
-    }
-}
-
-/// Resolve `name` against `tokens.<category>` and append an error to
-/// `errors` when it is absent. The error message names both the
-/// category and the offending name so an operator can fix it without
-/// re-reading the manifest.
-fn check_token_ref(
-    category: &str, name: &str, json_path: &str, tokens: &Value, errors: &mut Vec<Value>,
-) {
-    let exists =
-        tokens.get(category).and_then(Value::as_object).is_some_and(|m| m.contains_key(name));
-    if !exists {
-        errors.push(json!({
-            "path": json_path,
-            "message": format!(
-                "composition references unknown {category} token `{name}` -- not present in tokens.yaml under `{category}.{name}`",
-            ),
-        }));
-    }
-}
-
-/// Walk a composition document and append an error for every static
-/// asset reference whose name is not declared under `assets.<id>` in
-/// the supplied assets manifest. Reuses [`collect_asset_references`]
-/// so the reference shapes (`image.name`, `icon.name`,
-/// `icon-button.icon`, `fab.icon`) stay in lock-step between
-/// composition mode (this function) and assets mode's own
-/// composition-discovery path.
-fn resolve_asset_references(composition: &Value, assets: &Value, errors: &mut Vec<Value>) {
-    let asset_ids = assets.get("assets").and_then(Value::as_object);
-    let refs = collect_asset_references(composition);
-    for asset_ref in &refs {
-        let exists = asset_ids.is_some_and(|m| m.contains_key(&asset_ref.id));
-        if !exists {
-            errors.push(json!({
-                "path": asset_ref.path,
-                "message": format!(
-                    "composition references unknown asset id `{}` -- not present in assets.yaml",
-                    asset_ref.id,
-                ),
-            }));
-        }
-    }
-}
-
-/// Recorded `component: <slug>` instance for the structural-identity
-/// engine. The `path` is a JSON Pointer that points at the group that
-/// bears the directive, so an identity violation can name both halves.
-struct ComponentInstance {
-    /// Kebab-case component slug declared by the directive.
-    slug: String,
-    /// Normalised skeleton derived from the group's `items:` array.
-    skeleton: Skeleton,
-    /// JSON Pointer indicating where this instance's group lives.
-    path: String,
-    /// `true` when the instance lives inside a
-    /// `screens.<name>.platforms.<plat>.*` sub-tree. Platform overrides
-    /// MAY diverge from the base skeleton — we collect them but do not
-    /// enforce base-equality against them.
-    in_platform_override: bool,
-}
-
-/// Normalised structural skeleton for a group's children. Keeps just
-/// enough information to detect material divergence (item kinds,
-/// nested-group nesting, `*-when` key presence) while ignoring leaf
-/// wiring values: slug instances MAY differ in `bind`, `event`,
-/// `error`, asset / token references, and free text content.
-/// (`*-when` keys' *condition values* are wiring; their *presence*
-/// participates in skeleton identity.)
-#[derive(Debug, Eq, PartialEq, Clone)]
-pub(crate) enum Skeleton {
-    /// A leaf item identified by its single property key (e.g.
-    /// `text`, `icon-button`, `checkbox`, `image`). Item leaf
-    /// properties are deliberately ignored.
-    Item(String),
-    /// A group: ordered children plus the sorted, deduplicated set of
-    /// `*-when`-keyed properties present on the group props
-    /// (presence-only; condition values do not participate).
-    Group { when_keys: Vec<String>, items: Vec<Self> },
-}
-
-/// Walk a YAML sub-tree (typically the `screens` value) and validate
-/// the structural-identity rule for every `component: <slug>`
-/// directive present. Shared between layout mode and composition mode.
-pub(super) fn check_structural_identity(node: &Value, json_path: &str, errors: &mut Vec<Value>) {
-    let mut instances: Vec<ComponentInstance> = Vec::new();
-    walk_for_components(node, json_path, false, &mut instances);
-
-    let mut by_slug: BTreeMap<String, Vec<&ComponentInstance>> = BTreeMap::new();
-    for inst in &instances {
-        by_slug.entry(inst.slug.clone()).or_default().push(inst);
-    }
-
-    for (slug, group) in by_slug {
-        // Per-instance `platforms.*` overrides MAY diverge from the
-        // base skeleton. We only enforce identity across the base
-        // instances; platform-override instances are collected for
-        // completeness but not compared here.
-        let base: Vec<&ComponentInstance> =
-            group.iter().filter(|i| !i.in_platform_override).copied().collect();
-        if base.len() < 2 {
-            continue;
-        }
-        let canonical = base[0];
-        for other in base.iter().skip(1) {
-            if other.skeleton != canonical.skeleton {
-                errors.push(json!({
-                    "path": other.path,
-                    "message": format!(
-                        "component slug `{slug}` has a different skeleton at {} than the canonical instance at {} (structural-identity rule); slug instances may differ in `bind`, `event`, `error`, asset / token references, `*-when` condition values, and free text content but their group skeleton MUST match across all base instances",
-                        other.path,
-                        canonical.path,
-                    ),
-                }));
-            }
-        }
-    }
-}
-
-/// Recursive walker for [`check_structural_identity`]. Every group
-/// shaped as `{ "group": { "component": <slug>, "items": [...], ... } }`
-/// produces a [`ComponentInstance`]; nested groups inside it are also
-/// visited so `component:` directives nested inside a component group
-/// are still picked up. The `in_platform` parameter tracks whether we
-/// are currently descending through a
-/// `screens.<name>.platforms.<plat>.*` sub-tree.
-fn walk_for_components(
-    node: &Value, json_path: &str, in_platform: bool, out: &mut Vec<ComponentInstance>,
-) {
-    match node {
-        Value::Object(map) => {
-            for (key, val) in map {
-                let child_path = format!("{json_path}/{}", escape_pointer_token(key));
-                let descend_in_platform = in_platform || key == "platforms";
-                if key == "group"
-                    && let Some(component) = val.get("component").and_then(Value::as_str)
-                {
-                    out.push(ComponentInstance {
-                        slug: component.to_string(),
-                        skeleton: build_group_skeleton(val),
-                        path: child_path.clone(),
-                        in_platform_override: in_platform,
-                    });
-                }
-                walk_for_components(val, &child_path, descend_in_platform, out);
-            }
-        }
-        Value::Array(arr) => {
-            for (i, v) in arr.iter().enumerate() {
-                walk_for_components(v, &format!("{json_path}/{i}"), in_platform, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Build a [`Skeleton::Group`] from a `groupProps` JSON value. The
-/// `*-when` key set is sorted + deduplicated so two groups carrying
-/// the same `*-when`-keyed props (in any author order) compare equal.
-/// Children are derived from the `items:` array; missing `items`
-/// (schema-invalid) becomes an empty children list.
-pub(crate) fn build_group_skeleton(group_props: &Value) -> Skeleton {
-    let mut when_keys: Vec<String> = group_props
-        .as_object()
-        .map(|m| m.keys().filter(|k| k.ends_with("-when") && k.len() > 5).cloned().collect())
-        .unwrap_or_default();
-    when_keys.sort();
-    when_keys.dedup();
-
-    let items: Vec<Skeleton> = group_props
-        .get("items")
-        .and_then(Value::as_array)
-        .map(|arr| arr.iter().map(build_node_skeleton).collect())
-        .unwrap_or_default();
-
-    Skeleton::Group { when_keys, items }
-}
-
-/// Build a skeleton fragment for a single `contentNode` (an item or a
-/// nested group). Each content node is either:
-///
-/// - `{ group: { ... } }` — a nested group, recursed via
-///   [`build_group_skeleton`].
-/// - `{ <kind>: <itemProps-or-null> }` — an item identified by its
-///   single key (`text`, `checkbox`, `icon`, etc.). Item kind is the
-///   only datum the skeleton retains; itemProps (text content,
-///   bindings, colors, sizes) are wiring and ignored.
-///
-/// Schema-invalid shapes (zero or multi-key objects) collapse to a
-/// stable `<unknown>` placeholder so the schema validator's own
-/// findings remain the authoritative diagnostic.
-pub(crate) fn build_node_skeleton(node: &Value) -> Skeleton {
-    let Some(map) = node.as_object() else {
-        return Skeleton::Item(String::from("<unknown>"));
-    };
-    if map.len() != 1 {
-        return Skeleton::Item(String::from("<unknown>"));
-    }
-    let (key, val) = map.iter().next().expect("len 1");
-    if key == "group" { build_group_skeleton(val) } else { Skeleton::Item(key.clone()) }
-}
-
-// ── Structural fingerprint (component inference) ─────────────────────────────────
-
-/// Compute a canonical, content-addressed fingerprint over a normalised
-/// [`Skeleton`] tree: a deterministic byte serialisation followed by
-/// SHA-256, rendered as a lowercase hex string.
-///
-/// Identity is **exact** by mandate — two groups share a fingerprint
-/// iff their normalised skeletons are byte-equal. All tolerance (value-,
-/// state-, and asset-level variation) is already discarded by
-/// [`build_group_skeleton`] before the hash is taken, so the fingerprint
-/// adds no strictness over the existing [`check_structural_identity`]
-/// rule (which the inference verb must never contradict).
-///
-/// The fingerprint *string* is required only where a stable cross-process
-/// key is needed (the candidate-cache entry and the bind-time collision
-/// suffix); in-process clustering can key on the `Skeleton` directly.
-pub(crate) fn fingerprint(skeleton: &Skeleton) -> String {
-    let mut canonical = String::new();
-    encode_skeleton(skeleton, &mut canonical);
-    let digest = Sha256::digest(canonical.as_bytes());
-    let mut hex = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        use std::fmt::Write as _;
-        // Infallible: writing to a String never errors.
-        let _ = write!(hex, "{byte:02x}");
-    }
-    hex
-}
-
-/// Append a canonical, deterministic byte encoding of `skeleton` to `buf`.
-///
-/// The grammar is unambiguous over the constrained skeleton alphabet
-/// (item kinds and `*-when` keys are kebab-case, never containing the
-/// `;:[](),` delimiters):
-///
-/// - `Item(kind)`  → `I:<kind>;`
-/// - `Group`       → `G[<when_keys joined by ,>](<child encodings…>);`
-///
-/// `when_keys` are already sorted + deduped by [`build_group_skeleton`],
-/// so two groups carrying the same `*-when` props in any author order
-/// encode identically. Child order is preserved (item order is
-/// structural).
-fn encode_skeleton(skeleton: &Skeleton, buf: &mut String) {
-    match skeleton {
-        Skeleton::Item(kind) => {
-            buf.push_str("I:");
-            buf.push_str(kind);
-            buf.push(';');
-        }
-        Skeleton::Group { when_keys, items } => {
-            buf.push_str("G[");
-            buf.push_str(&when_keys.join(","));
-            buf.push_str("](");
-            for item in items {
-                encode_skeleton(item, buf);
-            }
-            buf.push_str(");");
-        }
-    }
-}
-
-/// Project a normalised [`Skeleton`] into the name-free JSON fragment
-/// the `infer` report carries as the cluster's representative skeleton.
-/// Mirrors the [`encode_skeleton`] grammar in structured form so the
-/// build skill can read the shape it must name.
-pub(crate) fn skeleton_to_json(skeleton: &Skeleton) -> Value {
-    match skeleton {
-        Skeleton::Item(kind) => json!({ "item": kind }),
-        Skeleton::Group { when_keys, items } => json!({
-            "group": {
-                "when_keys": when_keys,
-                "items": items.iter().map(skeleton_to_json).collect::<Vec<_>>(),
-            }
-        }),
-    }
-}
-
-// ── Catalog parsing (component catalog contract) ────────────────────────────────
-
-/// Read and parse the component catalog with explicit error reporting.
-/// Unlike `parse_yaml_file` (which returns `None` silently because its
-/// callers have an auto-invoked sibling validator), the catalog has no
-/// prior validation step — a present-but-invalid file must surface as
-/// a composition-mode error rather than being silently skipped.
-fn parse_catalog_file(path: &Path) -> std::result::Result<Value, String> {
-    let source = std::fs::read_to_string(path)
-        .map_err(|err| format!("component catalog at {} is not readable: {err}", path.display()))?;
-    serde_saphyr::from_str::<Value>(&source).map_err(|err| {
-        format!("component catalog at {} contains invalid YAML: {err}", path.display())
-    })
-}
-
-// ── Catalog cross-reference (component catalog contract) ────────────────────────
-
-/// Cross-reference every `component: <slug>` in the composition
-/// against the agent-inferred, operator-reviewable component catalog.
-///
-/// - A slug absent from the catalog → error.
-/// - A slug with `status: rejected` → error.
-/// - A slug with `status: confirmed` → OK.
-/// - A confirmed catalog entry with zero `component:` references in
-///   the composition → warning (the entry exists but is unused in
-///   this artifact).
-fn check_catalog_cross_references(
-    instance: &Value, catalog: &Value, errors: &mut Vec<Value>, warnings: &mut Vec<Value>,
-) {
-    let Some(components) = catalog.get("components").and_then(Value::as_object) else {
-        return;
-    };
-
-    let mut slug_refs: Vec<(String, String)> = Vec::new();
-    collect_component_slugs(instance, "", &mut slug_refs);
-
-    for (slug, path) in &slug_refs {
-        match components.get(slug.as_str()) {
-            None => {
-                errors.push(json!({
-                    "path": path,
-                    "message": format!(
-                        "component slug `{slug}` is not present in the component catalog",
-                    ),
-                }));
-            }
-            Some(entry) => {
-                if entry.get("status").and_then(Value::as_str) == Some("rejected") {
-                    errors.push(json!({
-                        "path": path,
-                        "message": format!(
-                            "component slug `{slug}` has `status: rejected` in the component catalog",
-                        ),
-                    }));
-                }
-            }
-        }
-    }
-
-    let used: std::collections::BTreeSet<&str> =
-        slug_refs.iter().map(|(s, _)| s.as_str()).collect();
-    for (slug, entry) in components {
-        if entry.get("status").and_then(Value::as_str) == Some("confirmed")
-            && !used.contains(slug.as_str())
-        {
-            warnings.push(json!({
-                "path": "",
-                "message": format!(
-                    "confirmed catalog entry `{slug}` has no `component: {slug}` reference in composition.yaml",
-                ),
-            }));
-        }
-    }
-}
-
-/// Walk a composition document and collect every `component: <slug>`
-/// directive as a `(slug, json_pointer_path)` pair.
-fn collect_component_slugs(node: &Value, json_path: &str, out: &mut Vec<(String, String)>) {
-    match node {
-        Value::Object(map) => {
-            for (key, val) in map {
-                let child_path = format!("{json_path}/{}", escape_pointer_token(key));
-                if key == "group"
-                    && let Some(slug) = val.get("component").and_then(Value::as_str)
-                {
-                    out.push((slug.to_string(), child_path.clone()));
-                }
-                collect_component_slugs(val, &child_path, out);
-            }
-        }
-        Value::Array(arr) => {
-            for (i, v) in arr.iter().enumerate() {
-                collect_component_slugs(v, &format!("{json_path}/{i}"), out);
-            }
-        }
-        _ => {}
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::{Value, json};
-
-    use super::{build_group_skeleton, fingerprint, skeleton_to_json};
-
-    fn group(items: Value) -> Value {
-        let mut map = serde_json::Map::new();
-        map.insert("items".to_string(), items);
-        Value::Object(map)
-    }
-
-    #[test]
-    fn fingerprint_is_stable_across_calls() {
-        let skeleton = build_group_skeleton(&group(json!([
-            { "icon-button": { "bind": "home", "event": "Navigate(Home)" } },
-            { "icon-button": { "bind": "search", "event": "Navigate(Search)" } },
-        ])));
-        assert_eq!(fingerprint(&skeleton), fingerprint(&skeleton));
-    }
-
-    #[test]
-    fn fingerprint_ignores_wiring_values() {
-        // Same skeleton (two icon-buttons) with different bind / event
-        // wiring must collapse to one fingerprint — tolerance lives in
-        // normalisation, never in the hash.
-        let a = build_group_skeleton(&group(json!([
-            { "icon-button": { "bind": "home", "event": "Navigate(Home)" } },
-            { "icon-button": { "bind": "search", "event": "Navigate(Search)" } },
-        ])));
-        let b = build_group_skeleton(&group(json!([
-            { "icon-button": { "bind": "profile", "event": "Navigate(Profile)" } },
-            { "icon-button": { "bind": "inbox", "event": "Navigate(Inbox)" } },
-        ])));
-        assert_eq!(fingerprint(&a), fingerprint(&b));
-    }
-
-    #[test]
-    fn fingerprint_distinguishes_structural_divergence() {
-        // An extra item is genuine structural divergence: distinct
-        // skeleton, distinct fingerprint.
-        let two = build_group_skeleton(&group(json!([
-            { "icon-button": {} },
-            { "icon-button": {} },
-        ])));
-        let three = build_group_skeleton(&group(json!([
-            { "icon-button": {} },
-            { "icon-button": {} },
-            { "icon-button": {} },
-        ])));
-        assert_ne!(fingerprint(&two), fingerprint(&three));
-    }
-
-    #[test]
-    fn fingerprint_distinguishes_when_key_presence() {
-        let bare = build_group_skeleton(&json!({ "items": [ { "text": {} } ] }));
-        let conditional =
-            build_group_skeleton(&json!({ "active-when": "$x", "items": [ { "text": {} } ] }));
-        assert_ne!(fingerprint(&bare), fingerprint(&conditional));
-    }
-
-    #[test]
-    fn skeleton_json_mirrors_tree_shape() {
-        let skeleton = build_group_skeleton(&json!({
-            "active-when": "$route",
-            "items": [
-                { "icon-button": {} },
-                { "group": { "items": [ { "text": {} } ] } },
-            ],
-        }));
-        let projected = skeleton_to_json(&skeleton);
-        assert_eq!(projected["group"]["when_keys"], json!(["active-when"]));
-        assert_eq!(projected["group"]["items"][0], json!({ "item": "icon-button" }));
-        assert_eq!(
-            projected["group"]["items"][1],
-            json!({ "group": { "when_keys": [], "items": [ { "item": "text" } ] } })
-        );
-    }
 }

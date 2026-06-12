@@ -53,7 +53,7 @@ pub struct ProjectConfig {
     /// Project-scope WASI tool declarations. These are generic extension
     /// points owned by `specify-tool`, not by any adapter.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tools: Vec<specify_tool::manifest::Tool>,
+    pub tools: Vec<specify_tool_manifest::Tool>,
 
     /// Target platforms this project builds for (e.g. `core`, `ios`,
     /// `android`). Set at `specify init --platforms` and changeable via

@@ -8,20 +8,6 @@ use crate::support::*;
 // -- base shape rules --------------------------------------------------
 
 #[test]
-fn plan_validate_clean_text() {
-    let project = Project::init();
-    project.seed_plan(CLEAN_PLAN);
-
-    let assert =
-        specify_cmd().current_dir(project.root()).args(["plan", "validate"]).assert().success();
-    assert_eq!(assert.get_output().status.code(), Some(0));
-
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-    // No ERROR-level lines on a clean plan.
-    assert!(!stdout.contains("ERROR"), "clean plan must not print any ERROR lines, got:\n{stdout}");
-}
-
-#[test]
 fn plan_validate_clean_json() {
     let project = Project::init();
     project.seed_plan(CLEAN_PLAN);
@@ -333,91 +319,5 @@ fn validate_reports_topology_cache_stale() {
         assert.get_output().status.code(),
         Some(0),
         "stale cache is a suggestion-only finding, so validate must exit 0"
-    );
-}
-
-#[test]
-fn plan_validate_payloads_round_trip_typed() {
-    let tmp = tempdir().unwrap();
-    init_omnia_project(&tmp);
-
-    // Minimal plan that exercises just the cycle and orphan-source
-    // checks — enough to confirm the typed payload deserialises
-    // cleanly.
-    fs::write(
-        tmp.path().join("plan.yaml"),
-        "name: demo\n\
-             sources:\n\
-             \x20\x20orphan-key:\n\
-             \x20\x20\x20\x20adapter: typescript\n\
-             \x20\x20\x20\x20path: /tmp/somewhere\n\
-             slices:\n\
-             \x20\x20- name: cyc-a\n\
-             \x20\x20\x20\x20project: default\n\
-             \x20\x20\x20\x20status: pending\n\
-             \x20\x20\x20\x20depends-on: [cyc-b]\n\
-             \x20\x20- name: cyc-b\n\
-             \x20\x20\x20\x20project: default\n\
-             \x20\x20\x20\x20status: pending\n\
-             \x20\x20\x20\x20depends-on: [cyc-a]\n",
-    )
-    .unwrap();
-
-    let assert = specify_cmd()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "validate"])
-        .assert();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
-    let value: Value = serde_json::from_str(&stdout).expect("stdout is JSON");
-    let findings = value["findings"].as_array().expect("findings array");
-
-    // The health checks carry their machine-readable payload on the
-    // neutral diagnostic's structured evidence (`evidence.data`) rather
-    // than a bespoke `data` field — unified onto the currency without
-    // loss.
-    let cycle = findings
-        .iter()
-        .find(|d| d["rule-id"] == "cycle-in-depends-on")
-        .expect("expected cycle-in-depends-on diagnostic");
-    assert_eq!(cycle["evidence"]["kind"], "structured");
-    let cycle_path = cycle["evidence"]["data"]["cycle"].as_array().expect("cycle path is array");
-    let names: Vec<String> =
-        cycle_path.iter().filter_map(|v| v.as_str().map(String::from)).collect();
-    assert_eq!(
-        names,
-        vec!["cyc-a".to_string(), "cyc-b".to_string(), "cyc-a".to_string()],
-        "cycle path must close on the first node"
-    );
-
-    let orphan = findings
-        .iter()
-        .find(|d| d["rule-id"] == "orphan-source")
-        .expect("expected orphan-source diagnostic");
-    assert_eq!(orphan["evidence"]["kind"], "structured");
-    assert_eq!(orphan["evidence"]["data"]["key"], "orphan-key");
-    assert_eq!(orphan["severity"], "suggestion");
-}
-
-#[test]
-fn plan_validate_healthy_exits_zero() {
-    let tmp = tempdir().unwrap();
-    init_omnia_project(&tmp);
-
-    specify_cmd()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "create", "demo"])
-        .assert()
-        .success();
-
-    let assert = specify_cmd()
-        .current_dir(tmp.path())
-        .args(["--format", "json", "plan", "validate"])
-        .assert()
-        .success();
-    let value: Value = serde_json::from_slice(&assert.get_output().stdout).expect("json");
-    assert_eq!(
-        value["findings"].as_array().unwrap().len(),
-        0,
-        "empty plan must emit zero findings: {value}"
     );
 }

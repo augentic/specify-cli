@@ -16,7 +16,9 @@ use specify_error::Error;
     serde::Serialize,
     serde::Deserialize,
     strum::Display,
-    clap::ValueEnum,
+    strum::EnumString,
+    strum::VariantNames,
+    strum::VariantArray,
 )]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]

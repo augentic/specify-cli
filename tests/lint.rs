@@ -2,6 +2,9 @@
 //! (`lint framework`, `lint framework --format json`, and `lint
 //! project`).
 
+#[path = "lint/support.rs"]
+mod support;
+
 #[path = "lint/framework.rs"]
 mod framework;
 

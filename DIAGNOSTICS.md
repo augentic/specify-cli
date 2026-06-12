@@ -45,18 +45,18 @@ The engine is a generic dispatcher. Every framework `CORE-*` check is one of two
 
 | Road | Ids (example) | How it runs |
 | --- | --- | --- |
-| Road A — declarative hint | most of `CORE-001..052` | a generic per-kind evaluator (`lint/eval/*`) interprets the rule's `kind:` (`schema`, `reference-resolves`, `cardinality`, `set-coverage`, `set-eq`, `constant-eq`, `content-digest-eq`, `unique`, `fenced-block`, `regex`, `path-pattern`, `presence`, `field-grammar`, `cross-reference`, `cli-contract`) over `WorkspaceModel` facts; the mechanism selector rides `hint.value` (including the whole-tree `value: scenario` selector on `schema` and `unique`) and caps/sets/maps ride the rule's `config:` |
-| Road B — referenced WASI tool | `CORE-009`, `CORE-026`, the scenarios / skill-body / agent-teams / links-registry / marketplace / prose families | `kind: tool` value `<tool>` + a sentinel `path-pattern`; the engine resolves the tool by name and folds its `DiagnosticReport`. Policy rides the rule's `config:`, forwarded as a second positional arg |
+| Road A — declarative hint | most of `CORE-001..052` | a generic per-kind evaluator (`lint/eval/*`) interprets the rule's `kind:` (`schema`, `reference-resolves`, `cardinality`, `set-coverage`, `set-eq`, `constant-eq`, `unique`, `fenced-block`, `regex`, `path-pattern`, `presence`, `field-grammar`, `cross-reference`, `cli-contract`) over `WorkspaceModel` facts; the mechanism selector rides `hint.value` (including the whole-tree `value: scenario` selector on `schema` and `unique`) and caps/sets/maps ride the rule's `config:` |
+| Road B — referenced tool | `CORE-009`, `CORE-026`, the scenarios / skill-body / links-registry / marketplace / prose families | `kind: tool` value `<tool>` + a sentinel `path-pattern`; the engine resolves the tool by name (in-process framework checkers since the B-2 exit) and folds its `DiagnosticReport`. Policy rides the rule's `config:`, forwarded as a second positional arg |
 
 There is no Wave-0 duplicate evaluation. `specify lint framework` resolves all `CORE-*` / `UNI-*` rules in one pass; no imperative `Check` producer runs on any invocation, and the `kind: authoring-predicate` bridge is fully removed. CORE-034 (`scenarios.stale-recorded-trace`, a git-only advisory that emitted no finding) was removed rather than ported; its sibling CORE-031 filesystem header validation lives in the `scenarios` tool.
 
 ### Policy lives in `specify`, not the engine
 
-Every rule-specific value (a line cap, an owner→prefix map, an expected operation set, a canonical-doc path) rides the rule's `config:` in the `specify` repo — CORE-009's owner→prefix map, source-axis prefixes, and reserved-namespace owners included. The Layer-3 guard test [`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) fails if any eval arm or `framework/check` module reintroduces such a literal; the duplicated owner maps (`BUILTIN_NAMESPACES` / `TARGET_OWNERS`) are deleted.
+Every rule-specific value (a line cap, an owner→prefix map, an expected operation set, a canonical-doc path) rides the rule's `config:` in the `specify` repo — CORE-009's owner→prefix map, source-axis prefixes, and reserved-namespace owners included. The Layer-3 guard test [`crates/standards/tests/lint_engine_guards/no_embedded_policy.rs`](./crates/standards/tests/lint_engine_guards/no_embedded_policy.rs) fails if any eval arm reintroduces such a literal; the duplicated owner maps (`BUILTIN_NAMESPACES` / `TARGET_OWNERS`) are deleted.
 
 ### Framework tools
 
-Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-registry`, `marketplace`, `prose`, `rules` — live in `wasi-tools/<name>/`, ship a prebuilt `dist/<name>-<ver>.wasm` embedded into the binary via `FrameworkToolRunner` ([`src/runtime/commands/lint/framework_tools.rs`](./src/runtime/commands/lint/framework_tools.rs)), and are name-resolved with `sha256: None` (digest pinning deferred until the source moves to its colocated home).
+Six framework checkers — `scenarios`, `skill-body`, `links-registry`, `marketplace`, `prose`, `rules` — run in-process as native modules under [`src/runtime/commands/lint/framework_tools/`](./src/runtime/commands/lint/framework_tools.rs), name-resolved through the same `ToolRunner` trait and `DiagnosticReport` envelope the engine consumed when they were WASI components (the B-2 exit; see [DECISIONS.md §"Framework lint engine"](./DECISIONS.md#framework-lint-engine-generic-dispatcher-road-a--road-b)). The `agent-teams` checker retired with CORE-012.
 
 ### Performance (post-migration)
 
@@ -76,7 +76,7 @@ Seven framework checkers — `scenarios`, `skill-body`, `agent-teams`, `links-re
 ### A16 — done (steady state; engine is a generic dispatcher)
 
 - [x] CORE-001..008 are owned by declarative rules.
-- [x] CORE-009 + CORE-026 migrated to the `rules` WASI tool; `CORE_ID_TABLE` is empty; the CORE-009 `AuthoringProducer` and `framework::check::run` are deleted.
+- [x] CORE-009 + CORE-026 migrated to the `rules` WASI tool; the CORE-009 `AuthoringProducer`, `framework::check::run`, and later the whole `specify_standards::framework` substrate are deleted (Rust-quality predicates live dev-only at `tests/rust_quality/checks.rs`).
 - [x] CORE-034 removed; the `kind: authoring-predicate` bridge (`HintKind::AuthoringPredicate`, `lint/eval/authoring_predicate.rs`, `ScenariosCheck`) deleted. No imperative-predicate bridge remains.
 - [x] No rule policy in the engine; `lint_no_embedded_policy` Layer-3 guard is green. `BUILTIN_NAMESPACES` / `TARGET_OWNERS` deleted.
 - [x] Framework lint runs no imperative `Check` producer on `make lint`.

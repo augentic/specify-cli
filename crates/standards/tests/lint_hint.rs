@@ -12,8 +12,6 @@ mod cardinality;
 mod cli_contract;
 #[path = "lint_hint/constant_eq.rs"]
 mod constant_eq;
-#[path = "lint_hint/content_digest_eq.rs"]
-mod content_digest_eq;
 #[path = "lint_hint/cross_reference.rs"]
 mod cross_reference;
 #[path = "lint_hint/fenced_block.rs"]

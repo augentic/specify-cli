@@ -113,9 +113,9 @@ pub(crate) fn evaluate(
     let validator = compile_schema_for_hint(rule, hint, project_dir, cache)?;
 
     // The `scenario` selector validates the dedicated scenario fact
-    // family whole-tree (like `content-digest-eq`): scenario files are
-    // kept out of `model.files`, so the candidate set can never select
-    // them and the `candidates` argument is intentionally unused here.
+    // family whole-tree: scenario files are kept out of `model.files`,
+    // so the candidate set can never select them and the `candidates`
+    // argument is intentionally unused here.
     if hint.value.trim() == SCENARIO_FACT_FAMILY {
         return Ok(evaluate_scenarios(rule, &validator, model, next_id));
     }

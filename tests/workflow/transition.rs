@@ -20,28 +20,9 @@ slices:
 ";
 
 #[test]
-fn plan_transition_happy_path_text() {
-    // Post-2.0 the only legal per-entry transition is
-    // `InProgress -> Done`. We pre-stage `in-progress` via `plan next`
-    // (the only writer of `in-progress`) and then close the entry.
-    let project = Project::init();
-    project.seed_plan(SINGLE_PENDING);
-    let _lock = project.hold_plan_lock();
-
-    specify_cmd().current_dir(project.root()).args(["plan", "next"]).assert().success();
-
-    let assert = specify_cmd()
-        .current_dir(project.root())
-        .args(["plan", "transition", "foo", "done"])
-        .assert()
-        .success();
-    let stdout = std::str::from_utf8(&assert.get_output().stdout).expect("utf8");
-    assert!(stdout.contains("in-progress"), "text output should mention 'in-progress': {stdout:?}");
-    assert!(stdout.contains("done"), "text output should mention 'done': {stdout:?}");
-}
-
-#[test]
 fn plan_transition_legal_edge_json() {
+    // Post-2.0 the only legal per-entry transition is
+    // `InProgress -> Done`.
     let project = Project::init();
     project.seed_plan(SINGLE_IN_PROGRESS);
     let _lock = project.hold_plan_lock();

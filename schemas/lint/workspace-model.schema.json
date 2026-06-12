@@ -115,11 +115,6 @@
       "items": { "$ref": "#/$defs/brief" },
       "description": "`WorkspaceModel` entity: `brief` facts from `adapters/**/briefs/**/*.md` (parent briefs and phase sub-briefs) under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
     },
-    "agent_teams": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/agentTeam" },
-      "description": "`WorkspaceModel` entity: `agent_team` facts from followed `agent-teams.md` symlinks under the framework scan profile (§F1). Optional in v1 envelopes; absent under the project profile so the product wire shape is unchanged."
-    },
     "scenarios": {
       "type": "array",
       "items": { "$ref": "#/$defs/scenario" },
@@ -160,7 +155,7 @@
         },
         "sha256": {
           "$ref": "#/$defs/sha256Hex",
-          "description": "Optional content digest; populated when extractors need cross-file identity (e.g. `agent_teams` canonical SHA check)."
+          "description": "Optional content digest; populated when extractors need cross-file identity."
         }
       }
     },
@@ -328,30 +323,6 @@
           "type": "integer",
           "minimum": 0,
           "description": "`WorkspaceModel` entity: total non-empty markdown body lines (frontmatter excluded when present)."
-        }
-      }
-    },
-    "agentTeam": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "target-raw"],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/relativePath",
-          "description": "`WorkspaceModel` entity: project-relative path of the `agent-teams.md` symlink itself."
-        },
-        "target-raw": {
-          "type": "string",
-          "minLength": 1,
-          "description": "`WorkspaceModel` entity: symlink target as recorded by `read_link` (may be relative or absolute, possibly outside the project tree)."
-        },
-        "resolved-target": {
-          "$ref": "#/$defs/relativePath",
-          "description": "`WorkspaceModel` entity: project-relative path of the resolved canonical endpoint when it lives under `project_dir`; absent when the target resolves outside the tree or could not be canonicalised."
-        },
-        "target-sha256": {
-          "$ref": "#/$defs/sha256Hex",
-          "description": "`WorkspaceModel` entity: hex-encoded SHA-256 of the resolved target file's bytes. Absent when the target is unreadable or broken."
         }
       }
     },

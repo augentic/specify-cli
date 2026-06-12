@@ -16,7 +16,7 @@ pub use cache::{CodexMeta, codex_cache_root};
 use jiff::Timestamp;
 use specify_error::Error;
 use specify_model::atomic::bytes_write;
-use specify_tool::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
+use specify_tool_manifest::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME};
 
 use crate::config::Layout;
 use crate::platform::Platform;
@@ -200,7 +200,7 @@ pub(crate) fn upsert_gitignore(project_dir: &Path) -> Result<(), Error> {
 ///
 /// The contents are the canonical wasm-pkg namespace mapping
 /// (`specify -> augentic.io`); see
-/// [`specify_tool::DEFAULT_WASM_PKG_CONFIG`]. Operators are expected
+/// [`specify_tool_manifest::DEFAULT_WASM_PKG_CONFIG`]. Operators are expected
 /// to edit this file to add private mirrors or other namespace
 /// mappings, so a re-init must never clobber their changes.
 ///

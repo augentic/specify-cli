@@ -26,7 +26,7 @@ fn include_set_accepts_specify_toml() {
 
 #[test]
 fn include_set_accepts_root_readme_only() {
-    // Root README.md carries digest-pinned sections (CORE-058); nested
+    // Root README.md is a lintable documentation surface; nested
     // readmes outside the documented prefixes stay excluded.
     assert!(is_included("README.md"));
     assert!(!is_included("crates/standards/README.md"));

@@ -15,11 +15,12 @@
 //!   from [`specify_diagnostics`] round-trips through
 //!   the new verb.
 //!
-//! The scaffold mirrors `tests/lint_framework_json.rs::write_scaffold`
-//! and is deliberately small: just enough framework structure to
-//! satisfy `Context::is_framework_root` and silence the marketplace
-//! / agent-teams predicates so the JSON envelope shape — not
-//! individual finding contents — is what this test pins.
+//! The scaffold (shared with `framework_json.rs` via
+//! `crate::support::scaffold_framework`) is deliberately small: just
+//! enough framework structure to satisfy `Context::is_framework_root`
+//! and silence the marketplace / agent-teams predicates so the JSON
+//! envelope shape — not individual finding contents — is what this
+//! test pins.
 
 use std::fs;
 use std::path::Path;
@@ -29,79 +30,7 @@ use serde_json::Value;
 use specify_standards::rules::{HintKind, ParseError, parse_rule};
 use tempfile::TempDir;
 
-/// Scaffold a minimal framework tree that passes
-/// `specify_standards::framework::context::Context::from_framework_root` and
-/// supplies the marketplace + canonical-doc files the framework rules'
-/// referenced tools expect. Intentionally identical in shape to
-/// the scaffold used by `tests/lint_framework_json.rs` so both
-/// surfaces exercise the same fixture profile.
-fn scaffold_framework(root: &Path) {
-    for rel in [
-        "adapters/sources",
-        "adapters/targets",
-        "adapters/shared",
-        "plugins",
-        "plugins/test/skills",
-    ] {
-        fs::create_dir_all(root.join(rel)).expect("scaffold dir");
-    }
-
-    let marketplace = root.join(".cursor-plugin").join("marketplace.json");
-    fs::create_dir_all(marketplace.parent().expect("marketplace parent"))
-        .expect("mkdir .cursor-plugin");
-    fs::write(
-        &marketplace,
-        r#"{
-  "name": "test",
-  "owner": { "name": "Test Owner", "email": "test@example.com" },
-  "metadata": {
-    "description": "Synthetic marketplace for specify lint framework e2e tests.",
-    "version": "0.0.0",
-    "pluginRoot": "plugins"
-  },
-  "plugins": [
-    {
-      "name": "test",
-      "source": "test",
-      "description": "Synthetic plugin used by specify lint framework e2e tests."
-    }
-  ]
-}
-"#,
-    )
-    .expect("marketplace.json");
-
-    let plugin_manifest =
-        root.join("plugins").join("test").join(".cursor-plugin").join("plugin.json");
-    fs::create_dir_all(plugin_manifest.parent().expect("plugin manifest parent"))
-        .expect("mkdir plugins/test/.cursor-plugin");
-    fs::write(
-        &plugin_manifest,
-        r#"{
-  "name": "test",
-  "displayName": "Test Plugin",
-  "description": "Synthetic plugin used by specify lint framework e2e tests.",
-  "version": "0.0.0"
-}
-"#,
-    )
-    .expect("plugins/test/.cursor-plugin/plugin.json");
-
-    let standards = root.join("docs").join("standards").join("skill-authoring.md");
-    fs::create_dir_all(standards.parent().expect("standards parent"))
-        .expect("mkdir docs/standards");
-    fs::write(
-        &standards,
-        "# Skill authoring (synthetic)\n\nDescription cap: 512 characters. Body cap: 200 lines.\n",
-    )
-    .expect("skill-authoring.md");
-
-    let canonical = root.join("docs").join("reference").join("review-team-protocol.md");
-    fs::create_dir_all(canonical.parent().expect("canonical parent"))
-        .expect("mkdir docs/reference");
-    fs::write(&canonical, "# Review Team Protocol\n\nSynthetic stub for tests.\n")
-        .expect("review-team-protocol.md");
-}
+use crate::support::scaffold_framework;
 
 /// Run `specify lint framework --framework-root <root> --output-format json`
 /// and return the captured `(exit, stdout, stderr)` triple.
@@ -281,10 +210,10 @@ fn duplicate_rule_id_skips_declarative_pass() {
 /// Severity is fixed `important` so a single finding gates the run to
 /// exit 2 and a clean pass exits 0.
 ///
-/// These rules exercise the five Road A kinds bound to framework-only
-/// fact families (`unique`, `constant-eq`, `set-eq`, `content-digest-eq`,
+/// These rules exercise the four Road A kinds bound to framework-only
+/// fact families (`unique`, `constant-eq`, `set-eq`,
 /// `cross-reference`); the consumer `specify lint project` profile never
-/// indexes the adapter / skill / scenario / agent-team facts they read,
+/// indexes the adapter / skill / scenario facts they read,
 /// so they are unreachable there and proven through `lint framework`
 /// here (see `tests/lint/project.rs` for the project-profile kinds).
 fn write_universal_rule(root: &Path, id: &str, hints: &str) {
@@ -463,56 +392,6 @@ fn set_eq_flags_brief_divergence() {
     assert_eq!(
         divergences, expected,
         "both halves of the symmetric difference are flagged; envelope:\n{envelope:#}",
-    );
-}
-
-/// Symlink `adapters/targets/<adapter>/references/agent-teams.md` at a
-/// `target_rel` document relative to the framework root. Mirrors the
-/// crate-level `content-digest-eq` link helper.
-fn link_agent_teams(root: &Path, adapter: &str, target_rel: &str) {
-    let link_dir = root.join("adapters/targets").join(adapter).join("references");
-    fs::create_dir_all(&link_dir).expect("mkdir references");
-    let link_path = link_dir.join("agent-teams.md");
-    // adapters/targets/<adapter>/references/ is four levels deep.
-    let link_target = format!("../../../../{target_rel}");
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(&link_target, &link_path).expect("unix symlink");
-    #[cfg(windows)]
-    std::os::windows::fs::symlink_file(&link_target, &link_path).expect("windows symlink");
-}
-
-/// `kind: content-digest-eq` (the `agent-teams-match-canonical` source)
-/// through the binary: of two `agent-teams.md` overlays, the one
-/// resolving to a non-canonical document is flagged while the one
-/// matching the canonical digest passes. Mirrors the crate-level
-/// `flags_only_drifted_overlay`. The scaffold already writes the
-/// canonical `docs/reference/review-team-protocol.md`.
-#[test]
-fn content_digest_eq_flags_drifted_overlay() {
-    let temp = TempDir::new().expect("tempdir");
-    scaffold_framework(temp.path());
-    let divergent = temp.path().join("docs/reference/legacy-review-team.md");
-    fs::write(&divergent, "# Legacy\n\nDrifted copy.\n").expect("write divergent doc");
-
-    link_agent_teams(temp.path(), "aligned", "docs/reference/review-team-protocol.md");
-    link_agent_teams(temp.path(), "drifted", "docs/reference/legacy-review-team.md");
-    write_universal_rule(
-        temp.path(),
-        "UNI-213",
-        "  - kind: content-digest-eq\n    value: agent-teams-match-canonical\n    config:\n      canonical-path: docs/reference/review-team-protocol.md\n",
-    );
-
-    let (code, envelope) = run_single_rule(temp.path(), "UNI-213");
-    assert_eq!(code, Some(2), "the drifted overlay must gate; envelope:\n{envelope:#}");
-    let overlays: Vec<String> = findings_for(&envelope, "UNI-213")
-        .iter()
-        .filter_map(|f| f.pointer("/evidence/data/agent-team").and_then(Value::as_str))
-        .map(str::to_owned)
-        .collect();
-    assert_eq!(overlays.len(), 1, "exactly one overlay is flagged; envelope:\n{envelope:#}");
-    assert!(
-        overlays[0].ends_with("adapters/targets/drifted/references/agent-teams.md"),
-        "only the overlay resolving to a divergent digest is flagged; got {overlays:?}",
     );
 }
 

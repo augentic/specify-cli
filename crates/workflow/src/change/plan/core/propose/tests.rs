@@ -817,3 +817,29 @@ fn detect_missing_skips_web_desktop() {
     let missing = detect_missing_platforms(dir.path(), &platforms);
     assert_eq!(missing, vec![Platform::Core]);
 }
+
+#[test]
+fn reconcile_never_bootstraps_web_desktop() {
+    // Guard: `web` / `desktop` are type-system placeholders with no
+    // shell interpretation, so the detect → reconcile pipeline must
+    // never insert a bootstrap slice for them — even when they are the
+    // only declared non-core platforms and no shell tree exists.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("shared/src")).expect("mkdir");
+    std::fs::write(dir.path().join("shared/src/app.rs"), "// core present").expect("write");
+
+    let platforms = vec![Platform::Core, Platform::Web, Platform::Desktop];
+    let missing = detect_missing_platforms(dir.path(), &platforms);
+    assert!(missing.is_empty(), "web/desktop must never be detected as missing");
+
+    let mut plan = plan_with_sources(Lifecycle::Pending, &["intent"]);
+    propose_single_slice(&mut plan);
+    let project_missing = vec![ProjectMissingPlatforms {
+        project: "my-app".to_string(),
+        missing,
+    }];
+    let names = plan.reconcile_platforms(&project_missing).expect("reconcile succeeds");
+    assert!(names.is_empty(), "no bootstrap slice may be inserted for web/desktop");
+    assert_eq!(plan.entries.len(), 1);
+    assert!(plan.entries[0].depends_on.is_empty());
+}

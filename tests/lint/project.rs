@@ -15,11 +15,11 @@
 //! `path-pattern`, `presence`, `field-grammar`, `set-coverage`,
 //! `cardinality`, `reference-resolves`, `fenced-block` — through the
 //! binary, mirroring the crate-level `crates/standards/tests/lint_hint/`
-//! cases at integration level. The five kinds bound to framework-only
+//! cases at integration level. The four kinds bound to framework-only
 //! fact families (`cross-reference`, `set-eq`, `constant-eq`,
-//! `content-digest-eq`, `unique`) are unreachable through `lint project`
+//! `unique`) are unreachable through `lint project`
 //! because the project profile never indexes adapter / skill / scenario
-//! / agent-team facts; they are proven through `specify lint framework`
+//! facts; they are proven through `specify lint framework`
 //! in `tests/lint/framework.rs` instead.
 
 use std::fs;

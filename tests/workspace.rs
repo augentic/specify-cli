@@ -14,13 +14,12 @@ use common::{Project, init_workspace, omnia_schema_dir, parse_stdout, run_git, s
 
 #[test]
 fn workspace_help_lists_active_subcommands() {
-    let assert = specify_cmd().args(["workspace", "--help"]).assert().success();
-    let stdout = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    // `workspace --help` must exit 0; the verb inventory is asserted
+    // via the contract dump rather than exact clap wording.
+    specify_cmd().args(["workspace", "--help"]).assert().success();
+    let verbs = common::contract_dump_verbs(&["workspace"]);
     for verb in ["sync", "push"] {
-        assert!(
-            stdout.contains(verb),
-            "expected `workspace --help` to mention `{verb}`, got:\n{stdout}",
-        );
+        assert!(verbs.iter().any(|v| v == verb), "workspace must declare `{verb}`: {verbs:?}");
     }
 }
 

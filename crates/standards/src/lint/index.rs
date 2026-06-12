@@ -20,7 +20,6 @@
 
 pub mod adapter;
 pub mod adapter_dir;
-pub mod agent_teams;
 pub mod brief;
 pub mod discover;
 pub mod files;
@@ -40,9 +39,8 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 
 use crate::lint::{
-    AdapterManifest, AgentTeam, Brief, File, Frontmatter, IgnoreDirective, MarkdownLink,
-    MarkdownSection, MarketplaceEntry, ScanProfile, Skill, Symlink, WorkspaceModel,
-    WorkspaceModelVersion,
+    AdapterManifest, Brief, File, Frontmatter, IgnoreDirective, MarkdownLink, MarkdownSection,
+    MarketplaceEntry, ScanProfile, Skill, Symlink, WorkspaceModel, WorkspaceModelVersion,
 };
 
 /// Closed error set for [`build`].
@@ -83,7 +81,7 @@ pub enum IndexError {
 /// runs the project-scope extractors. Under [`ScanProfile::Framework`]
 /// the walk applies the §F1 include set, follows symlinks with
 /// cycle detection, and runs the framework extractors
-/// (`skill`, `adapter`, `marketplace`, `agent_teams`, `brief`) in
+/// (`skill`, `adapter`, `marketplace`, `brief`) in
 /// addition to the shared markdown / frontmatter passes.
 ///
 /// `languages`, when non-empty, narrows the discovered file set to
@@ -186,7 +184,6 @@ fn build_project(
         ignore_directives: ignore_directives_out,
         fenced_blocks: fenced_blocks_out,
         briefs: Vec::new(),
-        agent_teams: Vec::new(),
         scenarios: Vec::new(),
         adapter_dirs: Vec::new(),
     })
@@ -202,7 +199,6 @@ fn build_framework(
     let discovery = framework::discover(project_dir, artifact_paths, languages)?;
     let discovered = discovery.files;
     let symlinks_facts = discovery.symlinks;
-    let agent_teams_facts = discovery.agent_teams;
 
     let per_file: Vec<FrameworkPerFile> = discovered
         .into_par_iter()
@@ -296,8 +292,6 @@ fn build_framework(
     manifests_out.sort_by(|a, b| a.path.cmp(&b.path));
     marketplace_out.sort_by(|a, b| a.path_in_manifest.cmp(&b.path_in_manifest));
     briefs_out.sort_by(|a, b| a.path.cmp(&b.path));
-    let mut agent_teams_facts = agent_teams_facts;
-    agent_teams_facts.sort_by(|a: &AgentTeam, b: &AgentTeam| a.path.cmp(&b.path));
 
     Ok(WorkspaceModel {
         version: WorkspaceModelVersion,
@@ -318,7 +312,6 @@ fn build_framework(
         ignore_directives: ignore_directives_out,
         fenced_blocks: fenced_blocks_out,
         briefs: briefs_out,
-        agent_teams: agent_teams_facts,
         scenarios: scenario::extract(project_dir),
         adapter_dirs: adapter_dir::extract(project_dir),
     })

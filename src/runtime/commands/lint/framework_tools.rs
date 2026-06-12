@@ -2,105 +2,34 @@
 //! DECISIONS.md §"Framework lint engine: generic dispatcher (Road A / Road B)").
 //!
 //! Framework runs have no `project.yaml` to populate a tool inventory, so
-//! the first-party framework/authoring checkers are declared here as a
-//! closed, embedded inventory keyed by name. `is_declared` / `run`
-//! dispatch by name — the standards engine never calls the imperative
-//! check in-process, which is the decoupling lever the plan requires.
-//!
-//! Interim posture (B-2): each `.wasm` artifact is built from its
-//! `wasi-tools/<name>/` crate and embedded into this binary, so a framework
-//! `kind: tool` rule resolves with no separate build step at lint time. The
-//! artifact lives in `specify-cli` only as explicitly temporary
-//! **versioned-artifact coupling**: nothing here reimplements rule logic or
-//! bakes rule policy into the engine — it stages a generic component and runs
-//! it by name. Exit condition: when the tool source moves to its colocated
-//! framework-tools home, this inventory switches to
-//! `specify_tool::resolver::resolve` with a registry-pinned `sha256`, leaving
-//! the rule files, the engine, and the parity tests untouched.
-//!
-//! Integrity pinning: each embedded blob is paired with a checked-in
-//! `wasi-tools/<name>/dist/<name>-<version>.wasm.sha256` sidecar (the
-//! `shasum -a 256` checkfile format the `vectis` build already emits),
-//! regenerated alongside the blob by the `cargo make framework-wasm` recipe.
-//! The `tests::dist_digests_pinned` drift guard recomputes the digest of the
-//! embedded bytes and asserts it matches the sidecar, so a stale or tampered
-//! `dist/*.wasm` fails the build rather than being silently trusted. The
-//! staged [`ResolvedTool`] keeps `sha256: None` deliberately: the host
-//! [`WasiRunner`](specify_tool::host::WasiRunner) compiles the staged bytes
-//! directly and never re-verifies `ResolvedTool.tool.sha256`, so pinning a
-//! digest there — over bytes embedded from the same source — would be dead,
-//! circular code. The sidecar + drift test is the trust anchor instead.
+//! the first-party framework checkers are declared here as a closed
+//! inventory keyed by name. `is_declared` / `run` dispatch by name — the
+//! standards engine never calls a checker directly, which is the
+//! decoupling lever the standards-layer split requires: the engine sees
+//! only the [`ToolRunner`] trait and folds each checker's
+//! `DiagnosticReport` envelope, exactly as it did when the checkers were
+//! out-of-process WASI components (the B-2 exit replaced the Wasmtime
+//! hop with an in-process call; the wire shape, name resolution, and
+//! rule-owned `config:` policy forwarding are unchanged).
 
-use std::path::{Path, PathBuf};
+mod links_registry;
+mod marketplace;
+mod prose;
+mod rules;
+mod scenarios;
+mod skill_body;
+mod support;
 
-use specify_error::{Error, Result};
+use std::path::Path;
+
 use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_tool::host::{RunContext, WasiRunner};
-use specify_tool::manifest::{Tool, ToolPermissions, ToolScope, ToolSource};
-use specify_tool::resolver::ResolvedTool;
 
-/// `scenarios` framework checker component, built from
-/// `wasi-tools/scenarios/` via `cargo make framework-wasm scenarios` (Road B
-/// scenario family: CORE-028, 029, 031, 033, plus the config-driven
-/// CORE-056 catalog↔runs drift check; CORE-030 and CORE-032 moved to
-/// Road A `scenario`-fact hints).
-const SCENARIOS_WASM: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/wasi-tools/scenarios/dist/scenarios-0.1.0.wasm"
-));
+use self::support::ToolFinding;
 
-/// `skill-body` framework checker component, built from
-/// `wasi-tools/skill-body/` via `cargo make framework-wasm skill-body` (Road B
-/// skill body family: CORE-040, 046, 048; CORE-041 moved to Road A
-/// `kind: presence` `markdown-section`).
-const SKILL_BODY_WASM: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/wasi-tools/skill-body/dist/skill-body-0.1.0.wasm"
-));
-
-/// `agent-teams` framework checker component, built from
-/// `wasi-tools/agent-teams/` via `cargo make framework-wasm agent-teams` (Road B
-/// agent-teams overlay drift: CORE-012; CORE-011 moved to Road A
-/// `kind: presence` `file`).
-const AGENT_TEAMS_WASM: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/wasi-tools/agent-teams/dist/agent-teams-0.1.0.wasm"
-));
-
-/// `links-registry` framework checker component, built from
-/// `wasi-tools/links-registry/` via `cargo make framework-wasm links-registry`
-/// (Road B link-registry family: CORE-018, 020).
-const LINKS_REGISTRY_WASM: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/wasi-tools/links-registry/dist/links-registry-0.1.0.wasm"
-));
-
-/// `marketplace` framework checker component, built from
-/// `wasi-tools/marketplace/` via `cargo make framework-wasm marketplace` (Road B
-/// marketplace drift: CORE-022).
-const MARKETPLACE_WASM: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/wasi-tools/marketplace/dist/marketplace-0.1.0.wasm"
-));
-
-/// `prose` framework checker component, built from `wasi-tools/prose/`
-/// via `cargo make framework-wasm prose` (Road B numeric-cap scan: CORE-024).
-const PROSE_WASM: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/wasi-tools/prose/dist/prose-0.1.0.wasm"));
-
-/// `rules` framework checker component, built from `wasi-tools/rules/`
-/// via `cargo make framework-wasm rules` (Road B rule-tree family: CORE-009
-/// namespace ownership, CORE-026 duplicate rule id, CORE-053 body
-/// heading missing).
-const RULES_WASM: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/wasi-tools/rules/dist/rules-0.1.0.wasm"));
-
-/// One first-party framework checker: its declared name, version, and
-/// embedded component bytes.
+/// One in-process framework checker: its declared name and entry point.
 struct FrameworkTool {
     name: &'static str,
-    version: &'static str,
-    bytes: &'static [u8],
+    run: fn(&Path, &[String]) -> Vec<ToolFinding>,
 }
 
 /// Closed inventory of framework checkers `specify lint framework`
@@ -108,38 +37,27 @@ struct FrameworkTool {
 const FRAMEWORK_TOOLS: &[FrameworkTool] = &[
     FrameworkTool {
         name: "scenarios",
-        version: "0.1.0",
-        bytes: SCENARIOS_WASM,
+        run: scenarios::run,
     },
     FrameworkTool {
         name: "skill-body",
-        version: "0.1.0",
-        bytes: SKILL_BODY_WASM,
-    },
-    FrameworkTool {
-        name: "agent-teams",
-        version: "0.1.0",
-        bytes: AGENT_TEAMS_WASM,
+        run: skill_body::run,
     },
     FrameworkTool {
         name: "links-registry",
-        version: "0.1.0",
-        bytes: LINKS_REGISTRY_WASM,
+        run: links_registry::run,
     },
     FrameworkTool {
         name: "marketplace",
-        version: "0.1.0",
-        bytes: MARKETPLACE_WASM,
+        run: marketplace::run,
     },
     FrameworkTool {
         name: "prose",
-        version: "0.1.0",
-        bytes: PROSE_WASM,
+        run: prose::run,
     },
     FrameworkTool {
         name: "rules",
-        version: "0.1.0",
-        bytes: RULES_WASM,
+        run: rules::run,
     },
 ];
 
@@ -148,55 +66,8 @@ fn lookup(name: &str) -> Option<&'static FrameworkTool> {
 }
 
 /// Name-resolving [`ToolRunner`] for the framework surface.
-#[derive(Debug)]
-pub struct FrameworkToolRunner {
-    runner: WasiRunner,
-    staging_dir: PathBuf,
-}
-
-impl FrameworkToolRunner {
-    /// Build the runner and its staging directory under the OS temp dir.
-    ///
-    /// # Errors
-    ///
-    /// Propagates Wasmtime engine construction failure and staging-dir
-    /// creation failure.
-    pub fn new() -> Result<Self> {
-        let runner = WasiRunner::new().map_err(|err| Error::Diag {
-            code: "framework-tool-runner",
-            detail: err.to_string(),
-        })?;
-        let staging_dir = std::env::temp_dir().join("specify-framework-tools");
-        std::fs::create_dir_all(&staging_dir).map_err(|source| Error::Filesystem {
-            op: "framework-tool-staging",
-            path: staging_dir.clone(),
-            source,
-        })?;
-        Ok(Self { runner, staging_dir })
-    }
-
-    /// Write a framework tool's embedded bytes to a content-stable path
-    /// and return it. Writes through a per-process temp name then renames
-    /// so a concurrent framework run never observes a partial component.
-    fn stage(&self, tool: &FrameworkTool) -> std::result::Result<PathBuf, ToolRunError> {
-        let dest = self.staging_dir.join(format!("{}-{}.wasm", tool.name, tool.version));
-        if std::fs::metadata(&dest)
-            .is_ok_and(|meta| usize::try_from(meta.len()).is_ok_and(|len| len == tool.bytes.len()))
-        {
-            return Ok(dest);
-        }
-        let tmp = self.staging_dir.join(format!(
-            "{}-{}.wasm.{}.tmp",
-            tool.name,
-            tool.version,
-            std::process::id()
-        ));
-        std::fs::write(&tmp, tool.bytes)
-            .and_then(|()| std::fs::rename(&tmp, &dest))
-            .map_err(|err| ToolRunError::Runtime(format!("stage {}: {err}", tool.name)))?;
-        Ok(dest)
-    }
-}
+#[derive(Debug, Default)]
+pub struct FrameworkToolRunner;
 
 impl ToolRunner for FrameworkToolRunner {
     fn is_declared(&self, tool_name: &str) -> bool {
@@ -205,76 +76,55 @@ impl ToolRunner for FrameworkToolRunner {
 
     fn run(
         &self, tool_name: &str, args: &[String], project_dir: &Path,
-    ) -> std::result::Result<ToolOutput, ToolRunError> {
+    ) -> Result<ToolOutput, ToolRunError> {
         let Some(tool) = lookup(tool_name) else {
             return Err(ToolRunError::Runtime(format!(
                 "tool {tool_name} is not a declared framework checker"
             )));
         };
-        let bytes_path = self.stage(tool)?;
-        let resolved = ResolvedTool {
-            bytes_path: bytes_path.clone(),
-            scope: ToolScope::Project {
-                project_name: "specify-framework".to_string(),
-            },
-            tool: Tool {
-                name: tool.name.to_string(),
-                version: tool.version.to_string(),
-                source: ToolSource::LocalPath(bytes_path),
-                sha256: None,
-                permissions: ToolPermissions {
-                    read: vec!["$PROJECT_DIR".to_string()],
-                    write: Vec::new(),
-                },
-            },
-        };
-        let run_ctx = RunContext::new(project_dir, args.to_vec());
-        let captured = self
-            .runner
-            .run_captured(&resolved, &run_ctx)
-            .map_err(|err| ToolRunError::Runtime(err.to_string()))?;
-        Ok(ToolOutput {
-            stdout: captured.stdout,
-            stderr: captured.stderr,
-            exit_code: captured.exit_code,
-        })
+        let findings = (tool.run)(project_dir, args);
+        Ok(support::report_output(&findings))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::path::PathBuf;
+    use std::path::Path;
 
-    use specify_digest::sha256_hex;
+    use specify_diagnostics::DiagnosticReport;
+    use specify_standards::lint::eval::tool::ToolRunner;
 
-    use super::FRAMEWORK_TOOLS;
+    use super::FrameworkToolRunner;
 
-    /// Every embedded framework component must hash to the digest recorded in
-    /// its checked-in `dist/<name>-<version>.wasm.sha256` sidecar. Goes red if
-    /// a `.wasm` is rebuilt without regenerating its sidecar (or vice versa),
-    /// closing the silent-trust gap on the embedded blobs.
     #[test]
-    fn dist_digests_pinned() {
-        for tool in FRAMEWORK_TOOLS {
-            let sidecar = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("wasi-tools")
-                .join(tool.name)
-                .join("dist")
-                .join(format!("{}-{}.wasm.sha256", tool.name, tool.version));
-            let contents = fs::read_to_string(&sidecar)
-                .unwrap_or_else(|err| panic!("read sidecar {}: {err}", sidecar.display()));
-            let recorded = contents
-                .split_whitespace()
-                .next()
-                .unwrap_or_else(|| panic!("sidecar {} is empty", sidecar.display()));
-            assert_eq!(
-                sha256_hex(tool.bytes),
-                recorded,
-                "embedded {} component drifted from sidecar {}",
-                tool.name,
-                sidecar.display()
-            );
+    fn declares_exactly_the_six_checkers() {
+        let runner = FrameworkToolRunner;
+        for name in ["scenarios", "skill-body", "links-registry", "marketplace", "prose", "rules"] {
+            assert!(runner.is_declared(name), "{name} must be declared");
         }
+        assert!(!runner.is_declared("agent-teams"), "agent-teams retired with CORE-012");
+        assert!(!runner.is_declared("contract"), "adapter tools stay WASI-resolved");
+    }
+
+    #[test]
+    fn run_emits_parseable_report_envelope() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let runner = FrameworkToolRunner;
+        let output = runner
+            .run("marketplace", &["sentinel.md".to_string()], dir.path())
+            .expect("marketplace runs");
+        assert_eq!(output.exit_code, 0);
+        let report: DiagnosticReport =
+            serde_json::from_slice(&output.stdout).expect("stdout is a DiagnosticReport");
+        // An empty tree has no marketplace.json: exactly one drift finding.
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].rule_id.as_deref(), Some("CORE-022"));
+    }
+
+    #[test]
+    fn undeclared_tool_is_a_runtime_error() {
+        let runner = FrameworkToolRunner;
+        let err = runner.run("ghost", &[], Path::new(".")).expect_err("ghost is undeclared");
+        assert!(err.to_string().contains("not a declared framework checker"));
     }
 }

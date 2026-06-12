@@ -10,16 +10,17 @@ use std::fs;
 
 use tempfile::tempdir;
 
-use crate::common::{omnia_schema_dir, specify_cmd};
+use crate::common::{contract_dump_verbs, omnia_schema_dir, specify_cmd};
 
 #[test]
 fn help_exits_zero_and_prints_usage() {
+    // No exact clap wording: assert exit 0 and that the help text lists
+    // every top-level verb the contract dump declares.
     let assert = specify_cmd().arg("--help").assert().success();
     let output = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8 stdout");
-    assert!(
-        output.contains("specify") && output.contains("Usage"),
-        "expected usage in stdout, got:\n{output}"
-    );
+    for verb in contract_dump_verbs(&[]) {
+        assert!(output.contains(&verb), "--help must list `{verb}`, got:\n{output}");
+    }
 }
 
 #[test]

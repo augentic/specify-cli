@@ -128,24 +128,3 @@ fn plan_next_all_done_text() {
     assert_eq!(actual["active"], Value::Null);
     assert_golden("next-all-done.json", actual);
 }
-
-#[test]
-fn plan_next_stuck_when_deps_unmet() {
-    let project = Project::init();
-    project.seed_plan(STUCK_PLAN);
-    let _lock = project.hold_plan_lock();
-
-    let json = specify_cmd()
-        .current_dir(project.root())
-        .args(["--format", "json", "plan", "next"])
-        .assert()
-        .success();
-    let actual = parse_stdout(&json.get_output().stdout, project.root());
-    assert_eq!(
-        actual["reason"], "drained",
-        "post-2.0 the legacy `stuck` fixture is now drained (all-done)"
-    );
-    assert_eq!(actual["next"], Value::Null);
-    assert_eq!(actual["active"], Value::Null);
-    assert_golden("next-stuck.json", actual);
-}

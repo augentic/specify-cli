@@ -13,7 +13,7 @@
 //!    every new framework-only entity family round-trips through the
 //!    schema.
 //! 2. Every framework extractor (`skill`, `adapter`, `marketplace`,
-//!    `agent_teams`, `brief`) emits at least one fact against the
+//!    `brief`) emits at least one fact against the
 //!    minimal fixture, and the followed `agent-teams.md` symlink
 //!    surfaces both endpoints plus a SHA-256 of the resolved target's
 //!    bytes per the standards-layer contract §F1.
@@ -115,19 +115,6 @@ fn extractors_emit_facts() {
 fn symlink_records_endpoint_and_sha256() {
     let tempdir = stage_fixture();
     let model = build(tempdir.path(), ScanProfile::Framework, &[], &[]).expect("build ok");
-
-    assert_eq!(model.agent_teams.len(), 1, "fixture mints exactly one agent-teams.md symlink");
-    let team = &model.agent_teams[0];
-    assert_eq!(team.path, "adapters/targets/omnia/references/agent-teams.md");
-    assert!(team.target_raw.ends_with("docs/reference/review-team-protocol.md"));
-    assert_eq!(
-        team.resolved_target.as_deref(),
-        Some("docs/reference/review-team-protocol.md"),
-        "follow mode resolves the on-tree endpoint"
-    );
-    let digest = team.target_sha256.as_deref().expect("sha256 populated for readable target");
-    assert_eq!(digest.len(), 64, "sha256 hex is 64 chars");
-    assert!(digest.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
 
     let symlink = model
         .symlinks

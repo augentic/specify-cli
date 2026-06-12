@@ -8,15 +8,22 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use serde_json::Value;
 
 mod common;
 use common::{parse_stdout, repo_root, specify_cmd};
 
-fn dump_json() -> Value {
+/// Dumped once per test process; tests share the parsed payload so the
+/// binary is not re-spawned for every assertion suite.
+static DUMP: LazyLock<Value> = LazyLock::new(|| {
     let assert = specify_cmd().args(["--format", "json", "contract", "dump"]).assert().success();
     parse_stdout(&assert.get_output().stdout, &repo_root())
+});
+
+fn dump_json() -> &'static Value {
+    &DUMP
 }
 
 #[test]
@@ -24,7 +31,7 @@ fn dump_validates_against_schema() {
     let validator = specify_schema::compile_schema(specify_schema::CONTRACT_DUMP_JSON_SCHEMA)
         .expect("dump schema compiles");
     let dump = dump_json();
-    let errors: Vec<String> = validator.iter_errors(&dump).map(|err| err.to_string()).collect();
+    let errors: Vec<String> = validator.iter_errors(dump).map(|err| err.to_string()).collect();
     assert!(errors.is_empty(), "contract dump must satisfy its schema; errors: {errors:?}");
 }
 

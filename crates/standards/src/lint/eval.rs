@@ -6,11 +6,10 @@
 //! [`HintKind::Tool`]). The framework-convergence
 //! family adds [`HintKind::ReferenceResolves`], [`HintKind::Unique`],
 //! [`HintKind::SetCoverage`], [`HintKind::Cardinality`],
-//! [`HintKind::ConstantEq`], [`HintKind::SetEq`],
-//! and [`HintKind::ContentDigestEq`] in
+//! [`HintKind::ConstantEq`], and [`HintKind::SetEq`] in
 //! the same family. Each rule's
 //! hints are partitioned by kind and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
+//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
@@ -45,7 +44,6 @@
 pub mod cardinality;
 pub mod cli_contract;
 pub mod constant_eq;
-pub mod content_digest_eq;
 pub mod cross_reference;
 mod error;
 pub mod fenced_block;
@@ -117,7 +115,7 @@ impl fmt::Debug for EvalEnv<'_> {
 /// Evaluate a single rule's hints against the workspace model.
 ///
 /// Hints are partitioned by kind and run in the order
-/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → content-digest-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
+/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
 /// consume.
@@ -216,11 +214,6 @@ fn evaluate_with_cache(
         let mut new = set_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in partition.content_digest_eq {
-        let mut new =
-            content_digest_eq::evaluate(rule, hint, &candidates, project_dir, model, &mut next_id)?;
-        findings.append(&mut new);
-    }
     for hint in partition.fenced_block {
         let mut new = fenced_block::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
@@ -278,7 +271,6 @@ struct PartitionedHints<'a> {
     cardinality: Vec<&'a RuleHint>,
     constant_eq: Vec<&'a RuleHint>,
     set_eq: Vec<&'a RuleHint>,
-    content_digest_eq: Vec<&'a RuleHint>,
     fenced_block: Vec<&'a RuleHint>,
     presence: Vec<&'a RuleHint>,
     field_grammar: Vec<&'a RuleHint>,
@@ -301,7 +293,6 @@ impl<'a> PartitionedHints<'a> {
                 HintKind::Cardinality => partition.cardinality.push(hint),
                 HintKind::ConstantEq => partition.constant_eq.push(hint),
                 HintKind::SetEq => partition.set_eq.push(hint),
-                HintKind::ContentDigestEq => partition.content_digest_eq.push(hint),
                 HintKind::FencedBlock => partition.fenced_block.push(hint),
                 HintKind::Presence => partition.presence.push(hint),
                 HintKind::FieldGrammar => partition.field_grammar.push(hint),

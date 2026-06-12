@@ -94,9 +94,11 @@ pub enum LintMode {
 ///
 /// After C17 every kind is executable: `path-pattern`, `regex`,
 /// `schema`, `tool`, `reference-resolves`, `unique`, `set-coverage`,
-/// `cardinality`, `constant-eq`, `set-eq`, `content-digest-eq`,
+/// `cardinality`, `constant-eq`, `set-eq`,
 /// `fenced-block`, `presence`, `field-grammar`, `cross-reference`,
-/// and `cli-contract`.
+/// and `cli-contract`. (`content-digest-eq` was removed when its last
+/// rule consumers retired — agent-teams overlays are symlink-only and
+/// README restatements became links.)
 /// No kind is reserved. (Whole-tree namespace-ownership runs through the
 /// `rules` WASI tool via `kind: tool`, not a dedicated hint kind.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -134,14 +136,6 @@ pub enum HintKind {
     /// tightening of [`Self::SetCoverage`] (v1 source discriminator:
     /// `adapter-briefs`; the expected set rides `config`).
     SetEq,
-    /// Assert that the content digest (SHA-256) of one surface equals
-    /// an expected digest (v1 source discriminators:
-    /// `agent-teams-match-canonical` — every followed overlay symlink
-    /// hashes equal to the `config: { canonical-path }` document;
-    /// `markdown-section` — the section body named by
-    /// `config: { path, section }` hashes equal to the body named by
-    /// `config: { canonical-path, canonical-section }`).
-    ContentDigestEq,
     /// Fence-aware body predicate over [`crate::lint::FencedBlock`] facts
     /// (`skill-envelope-json-in-body`, …).
     FencedBlock,

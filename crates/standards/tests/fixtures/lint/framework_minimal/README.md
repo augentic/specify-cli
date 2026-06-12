@@ -2,9 +2,9 @@
 
 Tiny framework-repo fixture for the `scan_profile: framework`
 indexer test. Each extractor (`skill`, `adapter`, `marketplace`,
-`agent_teams`, `brief`) is exercised by at least one file in this
-tree. The `agent-teams.md` symlink is **minted at test time** rather
-than committed because relative symlinks survive `git` poorly across
+`brief`) is exercised by at least one file in this tree. The
+`agent-teams.md` symlink is **minted at test time** rather than
+committed because relative symlinks survive `git` poorly across
 operating systems; see `tests/lint_framework_indexer.rs`.
 
 The fixture deliberately omits any top-level README or extension that
