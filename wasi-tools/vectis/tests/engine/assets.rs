@@ -527,6 +527,189 @@ assets:
     );
 }
 
+/// RFC §3.1 path A — vector `app-icon` with SVG master validates.
+#[test]
+fn app_icon_vector_master_validates() {
+    let yaml = r#"version: 1
+app-icon: app-icon
+assets:
+  app-icon:
+    kind: vector
+    role: app-icon
+    alt: "Application"
+    source: assets/app-icon.svg
+"#;
+    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/app-icon.svg"]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "vector app-icon master should validate cleanly: {envelope}"
+    );
+}
+
+/// RFC §3.1 path A — raster `app-icon` with PNG master validates.
+#[test]
+fn app_icon_raster_master_validates() {
+    let yaml = r#"version: 1
+app-icon: app-icon-png
+assets:
+  app-icon-png:
+    kind: raster
+    role: app-icon
+    alt: "Application"
+    source: assets/app-icon.png
+"#;
+    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/app-icon.png"]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "raster app-icon master should validate cleanly: {envelope}"
+    );
+}
+
+/// RFC §3.1 path B — operator-pinned export roots validate as directories.
+#[test]
+fn app_icon_pinned_export_roots_validates() {
+    let yaml = r#"version: 1
+app-icon: app-icon-pinned
+assets:
+  app-icon-pinned:
+    kind: raster
+    role: app-icon
+    alt: "Application"
+    sources:
+      ios: assets/exports/ios/app-icon/AppIcon.appiconset
+      android: assets/exports/android/app-icon
+"#;
+    let (tmp, assets_path) = write_assets_project(yaml, &[]);
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(design.join("assets/exports/ios/app-icon/AppIcon.appiconset"))
+        .expect("mkdir ios export root");
+    std::fs::create_dir_all(design.join("assets/exports/android/app-icon")).expect("mkdir android export root");
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "pinned app-icon export roots should validate cleanly: {envelope}"
+    );
+}
+
+/// `source:` on a non-app-icon raster entry is rejected by the schema.
+#[test]
+fn raster_icon_with_source_schema_rejects() {
+    let yaml = r"version: 1
+assets:
+  bad-icon:
+    kind: raster
+    role: icon
+    source: assets/bad-icon.png
+    sources:
+      ios:
+        1x: assets/bad-icon.png
+";
+    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/bad-icon.png"]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        !errors_array(&envelope).is_empty(),
+        "expected schema rejection for `source:` on role: icon raster: {envelope}"
+    );
+}
+
+/// Vector `kind` with a raster `source:` extension is a cross-check error.
+#[test]
+fn app_icon_kind_source_mismatch_errors() {
+    let yaml = r#"version: 1
+assets:
+  app-icon:
+    kind: vector
+    role: app-icon
+    alt: "Application"
+    source: assets/app-icon.png
+"#;
+    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/app-icon.png"]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("assets-app-icon-kind-source-mismatch")),
+        "expected kind/source mismatch error, got: {errors:?}"
+    );
+}
+
+/// Top-level `app-icon` pointer must reference an existing `role: app-icon` entry.
+#[test]
+fn app_icon_pointer_cross_check_errors() {
+    let yaml = r"version: 1
+app-icon: missing
+assets:
+  settings:
+    kind: symbol
+    role: icon
+    symbols:
+      ios: gearshape
+";
+    let (_tmp, assets_path) = write_assets_project(yaml, &[]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("assets-app-icon-invalid")),
+        "expected app-icon pointer error, got: {errors:?}"
+    );
+}
+
+/// `inferred: true` on a symbol entry is schema-valid.
+#[test]
+fn symbol_inferred_validates() {
+    let yaml = r"version: 1
+assets:
+  chevron-right:
+    kind: symbol
+    role: icon
+    inferred: true
+    symbols:
+      ios: chevron.right
+      android: chevron_right
+";
+    let (_tmp, assets_path) = write_assets_project(yaml, &[]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "inferred symbol should validate cleanly: {envelope}"
+    );
+}
+
 /// A `usage_hint` without `variant_of` is schema-valid (the fields
 /// are independently optional).
 #[test]

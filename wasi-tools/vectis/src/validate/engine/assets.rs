@@ -75,7 +75,9 @@ pub(super) fn validate(path: Option<&Path>) -> Result<Value, VectisError> {
         if let Some(assets) = instance.get("assets").and_then(Value::as_object) {
             for (id, entry) in assets {
                 check_asset_files(id, entry, assets_dir, &mut errors);
+                check_app_icon_entry(id, entry, &mut errors);
             }
+            check_app_icon_pointer(instance, assets, &mut errors);
         }
 
         if let Some(comp_path) = discover_artifact(&target, ValidateMode::Composition)
@@ -123,20 +125,39 @@ fn check_asset_files(id: &str, entry: &Value, dir: &Path, errors: &mut Vec<Value
     let Some(kind) = entry.get("kind").and_then(Value::as_str) else {
         return;
     };
+    let app_icon = entry.get("role").and_then(Value::as_str) == Some("app-icon");
     match kind {
         "raster" => {
-            for plat in PLATFORMS {
-                let densities =
-                    entry.get("sources").and_then(|s| s.get(plat)).and_then(Value::as_object);
-                if let Some(map) = densities {
-                    for (density, value) in map {
-                        if let Some(file) = value.as_str() {
-                            check_file(
-                                &format!("/assets/{id}/sources/{plat}/{density}"),
-                                file,
-                                dir,
-                                errors,
-                            );
+            if app_icon {
+                if let Some(file) = entry.get("source").and_then(Value::as_str) {
+                    check_file(&format!("/assets/{id}/source"), file, dir, errors);
+                }
+                for plat in PLATFORMS {
+                    if let Some(path) =
+                        entry.get("sources").and_then(|s| s.get(plat)).and_then(Value::as_str)
+                    {
+                        check_app_icon_platform_path(
+                            &format!("/assets/{id}/sources/{plat}"),
+                            path,
+                            dir,
+                            errors,
+                        );
+                    }
+                }
+            } else {
+                for plat in PLATFORMS {
+                    let densities =
+                        entry.get("sources").and_then(|s| s.get(plat)).and_then(Value::as_object);
+                    if let Some(map) = densities {
+                        for (density, value) in map {
+                            if let Some(file) = value.as_str() {
+                                check_file(
+                                    &format!("/assets/{id}/sources/{plat}/{density}"),
+                                    file,
+                                    dir,
+                                    errors,
+                                );
+                            }
                         }
                     }
                 }
@@ -147,15 +168,123 @@ fn check_asset_files(id: &str, entry: &Value, dir: &Path, errors: &mut Vec<Value
                 check_file(&format!("/assets/{id}/source"), file, dir, errors);
             }
             for plat in PLATFORMS {
-                if let Some(file) =
+                if let Some(path) =
                     entry.get("sources").and_then(|s| s.get(plat)).and_then(Value::as_str)
                 {
-                    check_file(&format!("/assets/{id}/sources/{plat}"), file, dir, errors);
+                    if app_icon {
+                        check_app_icon_platform_path(
+                            &format!("/assets/{id}/sources/{plat}"),
+                            path,
+                            dir,
+                            errors,
+                        );
+                    } else {
+                        check_file(&format!("/assets/{id}/sources/{plat}"), path, dir, errors);
+                    }
                 }
             }
         }
         _ => {}
     }
+}
+
+/// Cross-check the top-level `app-icon` pointer against the inventory.
+fn check_app_icon_pointer(instance: &Value, assets: &serde_json::Map<String, Value>, errors: &mut Vec<Value>) {
+    let Some(pointer) = instance.get("app-icon").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(entry) = assets.get(pointer) else {
+        errors.push(json!({
+            "path": "/app-icon",
+            "message": format!(
+                "assets-app-icon-invalid: top-level `app-icon` references unknown asset id `{pointer}`"
+            ),
+        }));
+        return;
+    };
+    if entry.get("role").and_then(Value::as_str) != Some("app-icon") {
+        errors.push(json!({
+            "path": format!("/assets/{pointer}/role"),
+            "message": format!(
+                "assets-app-icon-invalid: asset `{pointer}` referenced by top-level `app-icon` must have `role: app-icon`"
+            ),
+        }));
+    }
+}
+
+/// Structural checks for `role: app-icon` entries (kind vs `source:` extension).
+fn check_app_icon_entry(id: &str, entry: &Value, errors: &mut Vec<Value>) {
+    if entry.get("role").and_then(Value::as_str) != Some("app-icon") {
+        return;
+    }
+    let Some(source) = entry.get("source").and_then(Value::as_str) else {
+        return;
+    };
+    let Some(kind) = entry.get("kind").and_then(Value::as_str) else {
+        return;
+    };
+    let ext = source_extension(source);
+    match (kind, ext.as_deref()) {
+        ("vector", Some("svg")) | ("raster", Some("png" | "jpg" | "jpeg" | "webp")) => {}
+        ("vector", _) => errors.push(json!({
+            "path": format!("/assets/{id}/source"),
+            "message": format!(
+                "assets-app-icon-kind-source-mismatch: vector app-icon `{id}` requires `source:` with a `.svg` extension, got `{source}`"
+            ),
+        })),
+        ("raster", Some(ext)) => errors.push(json!({
+            "path": format!("/assets/{id}/source"),
+            "message": format!(
+                "assets-app-icon-source-invalid: raster app-icon `{id}` `source:` extension `.{ext}` is not an allowed master format (png, jpg, jpeg, webp)"
+            ),
+        })),
+        ("raster", None) => errors.push(json!({
+            "path": format!("/assets/{id}/source"),
+            "message": format!(
+                "assets-app-icon-source-invalid: raster app-icon `{id}` `source:` `{source}` has no recognised raster extension"
+            ),
+        })),
+        _ => errors.push(json!({
+            "path": format!("/assets/{id}/kind"),
+            "message": format!(
+                "assets-app-icon-kind-source-mismatch: app-icon `{id}` `kind` `{kind}` disagrees with `source:` extension"
+            ),
+        })),
+    }
+}
+
+/// Lowercase extension without the leading dot, or `None` when absent.
+fn source_extension(path: &str) -> Option<String> {
+    Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase)
+}
+
+/// Resolve an app-icon platform pin: regular files must exist; paths
+/// without a raster/vector extension may be export-root directories.
+fn check_app_icon_platform_path(json_path: &str, path_rel: &str, dir: &Path, errors: &mut Vec<Value>) {
+    let resolved = dir.join(path_rel);
+    if resolved.is_file() || resolved.is_dir() {
+        return;
+    }
+    if is_likely_export_root(path_rel) {
+        errors.push(json!({
+            "path": json_path,
+            "message": format!("export root not found: {}", resolved.display()),
+        }));
+    } else {
+        check_file(json_path, path_rel, dir, errors);
+    }
+}
+
+/// Paths without a recognised single-file extension are treated as
+/// export-root directories during validate.
+fn is_likely_export_root(path_rel: &str) -> bool {
+    let Some(ext) = source_extension(path_rel) else {
+        return true;
+    };
+    !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "svg" | "pdf" | "xml")
 }
 
 /// Resolve `file_rel` (a path relative to the directory containing
@@ -190,6 +319,9 @@ fn check_file(json_path: &str, file_rel: &str, dir: &Path, errors: &mut Vec<Valu
 fn check_platform_coverage(
     id: &str, entry: &Value, errors: &mut Vec<Value>, warnings: &mut Vec<Value>,
 ) {
+    if entry.get("role").and_then(Value::as_str) == Some("app-icon") {
+        return;
+    }
     let Some(kind) = entry.get("kind").and_then(Value::as_str) else {
         return;
     };
