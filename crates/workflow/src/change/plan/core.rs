@@ -27,7 +27,7 @@ pub use next::{NextBody, NextReason, plan_next_body};
 pub use propose::{
     LeadCatalog, LeadCatalogEntry, ProjectMissingPlatforms, ProjectRef, ProposalKind,
     ProposalRequest, ProposalResponse, ProposeOutcome, ResponseMember, ResponseSlice,
-    build_catalog, build_request, detect_missing_platforms, resolve_target, resolve_topology,
+    build_catalog, build_request, resolve_target, resolve_topology,
 };
 pub use status::{
     NextActionKind, StatusBody, StatusCounts, StopBody, StopReason, drained_line, plan_status_body,
