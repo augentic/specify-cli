@@ -16,10 +16,10 @@ use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::load;
 use specify_tool::manifest::{Axis as ToolAxis, Tool, ToolScope};
 
+use crate::Platform;
 use crate::adapter::TargetAdapter;
 use crate::config::ProjectConfig;
 use crate::init::adapter_name_from_value;
-use crate::Platform;
 
 const VECTIS_ADAPTER: &str = "vectis";
 const VECTIS_TOOL: &str = "vectis";
@@ -27,11 +27,15 @@ const VECTIS_TOOL: &str = "vectis";
 /// Return declared-but-absent platforms for a Vectis-bound project by
 /// dispatching `vectis verify --mode detect`.
 ///
-/// When the project's target adapter is not [`VECTIS_ADAPTER`], returns
-/// an empty vector without invoking the tool (Omnia and other targets are
+/// When the project's target adapter is not `vectis`, returns an empty
+/// vector without invoking the tool (Omnia and other targets are
 /// unaffected). The result preserves `declared` order and is filtered to
 /// platforms present in both the caller's `declared` set and the tool's
 /// `missing[]` response.
+///
+/// `now` is forwarded to the tool resolver for cache metadata; runtime
+/// dispatchers pass `Timestamp::now()` and tests pin a deterministic
+/// value.
 ///
 /// # Errors
 ///
@@ -42,13 +46,13 @@ const VECTIS_TOOL: &str = "vectis";
 /// - `vectis-detect-parse` when stdout is not the expected detect JSON.
 /// - `vectis-detect-failed` when the tool exits non-zero.
 pub fn vectis_missing_platforms(
-    project_dir: &Path, declared: &[Platform],
+    project_dir: &Path, declared: &[Platform], now: Timestamp,
 ) -> Result<Vec<Platform>, Error> {
     if declared.is_empty() || !is_vectis_bound(project_dir)? {
         return Ok(Vec::new());
     }
 
-    let missing = dispatch_vectis_detect(project_dir)?;
+    let missing = dispatch_vectis_detect(project_dir, now)?;
     let missing_set: HashSet<Platform> = missing.into_iter().collect();
     Ok(declared.iter().copied().filter(|p| missing_set.contains(p)).collect())
 }
@@ -63,18 +67,13 @@ fn is_vectis_bound(project_dir: &Path) -> Result<bool, Error> {
     Ok(resolved.manifest.name == VECTIS_ADAPTER)
 }
 
-fn dispatch_vectis_detect(project_dir: &Path) -> Result<Vec<Platform>, Error> {
+fn dispatch_vectis_detect(project_dir: &Path, now: Timestamp) -> Result<Vec<Platform>, Error> {
     let config = ProjectConfig::load(project_dir)?;
     let inventory = merged_tool_inventory(project_dir, &config)?;
     let (scope, tool) = find_vectis_tool(&inventory)?;
 
-    let resolved =
-        specify_tool::resolver::resolve(scope, tool, Timestamp::now(), project_dir)?;
-    let args = vec![
-        "verify".to_string(),
-        "--mode".to_string(),
-        "detect".to_string(),
-    ];
+    let resolved = specify_tool::resolver::resolve(scope, tool, now, project_dir)?;
+    let args = vec!["verify".to_string(), "--mode".to_string(), "detect".to_string()];
     let mut run_ctx = RunContext::new(project_dir, args);
     if let ToolScope::Plugin { capability_dir, .. } = scope {
         run_ctx = run_ctx.with_capability_dir(capability_dir);
@@ -106,12 +105,8 @@ fn merged_tool_inventory(
     let plugin_tools = if let Some(adapter_value) = config.adapter.as_deref() {
         let name = adapter_name_from_value(adapter_value);
         let resolved = TargetAdapter::resolve(name, project_dir)?;
-        load::plugin_sidecar(
-            resolved.location.path(),
-            &resolved.manifest.name,
-            ToolAxis::Target,
-        )
-        .map_err(Error::from)?
+        load::plugin_sidecar(resolved.location.path(), &resolved.manifest.name, ToolAxis::Target)
+            .map_err(Error::from)?
     } else {
         Vec::new()
     };

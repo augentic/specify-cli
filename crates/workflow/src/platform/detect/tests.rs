@@ -5,19 +5,24 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use jiff::Timestamp;
 use specify_digest::sha256_hex;
-use crate::Platform;
 use tempfile::tempdir;
 
 use super::vectis_missing_platforms;
+use crate::Platform;
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
+const ALL_SUPPORTED: [Platform; 3] = [Platform::Core, Platform::Ios, Platform::Android];
+
+fn fixture_now() -> Timestamp {
+    "2026-05-07T00:00:00Z".parse().expect("fixed test stamp")
+}
+
 fn env_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn repo_root() -> PathBuf {
@@ -98,11 +103,16 @@ fn tools_cache_dir() -> PathBuf {
 }
 
 struct DetectFixture {
-    _lock: std::sync::MutexGuard<'static, ()>,
     _cache_guard: EnvGuard,
     _home_guard: EnvGuard,
     _xdg_guard: EnvGuard,
-    _tmp: tempfile::TempDir,
+    tmp: tempfile::TempDir,
+}
+
+impl DetectFixture {
+    fn root(&self) -> &Path {
+        self.tmp.path()
+    }
 }
 
 struct EnvGuard {
@@ -117,7 +127,7 @@ impl EnvGuard {
         #[expect(unsafe_code, reason = "test helper mutates process env for tool cache isolation")]
         unsafe {
             std::env::set_var(key, value);
-        }
+        };
         Self { key, previous }
     }
 
@@ -127,7 +137,7 @@ impl EnvGuard {
         #[expect(unsafe_code, reason = "test helper mutates process env for tool cache isolation")]
         unsafe {
             std::env::remove_var(key);
-        }
+        };
         Self { key, previous }
     }
 }
@@ -141,7 +151,7 @@ impl Drop for EnvGuard {
                 Some(value) => std::env::set_var(self.key, value),
                 None => std::env::remove_var(self.key),
             }
-        }
+        };
     }
 }
 
@@ -158,55 +168,53 @@ fn detect_fixture(platforms: &[&str]) -> DetectFixture {
     let cache_guard = EnvGuard::set("SPECIFY_TOOLS_CACHE", &cache);
     let home_guard = EnvGuard::remove("HOME");
     let xdg_guard = EnvGuard::remove("XDG_CACHE_HOME");
+    drop(lock);
 
     let tmp = tempdir().expect("tempdir");
     write_project_yaml(tmp.path(), platforms);
     seed_vectis_adapter(tmp.path(), &wasm);
 
     DetectFixture {
-        _lock: lock,
         _cache_guard: cache_guard,
         _home_guard: home_guard,
         _xdg_guard: xdg_guard,
-        _tmp: tmp,
+        tmp,
     }
 }
-
-const ALL_SUPPORTED: [Platform; 3] = [Platform::Core, Platform::Ios, Platform::Android];
 
 #[test]
 fn greenfield_reports_all_supported_missing() {
     let fixture = detect_fixture(&["core", "ios", "android"]);
     let missing =
-        vectis_missing_platforms(fixture._tmp.path(), &ALL_SUPPORTED).expect("detect succeeds");
+        vectis_missing_platforms(fixture.root(), &ALL_SUPPORTED, fixture_now()).expect("detect ok");
     assert_eq!(missing, ALL_SUPPORTED.to_vec());
 }
 
 #[test]
-fn core_and_ios_present_omits_ios_from_missing() {
+fn partial_shells_missing_android() {
     let fixture = detect_fixture(&["core", "ios", "android"]);
-    scaffold_core(fixture._tmp.path());
-    scaffold_ios(fixture._tmp.path());
+    scaffold_core(fixture.root());
+    scaffold_ios(fixture.root());
 
     let missing =
-        vectis_missing_platforms(fixture._tmp.path(), &ALL_SUPPORTED).expect("detect succeeds");
+        vectis_missing_platforms(fixture.root(), &ALL_SUPPORTED, fixture_now()).expect("detect ok");
     assert_eq!(missing, vec![Platform::Android]);
 }
 
 #[test]
 fn all_shells_present_returns_empty() {
     let fixture = detect_fixture(&["core", "ios", "android"]);
-    scaffold_core(fixture._tmp.path());
-    scaffold_ios(fixture._tmp.path());
-    scaffold_android(fixture._tmp.path());
+    scaffold_core(fixture.root());
+    scaffold_ios(fixture.root());
+    scaffold_android(fixture.root());
 
     let missing =
-        vectis_missing_platforms(fixture._tmp.path(), &ALL_SUPPORTED).expect("detect succeeds");
+        vectis_missing_platforms(fixture.root(), &ALL_SUPPORTED, fixture_now()).expect("detect ok");
     assert!(missing.is_empty());
 }
 
 #[test]
-fn non_vectis_adapter_returns_empty_without_tool() {
+fn non_vectis_skips_detect() {
     let tmp = tempdir().expect("tempdir");
     let specify_dir = tmp.path().join(".specify");
     fs::create_dir_all(&specify_dir).expect("mkdir .specify");
@@ -235,13 +243,15 @@ fn non_vectis_adapter_returns_empty_without_tool() {
         .expect("write brief");
     }
 
-    let missing = vectis_missing_platforms(tmp.path(), &ALL_SUPPORTED).expect("non-vectis is ok");
+    let missing =
+        vectis_missing_platforms(tmp.path(), &ALL_SUPPORTED, fixture_now()).expect("non-vectis ok");
     assert!(missing.is_empty(), "non-vectis projects must not invoke detect");
 }
 
 #[test]
 fn empty_declared_skips_dispatch() {
     let fixture = detect_fixture(&["core", "ios", "android"]);
-    let missing = vectis_missing_platforms(fixture._tmp.path(), &[]).expect("empty declared is ok");
+    let missing =
+        vectis_missing_platforms(fixture.root(), &[], fixture_now()).expect("empty declared ok");
     assert!(missing.is_empty());
 }

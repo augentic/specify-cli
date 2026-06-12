@@ -4,7 +4,6 @@
 mod detect;
 
 pub use detect::vectis_missing_platforms;
-
 use serde::{Deserialize, Serialize};
 
 /// Target platform for a Specify project.
