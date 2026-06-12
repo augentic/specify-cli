@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args as ClapArgs, ValueEnum};
 use serde_json::Value;
+use specify_vectis_shell_detect::{shell_present, SUPPORTED_SHELL_PLATFORMS};
 
 use crate::validate::find_project_root;
 use crate::{VectisError, render_json as render_value};
@@ -49,9 +50,6 @@ struct PlatformStatus {
     declared: bool,
     present: bool,
 }
-
-/// Known platform strings that have on-disk shell interpretations today.
-const SUPPORTED_PLATFORMS: &[&str] = &["core", "ios", "android"];
 
 /// Run the verify engine.
 ///
@@ -154,66 +152,17 @@ fn load_platforms(project_root: &Path) -> Result<Vec<String>, VectisError> {
 // ── per-platform shell detection ───────────────────────────────────
 
 fn check_platform(platform: &str, project_root: &Path) -> PlatformStatus {
-    let present = match platform {
-        "core" => detect_core(project_root),
-        "ios" => detect_ios(project_root),
-        "android" => detect_android(project_root),
-        _ => true, // web/desktop — no on-disk interpretation yet; treated as present
-    };
     PlatformStatus {
         platform: platform.to_string(),
         declared: true,
-        present,
+        present: shell_present(project_root, platform),
     }
-}
-
-/// `core` -> `shared/src/app.rs` exists.
-fn detect_core(project_root: &Path) -> bool {
-    project_root.join("shared/src/app.rs").is_file()
-}
-
-/// `ios` -> `iOS/` has >= 1 `.swift` file.
-fn detect_ios(project_root: &Path) -> bool {
-    let ios_dir = project_root.join("iOS");
-    if !ios_dir.is_dir() {
-        return false;
-    }
-    has_files_with_extension(&ios_dir, "swift")
-}
-
-/// `android` -> `Android/` has >= 1 `.kt` file.
-fn detect_android(project_root: &Path) -> bool {
-    let android_dir = project_root.join("Android");
-    if !android_dir.is_dir() {
-        return false;
-    }
-    has_files_with_extension(&android_dir, "kt")
-}
-
-fn has_files_with_extension(dir: &Path, ext: &str) -> bool {
-    walk_dir_recursive(dir).iter().any(|p| p.extension().and_then(|e| e.to_str()) == Some(ext))
-}
-
-fn walk_dir_recursive(dir: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            out.extend(walk_dir_recursive(&path));
-        } else {
-            out.push(path);
-        }
-    }
-    out
 }
 
 // ── output rendering ───────────────────────────────────────────────
 
 fn is_supported(platform: &str) -> bool {
-    SUPPORTED_PLATFORMS.contains(&platform)
+    SUPPORTED_SHELL_PLATFORMS.contains(&platform)
 }
 
 fn render_detect(statuses: &[PlatformStatus]) -> Value {

@@ -21,6 +21,7 @@ path = "src/main.rs"
 workspace = true
 
 [dependencies]
+specify-vectis-shell-detect = { path = "../../crates/vectis-shell-detect" }
 clap.workspace = true
 jsonschema.workspace = true
 serde.workspace = true

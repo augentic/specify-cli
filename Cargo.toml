@@ -51,6 +51,7 @@ members = [
     "crates/tool",
     "crates/digest",
     "crates/validate",
+    "crates/vectis-shell-detect",
     "crates/workflow",
 ]
 
@@ -180,6 +181,7 @@ specify-error = { path = "crates/error" }
 specify-schema = { path = "crates/schema" }
 specify-tool = { path = "crates/tool" }
 specify-digest = { path = "crates/digest" }
+specify-vectis-shell-detect = { path = "crates/vectis-shell-detect" }
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"

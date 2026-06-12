@@ -4765,6 +4765,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "specify-vectis-shell-detect"
+version = "0.2.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "specify-workflow"
 version = "0.2.0"
 dependencies = [
