@@ -10,7 +10,7 @@ mod assemble;
 mod generate;
 
 pub use generate::for_init as generate_for_init;
-use specify_agents::{fences, fingerprint, render};
+use specify_workflow::agents::{fences, fingerprint, render};
 use specify_error::{Error, Result};
 #[cfg(test)]
 use specify_workflow::config::Layout;

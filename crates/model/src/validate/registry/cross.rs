@@ -1,6 +1,6 @@
 //! Cross-brief rules that span multiple artifacts.
 
-use crate::{Classification, CrossContext, CrossRule, RuleOutcome, primitives};
+use crate::validate::{Classification, CrossContext, CrossRule, RuleOutcome, primitives};
 
 fn cross_proposal_domains_have_specs(ctx: &CrossContext<'_>) -> RuleOutcome {
     let proposal_path = ctx.slice_dir.join("proposal.md");
@@ -145,7 +145,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use crate::CrossContext;
+    use crate::validate::CrossContext;
 
     /// A slice dir plus a `specs/` sibling, both inside one tempdir.
     fn fixture() -> (TempDir, std::path::PathBuf) {
@@ -161,8 +161,8 @@ mod tests {
 
     mod proposal_domains_have_specs {
         use super::{ctx, fixture};
-        use crate::RuleOutcome;
-        use crate::registry::cross::cross_proposal_domains_have_specs;
+        use crate::validate::RuleOutcome;
+        use crate::validate::registry::cross::cross_proposal_domains_have_specs;
 
         /// Absent proposal is not this rule's concern — it passes.
         #[test]
@@ -201,8 +201,8 @@ mod tests {
 
     mod design_references_valid {
         use super::{ctx, fixture};
-        use crate::RuleOutcome;
-        use crate::registry::cross::cross_design_references_valid;
+        use crate::validate::RuleOutcome;
+        use crate::validate::registry::cross::cross_design_references_valid;
 
         #[test]
         fn passes_when_no_design() {
@@ -232,8 +232,8 @@ mod tests {
 
     mod composition_maps_to {
         use super::{ctx, fixture};
-        use crate::RuleOutcome;
-        use crate::registry::cross::cross_composition_maps_to_consistent;
+        use crate::validate::RuleOutcome;
+        use crate::validate::registry::cross::cross_composition_maps_to_consistent;
 
         fn write_comp(dir: &std::path::Path, body: &str) {
             std::fs::write(dir.join("composition.yaml"), body).expect("write composition");

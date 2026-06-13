@@ -1,6 +1,6 @@
 //! Tasks-brief rules.
 
-use crate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
 
 fn tasks_use_checkbox_format(ctx: &BriefContext<'_>) -> RuleOutcome {
     let Some(tasks) = ctx.tasks else {
@@ -52,10 +52,10 @@ pub(super) const TASKS_RULES: &[Rule] = &[
 mod tests {
     use std::path::Path;
 
-    use specify_model::task::{Progress, parse_tasks};
+    use crate::task::{Progress, parse_tasks};
 
     use super::{tasks_grouped_under_headings, tasks_use_checkbox_format};
-    use crate::{BriefContext, RuleOutcome};
+    use crate::validate::{BriefContext, RuleOutcome};
 
     fn ctx<'a>(content: &'a str, tasks: Option<&'a Progress>) -> BriefContext<'a> {
         BriefContext {

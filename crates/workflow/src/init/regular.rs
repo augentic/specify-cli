@@ -23,7 +23,7 @@ use crate::init::{
 /// `pipeline.define[]`; refine synthesises the canonical set directly
 /// (see `DECISIONS.md` §"Adapter loader axis routing"). The exact
 /// scaffold keys mirror the validation registry namespaces in
-/// `specify_validate::registry::rules_for`.
+/// `specify_model::validate::registry::rules_for`.
 const SCAFFOLDED_RULE_KEYS: &[&str] = &["proposal", "specs", "design", "tasks"];
 
 pub(super) fn run(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> {

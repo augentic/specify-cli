@@ -1,6 +1,6 @@
 //! Specs-brief rules.
 
-use crate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
+use crate::validate::{BriefContext, Classification, Rule, RuleOutcome, primitives};
 
 fn specs_requirements_have_scenarios(ctx: &BriefContext<'_>) -> RuleOutcome {
     let Some(spec) = ctx.parsed_spec else {
@@ -38,13 +38,13 @@ fn specs_ids_match_pattern(ctx: &BriefContext<'_>) -> RuleOutcome {
             detail: "spec was not parsed".to_string(),
         };
     };
-    if primitives::ids_match_pattern(spec, specify_model::spec::REQ_ID_PATTERN) {
+    if primitives::ids_match_pattern(spec, crate::spec::REQ_ID_PATTERN) {
         RuleOutcome::Pass
     } else {
         RuleOutcome::Fail {
             detail: format!(
                 "one or more requirement IDs do not match `{}`",
-                specify_model::spec::REQ_ID_PATTERN
+                crate::spec::REQ_ID_PATTERN
             ),
         }
     }
@@ -81,12 +81,12 @@ pub(super) const SPECS_RULES: &[Rule] = &[
 mod tests {
     use std::path::Path;
 
-    use specify_model::spec::{ParsedSpec, parse_baseline};
+    use crate::spec::{ParsedSpec, parse_baseline};
 
     use super::{
         specs_ids_match_pattern, specs_requirements_have_ids, specs_requirements_have_scenarios,
     };
-    use crate::{BriefContext, RuleOutcome};
+    use crate::validate::{BriefContext, RuleOutcome};
 
     fn ctx(spec: Option<&ParsedSpec>) -> BriefContext<'_> {
         BriefContext {
@@ -118,7 +118,7 @@ mod tests {
 
     mod scenarios {
         use super::{ctx, parse_baseline, specs_requirements_have_scenarios};
-        use crate::RuleOutcome;
+        use crate::validate::RuleOutcome;
 
         #[test]
         fn passes_when_present() {
@@ -140,7 +140,7 @@ mod tests {
 
     mod ids {
         use super::{ctx, parse_baseline, specs_requirements_have_ids};
-        use crate::RuleOutcome;
+        use crate::validate::RuleOutcome;
 
         #[test]
         fn passes_when_present() {
@@ -161,7 +161,7 @@ mod tests {
 
     mod id_pattern {
         use super::{ctx, parse_baseline, specs_ids_match_pattern};
-        use crate::RuleOutcome;
+        use crate::validate::RuleOutcome;
 
         #[test]
         fn passes_on_canonical_ids() {

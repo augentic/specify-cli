@@ -5,7 +5,7 @@
 //! workflow §"Refinement" pins the canonical artifact set to
 //! `proposal.md`, `spec.md`, `design.md`, `tasks.md`, plus the
 //! `contracts/` overlay. Rules are registered in
-//! [`crate::registry::rules_for`] under per-brief namespaces
+//! [`crate::validate::registry::rules_for`] under per-brief namespaces
 //! (`proposal`, `specs`, `design`, `tasks`, `contracts`); the runner
 //! feeds artifacts into that registry directly.
 
@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use specify_diagnostics::{Artifact, Diagnostic, FindingLocation};
 use specify_error::Error;
 
-use crate::registry::{cross_rules, rules_for};
-use crate::{BriefContext, Classification, CrossContext, RuleOutcome};
+use crate::validate::registry::{cross_rules, rules_for};
+use crate::validate::{BriefContext, Classification, CrossContext, RuleOutcome};
 
 const DEFERRED_REASON: &str = "Semantic check — requires agent judgment";
 
@@ -24,7 +24,7 @@ const DEFERRED_REASON: &str = "Semantic check — requires agent judgment";
 /// `(brief_id, artifact)` where `artifact` is either a literal path
 /// relative to the slice dir or a glob (containing `*`). Mirrors the
 /// validation registry's namespaces verbatim — rules are registered
-/// under these ids in [`crate::registry::rules_for`].
+/// under these ids in [`crate::validate::registry::rules_for`].
 const CANONICAL_ARTIFACTS: &[(&str, &str)] = &[
     ("proposal", "proposal.md"),
     ("specs", "specs/**/*.md"),
@@ -174,8 +174,8 @@ fn run_brief_rules(
     };
 
     // Parse brief-specific structured context.
-    let parsed_spec = (brief_id == "specs").then(|| specify_model::spec::parse_baseline(&content));
-    let tasks = (brief_id == "tasks").then(|| specify_model::task::parse_tasks(&content));
+    let parsed_spec = (brief_id == "specs").then(|| crate::spec::parse_baseline(&content));
+    let tasks = (brief_id == "tasks").then(|| crate::task::parse_tasks(&content));
 
     let ctx = BriefContext {
         id: brief_id,

@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use specify_diagnostics::DiagnosticKind;
-use specify_validate::validate_slice;
+use specify_model::validate::validate_slice;
 use specify_workflow::slice::SLICES_DIR_NAME;
 use tempfile::TempDir;
 

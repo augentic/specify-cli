@@ -8,12 +8,13 @@
 //! The two surfaces stay conceptually distinct (they differ in gate
 //! policy, not in currency). Naming the substrate neutrally — rather
 //! than after `lint` — lets `validate` produce diagnostics without
-//! depending on anything named `lint`: the `specify-validate` crate
-//! depends on this leaf, and `specify-standards` re-exports it for the
-//! advisory surface.
+//! depending on anything named `lint`: `specify-model` (which holds the
+//! `validate` registry) depends on this leaf, and `specify-standards`
+//! re-exports it for the advisory surface.
 //!
 //! Dependency posture: depends only on `specify-error` and
-//! `specify-schema` (plus `serde`/`serde_json`/`sha2`/`jsonschema`).
+//! `specify-schema` (plus `serde`/`serde_json`/`jsonschema`). The
+//! SHA-256 fingerprint digest comes through `specify_schema::digest`.
 //! It carries no workflow lifecycle types and no `WorkspaceModel`, so
 //! every higher layer can build on it without inheriting a heavier
 //! graph.

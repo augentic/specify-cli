@@ -8,12 +8,12 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use regex::Regex;
-use specify_model::spec::ParsedSpec;
-use specify_model::task::Progress;
+use crate::spec::ParsedSpec;
+use crate::task::Progress;
 
 // ---------------------------------------------------------------------------
 // Compiled regexes (constructed once, on first use). Mirrors the pattern in
-// `specify_model::task` so the model crate is uniformly OnceLock-backed for literal
+// `crate::task` so the model crate is uniformly OnceLock-backed for literal
 // patterns. The dynamic `ids_match_pattern` accessor stays inline because its
 // pattern is caller-supplied.
 // ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ fn checkbox_re() -> &'static Regex {
 
 /// Unanchored *scanner* over the canonical `REQ_ID_PATTERN` grammar: finds
 /// `REQ-NNN` references embedded in design prose. Distinct from the
-/// full-string `specify_model::spec::is_req_id` predicate — anchoring it
+/// full-string `crate::spec::is_req_id` predicate — anchoring it
 /// would stop it matching references inside surrounding text. The pattern
 /// body is sourced from `REQ_ID_PATTERN` (anchors stripped) so the scanner
 /// and the predicate share one grammar definition.
@@ -35,7 +35,7 @@ fn req_id_ref_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
         let body =
-            specify_model::spec::REQ_ID_PATTERN.trim_start_matches('^').trim_end_matches('$');
+            crate::spec::REQ_ID_PATTERN.trim_start_matches('^').trim_end_matches('$');
         Regex::new(body).expect("req id scanner regex is valid")
     })
 }
@@ -282,11 +282,11 @@ mod tests {
 
     #[test]
     fn requirements_need_scenarios() {
-        let ok = specify_model::spec::parse_baseline(
+        let ok = crate::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n- WHEN foo\n- THEN bar\n",
         );
         assert!(all_requirements_have_scenarios(&ok));
-        let bad = specify_model::spec::parse_baseline(
+        let bad = crate::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\nno scenario\n",
         );
         assert!(!all_requirements_have_scenarios(&bad));
@@ -294,44 +294,44 @@ mod tests {
 
     #[test]
     fn requirements_need_ids() {
-        let ok = specify_model::spec::parse_baseline(
+        let ok = crate::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
         assert!(all_requirements_have_ids(&ok));
         let bad =
-            specify_model::spec::parse_baseline("### Requirement: Thing\n\n#### Scenario: Happy\n");
+            crate::spec::parse_baseline("### Requirement: Thing\n\n#### Scenario: Happy\n");
         assert!(!all_requirements_have_ids(&bad));
     }
 
     #[test]
     fn req_id_pattern() {
-        let ok = specify_model::spec::parse_baseline(
+        let ok = crate::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
-        assert!(ids_match_pattern(&ok, specify_model::spec::REQ_ID_PATTERN));
-        let bad = specify_model::spec::parse_baseline(
+        assert!(ids_match_pattern(&ok, crate::spec::REQ_ID_PATTERN));
+        let bad = crate::spec::parse_baseline(
             "### Requirement: Thing\n\nID: REQ-1\n\n#### Scenario: Happy\n",
         );
-        assert!(!ids_match_pattern(&bad, specify_model::spec::REQ_ID_PATTERN));
+        assert!(!ids_match_pattern(&bad, crate::spec::REQ_ID_PATTERN));
     }
 
     #[test]
     fn checkbox_rejects_bare_bullets() {
         let ok = "## 1. Setup\n- [ ] 1.1 Do thing\n- [ ] 1.2 Do other\n";
-        let progress = specify_model::task::parse_tasks(ok);
+        let progress = crate::task::parse_tasks(ok);
         assert!(all_tasks_use_checkbox(&progress, ok));
         let bad = "## 1. Setup\n- [ ] 1.1 Do thing\n- bare bullet\n";
-        let progress = specify_model::task::parse_tasks(bad);
+        let progress = crate::task::parse_tasks(bad);
         assert!(!all_tasks_use_checkbox(&progress, bad));
     }
 
     #[test]
     fn tasks_require_group_headings() {
         let ok = "## 1. Setup\n- [ ] 1.1 Do thing\n";
-        let progress = specify_model::task::parse_tasks(ok);
+        let progress = crate::task::parse_tasks(ok);
         assert!(tasks_grouped_under_headings(&progress));
         let bad = "- [ ] 1.1 Do thing\n";
-        let progress = specify_model::task::parse_tasks(bad);
+        let progress = crate::task::parse_tasks(bad);
         assert!(!tasks_grouped_under_headings(&progress));
     }
 

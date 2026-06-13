@@ -1,6 +1,6 @@
 //! Init-time fenced AGENTS.md writer.
 
-use specify_agents::{fences, fingerprint, lock};
+use specify_workflow::agents::{fences, fingerprint, lock};
 use specify_error::{Error, Result};
 use specify_model::atomic::bytes_write;
 

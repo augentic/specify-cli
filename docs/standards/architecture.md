@@ -8,22 +8,19 @@ Binary crate (`name = "specify"`) at the repo root. [`src/main.rs`](../../src/ma
 
 ```text
 specify-error                    # leaf — thiserror + serde-saphyr only
-specify-digest                   # leaf — sha2 + base16ct only (SHA-256 hex digest encoding)
-specify-schema                   # depends on specify-error (embedded JSON Schemas + jsonschema plumbing)
-specify-diagnostics              # depends on specify-{error,schema,digest} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
-specify-model                    # depends on specify-{error,diagnostics} (artifact types + parsers: spec, task, evidence, discovery; shared atomic writer)
-specify-agents                   # depends on specify-{error,digest,model} (init-time AGENTS.md context-fence generation); Ctx-free, consumed only by the root binary
+specify-schema                   # depends on specify-error (embedded JSON Schemas + jsonschema plumbing; also owns schema::digest — SHA-256 hex via sha2 + base16ct)
+specify-diagnostics              # depends on specify-{error,schema} (Diagnostic substrate: report, fingerprint, validator, renderers, blocking)
+specify-model                    # depends on specify-{error,diagnostics} (artifact types + parsers: spec, task, evidence, discovery; shared atomic writer; model::validate artifact rule registry — NOT on specify-workflow or anything named lint)
 specify-tool-manifest            # depends on specify-{diagnostics,schema} (tool manifest DTOs + structural validation; wasmtime-free)
-specify-tool                     # depends on specify-{error,digest,schema,tool-manifest} (WASI tool runner; wasmtime, gated)
-specify-validate                 # depends on specify-{model,error,diagnostics} — artifact rule registry; NOT on specify-workflow or anything named lint
-specify-standards                # standards layer — depends on specify-{error,schema,digest,diagnostics}; NOT on specify-workflow or specify-tool
-specify-workflow                 # workflow layer — depends on specify-{error,schema,digest,tool-manifest,model,diagnostics}; NOT on specify-standards / specify-validate / specify-tool (no wasmtime in its graph)
+specify-tool                     # depends on specify-{error,schema,tool-manifest} (WASI tool runner; wasmtime, gated)
+specify-standards                # standards layer — depends on specify-{error,schema,diagnostics}; NOT on specify-workflow or specify-tool
+specify-workflow                 # workflow layer — depends on specify-{error,schema,tool-manifest,model,diagnostics} (also owns workflow::agents — init-time AGENTS.md context-fence generation); NOT on specify-standards / specify-tool (no wasmtime in its graph)
 specify (root crate)             # wires runtime + framework crates into the specify binary
 ```
 
 The framework authoring checks behind `specify lint framework` run entirely through the declarative hint interpreter in `specify_standards::lint` plus the in-process Road B checkers beside it (`crates/standards/src/lint/framework_tools/`); there is no imperative `Check` substrate (see [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout)).
 
-`specify-standards` (standards) and `specify-workflow` (workflow) are siblings: they never import each other. `specify-validate` is the validation analog: it depends on `specify-model` only and never on `specify-workflow`, so an artifact rule cannot reach workflow lifecycle types — the same no-lifecycle-authority invariant `specify-standards` enforces. `specify-model` is the lifecycle-free leaf carrying the artifact types and parsers both `specify-validate` and `specify-workflow` read, alongside `specify-schema` and `specify-error` at the bottom. The Phase 1B collapse from 13 crates, the standards-layer split that re-introduced `specify-standards` and `specify-schema`, and the model/validate split that extracted `specify-model` and `specify-validate` are logged in [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout) and [DECISIONS.md §"Standards layer split into `specify-standards` and `specify-schema`"](../../DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema).
+`specify-standards` (standards) and `specify-workflow` (workflow) are siblings: they never import each other. The artifact validation rule registry (`specify_model::validate`) is the validation analog: it sits on `specify-model`, which depends on neither `specify-workflow` nor anything named lint, so an artifact rule cannot reach workflow lifecycle types — the same no-lifecycle-authority invariant `specify-standards` enforces. `specify-model` is the lifecycle-free leaf carrying the artifact types, parsers, and validation registry both `specify-standards` and `specify-workflow` read, alongside `specify-schema` and `specify-error` at the bottom. The Phase 1B collapse from 13 crates and the standards-layer split that re-introduced `specify-standards` and `specify-schema` are logged in [DECISIONS.md §"Crate layout"](../../DECISIONS.md#crate-layout) and [DECISIONS.md §"Standards layer split into `specify-standards` and `specify-schema`"](../../DECISIONS.md#standards-layer-split-into-specify-standards-and-specify-schema).
 
 ### Standards layer vs workflow layer
 
@@ -70,7 +67,7 @@ WASI tools live in `wasi-tools/`, a sibling workspace excluded from the main lin
 
 `wasi-tools/contract` and `wasi-tools/vectis` are deliberate carve-outs from the workspace's Render/emit/`specify-error` discipline. They ship as standalone WASI components and live in their own sibling workspace at `wasi-tools/Cargo.toml`, which inherits a leaner lint posture and a minimal `[workspace.dependencies]` set. Do not pull `specify-error` (or any other host workspace crate that drags in `wasmtime`, `tokio`, `ureq`, …) into either; the carve-out comments in `wasi-tools/contract/src/main.rs` and `wasi-tools/vectis/src/lib.rs` are authoritative.
 
-**Carve-out invariant.** A plugin's validation, scaffold, and rendering logic lives inside its carve-out; the host CLI consumes it only through `specify tool run <name>`. No `specify-*` workspace crate may import plugin-specific logic — the previous shared-validation split (`specify-validate` re-extracted for the contract baseline checks) was an architectural leak collapsed in the 2026-05 inversion pass. New source / target adapters ship as carve-outs (or as in-repo brief bundles consumed by the agent) and stay there.
+**Carve-out invariant.** A plugin's validation, scaffold, and rendering logic lives inside its carve-out; the host CLI consumes it only through `specify tool run <name>`. No `specify-*` workspace crate may import plugin-specific logic — a host-side duplicate of a plugin's contract validation would only drift from the carve-out. New source / target adapters ship as carve-outs (or as in-repo brief bundles consumed by the agent) and stay there.
 
 When editing these crates:
 

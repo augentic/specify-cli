@@ -36,8 +36,8 @@ const RULE_REQ_HAS_SCENARIO_DESC: &str = "every requirement declares at least on
 /// Returns one [`Diagnostic`] `violation` per breach (always
 /// deterministic, `important`); an empty vec means the baseline passes
 /// every coherence rule. Design-reference checking is not part of this
-/// pass — the `cross.design-references-valid` rule in `specify-validate`
-/// owns it.
+/// pass — the `cross.design-references-valid` rule in
+/// `specify-model`'s `validate` registry owns it.
 ///
 /// # Panics
 ///

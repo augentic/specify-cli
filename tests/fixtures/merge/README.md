@@ -10,4 +10,4 @@ Each case directory contains a subset of:
 - `expected-merge-errors.txt` — canonical stderr for merge failures. Empty file = success.
 - `expected-validation.txt` — canonical stderr from `validate_baseline`. Empty file = all coherence checks passed.
 
-These are checked in so Rust unit tests can compare byte-for-byte without invoking any external tool. A change to one of the cases must land alongside the corresponding source edit in `specify_workflow::merge` / `specify_validate` and a hand-crafted update to the `expected-*` file in the same commit.
+These are checked in so Rust unit tests can compare byte-for-byte without invoking any external tool. A change to one of the cases must land alongside the corresponding source edit in `specify_workflow::merge` / `specify_model::validate` and a hand-crafted update to the `expected-*` file in the same commit.
