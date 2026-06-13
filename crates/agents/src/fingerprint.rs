@@ -80,7 +80,7 @@ impl InputCollector {
                 let bytes = fs::read(absolute).map_err(Error::Io)?;
                 Ok(InputFingerprint {
                     path: relative.clone(),
-                    sha256: specify_digest::sha256_hex(&bytes),
+                    sha256: specify_schema::digest::sha256_hex(&bytes),
                 })
             })
             .collect()
@@ -122,7 +122,7 @@ pub fn body_sha256(body: &[u8]) -> String {
 }
 
 fn prefixed_sha256(bytes: &[u8]) -> String {
-    format!("sha256:{}", specify_digest::sha256_hex(bytes))
+    format!("sha256:{}", specify_schema::digest::sha256_hex(bytes))
 }
 
 fn repo_relative_path(project_dir: &Path, path: &Path) -> Result<String, Error> {
@@ -223,7 +223,7 @@ mod tests {
             inputs.iter().map(|i| i.path.as_str()).collect::<Vec<_>>(),
             vec!["sub/a.txt", "z.txt"]
         );
-        assert_eq!(inputs[1].sha256, specify_digest::sha256_hex(b"zed"));
+        assert_eq!(inputs[1].sha256, specify_schema::digest::sha256_hex(b"zed"));
     }
 
     // `add_file_if_present` is the soft variant: a missing path and a

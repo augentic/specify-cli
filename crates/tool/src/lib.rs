@@ -4,7 +4,6 @@
 
 pub mod cache;
 pub mod error;
-pub mod hash;
 pub mod host;
 pub mod load;
 mod package;
@@ -14,7 +13,6 @@ pub mod resolver;
 // `specify-tool-manifest` leaf; re-export them under their historical
 // module paths so `specify_tool::manifest::Tool` and
 // `specify_tool::validate` keep resolving.
-pub use hash::{sha256_hex, sha256_output_hex};
 pub use package::PackageMetadata;
 pub use specify_tool_manifest as manifest;
 pub use specify_tool_manifest::{DEFAULT_WASM_PKG_CONFIG, WASM_PKG_CONFIG_FILENAME, validate};

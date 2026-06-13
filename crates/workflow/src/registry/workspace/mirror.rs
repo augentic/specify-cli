@@ -3,7 +3,7 @@
 //! stays project-local (workflow §"Resolver and cache"). See
 //! [DECISIONS.md §"Slot adapter provisioning via workspace sync"].
 //!
-//! [DECISIONS.md §"Slot adapter provisioning via workspace sync"]: ../../../../../DECISIONS.md#slot-adapter-provisioning-via-workspace-sync-rfc-45
+//! [DECISIONS.md §"Slot adapter provisioning via workspace sync"]: ../../../../../DECISIONS.md#slot-adapter-provisioning-via-workspace-sync
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

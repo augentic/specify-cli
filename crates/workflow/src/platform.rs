@@ -12,8 +12,22 @@ use serde::{Deserialize, Serialize};
 /// Only `Ios` and `Android` have scaffold/build/verify support today;
 /// `Web` and `Desktop` are type-system placeholders signalling future
 /// functionality.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::Display,
+    strum::EnumString,
+)]
 #[serde(rename_all = "kebab-case")]
+#[strum(serialize_all = "kebab-case")]
 pub enum Platform {
     /// Shared Rust business-logic crate (mandatory in every platform set).
     Core,
@@ -25,35 +39,6 @@ pub enum Platform {
     Web,
     /// Desktop shell (future — accepted but no build/scaffold support yet).
     Desktop,
-}
-
-impl std::fmt::Display for Platform {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Core => f.write_str("core"),
-            Self::Ios => f.write_str("ios"),
-            Self::Android => f.write_str("android"),
-            Self::Web => f.write_str("web"),
-            Self::Desktop => f.write_str("desktop"),
-        }
-    }
-}
-
-impl std::str::FromStr for Platform {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "core" => Ok(Self::Core),
-            "ios" => Ok(Self::Ios),
-            "android" => Ok(Self::Android),
-            "web" => Ok(Self::Web),
-            "desktop" => Ok(Self::Desktop),
-            other => Err(format!(
-                "unknown platform `{other}`; expected one of: core, ios, android, web, desktop"
-            )),
-        }
-    }
 }
 
 /// Parse a comma-separated platform string into a sorted, deduplicated
@@ -68,7 +53,13 @@ pub fn parse_platforms_csv(csv: &str) -> Result<Vec<Platform>, String> {
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(str::parse)
+        .map(|token| {
+            token.parse::<Platform>().map_err(|_err| {
+                format!(
+                    "unknown platform `{token}`; expected one of: core, ios, android, web, desktop"
+                )
+            })
+        })
         .collect::<Result<Vec<_>, _>>()?;
     platforms.sort();
     platforms.dedup();
@@ -81,8 +72,9 @@ mod tests {
 
     #[test]
     fn wire_names_coherent() {
-        // `Display` and `FromStr` are hand-written matches that must not
-        // drift from the `#[serde(rename_all = "kebab-case")]` wire name.
+        // The strum-derived `Display` / `FromStr` (`serialize_all =
+        // "kebab-case"`) must not drift from the serde
+        // `#[serde(rename_all = "kebab-case")]` wire name.
         for platform in
             [Platform::Core, Platform::Ios, Platform::Android, Platform::Web, Platform::Desktop]
         {

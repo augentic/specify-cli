@@ -1,13 +1,10 @@
 use super::*;
 
-#[test]
-fn greenfield_no_headers_verbatim() {
-    let delta = "# Greenfield spec\n\nJust prose.\n";
-    let result = merge(None, delta).expect("merge ok");
-    assert_eq!(result.output, delta);
-    assert_eq!(result.operations, vec![MergeOperation::CreatedBaseline { requirement_count: 0 }]);
-}
-
+// Greenfield byte-output is pinned by the golden `case_03_new_baseline`
+// (`tests/goldens/merge_engine.rs`). This unit test stays because the
+// golden asserts only `result.output`, not the `CreatedBaseline`
+// operation and its requirement count — the engine-only counting
+// behaviour proven here.
 #[test]
 fn greenfield_counts_blocks() {
     let delta =

@@ -1,20 +1,33 @@
+use std::io;
+use std::process::{Command, ExitStatus, Output};
+
 use super::*;
 
-/// Fake resolver returning canned shas, so status computation is
-/// driven without a real git checkout.
-struct FakeResolver {
-    head: Option<String>,
-    remote: Option<String>,
+/// `CmdRunner` stub for `git rev-parse HEAD`: `Some(sha)` resolves to a
+/// successful run printing that sha; `None` is a failed git invocation
+/// (no checkout / unresolvable ref), so [`resolve_head`] yields `None`.
+fn fake_git(head: Option<&str>) -> impl Fn(&mut Command) -> io::Result<Output> {
+    let head = head.map(str::to_string);
+    move |_cmd: &mut Command| {
+        Ok(head.as_ref().map_or_else(
+            || Output {
+                status: exit_status(1 << 8),
+                stdout: Vec::new(),
+                stderr: b"not a git repository".to_vec(),
+            },
+            |sha| Output {
+                status: exit_status(0),
+                stdout: format!("{sha}\n").into_bytes(),
+                stderr: Vec::new(),
+            },
+        ))
+    }
 }
 
-impl ShaResolver for FakeResolver {
-    fn head(&self, _repo_dir: &Path) -> Option<String> {
-        self.head.clone()
-    }
-
-    fn ls_remote(&self, _url: &str, _git_ref: &str) -> Option<String> {
-        self.remote.clone()
-    }
+#[cfg(unix)]
+fn exit_status(raw: i32) -> ExitStatus {
+    use std::os::unix::process::ExitStatusExt;
+    ExitStatus::from_raw(raw)
 }
 
 #[test]
@@ -36,13 +49,6 @@ fn classify_unresolvable_present() {
 fn classify_no_cache_missing() {
     assert_eq!(classify_status(None, Some("abc")), PluginStatus::Missing);
     assert_eq!(classify_status(None, None), PluginStatus::Missing);
-}
-
-#[test]
-fn is_url_distinguishes_paths_from_remotes() {
-    assert!(!is_url("spec"));
-    assert!(is_url("https://github.com/augentic/specify"));
-    assert!(is_url("git@github.com:augentic/specify.git"));
 }
 
 /// Build a `<name>/<plugin>/<sha>/` cache tree plus a sibling
@@ -85,12 +91,9 @@ fn report_flags_missing_extra_and_present() {
         fixture(tmp.path(), "augentic", &[("spec", Some("cafe")), ("omnia", Some("beef"))]);
     let mani = manifest("augentic", &[("spec", "spec"), ("client", "client")]);
     // Expected unresolvable -> declared+cached collapses to present.
-    let resolver = FakeResolver {
-        head: None,
-        remote: None,
-    };
+    let runner = fake_git(None);
 
-    let report = build_report(&marketplace, &mani, &root, &resolver).unwrap();
+    let report = build_report(&marketplace, &mani, &root, &runner).unwrap();
 
     let by_name = |n: &str| report.plugins.iter().find(|p| p.name == n).unwrap().status;
     assert_eq!(by_name("spec"), PluginStatus::Present, "cached but expected unresolvable");
@@ -108,12 +111,9 @@ fn report_drifted_and_ok_with_resolved_head() {
         fixture(tmp.path(), "augentic", &[("spec", Some("oldsha")), ("client", Some("head"))]);
     let mani = manifest("augentic", &[("spec", "spec"), ("client", "client")]);
     // Relative-path sources share the resolved HEAD.
-    let resolver = FakeResolver {
-        head: Some("head".to_string()),
-        remote: None,
-    };
+    let runner = fake_git(Some("head"));
 
-    let report = build_report(&marketplace, &mani, &root, &resolver).unwrap();
+    let report = build_report(&marketplace, &mani, &root, &runner).unwrap();
 
     let by_name = |n: &str| report.plugins.iter().find(|p| p.name == n).unwrap();
     assert_eq!(by_name("spec").status, PluginStatus::Drifted);
@@ -130,12 +130,9 @@ fn report_missing_cache_root_is_all_missing() {
     fs::write(&marketplace, "{}").unwrap();
     let root = cache_root(tmp.path(), "augentic");
     let mani = manifest("augentic", &[("spec", "spec")]);
-    let resolver = FakeResolver {
-        head: Some("head".to_string()),
-        remote: None,
-    };
+    let runner = fake_git(Some("head"));
 
-    let report = build_report(&marketplace, &mani, &root, &resolver).unwrap();
+    let report = build_report(&marketplace, &mani, &root, &runner).unwrap();
     assert_eq!(report.plugins[0].status, PluginStatus::Missing);
     assert_eq!(report.summary.missing, 1);
 }

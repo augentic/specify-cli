@@ -1,18 +1,16 @@
-//! Shared envelope and arg plumbing for the in-process framework
+//! Shared finding and arg plumbing for the in-process framework
 //! checkers.
 //!
-//! Each checker returns [`ToolFinding`] rows; [`report_output`] renders
-//! them as the same `DiagnosticReport` JSON the retired WASI binaries
-//! printed on stdout, so the `kind: tool` evaluator folds the findings
-//! without knowing the tool moved in-process. The host restamps `id`
-//! and `fingerprint` after folding, so both are placeholders here.
+//! Each checker returns [`ToolFinding`] rows; [`to_diagnostics`] maps
+//! them to typed [`Diagnostic`] values the `kind: tool` evaluator folds
+//! directly. The host restamps `id` and `fingerprint` after folding, so
+//! both are placeholders here.
 
 use serde_json::Value as JsonValue;
 use specify_diagnostics::{
-    Artifact, Diagnostic, DiagnosticKind, DiagnosticReport, DiagnosticReportVersion,
-    DiagnosticSource, DiagnosticSummary, FindingEvidence, FindingLocation, Severity,
+    Artifact, Diagnostic, DiagnosticKind, DiagnosticSource, FindingEvidence, FindingLocation,
+    Severity,
 };
-use specify_standards::lint::eval::tool::ToolOutput;
 
 /// Placeholder fingerprint in the `sha256:<64 hex>` wire shape; the
 /// evaluator recomputes it on fold.
@@ -35,26 +33,9 @@ pub struct ToolFinding {
     pub remediation: &'static str,
 }
 
-/// Render checker findings as the wire-stable `DiagnosticReport` JSON
-/// `ToolOutput` the evaluator parses off "stdout".
-pub fn report_output(findings: &[ToolFinding]) -> ToolOutput {
-    let diagnostics = to_diagnostics(findings);
-    let report = DiagnosticReport {
-        version: DiagnosticReportVersion,
-        summary: DiagnosticSummary::from_diagnostics(&diagnostics),
-        findings: diagnostics,
-    };
-    let stdout = serde_json::to_vec(&report).unwrap_or_default();
-    ToolOutput {
-        stdout,
-        stderr: Vec::new(),
-        exit_code: 0,
-    }
-}
-
 /// Map checker findings to typed [`Diagnostic`] values — the direct
-/// in-process path behind `ToolRunner::run_diagnostics`, with no JSON
-/// round-trip. The evaluator restamps `id` and `fingerprint` on fold.
+/// in-process path, with no JSON round-trip. The evaluator restamps
+/// `id` and `fingerprint` on fold.
 pub fn to_diagnostics(findings: &[ToolFinding]) -> Vec<Diagnostic> {
     findings.iter().enumerate().map(|(index, row)| diagnostic(index, row)).collect()
 }
@@ -177,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn report_round_trips_through_evaluator_parser() {
+    fn to_diagnostics_maps_rule_id_and_severity() {
         let findings = vec![ToolFinding {
             rule_id: "CORE-026",
             path: Some("adapters/x.md".to_string()),
@@ -185,11 +166,9 @@ mod tests {
             impact: "impact",
             remediation: "fix it",
         }];
-        let output = report_output(&findings);
-        let parsed: DiagnosticReport =
-            serde_json::from_slice(&output.stdout).expect("envelope deserialises");
-        assert_eq!(parsed.findings.len(), 1);
-        assert_eq!(parsed.findings[0].rule_id.as_deref(), Some("CORE-026"));
-        assert_eq!(parsed.summary.important, 1);
+        let diagnostics = to_diagnostics(&findings);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].rule_id.as_deref(), Some("CORE-026"));
+        assert_eq!(diagnostics[0].severity, Severity::Important);
     }
 }

@@ -5,7 +5,7 @@
 //!   contract is scoped to `specify lint project` (DECISIONS.md
 //!   §"Journal event names").
 //! - The retired `kind: authoring-predicate` bridge no longer parses.
-//! - A duplicate rule id pre-empts the whole declarative pass.
+//! - A duplicate rule id aborts the run fatally (no degraded skip mode).
 //!
 //! Envelope shape, finding contents, and the human formatter are
 //! covered by the goldens + text smoke in `framework_json.rs`; the
@@ -81,14 +81,6 @@ Synthetic data rule sharing an id with its sibling.\n",
     }
 }
 
-/// Parse the framework run's stdout envelope, panicking with stderr
-/// context on a non-JSON body.
-fn envelope(stdout: &[u8], stderr: &[u8]) -> Value {
-    serde_json::from_slice(stdout).unwrap_or_else(|err| {
-        panic!("stdout is not JSON: {err}; stderr:\n{}", String::from_utf8_lossy(stderr))
-    })
-}
-
 /// Post-bridge invariant: the `kind: authoring-predicate` mechanism is
 /// gone. Rule-agnostic — it pins the
 /// *mechanism*, not any `CORE-NNN`: the closed `HintKind` enum no longer
@@ -121,29 +113,29 @@ The authoring-predicate bridge has been removed.\n";
     );
 }
 
-/// The engine's resolver-level duplicate-id guard skips the entire
-/// declarative pass when two rule files share an id: every declarative
-/// rule (including the `rules` checker that owns CORE-026) is
-/// pre-empted, so no `rules.*` finding can surface through the binary on a
-/// duplicate-id tree. The run still completes (exit 0) with the skip
-/// signalled on stderr.
+/// The engine's resolver-level duplicate-id guard is fatal: when two
+/// rule files share an id the codex fails to resolve and the run aborts
+/// before the declarative pass, surfacing `rules-duplicate-rule-id` on
+/// stderr and exiting 2. There is no degraded "skip the declarative
+/// pass" mode — skipping it would silently pass a broken codex now that
+/// every check (including CORE-026) resolves through declarative hints.
 #[test]
-fn duplicate_rule_id_skips_declarative_pass() {
+fn duplicate_rule_id_aborts_fatally() {
     let temp = TempDir::new().expect("tempdir");
     scaffold_framework(temp.path());
     write_duplicate_rule_id(temp.path());
 
     let (code, stdout, stderr) = run_lint_framework(temp.path(), &["--output-format", "json"]);
-    let envelope = envelope(&stdout, &stderr);
-    let findings = envelope.get("findings").and_then(Value::as_array).expect("findings array");
-    assert!(
-        !findings.iter().any(|f| f.get("rule-id").and_then(Value::as_str) == Some("CORE-026")),
-        "the resolver guard pre-empts the declarative pass, so CORE-026 never fires; got envelope:\n{envelope:#}",
+    assert_eq!(
+        code,
+        Some(2),
+        "a duplicate rule id must abort the run; stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&stdout),
+        String::from_utf8_lossy(&stderr),
     );
     let stderr_text = String::from_utf8_lossy(&stderr);
     assert!(
-        stderr_text.contains("declarative pass skipped"),
-        "a duplicate rule id must skip the declarative pass; stderr:\n{stderr_text}",
+        stderr_text.contains("rules-duplicate-rule-id"),
+        "the resolver abort must surface the duplicate-id error; stderr:\n{stderr_text}",
     );
-    assert_eq!(code, Some(0), "a skipped declarative pass still completes");
 }

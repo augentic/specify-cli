@@ -11,6 +11,7 @@
 //! dictates.
 
 pub mod constants;
+pub mod digest;
 pub mod validate;
 
 pub use constants::{

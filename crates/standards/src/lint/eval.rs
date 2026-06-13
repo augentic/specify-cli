@@ -5,11 +5,10 @@
 //! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
 //! [`HintKind::Tool`]). The framework-convergence
 //! family adds [`HintKind::ReferenceResolves`], [`HintKind::Unique`],
-//! [`HintKind::SetCoverage`], [`HintKind::Cardinality`],
-//! [`HintKind::ConstantEq`], and [`HintKind::SetEq`] in
-//! the same family. Each rule's
+//! [`HintKind::SetCoverage`], [`HintKind::Cardinality`], and
+//! [`HintKind::ConstantEq`] in the same family. Each rule's
 //! hints are partitioned by kind and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
+//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
@@ -55,7 +54,6 @@ pub mod reference_resolves;
 pub mod regex;
 pub mod schema;
 pub mod set_coverage;
-pub mod set_eq;
 #[cfg(test)]
 pub(crate) mod testkit;
 pub mod tool;
@@ -68,7 +66,7 @@ pub use error::HintError;
 pub(crate) use finding::{SyntheticFinding, make_finding, make_synthetic_finding, restamp_finding};
 use specify_diagnostics::Diagnostic;
 use specify_error::Error as CliError;
-pub use tool::{ToolOutput, ToolRunError, ToolRunner};
+pub use tool::{NoopToolRunner, ToolOutput, ToolRunError, ToolRunner};
 
 use crate::lint::WorkspaceModel;
 use crate::lint::contract::CliContract;
@@ -117,7 +115,7 @@ impl fmt::Debug for EvalEnv<'_> {
 /// Evaluate a single rule's hints against the workspace model.
 ///
 /// Hints are partitioned by kind and run in the order
-/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
+/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
 /// consume.
@@ -212,10 +210,6 @@ fn evaluate_with_cache(
         let mut new = constant_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
-    for hint in partition.set_eq {
-        let mut new = set_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
-        findings.append(&mut new);
-    }
     for hint in partition.fenced_block {
         let mut new = fenced_block::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
@@ -272,7 +266,6 @@ struct PartitionedHints<'a> {
     set_coverage: Vec<&'a RuleHint>,
     cardinality: Vec<&'a RuleHint>,
     constant_eq: Vec<&'a RuleHint>,
-    set_eq: Vec<&'a RuleHint>,
     fenced_block: Vec<&'a RuleHint>,
     presence: Vec<&'a RuleHint>,
     field_grammar: Vec<&'a RuleHint>,
@@ -294,7 +287,6 @@ impl<'a> PartitionedHints<'a> {
                 HintKind::SetCoverage => partition.set_coverage.push(hint),
                 HintKind::Cardinality => partition.cardinality.push(hint),
                 HintKind::ConstantEq => partition.constant_eq.push(hint),
-                HintKind::SetEq => partition.set_eq.push(hint),
                 HintKind::FencedBlock => partition.fenced_block.push(hint),
                 HintKind::Presence => partition.presence.push(hint),
                 HintKind::FieldGrammar => partition.field_grammar.push(hint),
@@ -399,7 +391,7 @@ fn build_candidate_set(
 /// Render the candidate `PathBuf` slice into the `/`-relative string
 /// set the fact-iterating sub-evaluators test membership against.
 ///
-/// Every fact-iterating kind (`set-coverage`, `set-eq`, `constant-eq`,
+/// Every fact-iterating kind (`set-coverage`, `constant-eq`,
 /// `reference-resolves`, `unique`, `cardinality`)
 /// narrows its facts to the `path-pattern` candidate set by string
 /// path. Sharing the conversion keeps that lookup identical across

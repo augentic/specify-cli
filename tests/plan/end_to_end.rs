@@ -73,7 +73,7 @@ use crate::common::{
 // ---------------------------------------------------------------------------
 
 fn fixture_dir() -> PathBuf {
-    repo_root().join("tests/fixtures/rfc-29/fan-in-fan-out")
+    repo_root().join("tests/fixtures/fan-in-fan-out")
 }
 
 fn fixture(rel: &str) -> String {

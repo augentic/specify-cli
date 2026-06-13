@@ -112,7 +112,6 @@
         "set-coverage",
         "cardinality",
         "constant-eq",
-        "set-eq",
         "fenced-block",
         "presence",
         "field-grammar",

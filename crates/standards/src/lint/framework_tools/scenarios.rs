@@ -1,11 +1,10 @@
 //! In-process `scenarios` framework checker (Road B `kind: tool`).
 //!
 //! Covers the filesystem-only scenario family: CORE-028 (artifact-path
-//! safety), CORE-029 (body↔frontmatter id), CORE-031 (recorded-trace
-//! header validation), CORE-033 (stage contiguity), and CORE-056
-//! (catalog↔runs drift, policy via the rule's forwarded `config:`).
-//! CORE-030 and CORE-032 are Road A declarative hints over the
-//! `scenario` fact family.
+//! safety), CORE-029 (body↔frontmatter id), CORE-033 (stage
+//! contiguity), and CORE-056 (catalog↔runs drift, policy via the rule's
+//! forwarded `config:`). CORE-030 and CORE-032 are Road A declarative
+//! hints over the `scenario` fact family.
 
 mod catalog;
 
@@ -14,30 +13,24 @@ use std::path::Path;
 
 use regex::Regex;
 use serde_json::Value as JsonValue;
-use specify_standards::lint::index::scenario::discover_scenario_candidates;
 
-use super::support::{ToolFinding, parsed_config, relative_display, requested_rule, walk_files};
+use super::support::{ToolFinding, parsed_config, relative_display, requested_rule};
+use crate::lint::index::scenario::discover_scenario_candidates;
 
 const RULE_ARTIFACT_PATH_UNSAFE: &str = "CORE-028";
 const RULE_BODY_ID_MISMATCH: &str = "CORE-029";
-const RULE_RECORDED_TRACE_VIOLATION: &str = "CORE-031";
 const RULE_STAGES_NOT_CONTIGUOUS: &str = "CORE-033";
 
 const RULES: &[&str] = &[
     RULE_ARTIFACT_PATH_UNSAFE,
     RULE_BODY_ID_MISMATCH,
     catalog::RULE_CATALOG_RUNS_DRIFT,
-    RULE_RECORDED_TRACE_VIOLATION,
     RULE_STAGES_NOT_CONTIGUOUS,
 ];
 
 /// The fixed slice-loop stage order a scenario's `stages` list must be a
 /// contiguous slice of, anchored at any element.
 const STAGES_ORDER: [&str; 5] = ["plan", "refine", "build", "merge", "drop"];
-
-/// Required fields on a `recorded-trace-header` first line (CORE-031).
-const TRACE_REQUIRED_FIELDS: [&str; 6] =
-    ["kind", "schemaVersion", "sourceBackend", "sourceRunId", "sourceTimestamp", "scenarioId"];
 
 /// Run the scenario family scoped by the candidate sentinel path.
 /// A scoped invocation dispatches only the matching sub-check (the
@@ -53,7 +46,6 @@ pub fn run(project_dir: &Path, args: &[String]) -> Vec<ToolFinding> {
         }
         Some(RULE_BODY_ID_MISMATCH) => check_body_id(&collect_opted_scenarios(project_dir)),
         Some(RULE_STAGES_NOT_CONTIGUOUS) => check_stages(&collect_opted_scenarios(project_dir)),
-        Some(RULE_RECORDED_TRACE_VIOLATION) => check_recorded_trace_freshness(project_dir),
         Some(catalog::RULE_CATALOG_RUNS_DRIFT) => {
             catalog::findings_from_config(project_dir, config.as_ref())
         }
@@ -88,10 +80,6 @@ fn guidance(rule_id: &str) -> (&'static str, &'static str) {
             "A scenario's visible 'Scenario ID' body line disagrees with its frontmatter id, so readers cannot trust the citation.",
             "Align the body 'Scenario ID: `…`' line with the frontmatter `id`.",
         ),
-        RULE_RECORDED_TRACE_VIOLATION => (
-            "A recorded-trace file's first line is not a well-formed `recorded-trace-header`, so replay cannot trust its provenance.",
-            "Make the first line a JSON `recorded-trace-header` object with schemaVersion 1 and every required field populated.",
-        ),
         catalog::RULE_CATALOG_RUNS_DRIFT => (
             "The scenario catalog, the scenario files, and the committed run records disagree, so the catalog's gate status cannot be trusted.",
             "Reconcile the catalog row with the scenario tree and evals/runs/: status-bearing rows need exactly one committed record whose <result> agrees.",
@@ -116,7 +104,6 @@ struct ScenarioFinding {
 /// `config:` carries a catalog policy.
 fn run_with_config(project_dir: &Path, config: Option<&JsonValue>) -> Vec<ScenarioFinding> {
     let mut findings = validate_scenario_frontmatter(project_dir);
-    findings.extend(check_recorded_trace_freshness(project_dir));
     findings.extend(catalog::findings_from_config(project_dir, config));
     findings
 }
@@ -254,106 +241,6 @@ fn check_artifact_paths(opted: &[ScenarioFile]) -> Vec<ScenarioFinding> {
     findings
 }
 
-/// CORE-031: recorded-trace header validation. The git-only staleness
-/// advisory (CORE-034) is deliberately not covered.
-fn check_recorded_trace_freshness(project_dir: &Path) -> Vec<ScenarioFinding> {
-    let recorded_root = project_dir.join("evals").join("recorded");
-    if !recorded_root.is_dir() {
-        return Vec::new();
-    }
-
-    let mut trace_paths = Vec::new();
-    walk_files(&recorded_root, &mut trace_paths);
-    trace_paths.retain(|path| path.extension().and_then(|ext| ext.to_str()) == Some("jsonl"));
-    trace_paths.sort();
-
-    let mut findings = Vec::new();
-    for path in &trace_paths {
-        let rel = relative_display(project_dir, path);
-        let content = match std::fs::read_to_string(path) {
-            Ok(content) => content,
-            Err(source) => {
-                findings.push(trace_finding(&rel, &format!("cannot read: {source}")));
-                continue;
-            }
-        };
-
-        let first_line = content.lines().next().unwrap_or("").trim();
-        if first_line.is_empty() {
-            findings.push(trace_finding(
-                &rel,
-                "empty file (expected a 'recorded-trace-header' line first)",
-            ));
-            continue;
-        }
-
-        let parsed: JsonValue = match serde_json::from_str(first_line) {
-            Ok(value) => value,
-            Err(source) => {
-                findings
-                    .push(trace_finding(&rel, &format!("first line is not valid JSON: {source}")));
-                continue;
-            }
-        };
-
-        if !parsed.is_object() {
-            findings.push(trace_finding(&rel, "first line must be a JSON object"));
-            continue;
-        }
-
-        let header = parsed;
-        let kind = header.get("kind").and_then(JsonValue::as_str);
-        if kind != Some("recorded-trace-header") {
-            findings.push(trace_finding(
-                &rel,
-                &format!(
-                    "first line kind must be 'recorded-trace-header' (got {})",
-                    serde_json::to_string(header.get("kind").unwrap_or(&JsonValue::Null))
-                        .unwrap_or_else(|_| "<unknown>".into())
-                ),
-            ));
-            continue;
-        }
-
-        let schema_version = header.get("schemaVersion");
-        if schema_version != Some(&JsonValue::Number(1.into())) {
-            findings.push(trace_finding(
-                &rel,
-                &format!(
-                    "recorded-trace-header.schemaVersion must be 1 (got {})",
-                    serde_json::to_string(schema_version.unwrap_or(&JsonValue::Null))
-                        .unwrap_or_else(|_| "<unknown>".into())
-                ),
-            ));
-        }
-
-        for field in TRACE_REQUIRED_FIELDS {
-            let value = header.get(field);
-            let missing = match value {
-                None | Some(JsonValue::Null) => true,
-                Some(JsonValue::String(s)) => s.is_empty(),
-                _ => false,
-            };
-            if missing {
-                findings.push(trace_finding(
-                    &rel,
-                    &format!("recorded-trace-header missing required field '{field}'"),
-                ));
-            }
-        }
-    }
-
-    findings
-}
-
-fn trace_finding(rel: &str, detail: &str) -> ScenarioFinding {
-    ScenarioFinding {
-        rule_id: RULE_RECORDED_TRACE_VIOLATION,
-        path: Some(rel.to_string()),
-        message: format!("Recorded trace: {rel} — {detail}"),
-    }
-}
-
 /// The `stages` array must be a contiguous run of [`STAGES_ORDER`]
 /// anchored at any element.
 fn is_contiguous_stages_prefix(stages: &JsonValue) -> bool {
@@ -461,16 +348,6 @@ mod tests {
         write_scenario(dir.path(), "mismatch.md", &body);
         let mismatch = flagged(&run_all(dir.path()), RULE_BODY_ID_MISMATCH);
         assert_eq!(mismatch, vec![Some("evals/scenarios/mismatch.md".to_string())]);
-    }
-
-    #[test]
-    fn flags_recorded_trace_violation() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let recorded = dir.path().join("evals/recorded/run-1");
-        std::fs::create_dir_all(&recorded).expect("mkdir");
-        std::fs::write(recorded.join("trace.jsonl"), "not json\n").expect("write trace");
-        let trace = flagged(&run_all(dir.path()), RULE_RECORDED_TRACE_VIOLATION);
-        assert_eq!(trace, vec![Some("evals/recorded/run-1/trace.jsonl".to_string())]);
     }
 
     #[test]

@@ -142,7 +142,7 @@ pub fn contract_dump_verbs(path: &[&str]) -> Vec<String> {
 /// Panics if `path` cannot be read.
 pub fn sha256_hex(path: &Path) -> String {
     let bytes = fs::read(path).expect("read bytes for sha256");
-    specify_digest::sha256_hex(&bytes)
+    specify_schema::digest::sha256_hex(&bytes)
 }
 
 /// Scaffold a minimal target-adapter project declaring a single WASI tool.

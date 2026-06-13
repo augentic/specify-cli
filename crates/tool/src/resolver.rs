@@ -14,7 +14,7 @@ pub mod local;
 
 use crate::cache::{self, MODULE_FILENAME, SIDECAR_FILENAME, SIDECAR_SCHEMA_VERSION, Sidecar};
 use crate::error::ToolError;
-use crate::hash::sha256_hex;
+use specify_schema::digest::sha256_hex;
 use crate::manifest::{PackageRequest, Tool, ToolScope, ToolSource};
 use crate::package::{self, AcquiredBytes, persist_temp};
 

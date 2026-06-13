@@ -94,7 +94,7 @@ pub enum LintMode {
 ///
 /// After C17 every kind is executable: `path-pattern`, `regex`,
 /// `schema`, `tool`, `reference-resolves`, `unique`, `set-coverage`,
-/// `cardinality`, `constant-eq`, `set-eq`,
+/// `cardinality`, `constant-eq`,
 /// `fenced-block`, `presence`, `field-grammar`, `cross-reference`,
 /// and `cli-contract`. (`content-digest-eq` was removed when its last
 /// rule consumers retired — agent-teams overlays are symlink-only and
@@ -119,7 +119,9 @@ pub enum HintKind {
     ReferenceResolves,
     /// Assert that the values some candidate file declares cover a
     /// closed expected set (v1 source discriminators: `adapter-briefs`,
-    /// `skill-allowed-tools`; the expected set rides `config`).
+    /// `skill-allowed-tools`; the expected set rides `config`). The
+    /// `adapter-briefs` source reads `config: { mode }` to choose the
+    /// one-sided `subset` (default) or two-sided `exact` comparison.
     SetCoverage,
     /// Assert that some countable property of a candidate is within
     /// configured bounds (v1 metric selectors: `skill-body-line-count`,
@@ -131,11 +133,6 @@ pub enum HintKind {
     /// `adapter-manifest-field`, `skill-name-plugin-prefix`; the value
     /// rides `config`).
     ConstantEq,
-    /// Assert that the values some candidate file declares are
-    /// exactly equal to a closed expected set — the two-sided
-    /// tightening of [`Self::SetCoverage`] (v1 source discriminator:
-    /// `adapter-briefs`; the expected set rides `config`).
-    SetEq,
     /// Fence-aware body predicate over [`crate::lint::FencedBlock`] facts
     /// (`skill-envelope-json-in-body`, …).
     FencedBlock,

@@ -400,7 +400,7 @@ pub fn validate_parts_yaml(content: &str, source_path: &Path) -> Result<()> {
 /// against the embedded `schemas/evidence.schema.json`.
 ///
 /// This is the `extract` validate-before-visible gate (
-/// DECISIONS.md §"Source operations (D1)"): the runner reads the agent-
+/// DECISIONS.md §"Source operations"): the runner reads the agent-
 /// or tool-produced Evidence,
 /// runs it through this check, and only persists it to
 /// `.specify/slices/<slice>/evidence/<source>.yaml` on success — a
@@ -429,7 +429,7 @@ pub fn validate_evidence(content: &str, source_path: &Path) -> Result<()> {
 /// `schemas/discovery/lead.schema.json`.
 ///
 /// This is the `survey` validate-before-visible gate (
-/// DECISIONS.md §"Source operations (D1)"): the
+/// DECISIONS.md §"Source operations"): the
 /// `survey` runner parses the agent- or tool-produced lead set, runs it
 /// through this check, and only calls
 /// [`crate::change`]-side [`specify_model::discovery::Discovery::merge_survey`]

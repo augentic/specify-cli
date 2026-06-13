@@ -226,8 +226,8 @@ pub struct AdapterManifest {
     /// Operation slugs declared as the `briefs:` map keys in the
     /// manifest body. Empty when the manifest omits the field or
     /// declares an empty map. Consumed by the `kind: set-coverage`
-    /// and `kind: set-eq` interpreters via the `adapter-briefs`
-    /// discriminator to detect manifests whose `briefs.keys()` do
+    /// interpreter via the `adapter-briefs` discriminator (subset or
+    /// exact mode) to detect manifests whose `briefs.keys()` do
     /// not match the rule-supplied expected operation set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub brief_keys: Vec<String>,

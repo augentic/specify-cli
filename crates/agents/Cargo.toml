@@ -17,9 +17,9 @@ workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
-specify-digest.workspace = true
 specify-error.workspace = true
 specify-model.workspace = true
+specify-schema.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

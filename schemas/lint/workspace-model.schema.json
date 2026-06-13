@@ -333,7 +333,7 @@
           "type": "array",
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 },
-          "description": "`WorkspaceModel` entity: operation slugs declared as the `briefs:` map keys in the manifest body. Empty / absent when the manifest omits the field. Consumed by the `kind: set-coverage` and `kind: set-eq` interpreters (`adapter-briefs` source discriminator)."
+          "description": "`WorkspaceModel` entity: operation slugs declared as the `briefs:` map keys in the manifest body. Empty / absent when the manifest omits the field. Consumed by the `kind: set-coverage` interpreter (`adapter-briefs` source discriminator)."
         },
         "tools": {
           "type": "array",

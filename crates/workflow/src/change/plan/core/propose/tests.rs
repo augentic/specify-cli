@@ -29,30 +29,10 @@ fn project(name: &str, target: &str, description: &str) -> ProjectRef {
     }
 }
 
-#[test]
-fn build_request_n1_validates_as_request() {
-    let doc = discovery(
-        "## Lead inventory\n\n\
-             ### intent:fix-typo\n\n\
-             - lead: fix-typo\n\
-             - source: intent\n\
-             - synopsis: fix typo in user.rs\n",
-    );
-    let topology = vec![project("my-app", "omnia@v1", "Single Omnia service for this repository.")];
-
-    let request = build_request(&doc, &topology).expect("request builds");
-    assert_eq!(request.version, PROPOSAL_VERSION);
-    assert_eq!(request.kind, ProposalKind::Request);
-    assert_eq!(request.projects, topology);
-    assert_eq!(request.leads.len(), 1);
-    assert_eq!(request.leads[0].source, "intent");
-    assert_eq!(request.leads[0].lead, "fix-typo");
-
-    let json = serde_json::to_string(&request).expect("serialise request");
-    assert!(json.contains(r#""kind":"request""#), "kind must render as request: {json}");
-    validate_proposal_json(&json).expect("N=1 request validates against the schema");
-}
-
+// The N=1 `build_request` shape is pinned at the CLI level by
+// `tests/workflow/propose.rs::propose_dry_run_n1_request_golden`
+// (`propose-dry-run-n1-request.json`). The hub case below has no CLI
+// dry-run request golden, so it stays as the multi-project coverage.
 #[test]
 fn build_request_hub_validates_as_request() {
     let doc = discovery(

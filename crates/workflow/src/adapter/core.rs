@@ -220,7 +220,7 @@ impl PlatformsCapability {
 /// Source adapters are agent-only (`source.schema.json` enumerates
 /// `["agent"]`); target adapters may still declare `tool`, though the
 /// target-side `build` / `merge` dispatch carries `agent` as a
-/// placeholder. See DECISIONS.md §"Adapter execution mode (D9)".
+/// placeholder. See DECISIONS.md §"Adapter execution mode".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]

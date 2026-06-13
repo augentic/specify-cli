@@ -1,5 +1,5 @@
 //! Integration tests for `specify source extract`
-//! (DECISIONS.md §"Source operations (D1)").
+//! (DECISIONS.md §"Source operations").
 //!
 //! Covers source resolution against `plan.yaml.sources`, the agent
 //! two-phase dispatch (prepare prints the extract handoff envelope —

@@ -4643,7 +4643,6 @@ dependencies = [
  "serde_json",
  "specify-agents",
  "specify-diagnostics",
- "specify-digest",
  "specify-error",
  "specify-model",
  "specify-schema",
@@ -4663,9 +4662,9 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
- "specify-digest",
  "specify-error",
  "specify-model",
+ "specify-schema",
  "tempfile",
  "thiserror 2.0.18",
 ]
@@ -4678,18 +4677,9 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
- "specify-digest",
  "specify-error",
  "specify-schema",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "specify-digest"
-version = "0.2.0"
-dependencies = [
- "base16ct",
- "sha2 0.11.0",
 ]
 
 [[package]]
@@ -4722,10 +4712,12 @@ dependencies = [
 name = "specify-schema"
 version = "0.2.0"
 dependencies = [
+ "base16ct",
  "jsonschema",
  "serde",
  "serde-saphyr",
  "serde_json",
+ "sha2 0.11.0",
  "specify-error",
  "tempfile",
 ]
@@ -4744,7 +4736,6 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-diagnostics",
- "specify-digest",
  "specify-error",
  "specify-schema",
  "tempfile",
@@ -4756,14 +4747,12 @@ dependencies = [
 name = "specify-tool"
 version = "0.2.0"
 dependencies = [
- "base16ct",
  "futures-util",
  "jiff",
  "jsonschema",
  "serde",
  "serde-saphyr",
  "serde_json",
- "specify-digest",
  "specify-error",
  "specify-schema",
  "specify-tool-manifest",
@@ -4822,7 +4811,6 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "specify-diagnostics",
- "specify-digest",
  "specify-error",
  "specify-model",
  "specify-schema",

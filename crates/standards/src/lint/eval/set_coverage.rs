@@ -6,19 +6,23 @@
 //! `set-coverage` has two complementary directions, selected by the
 //! `value` source discriminator:
 //!
-//! - `adapter-briefs` — the **expected ⊆ declared** direction: an
-//!   adapter's `briefs.keys()` must cover the axis-appropriate operation
-//!   set the rule supplies in `config: { expected-operations }`; missing
-//!   operations are flagged. Extras are silent (`kind: set-eq` tightens
-//!   that). The expected sets are **policy supplied by the rule file**,
-//!   never a `const` in this arm (per the standards-layer
-//!   policy-in-`specify` rule). It consumes the
-//!   [`crate::lint::AdapterManifest`] facts the framework-profile
-//!   indexer already produced (see [`crate::lint::index::adapter::extract`])
-//!   and emits one [`specify_diagnostics::Diagnostic`] per
-//!   `(adapter, missing-operation)` pair, with the manifest path as the
-//!   finding's location and the per-adapter `(missing, expected, actual)`
-//!   triple surfaced via [`specify_diagnostics::FindingEvidence::Structured`].
+//! - `adapter-briefs` — an adapter's `briefs.keys()` checked against the
+//!   axis-appropriate operation set the rule supplies in
+//!   `config: { expected-operations }`. The `config: { mode }` selector
+//!   chooses the direction: `subset` (the default) is the
+//!   **expected ⊆ declared** check — only missing operations are
+//!   flagged, extras are silent; `exact` is the two-sided **expected ==
+//!   declared** check — missing operations *and* keys the manifest
+//!   declares that are absent from the expected set are both flagged.
+//!   The expected sets are **policy supplied by the rule file**, never a
+//!   `const` in this arm (per the standards-layer policy-in-`specify`
+//!   rule). It consumes the [`crate::lint::AdapterManifest`] facts the
+//!   framework-profile indexer already produced
+//!   (see [`crate::lint::index::adapter::extract`]) and emits one
+//!   [`specify_diagnostics::Diagnostic`] per `(adapter, divergence)`
+//!   pair, with the manifest path as the finding's location and the
+//!   per-adapter divergence surfaced via
+//!   [`specify_diagnostics::FindingEvidence::Structured`].
 //! - `skill-allowed-tools` — the **declared ⊆ allowed** direction: every
 //!   tool a skill lists in its `allowed-tools` frontmatter must be
 //!   covered by the rule's `config: { allowed }` set (optionally with
@@ -42,11 +46,16 @@ use specify_diagnostics::{Diagnostic, FindingEvidence, FindingLocation};
 
 use super::{HintError, make_finding};
 use crate::lint::WorkspaceModel;
-use crate::lint::adapter_briefs::{ExpectedOperationsConfig, axis_token};
+use crate::lint::adapter_briefs::{BriefsMode, ExpectedOperationsConfig, axis_token};
 use crate::rules::{HintKind, ResolvedRule, RuleHint};
 
 const SOURCE_ADAPTER_BRIEFS: &str = "adapter-briefs";
 const SOURCE_SKILL_ALLOWED_TOOLS: &str = "skill-allowed-tools";
+
+/// Divergence direction for an operation that breaks set equality
+/// (surfaced under `mode: exact`).
+const DIVERGENCE_MISSING: &str = "missing";
+const DIVERGENCE_UNEXPECTED: &str = "unexpected";
 
 /// Parsed `skill-allowed-tools` hint configuration. Both the recognised
 /// tool set and the prefix exemptions are policy supplied by the rule.
@@ -94,7 +103,10 @@ pub(crate) fn evaluate(
                     reason: "`adapter-briefs` requires a `config: { expected-operations }`",
                 }
             })?;
-            Ok(adapter_briefs(rule, candidates, model, &cfg, next_id))
+            Ok(match cfg.mode() {
+                BriefsMode::Subset => adapter_briefs_subset(rule, candidates, model, &cfg, next_id),
+                BriefsMode::Exact => adapter_briefs_exact(rule, candidates, model, &cfg, next_id),
+            })
         }
         SOURCE_SKILL_ALLOWED_TOOLS => {
             let cfg = AllowedToolsConfig::parse(rule, hint)?;
@@ -108,7 +120,10 @@ pub(crate) fn evaluate(
     }
 }
 
-fn adapter_briefs(
+/// `mode: subset` — the **expected ⊆ declared** direction: flag every
+/// operation the rule expects that the manifest's `briefs.keys()` does
+/// not declare. Extra keys are silent.
+fn adapter_briefs_subset(
     rule: &ResolvedRule, candidates: &[PathBuf], model: &WorkspaceModel,
     cfg: &ExpectedOperationsConfig, next_id: &mut u64,
 ) -> Vec<Diagnostic> {
@@ -154,6 +169,78 @@ fn adapter_briefs(
             let title = format!(
                 "{}: adapter '{}' missing brief for operation '{}'",
                 rule.title, manifest.name, op,
+            );
+            let finding = make_finding(rule, *next_id, title, Some(location), evidence);
+            *next_id += 1;
+            out.push(finding);
+        }
+    }
+    out
+}
+
+/// `mode: exact` — the two-sided **expected == declared** direction:
+/// flag both `missing` operations (expected, absent from `briefs.keys()`)
+/// and `unexpected` keys (declared, absent from the expected set). One
+/// finding per `(adapter, divergence)` pair, emitted in sorted
+/// `(divergence, operation)` order for run-to-run determinism.
+fn adapter_briefs_exact(
+    rule: &ResolvedRule, candidates: &[PathBuf], model: &WorkspaceModel,
+    cfg: &ExpectedOperationsConfig, next_id: &mut u64,
+) -> Vec<Diagnostic> {
+    let candidate_set = super::candidate_set(candidates);
+
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for manifest in &model.adapter_manifests {
+        if !candidate_set.contains(&manifest.path) {
+            continue;
+        }
+        let expected = cfg.expected_for(manifest.axis);
+        let actual: BTreeSet<&str> = manifest.brief_keys.iter().map(String::as_str).collect();
+
+        let mut divergences: Vec<(&'static str, String)> = Vec::new();
+        for op in expected.iter().copied() {
+            if !actual.contains(op) {
+                divergences.push((DIVERGENCE_MISSING, op.to_owned()));
+            }
+        }
+        for key in actual.iter().copied() {
+            if !expected.contains(key) {
+                divergences.push((DIVERGENCE_UNEXPECTED, key.to_owned()));
+            }
+        }
+        if divergences.is_empty() {
+            continue;
+        }
+        divergences.sort_unstable();
+
+        let expected_sorted: Vec<String> = expected.iter().map(|s| (*s).to_string()).collect();
+        let actual_sorted: Vec<String> = actual.iter().map(|s| (*s).to_string()).collect();
+        for (divergence, op) in divergences {
+            let location = FindingLocation {
+                path: manifest.path.clone(),
+                line: Some(1),
+                column: None,
+                end_line: None,
+                end_column: None,
+            };
+            let evidence = FindingEvidence::Structured {
+                summary: format!(
+                    "adapter '{}' brief set diverges: {} operation '{}'",
+                    manifest.name, divergence, op,
+                ),
+                data: serde_json::json!({
+                    "adapter": manifest.name,
+                    "axis": axis_token(manifest.axis),
+                    "divergence": divergence,
+                    "operation": op,
+                    "expected": expected_sorted,
+                    "actual": actual_sorted,
+                }),
+                locations: None,
+            };
+            let title = format!(
+                "{}: adapter '{}' has {} brief operation '{}'",
+                rule.title, manifest.name, divergence, op,
             );
             let finding = make_finding(rule, *next_id, title, Some(location), evidence);
             *next_id += 1;
@@ -250,6 +337,10 @@ mod unit {
         json!({ "expected-operations": { "sources": ["alpha", "beta"], "targets": ["gamma", "delta", "epsilon"] } })
     }
 
+    fn exact_ops() -> serde_json::Value {
+        json!({ "mode": "exact", "expected-operations": { "sources": ["alpha", "beta"], "targets": ["gamma", "delta", "epsilon"] } })
+    }
+
     #[test]
     fn missing_operation_flagged_extras_silent() {
         let mut model = empty_model();
@@ -258,9 +349,40 @@ mod unit {
         let cands = candidates(&["adapters/targets/demo/adapter.yaml"]);
         let hint = hint_with_config(HintKind::SetCoverage, "adapter-briefs", Some(expected_ops()));
         let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
-        // One-sided: only the missing `epsilon` fires; the `extra` key is set-eq's job.
+        // Default `subset` mode: only the missing `epsilon` fires; the
+        // `extra` key is `mode: exact`'s job.
         assert_eq!(out.len(), 1);
         assert!(out[0].title.contains("missing brief for operation 'epsilon'"), "{}", out[0].title);
+    }
+
+    #[test]
+    fn exact_mode_flags_missing_and_unexpected() {
+        let mut model = empty_model();
+        model.adapter_manifests =
+            vec![manifest("demo", AdapterAxis::Targets, &["gamma", "delta", "rogue"])];
+        let cands = candidates(&["adapters/targets/demo/adapter.yaml"]);
+        let hint = hint_with_config(HintKind::SetCoverage, "adapter-briefs", Some(exact_ops()));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        let titles: Vec<&str> = out.iter().map(|f| f.title.as_str()).collect();
+        assert_eq!(out.len(), 2, "{titles:?}");
+        assert!(
+            titles.iter().any(|t| t.contains("missing brief operation 'epsilon'")),
+            "{titles:?}"
+        );
+        assert!(
+            titles.iter().any(|t| t.contains("unexpected brief operation 'rogue'")),
+            "{titles:?}"
+        );
+    }
+
+    #[test]
+    fn exact_mode_silent_on_exact_set() {
+        let mut model = empty_model();
+        model.adapter_manifests = vec![manifest("demo", AdapterAxis::Sources, &["alpha", "beta"])];
+        let cands = candidates(&["adapters/sources/demo/adapter.yaml"]);
+        let hint = hint_with_config(HintKind::SetCoverage, "adapter-briefs", Some(exact_ops()));
+        let out = evaluate(&rule(), &hint, &cands, &model, &mut 1).expect("evaluate");
+        assert!(out.is_empty());
     }
 
     #[test]

@@ -38,7 +38,7 @@
 //! underlying issue.
 
 use serde_json::Value;
-use specify_digest::sha256_hex;
+use specify_schema::digest::sha256_hex;
 
 use crate::diagnostic::{Diagnostic, FindingEvidence, FindingLocation};
 

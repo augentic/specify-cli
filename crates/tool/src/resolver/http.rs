@@ -89,7 +89,7 @@ pub(super) fn download_https(url: &str, dest_hint: &Path) -> Result<AcquiredByte
 fn stream_to_tempfile<R: Read>(
     url: &str, reader: &mut R, temp: &NamedTempFile,
 ) -> Result<String, ToolError> {
-    let mut hasher = crate::hash::Hasher::new();
+    let mut hasher = specify_schema::digest::Hasher::new();
     let mut writer = io::BufWriter::with_capacity(STREAM_CHUNK_BYTES, temp.as_file());
     let mut buf = vec![0_u8; STREAM_CHUNK_BYTES];
     let mut total: u64 = 0;

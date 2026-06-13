@@ -25,10 +25,10 @@ pub mod adapter_briefs;
 pub mod contract;
 pub mod diagnostics;
 pub mod eval;
+mod framework_tools;
 pub mod ignore;
 pub mod index;
 pub mod model;
-pub mod producer;
 pub mod runner;
 
 pub use model::*;

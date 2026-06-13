@@ -100,7 +100,12 @@ fn failure_status() -> ExitStatus {
 }
 
 // `copy_dir` (and the git helper trio) come from the workspace-shared
-// helper file; see `tests/common/fs_git.rs` at the repo root.
+// helper file; see `tests/common/fs_git.rs` at the repo root. It is
+// re-exposed as a thin wrapper (rather than a `pub use`) so binaries
+// that never stage a fixture see it as `dead_code` — covered by the
+// module-level expectation — instead of an unused `pub use`.
 #[path = "../../../../tests/common/fs_git.rs"]
 mod fs_git;
-pub use fs_git::copy_dir;
+pub fn copy_dir(src: &std::path::Path, dst: &std::path::Path) {
+    fs_git::copy_dir(src, dst);
+}
