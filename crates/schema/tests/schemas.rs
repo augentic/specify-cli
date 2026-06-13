@@ -576,8 +576,7 @@ fn build_report_failure_with_findings() {
 /// implementation.
 #[test]
 fn codex_rule_accepts_reserved_kinds() {
-    let reserved =
-        ["unique", "reference-resolves", "set-coverage", "cardinality", "constant-eq"];
+    let reserved = ["unique", "reference-resolves", "set-coverage", "cardinality", "constant-eq"];
     for kind in reserved {
         let instance = json!({
             "id": "UNI-014",

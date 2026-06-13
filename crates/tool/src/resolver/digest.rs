@@ -3,8 +3,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::error::ToolError;
 use specify_schema::digest::sha256_hex;
+
+use crate::error::ToolError;
 use crate::package::AcquiredBytes;
 
 pub(super) fn cached_matches(module: &Path, expected: Option<&str>) -> Result<bool, ToolError> {

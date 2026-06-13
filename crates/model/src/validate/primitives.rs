@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use regex::Regex;
+
 use crate::spec::ParsedSpec;
 use crate::task::Progress;
 
@@ -34,8 +35,7 @@ fn checkbox_re() -> &'static Regex {
 fn req_id_ref_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        let body =
-            crate::spec::REQ_ID_PATTERN.trim_start_matches('^').trim_end_matches('$');
+        let body = crate::spec::REQ_ID_PATTERN.trim_start_matches('^').trim_end_matches('$');
         Regex::new(body).expect("req id scanner regex is valid")
     })
 }
@@ -286,9 +286,8 @@ mod tests {
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n- WHEN foo\n- THEN bar\n",
         );
         assert!(all_requirements_have_scenarios(&ok));
-        let bad = crate::spec::parse_baseline(
-            "### Requirement: Thing\n\nID: REQ-001\n\nno scenario\n",
-        );
+        let bad =
+            crate::spec::parse_baseline("### Requirement: Thing\n\nID: REQ-001\n\nno scenario\n");
         assert!(!all_requirements_have_scenarios(&bad));
     }
 
@@ -298,8 +297,7 @@ mod tests {
             "### Requirement: Thing\n\nID: REQ-001\n\n#### Scenario: Happy\n",
         );
         assert!(all_requirements_have_ids(&ok));
-        let bad =
-            crate::spec::parse_baseline("### Requirement: Thing\n\n#### Scenario: Happy\n");
+        let bad = crate::spec::parse_baseline("### Requirement: Thing\n\n#### Scenario: Happy\n");
         assert!(!all_requirements_have_ids(&bad));
     }
 

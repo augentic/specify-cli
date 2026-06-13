@@ -81,11 +81,10 @@ pub(super) const SPECS_RULES: &[Rule] = &[
 mod tests {
     use std::path::Path;
 
-    use crate::spec::{ParsedSpec, parse_baseline};
-
     use super::{
         specs_ids_match_pattern, specs_requirements_have_ids, specs_requirements_have_scenarios,
     };
+    use crate::spec::{ParsedSpec, parse_baseline};
     use crate::validate::{BriefContext, RuleOutcome};
 
     fn ctx(spec: Option<&ParsedSpec>) -> BriefContext<'_> {

@@ -52,9 +52,8 @@ pub(super) const TASKS_RULES: &[Rule] = &[
 mod tests {
     use std::path::Path;
 
-    use crate::task::{Progress, parse_tasks};
-
     use super::{tasks_grouped_under_headings, tasks_use_checkbox_format};
+    use crate::task::{Progress, parse_tasks};
     use crate::validate::{BriefContext, RuleOutcome};
 
     fn ctx<'a>(content: &'a str, tasks: Option<&'a Progress>) -> BriefContext<'a> {
