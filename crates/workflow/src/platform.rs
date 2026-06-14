@@ -1,8 +1,10 @@
 //! Closed platform enum — the set of target platforms a project may
 //! declare in `project.yaml`.
 
+mod bootstrap;
 mod detect;
 
+pub use bootstrap::{BootstrapContext, bootstrap_context, bootstrap_context_from_missing};
 pub use detect::vectis_missing_platforms;
 use serde::{Deserialize, Serialize};
 
