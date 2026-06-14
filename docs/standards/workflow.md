@@ -30,7 +30,7 @@ Both build envelopes are closed-shape YAML, keyed on `(slice, target)`, schema-v
 
 `SourceAdapter::resolve(name, project_dir)` and `TargetAdapter::resolve(name, project_dir)` are the per-axis entry points. Probe order:
 
-1. `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/` — agent-populated mirror.
+1. `<project-cache>/manifests/{sources,targets}/<name>/` — agent-populated out-of-tree mirror.
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo manifest.
 
 Resolution is project-local only; there is no environment-variable fallback to an out-of-tree framework checkout. When neither location matches, resolution fails with `adapter-not-found`.

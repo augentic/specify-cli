@@ -53,7 +53,7 @@ Four module trees carry the workflow contract — three in `specify-workflow`, p
 
 ## Per-axis cache layout
 
-`SourceAdapter::resolve` / `TargetAdapter::resolve` probe — in order — the agent-populated cache at `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/` and then the in-repo manifest at `<project_dir>/adapters/{sources,targets}/<name>/`. The `{sources,targets}` segment is keyed by `Axis`, so source and target adapters with colliding names disambiguate by axis. `cache_dir(axis, name)` returns the cache-side path. Do not collapse the two roots or special-case one axis — workflow §"Resolver and cache" pins the shape.
+`SourceAdapter::resolve` / `TargetAdapter::resolve` probe — in order — the agent-populated out-of-tree cache at `<project-cache>/manifests/{sources,targets}/<name>/` and then the in-repo manifest at `<project_dir>/adapters/{sources,targets}/<name>/`. The `{sources,targets}` segment is keyed by `Axis`, so source and target adapters with colliding names disambiguate by axis. `cache_dir(axis, name)` returns the cache-side path. Do not collapse the two roots or special-case one axis — workflow §"Resolver and cache" pins the shape.
 
 ## WASI tool sidecar scope
 

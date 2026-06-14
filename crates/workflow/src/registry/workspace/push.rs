@@ -20,7 +20,7 @@ use crate::registry::catalog::RegistryProject;
 /// Resolve the on-disk path for a workspace project.
 ///
 /// Symlink projects use the original path (relative or `.`), everything
-/// else lives under `.specify/workspace/<name>/`.
+/// else lives under `workspace/<name>/`.
 fn project_path(
     project_dir: &Path, workspace_base: &Path, rp: &RegistryProject,
 ) -> std::path::PathBuf {

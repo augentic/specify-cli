@@ -38,6 +38,53 @@ fn symlink_dir(target: &Path, link: &Path) {
 mod fs_git;
 use fs_git::run_git;
 
+const CACHE_ENV: &str = "SPECIFY_PROJECT_CACHE";
+const MIRROR_ENV: &str = "SPECIFY_MIRROR_CACHE";
+
+/// Restores the previous `SPECIFY_PROJECT_CACHE` and `SPECIFY_MIRROR_CACHE`
+/// values on drop.
+struct CacheGuard {
+    cache: Option<std::ffi::OsString>,
+    mirror: Option<std::ffi::OsString>,
+}
+
+impl Drop for CacheGuard {
+    #[expect(unsafe_code, reason = "restore the cache-root env vars pinned for the test")]
+    fn drop(&mut self) {
+        // SAFETY: nextest runs each test in its own process, so no other
+        // thread observes the env mutation for the guard's lifetime.
+        unsafe {
+            match self.cache.take() {
+                Some(prev) => std::env::set_var(CACHE_ENV, prev),
+                None => std::env::remove_var(CACHE_ENV),
+            }
+            match self.mirror.take() {
+                Some(prev) => std::env::set_var(MIRROR_ENV, prev),
+                None => std::env::remove_var(MIRROR_ENV),
+            }
+        }
+    }
+}
+
+/// Pin the out-of-tree project cache and Git mirror roots inside `dir` so
+/// adapter / codex cache writes and remote-peer mirror clones are hermetic
+/// and auto-cleaned with the tempdir.
+#[expect(unsafe_code, reason = "pin the cache-root env vars into the test tempdir")]
+fn scoped_cache(dir: &Path) -> CacheGuard {
+    let cache = std::env::var_os(CACHE_ENV);
+    let mirror = std::env::var_os(MIRROR_ENV);
+    // SAFETY: see `CacheGuard::drop` — single-process test isolation.
+    unsafe { std::env::set_var(CACHE_ENV, dir.join("project-cache")) };
+    // SAFETY: see `CacheGuard::drop` — single-process test isolation.
+    unsafe { std::env::set_var(MIRROR_ENV, dir.join("mirror-cache")) };
+    CacheGuard { cache, mirror }
+}
+
+/// Out-of-tree cache directory for `project_dir` under the pinned root.
+fn expected_cache_dir(project_dir: &Path) -> PathBuf {
+    specify_schema::cache::project_cache_dir(project_dir)
+}
+
 fn registry_with_projects(names: &[&str]) -> Registry {
     Registry {
         version: 1,
@@ -86,7 +133,7 @@ fn seed_bare_remote(tmp: &TempDir) -> (PathBuf, String) {
 }
 
 fn clone_workspace_slot(project_dir: &Path, remote_url: &str) -> PathBuf {
-    let slot = project_dir.join(".specify/workspace/alpha");
+    let slot = project_dir.join("workspace/alpha");
     fs::create_dir_all(slot.parent().unwrap()).unwrap();
     run_git(project_dir, &["clone", remote_url, slot.to_str().unwrap()]);
     slot
@@ -156,8 +203,8 @@ fn c02_local_slot_refuses_non_symlink() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
-    fs::create_dir_all(project_dir.join(".specify/workspace/peer")).unwrap();
-    fs::write(project_dir.join(".specify/workspace/peer/sentinel.txt"), "keep").unwrap();
+    fs::create_dir_all(project_dir.join("workspace/peer")).unwrap();
+    fs::write(project_dir.join("workspace/peer/sentinel.txt"), "keep").unwrap();
 
     let registry = registry_with_projects(&["peer"]);
     let selected = registry.select(&["peer".to_string()]).unwrap();
@@ -167,7 +214,7 @@ fn c02_local_slot_refuses_non_symlink() {
 
     assert!(msg.contains("not a symlink"), "msg: {msg}");
     assert_eq!(
-        fs::read_to_string(project_dir.join(".specify/workspace/peer/sentinel.txt")).unwrap(),
+        fs::read_to_string(project_dir.join("workspace/peer/sentinel.txt")).unwrap(),
         "keep",
         "mismatched slot must not be overwritten"
     );
@@ -179,8 +226,8 @@ fn c02_remote_slot_refuses_existing_symlink() {
     let project_dir = tmp.path();
     let target = project_dir.join("not-remote");
     fs::create_dir_all(&target).unwrap();
-    fs::create_dir_all(project_dir.join(".specify/workspace")).unwrap();
-    symlink_dir(&target, &project_dir.join(".specify/workspace/remote"));
+    fs::create_dir_all(project_dir.join("workspace")).unwrap();
+    symlink_dir(&target, &project_dir.join("workspace/remote"));
 
     let project = RegistryProject {
         name: "remote".to_string(),
@@ -195,7 +242,7 @@ fn c02_remote_slot_refuses_existing_symlink() {
 
     assert!(msg.contains("is a symlink"), "msg: {msg}");
     assert!(
-        fs::symlink_metadata(project_dir.join(".specify/workspace/remote"))
+        fs::symlink_metadata(project_dir.join("workspace/remote"))
             .unwrap()
             .file_type()
             .is_symlink()
@@ -210,8 +257,8 @@ fn c10_slot_problem_wrong_symlink() {
     let other = project_dir.join("other");
     fs::create_dir_all(&peer).unwrap();
     fs::create_dir_all(&other).unwrap();
-    fs::create_dir_all(project_dir.join(".specify/workspace")).unwrap();
-    symlink_dir(&other, &project_dir.join(".specify/workspace/peer"));
+    fs::create_dir_all(project_dir.join("workspace")).unwrap();
+    symlink_dir(&other, &project_dir.join("workspace/peer"));
 
     let registry = registry_with_projects(&["peer"]);
     let project = &registry.projects[0];
@@ -230,7 +277,7 @@ fn c10_slot_problem_wrong_symlink() {
 fn c10_slot_problem_wrong_origin() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
-    let slot = project_dir.join(".specify/workspace/remote");
+    let slot = project_dir.join("workspace/remote");
     fs::create_dir_all(&slot).unwrap();
     run_git(&slot, &["init"]);
     run_git(&slot, &["remote", "add", "origin", "https://example.invalid/old.git"]);
@@ -272,7 +319,7 @@ fn c02_sync_refuses_escaping_name() {
     assert!(msg.contains("single path component"), "msg: {msg}");
     assert!(
         !project_dir.join(".specify/escape").exists(),
-        "sync must not materialise a path outside .specify/workspace/<project>/"
+        "sync must not materialise a path outside workspace/<project>/"
     );
 }
 
@@ -284,7 +331,7 @@ fn c02_sync_refuses_symlinked_base() {
     fs::create_dir_all(project_dir.join(".specify")).unwrap();
     let outside = project_dir.join("outside-workspace");
     fs::create_dir_all(&outside).unwrap();
-    symlink_dir(&outside, &project_dir.join(".specify/workspace"));
+    symlink_dir(&outside, &project_dir.join("workspace"));
 
     let registry = registry_with_projects(&["peer"]);
     let selected = registry.select(&["peer".to_string()]).unwrap();
@@ -292,7 +339,7 @@ fn c02_sync_refuses_symlinked_base() {
         .expect_err("workspace base symlink should fail");
     let msg = err.to_string();
 
-    assert!(msg.contains(".specify/workspace/ is a symlink"), "msg: {msg}");
+    assert!(msg.contains("workspace/ is a symlink"), "msg: {msg}");
     assert!(
         !outside.join("peer").exists(),
         "sync must not materialise slots through a symlinked workspace base"
@@ -304,7 +351,7 @@ fn c02_sync_preserves_gitignore_once() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
     fs::create_dir_all(project_dir.join("peer")).unwrap();
-    fs::write(project_dir.join(".gitignore"), "target/\n.specify/workspace/\n").unwrap();
+    fs::write(project_dir.join(".gitignore"), "target/\nworkspace/\n").unwrap();
     let registry = registry_with_projects(&["peer"]);
     let selected = registry.select(&[]).unwrap();
 
@@ -312,8 +359,7 @@ fn c02_sync_preserves_gitignore_once() {
     workspace_sync_projects(project_dir, &selected).expect("sync remains idempotent");
 
     let gitignore = fs::read_to_string(project_dir.join(".gitignore")).unwrap();
-    assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/workspace/").count(), 1);
-    assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/cache/").count(), 1);
+    assert_eq!(gitignore.lines().filter(|line| line.trim() == "workspace/").count(), 1);
     assert_eq!(gitignore.lines().filter(|line| line.trim() == ".specify/scratch/").count(), 1);
 }
 
@@ -357,6 +403,7 @@ fn mirror_covers_target_axis_and_sidecars() {
     // mirror are pinned here.
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
+    let _cache = scoped_cache(project_dir);
     let peer = workspace_with_specify_peer(project_dir);
     stage_adapter_at(
         project_dir,
@@ -367,7 +414,7 @@ fn mirror_covers_target_axis_and_sidecars() {
 
     sync_all(project_dir);
 
-    let mirrored = peer.join(".specify/cache/manifests/targets/vectis");
+    let mirrored = expected_cache_dir(&peer).join("manifests/targets/vectis");
     assert!(mirrored.join("adapter.yaml").is_file(), "target axis must be mirrored");
     assert_eq!(
         fs::read_to_string(mirrored.join("tools.yaml")).expect("mirrored tools.yaml"),
@@ -383,6 +430,7 @@ fn mirror_skips_slot_vendored_name() {
     // mirrored twin would shadow the slot's copy.
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
+    let _cache = scoped_cache(project_dir);
     let peer = workspace_with_specify_peer(project_dir);
     stage_adapter_at(project_dir, "adapters/sources/documentation", "workspace copy\n", &[]);
     stage_adapter_at(&peer, "adapters/sources/documentation", "slot copy\n", &[]);
@@ -390,7 +438,7 @@ fn mirror_skips_slot_vendored_name() {
     sync_all(project_dir);
 
     assert!(
-        !peer.join(".specify/cache/manifests/sources/documentation").exists(),
+        !expected_cache_dir(&peer).join("manifests/sources/documentation").exists(),
         "a slot-vendored name must not be shadowed by a mirrored cache copy"
     );
     assert_eq!(
@@ -419,6 +467,61 @@ fn mirror_skips_non_specify_peer() {
         !peer.join(".specify").exists(),
         "the mirror must not manufacture `.specify/` in a non-Specify peer"
     );
+}
+
+// ---------- persistent bare-mirror + per-change worktree -----------------------------------------
+
+#[test]
+fn sync_remote_worktree_reuses_mirror() {
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path().join("platform");
+    fs::create_dir_all(&project_dir).unwrap();
+    let _cache = scoped_cache(&project_dir);
+    let (_remote, remote_url) = seed_bare_remote(&tmp);
+    let project = remote_project(remote_url.clone());
+
+    // First sync clones the persistent mirror once, then checks out a worktree.
+    workspace_sync_projects(&project_dir, &[&project]).expect("first sync");
+
+    let slot = project_dir.join("workspace/alpha");
+    assert!(
+        slot.join(".git").is_file(),
+        "a remote slot is a git worktree, so `.git` is a gitlink file, not a directory"
+    );
+    assert!(slot.join("README.md").is_file(), "worktree checks out the remote's default branch");
+
+    let mirror = specify_schema::cache::mirror_dir(&remote_url);
+    assert!(mirror.join("HEAD").is_file(), "the persistent bare mirror lives out-of-tree");
+
+    // A re-clone would wipe this sentinel; a fetch keeps it.
+    let sentinel = mirror.join("sentinel");
+    fs::write(&sentinel, "keep").unwrap();
+
+    // Simulate a fresh checkout: the gitignored slot vanishes, the mirror persists.
+    fs::remove_dir_all(&slot).unwrap();
+    workspace_sync_projects(&project_dir, &[&project]).expect("second sync reuses the mirror");
+
+    assert!(slot.join(".git").is_file(), "the worktree re-materialises from the persistent mirror");
+    assert!(sentinel.is_file(), "the mirror was reused via fetch, not re-cloned");
+}
+
+#[test]
+fn prepare_on_worktree_creates_branch() {
+    let tmp = TempDir::new().unwrap();
+    let project_dir = tmp.path().join("platform");
+    fs::create_dir_all(&project_dir).unwrap();
+    let _cache = scoped_cache(&project_dir);
+    let (_remote, remote_url) = seed_bare_remote(&tmp);
+    let project = remote_project(remote_url);
+
+    workspace_sync_projects(&project_dir, &[&project]).expect("sync materialises a worktree");
+
+    let prepared = prepare(&project_dir, &project, &branch_request("demo-change"))
+        .expect("branch preparation succeeds against a mirror-backed worktree");
+
+    assert_eq!(prepared.local_branch, LocalAction::Created);
+    let slot = project_dir.join("workspace/alpha");
+    assert_eq!(current_branch(&slot), "specify/demo-change");
 }
 
 // ---------- branch preparation (workspace orchestration contract C04) ----------------------------
@@ -504,7 +607,7 @@ fn c04_prepare_reports_missing_origin() {
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path().join("workspace");
     fs::create_dir_all(&project_dir).unwrap();
-    let slot = project_dir.join(".specify/workspace/alpha");
+    let slot = project_dir.join("workspace/alpha");
     fs::create_dir_all(&slot).unwrap();
     run_git(&slot, &["init", "-b", "main"]);
     fs::write(slot.join("README.md"), "seed\n").unwrap();
@@ -610,12 +713,15 @@ fn c07_push_wrong_branch_no_checkout() {
 // ---------- topology.lock regeneration ------------------------
 
 /// Stage a materialised slot with a resolvable omnia adapter and the
-/// given `project.yaml` body under `.specify/workspace/<name>/`.
+/// given `project.yaml` body under `workspace/<name>/`.
 fn stage_topology_slot(project_dir: &Path, name: &str, project_yaml: &str) {
-    let slot_specify = project_dir.join(".specify/workspace").join(name).join(".specify");
+    let slot = project_dir.join("workspace").join(name);
+    let slot_specify = slot.join(".specify");
     fs::create_dir_all(&slot_specify).unwrap();
     fs::write(slot_specify.join("project.yaml"), project_yaml).unwrap();
-    let omnia_manifest = slot_specify.join("cache/manifests/targets/omnia");
+    // The slot resolves its target adapter from the out-of-tree manifest
+    // cache keyed by the slot path (the env is pinned by the caller).
+    let omnia_manifest = expected_cache_dir(&slot).join("manifests/targets/omnia");
     fs::create_dir_all(&omnia_manifest).unwrap();
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/plugins/adapters/targets/omnia/adapter.yaml");
@@ -629,6 +735,7 @@ fn topology_lock_projects_baseline() {
 
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
+    let _cache = scoped_cache(project_dir);
     // A stale `capabilities:` key is silently ignored; routing
     // identity is derived from the slot's baseline, not re-authored.
     stage_topology_slot(
@@ -636,7 +743,7 @@ fn topology_lock_projects_baseline() {
         "alpha",
         "name: alpha\nadapter: omnia@v1\ndescription: Alpha core\ncapabilities:\n  - auth\n",
     );
-    let alpha_specify = project_dir.join(".specify/workspace/alpha/.specify");
+    let alpha_specify = project_dir.join("workspace/alpha/.specify");
     let session_dir = alpha_specify.join("specs/session");
     fs::create_dir_all(&session_dir).unwrap();
     fs::write(
@@ -699,12 +806,13 @@ fn topology_lock_projects_decisions() {
 
     let tmp = TempDir::new().unwrap();
     let project_dir = tmp.path();
+    let _cache = scoped_cache(project_dir);
     stage_topology_slot(
         project_dir,
         "alpha",
         "name: alpha\nadapter: omnia@v1\ndescription: Alpha core\n",
     );
-    let decisions_dir = project_dir.join(".specify/workspace/alpha/.specify/decisions");
+    let decisions_dir = project_dir.join("workspace/alpha/.specify/decisions");
     fs::create_dir_all(&decisions_dir).unwrap();
     let decision = |id: &str, slug: &str, status: &str, title: &str| {
         format!(

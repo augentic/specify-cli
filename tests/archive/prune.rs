@@ -42,7 +42,7 @@ fn pruned_names(value: &serde_json::Value) -> Vec<&str> {
 }
 
 #[test]
-fn prune_older_than_removes_aged_and_keeps_fresh() {
+fn prune_removes_aged_keeps_fresh() {
     let project = Project::init();
     let ancient = seed_archive(&project, 100, "ancient-slice");
     let fresh = seed_archive(&project, 0, "fresh-slice");

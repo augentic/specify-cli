@@ -1,6 +1,6 @@
-//! Multi-project workspace materialisation under `.specify/workspace/`
-//! — bootstrap, sync, and push helpers for the slots derived from
-//! `registry.yaml`.
+//! Multi-project workspace materialisation under the top-level
+//! `workspace/` directory — bootstrap, sync, and push helpers for the
+//! slots derived from `registry.yaml`.
 
 mod bootstrap;
 mod git;
@@ -19,7 +19,7 @@ use specify_error::Error;
 pub use sync::{regenerate_topology_lock, sync_projects};
 
 fn workspace_base(project_dir: &Path) -> PathBuf {
-    project_dir.join(".specify").join("workspace")
+    project_dir.join("workspace")
 }
 
 fn contracts_base(project_dir: &Path) -> PathBuf {
@@ -47,7 +47,7 @@ fn slot_escape_error(project_name: &str) -> Error {
     Error::Diag {
         code: "workspace-slot-name-invalid",
         detail: format!(
-            "registry project name `{project_name}` would escape `.specify/workspace/<project>/`; \
+            "registry project name `{project_name}` would escape `workspace/<project>/`; \
              project names must be a single path component"
         ),
     }

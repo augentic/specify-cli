@@ -357,14 +357,14 @@ mod tests {
         let mut input = regular_input();
         input.workspace_peers = vec![Peer {
             name: "billing".to_string(),
-            path: ".specify/workspace/billing/".to_string(),
+            path: "workspace/billing/".to_string(),
         }];
 
         let rendered = render_body(&input);
 
         assert!(
             rendered.contains(
-                "`.specify/workspace/billing/` is the materialized workspace clone for registry peer `billing`."
+                "`workspace/billing/` is the materialized workspace clone for registry peer `billing`."
             ),
             "workspace peer path must be repo-relative:\n{rendered}"
         );

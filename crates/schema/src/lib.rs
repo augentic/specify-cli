@@ -10,6 +10,7 @@
 //! 2) or [`specify_error::Error::Diag`] (exit code 1) as their policy
 //! dictates.
 
+pub mod cache;
 pub mod constants;
 pub mod digest;
 pub mod validate;

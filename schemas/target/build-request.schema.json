@@ -19,7 +19,7 @@
     "project-dir": {
       "type": "string",
       "minLength": 1,
-      "description": "Working tree the target builds into and validates against. Distinct from `inputs.root`: in workspace mode this is `<workspace>/.specify/workspace/<project>`."
+      "description": "Working tree the target builds into and validates against. Distinct from `inputs.root`: in workspace mode this is `<workspace>/workspace/<project>`."
     },
     "inputs": {
       "type": "object",

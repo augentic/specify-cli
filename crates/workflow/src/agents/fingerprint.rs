@@ -51,6 +51,15 @@ impl InputCollector {
         Ok(())
     }
 
+    /// Record an input file under an explicit logical repo-relative
+    /// path, decoupling the recorded provenance from the file's physical
+    /// location. Used for out-of-tree cache inputs (the manifest mirror,
+    /// codex) so context fingerprints stay stable and project-relative
+    /// even though the bytes live in the OS cache.
+    pub fn add_file_as(&mut self, logical_relative: &str, physical: &Path) {
+        self.paths.entry(logical_relative.to_string()).or_insert_with(|| physical.to_path_buf());
+    }
+
     /// Add an input file only when it exists as a regular file.
     pub fn add_file_if_present(&mut self, path: &Path) -> Result<(), Error> {
         match path.try_exists() {

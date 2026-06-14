@@ -247,7 +247,7 @@ fn init_writes_agents_fences_and_lock() {
 }
 
 #[test]
-fn reinit_skips_agents_generation_and_preserves_existing() {
+fn reinit_skips_agents_keeps_existing() {
     // The init-time AGENTS.md generator runs only when the file is
     // absent (always a `create`). A re-entry `--upgrade` over a project
     // that already carries an AGENTS.md must skip regeneration — never

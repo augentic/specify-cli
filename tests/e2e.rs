@@ -179,7 +179,7 @@ slices:
     )
     .expect("write workspace plan.yaml");
 
-    let project_root = workspace_root.join(".specify/workspace/orders");
+    let project_root = workspace_root.join("workspace/orders");
     fs::create_dir_all(&project_root).expect("mkdir workspace project");
     specify_cmd()
         .current_dir(&project_root)
@@ -217,7 +217,12 @@ slices:
 #[test]
 fn workspace_merge_excludes_generated() {
     let tmp = tempdir().expect("tempdir");
-    let project_root = tmp.path().join(".specify/workspace/orders");
+    // The slot lives at `<platform>/workspace/<peer>/`; `is_slot` keys on
+    // the platform root carrying `.specify/project.yaml`, so seed it.
+    fs::create_dir_all(tmp.path().join(".specify")).expect("mkdir platform .specify");
+    fs::write(tmp.path().join(".specify/project.yaml"), "workspace: true\n")
+        .expect("write platform project.yaml");
+    let project_root = tmp.path().join("workspace/orders");
     fs::create_dir_all(&project_root).expect("mkdir workspace project");
 
     specify_cmd()

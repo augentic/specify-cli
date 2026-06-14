@@ -40,9 +40,9 @@ pub const ADAPTER_FILENAME: &str = "adapter.yaml";
 /// Parent directory for in-repo adapter trees.
 pub const ADAPTERS_DIR: &str = "adapters";
 
-/// Manifest-cache root segment under `.specify/cache/`.
+/// Manifest-cache tenant segment under the out-of-tree project cache.
 ///
-/// `.specify/cache/manifests/{sources,targets}/<name>/` mirrors the
+/// `<project-cache>/manifests/{sources,targets}/<name>/` mirrors the
 /// in-repo `adapters/{sources,targets}/<name>/` tree (see
 /// [DECISIONS.md §"Cache layout"]).
 ///
@@ -241,8 +241,8 @@ pub enum Execution {
 pub enum AdapterLocation {
     /// Resolved from `<project_dir>/adapters/{sources,targets}/<name>/`.
     Local(PathBuf),
-    /// Resolved from the manifest cache at
-    /// `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/`.
+    /// Resolved from the out-of-tree manifest cache at
+    /// `<project-cache>/manifests/{sources,targets}/<name>/`.
     /// The manifest cache mirrors the in-repo adapter tree
     /// (`adapter.yaml` plus brief markdown) — see
     /// [DECISIONS.md §"Cache layout"].
@@ -271,16 +271,20 @@ impl AdapterLocation {
 }
 
 /// Manifest cache root for an axis —
-/// `.specify/cache/manifests/{sources,targets}/`.
+/// `<project-cache>/manifests/{sources,targets}/`, resolved out-of-tree
+/// from the OS cache (see [`crate::config::Layout::cache_dir`]).
 ///
 /// Path-only helper — the directory may or may not exist on disk.
 #[must_use]
 pub fn cache_axis_dir(project_dir: &Path, axis: Axis) -> PathBuf {
-    project_dir.join(".specify").join("cache").join(MANIFESTS_CACHE_DIR).join(axis.dir_segment())
+    crate::config::Layout::new(project_dir)
+        .cache_dir()
+        .join(MANIFESTS_CACHE_DIR)
+        .join(axis.dir_segment())
 }
 
 /// Manifest cache root for `(axis, name)` —
-/// `.specify/cache/manifests/{sources,targets}/<name>/`.
+/// `<project-cache>/manifests/{sources,targets}/<name>/`.
 ///
 /// This is the agent-populated mirror of `adapters/{sources,targets}/<name>/`
 /// — `adapter.yaml` plus the brief markdown files it references. See
@@ -300,10 +304,10 @@ pub fn cache_dir(project_dir: &Path, axis: Axis, name: &str) -> PathBuf {
 /// `<segment>` is the literal `survey` for the slice-less survey op or
 /// the slice name for extract.
 /// The write-only `$SCRATCH_DIR` preopen of the source-operation
-/// sandbox. Rooted under the transient working-state tree
-/// (`.specify/scratch/`), structurally disjoint from the memoization
-/// tree at `.specify/cache/`, so a scratch write can never pollute a
-/// cache artifact; see [DECISIONS.md §"Cache layout"].
+/// sandbox. Rooted under the transient in-tree working-state tree
+/// (`.specify/scratch/`), structurally disjoint from the out-of-tree
+/// memoization cache, so a scratch write can never pollute a cache
+/// artifact; see [DECISIONS.md §"Cache layout"].
 ///
 /// Path-only helper — the directory may or may not exist on disk.
 ///
@@ -415,8 +419,8 @@ pub struct TargetAdapter {
 pub struct ResolvedSourceAdapter {
     /// Parsed manifest.
     pub manifest: SourceAdapter,
-    /// Whether the manifest came from
-    /// `.specify/cache/manifests/sources/<name>/` or from
+    /// Whether the manifest came from the out-of-tree
+    /// `<project-cache>/manifests/sources/<name>/` or from
     /// `<project_dir>/adapters/sources/<name>/`, and the directory
     /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,
@@ -429,8 +433,8 @@ pub struct ResolvedSourceAdapter {
 pub struct ResolvedTargetAdapter {
     /// Parsed manifest.
     pub manifest: TargetAdapter,
-    /// Whether the manifest came from
-    /// `.specify/cache/manifests/targets/<name>/` or from
+    /// Whether the manifest came from the out-of-tree
+    /// `<project-cache>/manifests/targets/<name>/` or from
     /// `<project_dir>/adapters/targets/<name>/`, and the directory
     /// itself via [`AdapterLocation::path`].
     pub location: AdapterLocation,

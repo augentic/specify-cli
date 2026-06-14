@@ -305,7 +305,7 @@ fn validate_topology_platforms(
 /// The project's `project.yaml` plus its baseline are authoritative and
 /// the cache is the derived projection of them.
 ///
-/// `workspace_base` is `.specify/workspace`; `topology_lock_path` is
+/// `workspace_base` is the top-level `workspace/`; `topology_lock_path` is
 /// `.specify/topology.lock`. The binary handler renders the returned
 /// diagnostics — it owns no projection logic of its own.
 #[must_use]

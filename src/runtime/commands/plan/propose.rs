@@ -156,7 +156,7 @@ fn detect_missing_for_topology(topology: &[ProjectRef], ctx: &Ctx) -> Vec<Projec
             let project_dir = if topology.len() == 1 {
                 ctx.project_dir.clone()
             } else {
-                ctx.layout().specify_dir().join("workspace").join(&p.name)
+                ctx.project_dir.join("workspace").join(&p.name)
             };
             ProjectMissingPlatforms {
                 project: p.name.clone(),

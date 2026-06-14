@@ -209,7 +209,7 @@ fn validate_reports_all_health_diagnostics() {
              \x20\x20\x20\x20adapter: omnia@v1\n",
     )
     .unwrap();
-    let slot = tmp.path().join(".specify/workspace/alpha");
+    let slot = tmp.path().join("workspace/alpha");
     fs::create_dir_all(&slot).unwrap();
     let init = ProcessCommand::new("git").arg("-C").arg(&slot).arg("init").output().unwrap();
     assert!(init.status.success(), "git init failed: {}", String::from_utf8_lossy(&init.stderr));
@@ -281,14 +281,17 @@ fn validate_reports_topology_cache_stale() {
 
     // Materialise the slot with a resolvable adapter and an authored
     // description, then seed a topology.lock whose entry disagrees.
-    let slot_specify = tmp.path().join(".specify/workspace/alpha/.specify");
+    let slot_specify = tmp.path().join("workspace/alpha/.specify");
     fs::create_dir_all(&slot_specify).unwrap();
     fs::write(
         slot_specify.join("project.yaml"),
         "name: alpha\nadapter: omnia@v1\ndescription: Fresh description\n",
     )
     .unwrap();
-    copy_dir(&omnia_schema_dir(), &slot_specify.join("cache/manifests/targets/omnia"));
+    copy_dir(
+        &omnia_schema_dir(),
+        &expected_cache_dir(&tmp.path().join("workspace/alpha")).join("manifests/targets/omnia"),
+    );
 
     fs::write(
         tmp.path().join(".specify/topology.lock"),

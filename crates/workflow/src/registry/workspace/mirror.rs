@@ -14,7 +14,8 @@ use crate::adapter::{ADAPTER_FILENAME, Axis, adapter_axis_dir, cache_axis_dir, c
 
 /// Mirror the workspace's adapters — both axes, vendored tree and
 /// manifest-cache mirror alike, `tools.yaml` sidecars included — into
-/// `slot`'s manifest cache at `.specify/cache/manifests/{sources,targets}/`.
+/// `slot`'s out-of-tree manifest cache at
+/// `<slot-cache>/manifests/{sources,targets}/` (keyed by the slot path).
 ///
 /// Per-name delete-then-copy: every workspace-owned name is refreshed
 /// on re-sync; cache entries the workspace does not own (e.g. an
@@ -110,6 +111,35 @@ mod tests {
 
     use super::*;
 
+    const CACHE_ENV: &str = "SPECIFY_PROJECT_CACHE";
+
+    /// Restores the previous `SPECIFY_PROJECT_CACHE` value on drop.
+    struct CacheGuard(Option<std::ffi::OsString>);
+
+    impl Drop for CacheGuard {
+        #[expect(unsafe_code, reason = "restore the cache-root env var pinned for the test")]
+        fn drop(&mut self) {
+            // SAFETY: nextest runs each test in its own process, so no
+            // other thread reads or writes this env var concurrently.
+            unsafe {
+                match self.0.take() {
+                    Some(value) => std::env::set_var(CACHE_ENV, value),
+                    None => std::env::remove_var(CACHE_ENV),
+                }
+            }
+        }
+    }
+
+    /// Pin the out-of-tree cache root inside `tmp` for the test's
+    /// lifetime so cache writes are hermetic and auto-cleaned.
+    #[expect(unsafe_code, reason = "pin the cache-root env var into the test tempdir")]
+    fn scoped_cache(tmp: &TempDir) -> CacheGuard {
+        let prev = std::env::var_os(CACHE_ENV);
+        // SAFETY: see `CacheGuard::drop` — single-process test isolation.
+        unsafe { std::env::set_var(CACHE_ENV, tmp.path().join("project-cache")) };
+        CacheGuard(prev)
+    }
+
     fn stage_adapter(root: &Path, rel: &str, body: &str) {
         let dir = root.join(rel);
         fs::create_dir_all(&dir).expect("create adapter dir");
@@ -121,8 +151,11 @@ mod tests {
         // The workspace carries the same name in both probe locations;
         // the mirror copies from the cache, matching the loader.
         let tmp = TempDir::new().unwrap();
+        let _cache = scoped_cache(&tmp);
         stage_adapter(tmp.path(), "adapters/sources/docs", "vendored\n");
-        stage_adapter(tmp.path(), ".specify/cache/manifests/sources/docs", "cached\n");
+        let cached = cache_dir(tmp.path(), Axis::Source, "docs");
+        fs::create_dir_all(&cached).expect("create cached adapter dir");
+        fs::write(cached.join(ADAPTER_FILENAME), "cached\n").expect("write cached adapter.yaml");
 
         let adapters = workspace_adapters(tmp.path(), Axis::Source);
         let source = adapters.get("docs").expect("docs adapter present");

@@ -244,9 +244,9 @@ pub fn resolve_source_path(plan_root: &Path, raw: &str) -> PathBuf {
 /// `.specify/scratch/<adapter>/<segment>/`, where `<segment>` is
 /// `survey` for the slice-less survey op or the slice name for
 /// extract. Rooted under the transient working-state tree
-/// (`.specify/scratch/`), disjoint from the memoization tree at
-/// `.specify/cache/`, so a scratch write never shares a namespace
-/// with a cache artifact.
+/// (`.specify/scratch/`), disjoint from the out-of-tree memoization
+/// tree (the per-project OS cache), so a scratch write never shares a
+/// namespace with a cache artifact.
 fn scratch_dir(project_dir: &Path, adapter: &str, op: &SourceOp) -> PathBuf {
     specify_workflow::adapter::scratch_dir(project_dir, adapter, op.scratch_segment())
 }

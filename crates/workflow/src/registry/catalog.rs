@@ -185,7 +185,7 @@ impl Registry {
 
 impl RegistryProject {
     /// `true` when this entry's [`RegistryProject::url`] should be
-    /// materialised under `.specify/workspace/<name>/` as a symlink to a
+    /// materialised under `workspace/<name>/` as a symlink to a
     /// resolved filesystem path (`.` or a repo-relative path), as opposed
     /// to a `git clone` remote.
     ///

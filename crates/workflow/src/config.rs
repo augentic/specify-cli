@@ -65,7 +65,7 @@ pub struct ProjectConfig {
 
     /// `true` when this project is a registry-only **workspace**.
     /// Workspaces hold platform-level state — `registry.yaml`,
-    /// `change.md`, `plan.yaml`, workspace slots under `.specify/workspace/`
+    /// `change.md`, `plan.yaml`, workspace slots under `workspace/`
     /// — but never appear in their own `registry.yaml` and have phase
     /// pipelines disabled. Workspaces **omit** the `adapter:` field
     /// entirely; the absence of `adapter:` together with `workspace: true`
@@ -214,13 +214,15 @@ impl<'a> Layout<'a> {
         self.specify_dir().join("topology.lock")
     }
 
-    /// Absolute path to `<project_dir>/.specify/cache/` — the
-    /// memoization root (manifest mirror, codex, extraction results).
-    /// Deleting it costs recomputation only; transient working state
-    /// lives under the sibling [`Self::scratch_dir`].
+    /// Absolute path to this project's out-of-tree memoization root
+    /// (manifest mirror, codex, …), resolved from the OS cache via
+    /// [`specify_schema::cache::project_cache_dir`]. Lives outside the
+    /// working tree, keyed by a digest of the project path, so deleting
+    /// it costs recomputation only and it never pollutes git. Transient
+    /// per-run working state lives in-tree under [`Self::scratch_dir`].
     #[must_use]
     pub fn cache_dir(&self) -> PathBuf {
-        self.specify_dir().join("cache")
+        specify_schema::cache::project_cache_dir(self.project_dir)
     }
 
     /// Absolute path to `<project_dir>/.specify/scratch/` — the
@@ -303,20 +305,29 @@ impl<'a> Layout<'a> {
     }
 }
 
-/// Detect whether `project_dir` lives below `.specify/workspace/<peer>/`.
+/// Detect whether `project_dir` is, or lives below, a materialised
+/// workspace slot at `<platform>/workspace/<peer>/`.
 ///
-/// This is a path-ancestry predicate only. Context generation uses the
-/// shared posture to skip init-time `AGENTS.md` creation in materialised
-/// slots and to refuse standalone generation there; callers that need
-/// a fully initialized slot can layer `.specify/project.yaml` or
-/// plan-file guards on top.
+/// A slot is identified structurally: some ancestor's immediate parent
+/// is a `workspace/` directory whose own parent (the platform root)
+/// carries a `.specify/project.yaml`. The platform-config check
+/// disambiguates a real slot from an ordinary project that merely sits
+/// inside a directory named `workspace`, so this necessarily touches
+/// the filesystem. Context generation uses the shared posture to skip
+/// init-time `AGENTS.md` creation in materialised slots; callers that
+/// need a fully initialized slot can layer plan-file guards on top.
 #[must_use]
 pub fn is_slot(project_dir: &Path) -> bool {
-    let components: Vec<_> = project_dir.components().collect();
-    components.windows(3).any(|w| {
-        w[0].as_os_str() == ".specify"
-            && w[1].as_os_str() == "workspace"
-            && !w[2].as_os_str().is_empty()
+    project_dir.ancestors().any(|candidate| {
+        let Some(workspace) = candidate.parent() else {
+            return false;
+        };
+        if workspace.file_name() != Some(std::ffi::OsStr::new("workspace")) {
+            return false;
+        }
+        workspace.parent().is_some_and(|platform_root| {
+            platform_root.join(".specify").join("project.yaml").is_file()
+        })
     })
 }
 

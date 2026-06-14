@@ -24,7 +24,9 @@ fn specify_subpaths() {
     assert_eq!(layout.plan_path(), PathBuf::from("/a/b/plan.yaml"));
     assert_eq!(layout.change_brief_path(), PathBuf::from("/a/b/change.md"));
     assert_eq!(layout.discovery_path(), PathBuf::from("/a/b/discovery.md"));
-    assert_eq!(layout.cache_dir(), PathBuf::from("/a/b/.specify/cache"));
+    // The cache is regenerable, machine-owned state that lives out-of-tree;
+    // `cache_dir` delegates to the per-project OS-cache resolver.
+    assert_eq!(layout.cache_dir(), specify_schema::cache::project_cache_dir(base));
     assert_eq!(layout.archive_dir(), PathBuf::from("/a/b/.specify/archive"));
 }
 
@@ -34,7 +36,7 @@ fn plan_dir_moves_plan_artifacts_only() {
     // artifacts live at the initiating workspace. The override moves
     // exactly the three plan-root artifacts; every `.specify/` path
     // stays anchored to the project (slot) root.
-    let slot = Path::new("/ws/.specify/workspace/orders");
+    let slot = Path::new("/ws/workspace/orders");
     let workspace = Path::new("/ws");
     let layout = Layout::new(slot).with_plan_dir(Some(workspace));
     assert_eq!(layout.project_dir(), slot);
@@ -42,12 +44,9 @@ fn plan_dir_moves_plan_artifacts_only() {
     assert_eq!(layout.plan_path(), PathBuf::from("/ws/plan.yaml"));
     assert_eq!(layout.change_brief_path(), PathBuf::from("/ws/change.md"));
     assert_eq!(layout.discovery_path(), PathBuf::from("/ws/discovery.md"));
-    assert_eq!(layout.specify_dir(), PathBuf::from("/ws/.specify/workspace/orders/.specify"));
-    assert_eq!(layout.slices_dir(), PathBuf::from("/ws/.specify/workspace/orders/.specify/slices"));
-    assert_eq!(
-        layout.registry_path(),
-        PathBuf::from("/ws/.specify/workspace/orders/registry.yaml")
-    );
+    assert_eq!(layout.specify_dir(), PathBuf::from("/ws/workspace/orders/.specify"));
+    assert_eq!(layout.slices_dir(), PathBuf::from("/ws/workspace/orders/.specify/slices"));
+    assert_eq!(layout.registry_path(), PathBuf::from("/ws/workspace/orders/registry.yaml"));
 }
 
 #[test]
@@ -203,23 +202,42 @@ fn tools_field_omitted_when_empty() {
     assert!(!yaml.contains("tools:"), "empty tools should be omitted, got:\n{yaml}");
 }
 
+fn platform_with_slot(peer: &str) -> tempfile::TempDir {
+    let tmp = tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join(".specify")).unwrap();
+    fs::write(tmp.path().join(".specify").join("project.yaml"), "workspace: true\n").unwrap();
+    fs::create_dir_all(tmp.path().join("workspace").join(peer)).unwrap();
+    tmp
+}
+
 #[test]
-fn slot_detects_literal_path() {
-    let path = Path::new("/repo/.specify/workspace/orders");
-    assert!(is_slot(path));
+fn slot_detects_slot_root() {
+    let tmp = platform_with_slot("orders");
+    assert!(is_slot(&tmp.path().join("workspace").join("orders")));
 }
 
 #[test]
 fn workspace_clone_detects_nested() {
-    let path = Path::new("/repo/.specify/workspace/orders/src/service");
-    assert!(is_slot(path));
+    let tmp = platform_with_slot("orders");
+    let nested = tmp.path().join("workspace").join("orders").join("src").join("service");
+    fs::create_dir_all(&nested).unwrap();
+    assert!(is_slot(&nested));
 }
 
 #[test]
 fn slot_rejects_non_slot_paths() {
-    assert!(!is_slot(Path::new("/repo")));
-    assert!(!is_slot(Path::new("/repo/.specify")));
-    assert!(!is_slot(Path::new("/repo/.specify/workspace")));
+    let tmp = platform_with_slot("orders");
+    assert!(!is_slot(tmp.path()));
+    assert!(!is_slot(&tmp.path().join(".specify")));
+    assert!(!is_slot(&tmp.path().join("workspace")));
+}
+
+#[test]
+fn slot_rejects_workspace_dir_no_config() {
+    let tmp = tempdir().unwrap();
+    let project = tmp.path().join("workspace").join("orders");
+    fs::create_dir_all(&project).unwrap();
+    assert!(!is_slot(&project), "no platform .specify/project.yaml at the grandparent");
 }
 
 #[test]

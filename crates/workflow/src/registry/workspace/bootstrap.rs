@@ -7,6 +7,7 @@ use specify_error::Error;
 
 use super::git::{self, git_output_ok, git_porcelain_non_empty};
 use crate::adapter::TargetAdapter;
+use crate::config::Layout;
 use crate::init::adapter_name_from_value;
 use crate::registry::gitignore::ensure_gitignore_entries;
 
@@ -49,12 +50,13 @@ pub(super) fn greenfield_init(
 
 fn scaffold_greenfield(dest: &Path, adapter: &str) -> Result<(), Error> {
     let specify_dir = dest.join(".specify");
+    // The memoization cache is out-of-tree (OS cache, populated on
+    // demand), so only the in-tree `.specify/` tenants are scaffolded.
     for dir in [
         specify_dir.clone(),
         specify_dir.join("slices"),
         specify_dir.join("specs"),
         specify_dir.join("archive"),
-        specify_dir.join("cache"),
     ] {
         std::fs::create_dir_all(&dir).map_err(Error::Io)?;
     }
@@ -110,7 +112,7 @@ fn resolve_greenfield_adapter(
     if adapter.contains("://") {
         return Ok(adapter.to_string());
     }
-    let cache_base = initiating_project_dir.join(".specify").join("cache");
+    let cache_base = Layout::new(initiating_project_dir).cache_dir();
 
     let direct = cache_base.join(adapter);
     if direct.is_dir() {

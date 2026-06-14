@@ -113,7 +113,7 @@ Per workflow §"Note to the implementing agent", touching any of these symbols r
 
 ## Adapter loader axis routing
 
-`SourceAdapter::resolve` / `TargetAdapter::resolve` probe the manifest cache (`.specify/cache/manifests/{sources,targets}/<name>/`) then the in-repo tree (`adapters/{sources,targets}/<name>/`) — order and layout pinned in [workflow.md §"Resolver and cache"](./docs/standards/workflow.md#resolver-and-cache). The decisions:
+`SourceAdapter::resolve` / `TargetAdapter::resolve` probe the out-of-tree manifest cache (`<project-cache>/manifests/{sources,targets}/<name>/`) then the in-repo tree (`adapters/{sources,targets}/<name>/`) — order and layout pinned in [workflow.md §"Resolver and cache"](./docs/standards/workflow.md#resolver-and-cache). The decisions:
 
 - **Resolution is project-local only.** There is no environment-variable fallback to an out-of-tree framework checkout. A project carries a manifest-cache mirror or a vendored `adapters/` tree, or lets the first-party shorthand fetch at `init` time; a miss on both is `adapter-not-found`.
 - **The axis segment is load-bearing.** `sources` / `targets` keeps colliding names disambiguated by axis; cache placement matches the probe layout (`cache_dir(axis, name)`). See [§"Cache layout"](#cache-layout).
@@ -200,7 +200,7 @@ Deterministic commands emit their own events. Agent-orchestrated phases that hav
 
 ## `$CAPABILITY_DIR` replaces `$ADAPTER_DIR`
 
-The WASI tool runner's plugin-scope substitution variable is `$CAPABILITY_DIR`. It expands to the resolved plugin's root directory (`<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/` or the in-repo equivalent) and is only valid in `permissions.{read,write}` entries (and the `source:` URI of a plugin-scope tool); project-scope references are rejected as `tool.capability-dir-out-of-scope` / `tool.source-capability-dir-out-of-scope`. The paired tool cache scope segment is `plugin--<axis>--<slug>` (project-scope tools keep `project--<project-name>`). Refer to workflow §"Sandboxing".
+The WASI tool runner's plugin-scope substitution variable is `$CAPABILITY_DIR`. It expands to the resolved plugin's root directory (the out-of-tree `<project-cache>/manifests/{sources,targets}/<name>/` or the in-repo equivalent) and is only valid in `permissions.{read,write}` entries (and the `source:` URI of a plugin-scope tool); project-scope references are rejected as `tool.capability-dir-out-of-scope` / `tool.source-capability-dir-out-of-scope`. The paired tool cache scope segment is `plugin--<axis>--<slug>` (project-scope tools keep `project--<project-name>`). Refer to workflow §"Sandboxing".
 
 `$CAPABILITY_DIR` is also the read-only manifest-cache root of the four-root source-operation sandbox; see [§"Source operations"](#source-operations).
 
@@ -247,16 +247,21 @@ Plan-time platform reconciliation is a CLI-owned deterministic pass, not agent j
 
 ## Cache layout
 
-`.specify/` separates two regenerable, gitignored roots by contract, not just by tenant. **`.specify/cache/` is memoization** — every tree under it is keyed by content or version, and deleting it costs recomputation only. **`.specify/scratch/` is transient working state** — per-run lanes recreated empty by their owning verb, deletable at any time at zero cost. Splitting the roots makes the "a scratch write can never pollute a cache artifact" invariant structural: the write-only `$SCRATCH_DIR` preopen is rooted outside the cache tree entirely, and each root carries its own lifecycle policy. Both roots are gitignored by `ensure_gitignore_entries` alongside `.specify/workspace/`.
+`.specify/` is **Specify's directory: committed config plus system-of-record** (`project.yaml`, `specs/`, `slices/`, `archive/`, `journal.jsonl`, the lock sidecars). Its lone gitignored in-tree tenant is **`.specify/scratch/`** — transient working state: per-run lanes recreated empty by their owning verb, deletable at any time at zero cost. Everything regenerable and machine-owned now lives *outside* the working tree:
 
-`.specify/cache/` hosts two root-disjoint tenants, each self-describing via an in-tree provenance stamp so the cache root holds only directories:
+- **The cache is out-of-tree.** The adapter manifest mirror and the distributed codex live in a per-project directory inside the user's OS cache (`$SPECIFY_PROJECT_CACHE`, else `$XDG_CACHE_HOME/specify/projects/<project-id>/`, else `~/.cache/...`), keyed by a stable digest of the canonicalised project path (see [`crates/schema/src/cache.rs`](./crates/schema/src/cache.rs)). Each checkout — including each materialised workspace slot — gets its own collision-free cache that survives `git clean` and never pollutes the working tree.
+- **Workspace slots are top-level.** Materialised registry peers live at `<project>/workspace/<peer>/`, not under `.specify/`. Remote peers are `git worktree`s of a persistent out-of-tree bare mirror (`$SPECIFY_MIRROR_CACHE`, else `$XDG_CACHE_HOME/specify/mirrors/<url-id>.git`), so a peer's object store is shared across changes and fresh checkouts; local peers stay symlinks.
+
+`ensure_gitignore_entries` therefore writes exactly two entries — `.specify/scratch/` and the top-level `workspace/`. There is no in-tree `.specify/cache/` to ignore.
+
+The out-of-tree per-project cache hosts two root-disjoint tenants, each self-describing via a provenance stamp so the cache root holds only directories:
 
 - `manifests/{sources,targets}/<name>/` — the adapter manifest mirror (per-axis because adapter names are unique per axis), with provenance at `manifests/manifest-meta.yaml`.
 - `codex/` — the distributed shared-rules codex, with provenance at `codex/codex-meta.yaml`. See [§"Shared codex distribution"](#shared-codex-distribution).
 
 There is no extraction-result cache — see [§"Extraction is agent-only — no cache, no fingerprints"](#extraction-is-agent-only--no-cache-no-fingerprints). A manifest-cache directory is therefore always a manifest mirror; the loader never probes for co-tenancy.
 
-`.specify/scratch/` hosts the per-run lanes: `<adapter>/{survey,<slice>}/` (the `$SCRATCH_DIR` preopens, recreated empty at `prepare` time) and `plan/` (the plan-phase handoff lane — `plan propose --dry-run` recreates it empty so `--from` can never consume a stale `propose-response.json`).
+`.specify/scratch/` hosts the per-run lanes: `<adapter>/{survey,<slice>}/` (the `$SCRATCH_DIR` preopens, recreated empty at `prepare` time) and `plan/` (the plan-phase handoff lane — `plan propose --dry-run` recreates it empty so `--from` can never consume a stale `propose-response.json`). The write-only `$SCRATCH_DIR` preopen stays rooted inside `.specify/scratch/`, structurally disjoint from the out-of-tree cache, so a scratch write can never pollute a cache artifact.
 
 ## Target adapter suffix policy
 
@@ -319,7 +324,7 @@ The word **workspace** overloads three related concepts. Use them verbatim in op
 | Term               | Meaning                                                                                                            |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | **Workspace**      | Registry-only platform repo: `workspace: true` in `project.yaml`, `registry.yaml`, plan artifacts at the repo root |
-| **Workspace slot** | Materialised peer at `.specify/workspace/<project>/`                                                               |
+| **Workspace slot** | Materialised peer at `workspace/<project>/`                                                                        |
 | **Workspace sync** | `specify workspace sync` — materialise slots and regenerate `topology.lock`                                        |
 
 `/spec:init workspace` and `specify init --workspace` scaffold a workspace; init chains an initial workspace sync before returning.
@@ -335,11 +340,11 @@ Workspace routing runs phase work inside a materialised slot while `plan.yaml` /
 
 ## Slot adapter provisioning via workspace sync
 
-Slots carry no plan and no adapters by design, yet slot-side phase work must resolve the adapters the workspace's `plan.yaml.sources` bind. The loader stays exactly as recorded (§"Adapter loader axis routing": resolution is project-local only); `specify workspace sync` provisions the probe location the loader already consults — it mirrors the workspace's adapter set (both axes, vendored tree and manifest-cache mirror alike, `tools.yaml` sidecars included) into each synced slot's `.specify/cache/manifests/{sources,targets}/`. Mirroring is unconditional over the workspace adapter set: no plan parsing in sync, and the cache is gitignored so slots carry no repo residue. Implementation: `crates/workflow/src/registry/workspace/mirror.rs`.
+Slots carry no plan and no adapters by design, yet slot-side phase work must resolve the adapters the workspace's `plan.yaml.sources` bind. The loader stays exactly as recorded (§"Adapter loader axis routing": resolution is project-local only); `specify workspace sync` provisions the probe location the loader already consults — it mirrors the workspace's adapter set (both axes, vendored tree and manifest-cache mirror alike, `tools.yaml` sidecars included) into each synced slot's out-of-tree `<slot-cache>/manifests/{sources,targets}/`. Mirroring is unconditional over the workspace adapter set: no plan parsing in sync, and the cache is out-of-tree so slots carry no repo residue. Implementation: `crates/workflow/src/registry/workspace/mirror.rs`.
 
 - **Per-name delete-then-copy, no GC of foreign names.** Each workspace-owned name is removed and re-copied per sync, so re-sync refreshes. Names the workspace does not own are never pruned — the slot cache has a second legitimate writer (`specify init` caches greenfield adapter seeds), and a per-axis wipe could delete an adapter only the slot has. A name present at the workspace in both probe locations copies from the manifest cache, matching the loader's probe order.
 - **Slot-vendored names are skipped at mirror time, cross-axis.** The loader probes the cache *before* the vendored tree, so "the slot's own copy wins" cannot come from probe order — the mirror skips any name the slot vendors under `adapters/{sources,targets}/<name>/` on either axis. The same-axis skip keeps the slot copy winning resolution; the opposite-axis skip means the mirror can never manufacture an `adapter-name-axis-collision` in a previously healthy slot.
-- **Local symlink slots are mirrored too** — unlike the contracts distribution, which skips them — because the adapter gap is slot-side resolution regardless of slot backing, and the write lands only under the peer's gitignored `.specify/cache/`. A `url: .` self-slot is skipped: mirroring the workspace onto itself would remove-then-copy the cache from itself. Peers without `.specify/` are skipped, never scaffolded.
+- **Local symlink slots are mirrored too** — unlike the contracts distribution, which skips them — because the adapter gap is slot-side resolution regardless of slot backing, and the write lands only under the peer's out-of-tree per-project cache. A `url: .` self-slot is skipped: mirroring the workspace onto itself would remove-then-copy the cache from itself. Peers without `.specify/` are skipped, never scaffolded.
 
 The rejected alternative — a resolve-time plan-root fallback — shipped mid-run and was removed (`204e3867`): it contradicted the loader contract, keyed on the `adapter-not-found` string discriminant, and covered only the source axis. Staleness keeps its existing answer everywhere in workspace mode: re-run sync (the per-slice sync in the execute loop makes that automatic).
 
@@ -421,7 +426,7 @@ The rules parser consumes the canonical rule schema directly via `specify_schema
 
 ## Shared codex distribution
 
-Consumer projects resolve shared `UNI-*` rules without a co-located framework checkout or a manual `--rules-root` (RM-07). The shared codex ships beside the target adapter in its source repo (`adapters/shared/rules/{universal,core}/`); `specify init` and `specify rules sync` mirror it into `.specify/cache/codex/`, **pinned to the same adapter source/ref**.
+Consumer projects resolve shared `UNI-*` rules without a co-located framework checkout or a manual `--rules-root` (RM-07). The shared codex ships beside the target adapter in its source repo (`adapters/shared/rules/{universal,core}/`); `specify init` and `specify rules sync` mirror it into the out-of-tree `<project-cache>/codex/`, **pinned to the same adapter source/ref**.
 
 - **Probe order** (`probe_rules_root` in `crates/standards/src/rules/resolve.rs`): explicit `--rules-root` → monorepo `adapters/shared/rules/universal/` → codex cache → `rules-root-required`. The cache rung is a derived root, so the fallback overlay stays skipped, exactly like the monorepo case; both `specify lint` and `specify rules export` honour it.
 - **Distribution.** `cache_codex` / `sync_codex` walk up from the resolved adapter `source_dir` to the nearest ancestor carrying the `universal/` pack and copy it (plus `core/` under `--include-framework`); git sources fetch in the same sparse checkout as the adapter. **Fail-soft:** a source tree without the pack leaves the cache empty and the consumer falls back to `--rules-root`.
@@ -472,7 +477,7 @@ The slice-sized spec grouping — the `specs/<slug>/spec.md` directory segment, 
 
 ## History via git plus an outcome ledger
 
-Revises the archive posture. The durable record of merged work is git history of the committed `.specify/specs/` baseline plus an append-only outcome ledger: a `slice.archive.created` journal event (payload: slice, touched-specs, outcome summary, merge SHA) emitted from the merge path. The archived slice folder under `.specify/archive/YYYY-MM-DD-<slice>/` becomes a prunable convenience cache governed by `specify archive prune` (retention policy mirroring the tool-cache GC), not the system of record. `.specify/specs/` stays committable (init gitignores only `.specify/cache/`, `.specify/scratch/`, and `.specify/workspace/`).
+Revises the archive posture. The durable record of merged work is git history of the committed `.specify/specs/` baseline plus an append-only outcome ledger: a `slice.archive.created` journal event (payload: slice, touched-specs, outcome summary, merge SHA) emitted from the merge path. The archived slice folder under `.specify/archive/YYYY-MM-DD-<slice>/` becomes a prunable convenience cache governed by `specify archive prune` (retention policy mirroring the tool-cache GC), not the system of record. `.specify/specs/` stays committable (init gitignores only `.specify/scratch/` and the top-level `workspace/`; the cache is out-of-tree, so there is nothing in-tree to ignore).
 
 ## Bootstrap and upgrade lifecycle
 

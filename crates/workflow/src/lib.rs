@@ -23,4 +23,7 @@ pub mod schema;
 pub mod slice;
 pub mod upgrade;
 
+#[cfg(test)]
+pub(crate) mod test_cache;
+
 pub use platform::{Platform, parse_platforms_csv};

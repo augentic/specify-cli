@@ -21,8 +21,8 @@ impl SourceAdapter {
     ///
     /// Probe order, per workflow §Resolver and cache:
     ///
-    /// 1. `<project_dir>/.specify/cache/manifests/sources/<name>/adapter.yaml`
-    ///    (agent-populated manifest cache).
+    /// 1. `<project-cache>/manifests/sources/<name>/adapter.yaml`
+    ///    (agent-populated out-of-tree manifest cache).
     /// 2. `<project_dir>/adapters/sources/<name>/adapter.yaml` (in-repo).
     ///
     /// # Errors
@@ -53,8 +53,8 @@ impl TargetAdapter {
     ///
     /// Probe order, per workflow §Resolver and cache:
     ///
-    /// 1. `<project_dir>/.specify/cache/manifests/targets/<name>/adapter.yaml`
-    ///    (agent-populated manifest cache).
+    /// 1. `<project-cache>/manifests/targets/<name>/adapter.yaml`
+    ///    (agent-populated out-of-tree manifest cache).
     /// 2. `<project_dir>/adapters/targets/<name>/adapter.yaml` (in-repo).
     ///
     /// # Errors
@@ -139,8 +139,8 @@ fn load_validated(
 fn locate_axis(axis: Axis, name: &str, project_dir: &Path) -> Result<AdapterLocation, Error> {
     let cached = cache_dir(project_dir, axis, name);
     let local = adapter_axis_dir(project_dir, axis).join(name);
-    // The manifest cache owns its own root
-    // (`.specify/cache/manifests/{sources,targets}/<name>/`) — see
+    // The manifest cache owns its own out-of-tree root
+    // (`<project-cache>/manifests/{sources,targets}/<name>/`) — see
     // [DECISIONS.md §"Cache layout"].
     let location = if cached.is_dir() {
         AdapterLocation::Cached(cached)
