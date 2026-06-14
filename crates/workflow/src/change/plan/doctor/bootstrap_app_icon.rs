@@ -35,12 +35,7 @@ pub(super) fn detect(project_dir: &Path) -> Vec<Diagnostic> {
             continue;
         }
         if let Some(message) = unsatisfied_reason(project_dir, *platform) {
-            out.push(plan_finding(
-                BOOTSTRAP_APP_ICON_MISSING,
-                Severity::Important,
-                message,
-                None,
-            ));
+            out.push(plan_finding(BOOTSTRAP_APP_ICON_MISSING, Severity::Important, message, None));
         }
     }
     out
@@ -49,10 +44,7 @@ pub(super) fn detect(project_dir: &Path) -> Vec<Diagnostic> {
 fn unsatisfied_reason(project_dir: &Path, platform: Platform) -> Option<String> {
     let assets_path = project_dir.join(ASSETS_REL);
     if !assets_path.is_file() {
-        return Some(missing_message(
-            platform,
-            "`design-system/assets.yaml` is absent",
-        ));
+        return Some(missing_message(platform, "`design-system/assets.yaml` is absent"));
     }
 
     let raw = std::fs::read_to_string(&assets_path).ok()?;
@@ -67,10 +59,7 @@ fn unsatisfied_reason(project_dir: &Path, platform: Platform) -> Option<String> 
     };
 
     let Some(assets) = doc.get("assets").and_then(Value::as_object) else {
-        return Some(missing_message(
-            platform,
-            "`design-system/assets.yaml` has no `assets:` map",
-        ));
+        return Some(missing_message(platform, "`design-system/assets.yaml` has no `assets:` map"));
     };
 
     let Some(entry) = assets.get(pointer) else {
@@ -104,10 +93,8 @@ fn unsatisfied_reason(project_dir: &Path, platform: Platform) -> Option<String> 
 
 pub(super) fn platform_satisfied(assets_dir: &Path, entry: &Value, platform: Platform) -> bool {
     let plat = platform.to_string();
-    if let Some(pin) = entry
-        .get("sources")
-        .and_then(|s| s.get(plat.as_str()))
-        .and_then(Value::as_str)
+    if let Some(pin) =
+        entry.get("sources").and_then(|s| s.get(plat.as_str())).and_then(Value::as_str)
         && pin_resolves(assets_dir, pin)
     {
         return true;
@@ -130,10 +117,7 @@ pub(super) fn source_materializable(assets_dir: &Path, entry: &Value, source: &s
         return false;
     }
     let kind = entry.get("kind").and_then(Value::as_str);
-    let ext = Path::new(source)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase);
+    let ext = Path::new(source).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
     matches!(
         (kind, ext.as_deref()),
         (Some("vector"), Some("svg")) | (Some("raster"), Some("png" | "jpg" | "jpeg" | "webp"))

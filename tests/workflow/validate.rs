@@ -421,3 +421,128 @@ fn plan_validate_healthy_exits_zero() {
         "empty plan must emit zero findings: {value}"
     );
 }
+
+// ---- RFC-46 bootstrap app-icon gate (plan validate) --------------------
+
+fn vectis_stub_dir() -> PathBuf {
+    repo_root().join("tests/fixtures/adapters/targets/vectis-stub")
+}
+
+fn init_vectis_greenfield(platforms: &str) -> TempDir {
+    let tmp = tempdir().unwrap();
+    let root = tmp.path();
+    let adapter = root.join("adapters/targets/vectis");
+    copy_dir(&vectis_stub_dir(), &adapter);
+    let adapter_yaml =
+        fs::read_to_string(adapter.join("adapter.yaml")).expect("read vectis-stub adapter.yaml");
+    fs::write(
+        adapter.join("adapter.yaml"),
+        adapter_yaml.replace("name: vectis-stub", "name: vectis"),
+    )
+    .expect("patch adapter name to vectis");
+
+    specify_cmd()
+        .current_dir(root)
+        .args(["init"])
+        .arg(&adapter)
+        .args(["--name", "platform-app", "--platforms", platforms])
+        .assert()
+        .success();
+
+    fs::write(
+        root.join("plan.yaml"),
+        "name: platform-app\nsources:\n  intent:\n    adapter: intent\n    value: \"Add a feature.\"\nslices:\n  - name: add-feature\n    status: pending\n",
+    )
+    .expect("write plan.yaml");
+    tmp
+}
+
+#[test]
+fn app_icon_missing_greenfield() {
+    let tmp = init_vectis_greenfield("core,ios,android");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .failure();
+    assert_eq!(assert.get_output().status.code(), Some(2));
+
+    let value = parse_stdout(&assert.get_output().stdout, tmp.path());
+    let findings = value["findings"].as_array().expect("findings array");
+    let hits: Vec<&Value> =
+        findings.iter().filter(|r| r["rule-id"] == "plan-bootstrap-app-icon-missing").collect();
+    assert_eq!(hits.len(), 2, "ios and android must each fail: {findings:#?}");
+    assert!(hits.iter().all(|r| r["severity"] == "important"));
+}
+
+#[test]
+fn app_icon_valid_assets_passes() {
+    let tmp = init_vectis_greenfield("core,ios,android");
+    let design = tmp.path().join("design-system");
+    fs::create_dir_all(design.join("assets")).expect("mkdir assets");
+    fs::write(
+        design.join("assets.yaml"),
+        "version: 1\n\
+         app-icon: app-icon\n\
+         assets:\n\
+         \x20\x20app-icon:\n\
+         \x20\x20\x20\x20kind: vector\n\
+         \x20\x20\x20\x20role: app-icon\n\
+         \x20\x20\x20\x20source: assets/app-icon.svg\n",
+    )
+    .expect("write assets.yaml");
+    fs::write(design.join("assets/app-icon.svg"), "<svg/>").expect("write svg");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .success();
+    let value = parse_stdout(&assert.get_output().stdout, tmp.path());
+    let findings = value["findings"].as_array().expect("findings array");
+    assert!(
+        !findings.iter().any(|r| r["rule-id"] == "plan-bootstrap-app-icon-missing"),
+        "valid path A master must not emit app-icon gate: {findings:#?}"
+    );
+}
+
+#[test]
+fn app_icon_shell_resident_passes() {
+    let tmp = init_vectis_greenfield("core,ios,android");
+    let appiconset = tmp.path().join("iOS/Demo/Resources/Assets.xcassets/AppIcon.appiconset");
+    fs::create_dir_all(&appiconset).expect("mkdir appiconset");
+    fs::write(
+        appiconset.join("Contents.json"),
+        r#"{"images":[{"filename":"AppIcon.png","idiom":"universal"}]}"#,
+    )
+    .expect("write contents");
+    fs::write(appiconset.join("AppIcon.png"), minimal_app_icon_png()).expect("write png");
+
+    let res_dir = tmp.path().join("Android/app/src/main/res");
+    fs::create_dir_all(res_dir.join("mipmap-anydpi-v26")).expect("mkdir v26");
+    fs::write(res_dir.join("mipmap-anydpi-v26/ic_launcher.xml"), "<adaptive-icon/>")
+        .expect("write launcher xml");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .success();
+    let value = parse_stdout(&assert.get_output().stdout, tmp.path());
+    let findings = value["findings"].as_array().expect("findings array");
+    assert!(
+        !findings.iter().any(|r| r["rule-id"] == "plan-bootstrap-app-icon-missing"),
+        "shell-resident escape hatch must satisfy §6.3 without assets.yaml: {findings:#?}"
+    );
+}
+
+fn minimal_app_icon_png() -> Vec<u8> {
+    vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ]
+}

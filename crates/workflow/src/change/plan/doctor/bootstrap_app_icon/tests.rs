@@ -1,11 +1,11 @@
 use std::fs;
 use std::path::Path;
 
+use specify_diagnostics::blocking;
 use tempfile::tempdir;
 
 use super::{detect, platform_satisfied, source_materializable};
 use crate::Platform;
-use specify_diagnostics::blocking;
 
 fn write_project_yaml(root: &Path, platforms: &[&str]) {
     let yaml_platforms: Vec<String> = platforms.iter().map(|p| format!("  - {p}")).collect();
@@ -91,9 +91,7 @@ fn valid_source_master_passes() {
 fn shell_resident_ios_skips_design_system() {
     let fixture = bootstrap_fixture(&["core", "ios", "android"]);
 
-    let appiconset = fixture
-        .path()
-        .join("iOS/Demo/Resources/Assets.xcassets/AppIcon.appiconset");
+    let appiconset = fixture.path().join("iOS/Demo/Resources/Assets.xcassets/AppIcon.appiconset");
     fs::create_dir_all(&appiconset).expect("mkdir appiconset");
     fs::write(
         appiconset.join("Contents.json"),
@@ -130,7 +128,7 @@ fn path_b_pin_satisfies_platform() {
     let tmp = tempdir().expect("tempdir");
     let assets_dir = tmp.path().join("design-system/assets");
     fs::create_dir_all(assets_dir.join("exports/ios/app-icon/AppIcon.appiconset")).expect("mkdir");
-    let entry: serde_json::Value = serde_json::json!({
+    let entry = serde_json::json!({
         "kind": "vector",
         "role": "app-icon",
         "sources": { "ios": "exports/ios/app-icon/AppIcon.appiconset" }
@@ -139,7 +137,7 @@ fn path_b_pin_satisfies_platform() {
 }
 
 #[test]
-fn source_materializable_rejects_kind_mismatch() {
+fn source_kind_mismatch() {
     let tmp = tempdir().expect("tempdir");
     let assets_dir = tmp.path().join("assets");
     fs::create_dir_all(&assets_dir).expect("mkdir");

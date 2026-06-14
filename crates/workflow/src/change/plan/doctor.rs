@@ -1,7 +1,7 @@
 //! Health diagnostics layered on top of `Plan::validate`:
 //! `cycle-in-depends-on`, `orphan-source`,
-//! and `stale-workspace-clone`. Surfaced through
-//! `specify plan validate`.
+//! `stale-workspace-clone`, and `plan-bootstrap-app-icon-missing`.
+//! Surfaced through `specify plan validate`.
 
 use std::path::Path;
 
@@ -64,18 +64,18 @@ pub struct CloneSignature {
     pub target: Option<String>,
 }
 
-/// Run every `Plan::validate` check, then layer the three doctor-only
+/// Run every `Plan::validate` check, then layer doctor-only
 /// diagnostics on top.
 ///
 /// `slices_dir` and `registry` are forwarded to `Plan::validate` so
 /// the validate-level findings are bit-identical to those emitted by
-/// `specify plan validate`. `project_dir` is consulted only by the
-/// stale-workspace-clone check; pass `None` to skip that check
-/// (`Plan::doctor_pure` does the same — see the unit tests).
+/// `specify plan validate`. `project_dir` is consulted by the
+/// stale-workspace-clone and bootstrap `app-icon` checks; pass `None`
+/// to skip both (`Plan::doctor_pure` does the same — see the unit tests).
 ///
 /// Every check already emits the neutral [`Diagnostic`] currency, so
-/// the validate-level findings pass through unchanged and the three
-/// health checks append their structured-evidence findings after them.
+/// the validate-level findings pass through unchanged and the health
+/// checks append their structured-evidence findings after them.
 ///
 /// The order in the returned vector is stable:
 ///
@@ -83,6 +83,7 @@ pub struct CloneSignature {
 ///   2. Cycle diagnostics (one per cycle, deduplicated by node-set).
 ///   3. Orphan source diagnostics (sorted by key).
 ///   4. Stale workspace clone diagnostics (sorted by project name).
+///   5. Bootstrap `app-icon` gate diagnostics (one per failing UI platform).
 #[must_use]
 pub fn doctor(
     plan: &Plan, slices_dir: Option<&Path>, registry: Option<&Registry>, project_dir: Option<&Path>,
