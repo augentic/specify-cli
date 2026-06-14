@@ -74,7 +74,8 @@ fn ios_plan_substitutes_paths_and_cap_blocks() {
     assert_eq!(plan.files.len(), ios::ENTRIES.len());
     assert!(plan.files.iter().any(|file| file.relative_path == "iOS/Counter/CounterApp.swift"));
     assert!(plan.files.iter().any(|file| {
-        file.relative_path == "iOS/Counter/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json"
+        file.relative_path
+            == "iOS/Counter/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json"
     }));
     let project_yml =
         plan.files.iter().find(|file| file.relative_path == "iOS/project.yml").unwrap();

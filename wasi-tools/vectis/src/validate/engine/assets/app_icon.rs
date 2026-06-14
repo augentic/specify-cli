@@ -36,10 +36,7 @@ pub(super) fn check_raster_source_master(
     id: &str, source_rel: &str, assets_dir: &Path, errors: &mut Vec<Value>,
 ) {
     let path = assets_dir.join(source_rel);
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase);
+    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
     if ext.as_deref() != Some("png") {
         return;
     }
@@ -165,10 +162,7 @@ fn check_ios_appiconset(json_path: &str, root: &Path, errors: &mut Vec<Value>) {
 }
 
 fn check_android_export(json_path: &str, root: &Path, errors: &mut Vec<Value>) {
-    let required = [
-        "mipmap-anydpi-v26/ic_launcher.xml",
-        "mipmap-anydpi-v26/ic_launcher_round.xml",
-    ];
+    let required = ["mipmap-anydpi-v26/ic_launcher.xml", "mipmap-anydpi-v26/ic_launcher_round.xml"];
     for rel in required {
         if !root.join(rel).is_file() {
             errors.push(json!({
@@ -230,10 +224,7 @@ fn directory_contains_extension(dir: &Path, ext: &str) -> bool {
 
 /// Lowercase extension without the leading dot, or `None` when absent.
 fn source_extension(path: &str) -> Option<String> {
-    Path::new(path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(str::to_ascii_lowercase)
+    Path::new(path).extension().and_then(|ext| ext.to_str()).map(str::to_ascii_lowercase)
 }
 
 /// Read PNG IHDR width, height, and whether the color type carries alpha.
@@ -293,11 +284,7 @@ mod tests {
         for byte in kind.iter().chain(data) {
             hasher ^= u32::from(*byte);
             for _ in 0..8 {
-                hasher = if hasher & 1 == 1 {
-                    0xedb8_8320 ^ (hasher >> 1)
-                } else {
-                    hasher >> 1
-                };
+                hasher = if hasher & 1 == 1 { 0xedb8_8320 ^ (hasher >> 1) } else { hasher >> 1 };
             }
         }
         !hasher

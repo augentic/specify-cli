@@ -225,6 +225,18 @@ Canonical draft: [`augentic/specify` `rfcs/rfc-46-asset-materialization.md`](htt
 > automatic at `specify slice build --phase prepare` for in-scope missing
 > exports (§2.1 of RFC-46).
 >
+> **Report envelope (stable):** success payloads are flat JSON with
+> `command: "materialize assets"`, the resolved inventory `path`, `dry_run`,
+> the effective `platforms` filter, and three arrays:
+>
+> - `materialized[]` — `{ "asset_id", "platform", "path" }` per export written
+>   (absent in `--dry-run` when no write would occur).
+> - `skipped_pins[]` — `{ "asset_id", "platform", "pin" }` for operator-pinned
+>   slots skipped silently.
+> - `errors[]` — `{ "path", "message" }` entries (JSON Pointer-shaped `path`
+>   when the failure targets a sub-document). Non-empty `errors` exits `1`;
+>   missing inventory or bad flags exit `2` via the shared error envelope.
+>
 > **Render-by-`kind`:** shell writers copy materialized exports into shell
 > resources and emit view code by entry `kind` — `vector` / `raster` from shell
 > catalogs, `symbol` only via explicit `symbols.<platform>` at the call site.
@@ -232,8 +244,9 @@ Canonical draft: [`augentic/specify` `rfcs/rfc-46-asset-materialization.md`](htt
 > forbidden.
 
 _Codified in: `wasi-tools/vectis/src/validate/engine/assets/` (export presence,
-`assets-materialization-missing`, `assets-app-icon-*`); materialize subcommand
-lands Phase 2 (`wasi-tools/vectis/src/materialize.rs`, planned)._
+`assets-materialization-missing`, `assets-app-icon-*`);
+`wasi-tools/vectis/src/materialize.rs` (CLI surface and report envelope;
+conversion pipeline lands R46-S17+)._
 
 ### §L — Bootstrap `app-icon` gate
 

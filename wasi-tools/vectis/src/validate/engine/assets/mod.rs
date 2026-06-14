@@ -203,7 +203,9 @@ fn check_asset_files(
     }
 }
 
-fn check_app_icon_pointer(instance: &Value, assets: &serde_json::Map<String, Value>, errors: &mut Vec<Value>) {
+fn check_app_icon_pointer(
+    instance: &Value, assets: &serde_json::Map<String, Value>, errors: &mut Vec<Value>,
+) {
     let Some(pointer) = instance.get("app-icon").and_then(Value::as_str) else {
         return;
     };
@@ -268,11 +270,7 @@ fn check_file(json_path: &str, file_rel: &str, dir: &Path, errors: &mut Vec<Valu
 }
 
 fn check_platform_coverage(
-    id: &str,
-    entry: &Value,
-    assets_dir: &Path,
-    platforms: &[String],
-    errors: &mut Vec<Value>,
+    id: &str, entry: &Value, assets_dir: &Path, platforms: &[String], errors: &mut Vec<Value>,
     warnings: &mut Vec<Value>,
 ) {
     if entry.get("role").and_then(Value::as_str) == Some("app-icon") {
@@ -313,8 +311,7 @@ fn check_platform_coverage(
         }
         "vector" => {
             for plat in platforms {
-                let has_pin =
-                    entry.get("sources").and_then(|s| s.get(plat.as_str())).is_some();
+                let has_pin = entry.get("sources").and_then(|s| s.get(plat.as_str())).is_some();
                 if has_pin {
                     continue;
                 }
@@ -357,10 +354,7 @@ fn warn_illustration_ios_svg_paths(id: &str, ios_node: Option<&Value>, warnings:
 }
 
 fn source_extension(path: &str) -> Option<String> {
-    Path::new(path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(str::to_ascii_lowercase)
+    Path::new(path).extension().and_then(|ext| ext.to_str()).map(str::to_ascii_lowercase)
 }
 
 const fn raster_densities(plat: &str) -> &'static [&'static str] {

@@ -330,9 +330,9 @@ screens:
     let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     assert!(
-        !errors.iter().any(|e| {
-            e["path"].as_str().unwrap_or("") == "/assets/brand-logo/sources/android"
-        }),
+        !errors
+            .iter()
+            .any(|e| { e["path"].as_str().unwrap_or("") == "/assets/brand-logo/sources/android" }),
         "canonical `source:` should satisfy android coverage until materialize runs: {errors:?}"
     );
 }
@@ -620,8 +620,7 @@ assets:
 "#;
     let (tmp, assets_path) = write_assets_project(yaml, &[]);
     std::fs::create_dir_all(
-        tmp.path()
-            .join("design-system/assets/exports/ios/app-icon/AppIcon.appiconset"),
+        tmp.path().join("design-system/assets/exports/ios/app-icon/AppIcon.appiconset"),
     )
     .expect("mkdir empty appiconset");
     let args = Args {
@@ -680,11 +679,8 @@ assets:
       ios: assets/ios/brand-logo.svg
       android: assets/android/brand-logo.xml
 ";
-    let files = [
-        "assets/brand-logo.svg",
-        "assets/ios/brand-logo.svg",
-        "assets/android/brand-logo.xml",
-    ];
+    let files =
+        ["assets/brand-logo.svg", "assets/ios/brand-logo.svg", "assets/android/brand-logo.xml"];
     let (_tmp, assets_path) = write_assets_project(yaml, &files);
     let args = Args {
         mode: ValidateMode::Assets,
@@ -840,11 +836,7 @@ fn png_crc(kind: [u8; 4], data: &[u8]) -> u32 {
     for byte in kind.iter().chain(data) {
         hasher ^= u32::from(*byte);
         for _ in 0..8 {
-            hasher = if hasher & 1 == 1 {
-                0xedb8_8320 ^ (hasher >> 1)
-            } else {
-                hasher >> 1
-            };
+            hasher = if hasher & 1 == 1 { 0xedb8_8320 ^ (hasher >> 1) } else { hasher >> 1 };
         }
     }
     !hasher
@@ -922,10 +914,9 @@ assets:
     let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     assert!(
-        errors.iter().any(|e| e["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("assets-app-icon-invalid")),
+        errors
+            .iter()
+            .any(|e| e["message"].as_str().unwrap_or("").contains("assets-app-icon-invalid")),
         "expected app-icon pointer error, got: {errors:?}"
     );
 }

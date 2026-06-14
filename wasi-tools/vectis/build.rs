@@ -154,7 +154,8 @@ fn emit_assembly(
         out.push_str("        TemplateEntry {\n");
         let _ = writeln!(out, "            target: {:?},", entry.target);
         let _ = writeln!(out, "            contents: include_str!(\"{include_path}\"),");
-        let _ = writeln!(out, "            path_mode: PathMode::{},", path_mode_rust(&spec.path_mode));
+        let _ =
+            writeln!(out, "            path_mode: PathMode::{},", path_mode_rust(&spec.path_mode));
         let _ = writeln!(
             out,
             "            include_when: {},",

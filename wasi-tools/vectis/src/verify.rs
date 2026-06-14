@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args as ClapArgs, ValueEnum};
 use serde_json::Value;
-use specify_vectis_shell_detect::{shell_present, SUPPORTED_SHELL_PLATFORMS};
+use specify_vectis_shell_detect::{SUPPORTED_SHELL_PLATFORMS, shell_present};
 
 use crate::validate::find_project_root;
 use crate::{VectisError, render_json as render_value};

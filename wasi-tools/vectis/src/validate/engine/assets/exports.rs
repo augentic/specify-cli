@@ -23,11 +23,17 @@ pub(super) fn conventional_export_exists(
         ("android", "raster") => {
             let snake = kebab_to_snake(id);
             for density in ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"] {
-                if exports_root.join(format!("drawable-{density}")).join(format!("{snake}.png")).is_file()
+                if exports_root
+                    .join(format!("drawable-{density}"))
+                    .join(format!("{snake}.png"))
+                    .is_file()
                 {
                     return true;
                 }
-                if exports_root.join(format!("mipmap-{density}")).join(format!("{snake}.png")).is_file()
+                if exports_root
+                    .join(format!("mipmap-{density}"))
+                    .join(format!("{snake}.png"))
+                    .is_file()
                 {
                     return true;
                 }
