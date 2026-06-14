@@ -670,7 +670,7 @@ assets:
 /// Illustration vector `sources.ios` ending in `.svg` surfaces a warning.
 #[test]
 fn illustration_ios_svg_source_warns() {
-    let yaml = r#"version: 1
+    let yaml = r"version: 1
 assets:
   brand-logo:
     kind: vector
@@ -679,7 +679,7 @@ assets:
     sources:
       ios: assets/ios/brand-logo.svg
       android: assets/android/brand-logo.xml
-"#;
+";
     let files = [
         "assets/brand-logo.svg",
         "assets/ios/brand-logo.svg",
@@ -821,20 +821,21 @@ fn minimal_png_bytes(width: u32, height: u32, color_type: u8) -> Vec<u8> {
     ihdr.push(8);
     ihdr.push(color_type);
     ihdr.extend_from_slice(&[0, 0, 0]);
-    append_png_chunk(&mut out, b"IHDR", &ihdr);
-    append_png_chunk(&mut out, b"IEND", &[]);
+    append_png_chunk(&mut out, *b"IHDR", &ihdr);
+    append_png_chunk(&mut out, *b"IEND", &[]);
     out
 }
 
-fn append_png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
-    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
-    out.extend_from_slice(kind);
+fn append_png_chunk(out: &mut Vec<u8>, kind: [u8; 4], data: &[u8]) {
+    let len = u32::try_from(data.len()).expect("png fixture chunk length fits u32");
+    out.extend_from_slice(&len.to_be_bytes());
+    out.extend_from_slice(&kind);
     out.extend_from_slice(data);
     let crc = png_crc(kind, data);
     out.extend_from_slice(&crc.to_be_bytes());
 }
 
-fn png_crc(kind: &[u8], data: &[u8]) -> u32 {
+fn png_crc(kind: [u8; 4], data: &[u8]) -> u32 {
     let mut hasher = 0xffff_ffff_u32;
     for byte in kind.iter().chain(data) {
         hasher ^= u32::from(*byte);

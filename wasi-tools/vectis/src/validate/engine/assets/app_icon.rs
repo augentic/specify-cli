@@ -274,20 +274,21 @@ mod tests {
         ihdr.push(8); // bit depth
         ihdr.push(color_type);
         ihdr.extend_from_slice(&[0, 0, 0]); // compression, filter, interlace
-        append_chunk(&mut out, b"IHDR", &ihdr);
-        append_chunk(&mut out, b"IEND", &[]);
+        append_chunk(&mut out, *b"IHDR", &ihdr);
+        append_chunk(&mut out, *b"IEND", &[]);
         out
     }
 
-    fn append_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
-        out.extend_from_slice(&(data.len() as u32).to_be_bytes());
-        out.extend_from_slice(kind);
+    fn append_chunk(out: &mut Vec<u8>, kind: [u8; 4], data: &[u8]) {
+        let len = u32::try_from(data.len()).expect("png fixture chunk length fits u32");
+        out.extend_from_slice(&len.to_be_bytes());
+        out.extend_from_slice(&kind);
         out.extend_from_slice(data);
         let crc = crc32(kind, data);
         out.extend_from_slice(&crc.to_be_bytes());
     }
 
-    fn crc32(kind: &[u8], data: &[u8]) -> u32 {
+    fn crc32(kind: [u8; 4], data: &[u8]) -> u32 {
         let mut hasher = 0xffff_ffff_u32;
         for byte in kind.iter().chain(data) {
             hasher ^= u32::from(*byte);
