@@ -7,7 +7,7 @@ use specify_vectis::validate::error::VectisError;
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
 
 use crate::engine_support::{
-    errors_array, warnings_array, write_assets_project, write_specs_composition,
+    errors_array, warnings_array, write_assets_project, write_project_yaml, write_specs_composition,
 };
 
 /// Appendix E verbatim. Pinned here as the happy-path schema fixture
@@ -293,11 +293,10 @@ screens:
     );
 }
 
-/// Vector asset referenced by composition but missing
-/// `sources.android` is an error (the targeted shell platform has no
-/// usable source).
+/// Vector asset referenced by composition with only a canonical
+/// `source:` does not require a per-platform pin yet (RFC §7 path A).
 #[test]
-fn vector_missing_platform_export_errors() {
+fn vector_source_only_satisfies_platform_coverage() {
     let yaml = r"version: 1
 assets:
   brand-logo:
@@ -309,6 +308,7 @@ assets:
 ";
     let files = ["assets/brand-logo.svg", "assets/ios/brand-logo.pdf"];
     let (tmp, assets_path) = write_assets_project(yaml, &files);
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
     write_specs_composition(
         tmp.path(),
         r"version: 1
@@ -330,11 +330,10 @@ screens:
     let envelope = run(&args).expect("run succeeds");
     let errors = errors_array(&envelope);
     assert!(
-        errors.iter().any(|e| {
+        !errors.iter().any(|e| {
             e["path"].as_str().unwrap_or("") == "/assets/brand-logo/sources/android"
-                && e["message"].as_str().unwrap_or("").contains("vector asset `brand-logo`")
         }),
-        "expected android-coverage error, got: {errors:?}"
+        "canonical `source:` should satisfy android coverage until materialize runs: {errors:?}"
     );
 }
 
@@ -563,7 +562,9 @@ assets:
     alt: "Application"
     source: assets/app-icon.png
 "#;
-    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/app-icon.png"]);
+    let (tmp, assets_path) = write_assets_project(yaml, &[]);
+    let png_path = tmp.path().join("design-system/assets/app-icon.png");
+    std::fs::write(png_path, minimal_png_bytes(1024, 1024, 2)).expect("write app-icon png");
     let args = Args {
         mode: ValidateMode::Assets,
         path: Some(assets_path),
@@ -575,7 +576,7 @@ assets:
     );
 }
 
-/// RFC §3.1 path B — operator-pinned export roots validate as directories.
+/// RFC §3.1 path B — operator-pinned export roots validate when layout satisfies §4.2 / §4.3.
 #[test]
 fn app_icon_pinned_export_roots_validates() {
     let yaml = r#"version: 1
@@ -591,9 +592,8 @@ assets:
 "#;
     let (tmp, assets_path) = write_assets_project(yaml, &[]);
     let design = tmp.path().join("design-system");
-    std::fs::create_dir_all(design.join("assets/exports/ios/app-icon/AppIcon.appiconset"))
-        .expect("mkdir ios export root");
-    std::fs::create_dir_all(design.join("assets/exports/android/app-icon")).expect("mkdir android export root");
+    write_valid_ios_appiconset(&design.join("assets/exports/ios/app-icon/AppIcon.appiconset"));
+    write_valid_android_app_icon_export(&design.join("assets/exports/android/app-icon"));
     let args = Args {
         mode: ValidateMode::Assets,
         path: Some(assets_path),
@@ -603,6 +603,250 @@ assets:
         errors_array(&envelope).is_empty(),
         "pinned app-icon export roots should validate cleanly: {envelope}"
     );
+}
+
+/// Empty AppIcon.appiconset directories fail export layout checks.
+#[test]
+fn app_icon_invalid_ios_export_errors() {
+    let yaml = r#"version: 1
+app-icon: app-icon-pinned
+assets:
+  app-icon-pinned:
+    kind: raster
+    role: app-icon
+    alt: "Application"
+    sources:
+      ios: assets/exports/ios/app-icon/AppIcon.appiconset
+"#;
+    let (tmp, assets_path) = write_assets_project(yaml, &[]);
+    std::fs::create_dir_all(
+        tmp.path()
+            .join("design-system/assets/exports/ios/app-icon/AppIcon.appiconset"),
+    )
+    .expect("mkdir empty appiconset");
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("assets-app-icon-export-invalid")),
+        "expected export layout error, got: {errors:?}"
+    );
+}
+
+/// `sources.ios` ending in `.svg` is rejected for `role: app-icon`.
+#[test]
+fn app_icon_ios_svg_pin_errors() {
+    let yaml = r#"version: 1
+assets:
+  app-icon:
+    kind: vector
+    role: app-icon
+    alt: "Application"
+    sources:
+      ios: assets/ios/app-icon.svg
+"#;
+    let (_tmp, assets_path) = write_assets_project(yaml, &["assets/ios/app-icon.svg"]);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("assets-app-icon-export-invalid")),
+        "expected ios svg pin error, got: {errors:?}"
+    );
+}
+
+/// Illustration vector `sources.ios` ending in `.svg` surfaces a warning.
+#[test]
+fn illustration_ios_svg_source_warns() {
+    let yaml = r#"version: 1
+assets:
+  brand-logo:
+    kind: vector
+    role: illustration
+    source: assets/brand-logo.svg
+    sources:
+      ios: assets/ios/brand-logo.svg
+      android: assets/android/brand-logo.xml
+"#;
+    let files = [
+        "assets/brand-logo.svg",
+        "assets/ios/brand-logo.svg",
+        "assets/android/brand-logo.xml",
+    ];
+    let (_tmp, assets_path) = write_assets_project(yaml, &files);
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let warnings = warnings_array(&envelope);
+    assert!(
+        warnings.iter().any(|w| w["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("assets-svg-illustration-on-ios")),
+        "expected ios svg illustration warning, got: {warnings:?}"
+    );
+}
+
+/// Composition-referenced raster without pins or exports is materialization-missing.
+#[test]
+fn raster_materialization_missing_errors() {
+    let yaml = r"version: 1
+assets:
+  hero:
+    kind: raster
+    role: illustration
+    sources:
+      ios:
+        1x: assets/hero.png
+";
+    let (tmp, assets_path) = write_assets_project(yaml, &["assets/hero.png"]);
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
+    write_specs_composition(
+        tmp.path(),
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        item:
+          - image:
+              name: hero
+",
+    );
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("assets-materialization-missing")
+            && e["path"].as_str().unwrap_or("").contains("/sources/android")),
+        "expected android materialization-missing error, got: {errors:?}"
+    );
+}
+
+/// `project.yaml` with only `ios` does not require android coverage.
+#[test]
+fn platforms_from_project_yaml_ios_only() {
+    let yaml = r"version: 1
+assets:
+  hero:
+    kind: raster
+    role: illustration
+    sources:
+      ios:
+        1x: assets/hero.png
+";
+    let (tmp, assets_path) = write_assets_project(yaml, &["assets/hero.png"]);
+    write_project_yaml(tmp.path(), &["core", "ios"]);
+    write_specs_composition(
+        tmp.path(),
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        item:
+          - image:
+              name: hero
+",
+    );
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "ios-only project should not require android sources: {envelope}"
+    );
+}
+
+fn write_valid_ios_appiconset(dir: &std::path::Path) {
+    std::fs::create_dir_all(dir).expect("mkdir appiconset");
+    std::fs::write(
+        dir.join("Contents.json"),
+        r#"{"images":[{"filename":"AppIcon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"version":1,"author":"xcode"}}"#,
+    )
+    .expect("write Contents.json");
+    std::fs::write(dir.join("AppIcon.png"), minimal_png_bytes(1024, 1024, 2)).expect("write png");
+}
+
+fn write_valid_android_app_icon_export(root: &std::path::Path) {
+    std::fs::create_dir_all(root.join("mipmap-anydpi-v26")).expect("mkdir anydpi");
+    std::fs::create_dir_all(root.join("drawable")).expect("mkdir drawable");
+    std::fs::create_dir_all(root.join("values")).expect("mkdir values");
+    for density in ["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"] {
+        let dir = root.join(format!("mipmap-{density}"));
+        std::fs::create_dir_all(&dir).expect("mkdir mipmap");
+        std::fs::write(dir.join("ic_launcher.png"), minimal_png_bytes(48, 48, 2))
+            .expect("write launcher png");
+    }
+    std::fs::write(root.join("mipmap-anydpi-v26/ic_launcher.xml"), "<adaptive-icon/>")
+        .expect("write ic_launcher.xml");
+    std::fs::write(root.join("mipmap-anydpi-v26/ic_launcher_round.xml"), "<adaptive-icon/>")
+        .expect("write ic_launcher_round.xml");
+    std::fs::write(root.join("drawable/ic_launcher_foreground.xml"), "<vector/>")
+        .expect("write foreground");
+    std::fs::write(root.join("values/ic_launcher_background.xml"), "<resources/>")
+        .expect("write background");
+}
+
+fn minimal_png_bytes(width: u32, height: u32, color_type: u8) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(b"\x89PNG\r\n\x1a\n");
+    let mut ihdr = Vec::new();
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.push(8);
+    ihdr.push(color_type);
+    ihdr.extend_from_slice(&[0, 0, 0]);
+    append_png_chunk(&mut out, b"IHDR", &ihdr);
+    append_png_chunk(&mut out, b"IEND", &[]);
+    out
+}
+
+fn append_png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    out.extend_from_slice(kind);
+    out.extend_from_slice(data);
+    let crc = png_crc(kind, data);
+    out.extend_from_slice(&crc.to_be_bytes());
+}
+
+fn png_crc(kind: &[u8], data: &[u8]) -> u32 {
+    let mut hasher = 0xffff_ffff_u32;
+    for byte in kind.iter().chain(data) {
+        hasher ^= u32::from(*byte);
+        for _ in 0..8 {
+            hasher = if hasher & 1 == 1 {
+                0xedb8_8320 ^ (hasher >> 1)
+            } else {
+                hasher >> 1
+            };
+        }
+    }
+    !hasher
 }
 
 /// `source:` on a non-app-icon raster entry is rejected by the schema.

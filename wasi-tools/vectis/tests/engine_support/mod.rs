@@ -57,9 +57,18 @@ pub fn write_specs_composition(project: &std::path::Path, yaml: &str) {
 /// Materialise a Specify project root with `.specify/project.yaml`.
 pub fn write_specify_project() -> TempDir {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let dot_specify = tmp.path().join(".specify");
-    std::fs::create_dir_all(&dot_specify).expect("mkdir .specify");
-    std::fs::write(dot_specify.join("project.yaml"), "name: demo\nadapter: vectis\n")
-        .expect("write project.yaml");
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
     tmp
+}
+
+/// Materialise `.specify/project.yaml` under an existing project root.
+pub fn write_project_yaml(project: &std::path::Path, platforms: &[&str]) {
+    let dot_specify = project.join(".specify");
+    std::fs::create_dir_all(&dot_specify).expect("mkdir .specify");
+    let yaml_platforms: Vec<String> = platforms.iter().map(|p| format!("  - {p}")).collect();
+    let content = format!(
+        "name: demo\nadapter: vectis\nspecify_version: '2.0'\nplatforms:\n{}",
+        yaml_platforms.join("\n")
+    );
+    std::fs::write(dot_specify.join("project.yaml"), content).expect("write project.yaml");
 }
