@@ -172,8 +172,8 @@ fn rules_root_required_when_no_probe() {
 }
 
 /// Probe step 3 (RM-07): with no `--rules-root` and no monorepo
-/// tree, the distributed codex cache under
-/// `.specify/cache/codex/` resolves shared rules. The cache root
+/// tree, the distributed codex cache under the out-of-tree
+/// `<project-cache>/codex/` resolves shared rules. The cache root
 /// becomes the rules root, so the path is relative to it.
 #[test]
 fn shared_rules_from_codex_cache() {
@@ -368,8 +368,8 @@ fn multiple_source_overlays() {
 }
 
 /// Test 8: manifest-cache rung. Project-local missing, manifest
-/// cache present — the result carries `PathRoot::ProjectDir` and
-/// the path starts with `.specify/cache/manifests/...`.
+/// cache present — the result carries `PathRoot::Cache` and the
+/// cache-relative path starts with `manifests/...`.
 #[test]
 fn cache_overlay_when_local_missing() {
     let rules_root = TempDir::new().expect("rules root");
@@ -392,8 +392,8 @@ fn cache_overlay_when_local_missing() {
 
     let src = result.iter().find(|e| e.rule.id == "SRC-001").expect("source present");
     assert_eq!(src.origin, Origin::Source);
-    assert_eq!(src.path_root, PathRoot::ProjectDir);
-    assert_eq!(src.path, ".specify/cache/manifests/sources/typescript/rules/src-001.md");
+    assert_eq!(src.path_root, PathRoot::Cache);
+    assert_eq!(src.path, "manifests/sources/typescript/rules/src-001.md");
 }
 
 /// Test 9: duplicate id across overlays — same `UNI-001` declared

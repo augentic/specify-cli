@@ -82,8 +82,8 @@ fn collect_adapter_inputs(
 
 /// Record one adapter input file. A project-local adapter is recorded
 /// by its in-tree path; a cache-resolved adapter lives out-of-tree, so
-/// it is recorded under its logical `.specify/cache/manifests/...` path
-/// instead (the physical bytes still drive the digest).
+/// it is recorded under a cache-relative `cache:...` token instead (the
+/// physical bytes still drive the digest).
 fn add_adapter_input(
     collector: &mut fingerprint::InputCollector, project_dir: &Path, location: &AdapterLocation,
     path: &Path,
@@ -96,14 +96,14 @@ fn add_adapter_input(
         AdapterLocation::Cached(_) => {
             let cache_dir = Layout::new(project_dir).cache_dir();
             let logical = path.strip_prefix(&cache_dir).map_or_else(
-                |_| format!(".specify/cache/{}", path.display()),
+                |_| format!("cache:{}", path.display()),
                 |rel| {
                     let rel = rel
                         .components()
                         .map(|c| c.as_os_str().to_string_lossy())
                         .collect::<Vec<_>>()
                         .join("/");
-                    format!(".specify/cache/{rel}")
+                    format!("cache:{rel}")
                 },
             );
             collector.add_file_as(&logical, path);

@@ -35,8 +35,8 @@
 //!
 //! 1. project-local `{project_dir}/adapters/{sources,targets}/<name>/rules/`;
 //! 2. manifest cache `<project-cache>/manifests/{sources,targets}/<name>/rules/`
-//!    (out-of-tree; provenance recorded under the logical
-//!    `.specify/cache/manifests/...` prefix);
+//!    (out-of-tree; provenance recorded under [`PathRoot::Cache`] with a
+//!    cache-relative `manifests/...` path);
 //! 3. rules-root fallback `{rules_root}/adapters/{sources,targets}/<name>/rules/`,
 //!    **only** when `inputs.rules_root.is_some()` (step 1 of the probe);
 //! 4. omit when no rung exists.
@@ -215,13 +215,15 @@ pub fn map_resolve_error(err: ResolveError) -> Error {
 
 const SHARED_REL: &str = "adapters/shared/rules/universal";
 const CORE_REL: &str = "adapters/shared/rules/core";
-/// Logical provenance prefix recorded for cache-resolved adapter rules.
+/// Cache-relative provenance prefix recorded for cache-resolved adapter
+/// rules.
 ///
 /// The physical manifest cache lives out-of-tree (see
-/// [`specify_schema::cache::project_cache_dir`]), but rule provenance
-/// is recorded under this stable, project-relative path so findings and
-/// goldens stay portable.
-const MANIFEST_CACHE_LOGICAL: &str = ".specify/cache/manifests";
+/// [`specify_schema::cache::project_cache_dir`]), so rule provenance is
+/// recorded under [`PathRoot::Cache`] with this stable, cache-relative
+/// prefix rather than the physical absolute path, keeping findings and
+/// goldens portable.
+const MANIFEST_CACHE_LOGICAL: &str = "manifests";
 
 /// Out-of-tree manifest cache root, `<project-cache>/manifests/`. Kept
 /// in lockstep with `specify_workflow::adapter::cache_axis_dir`.
@@ -343,7 +345,7 @@ fn load_overlay(
     }
     if manifest_cache.is_dir() {
         // Physical files live out-of-tree; record provenance under the
-        // stable logical `.specify/cache/manifests/...` path.
+        // stable cache-relative `manifests/...` path (PathRoot::Cache).
         let logical = format!("{MANIFEST_CACHE_LOGICAL}/{axis_segment}/{adapter_name}/rules");
         return collect_overlay_logical(&manifest_cache, &logical, origin, out);
     }
@@ -376,9 +378,10 @@ fn collect_overlay(
 }
 
 /// Parse every `.md` file under an out-of-tree `dir`, recording each
-/// rule's provenance under `logical_root` (a stable project-relative
-/// prefix) rather than the physical out-of-tree path. `list_rule_files`
-/// is non-recursive, so the logical path is `logical_root/<filename>`.
+/// rule's provenance under `logical_root` (a stable cache-relative
+/// prefix anchored at [`PathRoot::Cache`]) rather than the physical
+/// out-of-tree path. `list_rule_files` is non-recursive, so the logical
+/// path is `logical_root/<filename>`.
 fn collect_overlay_logical(
     dir: &Path, logical_root: &str, origin: Origin, out: &mut Vec<ResolvedRuleEntry>,
 ) -> Result<(), ResolveError> {
@@ -388,7 +391,7 @@ fn collect_overlay_logical(
         out.push(ResolvedRuleEntry {
             rule,
             origin,
-            path_root: PathRoot::ProjectDir,
+            path_root: PathRoot::Cache,
             path: format!("{logical_root}/{name}"),
         });
     }

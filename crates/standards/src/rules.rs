@@ -72,9 +72,12 @@ pub enum PathRoot {
     /// Path is relative to the rules root (shared rules and rules-root
     /// fallback overlays).
     RulesRoot,
-    /// Path is relative to the project directory (project-local and
-    /// cached overlays).
+    /// Path is relative to the project directory (project-local
+    /// overlays).
     ProjectDir,
+    /// Path is relative to the out-of-tree project cache root
+    /// (`<project-cache>/`); cached adapter-rule overlays.
+    Cache,
 }
 
 /// How a rule is expected to be reviewed. Wire spelling is
