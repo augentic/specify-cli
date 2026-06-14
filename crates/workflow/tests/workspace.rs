@@ -3,12 +3,11 @@
 //! Deliberately narrow: the binary-level `tests/workspace.rs` covers the
 //! `workspace {sync,push,prepare}` wire surface (selector preflight,
 //! journaling, symlink materialisation, the self-slot and foreign-entry
-//! mirror pins, the origin-head-unresolved prepare diagnostic). This
-//! file keeps only what that layer does not reach: the pure classifier
-//! (`github_slug`), slot-problem classification and sync refusal edges,
-//! mirror corner cases not pinned in-module or at the binary,
-//! branch-preparation dirtiness and fast-forward semantics, push
-//! outcome classification, and `topology.lock` regeneration.
+//! mirror pins). This file keeps only what that layer does not reach:
+//! slot-problem classification and sync refusal edges, mirror corner
+//! cases not pinned in-module or at the binary, branch-preparation
+//! dirtiness and fast-forward semantics, push outcome classification,
+//! and `topology.lock` regeneration.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,7 +17,7 @@ use specify_workflow::registry::branch::{
     LocalAction, RemoteAction, Request as BranchRequest, prepare,
 };
 use specify_workflow::registry::workspace::{
-    PushOutcome, SlotKind, SlotProblemReason, github_slug, push_projects, slot_problem,
+    PushOutcome, SlotKind, SlotProblemReason, push_projects, slot_problem,
     sync_projects as workspace_sync_projects,
 };
 use specify_workflow::registry::{Registry, RegistryProject};
@@ -170,18 +169,6 @@ fn remote_branch_head(remote_url: &str, branch: &str) -> Option<String> {
         .lines()
         .find_map(|line| line.split_whitespace().next())
         .map(ToString::to_string)
-}
-
-// ---------- github_slug --------------------------------------
-
-#[test]
-fn github_slug_handles_each_supported_form() {
-    assert_eq!(github_slug("git@github.com:org/mobile.git"), Some("org/mobile".to_string()));
-    assert_eq!(github_slug("git@github.com:org/mobile"), Some("org/mobile".to_string()));
-    assert_eq!(github_slug("https://github.com/org/mobile.git"), Some("org/mobile".to_string()));
-    assert_eq!(github_slug("https://github.com/org/mobile"), Some("org/mobile".to_string()));
-    assert_eq!(github_slug("ssh://git@github.com/org/mobile.git"), Some("org/mobile".to_string()));
-    assert_eq!(github_slug("git@gitlab.com:org/repo.git"), None);
 }
 
 // ---------- sync_projects ---------------------------------------

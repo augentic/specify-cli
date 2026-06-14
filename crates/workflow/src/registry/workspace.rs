@@ -11,7 +11,7 @@ mod sync;
 
 use std::path::{Component, Path, PathBuf};
 
-pub use push::{PushOutcome, PushResult, github_slug, push_projects};
+pub use push::{PushOutcome, PushResult, push_projects};
 pub use slot_problem::{
     Problem as SlotProblem, Reason as SlotProblemReason, SlotKind, inspect as slot_problem,
 };
