@@ -18,9 +18,10 @@ use std::path::Path;
 use jiff::Timestamp;
 use serde::Serialize;
 use specify_error::{Error, Result};
+use specify_workflow::cmd::real_cmd;
 use specify_workflow::config::{Layout, ProjectConfig};
 use specify_workflow::journal::{self, Event, EventKind};
-use specify_workflow::plugins::{self, DoctorReport, GitCli, RefreshOutcome};
+use specify_workflow::plugins::{self, DoctorReport, RefreshOutcome};
 
 use crate::runtime::cli::Format;
 use crate::runtime::commands::plugins::cli::PluginsAction;
@@ -50,7 +51,7 @@ fn doctor(format: Format, project_dir: &Path, marketplace: Option<&Path>) -> Res
     let marketplace_path = plugins::discover_marketplace(marketplace, project_dir)?;
     let manifest = plugins::load_marketplace(&marketplace_path)?;
     let cache_root = plugins::cache_root(&plugins::cursor_home()?, &manifest.name);
-    let report = plugins::build_report(&marketplace_path, &manifest, &cache_root, &GitCli)?;
+    let report = plugins::build_report(&marketplace_path, &manifest, &cache_root, &real_cmd)?;
     output::emit(&mut std::io::stdout().lock(), format, &report, write_doctor_text)?;
     Ok(())
 }

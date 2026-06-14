@@ -1,5 +1,5 @@
 //! Integration tests for `specify source extract`
-//! (DECISIONS.md §"Source operations (D1)").
+//! (DECISIONS.md §"Source operations").
 //!
 //! Covers source resolution against `plan.yaml.sources`, the agent
 //! two-phase dispatch (prepare prints the extract handoff envelope —
@@ -18,8 +18,8 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use crate::common::{
-    Project, TEMPDIR_PLACEHOLDER, init_workspace, omnia_schema_dir, parse_stderr, parse_stdout,
-    repo_root, specify_cmd,
+    Project, TEMPDIR_PLACEHOLDER, expected_cache_dir, init_workspace, omnia_schema_dir,
+    parse_stderr, parse_stdout, repo_root, specify_cmd,
 };
 
 /// Stage the path-bound `typescript` source adapter (the in-repo
@@ -267,9 +267,9 @@ slices:
 
     specify_cmd().current_dir(workspace.path()).args(["workspace", "sync"]).assert().success();
 
-    let slot = workspace.path().join(".specify/workspace/peer");
+    let slot = workspace.path().join("workspace/peer");
     assert!(
-        slot.join(".specify/cache/manifests/sources/typescript/adapter.yaml").is_file(),
+        expected_cache_dir(&slot).join("manifests/sources/typescript/adapter.yaml").is_file(),
         "sync must mirror the workspace adapter into the slot manifest cache"
     );
 

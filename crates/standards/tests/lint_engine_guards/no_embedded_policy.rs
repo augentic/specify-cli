@@ -36,8 +36,8 @@ const MECHANISM_CAP_CONSTS: &[(&str, &str)] = &[
 /// Literal substrings that only ever appear as relocated rule policy.
 /// Any reappearance in the scanned engine source is a Layer-3 regression.
 const FORBIDDEN_SUBSTRINGS: &[(&str, &str)] = &[
-    ("cover-operations", "set-coverage operation-set discriminator (CORE-004) — use config"),
-    ("equal-operations", "set-eq operation-set discriminator (CORE-007) — use config"),
+    ("cover-operations", "set-coverage subset operation-set discriminator (CORE-004) — use config"),
+    ("equal-operations", "set-coverage exact operation-set discriminator (CORE-007) — use config"),
     ("equals-v1", "constant-eq version discriminator (CORE-006) — use config"),
     ("adapter-manifest-version", "constant-eq version discriminator (CORE-006) — use config"),
     ("BUILTIN_NAMESPACES", "namespace owner->prefix policy map (CORE-009) — use config"),

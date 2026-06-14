@@ -28,9 +28,9 @@ specify-error.workspace = true
 specify-model.workspace = true
 specify-schema.workspace = true
 specify-tool-manifest.workspace = true
-specify-digest.workspace = true
 strum.workspace = true
 tempfile.workspace = true
+thiserror.workspace = true
 ureq.workspace = true
 
 [target.'cfg(unix)'.dependencies]
@@ -40,5 +40,4 @@ libc.workspace = true
 proptest = { workspace = true }
 regex.workspace = true
 serde_json.workspace = true
-specify-validate.workspace = true
 tempfile.workspace = true

@@ -7,7 +7,7 @@ use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub enum WorkspaceAction {
-    /// Create symlinks or git clones under `.specify/workspace/<name>/`.
+    /// Create symlinks or git clones under `workspace/<name>/`.
     /// No-op when `registry.yaml` is absent.
     Sync {
         /// Specific project(s) to sync; omit to sync all registry projects.

@@ -14,14 +14,12 @@ readme = "../../README.md"
 workspace = true
 
 [dependencies]
-base16ct.workspace = true
 futures-util.workspace = true
 jiff.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
 specify-error.workspace = true
-specify-digest.workspace = true
 specify-schema.workspace = true
 specify-tool-manifest.workspace = true
 strum.workspace = true

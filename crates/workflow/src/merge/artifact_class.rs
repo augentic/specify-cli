@@ -41,8 +41,7 @@ pub enum MergeStrategy {
     /// merges each delta into the corresponding baseline file at
     /// `<baseline_dir>/<name>/spec.md`. Today's `omnia` "specs"
     /// behaviour. Also pulls in a top-level `composition.yaml` from
-    /// the change directory when present (omnia / vectis convention;
-    /// stays here for chunk 2.8 and is revisited in Phase 4.1).
+    /// the change directory when present (omnia / vectis convention).
     ThreeWayMerge,
     /// Whole-file replacement. The engine walks `<staged_dir>`
     /// recursively and copies each file to the corresponding path

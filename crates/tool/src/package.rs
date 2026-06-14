@@ -114,7 +114,7 @@ async fn fetch_async(
         tokio::fs::File::from_std(temp.reopen().map_err(|err| {
             ToolError::cache_io("open package download tempfile", temp.path(), err)
         })?);
-    let mut hasher = crate::hash::Hasher::new();
+    let mut hasher = specify_schema::digest::Hasher::new();
     let mut total = 0_u64;
     while let Some(chunk) = stream
         .try_next()

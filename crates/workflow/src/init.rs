@@ -33,7 +33,7 @@ pub struct InitOptions<'a> {
     /// Root of the project being initialised.
     pub project_dir: &'a Path,
     /// Adapter identifier (bare name like `omnia` or a URL) to fetch
-    /// or copy into `.specify/cache/`. Required for regular init; must
+    /// or copy into the out-of-tree per-project cache. Required for regular init; must
     /// be `None` when [`InitOptions::workspace`] is `true` (workspace
     /// roots do not resolve an adapter at init time).
     pub adapter: Option<&'a str>,
@@ -87,10 +87,10 @@ pub struct InitResult {
     /// this is the literal `"workspace"` so the JSON envelope stays stable
     /// for downstream consumers.
     pub adapter_name: String,
-    /// Whether `.specify/cache/manifests/manifest-meta.yaml` exists.
+    /// Whether `manifests/manifest-meta.yaml` exists in the per-project cache.
     pub cache_present: bool,
-    /// Whether the shared codex was distributed into
-    /// `.specify/cache/codex/` during this run. `false` when the
+    /// Whether the shared codex was distributed into the out-of-tree
+    /// `<project-cache>/codex/` during this run. `false` when the
     /// adapter source tree carries no `adapters/shared/rules/universal/`
     /// pack (the consumer then relies on `--rules-root` or a monorepo
     /// checkout) and for workspace init.
@@ -158,7 +158,7 @@ pub fn init(opts: InitOptions<'_>, now: Timestamp) -> Result<InitResult, Error> 
 /// source/ref (or an operator override). Resolves the adapter source
 /// the same way `init` does (local copy or git sparse checkout), then
 /// mirrors `adapters/shared/rules/universal/` (and, when
-/// `include_framework`, `core/`) into `.specify/cache/codex/`.
+/// `include_framework`, `core/`) into the out-of-tree `<project-cache>/codex/`.
 ///
 /// This is the engine behind `specify rules sync`. `init` distributes
 /// the codex inline via the private `cache::cache_codex` path; this

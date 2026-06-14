@@ -32,11 +32,6 @@
     },
     {
       "kind": "text",
-      "language": "markdown",
-      "path": ".specify/cache/codex/adapters/shared/rules/universal/UNI-099.md"
-    },
-    {
-      "kind": "text",
       "language": "json",
       "path": ".specify/nonutf8.json"
     },
@@ -81,17 +76,9 @@
   ],
   "markdown_sections": [
     {
-      "body-line-count": 5,
-      "level": 2,
-      "line-end": 12,
-      "line-start": 7,
-      "path": ".specify/cache/codex/adapters/shared/rules/universal/UNI-099.md",
-      "title": "Rule"
-    },
-    {
-      "body-line-count": 31,
+      "body-line-count": 28,
       "level": 1,
-      "line-end": 32,
+      "line-end": 29,
       "line-start": 1,
       "path": "README.md",
       "title": "`lint/minimal` fixture"

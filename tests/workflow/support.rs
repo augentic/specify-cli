@@ -16,8 +16,8 @@ pub use specify_workflow::change::{Plan, Status};
 pub use tempfile::{TempDir, tempdir};
 
 pub use crate::common::{
-    Project, assert_golden_at, copy_dir, init_workspace, omnia_schema_dir, parse_stderr,
-    parse_stdout, repo_root, specify_cmd,
+    Project, assert_golden_at, copy_dir, expected_cache_dir, init_workspace, omnia_schema_dir,
+    parse_stderr, parse_stdout, repo_root, specify_cmd,
 };
 
 pub fn plan_fixtures() -> PathBuf {

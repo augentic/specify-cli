@@ -13,7 +13,9 @@ use std::fs;
 
 use serde_json::Value;
 
-use crate::common::{Project, parse_json, read_journal_normalized, specify_cmd};
+use crate::common::{
+    Project, expected_cache_dir, parse_json, read_journal_normalized, specify_cmd,
+};
 
 /// Create `my-slice`, seed a `specs/<domain>/spec.md` so the assembled
 /// request carries a non-empty `specs[]`, and transition it to
@@ -382,7 +384,7 @@ fn tool_execution_reports_unsupported_seam() {
     // `init` caches the resolved manifest; flip it to `execution: tool`
     // so the verb takes the tool branch. No build tool dispatch is
     // wired, so the dispatch is a clear unsupported seam.
-    let cached = project.root().join(".specify/cache/manifests/targets/omnia/adapter.yaml");
+    let cached = expected_cache_dir(project.root()).join("manifests/targets/omnia/adapter.yaml");
     let raw = fs::read_to_string(&cached).expect("read cached adapter.yaml");
     fs::write(&cached, raw.replace("execution: agent", "execution: tool"))
         .expect("rewrite adapter execution mode");

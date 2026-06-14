@@ -296,8 +296,8 @@ pub struct ToolManifest {
 /// Source plugins (`extract` / `survey`) and target plugins
 /// (`shape` / `build` / `merge`) share the `adapter.yaml` shape and
 /// on-disk filename; `Axis` is what disambiguates them in
-/// [`ToolScope::Plugin`] and in the cache layout under
-/// `.specify/cache/{sources,targets}/<name>/`.
+/// [`ToolScope::Plugin`] and in the out-of-tree cache layout under
+/// `<project-cache>/manifests/{sources,targets}/<name>/`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::Display)]
 #[serde(rename_all = "kebab-case")]
 #[strum(serialize_all = "kebab-case")]
@@ -309,8 +309,8 @@ pub enum Axis {
 }
 
 impl Axis {
-    /// Directory segment under `<project_dir>/` and
-    /// `.specify/cache/` — `"sources"` for source plugins,
+    /// Directory segment under `<project_dir>/` and the out-of-tree
+    /// `<project-cache>/manifests/` — `"sources"` for source plugins,
     /// `"targets"` for target plugins.
     #[must_use]
     pub const fn dir_segment(self) -> &'static str {

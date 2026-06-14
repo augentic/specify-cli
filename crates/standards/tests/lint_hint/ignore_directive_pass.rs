@@ -1,6 +1,6 @@
 //! End-to-end acceptance goldens for the directive pass.
 //!
-//! Drives the full pipeline — `lint::index::build` → `lint::eval::evaluate`
+//! Drives the full pipeline — `lint::index::build` → `lint::eval::evaluate_rules`
 //! → `lint::ignore::apply` → JSON envelope render — against tiny Rust
 //! fixtures and pins each acceptance golden-test scenario:
 //!
@@ -56,7 +56,7 @@ use specify_diagnostics::{
     fingerprint as compute_fingerprint, render,
 };
 use specify_standards::lint::ScanProfile;
-use specify_standards::lint::eval::{ToolRunner, evaluate};
+use specify_standards::lint::eval::{EvalEnv, ToolRunner, evaluate_rules};
 use specify_standards::lint::ignore::apply as apply_directives;
 use specify_standards::lint::index::build;
 use specify_standards::rules::{HintKind, Origin, PathRoot, ResolvedRule};
@@ -168,17 +168,14 @@ fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
 
     let url_rule = make_rule(scenario.primary_rule_id, vec![hint(HintKind::Regex, "https?://")]);
     let runner: &dyn ToolRunner = &NoToolRunner;
-    let outcome = evaluate(
-        &url_rule,
-        url_rule.rule_hints.as_deref().unwrap_or_default(),
-        &model,
-        tmp.path(),
-        runner,
-        1,
-    )
-    .expect("evaluate ok");
-
-    let mut findings: Vec<Diagnostic> = outcome.findings;
+    let env = EvalEnv {
+        model: &model,
+        project_dir: tmp.path(),
+        tool_runner: runner,
+        cli_contract: None,
+    };
+    let (mut findings, next_id_counter) =
+        evaluate_rules(std::slice::from_ref(&url_rule), env, 1, &[]).expect("evaluate ok");
 
     let mut resolved_rules = vec![url_rule];
     if scenario.resolve_uni_022 {
@@ -187,12 +184,8 @@ fn run_scenario(scenario: &Scenario) -> (DiagnosticReport, Vec<Diagnostic>) {
     if scenario.resolve_uni_023 {
         resolved_rules.push(validation_rule("UNI-023"));
     }
-    let ignore_outcome = apply_directives(
-        &mut findings,
-        &model.ignore_directives,
-        &resolved_rules,
-        outcome.next_id_counter,
-    );
+    let ignore_outcome =
+        apply_directives(&mut findings, &model.ignore_directives, &resolved_rules, next_id_counter);
     findings.extend(ignore_outcome.synthetics);
 
     let result = DiagnosticReport {

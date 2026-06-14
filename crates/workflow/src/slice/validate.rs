@@ -8,9 +8,9 @@
 //! synthesis journal emission. Every entry point takes a [`Layout`] or
 //! plain paths rather than the CLI `Ctx`, so the gates are unit-testable
 //! without standing up a binary. Adapter validation (`validate_slice`,
-//! from the sibling `specify-validate` crate) and report rendering stay
-//! in the handler, which cannot live here without a forbidden
-//! `specify-workflow → specify-validate` dependency.
+//! from `specify-model`'s `validate` registry) and report rendering stay
+//! in the handler, keeping this kernel free of the registry and of
+//! output concerns.
 //!
 //! This module is the thin orchestrator: it owns the public entry
 //! points ([`pre_adapter_gates`], [`append_synthesis_journal`], the

@@ -138,7 +138,7 @@ pub fn emit_diagnostic_report(emit: LintEmit<'_>) -> Result<bool, RenderError> {
 pub struct LintRun<'a> {
     /// Resolver inputs (project dir, rules root, adapters, filters).
     pub inputs: &'a ResolveInputs<'a>,
-    /// Pipeline config (profile, producers, tool runner, degradation).
+    /// Pipeline config (profile, tool runner, degradation).
     pub config: &'a PipelineConfig<'a>,
     /// Wire format for the rendered envelope and the abort fallback.
     pub format: DiagnosticsFormat,

@@ -400,7 +400,7 @@ mod workspace_routing {
     #[test]
     fn slot_bound_entry_reads_slot_state() {
         let dir = TempDir::new().expect("tempdir");
-        let slot = dir.path().join(".specify").join("workspace").join("storefront");
+        let slot = dir.path().join("workspace").join("storefront");
         std::fs::create_dir_all(&slot).expect("create slot");
         write_slice(&slot, "a", LifecycleStatus::Refined);
         append(&slot, &[advanced(0, "test", "a"), build_failed(10, "a", "slot failure")]);

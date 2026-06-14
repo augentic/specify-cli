@@ -9,15 +9,15 @@ fn axis_dir_segment_round_trips() {
 
 #[test]
 fn cache_dir_routes_by_axis() {
+    // The manifest mirror lives out-of-tree under the per-project OS
+    // cache; `cache_dir` routes `manifests/<axis>/<name>` beneath it.
     let project = Path::new("/proj");
+    let base = crate::config::Layout::new(project).cache_dir();
     assert_eq!(
         cache_dir(project, Axis::Source, "documentation"),
-        project.join(".specify/cache/manifests/sources/documentation")
+        base.join("manifests/sources/documentation")
     );
-    assert_eq!(
-        cache_dir(project, Axis::Target, "omnia"),
-        project.join(".specify/cache/manifests/targets/omnia")
-    );
+    assert_eq!(cache_dir(project, Axis::Target, "omnia"), base.join("manifests/targets/omnia"));
 }
 
 #[test]

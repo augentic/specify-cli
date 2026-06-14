@@ -30,7 +30,7 @@ pub(super) fn validate(ctx: &Ctx) -> Result<()> {
         results.push(plan_finding("registry-shape", Severity::Important, err.to_string(), None));
     }
     if let Some(reg) = &registry {
-        let workspace_base = ctx.layout().specify_dir().join("workspace");
+        let workspace_base = ctx.project_dir.join("workspace");
         results.extend(specify_workflow::registry::cache_staleness(
             reg,
             &workspace_base,

@@ -133,7 +133,6 @@
               { "const": "set-coverage" },
               { "const": "cardinality" },
               { "const": "constant-eq" },
-              { "const": "set-eq" },
               { "const": "fenced-block" },
               { "const": "presence" },
               { "const": "field-grammar" },
@@ -152,7 +151,7 @@
             "description": "Optional human explanation for the hint."
           },
           "config": {
-            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `set-eq` -> expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `presence` (file / markdown-section / directory-index) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `cli-contract` (invocations) -> cliContractInvocationsHintConfig; `cli-contract` (event-ids / error-codes) -> cliContractIdsHintConfig; `cli-contract` (test-citations) -> cliContractTestCitationsHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig; `tool` (scenarios) -> catalogRunsHintConfig.",
+            "description": "Per-kind configuration carrying the policy values the engine reads (caps, allow-lists, override maps, expected sets, canonical paths) or relays to a referenced `kind: tool` checker. `regex` -> regexHintConfig; `reference-resolves` -> referenceResolvesHintConfig; `cardinality` -> cardinalityHintConfig; `unique` -> uniqueHintConfig; `set-coverage` -> setCoverageHintConfig or expectedOperationsHintConfig; `fenced-block` -> fencedBlockHintConfig or fencedBlockContainsHintConfig; `constant-eq` -> constantEqHintConfig or constantFieldEqHintConfig; `presence` (file / markdown-section / directory-index) -> presenceHintConfig (the frontmatter selector carries no config); `field-grammar` (field-tokens / field-first-word) -> fieldGrammarHintConfig; `cross-reference` -> crossReferenceHintConfig; `cli-contract` (invocations) -> cliContractInvocationsHintConfig; `cli-contract` (event-ids / error-codes) -> cliContractIdsHintConfig; `cli-contract` (test-citations) -> cliContractTestCitationsHintConfig; `tool` (skill-body) -> criticalPathHintConfig or variableCoverageHintConfig; `tool` (links-registry) -> schemaRegistryHintConfig; `tool` (prose) -> numericCapHintConfig; `tool` (rules) -> nsOwnerHintConfig; `tool` (scenarios) -> catalogRunsHintConfig.",
             "oneOf": [
               { "$ref": "#/$defs/regexHintConfig" },
               { "$ref": "#/$defs/referenceResolvesHintConfig" },
@@ -344,8 +343,13 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["expected-operations"],
-      "description": "`kind: set-coverage` / `kind: set-eq` hint configuration for the `adapter-briefs` source (CORE-004 / CORE-007). The per-axis expected operation sets are policy supplied by the rule, not the engine.",
+      "description": "`kind: set-coverage` hint configuration for the `adapter-briefs` source (CORE-004 / CORE-007). The per-axis expected operation sets are policy supplied by the rule, not the engine. The optional `mode` selects the one-sided `subset` (default — CORE-004) or two-sided `exact` (CORE-007) comparison.",
       "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["subset", "exact"],
+          "description": "Comparison direction against the expected operation set. `subset` (default) flags only operations the manifest fails to cover; `exact` additionally flags unexpected keys (the two-sided tightening)."
+        },
         "expected-operations": {
           "type": "object",
           "additionalProperties": false,

@@ -19,16 +19,13 @@ semver.workspace = true
 serde.workspace = true
 serde-saphyr.workspace = true
 serde_json.workspace = true
-specify-agents.workspace = true
 specify-diagnostics.workspace = true
 specify-standards.workspace = true
 specify-workflow.workspace = true
 specify-model.workspace = true
-specify-validate.workspace = true
 specify-error.workspace = true
 specify-schema.workspace = true
 specify-tool.workspace = true
-specify-digest.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 
@@ -42,7 +39,6 @@ workspace = true
 
 [workspace]
 members = [
-    "crates/agents",
     "crates/diagnostics",
     "crates/standards",
     "crates/error",
@@ -50,8 +46,6 @@ members = [
     "crates/schema",
     "crates/tool",
     "crates/tool-manifest",
-    "crates/digest",
-    "crates/validate",
     "crates/workflow",
 ]
 
@@ -172,17 +166,14 @@ serde = { version = "1", features = ["derive"] }
 serde-saphyr = "0.0.26"
 serde_json = "1"
 sha2 = "0.11"
-specify-agents = { path = "crates/agents" }
 specify-diagnostics = { path = "crates/diagnostics" }
 specify-standards = { path = "crates/standards" }
 specify-model = { path = "crates/model" }
-specify-validate = { path = "crates/validate" }
 specify-workflow = { path = "crates/workflow" }
 specify-error = { path = "crates/error" }
 specify-schema = { path = "crates/schema" }
 specify-tool = { path = "crates/tool" }
 specify-tool-manifest = { path = "crates/tool-manifest" }
-specify-digest = { path = "crates/digest" }
 strum = { version = "0.28", features = ["derive"] }
 tempfile = "3"
 thiserror = "2"

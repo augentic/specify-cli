@@ -57,7 +57,50 @@ pub fn specify_cmd() -> Command {
     cmd.env_remove("SPECIFY_PLAN_DIR");
     cmd.env_remove("SPECIFY_FORMAT");
     cmd.env("SPECIFY_WASMTIME_CACHE", repo_root().join("target").join("wasmtime-cache"));
+    // Pin the out-of-tree adapter/codex cache into a per-process temp
+    // root so the developer's real OS cache is never touched and the
+    // cache lands somewhere the test can locate via `expected_cache_dir`.
+    cmd.env("SPECIFY_PROJECT_CACHE", isolated_cache_root());
+    // Pin the persistent Git mirror root into a per-process temp root so
+    // remote-peer materialisation never touches the developer's real OS
+    // cache and mirror reuse is observable across invocations in one test.
+    cmd.env("SPECIFY_MIRROR_CACHE", isolated_mirror_root());
     cmd
+}
+
+/// Per-process out-of-tree Git-mirror root. One temp directory per test
+/// binary process, isolated from other tests and from `~/.cache`.
+pub fn isolated_mirror_root() -> &'static Path {
+    use std::sync::OnceLock;
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        let dir = std::env::temp_dir().join(format!("specify-mirror-cache-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create isolated mirror cache root");
+        dir
+    })
+}
+
+/// Per-process out-of-tree project-cache root. One temp directory per
+/// test binary process (nextest runs each test in its own process), so
+/// every `specify` invocation in a test shares one cache, isolated from
+/// other tests and from `~/.cache`.
+pub fn isolated_cache_root() -> &'static Path {
+    use std::sync::OnceLock;
+    static ROOT: OnceLock<PathBuf> = OnceLock::new();
+    ROOT.get_or_init(|| {
+        let dir =
+            std::env::temp_dir().join(format!("specify-project-cache-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create isolated project cache root");
+        dir
+    })
+}
+
+/// The out-of-tree cache directory the binary resolves for `project_dir`
+/// under the test's [`isolated_cache_root`]. Mirror of the production
+/// resolver, so tests assert cache contents (`manifests/`, `codex/`)
+/// without depending on the developer's OS cache.
+pub fn expected_cache_dir(project_dir: &Path) -> PathBuf {
+    specify_schema::cache::project_cache_dir_in(isolated_cache_root(), project_dir)
 }
 
 /// Exclusive hold on `<root>/.specify/plan.lock` for the guard's
@@ -142,7 +185,7 @@ pub fn contract_dump_verbs(path: &[&str]) -> Vec<String> {
 /// Panics if `path` cannot be read.
 pub fn sha256_hex(path: &Path) -> String {
     let bytes = fs::read(path).expect("read bytes for sha256");
-    specify_digest::sha256_hex(&bytes)
+    specify_schema::digest::sha256_hex(&bytes)
 }
 
 /// Scaffold a minimal target-adapter project declaring a single WASI tool.
@@ -442,7 +485,8 @@ impl Project {
     /// branch.
     #[must_use]
     pub fn with_cached_schema(self) -> Self {
-        copy_dir(&omnia_schema_dir(), &self.root.join(".specify/cache/manifests/targets/omnia"));
+        let cached = expected_cache_dir(&self.root).join("manifests/targets/omnia");
+        copy_dir(&omnia_schema_dir(), &cached);
         self
     }
 

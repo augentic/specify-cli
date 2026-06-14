@@ -247,6 +247,57 @@ fn init_writes_agents_fences_and_lock() {
 }
 
 #[test]
+fn reinit_skips_agents_keeps_existing() {
+    // The init-time AGENTS.md generator runs only when the file is
+    // absent (always a `create`). A re-entry `--upgrade` over a project
+    // that already carries an AGENTS.md must skip regeneration — never
+    // clobbering operator edits — and surface the skip in the envelope.
+    // The greenfield smoke above pins the `create` artifacts; this pins
+    // the envelope `context-*` fields and the idempotent skip path.
+    let tmp = tempdir().unwrap();
+
+    let created = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "init"])
+        .arg(omnia_schema_dir())
+        .args(["--name", "fenced-proj"])
+        .assert()
+        .success();
+    let created_env: serde_json::Value =
+        serde_json::from_slice(&created.get_output().stdout).expect("init stdout is JSON");
+    assert_eq!(created_env["context-generated"], true, "greenfield init generates AGENTS.md");
+    assert_eq!(created_env["context-skipped"], false);
+
+    // Operator appends content; a faithful re-init must not lose it.
+    let agents_path = tmp.path().join("AGENTS.md");
+    let mut edited = fs::read_to_string(&agents_path).expect("read AGENTS.md");
+    edited.push_str("\n<!-- operator note: keep me -->\n");
+    fs::write(&agents_path, &edited).expect("append operator note");
+
+    let upgraded = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "init", "--upgrade"])
+        .assert()
+        .success();
+    let upgraded_env: serde_json::Value =
+        serde_json::from_slice(&upgraded.get_output().stdout).expect("upgrade stdout is JSON");
+    assert_eq!(upgraded_env["context-generated"], false, "re-init must not regenerate AGENTS.md");
+    assert_eq!(upgraded_env["context-skipped"], true);
+    assert_eq!(upgraded_env["context-skip-reason"], "existing-agents-md");
+
+    let after = fs::read_to_string(&agents_path).expect("read AGENTS.md after upgrade");
+    assert!(
+        after.contains("<!-- operator note: keep me -->"),
+        "re-init must preserve operator content, got:\n{after}"
+    );
+    assert!(
+        after.contains("<!-- specify:context begin")
+            && after.contains("<!-- specify:context end -->"),
+        "re-init must leave the context fences intact, got:\n{after}"
+    );
+}
+
+#[test]
 fn init_with_no_args_errors() {
     // Acceptance (c): `specify init` (no positional, no `--workspace`) must
     // exit `2` (clap's parse-error slot) with clap's standard

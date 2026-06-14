@@ -199,10 +199,10 @@ fn run_git(cwd: &Path, args: &[&str]) {
     );
 }
 
-/// Set up a project root with a `.specify/workspace/<name>/` slot
+/// Set up a project root with a `workspace/<name>/` slot
 /// wired as a git clone.
 fn make_clone_slot(root: &Path, name: &str, origin: Option<&str>) -> std::path::PathBuf {
-    let slot = root.join(".specify").join("workspace").join(name);
+    let slot = root.join("workspace").join(name);
     std::fs::create_dir_all(&slot).unwrap();
     run_git(&slot, &["init"]);
     if let Some(origin) = origin {
@@ -297,7 +297,7 @@ fn stale_clone_wrong_symlink_target() {
     let other = tmp.path().join("other");
     std::fs::create_dir_all(&peer).unwrap();
     std::fs::create_dir_all(&other).unwrap();
-    let workspace = tmp.path().join(".specify").join("workspace");
+    let workspace = tmp.path().join("workspace");
     std::fs::create_dir_all(&workspace).unwrap();
     symlink_dir(&other, &workspace.join("peer"));
     let registry = registry_with(vec![rp("peer", "./peer", "omnia@v1", "peer service")]);

@@ -14,7 +14,7 @@ Per-adapter `adapter.yaml` carries `name`, `version`, `axis`, the required close
 
 `axis: source`; `briefs.keys() ⊆ {extract, survey}`. `survey` writes `## Lead inventory` blocks under `discovery.md` at plan time; `extract` writes one Evidence document per `(source, lead)` pair at slice time. See [`schemas/source.schema.json`](../../schemas/source.schema.json) and [`schemas/evidence.schema.json`](../../schemas/evidence.schema.json).
 
-`specify source survey <source> [--plan <name>] [--phase prepare|finalize]` and `specify source extract <source> <lead> --slice <slice> [--phase prepare|finalize]` are the CLI-owned runners. `<source>` resolves against `plan.yaml.sources.<key>`, then the adapter from `SourceBinding.adapter`. Both validate before the write becomes visible (lead set against `schemas/discovery/lead.schema.json` then `discovery.md` merge; Evidence against `schemas/evidence.schema.json` then persist to `.specify/slices/<slice>/evidence/<source>.yaml`). Source operations are agent-only and two-phase: `prepare` builds the sandbox + prints the handoff envelope; `finalize` validates / persists / journals. Value-bound sources (`intent`) carry `value-inline`; path bindings carry `source-path`. See [`DECISIONS.md` §"Source operations (D1)"](../../DECISIONS.md#source-operations-d1) and [`DECISIONS.md` §"Adapter execution mode (D9)"](../../DECISIONS.md#adapter-execution-mode-d9).
+`specify source survey <source> [--plan <name>] [--phase prepare|finalize]` and `specify source extract <source> <lead> --slice <slice> [--phase prepare|finalize]` are the CLI-owned runners. `<source>` resolves against `plan.yaml.sources.<key>`, then the adapter from `SourceBinding.adapter`. Both validate before the write becomes visible (lead set against `schemas/discovery/lead.schema.json` then `discovery.md` merge; Evidence against `schemas/evidence.schema.json` then persist to `.specify/slices/<slice>/evidence/<source>.yaml`). Source operations are agent-only and two-phase: `prepare` builds the sandbox + prints the handoff envelope; `finalize` validates / persists / journals. Value-bound sources (`intent`) carry `value-inline`; path bindings carry `source-path`. See [`DECISIONS.md` §"Source operations"](../../DECISIONS.md#source-operations) and [`DECISIONS.md` §"Adapter execution mode"](../../DECISIONS.md#adapter-execution-mode).
 
 ## Target adapter contract
 
@@ -30,12 +30,12 @@ Both build envelopes are closed-shape YAML, keyed on `(slice, target)`, schema-v
 
 `SourceAdapter::resolve(name, project_dir)` and `TargetAdapter::resolve(name, project_dir)` are the per-axis entry points. Probe order:
 
-1. `<project_dir>/.specify/cache/manifests/{sources,targets}/<name>/` — agent-populated mirror.
+1. `<project-cache>/manifests/{sources,targets}/<name>/` — agent-populated out-of-tree mirror.
 2. `<project_dir>/adapters/{sources,targets}/<name>/` — in-repo manifest.
 
 Resolution is project-local only; there is no environment-variable fallback to an out-of-tree framework checkout. When neither location matches, resolution fails with `adapter-not-found`.
 
-In workspace mode, `specify workspace sync` provisions probe location 1 for each synced slot: it mirrors the workspace's adapter set (both axes, `tools.yaml` sidecars included) into the slot's manifest cache — per-name delete-then-copy, skipping any name the slot vendors under its own `adapters/` tree. Resolution semantics are unchanged. See [`DECISIONS.md` §"Slot adapter provisioning via workspace sync (RFC-45)"](../../DECISIONS.md#slot-adapter-provisioning-via-workspace-sync-rfc-45).
+In workspace mode, `specify workspace sync` provisions probe location 1 for each synced slot: it mirrors the workspace's adapter set (both axes, `tools.yaml` sidecars included) into the slot's manifest cache — per-name delete-then-copy, skipping any name the slot vendors under its own `adapters/` tree. Resolution semantics are unchanged. See [`DECISIONS.md` §"Slot adapter provisioning via workspace sync"](../../DECISIONS.md#slot-adapter-provisioning-via-workspace-sync).
 
 The `{sources,targets}` segment is keyed by `Axis`. See [`DECISIONS.md` §"Adapter loader axis routing"](../../DECISIONS.md#adapter-loader-axis-routing) and [`DECISIONS.md` §"Cache layout"](../../DECISIONS.md#cache-layout).
 
@@ -49,7 +49,7 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Discovery handshake
 
-`survey` writes `## Lead inventory` blocks — one **raw, unmerged** lead per source, each identified by its `(source, lead)` pair (`survey` stamps `source` from the surveyed source). A re-survey of one source replaces only that source's blocks by `(source, lead)`; the same `lead` may appear under different source keys. The operator stamps `approved`; `extract` resolves `slices[].sources[].lead` against the canonical `lead` id within the binding's `source`. Cross-source unification is deferred to plan-time reconciliation (D2). Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
+`survey` writes `## Lead inventory` blocks — one **raw, unmerged** lead per source, each identified by its `(source, lead)` pair (`survey` stamps `source` from the surveyed source). A re-survey of one source replaces only that source's blocks by `(source, lead)`; the same `lead` may appear under different source keys. The operator stamps `approved`; `extract` resolves `slices[].sources[].lead` against the canonical `lead` id within the binding's `source`. Cross-source unification is deferred to plan-time reconciliation. Schema at [`schemas/discovery/lead.schema.json`](../../schemas/discovery/lead.schema.json); parser at [`crates/model/src/discovery/document.rs`](../../crates/model/src/discovery/document.rs).
 
 ## The Plan
 
@@ -61,7 +61,7 @@ A name appears under `adapters/sources/<name>/` xor `adapters/targets/<name>/`. 
 
 ## Plan-time reconciliation
 
-`specify plan propose` reconciles surveyed leads across sources at plan time and writes the `plan.yaml.slices[]` rows (RFC-29 D2). `--dry-run [--format json]` reads `plan.yaml.sources`, the `discovery.md` lead inventory, and the project topology, then emits the `kind: request` envelope (flat `(source, lead)` lead catalog + `projects[]`) for the agent; it writes nothing. `--from <response.json> [--format json]` is the only slice writer: it schema-gates the response (`PROPOSAL_JSON_SCHEMA` at [`schemas/discovery/proposal.schema.json`](../../schemas/discovery/proposal.schema.json), kebab wire fields, closed `kind: request | response`), re-reads `discovery.md`, validates total lead coverage (at most one lead per source, fan-out `sources[]` consistency), binds each slice's explicit `name` and `project` (the target adapter is resolved on demand from that project, never written to `plan.yaml`), and replaces `slices[]` only on a replaceable plan (`lifecycle: pending` and every entry `pending`). Cross-source matching is agent judgment; the operator curates at Gate 1. The closed `plan-reconcile-*` / `plan-propose-mode-required` codes are `Error::Validation` outcomes (exit 2). See [`DECISIONS.md` §"Lead reconciliation (D2)"](../../DECISIONS.md#lead-reconciliation-d2) and [`crates/workflow/src/change/plan/core/propose.rs`](../../crates/workflow/src/change/plan/core/propose.rs).
+`specify plan propose` reconciles surveyed leads across sources at plan time and writes the `plan.yaml.slices[]` rows. `--dry-run [--format json]` reads `plan.yaml.sources`, the `discovery.md` lead inventory, and the project topology, then emits the `kind: request` envelope (flat `(source, lead)` lead catalog + `projects[]`) for the agent; it writes nothing. `--from <response.json> [--format json]` is the only slice writer: it schema-gates the response (`PROPOSAL_JSON_SCHEMA` at [`schemas/discovery/proposal.schema.json`](../../schemas/discovery/proposal.schema.json), kebab wire fields, closed `kind: request | response`), re-reads `discovery.md`, validates total lead coverage (at most one lead per source, fan-out `sources[]` consistency), binds each slice's explicit `name` and `project` (the target adapter is resolved on demand from that project, never written to `plan.yaml`), and replaces `slices[]` only on a replaceable plan (`lifecycle: pending` and every entry `pending`). Cross-source matching is agent judgment; the operator curates at Gate 1. The closed `plan-reconcile-*` / `plan-propose-mode-required` codes are `Error::Validation` outcomes (exit 2). See [`DECISIONS.md` §"Lead reconciliation (D2)"](../../DECISIONS.md#lead-reconciliation-d2) and [`crates/workflow/src/change/plan/core/propose.rs`](../../crates/workflow/src/change/plan/core/propose.rs).
 
 The closed `Divergence` enum (`none | likely | accepted | rejected`) records a reconciliation outcome's confidence. See [`DECISIONS.md` §"`Divergence` enum"](../../DECISIONS.md#divergence-enum) and [`crates/workflow/src/change/plan/core/model.rs`](../../crates/workflow/src/change/plan/core/model.rs).
 
@@ -81,7 +81,7 @@ Closed enum `intent > documentation > behaviour`. v1 resolution order per `(sour
 
 ## Refinement
 
-`/spec:refine` runs `extract` per bound source, drives `specify slice synthesize` (§"Slice synthesis") to produce `proposal.md` / `spec.md` / `design.md` / `tasks.md` / `model.yaml` (provenance is carried inline in the single `model.yaml` artifact, projected on demand by `specify slice provenance`), and transitions the slice to `refined`. Validators live in [`crates/validate/src/`](../../crates/validate/src/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
+`/spec:refine` runs `extract` per bound source, drives `specify slice synthesize` (§"Slice synthesis") to produce `proposal.md` / `spec.md` / `design.md` / `tasks.md` / `model.yaml` (provenance is carried inline in the single `model.yaml` artifact, projected on demand by `specify slice provenance`), and transitions the slice to `refined`. Validators live in [`crates/model/src/validate/`](../../crates/model/src/validate/) and [`src/runtime/commands/slice/validate.rs`](../../src/runtime/commands/slice/validate.rs).
 
 ## Slice synthesis
 
@@ -120,7 +120,7 @@ Kebab-case discriminants on the JSON envelope; `snake_case` Rust variants bridge
 
 WASI tool runner pre-opens `$PROJECT_DIR` always, `$CAPABILITY_DIR` only for plugin-scope tools. No host environment leaks. See [`DECISIONS.md` §"`$CAPABILITY_DIR` replaces `$ADAPTER_DIR`"](../../DECISIONS.md#capability_dir-replaces-adapter_dir).
 
-Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$SOURCE_DIR` read-only (absent for value-bound sources), `$CAPABILITY_DIR` read-only (manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR` **not visible**. Scratch lives under the transient working-state root, structurally outside the cache tree — `extract` under `.specify/scratch/<adapter>/<slice>/`, `survey` under `.specify/scratch/<adapter>/survey/`. See [`DECISIONS.md` §"Source operations (D1)"](../../DECISIONS.md#source-operations-d1) and [§"Cache layout"](../../DECISIONS.md#cache-layout).
+Source-operation runners (`survey` / `extract`) preopen a four-root sandbox: `$SOURCE_DIR` read-only (absent for value-bound sources), `$CAPABILITY_DIR` read-only (manifest cache), `$SCRATCH_DIR` write-only, and `$PROJECT_DIR` **not visible**. Scratch lives under the transient working-state root, structurally outside the cache tree — `extract` under `.specify/scratch/<adapter>/<slice>/`, `survey` under `.specify/scratch/<adapter>/survey/`. See [`DECISIONS.md` §"Source operations"](../../DECISIONS.md#source-operations) and [§"Cache layout"](../../DECISIONS.md#cache-layout).
 
 ## CLI surface
 

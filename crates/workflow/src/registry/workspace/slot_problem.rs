@@ -16,7 +16,7 @@ use crate::registry::catalog::RegistryProject;
 pub enum SlotKind {
     /// Path missing.
     Missing,
-    /// Symlink under `.specify/workspace/<name>/`.
+    /// Symlink under `workspace/<name>/`.
     Symlink,
     /// Ordinary directory with a `.git/` metadata tree (clone target).
     GitClone,
@@ -56,7 +56,7 @@ impl Problem {
 /// Stable reason code for [`Problem`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Reason {
-    /// Project name cannot map to exactly `.specify/workspace/<project>/`.
+    /// Project name cannot map to exactly `workspace/<project>/`.
     SlotPathEscapesWorkspace,
     /// The registry's local/relative URL does not resolve.
     LocalTargetUnresolved,
@@ -163,7 +163,7 @@ fn inspect_local_slot(
             expected_target: Some(target),
             observed_target: None,
             message: format!(
-                ".specify/workspace/{} already exists and is not a symlink; remove it before re-syncing",
+                "workspace/{} already exists and is not a symlink; remove it before re-syncing",
                 dest.file_name().and_then(|s| s.to_str()).unwrap_or("?")
             ),
         });
@@ -180,7 +180,7 @@ fn inspect_local_slot(
             expected_target: Some(target.clone()),
             observed_target: Some(resolved.clone()),
             message: format!(
-                ".specify/workspace/{} already exists as a symlink to {}; expected {} from registry url `{}`",
+                "workspace/{} already exists as a symlink to {}; expected {} from registry url `{}`",
                 dest.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
                 resolved.display(),
                 target.display(),
@@ -196,7 +196,7 @@ fn inspect_local_slot(
             expected_target: Some(target.clone()),
             observed_target: None,
             message: format!(
-                ".specify/workspace/{} already exists as a broken symlink; expected {} from registry url `{}` ({err})",
+                "workspace/{} already exists as a broken symlink; expected {} from registry url `{}` ({err})",
                 dest.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
                 target.display(),
                 project.url

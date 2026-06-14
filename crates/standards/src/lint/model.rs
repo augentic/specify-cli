@@ -4,9 +4,9 @@
 //! The model is the deterministic, versioned snapshot of project
 //! facts the `specify lint` indexer produces once per run
 //! invocation. Per the standards-layer contract §"Persistence and query (v1 decision)" it
-//! is an internal execution artifact: **not** persisted under
-//! `.specify/` and **not** an operator-facing Specify artifact in
-//! v1. `.specify/cache/workspace-model.v1.json` and
+//! is an internal execution artifact: **not** persisted in the working
+//! tree and **not** an operator-facing Specify artifact in
+//! v1. A `workspace-model.v1.json` in the out-of-tree project cache and
 //! `specify model query <selector>` are reserved surfaces with no
 //! implementation behind them.
 //!
@@ -117,10 +117,10 @@ pub enum ScanProfile {
 /// §"Schema location".
 ///
 /// Important: per the standards-layer contract §"Persistence and query (v1 decision)" the
-/// model is **not** persisted under `.specify/` and is **not** an
+/// model is **not** persisted in the working tree and is **not** an
 /// operator-facing Specify artifact in v1. v1 ships
-/// `specify lint --dump-model` only;
-/// `.specify/cache/workspace-model.v1.json` and
+/// `specify lint --dump-model` only; a `workspace-model.v1.json` in the
+/// out-of-tree project cache and
 /// `specify model query <selector>` are reserved surfaces.
 ///
 /// Top-level keys are `snake_case` to match the schema under

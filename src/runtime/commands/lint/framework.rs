@@ -12,8 +12,10 @@
 //!    check runs through the in-process `rules` checker, so no
 //!    imperative producer is wired in).
 //! 2. Configure the runner for the framework surface
-//!    ([`ScanProfile::Framework`], [`FrameworkToolRunner`],
-//!    [`ResolverDegradation::SkipDeclarative`], `include_core: true`).
+//!    ([`ScanProfile::Framework`], [`NoopToolRunner`] — framework
+//!    `kind: tool` rules resolve in-process, `include_core: true`).
+//!    Codex resolution is fatal: a duplicate rule id or unresolvable
+//!    rules tree aborts the run rather than silently passing.
 //! 3. Hand the config to the shared [`crate::output::run_lint`] kernel
 //!    (via [`crate::output::emit_lint_report`]), which renders the
 //!    envelope, decides the blocking exit, and owns the JSON fallback on
@@ -30,14 +32,13 @@ use specify_diagnostics::{DiagnosticReport, Format as DiagnosticsFormat};
 use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
 use specify_standards::lint::ScanProfile;
-use specify_standards::lint::producer::DiagnosticProducer;
-use specify_standards::lint::runner::{PipelineConfig, ResolverDegradation};
+use specify_standards::lint::eval::NoopToolRunner;
+use specify_standards::lint::runner::PipelineConfig;
 use specify_workflow::config::Layout;
 use specify_workflow::journal::LintScope;
 
 use crate::output::{self, Format, LintRun};
 use crate::runtime::commands::lint::cli::{FrameworkArgs, LintFormat};
-use crate::runtime::commands::lint::framework_tools::FrameworkToolRunner;
 
 /// Handler entry point dispatched from `src/runtime/commands.rs`.
 ///
@@ -77,22 +78,20 @@ fn build_report(
         include_core: true,
     };
 
-    // No imperative producer: every `rules.*` check (CORE-009 namespace
-    // ownership, CORE-026 duplicate id) runs through the in-process
-    // `rules` checker via `kind: tool`, folded by the declarative pass.
-    let producers: [&dyn DiagnosticProducer; 0] = [];
+    // Every `rules.*` check (CORE-009 namespace ownership, CORE-026
+    // duplicate id) runs through the in-process `rules` checker via
+    // `kind: tool`, resolved in-process by the declarative pass — the
+    // runner is never consulted for framework checkers.
     let rule_filter_slice: Vec<&str> = action.rules.iter().map(String::as_str).collect();
-    let tool_runner = FrameworkToolRunner;
+    let tool_runner = NoopToolRunner;
     let cli_contract = crate::runtime::commands::contract::dump::build_contract();
     let config = PipelineConfig {
         profile: ScanProfile::Framework,
         dump_model: action.dump_model,
         apply_ignore_directives: true,
         rule_filter: &rule_filter_slice,
-        resolver_degradation: ResolverDegradation::SkipDeclarative,
         tool_runner: &tool_runner,
         cli_contract: Some(&cli_contract),
-        producers: &producers,
     };
 
     let scope = LintScope {

@@ -369,7 +369,7 @@ fn build_request_schema_accepts_rfc_example() {
     let instance = json!({
         "version": 1,
         "slice": "identity-service",
-        "project-dir": "/workspace/.specify/workspace/identity-service",
+        "project-dir": "/workspace/workspace/identity-service",
         "inputs": {
             "root": "/workspace/.specify/slices/identity-service",
             "artifacts": {
@@ -576,8 +576,7 @@ fn build_report_failure_with_findings() {
 /// implementation.
 #[test]
 fn codex_rule_accepts_reserved_kinds() {
-    let reserved =
-        ["unique", "reference-resolves", "set-coverage", "cardinality", "constant-eq", "set-eq"];
+    let reserved = ["unique", "reference-resolves", "set-coverage", "cardinality", "constant-eq"];
     for kind in reserved {
         let instance = json!({
             "id": "UNI-014",

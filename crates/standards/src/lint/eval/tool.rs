@@ -48,8 +48,9 @@ use crate::rules::{ResolvedRule, RuleHint};
 
 const STDERR_MAX_BYTES: usize = 8 * 1024;
 
-/// Trait the umbrella plumbs into [`super::evaluate`] so the WASI
-/// runtime stays out of the standards crate's dep graph.
+/// Trait the umbrella plumbs through [`super::EvalEnv`] into rule
+/// evaluation (see [`super::evaluate_rules`]) so the WASI runtime stays
+/// out of the standards crate's dep graph.
 ///
 /// `specify lint` (S9) supplies a `wasmtime`-backed implementation;
 /// integration tests in this crate supply a fake.
@@ -95,6 +96,27 @@ pub trait ToolRunner {
     }
 }
 
+/// A [`ToolRunner`] that declares no WASI tools.
+///
+/// The framework surface uses it because every framework `kind: tool`
+/// rule resolves to an in-process `framework_tools` checker before the
+/// runner is consulted; the trait is required only by the project-side
+/// WASI path.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopToolRunner;
+
+impl ToolRunner for NoopToolRunner {
+    fn run(
+        &self, tool_name: &str, _args: &[String], _project_dir: &Path,
+    ) -> Result<ToolOutput, ToolRunError> {
+        Err(ToolRunError::Runtime(format!("tool {tool_name} is not a declared WASI tool")))
+    }
+
+    fn is_declared(&self, _tool_name: &str) -> bool {
+        false
+    }
+}
+
 /// Typed result of one [`ToolRunner::run_diagnostics`] invocation:
 /// the parsed findings plus the stderr / exit-code pair the evaluator
 /// needs to synthesise `tool.invocation-failed`.
@@ -133,6 +155,12 @@ pub(crate) fn evaluate(
     rule: &ResolvedRule, hint: &RuleHint, candidates: &[PathBuf], project_dir: &Path,
     runner: &dyn ToolRunner, next_id: &mut u64,
 ) -> Result<Vec<Diagnostic>, HintError> {
+    // First-party framework checkers resolve in-process: no
+    // `ToolRunner` hop, no JSON round-trip. The trait survives for the
+    // genuine project-side WASI path only.
+    if crate::lint::framework_tools::is_framework_checker(&hint.value) {
+        return Ok(evaluate_in_process(hint, candidates, project_dir, next_id));
+    }
     if !runner.is_declared(&hint.value) {
         let finding = build_undeclared(rule, hint, *next_id);
         *next_id += 1;
@@ -161,6 +189,30 @@ pub(crate) fn evaluate(
         }
     }
     Ok(out)
+}
+
+/// Run an in-process framework checker once per candidate, folding its
+/// typed findings with `id` / `fingerprint` re-stamped monotonically
+/// from `next_id` — the same fold the WASI path applies, minus the
+/// runner hop and JSON round-trip.
+fn evaluate_in_process(
+    hint: &RuleHint, candidates: &[PathBuf], project_dir: &Path, next_id: &mut u64,
+) -> Vec<Diagnostic> {
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for candidate in candidates {
+        let args = tool_args(candidate, hint);
+        let Some(findings) =
+            crate::lint::framework_tools::run_checker(&hint.value, project_dir, &args)
+        else {
+            continue;
+        };
+        for mut finding in findings {
+            restamp_finding(&mut finding, *next_id);
+            *next_id += 1;
+            out.push(finding);
+        }
+    }
+    out
 }
 
 /// Build the positional args for one tool invocation: the candidate's

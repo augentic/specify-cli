@@ -42,6 +42,45 @@ fn no_sources() -> Vec<String> {
     Vec::new()
 }
 
+const CACHE_ENV: &str = "SPECIFY_PROJECT_CACHE";
+
+/// Restores the previous `SPECIFY_PROJECT_CACHE` value on drop.
+struct CacheGuard(Option<std::ffi::OsString>);
+
+impl Drop for CacheGuard {
+    #[expect(unsafe_code, reason = "restore the cache-root env var pinned for the test")]
+    fn drop(&mut self) {
+        // SAFETY: nextest runs each test in its own process, so no other
+        // thread observes the env mutation for the guard's lifetime.
+        unsafe {
+            match self.0.take() {
+                Some(prev) => std::env::set_var(CACHE_ENV, prev),
+                None => std::env::remove_var(CACHE_ENV),
+            }
+        }
+    }
+}
+
+/// Pin the out-of-tree cache root inside `tmp` so the codex / manifest
+/// cache the resolver probes is hermetic and auto-cleaned.
+#[expect(unsafe_code, reason = "pin the cache-root env var into the test tempdir")]
+fn scoped_cache(tmp: &TempDir) -> CacheGuard {
+    let prev = std::env::var_os(CACHE_ENV);
+    // SAFETY: see `CacheGuard::drop` — single-process test isolation.
+    unsafe { std::env::set_var(CACHE_ENV, tmp.path().join("project-cache")) };
+    CacheGuard(prev)
+}
+
+/// Out-of-tree distributed-codex cache root for `project`.
+fn codex_cache(project: &Path) -> PathBuf {
+    specify_schema::cache::project_cache_dir(project).join("codex")
+}
+
+/// Out-of-tree manifest-mirror cache root for `project`.
+fn manifest_cache(project: &Path) -> PathBuf {
+    specify_schema::cache::project_cache_dir(project).join("manifests")
+}
+
 /// Test 1: shared rules under explicit `--rules-root` flow through
 /// as `origin=shared`, `path-root=rules-root`, and the path is
 /// relative to the rules root.
@@ -133,14 +172,15 @@ fn rules_root_required_when_no_probe() {
 }
 
 /// Probe step 3 (RM-07): with no `--rules-root` and no monorepo
-/// tree, the distributed codex cache under
-/// `.specify/cache/codex/` resolves shared rules. The cache root
+/// tree, the distributed codex cache under the out-of-tree
+/// `<project-cache>/codex/` resolves shared rules. The cache root
 /// becomes the rules root, so the path is relative to it.
 #[test]
 fn shared_rules_from_codex_cache() {
     let project = TempDir::new().expect("project");
+    let _cache = scoped_cache(&project);
     write_rule(
-        &project.path().join(".specify/cache/codex/adapters/shared/rules/universal/uni-001.md"),
+        &codex_cache(project.path()).join("adapters/shared/rules/universal/uni-001.md"),
         "UNI-001",
         "Distributed codex shared",
     );
@@ -163,13 +203,14 @@ fn shared_rules_from_codex_cache() {
 #[test]
 fn monorepo_wins_over_codex_cache() {
     let project = TempDir::new().expect("project");
+    let _cache = scoped_cache(&project);
     write_rule(
         &project.path().join("adapters/shared/rules/universal/uni-001.md"),
         "UNI-001",
         "Monorepo shared",
     );
     write_rule(
-        &project.path().join(".specify/cache/codex/adapters/shared/rules/universal/uni-002.md"),
+        &codex_cache(project.path()).join("adapters/shared/rules/universal/uni-002.md"),
         "UNI-002",
         "Cache shared",
     );
@@ -188,13 +229,14 @@ fn monorepo_wins_over_codex_cache() {
 fn explicit_root_wins_over_codex_cache() {
     let rules_root = TempDir::new().expect("rules root");
     let project = TempDir::new().expect("project");
+    let _cache = scoped_cache(&project);
     write_rule(
         &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
         "UNI-001",
         "Explicit shared",
     );
     write_rule(
-        &project.path().join(".specify/cache/codex/adapters/shared/rules/universal/uni-002.md"),
+        &codex_cache(project.path()).join("adapters/shared/rules/universal/uni-002.md"),
         "UNI-002",
         "Cache shared",
     );
@@ -326,19 +368,20 @@ fn multiple_source_overlays() {
 }
 
 /// Test 8: manifest-cache rung. Project-local missing, manifest
-/// cache present — the result carries `PathRoot::ProjectDir` and
-/// the path starts with `.specify/cache/manifests/...`.
+/// cache present — the result carries `PathRoot::Cache` and the
+/// cache-relative path starts with `manifests/...`.
 #[test]
 fn cache_overlay_when_local_missing() {
     let rules_root = TempDir::new().expect("rules root");
     let project = TempDir::new().expect("project");
+    let _cache = scoped_cache(&project);
     write_rule(
         &rules_root.path().join("adapters/shared/rules/universal/uni-001.md"),
         "UNI-001",
         "Shared universal",
     );
     write_rule(
-        &project.path().join(".specify/cache/manifests/sources/typescript/rules/src-001.md"),
+        &manifest_cache(project.path()).join("sources/typescript/rules/src-001.md"),
         "SRC-001",
         "TS cache overlay",
     );
@@ -349,8 +392,8 @@ fn cache_overlay_when_local_missing() {
 
     let src = result.iter().find(|e| e.rule.id == "SRC-001").expect("source present");
     assert_eq!(src.origin, Origin::Source);
-    assert_eq!(src.path_root, PathRoot::ProjectDir);
-    assert_eq!(src.path, ".specify/cache/manifests/sources/typescript/rules/src-001.md");
+    assert_eq!(src.path_root, PathRoot::Cache);
+    assert_eq!(src.path, "manifests/sources/typescript/rules/src-001.md");
 }
 
 /// Test 9: duplicate id across overlays — same `UNI-001` declared

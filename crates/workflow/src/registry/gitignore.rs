@@ -7,20 +7,19 @@ use std::path::Path;
 
 use specify_error::Error;
 
-/// Lines the framework requires in the project `.gitignore`. All
-/// three directories are framework-managed and regenerable —
-/// `.specify/cache/` (memoized results), `.specify/scratch/`
-/// (per-run working state), `.specify/workspace/` (materialised
-/// slots) — and must never be checked in.
+/// Lines the framework requires in the project `.gitignore`. Both
+/// directories are framework-managed and regenerable —
+/// `.specify/scratch/` (per-run working state) and the top-level
+/// `workspace/` (materialised slots) — and must never be checked in.
 ///
 /// Deliberately **not** listed: `.specify/specs/` (the baseline, the
 /// durable system of record) and `.specify/archive/` (the prunable
 /// outcome cache). Both stay committable so git history of the baseline
 /// — together with the `slice.archive.created` outcome ledger in
 /// `journal.jsonl` — is the record of merged work (DECISIONS.md
-/// §"History via git plus an outcome ledger").
-const SPECIFY_GITIGNORE_ENTRIES: &[&str] =
-    &[".specify/cache/", ".specify/scratch/", ".specify/workspace/"];
+/// §"History via git plus an outcome ledger"). The adapter/codex cache
+/// is no longer in-tree; it lives in the out-of-tree OS cache.
+const SPECIFY_GITIGNORE_ENTRIES: &[&str] = &[".specify/scratch/", "workspace/"];
 
 /// Idempotent: ensure each line in `SPECIFY_GITIGNORE_ENTRIES` appears
 /// exactly once (matched with `trim()` per line) in the project

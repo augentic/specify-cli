@@ -10,7 +10,10 @@ use std::fs;
 use tempfile::tempdir;
 
 mod common;
-use common::{Project, init_workspace, omnia_schema_dir, parse_stdout, run_git, specify_cmd};
+use common::{
+    Project, expected_cache_dir, init_workspace, omnia_schema_dir, parse_stdout, run_git,
+    specify_cmd,
+};
 
 #[test]
 fn workspace_help_lists_active_subcommands() {
@@ -50,11 +53,11 @@ fn c01_sync_unknown_selector_preflight() {
     assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
-        !tmp.path().join(".specify/workspace/ghost").exists(),
+        !tmp.path().join("workspace/ghost").exists(),
         "unknown selector must fail before materialising the requested slot"
     );
     assert!(
-        !tmp.path().join(".specify/workspace/alpha").exists(),
+        !tmp.path().join("workspace/alpha").exists(),
         "unknown selector must fail before syncing any registry project"
     );
     assert_eq!(
@@ -95,10 +98,10 @@ fn c01_sync_skips_unselected_slots() {
         .args(["workspace", "sync", "orders", "billing"])
         .assert()
         .success();
-    assert!(tmp.path().join(".specify/workspace/billing").exists());
-    assert!(tmp.path().join(".specify/workspace/orders").exists());
+    assert!(tmp.path().join("workspace/billing").exists());
+    assert!(tmp.path().join("workspace/orders").exists());
     assert!(
-        !tmp.path().join(".specify/workspace/inventory").exists(),
+        !tmp.path().join("workspace/inventory").exists(),
         "selected sync must not materialise unselected slots"
     );
 }
@@ -220,11 +223,11 @@ fn c01_push_unknown_selector_preflight() {
     assert!(msg.contains("unknown project"), "msg: {msg}");
     assert!(msg.contains("ghost"), "msg: {msg}");
     assert!(
-        !tmp.path().join(".specify/workspace/ghost").exists(),
+        !tmp.path().join("workspace/ghost").exists(),
         "unknown selector must fail before materialising the requested slot"
     );
     assert!(
-        !tmp.path().join(".specify/workspace/alpha").exists(),
+        !tmp.path().join("workspace/alpha").exists(),
         "unknown selector must fail before push touches registry project slots"
     );
 }
@@ -374,8 +377,8 @@ projects:
 
     specify_cmd().current_dir(&root).args(["workspace", "sync"]).assert().success();
 
-    assert!(root.join(".specify/workspace/alpha").exists());
-    assert!(root.join(".specify/workspace/beta").exists());
+    assert!(root.join("workspace/alpha").exists());
+    assert!(root.join("workspace/beta").exists());
 }
 
 // ---- adapter-mirror conflict pins ----
@@ -418,12 +421,12 @@ fn sync_mirror_skips_self_slot() {
     specify_cmd().current_dir(&root).args(["workspace", "sync"]).assert().success();
 
     assert!(
-        !root.join(".specify/cache/manifests/sources/docs").exists(),
+        !expected_cache_dir(&root).join("manifests/sources/docs").exists(),
         "the self-slot must be skipped: the vendored adapter must not be mirrored \
          into the workspace's own manifest cache"
     );
     assert!(
-        root.join(".specify/cache/manifests/targets/omnia/adapter.yaml").is_file(),
+        expected_cache_dir(&root).join("manifests/targets/omnia/adapter.yaml").is_file(),
         "the init-seeded cache entry must survive a sync over a `url: .` self-slot"
     );
 }
@@ -435,7 +438,12 @@ fn sync_mirror_keeps_foreign_cache_entries() {
     // never pruned; workspace-owned names are refreshed on re-sync.
     let tmp = tempdir().expect("tempdir");
     let peer = tmp.path().join("peer-proj");
-    let foreign = peer.join(".specify/cache/manifests/sources/slot-local");
+    // The peer is itself a Specify project; the slot gate keys on its
+    // `.specify/` directory before mirroring adapters into the slot cache.
+    fs::create_dir_all(peer.join(".specify")).expect("peer .specify");
+    // The local-path peer is symlinked into `root/workspace/beta`, so its
+    // slot cache lives out-of-tree keyed by the (canonical) peer path.
+    let foreign = expected_cache_dir(&peer).join("manifests/sources/slot-local");
     fs::create_dir_all(&foreign).expect("foreign cache entry");
     fs::write(foreign.join("adapter.yaml"), "slot-only adapter\n").expect("foreign adapter.yaml");
     let root = tmp.path().join("root");
@@ -460,7 +468,7 @@ fn sync_mirror_keeps_foreign_cache_entries() {
 
     specify_cmd().current_dir(&root).args(["workspace", "sync"]).assert().success();
 
-    let slot_cache = root.join(".specify/workspace/beta/.specify/cache/manifests/sources");
+    let slot_cache = expected_cache_dir(&peer).join("manifests/sources");
     assert!(
         slot_cache.join("docs/adapter.yaml").is_file(),
         "sync must mirror the workspace adapter into the slot cache"

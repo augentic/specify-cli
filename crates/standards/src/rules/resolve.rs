@@ -21,8 +21,9 @@
 //!    re-walking `project_dir` would just shadow the project-local
 //!    rung with the same filesystem tree.
 //! 3. Else if the distributed codex cache
-//!    `{project_dir}/.specify/cache/codex/adapters/shared/rules/universal/`
-//!    exists, treat `{project_dir}/.specify/cache/codex/` as the rules
+//!    `<project-cache>/codex/adapters/shared/rules/universal/`
+//!    exists (resolved out-of-tree from the OS cache), treat
+//!    `<project-cache>/codex/` as the rules
 //!    root. Populated by codex distribution (RM-07) at `specify init`
 //!    or `specify rules sync`. Like the monorepo case this is a derived
 //!    (non-explicit) root, so the rules-root fallback overlay step is
@@ -33,7 +34,9 @@
 //! the closed location order in rules root resolution:
 //!
 //! 1. project-local `{project_dir}/adapters/{sources,targets}/<name>/rules/`;
-//! 2. manifest cache `{project_dir}/.specify/cache/manifests/{sources,targets}/<name>/rules/`;
+//! 2. manifest cache `<project-cache>/manifests/{sources,targets}/<name>/rules/`
+//!    (out-of-tree; provenance recorded under [`PathRoot::Cache`] with a
+//!    cache-relative `manifests/...` path);
 //! 3. rules-root fallback `{rules_root}/adapters/{sources,targets}/<name>/rules/`,
 //!    **only** when `inputs.rules_root.is_some()` (step 1 of the probe);
 //! 4. omit when no rung exists.
@@ -187,7 +190,7 @@ pub fn map_resolve_error(err: ResolveError) -> Error {
             "rules-root-required",
             "shared UNI-* rules require --rules-root, a project-local \
              adapters/shared/rules/universal/ tree, or a distributed \
-             codex cache under .specify/cache/codex/",
+             codex cache in the out-of-tree project cache",
             "run `specify rules sync` to distribute the shared codex, or \
              pass --rules-root pointing at a tree containing \
              adapters/shared/rules/universal/",
@@ -212,12 +215,29 @@ pub fn map_resolve_error(err: ResolveError) -> Error {
 
 const SHARED_REL: &str = "adapters/shared/rules/universal";
 const CORE_REL: &str = "adapters/shared/rules/core";
-const MANIFEST_CACHE_REL: &str = ".specify/cache/manifests";
-/// Project codex cache root populated by codex distribution (RM-07).
+/// Cache-relative provenance prefix recorded for cache-resolved adapter
+/// rules.
+///
+/// The physical manifest cache lives out-of-tree (see
+/// [`specify_schema::cache::project_cache_dir`]), so rule provenance is
+/// recorded under [`PathRoot::Cache`] with this stable, cache-relative
+/// prefix rather than the physical absolute path, keeping findings and
+/// goldens portable.
+const MANIFEST_CACHE_LOGICAL: &str = "manifests";
+
+/// Out-of-tree manifest cache root, `<project-cache>/manifests/`. Kept
+/// in lockstep with `specify_workflow::adapter::cache_axis_dir`.
+fn manifest_cache_root(project_dir: &Path) -> PathBuf {
+    specify_schema::cache::project_cache_dir(project_dir).join("manifests")
+}
+
+/// Out-of-tree project codex cache root, `<project-cache>/codex/`.
 /// Probe step 3 treats it as a derived rules root when it carries the
 /// shared `universal/` pack. Kept in lockstep with
 /// `specify_workflow::init::codex_cache_root`.
-const CODEX_CACHE_REL: &str = ".specify/cache/codex";
+fn codex_cache_root(project_dir: &Path) -> PathBuf {
+    specify_schema::cache::project_cache_dir(project_dir).join("codex")
+}
 
 /// Discover every rule visible to `inputs` and parse it.
 ///
@@ -299,7 +319,7 @@ fn probe_rules_root(inputs: &ResolveInputs<'_>) -> Result<PathBuf, ResolveError>
     if project_shared.is_dir() {
         return Ok(inputs.project_dir.to_path_buf());
     }
-    let codex_cache = inputs.project_dir.join(CODEX_CACHE_REL);
+    let codex_cache = codex_cache_root(inputs.project_dir);
     if codex_cache.join(SHARED_REL).is_dir() {
         return Ok(codex_cache);
     }
@@ -318,13 +338,16 @@ fn load_overlay(
     let project_local =
         project_dir.join("adapters").join(axis_segment).join(adapter_name).join("rules");
     let manifest_cache =
-        project_dir.join(MANIFEST_CACHE_REL).join(axis_segment).join(adapter_name).join("rules");
+        manifest_cache_root(project_dir).join(axis_segment).join(adapter_name).join("rules");
 
     if project_local.is_dir() {
         return collect_overlay(&project_local, project_dir, PathRoot::ProjectDir, origin, out);
     }
     if manifest_cache.is_dir() {
-        return collect_overlay(&manifest_cache, project_dir, PathRoot::ProjectDir, origin, out);
+        // Physical files live out-of-tree; record provenance under the
+        // stable cache-relative `manifests/...` path (PathRoot::Cache).
+        let logical = format!("{MANIFEST_CACHE_LOGICAL}/{axis_segment}/{adapter_name}/rules");
+        return collect_overlay_logical(&manifest_cache, &logical, origin, out);
     }
     if explicit_rules_root {
         let fallback =
@@ -349,6 +372,27 @@ fn collect_overlay(
             origin,
             path_root,
             path: rel,
+        });
+    }
+    Ok(())
+}
+
+/// Parse every `.md` file under an out-of-tree `dir`, recording each
+/// rule's provenance under `logical_root` (a stable cache-relative
+/// prefix anchored at [`PathRoot::Cache`]) rather than the physical
+/// out-of-tree path. `list_rule_files` is non-recursive, so the logical
+/// path is `logical_root/<filename>`.
+fn collect_overlay_logical(
+    dir: &Path, logical_root: &str, origin: Origin, out: &mut Vec<ResolvedRuleEntry>,
+) -> Result<(), ResolveError> {
+    for path in list_rule_files(dir)? {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let rule = parse(&path)?;
+        out.push(ResolvedRuleEntry {
+            rule,
+            origin,
+            path_root: PathRoot::Cache,
+            path: format!("{logical_root}/{name}"),
         });
     }
     Ok(())

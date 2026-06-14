@@ -1,19 +1,14 @@
 //! Remote-branch inspection helpers for `specify workspace push`: tip
-//! discovery, default-branch resolution, and PR-base preflight.
+//! discovery and default-branch resolution. Push publishes the prepared
+//! `specify/<change>` branch only — PR creation is operator-owned and
+//! lives outside the CLI.
 
 use std::path::Path;
 
 use specify_error::Error;
 
-use super::forge::{ensure_pull_request, repo_exists};
-use crate::cmd::{self, CmdRunner};
+use crate::cmd;
 use crate::registry::workspace::git::git_output_ok;
-
-pub(super) enum RemoteBranchState {
-    Present(String),
-    Absent,
-    RepositoryMissing,
-}
 
 pub(super) fn is_git_worktree(project_path: &Path) -> bool {
     git_output_ok(project_path, &["rev-parse", "--is-inside-work-tree"]).as_deref() == Some("true")
@@ -38,74 +33,17 @@ pub(in crate::registry::workspace) fn current_branch(
     Ok((!branch.is_empty()).then_some(branch))
 }
 
-pub(super) fn inspect_remote_branch(
-    runner: CmdRunner<'_>, project_path: &Path, branch_name: &str, slug: Option<&str>,
-) -> Result<RemoteBranchState, Error> {
-    match remote_branch_head(project_path, branch_name) {
-        Ok(Some(sha)) => Ok(RemoteBranchState::Present(sha)),
-        Ok(None) => Ok(RemoteBranchState::Absent),
-        Err(err) => {
-            let Some(slug) = slug else {
-                return Err(err);
-            };
-            if repo_exists(runner, slug)? {
-                Err(err)
-            } else {
-                Ok(RemoteBranchState::RepositoryMissing)
-            }
-        }
-    }
-}
-
-pub(super) fn ensure_pr_if_supported(
-    runner: CmdRunner<'_>, project_path: &Path, slug: Option<&str>, branch_name: &str,
-    change_name: &str,
-) -> Result<Option<u64>, Error> {
-    if slug.is_none() {
-        return Ok(None);
-    }
-    let base_branch = resolve_remote_default_branch(project_path)?;
-    if base_branch == branch_name {
-        return Err(Error::Diag {
-            code: "workspace-pr-base-equals-branch",
-            detail: format!(
-                "remote default branch resolves to `{branch_name}`; refusing to create a PR against \
-                 its own head branch"
-            ),
-        });
-    }
-    ensure_pull_request(runner, project_path, branch_name, &base_branch, change_name).map(Some)
-}
-
-pub(super) fn ensure_pr_base_resolves_if_supported(
-    project_path: &Path, slug: Option<&str>, branch_name: &str,
-) -> Result<(), Error> {
-    if slug.is_some() {
-        let base_branch = resolve_remote_default_branch(project_path)?;
-        if base_branch == branch_name {
-            return Err(Error::Diag {
-                code: "workspace-pr-base-equals-branch",
-                detail: format!(
-                    "remote default branch resolves to `{branch_name}`; refusing to treat it as a \
-                     workspace push branch"
-                ),
-            });
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn remote_default_branch_is(project_path: &Path, branch_name: &str) -> bool {
-    if origin_head_branch(project_path).as_deref() == Some(branch_name) {
-        return true;
-    }
-
-    drop(cmd::git(&cmd::real_cmd, Some(project_path), ["remote", "set-head", "origin", "--auto"]));
-
-    origin_head_branch(project_path).as_deref() == Some(branch_name)
-}
-
-fn remote_branch_head(project_path: &Path, branch_name: &str) -> Result<Option<String>, Error> {
+/// Resolve the remote tip of `branch_name` on `origin`, returning `None`
+/// when the branch is absent.
+///
+/// # Errors
+///
+/// Returns `Error::Diag` when `git ls-remote` cannot run or exits
+/// non-zero (e.g. the remote repository does not exist); push surfaces
+/// that as a per-project `Failed` outcome.
+pub(super) fn remote_branch_head(
+    project_path: &Path, branch_name: &str,
+) -> Result<Option<String>, Error> {
     let output = cmd::git(
         &cmd::real_cmd,
         Some(project_path),
@@ -128,19 +66,14 @@ fn remote_branch_head(project_path: &Path, branch_name: &str) -> Result<Option<S
     Ok(stdout.lines().find_map(|line| line.split_whitespace().next()).map(ToString::to_string))
 }
 
-fn resolve_remote_default_branch(project_path: &Path) -> Result<String, Error> {
-    if let Some(branch) = origin_head_branch(project_path) {
-        return Ok(branch);
+pub(super) fn remote_default_branch_is(project_path: &Path, branch_name: &str) -> bool {
+    if origin_head_branch(project_path).as_deref() == Some(branch_name) {
+        return true;
     }
 
     drop(cmd::git(&cmd::real_cmd, Some(project_path), ["remote", "set-head", "origin", "--auto"]));
 
-    origin_head_branch(project_path).ok_or_else(|| Error::Diag {
-        code: "workspace-origin-head-unresolved",
-        detail:
-            "origin-head-unresolved: could not resolve `origin/HEAD`; refusing to guess a PR base"
-                .to_string(),
-    })
+    origin_head_branch(project_path).as_deref() == Some(branch_name)
 }
 
 pub(in crate::registry::workspace) fn origin_head_branch(project_path: &Path) -> Option<String> {

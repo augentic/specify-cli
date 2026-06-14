@@ -5,11 +5,10 @@
 //! ([`HintKind::PathPattern`], [`HintKind::Schema`], [`HintKind::Regex`],
 //! [`HintKind::Tool`]). The framework-convergence
 //! family adds [`HintKind::ReferenceResolves`], [`HintKind::Unique`],
-//! [`HintKind::SetCoverage`], [`HintKind::Cardinality`],
-//! [`HintKind::ConstantEq`], and [`HintKind::SetEq`] in
-//! the same family. Each rule's
+//! [`HintKind::SetCoverage`], [`HintKind::Cardinality`], and
+//! [`HintKind::ConstantEq`] in the same family. Each rule's
 //! hints are partitioned by kind and evaluated in the fixed order
-//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
+//! `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
 //! so the cheap filters narrow the candidate file set before the
 //! subprocess boundary fires.
 //!
@@ -55,7 +54,6 @@ pub mod reference_resolves;
 pub mod regex;
 pub mod schema;
 pub mod set_coverage;
-pub mod set_eq;
 #[cfg(test)]
 pub(crate) mod testkit;
 pub mod tool;
@@ -68,19 +66,19 @@ pub use error::HintError;
 pub(crate) use finding::{SyntheticFinding, make_finding, make_synthetic_finding, restamp_finding};
 use specify_diagnostics::Diagnostic;
 use specify_error::Error as CliError;
-pub use tool::{ToolOutput, ToolRunError, ToolRunner};
+pub use tool::{NoopToolRunner, ToolOutput, ToolRunError, ToolRunner};
 
 use crate::lint::WorkspaceModel;
 use crate::lint::contract::CliContract;
 use crate::lint::diagnostics::map_hint_error;
 use crate::rules::{HintKind, LintMode, ResolvedRule, RuleHint};
 
-/// Per-rule output of [`evaluate`].
+/// Per-rule output of [`evaluate_rules`].
 #[derive(Debug, Clone)]
 pub struct HintEvalOutcome {
     /// Findings minted for this rule's executable hints.
     pub findings: Vec<Diagnostic>,
-    /// Finding-id counter passed into the next [`evaluate`] call so
+    /// Finding-id counter passed into the next rule's evaluation so
     /// `FIND-NNNN` ids stay monotonic across rules in the same scan.
     pub next_id_counter: u64,
 }
@@ -114,10 +112,14 @@ impl fmt::Debug for EvalEnv<'_> {
     }
 }
 
-/// Evaluate a single rule's hints against the workspace model.
+/// Evaluate a single rule's hints against the workspace model, threaded
+/// with a caller-owned [`schema::SchemaCache`] so a `kind: schema`
+/// validator (and its resolved project path) is built once per lint run
+/// rather than once per rule. [`evaluate_rules`] owns the run-scoped
+/// cache.
 ///
 /// Hints are partitioned by kind and run in the order
-/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → set-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
+/// `path-pattern → schema → reference-resolves → unique → set-coverage → cardinality → constant-eq → fenced-block → presence → field-grammar → cross-reference → cli-contract → regex → tool`
 /// per §"Evaluation algorithm".
 /// `path-pattern` hits build the candidate file set the later kinds
 /// consume.
@@ -125,49 +127,6 @@ impl fmt::Debug for EvalEnv<'_> {
 /// `start_id_counter` seeds the `FIND-NNNN` id sequence; the caller
 /// threads [`HintEvalOutcome::next_id_counter`] into the next call so
 /// ids stay monotonic across rules.
-///
-/// Convenience wrapper over [`evaluate_env`] with no injected CLI
-/// contract.
-///
-/// # Errors
-///
-/// Any [`HintError`] variant — see the per-variant docs.
-pub fn evaluate(
-    rule: &ResolvedRule, hints: &[RuleHint], model: &WorkspaceModel, project_dir: &Path,
-    tool_runner: &dyn ToolRunner, start_id_counter: u64,
-) -> Result<HintEvalOutcome, HintError> {
-    evaluate_env(
-        rule,
-        hints,
-        EvalEnv {
-            model,
-            project_dir,
-            tool_runner,
-            cli_contract: None,
-        },
-        start_id_counter,
-    )
-}
-
-/// [`evaluate`] with the full [`EvalEnv`], including the
-/// binary-injected CLI contract.
-///
-/// # Errors
-///
-/// Any [`HintError`] variant — see the per-variant docs.
-pub fn evaluate_env(
-    rule: &ResolvedRule, hints: &[RuleHint], env: EvalEnv<'_>, start_id_counter: u64,
-) -> Result<HintEvalOutcome, HintError> {
-    let mut schema_cache = schema::SchemaCache::default();
-    evaluate_with_cache(rule, hints, env, start_id_counter, &mut schema_cache)
-}
-
-/// [`evaluate_env`] threaded with a caller-owned [`schema::SchemaCache`] so a
-/// `kind: schema` validator (and its resolved project path) is built once
-/// per lint run rather than once per rule. [`evaluate_rules`] owns the
-/// run-scoped cache; the standalone [`evaluate_env`] entry point passes a
-/// fresh per-call cache (behaviour is identical either way — the cache
-/// only elides recompilation).
 fn evaluate_with_cache(
     rule: &ResolvedRule, hints: &[RuleHint], env: EvalEnv<'_>, start_id_counter: u64,
     schema_cache: &mut schema::SchemaCache,
@@ -210,10 +169,6 @@ fn evaluate_with_cache(
     }
     for hint in partition.constant_eq {
         let mut new = constant_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
-        findings.append(&mut new);
-    }
-    for hint in partition.set_eq {
-        let mut new = set_eq::evaluate(rule, hint, &candidates, model, &mut next_id)?;
         findings.append(&mut new);
     }
     for hint in partition.fenced_block {
@@ -272,7 +227,6 @@ struct PartitionedHints<'a> {
     set_coverage: Vec<&'a RuleHint>,
     cardinality: Vec<&'a RuleHint>,
     constant_eq: Vec<&'a RuleHint>,
-    set_eq: Vec<&'a RuleHint>,
     fenced_block: Vec<&'a RuleHint>,
     presence: Vec<&'a RuleHint>,
     field_grammar: Vec<&'a RuleHint>,
@@ -294,7 +248,6 @@ impl<'a> PartitionedHints<'a> {
                 HintKind::SetCoverage => partition.set_coverage.push(hint),
                 HintKind::Cardinality => partition.cardinality.push(hint),
                 HintKind::ConstantEq => partition.constant_eq.push(hint),
-                HintKind::SetEq => partition.set_eq.push(hint),
                 HintKind::FencedBlock => partition.fenced_block.push(hint),
                 HintKind::Presence => partition.presence.push(hint),
                 HintKind::FieldGrammar => partition.field_grammar.push(hint),
@@ -308,8 +261,8 @@ impl<'a> PartitionedHints<'a> {
     }
 }
 
-/// Fold [`evaluate_env`] over every rule, accumulating findings and the
-/// `FIND-NNNN` id counter.
+/// Fold the per-rule `evaluate_with_cache` kernel over every rule,
+/// accumulating findings and the `FIND-NNNN` id counter.
 ///
 /// Shared by both lint surfaces (`specify lint project` and `specify lint framework`)
 /// so the per-rule gating stays identical: rules in `lint-mode:
@@ -326,7 +279,7 @@ impl<'a> PartitionedHints<'a> {
 /// # Errors
 ///
 /// The [`map_hint_error`] mapping of the first rule whose
-/// [`evaluate_env`] call fails.
+/// `evaluate_with_cache` call fails.
 pub fn evaluate_rules(
     rules: &[ResolvedRule], env: EvalEnv<'_>, start_id: u64, rule_filter: &[&str],
 ) -> Result<(Vec<Diagnostic>, u64), CliError> {
@@ -399,7 +352,7 @@ fn build_candidate_set(
 /// Render the candidate `PathBuf` slice into the `/`-relative string
 /// set the fact-iterating sub-evaluators test membership against.
 ///
-/// Every fact-iterating kind (`set-coverage`, `set-eq`, `constant-eq`,
+/// Every fact-iterating kind (`set-coverage`, `constant-eq`,
 /// `reference-resolves`, `unique`, `cardinality`)
 /// narrows its facts to the `path-pattern` candidate set by string
 /// path. Sharing the conversion keeps that lookup identical across

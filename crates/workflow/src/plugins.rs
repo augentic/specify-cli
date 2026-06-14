@@ -14,9 +14,10 @@
 //! The cache layout (`…/<name>/<plugin>/<sha>/`) and the leaf-sha
 //! derivation (the marketplace repo's `HEAD`, shared by every
 //! relative-path plugin) are confirmed against a live Cursor install.
-//! Expected-sha resolution is injected through the [`ShaResolver`]
-//! trait so [`build_report`] is testable with synthetic shas, and the
-//! cached-vs-expected comparison is the pure [`classify_status`].
+//! Expected-sha resolution shells out to `git` through an injected
+//! [`crate::cmd::CmdRunner`] so [`build_report`] is testable with canned
+//! command output, and the cached-vs-expected comparison is the pure
+//! [`classify_status`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -32,10 +33,6 @@ const CACHE_SEGMENTS: &str = "plugins/cache";
 /// Marketplace file name probed under `.cursor-plugin/` and the
 /// XDG config dir.
 const MARKETPLACE_FILE: &str = "marketplace.json";
-/// Git ref an absolute-URL plugin `source` resolves against. The
-/// marketplace declares no per-plugin ref today, so the `git ls-remote`
-/// branch is inert; `HEAD` is the closed default.
-const DEFAULT_REF: &str = "HEAD";
 
 /// A declared marketplace plugin (`plugins[]` row).
 #[derive(Debug, Clone, Deserialize)]
@@ -195,43 +192,21 @@ pub struct RefreshOutcome {
     pub deleted_paths: Vec<PathBuf>,
 }
 
-/// Resolve the expected sha for a marketplace plugin.
+/// Resolve `HEAD` of the marketplace git worktree at `repo_dir` — the
+/// shared expected sha for every relative-path plugin. `None` when
+/// `repo_dir` is not a git checkout or the ref cannot resolve.
 ///
-/// Injected so [`build_report`] can be unit-tested with synthetic shas.
-/// The live implementation is [`GitCli`].
-pub trait ShaResolver {
-    /// Resolve `HEAD` of the git worktree at `repo_dir` — the shared
-    /// expected sha for every relative-path plugin. `None` when
-    /// `repo_dir` is not a git checkout or the ref cannot resolve.
-    fn head(&self, repo_dir: &Path) -> Option<String>;
-
-    /// Resolve `git_ref` on the remote `url` — the future absolute-URL
-    /// plugin path. `None` on any failure. Inert today: no shipping
-    /// `source` is a URL.
-    fn ls_remote(&self, url: &str, git_ref: &str) -> Option<String>;
-}
-
-/// Live [`ShaResolver`] shelling out to `git`.
-#[derive(Debug, Clone, Copy)]
-pub struct GitCli;
-
-impl ShaResolver for GitCli {
-    fn head(&self, repo_dir: &Path) -> Option<String> {
-        let output =
-            crate::cmd::git(&crate::cmd::real_cmd, Some(repo_dir), ["rev-parse", "HEAD"]).ok()?;
-        first_sha(&output)
-    }
-
-    fn ls_remote(&self, url: &str, git_ref: &str) -> Option<String> {
-        let output =
-            crate::cmd::git(&crate::cmd::real_cmd, None, ["ls-remote", url, git_ref]).ok()?;
-        first_sha(&output)
-    }
+/// Every shipping plugin `source` is a same-repo relative path, so the
+/// expected sha is the marketplace repo's `HEAD`. When an absolute-URL
+/// `source` ships, route it through a `git ls-remote` resolution here.
+#[must_use]
+pub fn resolve_head(runner: crate::cmd::CmdRunner<'_>, repo_dir: &Path) -> Option<String> {
+    let output = crate::cmd::git(runner, Some(repo_dir), ["rev-parse", "HEAD"]).ok()?;
+    first_sha(&output)
 }
 
 /// Read the leading sha token from a successful `git` invocation's
-/// stdout (`rev-parse` prints the sha alone; `ls-remote` prints
-/// `<sha>\t<ref>`).
+/// stdout (`rev-parse` prints the sha alone).
 fn first_sha(output: &std::process::Output) -> Option<String> {
     if !output.status.success() {
         return None;
@@ -384,26 +359,6 @@ pub fn classify_status(cached: Option<&str>, expected: Option<&str>) -> PluginSt
     }
 }
 
-/// Resolve a plugin's expected sha: a relative-path `source` shares the
-/// marketplace repo's `HEAD`; an absolute-URL `source` resolves via
-/// `git ls-remote` against the default `HEAD` ref.
-#[must_use]
-pub fn expected_sha(
-    manifest_dir: &Path, entry: &PluginEntry, resolver: &dyn ShaResolver,
-) -> Option<String> {
-    if is_url(&entry.source) {
-        resolver.ls_remote(&entry.source, DEFAULT_REF)
-    } else {
-        resolver.head(manifest_dir)
-    }
-}
-
-/// A plugin `source` is an absolute git URL (rather than a same-repo
-/// relative path) when it carries a scheme or an `scp`-style git host.
-fn is_url(source: &str) -> bool {
-    source.contains("://") || source.starts_with("git@")
-}
-
 /// Cached leaf sha for one `<plugin>` cache directory.
 ///
 /// The leaf is the single `<sha>` subdirectory. Returns `None` when the
@@ -446,12 +401,12 @@ fn scan_cache(cache_root: &Path) -> Result<BTreeMap<String, Option<String>>> {
 
 /// Build the [`DoctorReport`] — the pure-ish core of `doctor`.
 ///
-/// Scans `cache_root`, resolves each declared plugin's expected sha via
-/// `resolver`, cross-references the cache, and appends any `extra`
-/// entries.
+/// Scans `cache_root`, resolves the marketplace repo's `HEAD` (the
+/// shared expected sha for every relative-path plugin) through `runner`,
+/// cross-references the cache, and appends any `extra` entries.
 ///
 /// `marketplace_path`'s parent directory is the marketplace repo the
-/// relative-path resolver runs `git -C` against.
+/// resolver runs `git -C` against.
 ///
 /// # Errors
 ///
@@ -459,21 +414,21 @@ fn scan_cache(cache_root: &Path) -> Result<BTreeMap<String, Option<String>>> {
 /// read.
 pub fn build_report(
     marketplace_path: &Path, manifest: &MarketplaceManifest, cache_root: &Path,
-    resolver: &dyn ShaResolver,
+    runner: crate::cmd::CmdRunner<'_>,
 ) -> Result<DoctorReport> {
     let manifest_dir = marketplace_path.parent().unwrap_or_else(|| Path::new("."));
     let cache = scan_cache(cache_root)?;
+    let expected = resolve_head(runner, manifest_dir);
 
     let mut declared: BTreeSet<&str> = BTreeSet::new();
     let mut plugins = Vec::with_capacity(manifest.plugins.len());
     for entry in &manifest.plugins {
         declared.insert(entry.name.as_str());
         let cached = cache.get(&entry.name).cloned().flatten();
-        let expected = expected_sha(manifest_dir, entry, resolver);
         let status = classify_status(cached.as_deref(), expected.as_deref());
         plugins.push(PluginReport {
             name: entry.name.clone(),
-            expected_sha: expected,
+            expected_sha: expected.clone(),
             cached_sha: cached,
             status,
         });

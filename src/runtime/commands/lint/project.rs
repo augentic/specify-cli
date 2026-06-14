@@ -29,7 +29,7 @@ use specify_error::{Error, Result};
 use specify_standards::ResolveInputs;
 use specify_standards::lint::ScanProfile;
 use specify_standards::lint::eval::tool::{ToolOutput, ToolRunError, ToolRunner};
-use specify_standards::lint::runner::{PipelineConfig, ResolverDegradation};
+use specify_standards::lint::runner::PipelineConfig;
 use specify_tool::host::{RunContext, WasiRunner};
 use specify_tool::manifest::ToolScope;
 use specify_workflow::journal::LintScope;
@@ -87,10 +87,8 @@ fn build_report(
         dump_model: args.dump_model,
         apply_ignore_directives: true,
         rule_filter: &[],
-        resolver_degradation: ResolverDegradation::Fatal,
         tool_runner: &tool_runner,
         cli_contract: Some(&cli_contract),
-        producers: &[],
     };
 
     let scope = LintScope {

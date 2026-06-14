@@ -1,7 +1,7 @@
 //! Projects a schema-validated agent reconciliation response onto
 //! `plan.yaml.slices[]`, enforcing the semantic invariants the schema
 //! gate (`validate_proposal_json`) cannot express. See DECISIONS.md
-//! §"Lead reconciliation (D2)".
+//! §"Lead reconciliation".
 
 use std::collections::{BTreeSet, HashSet};
 
@@ -33,7 +33,7 @@ pub struct ProposeOutcome {
 
 impl Plan {
     /// Project a validated agent reconciliation response onto
-    /// `plan.yaml.slices[]` (DECISIONS.md §"Lead reconciliation (D2)").
+    /// `plan.yaml.slices[]` (DECISIONS.md §"Lead reconciliation").
     ///
     /// `response` is assumed to have already passed JSON-Schema
     /// validation (`validate_proposal_json`) at the CLI boundary, so this
