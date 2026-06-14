@@ -48,8 +48,9 @@ use crate::rules::{ResolvedRule, RuleHint};
 
 const STDERR_MAX_BYTES: usize = 8 * 1024;
 
-/// Trait the umbrella plumbs into [`super::evaluate`] so the WASI
-/// runtime stays out of the standards crate's dep graph.
+/// Trait the umbrella plumbs through [`super::EvalEnv`] into rule
+/// evaluation (see [`super::evaluate_rules`]) so the WASI runtime stays
+/// out of the standards crate's dep graph.
 ///
 /// `specify lint` (S9) supplies a `wasmtime`-backed implementation;
 /// integration tests in this crate supply a fake.

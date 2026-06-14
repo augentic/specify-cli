@@ -62,7 +62,7 @@ static REGISTERED_SCHEMAS: LazyLock<HashMap<&'static str, &'static str>> = LazyL
 ///
 /// Built once per `specify lint` / `specify lint framework` invocation in
 /// [`super::evaluate_rules`] and threaded by `&mut` into every per-rule
-/// [`super::evaluate`] call, so a schema referenced by N rules compiles
+/// `evaluate_with_cache` call, so a schema referenced by N rules compiles
 /// once per run instead of once per rule. Two maps back the two results
 /// the previous code recomputed on every evaluation:
 ///

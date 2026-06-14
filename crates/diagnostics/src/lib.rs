@@ -36,6 +36,5 @@ pub use diagnostic::{
 pub use fingerprint::{canonical_json, fingerprint, verify_fingerprint};
 pub use render::{Format, RenderError, render};
 pub use validate::{
-    DiagnosticError, validate, validate_diagnostic, validate_diagnostic_json,
-    validate_evidence_size, validate_fingerprint,
+    DiagnosticError, validate_diagnostic, validate_diagnostic_json, validate_evidence_size,
 };

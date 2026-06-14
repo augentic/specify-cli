@@ -10,7 +10,7 @@ use std::fs;
 
 use specify_diagnostics::Severity;
 use specify_standards::lint::ScanProfile;
-use specify_standards::lint::eval::{ToolRunner, evaluate};
+use specify_standards::lint::eval::{EvalEnv, ToolRunner, evaluate_rules};
 use specify_standards::lint::index::build;
 use specify_standards::rules::HintKind;
 
@@ -31,25 +31,21 @@ fn path_pattern_narrows_candidates() {
     );
     let runner: &dyn ToolRunner = &NoToolRunner;
 
-    let outcome = evaluate(
-        &rule,
-        rule.rule_hints.as_deref().unwrap_or_default(),
-        &model,
-        tmp.path(),
-        runner,
-        1,
-    )
-    .expect("evaluate ok");
+    let env = EvalEnv {
+        model: &model,
+        project_dir: tmp.path(),
+        tool_runner: runner,
+        cli_contract: None,
+    };
+    let (findings, _next_id) =
+        evaluate_rules(std::slice::from_ref(&rule), env, 1, &[]).expect("evaluate ok");
 
-    assert_eq!(outcome.findings.len(), 2, "one finding per matched .rs file");
-    let mut paths: Vec<&str> = outcome
-        .findings
-        .iter()
-        .map(|f| f.location.as_ref().expect("location set").path.as_str())
-        .collect();
+    assert_eq!(findings.len(), 2, "one finding per matched .rs file");
+    let mut paths: Vec<&str> =
+        findings.iter().map(|f| f.location.as_ref().expect("location set").path.as_str()).collect();
     paths.sort_unstable();
     assert_eq!(paths, vec!["a.rs", "b.rs"], "regex must only see path-pattern survivors");
-    for finding in &outcome.findings {
+    for finding in &findings {
         assert_eq!(finding.severity, Severity::Important);
         assert!(finding.fingerprint.starts_with("sha256:"));
     }
@@ -65,16 +61,15 @@ fn path_pattern_empty_drops_findings() {
         vec![hint(HintKind::PathPattern, "*.rs"), hint(HintKind::Regex, "fn")],
     );
     let runner: &dyn ToolRunner = &NoToolRunner;
-    let outcome = evaluate(
-        &rule,
-        rule.rule_hints.as_deref().unwrap_or_default(),
-        &model,
-        tmp.path(),
-        runner,
-        1,
-    )
-    .expect("evaluate ok");
-    assert!(outcome.findings.is_empty(), "no .rs files survived path-pattern filter");
+    let env = EvalEnv {
+        model: &model,
+        project_dir: tmp.path(),
+        tool_runner: runner,
+        cli_contract: None,
+    };
+    let (findings, _next_id) =
+        evaluate_rules(std::slice::from_ref(&rule), env, 1, &[]).expect("evaluate ok");
+    assert!(findings.is_empty(), "no .rs files survived path-pattern filter");
 }
 
 #[test]
@@ -95,16 +90,15 @@ fn path_pattern_exclusion_carves_out_paths() {
         ],
     );
     let runner: &dyn ToolRunner = &NoToolRunner;
-    let outcome = evaluate(
-        &rule,
-        rule.rule_hints.as_deref().unwrap_or_default(),
-        &model,
-        tmp.path(),
-        runner,
-        1,
-    )
-    .expect("evaluate ok");
+    let env = EvalEnv {
+        model: &model,
+        project_dir: tmp.path(),
+        tool_runner: runner,
+        cli_contract: None,
+    };
+    let (findings, _next_id) =
+        evaluate_rules(std::slice::from_ref(&rule), env, 1, &[]).expect("evaluate ok");
 
-    assert_eq!(outcome.findings.len(), 1);
-    assert_eq!(outcome.findings[0].location.as_ref().expect("loc").path, "docs/bad.md");
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].location.as_ref().expect("loc").path, "docs/bad.md");
 }

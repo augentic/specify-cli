@@ -22,13 +22,12 @@ use jsonschema::{Registry, Resource};
 use serde_json::Value as JsonValue;
 use specify_error::{Error, Result};
 use specify_model::discovery::Lead;
-pub use specify_schema::{
+pub(crate) use specify_schema::{
     BUILD_REPORT_JSON_SCHEMA, BUILD_REQUEST_JSON_SCHEMA, COMPONENTS_JSON_SCHEMA,
     DIAGNOSTIC_JSON_SCHEMA, EVIDENCE_JSON_SCHEMA, LEAD_JSON_SCHEMA, PARTS_JSON_SCHEMA,
-    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, RESOLVED_RULES_JSON_SCHEMA,
-    RULE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA, SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA,
-    compile_schema, read_yaml_as_json, validate_serialisable, validate_value,
-    validate_value_cached,
+    PLAN_JSON_SCHEMA, PROPOSAL_JSON_SCHEMA, PROVENANCE_JSON_SCHEMA, SLICE_MODEL_JSON_SCHEMA,
+    SYNTHESIS_JSON_SCHEMA, TOPOLOGY_LOCK_JSON_SCHEMA, read_yaml_as_json, validate_serialisable,
+    validate_value, validate_value_cached,
 };
 use specify_schema::{ValidationStatus, ValidationSummary, join_details};
 
@@ -328,7 +327,7 @@ pub fn validate_evidence_dir(slice_dir: &Path) -> Result<Vec<EvidenceDoc>> {
                     "evidence file conforms to schemas/evidence.schema.json",
                 ) {
                     if summary.status == ValidationStatus::Fail {
-                        summaries.push(relabel_with_path(summary, &path));
+                        summaries.push(relabel(summary, path.display()));
                     }
                 }
                 docs.push(EvidenceDoc {
@@ -460,7 +459,7 @@ pub fn validate_leads(leads: &[Lead]) -> Result<()> {
             validate_value_cached(&instance, LEAD_JSON_SCHEMA, "discovery-lead-schema", rule)
         {
             if summary.status == ValidationStatus::Fail {
-                summaries.push(relabel_with_lead(summary, &lead.lead));
+                summaries.push(relabel(summary, format_args!("lead `{}`", lead.lead)));
             }
         }
     }
@@ -475,23 +474,10 @@ pub fn validate_leads(leads: &[Lead]) -> Result<()> {
     }
 }
 
-fn relabel_with_lead(mut summary: ValidationSummary, lead: &str) -> ValidationSummary {
+fn relabel(mut summary: ValidationSummary, label: impl std::fmt::Display) -> ValidationSummary {
     let detail = summary.detail.take().unwrap_or_default();
-    summary.detail = Some(if detail.is_empty() {
-        format!("lead `{lead}`")
-    } else {
-        format!("lead `{lead}`: {detail}")
-    });
-    summary
-}
-
-fn relabel_with_path(mut summary: ValidationSummary, path: &Path) -> ValidationSummary {
-    let detail = summary.detail.take().unwrap_or_default();
-    summary.detail = Some(if detail.is_empty() {
-        path.display().to_string()
-    } else {
-        format!("{}: {}", path.display(), detail)
-    });
+    summary.detail =
+        Some(if detail.is_empty() { label.to_string() } else { format!("{label}: {detail}") });
     summary
 }
 
@@ -538,7 +524,7 @@ fn validate_labelled_yaml(
     })?;
     let failures: Vec<ValidationSummary> = validation_failures(&instance, schema, code, rule)
         .into_iter()
-        .map(|summary| relabel_with_path(summary, source_path))
+        .map(|summary| relabel(summary, source_path.display()))
         .collect();
     err_from_failures(code, &failures)
 }

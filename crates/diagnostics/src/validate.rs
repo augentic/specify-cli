@@ -1,6 +1,6 @@
 //! [`Diagnostic`] validation helpers.
 //!
-//! Three orthogonal checks:
+//! Two orthogonal checks:
 //!
 //! 1. **JSON Schema validation** — every wire field conforms to
 //!    `schemas/diagnostics/diagnostic.schema.json` (kebab-case keys, closed
@@ -8,13 +8,6 @@
 //! 2. **Evidence cap** — the serialized `evidence` object is bounded
 //!    at 16 `KiB`. The cap covers the full evidence object (`kind` +
 //!    payload), not individual fields.
-//! 3. **Fingerprint** — the stored `fingerprint` matches the
-//!    recomputation byte-for-byte. The format pre-check
-//!    (`^sha256:[0-9a-f]{64}$`) lives both schema-side and here.
-//!
-//! The aggregate [`validate`] short-circuits on the first failure;
-//! callers that need every failure at once may invoke the individual
-//! validators.
 
 use std::sync::LazyLock;
 
@@ -22,7 +15,6 @@ use serde_json::Value as JsonValue;
 use specify_schema::{DIAGNOSTIC_JSON_SCHEMA, compile_schema};
 
 use crate::diagnostic::Diagnostic;
-use crate::fingerprint::fingerprint;
 
 /// 16 `KiB` cap on the serialized evidence object.
 const EVIDENCE_MAX_BYTES: usize = 16 * 1024;
@@ -52,33 +44,9 @@ pub enum DiagnosticError {
         /// Byte length of the UTF-8 serialized evidence object.
         actual: usize,
     },
-    /// Stored fingerprint does not match the recomputed value.
-    #[error("diagnostic fingerprint mismatch: expected {expected}, got {actual}")]
-    FingerprintMismatch {
-        /// Recomputed canonical fingerprint.
-        expected: String,
-        /// Value stored on the diagnostic.
-        actual: String,
-    },
-    /// Stored fingerprint does not match `^sha256:[0-9a-f]{64}$`.
-    #[error("diagnostic fingerprint malformed: {0}")]
-    FingerprintMalformed(String),
     /// Diagnostic could not be serialized to JSON.
     #[error("diagnostic JSON serialization failed: {0}")]
     Serialize(String),
-}
-
-/// Run every validator and short-circuit on the first failure.
-///
-/// # Errors
-///
-/// Returns the first [`DiagnosticError`] from [`validate_diagnostic`],
-/// [`validate_evidence_size`], or [`validate_fingerprint`].
-pub fn validate(diagnostic: &Diagnostic) -> Result<(), DiagnosticError> {
-    validate_diagnostic(diagnostic)?;
-    validate_evidence_size(diagnostic)?;
-    validate_fingerprint(diagnostic)?;
-    Ok(())
 }
 
 /// Validate a typed [`Diagnostic`] against the embedded
@@ -130,39 +98,13 @@ pub fn validate_evidence_size(diagnostic: &Diagnostic) -> Result<(), DiagnosticE
     }
 }
 
-/// Verify that `diagnostic.fingerprint` matches the recomputation.
-///
-/// # Errors
-///
-/// - [`DiagnosticError::FingerprintMalformed`] when the prefix or hex
-///   shape is wrong.
-/// - [`DiagnosticError::FingerprintMismatch`] when the recomputed
-///   value differs from the stored one.
-pub fn validate_fingerprint(diagnostic: &Diagnostic) -> Result<(), DiagnosticError> {
-    let Some(hex) = diagnostic.fingerprint.strip_prefix("sha256:") else {
-        return Err(DiagnosticError::FingerprintMalformed(diagnostic.fingerprint.clone()));
-    };
-    if hex.len() != 64 || !hex.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
-        return Err(DiagnosticError::FingerprintMalformed(diagnostic.fingerprint.clone()));
-    }
-    let expected = fingerprint(diagnostic);
-    if expected == diagnostic.fingerprint {
-        Ok(())
-    } else {
-        Err(DiagnosticError::FingerprintMismatch {
-            expected,
-            actual: diagnostic.fingerprint.clone(),
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::{
-        DiagnosticError, EVIDENCE_MAX_BYTES, validate, validate_diagnostic,
-        validate_diagnostic_json, validate_evidence_size, validate_fingerprint,
+        DiagnosticError, EVIDENCE_MAX_BYTES, validate_diagnostic, validate_diagnostic_json,
+        validate_evidence_size,
     };
     use crate::diagnostic::FindingEvidence;
     use crate::fingerprint::fingerprint;
@@ -188,13 +130,6 @@ mod tests {
             "confidence": "high",
             "fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
         })
-    }
-
-    #[test]
-    fn validate_accepts_valid_diagnostic() {
-        let mut diagnostic = sample_diagnostic();
-        diagnostic.fingerprint = fingerprint(&diagnostic);
-        validate(&diagnostic).expect("valid diagnostic must pass every validator");
     }
 
     #[test]
@@ -238,34 +173,6 @@ mod tests {
                 assert!(actual > EVIDENCE_MAX_BYTES);
             }
             other => panic!("expected EvidenceTooLarge, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn fp_rejects_malformed_value() {
-        let mut diagnostic = sample_diagnostic();
-        diagnostic.fingerprint = "not-a-sha256".into();
-        match validate_fingerprint(&diagnostic) {
-            Err(DiagnosticError::FingerprintMalformed(detail)) => {
-                assert_eq!(detail, "not-a-sha256");
-            }
-            other => panic!("expected FingerprintMalformed, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn fp_rejects_mismatch() {
-        let mut diagnostic = sample_diagnostic();
-        diagnostic.fingerprint = fingerprint(&diagnostic);
-        let mut tampered = diagnostic.clone();
-        tampered.fingerprint =
-            "sha256:1111111111111111111111111111111111111111111111111111111111111111".into();
-        match validate_fingerprint(&tampered) {
-            Err(DiagnosticError::FingerprintMismatch { expected, actual }) => {
-                assert_eq!(expected, diagnostic.fingerprint);
-                assert_eq!(actual, tampered.fingerprint);
-            }
-            other => panic!("expected FingerprintMismatch, got {other:?}"),
         }
     }
 
