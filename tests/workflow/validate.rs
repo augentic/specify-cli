@@ -508,6 +508,39 @@ fn app_icon_valid_assets_passes() {
 }
 
 #[test]
+fn app_icon_pinned_exports_passes() {
+    let tmp = init_vectis_greenfield("core,ios,android");
+    let design = tmp.path().join("design-system");
+    fs::create_dir_all(design.join("assets/exports/ios/app-icon/AppIcon.appiconset")).expect("mkdir ios export");
+    fs::create_dir_all(design.join("assets/exports/android/app-icon")).expect("mkdir android export");
+    fs::write(
+        design.join("assets.yaml"),
+        "version: 1\n\
+         app-icon: app-icon\n\
+         assets:\n\
+         \x20\x20app-icon:\n\
+         \x20\x20\x20\x20kind: vector\n\
+         \x20\x20\x20\x20role: app-icon\n\
+         \x20\x20\x20\x20sources:\n\
+         \x20\x20\x20\x20\x20\x20ios: assets/exports/ios/app-icon/AppIcon.appiconset\n\
+         \x20\x20\x20\x20\x20\x20android: assets/exports/android/app-icon\n",
+    )
+    .expect("write assets.yaml");
+
+    let assert = specify_cmd()
+        .current_dir(tmp.path())
+        .args(["--format", "json", "plan", "validate"])
+        .assert()
+        .success();
+    let value = parse_stdout(&assert.get_output().stdout, tmp.path());
+    let findings = value["findings"].as_array().expect("findings array");
+    assert!(
+        !findings.iter().any(|r| r["rule-id"] == "plan-bootstrap-app-icon-missing"),
+        "path B pinned exports must satisfy §6.2 without a `source:` master: {findings:#?}"
+    );
+}
+
+#[test]
 fn app_icon_shell_resident_passes() {
     let tmp = init_vectis_greenfield("core,ios,android");
     let appiconset = tmp.path().join("iOS/Demo/Resources/Assets.xcassets/AppIcon.appiconset");
