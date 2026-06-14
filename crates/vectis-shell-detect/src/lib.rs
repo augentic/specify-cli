@@ -1,12 +1,16 @@
 //! Crux shell presence heuristics for Vectis-bound projects.
 //!
-//! Single source of truth for on-disk shell detection. The host CLI
-//! links this crate in-process; `wasi-tools/vectis` reuses it for
-//! `verify --mode detect`.
+//! Single source of truth for on-disk shell detection and shell-resident
+//! launcher icon probes (RFC-46 §6.3). The host CLI links this crate
+//! in-process; `wasi-tools/vectis` reuses it for `verify --mode detect`.
 
 #![warn(missing_docs)]
 
+mod launcher;
+
 use std::path::{Path, PathBuf};
+
+pub use launcher::shell_resident_app_icon;
 
 /// Platform strings with on-disk shell interpretations today.
 pub const SUPPORTED_SHELL_PLATFORMS: &[&str] = &["core", "ios", "android"];
@@ -66,6 +70,9 @@ fn walk_dir_recursive(dir: &Path) -> Vec<PathBuf> {
     }
     out
 }
+
+#[cfg(test)]
+mod launcher_tests;
 
 #[cfg(test)]
 mod tests;
