@@ -2,6 +2,8 @@
 
 use std::path::Path;
 
+use crate::materialize::paths::kebab_to_snake;
+
 /// Whether a composition-referenced asset has a committed export on
 /// disk for `platform` without a `sources.<platform>` pin.
 pub(super) fn conventional_export_exists(
@@ -59,6 +61,3 @@ fn directory_has_regular_file(dir: &Path) -> bool {
     entries.filter_map(Result::ok).any(|e| e.path().is_file())
 }
 
-fn kebab_to_snake(id: &str) -> String {
-    id.replace('-', "_")
-}

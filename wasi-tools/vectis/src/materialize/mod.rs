@@ -2,8 +2,10 @@
 //!
 //! Phase 2 (RFC-46) converts designer-owned `source:` files into per-platform
 //! exports under `design-system/assets/exports/<platform>/`. The conversion
-//! pipeline lands in R46-S17+; this module owns the CLI surface and report
-//! envelope (R46-S15).
+//! pipeline lands in R46-S17+; this module owns the CLI surface, report
+//! envelope (R46-S15), and export path conventions (R46-S16).
+
+pub mod paths;
 
 use std::path::{Path, PathBuf};
 

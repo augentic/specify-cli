@@ -245,8 +245,8 @@ Canonical draft: [`augentic/specify` `rfcs/rfc-46-asset-materialization.md`](htt
 
 _Codified in: `wasi-tools/vectis/src/validate/engine/assets/` (export presence,
 `assets-materialization-missing`, `assets-app-icon-*`);
-`wasi-tools/vectis/src/materialize.rs` (CLI surface and report envelope;
-conversion pipeline lands R46-S17+)._
+`wasi-tools/vectis/src/materialize/` (CLI surface, report envelope, and
+`paths.rs` export conventions; conversion pipeline lands R46-S17+)._
 
 ### §L — Bootstrap `app-icon` gate
 
