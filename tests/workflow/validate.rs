@@ -511,8 +511,10 @@ fn app_icon_valid_assets_passes() {
 fn app_icon_pinned_exports_passes() {
     let tmp = init_vectis_greenfield("core,ios,android");
     let design = tmp.path().join("design-system");
-    fs::create_dir_all(design.join("assets/exports/ios/app-icon/AppIcon.appiconset")).expect("mkdir ios export");
-    fs::create_dir_all(design.join("assets/exports/android/app-icon")).expect("mkdir android export");
+    fs::create_dir_all(design.join("assets/exports/ios/app-icon/AppIcon.appiconset"))
+        .expect("mkdir ios export");
+    fs::create_dir_all(design.join("assets/exports/android/app-icon"))
+        .expect("mkdir android export");
     fs::write(
         design.join("assets.yaml"),
         "version: 1\n\
