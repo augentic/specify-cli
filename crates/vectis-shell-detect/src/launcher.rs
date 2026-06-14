@@ -50,9 +50,7 @@ fn referenced_png_filenames(contents_json: &str) -> Vec<String> {
     while let Some(rel) = contents_json[search_from..].find("\"filename\"") {
         let rest = &contents_json[search_from + rel..];
         if let Some(filename) = parse_json_string_value_after_key(rest, "filename")
-            && Path::new(&filename)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
+            && Path::new(&filename).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
         {
             out.push(filename);
         }

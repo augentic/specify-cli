@@ -11,6 +11,7 @@ use specify_diagnostics::Diagnostic;
 use super::core::Plan;
 use crate::registry::Registry;
 
+mod bootstrap_app_icon;
 mod cycle;
 mod orphan_source;
 mod stale_clone;
@@ -28,6 +29,8 @@ pub const ORPHAN_SOURCE: &str = "orphan-source";
 /// Stable code for the stale-workspace-clone diagnostic. See
 /// [`StaleReason`] for the two ways a clone is classified stale.
 pub const STALE_CLONE: &str = "stale-workspace-clone";
+/// Stable code for the bootstrap `app-icon` gate (RFC-46 §6.2).
+pub const BOOTSTRAP_APP_ICON_MISSING: &str = bootstrap_app_icon::BOOTSTRAP_APP_ICON_MISSING;
 
 /// Why a workspace clone is classified stale by [`STALE_CLONE`].
 #[derive(
@@ -90,6 +93,9 @@ pub fn doctor(
     out.extend(orphan_source::detect(plan));
     if let (Some(reg), Some(dir)) = (registry, project_dir) {
         out.extend(stale_clone::detect(reg, dir));
+    }
+    if let Some(dir) = project_dir {
+        out.extend(bootstrap_app_icon::detect(dir));
     }
 
     out

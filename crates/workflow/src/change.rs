@@ -15,5 +15,6 @@ pub use plan::core::{
     resolve_topology, unknown_slice_err,
 };
 pub use plan::doctor::{
-    CYCLE, CloneSignature, ORPHAN_SOURCE, STALE_CLONE, StaleReason, detect, doctor as plan_doctor,
+    BOOTSTRAP_APP_ICON_MISSING, CYCLE, CloneSignature, ORPHAN_SOURCE, STALE_CLONE, StaleReason,
+    detect, doctor as plan_doctor,
 };
