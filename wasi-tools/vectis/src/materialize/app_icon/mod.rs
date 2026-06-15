@@ -1,5 +1,6 @@
 //! App-icon materialization — shared launcher canvas and per-platform exports.
 
+mod android;
 mod canvas;
 mod ios;
 
@@ -13,9 +14,6 @@ use crate::materialize::paths::{Platform, export_layout, resolve_under_assets_di
 pub use canvas::{LAUNCHER_CANVAS_SIZE, decode_to_launcher_canvas};
 
 /// Materialize `role: app-icon` entries with a canonical `source:` master.
-///
-/// R46-S19 implements iOS (`AppIcon.appiconset`) only; Android is added in
-/// R46-S20.
 pub fn materialize_app_icons(
     assets_dir: &Path, assets: &serde_json::Map<String, Value>, platforms: &[String],
     dry_run: bool, materialized: &mut Vec<Value>, skipped_pins: &mut Vec<Value>,
@@ -38,10 +36,12 @@ pub fn materialize_app_icons(
             }
         };
 
+        let kind = entry.get("kind").and_then(Value::as_str).unwrap_or("vector");
+
         for platform_name in platforms {
-            if platform_name != "ios" {
+            let Some(platform) = Platform::parse(platform_name) else {
                 continue;
-            }
+            };
             if let Some(pin) = active_platform_pin(entry, platform_name, assets_dir) {
                 skipped_pins.push(json!({
                     "asset_id": asset_id,
@@ -51,11 +51,22 @@ pub fn materialize_app_icons(
                 continue;
             }
 
-            let Some(layout) = export_layout("app-icon", "vector", Platform::Ios, asset_id) else {
+            let Some(layout) = export_layout("app-icon", kind, platform, asset_id) else {
                 continue;
             };
 
-            match materialize_ios(asset_id, assets_dir, &layout, &canvas, dry_run) {
+            let result = match platform {
+                Platform::Ios => materialize_ios(asset_id, assets_dir, &layout, &canvas, dry_run),
+                Platform::Android => materialize_android(
+                    asset_id,
+                    entry,
+                    assets_dir,
+                    &layout,
+                    &canvas,
+                    dry_run,
+                ),
+            };
+            match result {
                 Ok(written) => materialized.extend(written),
                 Err(message) => errors.push(asset_error(asset_id, &message)),
             }
@@ -84,6 +95,31 @@ fn materialize_ios(
         .artifacts
         .iter()
         .map(|path| materialized_entry(asset_id, Platform::Ios, path))
+        .collect())
+}
+
+fn materialize_android(
+    asset_id: &str, entry: &Value, assets_dir: &Path,
+    layout: &crate::materialize::paths::ExportLayout, canvas: &image::RgbaImage, dry_run: bool,
+) -> Result<Vec<Value>, String> {
+    if dry_run {
+        return Ok(layout
+            .artifacts
+            .iter()
+            .map(|path| materialized_entry(asset_id, Platform::Android, path))
+            .collect());
+    }
+
+    let export_root = resolve_under_assets_dir(assets_dir, &layout.pin);
+    let background = android::resolve_launcher_background(entry, assets_dir);
+    android::write_android_export(canvas, &background, &export_root).map_err(|err| {
+        format!("asset `{asset_id}`: Android app-icon export failed: {err}")
+    })?;
+
+    Ok(layout
+        .artifacts
+        .iter()
+        .map(|path| materialized_entry(asset_id, Platform::Android, path))
         .collect())
 }
 
@@ -143,6 +179,97 @@ assets:
         let decoded = image::ImageReader::open(&png).expect("open").decode().expect("decode");
         assert_eq!(decoded.width(), 1024);
         assert_eq!(decoded.height(), 1024);
+    }
+
+    #[test]
+    fn materialize_app_icon_android_from_svg() {
+        let tmp = tempdir().expect("tempdir");
+        let design = tmp.path().join("design-system");
+        fs::create_dir_all(design.join("assets")).expect("assets dir");
+        fs::write(design.join("assets/app-icon.svg"), SQUARE_SVG).expect("svg");
+        fs::write(
+            design.join("tokens.yaml"),
+            "version: 1\ncolors:\n  surface:\n    light: \"#EEF0F2\"\n    dark: \"#111111\"\n",
+        )
+        .expect("tokens");
+
+        let yaml = r#"version: 1
+app-icon: app-icon
+assets:
+  app-icon:
+    kind: vector
+    role: app-icon
+    alt: "App icon"
+    tint: surface
+    source: assets/app-icon.svg
+"#;
+        let instance: Value = serde_saphyr::from_str(yaml).expect("parse yaml");
+        let assets = instance.get("assets").and_then(Value::as_object).expect("assets");
+
+        let mut materialized = Vec::new();
+        let mut skipped = Vec::new();
+        let mut errors = Vec::new();
+        materialize_app_icons(
+            &design,
+            assets,
+            &["android".into()],
+            false,
+            &mut materialized,
+            &mut skipped,
+            &mut errors,
+        );
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+
+        let root = design.join("assets/exports/android/app-icon");
+        assert!(root.join("mipmap-anydpi-v26/ic_launcher.xml").is_file());
+        assert!(root.join("drawable-xxhdpi/ic_launcher_foreground.png").is_file());
+        assert!(root.join("mipmap-mdpi/ic_launcher.png").is_file());
+
+        let bg = fs::read_to_string(root.join("values/ic_launcher_background.xml")).expect("bg");
+        assert!(bg.contains("#EEF0F2"));
+
+        let launcher =
+            fs::read_to_string(root.join("mipmap-anydpi-v26/ic_launcher.xml")).expect("xml");
+        assert!(launcher.contains("adaptive-icon"));
+        assert!(!materialized.is_empty());
+    }
+
+    #[test]
+    fn materialize_app_icon_skips_pinned_android_export() {
+        let tmp = tempdir().expect("tempdir");
+        let design = tmp.path().join("design-system");
+        let export_root = design.join("assets/exports/android/app-icon");
+        fs::create_dir_all(export_root.join("mipmap-anydpi-v26")).expect("mkdir");
+        fs::write(export_root.join("mipmap-anydpi-v26/ic_launcher.xml"), "<adaptive-icon/>")
+            .expect("launcher");
+        fs::write(design.join("assets/app-icon.svg"), SQUARE_SVG).expect("svg");
+
+        let yaml = r#"version: 1
+assets:
+  app-icon:
+    kind: vector
+    role: app-icon
+    alt: "App icon"
+    source: assets/app-icon.svg
+    sources:
+      android: assets/exports/android/app-icon
+"#;
+        let instance: Value = serde_saphyr::from_str(yaml).expect("parse yaml");
+        let assets = instance.get("assets").and_then(Value::as_object).expect("assets");
+
+        let mut materialized = Vec::new();
+        let mut skipped = Vec::new();
+        materialize_app_icons(
+            &design,
+            assets,
+            &["android".into()],
+            false,
+            &mut materialized,
+            &mut skipped,
+            &mut Vec::new(),
+        );
+        assert!(materialized.is_empty());
+        assert_eq!(skipped.len(), 1);
     }
 
     #[test]

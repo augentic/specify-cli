@@ -206,7 +206,16 @@ fn app_icon_layout(platform: Platform) -> ExportLayout {
         }
         Platform::Android => {
             let root = format!("{}/app-icon", exports_root(platform));
-            ExportLayout { pin: root.clone(), artifacts: vec![root] }
+            let mut artifacts = vec![
+                format!("{root}/mipmap-anydpi-v26/ic_launcher.xml"),
+                format!("{root}/mipmap-anydpi-v26/ic_launcher_round.xml"),
+                format!("{root}/values/ic_launcher_background.xml"),
+            ];
+            for density in ANDROID_DENSITIES {
+                artifacts.push(format!("{root}/drawable-{density}/ic_launcher_foreground.png"));
+                artifacts.push(format!("{root}/mipmap-{density}/ic_launcher.png"));
+            }
+            ExportLayout { pin: root.clone(), artifacts }
         }
     }
 }
@@ -339,6 +348,12 @@ mod tests {
         let android = export_layout("app-icon", "raster", Platform::Android, "app-icon")
             .expect("app-icon android");
         assert_eq!(android.pin, "assets/exports/android/app-icon");
+        assert_eq!(android.artifacts.len(), 13);
+        assert!(android
+            .artifacts
+            .contains(&"assets/exports/android/app-icon/mipmap-anydpi-v26/ic_launcher.xml".to_string()));
+        assert!(android.artifacts.iter().any(|path| path.contains("drawable-mdpi")));
+        assert!(android.artifacts.iter().any(|path| path.contains("mipmap-xxxhdpi")));
     }
 
     #[test]
