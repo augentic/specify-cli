@@ -14,6 +14,8 @@
 #[cfg(test)]
 mod tests;
 
+mod catalog;
+
 use std::path::{Path, PathBuf};
 
 use clap::{Args as ClapArgs, ValueEnum};
@@ -66,7 +68,7 @@ pub fn run(args: &VerifyArgs) -> Result<Value, VectisError> {
 
     match args.mode {
         VerifyMode::Detect => Ok(render_detect(&statuses)),
-        VerifyMode::Verify => Ok(render_verify(&statuses, &project_root)),
+        VerifyMode::Verify => Ok(render_verify(&statuses, &project_root, &platforms)),
     }
 }
 
@@ -208,7 +210,7 @@ fn render_detect(statuses: &[PlatformStatus]) -> Value {
     })
 }
 
-fn render_verify(statuses: &[PlatformStatus], project_root: &Path) -> Value {
+fn render_verify(statuses: &[PlatformStatus], project_root: &Path, platforms: &[String]) -> Value {
     let mut findings: Vec<Value> = Vec::new();
 
     for status in statuses {
@@ -237,6 +239,8 @@ fn render_verify(statuses: &[PlatformStatus], project_root: &Path) -> Value {
             }));
         }
     }
+
+    findings.extend(catalog::catalog_findings(project_root, platforms));
 
     serde_json::json!({
         "mode": "verify",

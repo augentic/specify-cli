@@ -365,12 +365,12 @@ const fn raster_densities(plat: &str) -> &'static [&'static str] {
     }
 }
 
-pub(super) struct AssetRef {
-    pub(super) id: String,
+pub(crate) struct AssetRef {
+    pub(crate) id: String,
     pub(super) path: String,
 }
 
-pub(super) fn collect_asset_references(value: &Value) -> Vec<AssetRef> {
+pub(crate) fn collect_asset_references(value: &Value) -> Vec<AssetRef> {
     let mut refs = Vec::new();
     walk_node(value, "", &mut refs);
     refs

@@ -28,6 +28,9 @@ mod tokens;
 
 use std::path::Path;
 
+pub(crate) use assets::collect_asset_references;
+pub(crate) use shared::parse_yaml_file;
+
 pub use paths::{
     discover_artifact, expand_path_template, find_project_root, paths_for_key,
     resolve_default_path_with_root,
