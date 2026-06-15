@@ -208,7 +208,7 @@ surface) and `src/main.rs` (the binary entry point)._
 
 ## RFC-46 — asset materialization
 
-Canonical draft: [`augentic/specify` `rfcs/rfc-46-asset-materialization.md`](https://github.com/augentic/specify/blob/rfc-46/rfcs/rfc-46-asset-materialization.md).
+Canonical spec: [`augentic/specify` `rfcs/rfc-46-asset-materialization.md`](https://github.com/augentic/specify/blob/main/rfcs/rfc-46-asset-materialization.md).
 
 ### §K — Materialization and render-by-`kind`
 
