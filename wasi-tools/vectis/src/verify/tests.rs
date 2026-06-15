@@ -268,6 +268,105 @@ fn render_json_error_exits_two() {
     assert_eq!(value["exit-code"], 2);
 }
 
+// ── catalog completeness (RFC-46 §7) ─────────────────────────────
+
+fn write_design_system_inventory(root: &Path) {
+    let specify = root.join(".specify/specs");
+    std::fs::create_dir_all(&specify).expect("mkdir specs");
+    let design = root.join("design-system");
+    std::fs::create_dir_all(&design).expect("mkdir design-system");
+    std::fs::write(
+        design.join("assets.yaml"),
+        r"
+version: 1
+assets:
+  empty-tasks-hero:
+    kind: vector
+    role: illustration
+    source: assets/empty-tasks-hero.svg
+",
+    )
+    .expect("write assets.yaml");
+    std::fs::write(
+        specify.join("composition.yaml"),
+        r"
+version: 1
+screens:
+  empty:
+    body:
+      - image:
+          name: empty-tasks-hero
+",
+    )
+    .expect("write composition.yaml");
+}
+
+fn scaffold_ios_with_xcassets(root: &Path) {
+    let app = root.join("iOS/TodoApp");
+    std::fs::create_dir_all(app.join("Resources/Assets.xcassets")).expect("mkdir xcassets");
+    std::fs::write(app.join("ContentView.swift"), "struct ContentView {}").expect("write swift");
+}
+
+#[test]
+fn verify_catalog_missing_imageset_exits_one() {
+    let tmp = tempdir().unwrap();
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
+    scaffold_core(tmp.path());
+    scaffold_ios_with_xcassets(tmp.path());
+    scaffold_android(tmp.path());
+    write_design_system_inventory(tmp.path());
+
+    let args = VerifyArgs {
+        mode: VerifyMode::Verify,
+        path: Some(tmp.path().to_path_buf()),
+    };
+    let result = run(&args).expect("verify should succeed");
+    let findings = result["findings"].as_array().expect("findings array");
+
+    let catalog_errors: Vec<&Value> = findings
+        .iter()
+        .filter(|f| f["id"] == "shell-catalog-entry-missing")
+        .collect();
+    assert!(
+        !catalog_errors.is_empty(),
+        "expected shell catalog finding: {result}"
+    );
+    assert_eq!(verify_exit_code(&result), 1);
+}
+
+#[test]
+fn verify_catalog_present_imageset_exits_clean() {
+    let tmp = tempdir().unwrap();
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
+    scaffold_core(tmp.path());
+    scaffold_ios_with_xcassets(tmp.path());
+    scaffold_android(tmp.path());
+    write_design_system_inventory(tmp.path());
+
+    let imageset = tmp
+        .path()
+        .join("iOS/TodoApp/Resources/Assets.xcassets/empty-tasks-hero.imageset");
+    std::fs::create_dir_all(&imageset).expect("mkdir imageset");
+    std::fs::write(imageset.join("empty-tasks-hero@3x.png"), b"PNG").expect("write png");
+
+    let drawable = tmp
+        .path()
+        .join("Android/app/src/main/res/drawable-xxxhdpi/empty_tasks_hero.png");
+    std::fs::create_dir_all(drawable.parent().unwrap()).expect("mkdir drawable");
+    std::fs::write(&drawable, b"PNG").expect("write android png");
+
+    let args = VerifyArgs {
+        mode: VerifyMode::Verify,
+        path: Some(tmp.path().to_path_buf()),
+    };
+    let result = run(&args).expect("verify should succeed");
+    let findings = result["findings"].as_array().expect("findings array");
+
+    let errors: Vec<&Value> = findings.iter().filter(|f| f["severity"] == "error").collect();
+    assert!(errors.is_empty(), "expected no catalog errors: {result}");
+    assert_eq!(verify_exit_code(&result), 0);
+}
+
 // ── shell detection edge cases ─────────────────────────────────────
 
 #[test]

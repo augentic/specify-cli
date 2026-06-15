@@ -16,9 +16,12 @@
 //!   raw response bytes, deserialises the agent's grouping, **re-reads**
 //!   `discovery.md` and the topology (never trusting a prior dry-run
 //!   snapshot), projects the response onto `plan.yaml.slices[]` through
-//!   [`Plan::propose_from`] under the atomic [`with_state`] write loop,
-//!   and — only after the write commits — emits the single
-//!   `plan.reconcile.completed` journal event.
+//!   [`Plan::propose_from`] under the atomic [`with_state`] write loop.
+//!   When a bound project declares non-empty `project.yaml.platforms`,
+//!   a deterministic bootstrap post-pass runs via
+//!   [`vectis_missing_platforms`] (Vectis-bound projects only) before
+//!   the write commits. Only after the write commits does the handler
+//!   emit the single `plan.reconcile.completed` journal event.
 //!
 //! Passing neither mode fails with `plan-propose-mode-required`
 //! (exit 2); the clap layer rejects passing both.
@@ -31,11 +34,12 @@ use specify_error::{Error, Result};
 use specify_model::discovery::Discovery;
 use specify_workflow::change::{
     Plan, ProjectMissingPlatforms, ProjectRef, ProposalRequest, ProposalResponse, ProposeOutcome,
-    build_request, detect_missing_platforms, resolve_topology,
+    build_request, resolve_topology,
 };
 use specify_workflow::config::{ProjectConfig, with_state};
 use specify_workflow::journal::{self, Event, EventKind};
 use specify_workflow::schema::validate_proposal_json;
+use specify_workflow::vectis_missing_platforms;
 
 use super::{Ref, cli, plan_ref, require_file};
 use crate::runtime::context::Ctx;
@@ -52,7 +56,7 @@ use crate::runtime::context::Ctx;
 pub(super) fn propose(ctx: &Ctx, args: cli::ProposeArgs) -> Result<()> {
     match (args.dry_run, args.from) {
         (true, None) => dry_run(ctx),
-        (false, Some(path)) => from(ctx, &path, args.reconcile_platforms),
+        (false, Some(path)) => from(ctx, &path),
         // The clap `conflicts_with` guard makes `(true, Some(_))`
         // unreachable; return the mode error rather than risk a panic.
         (false, None) | (true, Some(_)) => Err(Error::validation_failed(
@@ -91,7 +95,7 @@ fn reset_plan_scratch(ctx: &Ctx) -> Result<()> {
 
 /// `--from`: schema-gate and project the agent response onto
 /// `plan.yaml.slices[]`, then emit the paired reconciliation events.
-fn from(ctx: &Ctx, response_path: &Path, reconcile_platforms: bool) -> Result<()> {
+fn from(ctx: &Ctx, response_path: &Path) -> Result<()> {
     let plan_path = require_file(ctx)?;
     let raw = read_response(response_path)?;
 
@@ -112,10 +116,9 @@ fn from(ctx: &Ctx, response_path: &Path, reconcile_platforms: bool) -> Result<()
     let discovery = load_discovery(ctx)?;
     let topology = load_topology(ctx)?;
 
-    // Detect missing platforms before entering the write loop so
-    // filesystem probes happen outside the atomic transaction.
-    let project_missing: Vec<ProjectMissingPlatforms> =
-        if reconcile_platforms { detect_missing_for_topology(&topology, ctx) } else { Vec::new() };
+    // Detect missing platforms before entering the write loop so shell
+    // scanning happens outside the atomic transaction.
+    let project_missing = detect_missing_for_topology(&topology, ctx)?;
 
     // The projection runs inside the atomic write loop: `propose_from`
     // replaces `plan.entries`, `with_state` writes `plan.yaml` on Ok and
@@ -148,7 +151,9 @@ fn from(ctx: &Ctx, response_path: &Path, reconcile_platforms: bool) -> Result<()
 ///
 /// Single-project mode checks `ctx.project_dir`; hub mode checks each
 /// member's workspace clone directory.
-fn detect_missing_for_topology(topology: &[ProjectRef], ctx: &Ctx) -> Vec<ProjectMissingPlatforms> {
+fn detect_missing_for_topology(
+    topology: &[ProjectRef], ctx: &Ctx,
+) -> Result<Vec<ProjectMissingPlatforms>> {
     topology
         .iter()
         .filter(|p| !p.platforms.is_empty())
@@ -158,10 +163,11 @@ fn detect_missing_for_topology(topology: &[ProjectRef], ctx: &Ctx) -> Vec<Projec
             } else {
                 ctx.project_dir.join("workspace").join(&p.name)
             };
-            ProjectMissingPlatforms {
+            let missing = vectis_missing_platforms(&project_dir, &p.platforms)?;
+            Ok(ProjectMissingPlatforms {
                 project: p.name.clone(),
-                missing: detect_missing_platforms(&project_dir, &p.platforms),
-            }
+                missing,
+            })
         })
         .collect()
 }

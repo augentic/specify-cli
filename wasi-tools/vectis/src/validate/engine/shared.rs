@@ -86,7 +86,7 @@ fn lazy_validator(
 /// read / parse failure has already surfaced in the folded sub-report.
 /// Returning `None` lets the call site stay flat with `if let Some(...)`
 /// instead of dragging a synthetic error type through.
-pub(super) fn parse_yaml_file(path: &Path) -> Option<Value> {
+pub(crate) fn parse_yaml_file(path: &Path) -> Option<Value> {
     let source = std::fs::read_to_string(path).ok()?;
     serde_saphyr::from_str::<Value>(&source).ok()
 }

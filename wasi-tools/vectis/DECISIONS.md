@@ -206,6 +206,100 @@ _Codified in: `crates/vectis/src/validate.rs` (the public
 `Args`, `ValidateMode`, `render_json`, and `validate_exit_code`
 surface) and `src/main.rs` (the binary entry point)._
 
+## RFC-46 — asset materialization
+
+Canonical spec: [`augentic/specify` `rfcs/rfc-46-asset-materialization.md`](https://github.com/augentic/specify/blob/main/rfcs/rfc-46-asset-materialization.md).
+
+### §K — Materialization and render-by-`kind`
+
+> Canonical `source:` files under `design-system/assets/` are designer-owned.
+> Per-platform exports under `design-system/assets/exports/<platform>/` are
+> tool-generated or operator-pinned derivatives recorded in `sources.<platform>`.
+> Consumer repos version-control committed `exports/`; CI does not require
+> image-processing deps on every job.
+>
+> **`vectis materialize assets`** (Phase 2) converts canonical masters into
+> per-platform exports and auto-writes absent `sources.<platform>` pins.
+> Operator pins win silently — when `sources.<platform>` is set and the path
+> exists on disk, materialize skips that slot. Invocation: operator manual, or
+> automatic at `specify slice build --phase prepare` for in-scope missing
+> exports (§2.1 of RFC-46).
+>
+> **Report envelope (stable):** success payloads are flat JSON with
+> `command: "materialize assets"`, the resolved inventory `path`, `dry_run`,
+> the effective `platforms` filter, and three arrays:
+>
+> - `materialized[]` — `{ "asset_id", "platform", "path" }` per export written
+>   (absent in `--dry-run` when no write would occur).
+> - `skipped_pins[]` — `{ "asset_id", "platform", "pin" }` for operator-pinned
+>   slots skipped silently.
+> - `errors[]` — `{ "path", "message" }` entries (JSON Pointer-shaped `path`
+>   when the failure targets a sub-document). Non-empty `errors` exits `1`;
+>   missing inventory or bad flags exit `2` via the shared error envelope.
+>
+> **Render-by-`kind`:** shell writers copy materialized exports into shell
+> resources and emit view code by entry `kind` — `vector` / `raster` from shell
+> catalogs, `symbol` only via explicit `symbols.<platform>` at the call site.
+> Build-time substitution of platform glyphs for `vector` / `raster` ids is
+> forbidden.
+
+_Codified in: `wasi-tools/vectis/src/validate/engine/assets/` (export presence,
+`assets-materialization-missing`, `assets-app-icon-*`);
+`wasi-tools/vectis/src/materialize/` (CLI surface, report envelope,
+`paths.rs` export conventions, `icons/` SVG→PDF/VD XML, `illustrations/` SVG→PNG,
+`raster_copy.rs` photo density copy; pin auto-write lands R46-S21)._
+
+#### Illustration raster scale table (R46-S18)
+
+Vector `role: illustration` masters render from the SVG 1× logical canvas
+(`usvg` `Tree::size()` width/height) through `resvg` at platform density
+factors:
+
+| Platform | Slot | Scale factor (×1× canvas) |
+|----------|------|---------------------------|
+| iOS | `@2x` | 2.0 |
+| iOS | `@3x` | 3.0 |
+| Android | `mdpi` | 1.0 |
+| Android | `hdpi` | 1.5 |
+| Android | `xhdpi` | 2.0 |
+| Android | `xxhdpi` | 3.0 |
+| Android | `xxxhdpi` | 4.0 |
+
+`role: photo` (`kind: raster`) uses a **copy-only** path: per-density entries
+under `sources.<platform>` are copied byte-for-byte into the conventional
+`exports/<platform>/…` layout (`paths.rs`); no `resvg` pass.
+
+_Codified in: `wasi-tools/vectis/src/materialize/render.rs`,
+`illustrations/`, `raster_copy.rs`, `paths::{ios_scale_factor,android_density_factor}`._
+
+### §L — Bootstrap `app-icon` gate
+
+> **Bootstrap trigger (§6.1).** For a Vectis-bound project, UI shell bootstrap
+> is implied when `project.yaml.platforms` includes `ios` and/or `android` **and**
+> vectis shell-detect semantics report that platform in `missing[]` (same rules
+> as `vectis verify --mode detect` / `specify-vectis-shell-detect`). Detection
+> is filesystem-authoritative — host `propose --from` and `plan validate` call
+> the shared library in-process; they do not dispatch vectis WASM for this probe.
+> **`plan.yaml` slice names** (`app-foundation`, `bootstrap-*`) are **not** gate
+> inputs. `core`-only missing does not trigger; the gate fires only when `ios`
+> or `android` is among `missing[]`.
+>
+> **Validation rule (§6.2).** When §6.1 triggers, evaluate each missing UI
+> platform `π`: (1) **shell-resident escape hatch** — if
+> `shell_resident_app_icon(project_dir, π)` is true (§6.3), pass for `π`
+> without design-system inventory; (2) otherwise require `design-system/assets.yaml`
+> top-level `app-icon` pointing at a `role: app-icon` entry satisfiable for `π`
+> via path A (canonical `source:` materializable) or path B (operator-pinned
+> export tree at `exports/<π>/app-icon/`). Failure → `plan-bootstrap-app-icon-missing`
+> (plan validate) or `assets-app-icon-invalid` / `assets-app-icon-export-invalid`
+> (vectis validate assets).
+>
+> When §6.1 does not trigger, `app-icon` inventory is not gated.
+
+_Codified in: `crates/workflow/src/platform/bootstrap.rs` (`BootstrapContext`);
+`crates/vectis-shell-detect` (`shell_resident_app_icon`); plan doctor
+(`plan-bootstrap-app-icon-missing`); `wasi-tools/vectis/src/validate/engine/assets/app_icon.rs`._
+
 ### Scaffold version-pin resolution
 
 > `vectis scaffold` resolves Crux + toolchain pins from embedded

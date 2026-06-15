@@ -12,9 +12,9 @@ use super::*;
 const CORE_RENDER_ONLY_SHA256: &str =
     "3db14983887828dff03d604ad449f1eb098e1008db4b83df525af6cbb64abeff";
 const IOS_RENDER_ONLY_SHA256: &str =
-    "74b2d27baa9ce536abe1d59d7bf75117757bb470faa73502ea28d3316c3a9699";
+    "49b83d8ec33b826099f6d79b646ba9dbe1689c17bdfd8e51820b85651d10abec";
 const ANDROID_RENDER_ONLY_SHA256: &str =
-    "f35e8f62519b1d285e03d5a6f7d82b19c83072c8ff6a85ead8b7780e1e59192e";
+    "31385d870d8cfddd0af7676ac9a7567f5cea979dedc792b4dcabc45290c0ee1f";
 
 fn versions() -> Versions {
     Versions::embedded().expect("embedded versions parse")
@@ -77,6 +77,13 @@ fn ios_plan_substitutes_paths_and_cap_blocks() {
     let plan = plan_ios("Counter", "com.vectis.counter", &caps, &versions()).unwrap();
     assert_eq!(plan.files.len(), ios::ENTRIES.len());
     assert!(plan.files.iter().any(|file| file.relative_path == "iOS/Counter/CounterApp.swift"));
+    assert!(plan.files.iter().any(|file| {
+        file.relative_path
+            == "iOS/Counter/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json"
+    }));
+    let project_yml =
+        plan.files.iter().find(|file| file.relative_path == "iOS/project.yml").unwrap();
+    assert!(project_yml.contents.contains("Resources"));
 
     let core_swift =
         plan.files.iter().find(|file| file.relative_path == "iOS/Counter/Core.swift").unwrap();
@@ -95,6 +102,18 @@ fn android_plan_skips_network_config_without_http_or_sse() {
     assert!(plan.files.iter().any(|file| {
         file.relative_path == "Android/app/src/main/java/com/vectis/counter/CounterApplication.kt"
     }));
+    assert!(plan.files.iter().any(|file| {
+        file.relative_path == "Android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml"
+    }));
+    assert!(plan.files.iter().any(|file| {
+        file.relative_path == "Android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml"
+    }));
+    let manifest = plan
+        .files
+        .iter()
+        .find(|file| file.relative_path == "Android/app/src/main/AndroidManifest.xml")
+        .unwrap();
+    assert!(manifest.contents.contains(r#"android:icon="@mipmap/ic_launcher""#));
     assert!(
         !plan.files.iter().any(|file| file.relative_path == "Android/local.properties"),
         "host-derived local.properties is outside the WASI renderer"

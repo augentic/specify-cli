@@ -41,12 +41,20 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use specify_diagnostics::Diagnostic;
 use specify_error::{Error, Result};
+use specify_workflow::Platform;
 use specify_workflow::adapter::{
     BuildInputDeclaration, Execution, ResolvedTargetAdapter, TargetAdapter, TargetOperation,
 };
+use specify_workflow::change::{BOOTSTRAP_APP_ICON_MISSING, bootstrap_app_icon_findings};
+use specify_workflow::config::ProjectConfig;
 use specify_workflow::init::adapter_name_from_value;
 use specify_workflow::journal::{self, EventKind};
+use specify_workflow::platform::bootstrap_context;
 use specify_workflow::schema::{validate_build_report_json, validate_build_request_json};
+use specify_workflow::slice::build::materialize_scope::{
+    materialize_platform_csv, resolve_effective_assets, resolve_materialize_scope,
+    scope_needs_materialize,
+};
 use specify_workflow::slice::{
     BuildReport, BuildRequest, BuildStatus, LifecycleStatus, SliceMetadata,
     actions as slice_actions, build_request, enforce_report_no_blocking_on_success,
@@ -54,7 +62,11 @@ use specify_workflow::slice::{
 };
 
 use crate::runtime::commands::source::cli::Phase;
+use crate::runtime::commands::tool;
 use crate::runtime::context::Ctx;
+
+const VECTIS_TARGET: &str = "vectis";
+const VECTIS_TOOL: &str = "vectis";
 
 /// Handoff envelope printed by the agent `prepare` phase. The agent
 /// runs the `build` brief against `request`, then writes `report`
@@ -105,6 +117,9 @@ struct BuildResult {
 ///   `target-build-output-missing` /
 ///   `target-build-report-slice-mismatch` / `target-build-failed` and
 ///   the `lifecycle` gate error from the agent `finalize` phase.
+/// - `target-build-materialize-failed` from the Vectis prepare materialize
+///   hook; `plan-bootstrap-app-icon-missing` when §6.1 bootstrap context
+///   still fails §6.2 after materialize.
 /// - `target-build-tool-unsupported` from the `execution: tool` seam.
 pub(super) fn run(ctx: &Ctx, name: &str, phase: Phase) -> Result<()> {
     let slice_dir = ctx.slices_dir().join(name);
@@ -132,6 +147,10 @@ fn prepare(
     let manifest = &resolved.manifest;
     let request_path = assemble_and_write_request(ctx, name, slice_dir, &manifest.inputs)?;
 
+    if manifest.name == VECTIS_TARGET {
+        prepare_vectis_assets(ctx, slice_dir)?;
+    }
+
     journal::emit_best_effort(
         ctx.layout(),
         ctx.now(),
@@ -155,6 +174,79 @@ fn prepare(
         execution: "agent",
     };
     ctx.write(&handoff, write_handoff_text)
+}
+
+/// RFC §2.1 prepare hook: auto-materialize missing in-scope exports, then
+/// re-run the bootstrap `app-icon` gate when §6.1 applies.
+fn prepare_vectis_assets(ctx: &Ctx, slice_dir: &Path) -> Result<()> {
+    let project_dir = &ctx.project_dir;
+    let bootstrap = bootstrap_context(project_dir)?;
+    let shell_platforms = shell_platforms(project_dir);
+
+    if let Some(effective) = resolve_effective_assets(slice_dir, project_dir) {
+        let scope = resolve_materialize_scope(slice_dir, project_dir, &bootstrap, &effective);
+        if scope_needs_materialize(&scope, &effective, &shell_platforms) {
+            run_materialize_assets(ctx, project_dir, &effective.path, &shell_platforms)?;
+        }
+    }
+
+    enforce_bootstrap_app_icon_gate(project_dir)
+}
+
+fn shell_platforms(project_dir: &Path) -> Vec<Platform> {
+    let Ok(config) = ProjectConfig::load(project_dir) else {
+        return vec![Platform::Ios, Platform::Android];
+    };
+    config
+        .platforms
+        .iter()
+        .copied()
+        .filter(|p| matches!(p, Platform::Ios | Platform::Android))
+        .collect()
+}
+
+fn run_materialize_assets(
+    ctx: &Ctx, project_dir: &Path, assets_path: &Path, shell_platforms: &[Platform],
+) -> Result<()> {
+    let rel = assets_path.strip_prefix(project_dir).map_or_else(
+        |_| assets_path.to_string_lossy().into_owned(),
+        |p| p.to_string_lossy().into_owned(),
+    );
+    let mut args = vec!["materialize".into(), "assets".into(), rel];
+    if !shell_platforms.is_empty() {
+        args.push("--platform".into());
+        args.push(materialize_platform_csv(shell_platforms));
+    }
+
+    let captured = tool::run_captured(ctx, VECTIS_TOOL, args)?;
+    if captured.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&captured.stderr);
+        let stdout = String::from_utf8_lossy(&captured.stdout);
+        let detail = if stderr.trim().is_empty() {
+            stdout.trim().to_string()
+        } else {
+            stderr.trim().to_string()
+        };
+        return Err(Error::validation_failed(
+            "target-build-materialize-failed",
+            "vectis materialize assets completes successfully before the build brief handoff",
+            format!("vectis materialize assets exited with code {}: {detail}", captured.exit_code),
+        ));
+    }
+    Ok(())
+}
+
+fn enforce_bootstrap_app_icon_gate(project_dir: &Path) -> Result<()> {
+    let findings = bootstrap_app_icon_findings(project_dir);
+    if findings.is_empty() {
+        return Ok(());
+    }
+    let detail = findings.iter().map(|f| f.impact.as_str()).collect::<Vec<_>>().join("\n");
+    Err(Error::validation_failed(
+        BOOTSTRAP_APP_ICON_MISSING,
+        "bootstrap context carries a satisfiable `app-icon` for each missing UI platform (RFC §6.2)",
+        detail,
+    ))
 }
 
 /// Agent `finalize` phase: validate the agent-produced report, gate the

@@ -16,6 +16,8 @@ targets:
     platform: iOS
     sources:
       - __APP_NAME__
+    resources:
+      - path: __APP_NAME__/Resources
     dependencies:
       - package: SharedTypes
       - package: Shared

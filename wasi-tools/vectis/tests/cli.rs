@@ -312,6 +312,60 @@ fn infer_emits_name_free_cluster_report() {
     assert!(clusters[0]["fingerprint"].as_str().is_some(), "cluster carries a fingerprint");
 }
 
+// ── materialize subcommand ───────────────────────────────────────────
+
+fn vectis_materialize() -> Command {
+    let mut cmd = vectis();
+    cmd.arg("materialize");
+    cmd
+}
+
+#[test]
+fn materialize_assets_clean_run_exits_zero() {
+    let tmp = tempdir().unwrap();
+    let assets_path = tmp.path().join("assets.yaml");
+    std::fs::write(&assets_path, "version: 1\nassets: {}\n").expect("write assets.yaml");
+
+    let assert = vectis_materialize().args(["assets"]).arg(&assets_path).assert().success();
+    let value = parse_json(&assert.get_output().stdout);
+
+    assert_eq!(value["command"], "materialize assets");
+    assert_eq!(value["path"], assets_path.display().to_string());
+    assert_eq!(value["dry_run"], false);
+    assert_eq!(value["materialized"].as_array().map(Vec::len), Some(0));
+    assert_eq!(value["skipped_pins"].as_array().map(Vec::len), Some(0));
+    assert_eq!(value["errors"].as_array().map(Vec::len), Some(0));
+}
+
+#[test]
+fn materialize_assets_dry_run_missing_file_exits_two() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("missing-assets.yaml");
+
+    let assert =
+        vectis_materialize().args(["assets", "--dry-run"]).arg(&missing).assert().failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 2);
+}
+
+#[test]
+fn materialize_assets_missing_file_exits_two() {
+    let tmp = tempdir().unwrap();
+    let missing = tmp.path().join("missing-assets.yaml");
+
+    let assert = vectis_materialize().args(["assets"]).arg(&missing).assert().failure();
+    let output = assert.get_output();
+    let value = parse_json(&output.stdout);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(value["error"], "invalid-project");
+    assert_eq!(value["exit-code"], 2);
+}
+
 #[test]
 fn infer_missing_composition_exits_two() {
     let tmp = tempdir().unwrap();

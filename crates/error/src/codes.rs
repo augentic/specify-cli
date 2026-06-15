@@ -215,6 +215,7 @@ pub const WIRE_CODES: &[&str] = &[
     "target-build-brief-missing",
     "target-build-failed",
     "target-build-input-missing",
+    "target-build-materialize-failed",
     "target-build-output-missing",
     "target-build-report-missing",
     "target-build-report-slice-mismatch",

@@ -48,6 +48,8 @@ assemblies:
         target: iOS/__APP_NAME__/Views/LoadingScreen.swift
       - source: HomeScreen.swift
         target: iOS/__APP_NAME__/Views/HomeScreen.swift
+      - source: AppIcon-Contents.json
+        target: iOS/__APP_NAME__/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json
 
   android:
     path-mode: android-package
@@ -92,3 +94,11 @@ assemblies:
         target: Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/ui/theme/Theme.kt
       - source: Type.kt
         target: Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/ui/theme/Type.kt
+      - source: ic_launcher.xml
+        target: Android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+      - source: ic_launcher_round.xml
+        target: Android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+      - source: ic_launcher_foreground.xml
+        target: Android/app/src/main/res/drawable/ic_launcher_foreground.xml
+      - source: ic_launcher_background.xml
+        target: Android/app/src/main/res/values/ic_launcher_background.xml

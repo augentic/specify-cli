@@ -11,7 +11,7 @@
 //! `output::emit` dispatcher; those couplings would re-attach the
 //! tool to the host CLI's release cadence.
 //!
-//! `vectis` exposes five subcommands:
+//! `vectis` exposes six subcommands:
 //!
 //! - `validate` — schema + cross-artifact validation for tokens, assets,
 //!   layout, composition, plus an `all` fan-out.
@@ -19,6 +19,8 @@
 //!   (detect mode for plan-time, verify mode for build/lint).
 //! - `infer` — deterministic component-identity clustering over the
 //!   composition baseline (name-free cluster report).
+//! - `materialize` — canonical-to-export asset conversion (`assets`
+//!   target; RFC-46 Phase 2).
 //! - `scaffold` — render-only Crux project scaffolds (core / iOS /
 //!   Android shells).
 //! - `schema` — print a tool-owned embedded schema to stdout (the tool-owned schema and catalog decisions D1).
@@ -29,6 +31,7 @@
 mod embedded;
 mod error;
 pub mod infer;
+pub mod materialize;
 pub mod scaffold;
 pub mod schema;
 pub mod validate;
@@ -56,11 +59,12 @@ pub fn render_json(payload: &Value) -> String {
 #[command(
     name = "vectis",
     version,
-    about = "Validate Vectis UI artifacts, verify platform shells, infer shared components, render Crux project scaffolds, and retrieve tool-owned schemas.",
+    about = "Validate Vectis UI artifacts, verify platform shells, materialize design-system exports, infer shared components, render Crux project scaffolds, and retrieve tool-owned schemas.",
     long_about = "Vectis WASI command tool. Subcommands:\n  \
                   validate — validate Vectis UI artifacts (tokens, assets, layout, composition, all).\n  \
                   verify  — verify declared platform shells are present on disk (detect, verify).\n  \
                   infer   — cluster structurally-identical groups in the composition baseline (name-free report).\n  \
+                  materialize — convert canonical assets into per-platform exports (assets).\n  \
                   scaffold — render Crux project scaffolds (core, ios, android).\n  \
                   schema  — print a tool-owned embedded schema to stdout."
 )]
@@ -79,6 +83,9 @@ pub enum VectisCommand {
     Verify(verify::VerifyArgs),
     /// Cluster structurally-identical groups in the composition baseline.
     Infer(infer::InferArgs),
+    /// Convert canonical assets into per-platform exports.
+    #[command(subcommand)]
+    Materialize(materialize::MaterializeCommand),
     /// Render Vectis Crux scaffolds.
     #[command(subcommand)]
     Scaffold(scaffold::ScaffoldCommand),
@@ -97,6 +104,7 @@ pub fn run(args: &Args) -> (String, u8) {
         VectisCommand::Validate(v) => validate::render_json(validate::run(v)),
         VectisCommand::Verify(v) => verify::render_json(verify::run(v)),
         VectisCommand::Infer(v) => infer::render_json(infer::run(v)),
+        VectisCommand::Materialize(m) => materialize::render_json(materialize::run(m)),
         VectisCommand::Scaffold(s) => scaffold::render_json(scaffold::run(s)),
         VectisCommand::Schema { name } => schema::run(name),
     }

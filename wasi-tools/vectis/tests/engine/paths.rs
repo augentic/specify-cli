@@ -7,7 +7,7 @@ use specify_vectis::validate::__test_internals::{
 };
 use specify_vectis::validate::{ValidateArgs as Args, ValidateMode, run};
 
-use crate::engine_support::write_specify_project;
+use crate::engine_support::{write_assets_project, write_project_yaml, write_specs_composition, write_specify_project};
 
 /// `find_project_root` walks up from a starting path until it finds a
 /// `.specify/` ancestor. A starting path that is itself the project
@@ -283,5 +283,56 @@ fn all_envelope_propagates_sub_errors() {
     assert!(
         !tokens_errors.is_empty(),
         "broken hex MUST surface in nested tokens report: {envelope}"
+    );
+}
+
+/// `validate all` fans out `assets-materialization-missing` through the
+/// assets sub-report.
+#[test]
+fn all_envelope_propagates_materialization_missing() {
+    let yaml = r"version: 1
+assets:
+  hero:
+    kind: raster
+    role: illustration
+    sources:
+      ios:
+        1x: assets/hero.png
+";
+    let (tmp, assets_path) = write_assets_project(yaml, &["assets/hero.png"]);
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
+    write_specs_composition(
+        tmp.path(),
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        item:
+          - image:
+              name: hero
+",
+    );
+    let design = tmp.path().join("design-system");
+    std::fs::write(design.join("layout.yaml"), "version: 1\nscreens: {}\n").expect("layout");
+    std::fs::write(design.join("tokens.yaml"), "version: 1\n").expect("tokens");
+    let _ = assets_path;
+
+    let envelope = run(&Args {
+        mode: ValidateMode::All,
+        path: Some(tmp.path().to_path_buf()),
+    })
+    .expect("run all succeeds");
+    let results = envelope["results"].as_array().expect("results array");
+    let assets_entry =
+        results.iter().find(|e| e["mode"] == "assets").expect("assets sub-report present");
+    let errors = assets_entry["report"]["errors"].as_array().expect("assets errors");
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("assets-materialization-missing")),
+        "materialization-missing MUST surface in nested assets report: {envelope}"
     );
 }

@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 const SCHEMA_VERSION: i64 = 1;
 const INCLUDE_STR_PREFIX: &str = "../../../../../templates/vectis";
-const EXPECTED_COUNTS: &[(&str, usize)] = &[("core", 13), ("ios", 7), ("android", 19)];
+const EXPECTED_COUNTS: &[(&str, usize)] = &[("core", 13), ("ios", 8), ("android", 23)];
 const ASSEMBLY_ORDER: &[&str] = &["core", "ios", "android"];
 const MANIFEST_IGNORED: &str = "MANIFEST.md";
 
@@ -154,7 +154,8 @@ fn emit_assembly(
         out.push_str("        TemplateEntry {\n");
         let _ = writeln!(out, "            target: {:?},", entry.target);
         let _ = writeln!(out, "            contents: include_str!(\"{include_path}\"),");
-        let _ = writeln!(out, "            path_mode: PathMode::{},", path_mode_rust(&spec.path_mode));
+        let _ =
+            writeln!(out, "            path_mode: PathMode::{},", path_mode_rust(&spec.path_mode));
         let _ = writeln!(
             out,
             "            include_when: {},",

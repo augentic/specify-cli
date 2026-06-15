@@ -131,6 +131,12 @@ pub(crate) mod ios {
             path_mode: PathMode::AppName,
             include_when: IncludeWhen::Always,
         },
+        TemplateEntry {
+            target: "iOS/__APP_NAME__/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json",
+            contents: include_str!("../../../../../templates/vectis/ios/AppIcon-Contents.json"),
+            path_mode: PathMode::AppName,
+            include_when: IncludeWhen::Always,
+        },
     ];
 }
 
@@ -250,6 +256,30 @@ pub(crate) mod android {
         TemplateEntry {
             target: "Android/app/src/main/java/__ANDROID_PACKAGE_PATH__/ui/theme/Type.kt",
             contents: include_str!("../../../../../templates/vectis/android/Type.kt"),
+            path_mode: PathMode::AndroidPackage,
+            include_when: IncludeWhen::Always,
+        },
+        TemplateEntry {
+            target: "Android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+            contents: include_str!("../../../../../templates/vectis/android/ic_launcher.xml"),
+            path_mode: PathMode::AndroidPackage,
+            include_when: IncludeWhen::Always,
+        },
+        TemplateEntry {
+            target: "Android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+            contents: include_str!("../../../../../templates/vectis/android/ic_launcher_round.xml"),
+            path_mode: PathMode::AndroidPackage,
+            include_when: IncludeWhen::Always,
+        },
+        TemplateEntry {
+            target: "Android/app/src/main/res/drawable/ic_launcher_foreground.xml",
+            contents: include_str!("../../../../../templates/vectis/android/ic_launcher_foreground.xml"),
+            path_mode: PathMode::AndroidPackage,
+            include_when: IncludeWhen::Always,
+        },
+        TemplateEntry {
+            target: "Android/app/src/main/res/values/ic_launcher_background.xml",
+            contents: include_str!("../../../../../templates/vectis/android/ic_launcher_background.xml"),
             path_mode: PathMode::AndroidPackage,
             include_when: IncludeWhen::Always,
         },
