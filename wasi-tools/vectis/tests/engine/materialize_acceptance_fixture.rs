@@ -17,7 +17,7 @@ fn acceptance_fixture_root() -> PathBuf {
 fn assert_layout_artifacts_exist(design_root: &Path, role: &str, kind: &str, asset_id: &str) {
     for platform in [Platform::Ios, Platform::Android] {
         let layout = export_layout(role, kind, platform, asset_id)
-            .unwrap_or_else(|| panic!("export_layout({role}, {kind}, {:?}, {asset_id})", platform));
+            .unwrap_or_else(|| panic!("export_layout({role}, {kind}, {platform:?}, {asset_id})"));
         for rel in &layout.artifacts {
             let path = design_root.join(rel);
             assert!(

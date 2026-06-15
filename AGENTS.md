@@ -112,10 +112,11 @@ External references:
 All driven by `cargo make` (see [`Makefile.toml`](./Makefile.toml)). Run the full local CI suite before committing; do not rely on narrower substitutes such as `cargo test` or `cargo clippy`.
 
 ```bash
-cargo make ci             # lint + test + test-docs + doc + vet + outdated + deny + fmt
-cargo make check          # fmt + lint + test + test-docs (the pre-commit subset)
+cargo make ci             # lint + test + test-docs + doc + vet + outdated + deny + fmt + wasi-tools-check
+cargo make check          # fmt + lint + test + test-docs + wasi-tools-check (the pre-commit subset)
 cargo make test           # cargo nextest run --all --all-features --no-tests=pass under -Dwarnings
 cargo make lint           # cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+cargo make wasi-tools-check  # wasi-tools/ carve-out clippy + test (mirrors the dedicated CI job)
 cargo make fmt            # nightly cargo fmt --all
 cargo make audit          # cargo-audit; cargo make deny / outdated / deps / vet for the rest
 cargo make contract-wasm  # build wasi-tools/contract — required before tests/tool/contract.rs
