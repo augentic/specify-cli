@@ -245,8 +245,32 @@ Canonical draft: [`augentic/specify` `rfcs/rfc-46-asset-materialization.md`](htt
 
 _Codified in: `wasi-tools/vectis/src/validate/engine/assets/` (export presence,
 `assets-materialization-missing`, `assets-app-icon-*`);
-`wasi-tools/vectis/src/materialize/` (CLI surface, report envelope, and
-`paths.rs` export conventions; conversion pipeline lands R46-S17+)._
+`wasi-tools/vectis/src/materialize/` (CLI surface, report envelope,
+`paths.rs` export conventions, `icons/` SVG→PDF/VD XML, `illustrations/` SVG→PNG,
+`raster_copy.rs` photo density copy; pin auto-write lands R46-S21)._
+
+#### Illustration raster scale table (R46-S18)
+
+Vector `role: illustration` masters render from the SVG 1× logical canvas
+(`usvg` `Tree::size()` width/height) through `resvg` at platform density
+factors:
+
+| Platform | Slot | Scale factor (×1× canvas) |
+|----------|------|---------------------------|
+| iOS | `@2x` | 2.0 |
+| iOS | `@3x` | 3.0 |
+| Android | `mdpi` | 1.0 |
+| Android | `hdpi` | 1.5 |
+| Android | `xhdpi` | 2.0 |
+| Android | `xxhdpi` | 3.0 |
+| Android | `xxxhdpi` | 4.0 |
+
+`role: photo` (`kind: raster`) uses a **copy-only** path: per-density entries
+under `sources.<platform>` are copied byte-for-byte into the conventional
+`exports/<platform>/…` layout (`paths.rs`); no `resvg` pass.
+
+_Codified in: `wasi-tools/vectis/src/materialize/render.rs`,
+`illustrations/`, `raster_copy.rs`, `paths::{ios_scale_factor,android_density_factor}`._
 
 ### §L — Bootstrap `app-icon` gate
 

@@ -14,6 +14,8 @@ mod infer;
 mod layout;
 #[path = "engine/materialize.rs"]
 mod materialize;
+#[path = "engine/materialize_illustrations.rs"]
+mod materialize_illustrations;
 #[path = "engine/paths.rs"]
 mod paths;
 #[path = "engine/tokens.rs"]

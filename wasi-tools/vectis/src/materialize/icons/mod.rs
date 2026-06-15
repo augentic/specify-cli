@@ -133,13 +133,13 @@ fn is_icon_vector_entry(entry: &Value) -> bool {
     matches!(role, Some("icon" | "decorative")) && kind == Some("vector")
 }
 
-fn active_platform_pin(entry: &Value, platform: &str, assets_dir: &Path) -> Option<String> {
+pub(crate) fn active_platform_pin(entry: &Value, platform: &str, assets_dir: &Path) -> Option<String> {
     let pin = entry.get("sources")?.get(platform)?.as_str()?;
     let path = assets_dir.join(pin);
     if path.exists() { Some(pin.to_string()) } else { None }
 }
 
-fn materialized_entry(asset_id: &str, platform: Platform, path: &str) -> Value {
+pub(crate) fn materialized_entry(asset_id: &str, platform: Platform, path: &str) -> Value {
     json!({
         "asset_id": asset_id,
         "platform": platform.as_str(),
@@ -147,7 +147,7 @@ fn materialized_entry(asset_id: &str, platform: Platform, path: &str) -> Value {
     })
 }
 
-fn asset_error(asset_id: &str, message: &str) -> Value {
+pub(crate) fn asset_error(asset_id: &str, message: &str) -> Value {
     json!({
         "path": format!("/assets/{asset_id}"),
         "message": message,

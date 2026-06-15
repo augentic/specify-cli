@@ -8,8 +8,65 @@ use std::path::{Path, PathBuf};
 /// Android drawable density buckets for rasterized exports.
 pub const ANDROID_DENSITIES: &[&str] = &["mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"];
 
-/// iOS raster scales materialized for `role: illustration` vector masters.
+/// iOS raster scales for vector illustration materialize (`@2x` / `@3x` only).
 pub const IOS_ILLUSTRATION_SCALES: &[&str] = &["2x", "3x"];
+
+/// iOS raster scales accepted when copying per-density photo masters.
+pub const IOS_RASTER_SCALES: &[&str] = &["1x", "2x", "3x"];
+
+/// Android density scale factors relative to the SVG 1× logical canvas (mdpi baseline).
+#[must_use]
+pub fn android_density_factor(density: &str) -> Option<f32> {
+    match density {
+        "mdpi" => Some(1.0),
+        "hdpi" => Some(1.5),
+        "xhdpi" => Some(2.0),
+        "xxhdpi" => Some(3.0),
+        "xxxhdpi" => Some(4.0),
+        _ => None,
+    }
+}
+
+/// iOS imageset scale factor relative to the SVG 1× logical canvas.
+#[must_use]
+pub fn ios_scale_factor(scale: &str) -> Option<f32> {
+    match scale {
+        "1x" => Some(1.0),
+        "2x" => Some(2.0),
+        "3x" => Some(3.0),
+        _ => None,
+    }
+}
+
+/// iOS imageset PNG filename for a raster export (`1x` omits the `@` suffix).
+#[must_use]
+pub fn ios_raster_filename(asset_id: &str, scale: &str) -> String {
+    if scale == "1x" {
+        format!("{asset_id}.png")
+    } else {
+        format!("{asset_id}@{scale}.png")
+    }
+}
+
+/// Design-system-relative path for one iOS raster artifact inside an imageset.
+#[must_use]
+pub fn ios_raster_artifact_rel(asset_id: &str, scale: &str) -> String {
+    format!(
+        "{}/{}",
+        ios_imageset_dir(asset_id),
+        ios_raster_filename(asset_id, scale)
+    )
+}
+
+/// Design-system-relative path for one Android raster drawable PNG.
+#[must_use]
+pub fn android_raster_artifact_rel(asset_id: &str, density: &str) -> String {
+    let snake = kebab_to_snake(asset_id);
+    format!(
+        "{}/drawable-{density}/{snake}.png",
+        exports_root(Platform::Android)
+    )
+}
 
 /// Target platform for export path computation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -118,22 +175,16 @@ fn illustration_vector_layout(platform: Platform, asset_id: &str) -> ExportLayou
             let imageset = ios_imageset_dir(asset_id);
             let mut artifacts = IOS_ILLUSTRATION_SCALES
                 .iter()
-                .map(|scale| format!("{imageset}/{asset_id}@{scale}.png"))
+                .map(|scale| ios_raster_artifact_rel(asset_id, scale))
                 .collect::<Vec<_>>();
             let pin = artifacts.last().expect("illustration scales non-empty").clone();
             artifacts.push(format!("{imageset}/Contents.json"));
             ExportLayout { pin, artifacts }
         }
         Platform::Android => {
-            let snake = kebab_to_snake(asset_id);
             let artifacts = ANDROID_DENSITIES
                 .iter()
-                .map(|density| {
-                    format!(
-                        "{}/drawable-{density}/{snake}.png",
-                        exports_root(platform)
-                    )
-                })
+                .map(|density| android_raster_artifact_rel(asset_id, density))
                 .collect::<Vec<_>>();
             let pin = artifacts.last().expect("android densities non-empty").clone();
             ExportLayout { pin, artifacts }
@@ -205,6 +256,23 @@ mod tests {
         let icon = export_layout("icon", "vector", Platform::Ios, "sparkle")
             .expect("icon ios");
         assert_eq!(ios, icon);
+    }
+
+    #[test]
+    fn scale_factors_match_platform_conventions() {
+        assert_eq!(ios_scale_factor("2x"), Some(2.0_f32));
+        assert_eq!(ios_scale_factor("3x"), Some(3.0_f32));
+        assert_eq!(android_density_factor("mdpi"), Some(1.0_f32));
+        assert_eq!(android_density_factor("hdpi"), Some(1.5_f32));
+        assert_eq!(android_density_factor("xhdpi"), Some(2.0_f32));
+        assert_eq!(android_density_factor("xxhdpi"), Some(3.0_f32));
+        assert_eq!(android_density_factor("xxxhdpi"), Some(4.0_f32));
+    }
+
+    #[test]
+    fn ios_raster_filenames_follow_imageset_conventions() {
+        assert_eq!(ios_raster_filename("hero", "1x"), "hero.png");
+        assert_eq!(ios_raster_filename("hero", "2x"), "hero@2x.png");
     }
 
     #[test]

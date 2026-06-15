@@ -4,7 +4,10 @@
 //! exports under `design-system/assets/exports/<platform>/`.
 
 pub mod icons;
+pub mod illustrations;
 pub mod paths;
+mod raster_copy;
+mod render;
 mod svg;
 
 use std::path::{Path, PathBuf};
@@ -17,6 +20,8 @@ use crate::validate::{ValidateMode, find_project_root};
 use crate::{VectisError, render_json as render_value};
 
 use icons::materialize_icon_vectors;
+use illustrations::materialize_illustration_vectors;
+use raster_copy::materialize_photo_rasters;
 
 /// Nested targets under `vectis materialize`.
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -119,6 +124,23 @@ fn run_assets(args: &AssetsArgs) -> Result<Value, VectisError> {
             args.dry_run,
             &mut materialized,
             &mut skipped_pins,
+            &mut errors,
+        );
+        materialize_illustration_vectors(
+            assets_dir,
+            assets,
+            &platforms,
+            args.dry_run,
+            &mut materialized,
+            &mut skipped_pins,
+            &mut errors,
+        );
+        materialize_photo_rasters(
+            assets_dir,
+            assets,
+            &platforms,
+            args.dry_run,
+            &mut materialized,
             &mut errors,
         );
     }
