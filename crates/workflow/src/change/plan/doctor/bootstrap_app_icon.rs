@@ -58,23 +58,17 @@ fn unsatisfied_reason(project_dir: &Path, platform: Platform) -> Option<String> 
         return Some(missing_message(platform, "`design-system/assets.yaml` is absent"));
     }
 
-    let raw = match std::fs::read_to_string(&assets_path) {
-        Ok(content) => content,
-        Err(_) => {
-            return Some(missing_message(
-                platform,
-                "`design-system/assets.yaml` exists but could not be read",
-            ));
-        }
+    let Ok(raw) = std::fs::read_to_string(&assets_path) else {
+        return Some(missing_message(
+            platform,
+            "`design-system/assets.yaml` exists but could not be read",
+        ));
     };
-    let doc: Value = match serde_saphyr::from_str(&raw) {
-        Ok(value) => value,
-        Err(_) => {
-            return Some(missing_message(
-                platform,
-                "`design-system/assets.yaml` is not valid YAML",
-            ));
-        }
+    let Ok(doc) = serde_saphyr::from_str::<Value>(&raw) else {
+        return Some(missing_message(
+            platform,
+            "`design-system/assets.yaml` is not valid YAML",
+        ));
     };
     let assets_dir = assets_path.parent().unwrap_or_else(|| Path::new("."));
 
