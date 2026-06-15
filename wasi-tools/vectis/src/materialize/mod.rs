@@ -3,6 +3,7 @@
 //! Phase 2 (RFC-46) converts designer-owned `source:` files into per-platform
 //! exports under `design-system/assets/exports/<platform>/`.
 
+pub mod app_icon;
 pub mod icons;
 pub mod illustrations;
 pub mod paths;
@@ -19,6 +20,7 @@ use crate::validate::engine::resolve_default_path_with_root;
 use crate::validate::{ValidateMode, find_project_root};
 use crate::{VectisError, render_json as render_value};
 
+use app_icon::materialize_app_icons;
 use icons::materialize_icon_vectors;
 use illustrations::materialize_illustration_vectors;
 use raster_copy::materialize_photo_rasters;
@@ -141,6 +143,15 @@ fn run_assets(args: &AssetsArgs) -> Result<Value, VectisError> {
             &platforms,
             args.dry_run,
             &mut materialized,
+            &mut errors,
+        );
+        materialize_app_icons(
+            assets_dir,
+            assets,
+            &platforms,
+            args.dry_run,
+            &mut materialized,
+            &mut skipped_pins,
             &mut errors,
         );
     }

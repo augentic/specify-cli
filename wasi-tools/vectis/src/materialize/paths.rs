@@ -196,7 +196,13 @@ fn app_icon_layout(platform: Platform) -> ExportLayout {
     match platform {
         Platform::Ios => {
             let root = format!("{}/app-icon/AppIcon.appiconset", exports_root(platform));
-            ExportLayout { pin: root.clone(), artifacts: vec![root] }
+            ExportLayout {
+                pin: root.clone(),
+                artifacts: vec![
+                    format!("{root}/Contents.json"),
+                    format!("{root}/AppIcon.png"),
+                ],
+            }
         }
         Platform::Android => {
             let root = format!("{}/app-icon", exports_root(platform));
@@ -321,6 +327,13 @@ mod tests {
         assert_eq!(
             ios.pin,
             "assets/exports/ios/app-icon/AppIcon.appiconset"
+        );
+        assert_eq!(
+            ios.artifacts,
+            vec![
+                "assets/exports/ios/app-icon/AppIcon.appiconset/Contents.json".to_string(),
+                "assets/exports/ios/app-icon/AppIcon.appiconset/AppIcon.png".to_string(),
+            ]
         );
 
         let android = export_layout("app-icon", "raster", Platform::Android, "app-icon")

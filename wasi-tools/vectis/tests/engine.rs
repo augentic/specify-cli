@@ -16,6 +16,8 @@ mod layout;
 mod materialize;
 #[path = "engine/materialize_illustrations.rs"]
 mod materialize_illustrations;
+#[path = "engine/materialize_app_icon.rs"]
+mod materialize_app_icon;
 #[path = "engine/paths.rs"]
 mod paths;
 #[path = "engine/tokens.rs"]
