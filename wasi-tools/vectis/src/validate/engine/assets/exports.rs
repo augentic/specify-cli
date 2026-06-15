@@ -2,11 +2,33 @@
 
 use std::path::Path;
 
-use crate::materialize::paths::kebab_to_snake;
+use serde_json::Value;
+
+use crate::materialize::paths::{export_layout, kebab_to_snake, Platform};
 
 /// Whether a composition-referenced asset has a committed export on
 /// disk for `platform` without a `sources.<platform>` pin.
+///
+/// Auto-materializable vector roles are checked against the same
+/// conventional paths `materialize assets` writes; raster entries
+/// without an auto-convert layout fall back to imageset / density
+/// heuristics.
 pub(super) fn conventional_export_exists(
+    assets_dir: &Path, id: &str, kind: &str, platform: &str, entry: &Value,
+) -> bool {
+    let role = entry.get("role").and_then(Value::as_str).unwrap_or("");
+    if let Some(plat) = Platform::parse(platform)
+        && let Some(layout) = export_layout(role, kind, plat, id)
+    {
+        return layout
+            .artifacts
+            .iter()
+            .any(|rel| assets_dir.join(rel).is_file());
+    }
+    conventional_raster_export_exists(assets_dir, id, kind, platform)
+}
+
+fn conventional_raster_export_exists(
     assets_dir: &Path, id: &str, kind: &str, platform: &str,
 ) -> bool {
     let exports_root = assets_dir.join("assets/exports").join(platform);
@@ -14,13 +36,9 @@ pub(super) fn conventional_export_exists(
         return false;
     }
     match (platform, kind) {
-        ("ios", "vector" | "raster") => {
+        ("ios", "raster") => {
             let imageset = exports_root.join(format!("{id}.imageset"));
             imageset.is_dir() && directory_has_regular_file(&imageset)
-        }
-        ("android", "vector") => {
-            let snake = kebab_to_snake(id);
-            exports_root.join("drawable").join(format!("{snake}.xml")).is_file()
         }
         ("android", "raster") => {
             let snake = kebab_to_snake(id);
@@ -59,5 +77,33 @@ fn directory_has_regular_file(dir: &Path) -> bool {
         return false;
     };
     entries.filter_map(Result::ok).any(|e| e.path().is_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn icon_vector_android_export_matches_materialize_layout() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let design = tmp.path();
+        let xml = design.join("assets/exports/android/drawable/chevron_right.xml");
+        std::fs::create_dir_all(xml.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&xml, "<vector/>").expect("write");
+        let entry = json!({ "role": "icon", "kind": "vector" });
+        assert!(conventional_export_exists(design, "chevron-right", "vector", "android", &entry));
+    }
+
+    #[test]
+    fn raster_android_density_png_satisfies_export() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let design = tmp.path();
+        let png = design.join("assets/exports/android/drawable-mdpi/hero.png");
+        std::fs::create_dir_all(png.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&png, b"PNG").expect("write");
+        let entry = json!({ "role": "illustration", "kind": "raster" });
+        assert!(conventional_export_exists(design, "hero", "raster", "android", &entry));
+    }
 }
 

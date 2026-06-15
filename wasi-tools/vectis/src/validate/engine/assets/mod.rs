@@ -298,7 +298,7 @@ fn check_platform_coverage(
                     }
                     continue;
                 }
-                if exports::conventional_export_exists(assets_dir, id, kind, plat) {
+                if exports::conventional_export_exists(assets_dir, id, kind, plat, entry) {
                     continue;
                 }
                 errors.push(json!({
@@ -316,7 +316,7 @@ fn check_platform_coverage(
                     continue;
                 }
                 if exports::vector_source_materializable(assets_dir, entry)
-                    || exports::conventional_export_exists(assets_dir, id, kind, plat)
+                    || exports::conventional_export_exists(assets_dir, id, kind, plat, entry)
                 {
                     continue;
                 }

@@ -740,6 +740,160 @@ screens:
     );
 }
 
+/// Composition-referenced vector without pins, exports, or `source:` is
+/// materialization-missing — not `assets-app-icon-invalid`.
+#[test]
+fn vector_materialization_missing_errors() {
+    let yaml = r"version: 1
+assets:
+  brand-logo:
+    kind: vector
+    role: illustration
+    sources:
+      ios: assets/ios/brand-logo.pdf
+";
+    let (tmp, assets_path) = write_assets_project(yaml, &["assets/ios/brand-logo.pdf"]);
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
+    write_specs_composition(
+        tmp.path(),
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        item:
+          - image:
+              name: brand-logo
+",
+    );
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    let errors = errors_array(&envelope);
+    assert!(
+        errors.iter().any(|e| e["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("assets-materialization-missing")
+            && e["path"].as_str().unwrap_or("").contains("/sources/android")
+            && !e["message"].as_str().unwrap_or("").contains("assets-app-icon-invalid")),
+        "expected android materialization-missing error, got: {errors:?}"
+    );
+}
+
+/// Committed exports under the conventional materialize layout satisfy
+/// platform coverage without per-platform pins.
+#[test]
+fn committed_exports_satisfy_platform_coverage() {
+    let yaml = r"version: 1
+assets:
+  brand-logo:
+    kind: vector
+    role: illustration
+    sources:
+      ios: assets/ios/brand-logo.pdf
+";
+    let (tmp, assets_path) = write_assets_project(yaml, &["assets/ios/brand-logo.pdf"]);
+    let design = tmp.path().join("design-system");
+    std::fs::create_dir_all(design.join("assets/exports/android/drawable-mdpi")).expect("mkdir");
+    std::fs::write(design.join("assets/exports/android/drawable-mdpi/brand_logo.png"), b"PNG")
+        .expect("write png");
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
+    write_specs_composition(
+        tmp.path(),
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        item:
+          - image:
+              name: brand-logo
+",
+    );
+
+    let args = Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    };
+    let envelope = run(&args).expect("run succeeds");
+    assert!(
+        errors_array(&envelope).is_empty(),
+        "ios pin plus committed android export should satisfy both platforms: {envelope}"
+    );
+}
+
+/// `materialize assets` followed by `validate assets` leaves a clean
+/// envelope for a composition-referenced vector icon.
+#[test]
+fn materialize_then_validate_passes() {
+    use specify_vectis::materialize::{AssetsArgs, MaterializeCommand, run as materialize_run};
+
+    const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L2 22h20z"/></svg>"##;
+    let yaml = r#"version: 1
+assets:
+  chevron-right:
+    kind: vector
+    role: icon
+    source: assets/chevron-right.svg
+"#;
+    let (tmp, assets_path) = write_assets_project(yaml, &[]);
+    let design = tmp.path().join("design-system");
+    std::fs::write(design.join("assets/chevron-right.svg"), SVG).expect("write svg");
+    write_project_yaml(tmp.path(), &["core", "ios", "android"]);
+    write_specs_composition(
+        tmp.path(),
+        r"version: 1
+screens:
+  s:
+    name: S
+    body:
+      list:
+        item:
+          - icon:
+              name: chevron-right
+",
+    );
+
+    let before = run(&Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path.clone()),
+    })
+    .expect("pre-materialize validate");
+    assert!(
+        errors_array(&before).is_empty(),
+        "path A `source:` satisfies coverage before materialize: {before}"
+    );
+
+    materialize_run(&MaterializeCommand::Assets(AssetsArgs {
+        path: Some(assets_path.clone()),
+        platform: None,
+        dry_run: false,
+    }))
+    .expect("materialize succeeds");
+
+    assert!(
+        design
+            .join("assets/exports/ios/chevron-right.imageset/chevron-right.pdf")
+            .is_file(),
+        "ios export should exist after materialize"
+    );
+
+    let after = run(&Args {
+        mode: ValidateMode::Assets,
+        path: Some(assets_path),
+    })
+    .expect("post-materialize validate");
+    assert!(
+        errors_array(&after).is_empty(),
+        "validate should pass after materialize wrote committed exports: {after}"
+    );
+}
+
 /// `project.yaml` with only `ios` does not require android coverage.
 #[test]
 fn platforms_from_project_yaml_ios_only() {
