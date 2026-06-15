@@ -833,14 +833,14 @@ screens:
 fn materialize_then_validate_passes() {
     use specify_vectis::materialize::{AssetsArgs, MaterializeCommand, run as materialize_run};
 
-    const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L2 22h20z"/></svg>"##;
-    let yaml = r#"version: 1
+    const SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2L2 22h20z"/></svg>"#;
+    let yaml = r"version: 1
 assets:
   chevron-right:
     kind: vector
     role: icon
     source: assets/chevron-right.svg
-"#;
+";
     let (tmp, assets_path) = write_assets_project(yaml, &[]);
     let design = tmp.path().join("design-system");
     std::fs::write(design.join("assets/chevron-right.svg"), SVG).expect("write svg");
