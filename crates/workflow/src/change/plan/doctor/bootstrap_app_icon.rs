@@ -65,10 +65,7 @@ fn unsatisfied_reason(project_dir: &Path, platform: Platform) -> Option<String> 
         ));
     };
     let Ok(doc) = serde_saphyr::from_str::<Value>(&raw) else {
-        return Some(missing_message(
-            platform,
-            "`design-system/assets.yaml` is not valid YAML",
-        ));
+        return Some(missing_message(platform, "`design-system/assets.yaml` is not valid YAML"));
     };
     let assets_dir = assets_path.parent().unwrap_or_else(|| Path::new("."));
 
