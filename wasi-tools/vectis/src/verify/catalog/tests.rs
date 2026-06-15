@@ -82,6 +82,23 @@ fn missing_ios_imageset_emits_finding() {
 }
 
 #[test]
+fn contents_json_only_imageset_is_missing() {
+    let tmp = tempdir().unwrap();
+    scaffold_project(tmp.path());
+    write_inventory(tmp.path());
+
+    let imageset = tmp
+        .path()
+        .join("iOS/TodoApp/Resources/Assets.xcassets/empty-tasks-hero.imageset");
+    std::fs::create_dir_all(&imageset).expect("mkdir imageset");
+    std::fs::write(imageset.join("Contents.json"), "{\"images\":[]}").expect("write json");
+
+    let findings = catalog_findings(tmp.path(), &["ios".to_string()]);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0]["id"], "shell-catalog-entry-missing");
+}
+
+#[test]
 fn present_shell_catalog_entries_emit_no_findings() {
     let tmp = tempdir().unwrap();
     scaffold_project(tmp.path());

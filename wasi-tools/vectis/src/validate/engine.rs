@@ -29,6 +29,7 @@ mod tokens;
 use std::path::Path;
 
 pub(crate) use assets::collect_asset_references;
+pub(crate) use assets::exports::imageset_has_materialized_content;
 pub(crate) use shared::parse_yaml_file;
 
 pub use paths::{

@@ -88,6 +88,19 @@ fn valid_source_master_passes() {
 }
 
 #[test]
+fn invalid_assets_yaml_emits_gate() {
+    let fixture = bootstrap_fixture(&["core", "ios", "android"]);
+    write_assets(fixture.path(), "version: 1\napp-icon: app-icon\nassets: [\n");
+
+    let hits: Vec<_> = detect(fixture.path())
+        .into_iter()
+        .filter(|d| d.rule_id.as_deref() == Some("plan-bootstrap-app-icon-missing"))
+        .collect();
+    assert_eq!(hits.len(), 2, "invalid YAML must not skip the gate: {hits:#?}");
+    assert!(hits.iter().all(|d| d.impact.contains("not valid YAML")));
+}
+
+#[test]
 fn shell_resident_ios_skips_design_system() {
     let fixture = bootstrap_fixture(&["core", "ios", "android"]);
 

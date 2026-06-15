@@ -8,7 +8,7 @@
 
 mod launcher;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 pub use launcher::shell_resident_app_icon;
 
@@ -52,23 +52,20 @@ pub fn missing_shell_platforms(project_dir: &Path, declared: &[&str]) -> Vec<Str
 }
 
 fn has_files_with_extension(dir: &Path, ext: &str) -> bool {
-    walk_dir_recursive(dir).iter().any(|p| p.extension().and_then(|e| e.to_str()) == Some(ext))
-}
-
-fn walk_dir_recursive(dir: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return out;
+        return false;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            out.extend(walk_dir_recursive(&path));
-        } else {
-            out.push(path);
+            if has_files_with_extension(&path, ext) {
+                return true;
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
+            return true;
         }
     }
-    out
+    false
 }
 
 #[cfg(test)]

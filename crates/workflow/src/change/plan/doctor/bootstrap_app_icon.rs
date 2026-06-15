@@ -22,8 +22,19 @@ const ASSETS_REL: &str = "design-system/assets.yaml";
 /// Emit `plan-bootstrap-app-icon-missing` when §6.1 triggers and any
 /// missing UI platform fails §6.2.
 pub fn detect(project_dir: &Path) -> Vec<Diagnostic> {
-    let Ok(ctx) = bootstrap_context(project_dir) else {
-        return Vec::new();
+    let ctx = match bootstrap_context(project_dir) {
+        Ok(ctx) => ctx,
+        Err(err) => {
+            return vec![plan_finding(
+                BOOTSTRAP_APP_ICON_MISSING,
+                Severity::Important,
+                format!(
+                    "bootstrap `app-icon` gate could not be evaluated (RFC §6.2): {err}; \
+                     fix project configuration before plan validate or slice build prepare"
+                ),
+                None,
+            )];
+        }
     };
     if !ctx.triggers {
         return Vec::new();
@@ -47,8 +58,24 @@ fn unsatisfied_reason(project_dir: &Path, platform: Platform) -> Option<String> 
         return Some(missing_message(platform, "`design-system/assets.yaml` is absent"));
     }
 
-    let raw = std::fs::read_to_string(&assets_path).ok()?;
-    let doc: Value = serde_saphyr::from_str(&raw).ok()?;
+    let raw = match std::fs::read_to_string(&assets_path) {
+        Ok(content) => content,
+        Err(_) => {
+            return Some(missing_message(
+                platform,
+                "`design-system/assets.yaml` exists but could not be read",
+            ));
+        }
+    };
+    let doc: Value = match serde_saphyr::from_str(&raw) {
+        Ok(value) => value,
+        Err(_) => {
+            return Some(missing_message(
+                platform,
+                "`design-system/assets.yaml` is not valid YAML",
+            ));
+        }
+    };
     let assets_dir = assets_path.parent().unwrap_or_else(|| Path::new("."));
 
     let Some(pointer) = doc.get("app-icon").and_then(Value::as_str) else {

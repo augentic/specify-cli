@@ -237,13 +237,15 @@ fn run_materialize_assets(
 }
 
 fn enforce_bootstrap_app_icon_gate(project_dir: &Path) -> Result<()> {
-    let Some(finding) = bootstrap_app_icon_findings(project_dir).into_iter().next() else {
+    let findings = bootstrap_app_icon_findings(project_dir);
+    if findings.is_empty() {
         return Ok(());
-    };
+    }
+    let detail = findings.iter().map(|f| f.impact.as_str()).collect::<Vec<_>>().join("\n");
     Err(Error::validation_failed(
         BOOTSTRAP_APP_ICON_MISSING,
         "bootstrap context carries a satisfiable `app-icon` for each missing UI platform (RFC §6.2)",
-        finding.impact,
+        detail,
     ))
 }
 

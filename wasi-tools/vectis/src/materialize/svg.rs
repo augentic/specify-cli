@@ -154,7 +154,7 @@ pub fn path_data_string(path: &Path) -> String {
 }
 
 fn append_coord(out: &mut String, verb: char, x: f32, y: f32) {
-    let _ = write!(out, "{verb}{},{},", trim_num(x), trim_num(y));
+    let _ = write!(out, "{verb}{} {} ", trim_num(x), trim_num(y));
 }
 
 fn trim_num(value: f32) -> String {
@@ -217,6 +217,15 @@ mod tests {
     fn parse_simple_icon_succeeds() {
         let parsed = parse_icon_svg(TRIANGLE.as_bytes(), "settings").expect("parse");
         assert!(parsed.tree.size().width() > 0.0);
+    }
+
+    #[test]
+    fn path_data_uses_space_separated_coords() {
+        let parsed = parse_icon_svg(TRIANGLE.as_bytes(), "tri").expect("parse");
+        let mut paths = Vec::new();
+        collect_paths(parsed.tree.root(), &mut paths);
+        let path_data = path_data_string(&paths[0].geometry);
+        assert_eq!(path_data, "M12 2 L2 22 L22 22 Z");
     }
 
     #[test]

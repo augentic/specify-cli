@@ -114,9 +114,10 @@ pub enum PlanAction {
     ///   grouping response, and replaces `plan.yaml.slices[]` wholesale —
     ///   in the agent's response order. When a bound project declares
     ///   non-empty `project.yaml.platforms`, a deterministic bootstrap
-    ///   post-pass runs via `vectis verify --mode detect` (Vectis-bound
-    ///   projects only) and inserts bootstrap slices for declared-but-absent
-    ///   shells before emitting the single `plan.reconcile.completed` event.
+    ///   post-pass runs via in-process shell detect (`vectis_missing_platforms`
+    ///   / `specify-vectis-shell-detect`; Vectis-bound projects only) and
+    ///   inserts bootstrap slices for declared-but-absent shells before
+    ///   emitting the single `plan.reconcile.completed` event.
     ///
     /// Passing neither mode fails with `plan-propose-mode-required`
     /// (exit 2).

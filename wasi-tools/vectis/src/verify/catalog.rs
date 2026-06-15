@@ -14,6 +14,7 @@ use crate::validate::ValidateMode;
 use crate::validate::engine::{
     collect_asset_references, discover_artifact, parse_yaml_file, resolve_default_path_with_root,
 };
+use crate::validate::engine::imageset_has_materialized_content;
 
 /// Collect diagnostic findings for composition-referenced non-symbol assets
 /// that are absent from a present platform shell tree.
@@ -115,7 +116,7 @@ fn shell_catalog_entry_present(project_root: &Path, platform: &str, asset_id: &s
 fn ios_shell_has_imageset(project_root: &Path, asset_id: &str) -> bool {
     ios_xcassets_roots(project_root).into_iter().any(|xcassets| {
         let imageset = xcassets.join(format!("{asset_id}.imageset"));
-        imageset.is_dir() && directory_has_regular_file(&imageset)
+        imageset.is_dir() && imageset_has_materialized_content(&imageset)
     })
 }
 
@@ -154,13 +155,6 @@ fn android_shell_has_density_raster(res: &Path, snake: &str) -> bool {
         }
     }
     false
-}
-
-fn directory_has_regular_file(dir: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    entries.filter_map(Result::ok).any(|entry| entry.path().is_file())
 }
 
 #[cfg(test)]

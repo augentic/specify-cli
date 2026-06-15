@@ -1,7 +1,7 @@
 //! `validate assets` — schema validation plus cross-artifact checks.
 
 mod app_icon;
-mod exports;
+pub(crate) mod exports;
 mod platforms;
 
 use std::path::Path;

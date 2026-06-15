@@ -38,7 +38,7 @@ fn conventional_raster_export_exists(
     match (platform, kind) {
         ("ios", "raster") => {
             let imageset = exports_root.join(format!("{id}.imageset"));
-            imageset.is_dir() && directory_has_regular_file(&imageset)
+            imageset.is_dir() && imageset_has_materialized_content(&imageset)
         }
         ("android", "raster") => {
             let snake = kebab_to_snake(id);
@@ -72,11 +72,17 @@ pub(super) fn vector_source_materializable(assets_dir: &Path, entry: &serde_json
         .is_some_and(|source| assets_dir.join(source).is_file())
 }
 
-fn directory_has_regular_file(dir: &Path) -> bool {
+/// Whether an iOS imageset directory carries materialized content.
+///
+/// `Contents.json` alone does not satisfy export presence (RFC §6.3).
+pub(crate) fn imageset_has_materialized_content(dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return false;
     };
-    entries.filter_map(Result::ok).any(|e| e.path().is_file())
+    entries.filter_map(Result::ok).any(|entry| {
+        let path = entry.path();
+        path.is_file() && entry.file_name() != "Contents.json"
+    })
 }
 
 #[cfg(test)]
@@ -93,6 +99,30 @@ mod tests {
         std::fs::write(&xml, "<vector/>").expect("write");
         let entry = json!({ "role": "icon", "kind": "vector" });
         assert!(conventional_export_exists(design, "chevron-right", "vector", "android", &entry));
+    }
+
+    #[test]
+    fn contents_json_only_imageset_is_not_materialized() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let design = tmp.path();
+        let imageset = design.join("assets/exports/ios/hero.imageset");
+        std::fs::create_dir_all(&imageset).expect("mkdir");
+        std::fs::write(imageset.join("Contents.json"), "{\"images\":[]}").expect("write json");
+        assert!(!imageset_has_materialized_content(&imageset));
+    }
+
+    #[test]
+    fn raster_ios_imageset_requires_materialized_file() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let design = tmp.path();
+        let imageset = design.join("assets/exports/ios/hero.imageset");
+        std::fs::create_dir_all(&imageset).expect("mkdir");
+        std::fs::write(imageset.join("Contents.json"), "{\"images\":[]}").expect("write json");
+        let entry = json!({ "role": "illustration", "kind": "raster" });
+        assert!(!conventional_export_exists(design, "hero", "raster", "ios", &entry));
+
+        std::fs::write(imageset.join("hero@3x.png"), b"PNG").expect("write png");
+        assert!(conventional_export_exists(design, "hero", "raster", "ios", &entry));
     }
 
     #[test]

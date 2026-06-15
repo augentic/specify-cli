@@ -17,6 +17,9 @@ pub fn render_tree_to_png(tree: &Tree, out_width: u32, out_height: u32) -> Resul
         .ok_or_else(|| "render buffer allocation failed".to_string())?;
 
     let svg_size = tree.size();
+    if svg_size.width() <= 0.0 || svg_size.height() <= 0.0 {
+        return Err("SVG canvas size must be non-zero".into());
+    }
     let scale_x = f64::from(out_width) / f64::from(svg_size.width());
     let scale_y = f64::from(out_height) / f64::from(svg_size.height());
     #[expect(
